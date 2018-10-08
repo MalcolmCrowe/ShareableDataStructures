@@ -11,12 +11,45 @@ namespace Shareable
     {
         static void Main(string[] args)
         {
-            // The code provided will print ‘Hello World’ to the console.
-            // Press Ctrl+F5 (or go to Debug > Start Without Debugging) to run your app.
-            Console.WriteLine("Hello World!");
+            // Tests for SList (unordered list)
+            var sl = SList<string>.New("Red", "Blue", "Green");
+            sl = sl.InsertAt("Yellow", 0);
+            var s2 = sl;
+            sl = sl.RemoveAt(3);
+            sl = sl.UpdateAt("Pink", 1);
+            sl = sl.InsertAt("Orange", 2);
+            Check<string>(sl.ToArray(), "Yellow", "Pink", "Orange", "Blue");
+            Check<string>(s2.ToArray(), "Yellow", "Red", "Blue", "Green");
+            Console.WriteLine("SList done");
+            // Tests for SArray
+            var sa = new SArray<string>("Red", "Blue", "Green");
+            sa = sa.InsertAt(0,"Yellow");
+            sa = sa.RemoveAt(3);
+            var sb = sa;
+            sa = sa.InsertAt(2,"Orange", "Violet");
+            Check(sa.ToArray(), "Yellow", "Red", "Orange", "Violet", "Blue");
+            Check(sb.ToArray(), "Yellow", "Red", "Blue");
+            Console.WriteLine("SArray done");
+            // Tests for SSearchTree<string>
+            var ss = SSearchTree<string>.New("InfraRed", "Red", "Orange", "Yellow", "Green", "Blue", "Violet");
+            Check(ss.ToArray(), "Blue", "Green", "InfraRed", "Orange", "Red", "Violet","Yellow");
+            var si = SSearchTree<int>.New(56, 22, 24, 31, 23);
+            Check(si.ToArray(), 22, 23, 24, 31, 56);
+            Console.WriteLine("SSearchTree done");
             Console.ReadKey();
-
-            // Go to http://aka.ms/dotnet-get-started-console to continue learning how to build a console app! 
+        }
+        static void Check<T>(T[] a,params T[] b) where T:System.IComparable
+        {
+            if (a.Length != b.Length)
+                Console.WriteLine("wrong length");
+            for (var i = 0; i < a.Length; i++)
+                if (a[i].CompareTo(b[i])!=0)
+                    Console.WriteLine("wrong value");
+        }
+        static void Check(string a, string b)
+        {
+            if (a!=b)
+                Console.WriteLine("wrong value");
         }
     }
 }

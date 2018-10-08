@@ -1,101 +1,61 @@
 ﻿/// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
-/// http://shareabledata.org 
+/// See github.com/MalcolmCrowe/ShareableDataStructures
 /// This is free-to-use software
 /// </summary>
 namespace Shareable
 {
     public class SList<T> : Shareable<T>
     {
-        public readonly T element;
-        public readonly SList<T> next;
-        public SList(T e,SList<T> n)
+        internal readonly T element;
+        internal readonly SList<T> next;
+        public static readonly SList<T> Empty = new SList<T>();
+        SList() { element = default(T); next = null; }
+        internal SList(T e,SList<T> n) : base(n.Length+1)
         {
             element = e;
             next = n;
         }
-        public static SList<T> New(params T[] els)
+        public static SList<T> New(params T[] els) 
         {
-            SList<T> r = null;
+            var r = Empty;
             for (var i = els.Length - 1; i >= 0; i--)
                 r = new SList<T>(els[i], r);
             return r;
         }
-        public int Length
+        public SList<T> InsertAt(T x, int n) // n>=0
         {
-            get { return next?.Length ?? 0 + 1; }
-        }
-        /// <summary>
-        /// Note that the first entry in the list must be made by the constructor.
-        /// </summary>
-        /// <param name="x">The new node</param>
-        /// <param name="n">The position in the list (n>=0, Length>n)</param>
-        /// <returns>the new list</returns>
-        public SList<T> InsertAt(T x, int n)
-        {
-            if (n == 0)
+            if (this==Empty || n==0)
                 return new SList<T>(x, this);
-            // if (n<0 || next==null) throw Exception("");
             return new SList<T>(element, next.InsertAt(x, n - 1));
         }
         public SList<T> RemoveAt(int n)
         {
+            if (this == Empty)
+                return Empty;
             if (n == 0)
                 return next;
-            // if (n<0 || next==null) throw Exception("");
             return new SList<T>(element, next.RemoveAt(n - 1));
         }
         public SList<T> UpdateAt(T x,int n)
         {
             if (n == 0)
                 return new SList<T>(x, next);
-            // if (n<0 || next==null) throw Exception("");
             return new SList<T>(element, next.UpdateAt(x, n - 1));
         }
-        public T[] ToArray()
+        public override Bookmark<T> First()
         {
-            var r = new T[Length];
-            var i = 0;
-            for (var b=First();b!=null;b=b.Next())
-                r[b.Position()] = b.Value();
-            return r;
-        }
-
-        public Bookmark<T> First()
-        {
-            return SListBookmark<T>.New(this);
+            return (this==Empty)?null:new SListBookmark<T>(this);
         }
     }
     public class SListBookmark<T> : Bookmark<T>
     {
-        public readonly SList<T> _s;
-        public readonly int _pos;
-        SListBookmark(SList<T> s,int p)
+        internal readonly SList<T> _s;
+        internal SListBookmark(SList<T> s, int p = 0) :base(p) { _s = s;  }
+        public override Bookmark<T> Next()
         {
-            _s = s; _pos = p;
+            return (_s.next==SList<T>.Empty) ? null : new SListBookmark<T>(_s.next, _pos + 1);
         }
-        public static SListBookmark<T> New(SList<T> s)
-        {
-            if (s == null)
-                return null;
-            return new SListBookmark<T>(s, 0);
-        }
-
-        public Bookmark<T> Next()
-        {
-            if (_s.next==null)
-                return null;
-            return new SListBookmark<T>(_s.next, _pos + 1);
-        }
-
-        public int Position()
-        {
-            return _pos;
-        }
-
-        public T Value()
-        {
-            return _s.element;
-        }
+        public override T Value => _s.element;
     }
 }

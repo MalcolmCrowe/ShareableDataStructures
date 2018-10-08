@@ -1,6 +1,6 @@
 ﻿/// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
-/// http://shareabledata.org 
+/// http://github.com/MalcolmCrowe/ShareableDataStructures
 /// This is free-to-use software 
 /// </summary>
 namespace Shareable
@@ -9,23 +9,25 @@ namespace Shareable
     /// Implementation of an UNBALANCED binary search tree
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class SSearchTree<T> where T : System.IComparable
+    public class SSearchTree<T> :Shareable<T> 
+        where T : System.IComparable
     {
         public readonly T node;
         public readonly SSearchTree<T> left, right;
-        public SSearchTree(T n,SSearchTree<T> lf,SSearchTree<T> rg)
+        public static readonly SSearchTree<T> Empty = new SSearchTree<T>();
+        SSearchTree() { node = default(T); left = null; right = null; }
+        internal SSearchTree(T n,SSearchTree<T> lf,SSearchTree<T> rg)
+            : base(1+lf.Length+rg.Length)
         {
             node = n;
             left = lf;
             right = rg;
         }
-        public static SSearchTree<T> New(T[] a)
+        public static SSearchTree<T> New(params T[] els)
         {
-            if (a.Length == 0)
-                return null;
-            var r = new SSearchTree<T>(a[0], null, null);
-            for (var i = 1; i < a.Length; i++)
-                r = r.Add(a[i]);
+            var r = Empty;
+            foreach (var t in els)
+                r = r.Add(t);
             return r;
         }
         /// <summary>
@@ -35,33 +37,46 @@ namespace Shareable
         /// <returns></returns>
         public SSearchTree<T> Add(T n)
         {
+            if (this == Empty)
+                return new SSearchTree<T>(n, Empty, Empty);
             var c = n.CompareTo(node);
             if (c <= 0)
-                return new SSearchTree<T>(node, left?.Add(n) ?? new SSearchTree<T>(n, null, null),right);
+                return new SSearchTree<T>(node, left.Add(n),right);
             else
-                return new SSearchTree<T>(node, left, right?.Add(n) ?? new SSearchTree<T>(n, null, null));
+                return new SSearchTree<T>(node, left, right.Add(n));
         }
         public bool Contains(T n)
         {
+            if (this == Empty)
+                return false;
             var c = n.CompareTo(node);
-            return (c == 0) ? true : (c < 0) ? (left?.Contains(n) ?? false) : (right?.Contains(n) ?? false);
+            return (c == 0) ? true : (c < 0) ? left.Contains(n) : right.Contains(n);
         }
-        public int count
+        public override Bookmark<T> First()
         {
-            get { return 1 + (left?.count ?? 0) + (right?.count ?? 0); }
+            return (this==Empty)?null:new SSearchTreeBookmark<T>(this,true);
         }
-        void Traverse(T[] a,ref int i)
+    }
+    public class SSearchTreeBookmark<T> : Bookmark<T> where T : System.IComparable
+    {
+        internal readonly SSearchTree<T> _s;
+        internal readonly SList<SSearchTree<T>> _stk;
+        internal SSearchTreeBookmark(SSearchTree<T> s, bool doLeft,
+            SList<SSearchTree<T>> stk= null,
+            int p = 0) : base(p) 
         {
-            left?.Traverse(a, ref i);
-            a[i++] = node;
-            right?.Traverse(a, ref i);
+            if (stk==null) stk = SList<SSearchTree<T>>.Empty;
+            for (;doLeft && s.left != SSearchTree<T>.Empty; s = s.left)
+                stk = stk.InsertAt(s, 0);
+            _s = s; _stk = stk; 
         }
-        public T[] ToArray()
+        public override T Value => _s.node;
+        public override Bookmark<T> Next()
         {
-            var r = new T[count];
-            int i = 0;
-            Traverse(r, ref i);
-            return r;
+            return (_s.right != SSearchTree<T>.Empty)?
+                new SSearchTreeBookmark<T>(_s.right, true, _stk, _pos + 1)
+                : (_stk == SList<SSearchTree<T>>.Empty) ? null
+                : new SSearchTreeBookmark<T>(_stk.First().Value, false, _stk.RemoveAt(0), _pos + 1);
         }
     }
 }

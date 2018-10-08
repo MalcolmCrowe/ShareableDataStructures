@@ -1,19 +1,25 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Shareable
+﻿namespace Shareable
 {
-    public interface Shareable<T>
+    public abstract class Shareable<T>
     {
-        Bookmark<T> First();
+        readonly int _count;
+        protected Shareable(int c = 0) { _count = c; }
+        public abstract Bookmark<T> First();
+        public int Length => _count;
+        public T[] ToArray()
+        {
+            var r = new T[_count];
+            for (var b = First(); b != null; b = b.Next())
+                r[b.Position] = b.Value;
+            return r;
+        }
     }
-    public interface Bookmark<T>
+    public abstract class Bookmark<T>
     {
-        Bookmark<T> Next();
-        T Value();
-        int Position(); // >=0
+        internal readonly int _pos;
+        protected Bookmark(int p) { _pos = p; }
+        public abstract Bookmark<T> Next();
+        public abstract T Value { get; }
+        public int Position=>_pos; // >=0
     }
 }

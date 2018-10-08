@@ -5,3 +5,10 @@ F:\Shareable\Shareable\Shareable\bin\Debug\Shareable.exe
 F:\Shareable\Shareable\Shareable\bin\Debug\Shareable.pdb
 F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.exe
 F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.pdb
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\bin\Debug\Shareable.exe.config
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\bin\Debug\Shareable.exe
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\bin\Debug\Shareable.pdb
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\obj\Debug\Shareable.csprojResolveAssemblyReference.cache
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\obj\Debug\Shareable.csproj.CoreCompileInputs.cache
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\obj\Debug\Shareable.exe
+C:\mkc\Big Live Data\8Oct2018\Shareable\Shareable\Shareable\obj\Debug\Shareable.pdb
