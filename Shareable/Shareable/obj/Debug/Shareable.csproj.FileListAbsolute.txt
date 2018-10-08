@@ -1,0 +1,7 @@
+F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.csprojAssemblyReference.cache
+F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.csproj.CoreCompileInputs.cache
+F:\Shareable\Shareable\Shareable\bin\Debug\Shareable.exe.config
+F:\Shareable\Shareable\Shareable\bin\Debug\Shareable.exe
+F:\Shareable\Shareable\Shareable\bin\Debug\Shareable.pdb
+F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.exe
+F:\Shareable\Shareable\Shareable\obj\Debug\Shareable.pdb
