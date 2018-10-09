@@ -55,9 +55,9 @@ namespace Shareable
         internal SArrayBookmark(SArray<T> a, int p) : base(p) { _a = a; }
         public override Bookmark<T> Next()
         {
-            return (_pos+1 >= _a.elements.Length) ? null 
-                : new SArrayBookmark<T>(_a, _pos+1);
+            return (Position+1 >= _a.elements.Length) ? null 
+                : new SArrayBookmark<T>(_a, Position+1);
         }
-        public override T Value => _a.elements[_pos];
+        public override T Value => _a.elements[Position];
     }
 }

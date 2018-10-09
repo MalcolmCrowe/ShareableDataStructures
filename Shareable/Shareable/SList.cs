@@ -54,7 +54,7 @@ namespace Shareable
         internal SListBookmark(SList<T> s, int p = 0) :base(p) { _s = s;  }
         public override Bookmark<T> Next()
         {
-            return (_s.next==SList<T>.Empty) ? null : new SListBookmark<T>(_s.next, _pos + 1);
+            return (_s.next==SList<T>.Empty) ? null : new SListBookmark<T>(_s.next, Position + 1);
         }
         public override T Value => _s.element;
     }

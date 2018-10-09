@@ -10,35 +10,36 @@ package org.shareabledata;
  *
  * @author Malcolm Crowe shareabledata.org
  */
-public class SList<T> {
-
+public class SList<T> extends Shareable<T> 
+{
     public final T element;
     public final SList<T> next;
-
-    public SList(T e, SList<T> n) {
+    public SList(T e, SList<T> n) 
+    {
+        super(((n==null)?0:n.getLength())+1);
         element = e;
         next = n;
     }
-
-    public SList(T... args) throws Exception {
+    public SList(T... args) throws Exception 
+    {
+        super(args.length);
         if (args.length == 0) {
             throw new Exception("Bad parameter");
         }
         SList<T> n = null;
         for (int i = args.length - 1; i > 0; i--) {
-            n = new SList<T>(args[i], n);
+            n = new SList<>(args[i], n);
         }
         element = args[0];
         next = n;
     }
-
     public int getLength() {
         return (next != null) ? next.getLength() + 1 : 1;
     }
 
     public SList<T> InsertAt(T x, int n) {
         if (n == 0) {
-            return new SList<T>(x, this);
+            return new SList<>(x, this);
         }
         return new SList<T>(element, next.InsertAt(x, n - 1));
     }
@@ -52,18 +53,14 @@ public class SList<T> {
 
     public SList<T> UpdateAt(T x, int n) {
         if (n == 0) {
-            return new SList<T>(x, next);
+            return new SList<>(x, next);
         }
-        return new SList<T>(element, next.UpdateAt(x, n - 1));
+        return new SList<>(element, next.UpdateAt(x, n - 1));
     }
 
-    public T[] ToArray() {
-        T[] r;
-        r = (T[]) new Object[getLength()];
-        int i = 0;
-        for (SList<T> x = this; x != null; x = x.next) {
-            r[i++] = x.element;
-        }
-        return r;
+    @Override
+    public Bookmark<T> First()
+    {
+        return new SListBookmark<T>(this,0);
     }
 }

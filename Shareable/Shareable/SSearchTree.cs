@@ -30,17 +30,11 @@ namespace Shareable
                 r = r.Add(t);
             return r;
         }
-        /// <summary>
-        /// Note that the first entry in the tree will be made by the constructor.
-        /// </summary>
-        /// <param name="n"></param>
-        /// <returns></returns>
         public SSearchTree<T> Add(T n)
         {
             if (this == Empty)
                 return new SSearchTree<T>(n, Empty, Empty);
-            var c = n.CompareTo(node);
-            if (c <= 0)
+            if (n.CompareTo(node) <= 0)
                 return new SSearchTree<T>(node, left.Add(n),right);
             else
                 return new SSearchTree<T>(node, left, right.Add(n));
@@ -74,9 +68,9 @@ namespace Shareable
         public override Bookmark<T> Next()
         {
             return (_s.right != SSearchTree<T>.Empty)?
-                new SSearchTreeBookmark<T>(_s.right, true, _stk, _pos + 1)
+                new SSearchTreeBookmark<T>(_s.right, true, _stk, Position + 1)
                 : (_stk == SList<SSearchTree<T>>.Empty) ? null
-                : new SSearchTreeBookmark<T>(_stk.First().Value, false, _stk.RemoveAt(0), _pos + 1);
+                : new SSearchTreeBookmark<T>(_stk.First().Value, false, _stk.RemoveAt(0), Position + 1);
         }
     }
 }
