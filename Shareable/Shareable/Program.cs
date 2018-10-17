@@ -36,6 +36,15 @@ namespace Shareable
             var si = SSearchTree<int>.New(56, 22, 24, 31, 23);
             Check(si.ToArray(), 22, 23, 24, 31, 56);
             Console.WriteLine("SSearchTree done");
+            // Tests for SDict
+            var sd = SDict<string, string>.Empty;
+            sd = sd.Add("Y", "Yellow");
+            sd = sd.Add("G", "Green");
+            sd = sd.Add("B","Blue");
+            sd = sd.Remove("G");
+            for (var b = sd.First(); b != null; b = b.Next())
+                Console.WriteLine(b.Value.key + ": " + b.Value.val);
+            Console.WriteLine("SDict done");
             Console.ReadKey();
         }
         static void Check<T>(T[] a,params T[] b) where T:System.IComparable

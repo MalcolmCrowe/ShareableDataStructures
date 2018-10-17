@@ -45,6 +45,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SArray.cs" />
+    <Compile Include="SDict.cs" />
     <Compile Include="Shareable.cs" />
     <Compile Include="SSearchTree.cs" />
     <Compile Include="SList.cs" />
