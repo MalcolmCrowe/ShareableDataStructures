@@ -54,40 +54,13 @@ namespace Shareable
             return (Length==0)?null:new SListBookmark<T>(this);
         }
     }
-    public class SCList<K> : SList<K>,IComparable where K:IComparable
-    {
-        public new static readonly SCList<K> Empty = new SCList<K>();
-        SCList() { }
-        public SCList(K el, SCList<K> nx) : base(el, nx) { }
-        public new static SCList<K> New(params K[] els)
-        {
-            var r = Empty;
-            for (var i = els.Length - 1; i >= 0; i--)
-                r = new SCList<K>(els[i], r);
-            return r;
-        }
-        public int CompareTo(object obj)
-        {
-            if (obj == null)
-                return 1;
-            var them = obj as SList<K>??throw new Exception("Type mismatch");
-            SList<K> me = this;
-            for (;me.Length>0 && them.Length>0; me=me.next, them=them.next)
-            {
-                var c = me.element.CompareTo(them.element);
-                if (c != 0)
-                    return c;
-            }
-            return (me.Length>0) ? 1 : (them.Length>0) ? -1 : 0;
-        }
-    }
     public class SListBookmark<T> : Bookmark<T>
     {
         internal readonly SList<T> _s;
-        internal SListBookmark(SList<T> s, int p = 0) :base(p) { _s = s;  }
+        internal SListBookmark(SList<T> s, int p = 0) : base(p) { _s = s; }
         public override Bookmark<T> Next()
         {
-            return (_s.Length<=1) ? null : new SListBookmark<T>(_s.next, Position + 1);
+            return (_s.Length <= 1) ? null : new SListBookmark<T>(_s.next, Position + 1);
         }
         public override T Value => _s.element;
     }
