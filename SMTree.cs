@@ -68,13 +68,13 @@ namespace Shareable
             _info = ti;
             _impl = impl;
             _count = c;
-            if (ti.next != SList<TreeInfo>.Empty && ti.element.onDuplicate != TreeBehaviour.Disallow)
+            if (ti.Length>1 && ti.element.onDuplicate != TreeBehaviour.Disallow)
                 throw new Exception("Dplicates are allowed only on last TreeInfo");
         }
         public SMTree(SList<TreeInfo> ti) : this(ti, (SITree)null, 0)  { }
         public SMTree(SList<TreeInfo> ti,SList<Variant> k,int v) :this(ti)
         {
-            if (ti.next == SList<TreeInfo>.Empty)
+            if (ti.Length<2)
             {
                 if (ti.element.onDuplicate == TreeBehaviour.Allow)
                     _impl = new SITree(ti.element, k.element,
@@ -230,13 +230,13 @@ namespace Shareable
         internal readonly MTreeBookmark _inner;
         readonly Bookmark<SSlot<int, bool>> _pmk;
         internal readonly bool _changed;
-        internal SCList<Variant> _key;
+        internal SCList<Variant> _filter;
         MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo> info,
             bool changed, MTreeBookmark inner,Bookmark<SSlot<int, bool>> pmk, 
             int pos, SCList<Variant> key=null) :base(pos)
         {
             _outer = outer; _info = info; _changed = changed;
-            _inner = inner; _pmk = pmk; _key = key;
+            _inner = inner; _pmk = pmk; _filter = key;
         }
         /// <summary>
         /// Implementation of mt.First()
@@ -328,7 +328,7 @@ namespace Shareable
                     if (pmk != null)
                         goto done;
                 }
-                var h = _key?.element;
+                var h = _filter?.element;
                 if (h != null)
                     return null;
                 outer = outer.Next() as SDictBookmark<Variant,Variant>;
@@ -339,7 +339,7 @@ namespace Shareable
                 switch (oval.variant)
                 {
                     case Variants.Compound:
-                        inner = ((SMTree)oval.ob).PositionAt((SCList<Variant>)_key?.next);
+                        inner = ((SMTree)oval.ob).PositionAt((SCList<Variant>)_filter?.next);
                         if (inner != null)
                             goto done;
                         break;
@@ -353,7 +353,7 @@ namespace Shareable
                 }
             }
             done:
-            return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _key);
+            return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _filter);
 
         }
     }

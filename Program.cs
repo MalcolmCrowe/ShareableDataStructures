@@ -60,7 +60,9 @@ namespace Shareable
             j = 0;
             for (var b = sm.First(); b != null; b = b.Next())
                 sorted[j++] = test[((MTreeBookmark)b).value()];
-            Check(sorted, "A", "ANNO", "ANNU", "BALTIC", "BALTIM", "BRAIL");
+            // we are only sorting on the first two letters!
+            // Check() we should offer some alternatives here
+            Check(sorted, "A", "ANNU", "ANNO", "BALTIM", "BALTIC", "BRAIL");
             Console.WriteLine("SMTree done");
             Console.ReadKey();
         }
@@ -76,7 +78,7 @@ namespace Shareable
         {
             if (a.Length != b.Length)
                 Console.WriteLine("wrong length");
-            for (var i = 0; i < a.Length; i++)
+            for (var i = 0; i < b.Length; i++)
                 if (a[i].CompareTo(b[i])!=0)
                     Console.WriteLine("wrong value");
         }

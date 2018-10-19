@@ -6,6 +6,11 @@
 /// </summary>
 namespace Shareable
 {
+    /// <summary>
+    /// An empty list is Empty. 
+    /// SLists are never null, so don't test for null. Use Length>0.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
     public class SList<T> : Shareable<T>
     {
         internal readonly T element;
@@ -26,13 +31,13 @@ namespace Shareable
         }
         public SList<T> InsertAt(T x, int n) // n>=0
         {
-            if (this==Empty || n==0)
+            if (Length==0 || n==0)
                 return new SList<T>(x, this);
             return new SList<T>(element, next.InsertAt(x, n - 1));
         }
         public SList<T> RemoveAt(int n)
         {
-            if (this == Empty)
+            if (Length==0)
                 return Empty;
             if (n == 0)
                 return next;
@@ -46,7 +51,7 @@ namespace Shareable
         }
         public override Bookmark<T> First()
         {
-            return (this==Empty)?null:new SListBookmark<T>(this);
+            return (Length==0)?null:new SListBookmark<T>(this);
         }
     }
     public class SCList<K> : SList<K>,IComparable where K:IComparable
@@ -63,15 +68,17 @@ namespace Shareable
         }
         public int CompareTo(object obj)
         {
-            var them = obj as SList<K>;
+            if (obj == null)
+                return 1;
+            var them = obj as SList<K>??throw new Exception("Type mismatch");
             SList<K> me = this;
-            for (;me!=null && them!=null; me=me.next, them=them.next)
+            for (;me.Length>0 && them.Length>0; me=me.next, them=them.next)
             {
                 var c = me.element.CompareTo(them.element);
                 if (c != 0)
                     return c;
             }
-            return (me != null) ? 1 : (them != null) ? -1 : 0;
+            return (me.Length>0) ? 1 : (them.Length>0) ? -1 : 0;
         }
     }
     public class SListBookmark<T> : Bookmark<T>
@@ -80,7 +87,7 @@ namespace Shareable
         internal SListBookmark(SList<T> s, int p = 0) :base(p) { _s = s;  }
         public override Bookmark<T> Next()
         {
-            return (_s.next==SList<T>.Empty) ? null : new SListBookmark<T>(_s.next, Position + 1);
+            return (_s.Length<=1) ? null : new SListBookmark<T>(_s.next, Position + 1);
         }
         public override T Value => _s.element;
     }
