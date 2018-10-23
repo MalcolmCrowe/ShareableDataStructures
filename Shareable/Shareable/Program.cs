@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 /// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
@@ -42,16 +43,53 @@ namespace Shareable
             sd = sd.Add("G", "Green");
             sd = sd.Add("B","Blue");
             sd = sd.Remove("G");
+            var sr = new string[sd.Count];
+            var j = 0;
             for (var b = sd.First(); b != null; b = b.Next())
-                Console.WriteLine(b.Value.key + ": " + b.Value.val);
+                sr[j++]=b.Value.key + ": " + b.Value.val;
+            Check(sr, "B: Blue","Y: Yellow");
             Console.WriteLine("SDict done");
+            // Tests for SMTree
+            var ti = SList<TreeInfo>.Empty;
+            ti = ti.InsertAt(new TreeInfo("0", 'D', 'D'), 0); // onDuplicate must be Disallow on all except last entry
+            ti = ti.InsertAt(new TreeInfo("1", 'A', 'A'), 1);
+            var sm = new SMTree(ti);
+            var test = new string[] { "BALTIM","ANNU", "A", "ANNO", "BALTIC", "BRAIL" };
+            for (var i=0;i<test.Length;i++)
+                sm = Add(sm,test[i],i);
+            var sorted = new string[test.Length];
+            j = 0;
+            for (var b = sm.First(); b != null; b = b.Next())
+                sorted[j++] = test[((MTreeBookmark)b).value()];
+            // we are only sorting on the first two letters!
+            // Check() we should offer some alternatives here
+            Check(sorted, "A", "ANNU", "ANNO", "BALTIM", "BALTIC", "BRAIL");
+            Console.WriteLine("SMTree done");
+            File.Delete("strong");
+            File.Create("strong").Close();
+            var f = new AStream("strong");
+            f.Commit(new SString("This is Strong"),new STable("tbl"));
+            f.Close();
+            f = new AStream("strong");
+            var s = f.Create();
+            var u = f.Create();
+            Console.WriteLine(s.ToString());
+            Console.WriteLine(u.ToString());
             Console.ReadKey();
+        }
+        static Variant V(string s, int i)
+        {
+            return (i >= s.Length) ? null : new Variant(s[i]);
+        }
+        static SMTree Add(SMTree t,string s,int i)
+        {
+            return t.Add(i, V(s, 0), V(s, 1));
         }
         static void Check<T>(T[] a,params T[] b) where T:System.IComparable
         {
             if (a.Length != b.Length)
                 Console.WriteLine("wrong length");
-            for (var i = 0; i < a.Length; i++)
+            for (var i = 0; i < b.Length; i++)
                 if (a[i].CompareTo(b[i])!=0)
                     Console.WriteLine("wrong value");
         }

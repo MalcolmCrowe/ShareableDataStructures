@@ -23,9 +23,9 @@ namespace Shareable
         /// using values in the range 8 to 32.
         /// </summary>
         public const int Size = 8;
-        public int Count { get { return root?.total ?? 0; }}
+        public virtual int Count { get { return root?.total ?? 0; }}
         public readonly SBucket<K, V> root;
-        SDict(SBucket<K,V> r) { root = r; }
+        protected SDict(SBucket<K,V> r) { root = r; }
         internal SDict(K k, V v) : this(new SLeaf<K, V>(new SSlot<K, V>(k, v))) { }
         /// <summary>
         /// Avoid unnecessary constructor calls by using this constant empty tree
@@ -37,10 +37,10 @@ namespace Shareable
         /// <param name="k">the key</param>
         /// <param name="v">the value to add</param>
         /// <returns>the modified tree</returns>
-        public SDict<K,V> Add(K k,V v)
+        public virtual SDict<K,V> Add(K k,V v)
         {
             return (root == null || root.total == 0)? new SDict<K, V>(k, v) :
-                (root.Lookup(k)!=null)? new SDict<K,V>(root.Update(k,v)) :
+                (root.Contains(k))? new SDict<K,V>(root.Update(k,v)) :
                 (root.count == Size)? new SDict<K, V>(root.Split()).Add(k, v) :
                 new SDict<K, V>(root.Add(k, v));
         }
@@ -49,11 +49,19 @@ namespace Shareable
         /// </summary>
         /// <param name="k"></param>
         /// <returns></returns>
-        public SDict<K,V> Remove(K k)
+        public virtual SDict<K,V> Remove(K k)
         {
             return (root==null || root.Lookup(k)==null) ? this :
                 (root.total == 1) ? Empty :
                 new SDict<K, V>(root.Remove(k));
+        }
+        public bool Contains(K k)
+        {
+            return (root == null) ? false : root.Contains(k);
+        }
+        public V Lookup(K k)
+        {
+            return (root==null)?default(V):root.Lookup(k);
         }
         /// <summary>
         /// Start a traversal of the tree
@@ -102,6 +110,7 @@ namespace Shareable
         public readonly int total;
         protected SBucket(int c,int tot) { count = (byte)c; total = tot; }
         // API for SDict to call
+        public abstract bool Contains(K k);
         public abstract V Lookup(K k);
         internal abstract SBucket<K, V> Add(K k, V v);
         internal abstract SBucket<K, V> Update(K k, V v);
@@ -124,7 +133,7 @@ namespace Shareable
     /// </summary>
     /// <typeparam name="K">The key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    public sealed class SBookmark<K,V> where K:IComparable
+    public class SBookmark<K,V> where K:IComparable
     {
         public readonly SBucket<K, V> _bucket;
         public readonly int _bpos;
@@ -225,6 +234,11 @@ namespace Shareable
         }
         internal override SSlot<K,object> Slot(int i)
         {   return new SSlot<K,object>(slots[i].key,slots[i].val);  }
+        public override bool Contains(K k)
+        {
+            PositionFor(k, out bool b);
+            return b;
+        }
         public override V Lookup(K k)
         {
             var j = PositionFor(k, out bool b);
@@ -244,6 +258,11 @@ namespace Shareable
         }
         public override int PositionFor(K k, out bool match)
         {
+            if (k==null)
+            {
+                match = slots[0].key == null;
+                return 0;
+            }
             // binary search
             int low = 0, high = count, mid;
             while (low < high)
@@ -362,6 +381,13 @@ namespace Shareable
                 slots[k++] = s2[j];
             gtr = v;
         }
+        public override bool Contains(K k)
+        {
+            int j = PositionFor(k, out bool m);
+            if (j == count)
+                return gtr.Contains(k);
+            return slots[j].val.Contains(k);
+        }
         public override V Lookup(K k)
         {
             int j = PositionFor(k, out bool m);
@@ -371,6 +397,11 @@ namespace Shareable
         }
         public override int PositionFor(K k, out bool match)
         {
+            if (k==null)
+            {
+                match = slots[0].key == null;
+                return 0;
+            }
             // binary search
             int low = 0, high = count, mid;
             while (low < high)
