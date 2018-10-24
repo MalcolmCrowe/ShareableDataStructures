@@ -53,6 +53,7 @@
     <Compile Include="SSearchTree.cs" />
     <Compile Include="SList.cs" />
     <Compile Include="SListOfInt.cs" />
+    <Compile Include="Transaction.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
