@@ -382,14 +382,14 @@ namespace Shareable
     {
         public readonly string name;
         public readonly SDict<long,SColumn> cols;
-        public readonly SDict<long, SRecord> rows;
+        public readonly SDict<long, long> rows; // defpos->uid of latest update
         public STable(Transaction tr,string n) :base(Types.STable,tr)
         {
             if (tr.objects.Contains(n))
                 throw new Exception("Table n already exists");
             name = n;
             cols = SDict<long,SColumn>.Empty;
-            rows = SDict<long, SRecord>.Empty;
+            rows = SDict<long, long>.Empty;
         }
         public STable Add(SColumn c)
         {
@@ -399,9 +399,9 @@ namespace Shareable
         {
             return new STable(this, cols.Add(c.uid, c));
         }
-        public STable Add(SRecord rec)
+        public STable Add(SRecord r)
         {
-            return new STable(this,rows.Add(rec.Defpos, rec));
+            return new STable(this,rows.Add(r.Defpos, r.uid));
         }
         public STable Remove(long n)
         {
@@ -416,7 +416,7 @@ namespace Shareable
             cols = c;
             rows = t.rows;
         }
-        STable(STable t,SDict<long,SRecord> r) : base(t)
+        STable(STable t,SDict<long,long> r) : base(t)
         {
             name = t.name;
             cols = t.cols;
@@ -426,7 +426,7 @@ namespace Shareable
         {
             name = f.GetString();
             cols = SDict<long,SColumn>.Empty;
-            rows = SDict<long, SRecord>.Empty;
+            rows = SDict<long, long>.Empty;
         }
         STable(Transaction tr,STable t,AStream f) :base(t,f)
         {
@@ -436,11 +436,6 @@ namespace Shareable
             for (var b = t.cols.First(); b != null; b = b.Next())
                 nc = nc.Add(b.Value.key,new SColumn(b.Value.val, uid));
             cols = nc;
-            // if we already have rows, they need to be updated
-            var r = SDict<long, SRecord>.Empty;
-            for (var b = t.rows.First(); b != null; b = b.Next())
-                r = r.Add(b.Value.key, b.Value.val.Fix(this));
-            rows = r;
             // we also need to update any records or deletions 
             // in the transaction that refer to this table
             for(var i=0;i<tr.steps.Count;i++)
