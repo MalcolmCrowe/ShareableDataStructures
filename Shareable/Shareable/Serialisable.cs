@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -37,7 +38,7 @@ namespace Shareable
         {
             type = t;
         }
-        public virtual Serialisable Commit(AStream f)
+        public virtual Serialisable Commit(Transaction tr,AStream f)
         {
             f.WriteByte((byte)type);
             return this;
@@ -45,6 +46,10 @@ namespace Shareable
         public static Serialisable Get(AStream f)
         {
             return new Serialisable(Types.Serialisable);
+        }
+        public virtual bool Conflicts(Serialisable that)
+        {
+            return false;
         }
         public override string ToString()
         {
@@ -62,9 +67,9 @@ namespace Shareable
         {
             ticks = f.GetLong();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutLong(ticks);
             return this;
         }
@@ -88,9 +93,9 @@ namespace Shareable
         {
             value = f.GetInt();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutInt(value);
             return this;
         }
@@ -120,9 +125,9 @@ namespace Shareable
             precision = f.GetInt();
             scale = f.GetInt();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutLong(mantissa);
             f.PutInt(precision);
             f.PutInt(scale);
@@ -148,9 +153,9 @@ namespace Shareable
         {
             str = f.GetString();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutString(str);
             return this;
         }
@@ -180,9 +185,9 @@ namespace Shareable
             month = f.GetInt();
             rest = f.GetLong();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutInt(year);
             f.PutInt(month);
             f.PutLong(rest);
@@ -208,9 +213,9 @@ namespace Shareable
         {
             ticks = f.GetLong();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutLong(ticks);
             return this;
         }
@@ -235,9 +240,9 @@ namespace Shareable
         {
             sbool = (SBool)f.GetInt();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(f);
+            base.Commit(tr,f);
             f.PutInt((int)sbool);
             return this;
         }
@@ -269,19 +274,19 @@ namespace Shareable
         {
             cols = c;
         }
-        SRow(AStream f) :base(Types.SRow)
+        SRow(SDatabase d,AStream f) :base(Types.SRow)
         {
             var n = f.GetInt();
             var r = SDict<string, Serialisable>.Empty;
             for(var i=0;i<n;i++)
             {
                 var k = f.GetString();
-                var v = f.GetOne();
+                var v = f.GetOne(d);
                 r = r.Add(k, v);
             }
             cols = r;
         }
-        SRow(SRow s,AStream f) :base(Types.SRow)
+        SRow(Transaction tr,SRow s,AStream f) :base(Types.SRow)
         {
             var c = s.cols;
             f.PutInt(s.cols.Count);
@@ -289,17 +294,17 @@ namespace Shareable
             {
                 var k = b.Value.key;
                 f.PutString(k);
-                c.Add(k, f.Commit(b.Value.val)[0]);
+                c.Add(k, f.Commit(tr,b.Value.val)[0]);
             }
             cols = c;
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            return new SRow(this,f);
+            return new SRow(tr,this,f);
         }
-        public new static SRow Get(AStream f)
+        public static SRow Get(SDatabase d,AStream f)
         {
-            return new SRow(f);
+            return new SRow(d,f);
         }
         public override string ToString()
         {
@@ -316,70 +321,145 @@ namespace Shareable
             return sb.ToString();
         }
     }
-    public class STable : Serialisable
+    public abstract class SDbObject : Serialisable
+    {
+        /// <summary>
+        /// For database objects such as STable, we will want to record 
+        /// a unique id based on the actual position in the transaction log,
+        /// so the Get and Commit methods will capture the appropriate 
+        /// file positions in AStream – this is why the Commit method 
+        /// needs to create a new instance of the Serialisable. 
+        /// The uid will initially belong to the Transaction. 
+        /// Once committed the uid will become the position in the AStream file.
+        /// </summary>
+        public readonly long uid;
+        /// <summary>
+        /// For a new database object we add it to the transaction steps
+        /// and set the transaction-based uid
+        /// </summary>
+        /// <param name="t"></param>
+        /// <param name="tr"></param>
+        protected SDbObject(Types t,Transaction tr) :base(t)
+        {
+            uid = tr.Add(this);
+        }
+        /// <summary>
+        /// A modified database obejct will keep its uid
+        /// </summary>
+        /// <param name="s"></param>
+        protected SDbObject(SDbObject s) : base(s.type)
+        {
+            uid = s.uid;
+        }
+        /// <summary>
+        /// A database object got from the file will have
+        /// its uid given by the position it is read from
+        /// </summary>
+        /// <param name="t"></param>
+        /// <param name="f"></param>
+        protected SDbObject(Types t,AStream f) : base(t)
+        {
+            uid = f.Position;
+        }
+        /// <summary>
+        /// During commit, database objects are appended to the
+        /// file, and we will have a (new) modified database object
+        /// with its file position as the uid.
+        /// </summary>
+        /// <param name="s"></param>
+        /// <param name="f"></param>
+        protected SDbObject(SDbObject s,AStream f) :base(s.type)
+        {
+            uid = f.Length;
+        }
+        internal bool Committed => uid < Transaction._uid;
+        internal string Uid()
+        {
+            return Transaction.Uid(uid);
+        }
+    }
+    public class STable : SDbObject
     {
         public readonly string name;
-        public readonly long uid;
-        public readonly SList<SColumn> cols;
-        public readonly SDict<long, SRecord> rows;
-        public STable(Transaction tr,string n) :base(Types.STable)
+        public readonly SDict<long,SColumn> cols;
+        public readonly SDict<long, long> rows; // defpos->uid of latest update
+        public STable(Transaction tr,string n) :base(Types.STable,tr)
         {
+            if (tr.objects.Contains(n))
+                throw new Exception("Table n already exists");
             name = n;
-            uid = tr.Add(this);
-            cols = SList<SColumn>.Empty;
-            rows = SDict<long, SRecord>.Empty;
+            cols = SDict<long,SColumn>.Empty;
+            rows = SDict<long, long>.Empty;
         }
-        public STable InsertAt(SColumn c,int n)
+        public STable Add(SColumn c)
         {
-            return new STable(this,cols.InsertAt(c,n));
+            return new STable(this,cols.Add(c.uid,c));
         }
-        public STable UpdateAt(SColumn c, int n)
+        public STable Update(SColumn c)
         {
-            return new STable(this, cols.UpdateAt(c, n));
+            return new STable(this, cols.Add(c.uid, c));
         }
-        public STable Add(SRecord rec)
+        public STable Add(SRecord r)
         {
-            return new STable(this,rows.Add(rec.Defpos, rec));
+            return new STable(this,rows.Add(r.Defpos, r.uid));
         }
-        public STable Remove(int n)
+        public STable Remove(long n)
         {
-            return new STable(this, cols.RemoveAt(n));
+            if (cols.Contains(n))
+                return new STable(this, cols.Remove(n));
+            else
+                return new STable(this, rows.Remove(n));
         }
-        STable(STable t,SList<SColumn> c) :base(Types.STable)
+        STable(STable t,SDict<long,SColumn> c) :base(t)
         {
             name = t.name;
-            uid = t.uid;
             cols = c;
             rows = t.rows;
         }
-        STable(STable t,SDict<long,SRecord> r) : base(Types.STable)
+        STable(STable t,SDict<long,long> r) : base(t)
         {
             name = t.name;
-            uid = t.uid;
             cols = t.cols;
             rows = r;
         }
-        STable(AStream f):base(Types.STable)
+        STable(SDatabase d,AStream f):base(Types.STable,f)
         {
-            uid = f.Position;
             name = f.GetString();
-            cols = SList<SColumn>.Empty;
-            rows = SDict<long, SRecord>.Empty;
+            cols = SDict<long,SColumn>.Empty;
+            rows = SDict<long, long>.Empty;
         }
-        STable(STable t,AStream f) :base(Types.STable)
+        STable(Transaction tr,STable t,AStream f) :base(t,f)
         {
             name = t.name;
-            uid = f.Length;
             // if we already have columns, they need to be updated
-            var nc = SList<SColumn>.Empty;
+            var nc = SDict<long,SColumn>.Empty;
             for (var b = t.cols.First(); b != null; b = b.Next())
-                nc = nc.InsertAt(new SColumn(b.Value, uid), nc.Length);
+                nc = nc.Add(b.Value.key,new SColumn(b.Value.val, uid));
             cols = nc;
-            // if we already have rows, they need to be updated
-            var r = SDict<long, SRecord>.Empty;
-            for (var b = t.rows.First(); b != null; b = b.Next())
-                r = r.Add(b.Value.key, b.Value.val.FixTable(uid));
-            rows = r;
+            // we also need to update any records or deletions 
+            // in the transaction that refer to this table
+            for(var i=0;i<tr.steps.Count;i++)
+            {
+                var s = tr.steps[i];
+                switch (s.type)
+                {
+                    case Types.SUpdate:
+                    case Types.SRecord:
+                        {
+                            var sr = (SRecord)s;
+                            if (sr.table == t.uid)
+                                tr.steps[i] = sr.Fix(this);
+                            break;
+                        }
+                    case Types.SDelete:
+                        {
+                            var dl = (SDelete)s;
+                            if (dl.table == t.uid)
+                                tr.steps[i] = dl.Fix(this);
+                            break;
+                        }
+                }
+            }
         }
         /// <summary>
         /// Database objects should only be committed once.
@@ -388,49 +468,55 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            if (Transaction.Committed(uid)) // nothing to do!
+            if (Committed) // nothing to do!
                 return this;
-            var r = new STable(this, f);
-            base.Commit(f);
+            var r = new STable(tr,this, f);
+            base.Commit(tr,f);
             f.PutString(name);
             return r;
         }
-        public new static STable Get(AStream f)
+        public static STable Get(SDatabase d,AStream f)
         {
-            return new STable(f);
+            return new STable(d,f);
+        }
+        public override bool Conflicts(Serialisable that)
+        {
+            switch (that.type)
+            {
+                case Types.STable:
+                    return ((STable)that).name.CompareTo(name) == 0;
+            }
+            return false;
         }
         public override string ToString()
         {
-            return "Table "+name+"["+Transaction.Pos(uid)+"]";
+            return "Table "+name+"["+Uid()+"]";
         }
     }
-    public class SColumn : Serialisable
+    public class SColumn : SDbObject
     {
         public readonly string name;
         public readonly Types dataType;
-        public readonly long uid;
         public readonly long table;
-        public SColumn(Transaction tr,string n, Types t, long tbl) : base(Types.SColumn)
+        public SColumn(Transaction tr,string n, Types t, long tbl) : base(Types.SColumn,tr)
         {
-            name = n; dataType = t; uid = tr.Add(this); table = tbl;
+            name = n; dataType = t; table = tbl;
         }
-        internal SColumn(SColumn c,long t) :base (Types.SColumn)
+        internal SColumn(SColumn c,long t) :base (c)
         {
-            name = c.name; dataType = c.dataType; uid = c.uid;
+            name = c.name; dataType = c.dataType; 
             table = t;
         }
-        SColumn(AStream f) :base(Types.SColumn)
+        SColumn(SDatabase d,AStream f) :base(Types.SColumn,f)
         {
-            uid = f.Position;
             name = f.GetString();
             dataType = (Types)f.ReadByte();
             table = f.GetLong();
         }
-        SColumn(SColumn c,AStream f):base (Types.SColumn)
+        SColumn(Transaction tr,SColumn c,AStream f):base (c,f)
         {
-            uid = f.Position;
             name = c.name;
             dataType = c.dataType;
             table = c.table;
@@ -441,104 +527,143 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            if (Transaction.Committed(uid)) // nothing to do!
+            if (Committed) // nothing to do!
                 return this;
-            var r = new SColumn(this, f);
-            base.Commit(f);
+            var r = new SColumn(tr, this, f);
+            base.Commit(tr,f);
             f.PutString(name);
             f.WriteByte((byte)dataType);
             f.PutLong(table);
             return r;
         }
-        public new static SColumn Get(AStream f)
+        public static SColumn Get(SDatabase d,AStream f)
         {
-            return new SColumn(f);
+            return new SColumn(d,f);
+        }
+        public override bool Conflicts(Serialisable that)
+        {
+            switch (that.type)
+            {
+                case Types.SColumn:
+                    {
+                        var c = (SColumn)that;
+                        return c.table == table && c.name.CompareTo(name) == 0;
+                    }
+            }
+            return false;
         }
         public override string ToString()
         {
-            return "Column " + name + " [" + Transaction.Pos(uid) + "]: " + dataType.ToString();
+            return "Column " + name + " [" + Uid() + "]: " + dataType.ToString();
         }
     }
-    public class SRecord : Serialisable
+    public class SRecord : SDbObject
     {
-        public readonly long uid;
-        public readonly SDict<long, Serialisable> fields;
+        public readonly SDict<string, Serialisable> fields;
         public readonly long table;
-        public SRecord(Transaction tr,long t,SDict<long,Serialisable> f) :base(Types.SRecord)
+        public SRecord(Transaction tr,long t,SDict<string,Serialisable> f) :base(Types.SRecord,tr)
         {
             fields = f;
             table = t;
-            uid = tr.Add(this);
         }
         public virtual long Defpos => uid;
-        public virtual Serialisable Field(long col)
+        public Serialisable Field(string col)
         {
             return fields.Lookup(col);
         }
-        public virtual SRecord FixTable(long tbl)
+        public virtual SRecord Fix(STable t)
         {
-            return new SRecord(this, tbl);
+            return new SRecord(this, t.uid);
         }
-        protected SRecord(SRecord r,long tb) :base(Types.SRecord)
+        protected SRecord(SRecord r,long tb) :base(r)
         {
-            uid = r.uid;
             fields = r.fields;
             table = tb;
         }
-        protected SRecord(SRecord r,AStream f) : base(Types.SRecord)
+        protected SRecord(Transaction tr,SRecord r,AStream f) : base(r,f)
         {
-            uid = f.Position;
             table = r.table;
             f.PutLong(table);
-            var a = SDict<long, Serialisable>.Empty;
+            var tb = tr.tables.Lookup(table);
+            var a = SDict<string, Serialisable>.Empty;
             f.PutInt(fields.Count);
             for (var b=fields.First();b!=null;b=b.Next())
             {
                 var k = b.Value.key;
-                f.PutLong(k);
-                a = a.Add(k, b.Value.val.Commit(f));
+                long p = 0;
+                for (var c = tb.cols.First(); c != null; c = c.Next())
+                    if (c.Value.val.name == k)
+                        p = c.Value.key;
+                f.PutLong(p);
+                a = a.Add(k, b.Value.val.Commit(tr,f));
             }
             fields = a;
+            for (var i=0;i<tr.steps.Count;i++)
+            {
+                var s = tr.steps[i];
+                switch(s.type)
+                {
+                    case Types.SUpdate:
+                        var u = (SUpdate)s;
+                        if (u.Defpos==r.Defpos)
+                            tr.steps[i] = new SUpdate(u, u.table, Defpos);
+                        break;
+                    case Types.SDelete:
+                        var d = (SDelete)s;
+                        if (d.delpos==r.Defpos)
+                        tr.steps[i] = new SDelete(d, d.table, Defpos);
+                        break;
+                }
+            }
         }
-        protected SRecord(AStream f) : base(Types.SRecord)
+        protected SRecord(SDatabase d,AStream f) : base(Types.SRecord,f)
         {
-            uid = f.Position;
             table = f.GetLong();
             var n = f.GetInt();
-            var a = SDict<long, Serialisable>.Empty;
+            var tb = d.tables.Lookup(table);
+            var a = SDict<string, Serialisable>.Empty;
             for(var i = 0;i< n;i++)
             {
-                var k = f.GetLong();
-                a = a.Add(k, f.GetOne());
+                var k = tb.cols.Lookup(f.GetLong());
+                a = a.Add(k.name, f.GetOne(d));
             }
             fields = a;
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            return new SRecord(this, f);
+            return new SRecord(tr, this, f);
         }
-        public new static SRecord Get(AStream f)
+        public static SRecord Get(SDatabase d,AStream f)
         {
-            return new SRecord(f);
+            return new SRecord(d,f);
         }
         protected void Append(StringBuilder sb)
         {
-            sb.Append(" for "); sb.Append(Transaction.Pos(table));
+            sb.Append(" for "); sb.Append(Uid());
             var cm = "(";
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append("["); sb.Append(Transaction.Pos(b.Value.key)); sb.Append("]");
+                sb.Append(b.Value.key); sb.Append("=");
                 sb.Append(b.Value.val.ToString());
             }
             sb.Append(")");
         }
+        public override bool Conflicts(Serialisable that)
+        {
+            switch(that.type)
+            {
+                case Types.SDelete:
+                    return ((SDelete)that).delpos == Defpos;
+            }
+            return false;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder("Record ");
-            sb.Append(Transaction.Pos(uid));
+            sb.Append(Uid());
             Append(sb);
             return sb.ToString();
         }
@@ -551,36 +676,101 @@ namespace Shareable
             defpos = r.Defpos;
         }
         public override long Defpos => defpos;
-        public override SRecord FixTable(long tbl)
+        public override SRecord Fix(STable tb)
         {
-            return new SUpdate(this,tbl);
+            return new SUpdate(this,tb.uid,defpos);
         }
-        SUpdate(SUpdate u,long tbl) :base(u,tbl)
+        internal SUpdate(SUpdate u,long tbl,long dp) :base(u,tbl)
         {
             defpos = u.defpos;
         }
-        SUpdate(SUpdate r, AStream f) : base(r,f)
+        SUpdate(Transaction tr,SUpdate r, AStream f) : base(tr,r,f)
         {
             f.PutLong(defpos);
         }
-        SUpdate(AStream f) : base(f)
+        SUpdate(SDatabase d,AStream f) : base(d,f)
         {
             defpos = f.GetLong();
         }
-        public override Serialisable Commit(AStream f)
+        public override Serialisable Commit(Transaction tr,AStream f)
         {
-            return new SUpdate(this, f);
+            return new SUpdate(tr,this, f);
         }
-        public new static SRecord Get(AStream f)
+        public new static SRecord Get(SDatabase d,AStream f)
         {
-            return new SUpdate(f);
+            return new SUpdate(d,f);
+        }
+        public override bool Conflicts(Serialisable that)
+        {
+            switch (that.type)
+            {
+                case Types.SUpdate:
+                    return ((SUpdate)that).Defpos == Defpos;
+            }
+            return base.Conflicts(that);
         }
         public override string ToString()
         {
             var sb = new StringBuilder("Update ");
-            sb.Append(Transaction.Pos(uid));
-            sb.Append(" of "); sb.Append(Transaction.Pos(defpos));
+            sb.Append(Uid());
+            sb.Append(" of "); sb.Append(Transaction.Uid(defpos));
             Append(sb);
+            return sb.ToString();
+        }
+    }
+    public class SDelete : SDbObject
+    {
+        public readonly long table;
+        public readonly long delpos;
+        public SDelete(Transaction tr, long t, long p) : base(Types.SDelete,tr)
+        {
+            table = t;
+            delpos = p;
+        }
+        internal SDelete(SDelete u, long tbl, long del) : base(u)
+        {
+            table = tbl;
+            delpos = del;
+        }
+        SDelete(Transaction tr, SDelete r, AStream f) : base(r,f)
+        {
+            f.PutLong(table);
+            f.PutLong(delpos);
+        }
+        SDelete(SDatabase d, AStream f) : base(Types.SDelete,f)
+        {
+            table = f.GetLong();
+            delpos = f.GetLong();
+        }
+        public override Serialisable Commit(Transaction tr, AStream f)
+        {
+            return new SDelete(tr, this, f);
+        }
+        public static SDelete Get(SDatabase d, AStream f)
+        {
+            return new SDelete(d, f);
+        }
+        internal Serialisable Fix(STable sTable)
+        {
+            return new SDelete(this,sTable.uid,delpos);
+        }
+        public override bool Conflicts(Serialisable that)
+        { 
+            switch(that.type)
+            {
+                case Types.SUpdate:
+                    return ((SUpdate)that).Defpos == delpos;
+                case Types.SRecord:
+                    return ((SRecord)that).Defpos == delpos;
+            }
+            return false;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("Delete ");
+            sb.Append(Uid());
+            sb.Append(" of "); sb.Append(Transaction.Uid(delpos));
+            sb.Append("["); sb.Append(Transaction.Uid(table)); sb.Append("]");
             return sb.ToString();
         }
     }
@@ -647,7 +837,7 @@ namespace Shareable
             }
         }
         public readonly string filename;
-        FileStream file;
+        internal FileStream file;
         long position = 0, length = 0;
         Buffer rbuf, wbuf;
         public AStream(string fn)
@@ -657,34 +847,19 @@ namespace Shareable
             length = file.Seek(0, SeekOrigin.End);
             file.Seek(0, SeekOrigin.Begin);
         }
-        public Serialisable[] Commit(params Serialisable[] obs)
+        public Serialisable[] Commit(Transaction tr,params Serialisable[] obs)
         {
-            lock (file)
-            {
-                wbuf = new Buffer(this);
-                var r = new Serialisable[obs.Length];
-                for (var i = 0; i < obs.Length; i++)
-                    r[i] = obs[i].Commit(this);
-                file.Seek(0, SeekOrigin.End);
-                file.Write(wbuf.buf, 0, wbuf.pos);
-                length += wbuf.pos;
-                return r;
-            }
+            wbuf = new Buffer(this);
+            var r = new Serialisable[obs.Length];
+            for (var i = 0; i < obs.Length; i++)
+                r[i] = obs[i].Commit(tr,this);
+            file.Seek(0, SeekOrigin.End);
+            file.Write(wbuf.buf, 0, wbuf.pos);
+            length += wbuf.pos;
+            return r;
         }
-        public Serialisable GetOne()
+        Serialisable _Get(SDatabase d)
         {
-            lock (file)
-            {
-                if (position == file.Length)
-                    return null;
-                var r = _Get(position);
-                position = rbuf.start + rbuf.pos;
-                return r;
-            }
-        }
-        Serialisable _Get(long pos)
-        {
-            rbuf = new Buffer(this, position);
             Types tp = (Types)ReadByte();
             Serialisable s = null;
             switch (tp)
@@ -697,19 +872,51 @@ namespace Shareable
                 case Types.SDate: s = SDate.Get(this); break;
                 case Types.STimeSpan: s = STimeSpan.Get(this); break;
                 case Types.SBoolean: s = SBoolean.Get(this); break;
-                case Types.STable: s = STable.Get(this); break;
-                case Types.SRow: s = SRow.Get(this); break;
-                case Types.SColumn: s = SColumn.Get(this); break;
-                case Types.SRecord: s = SRecord.Get(this); break;
-                case Types.SUpdate: s = SUpdate.Get(this); break;
+                case Types.STable: s = STable.Get(d,this); break;
+                case Types.SRow: s = SRow.Get(d,this); break;
+                case Types.SColumn: s = SColumn.Get(d,this); break;
+                case Types.SRecord: s = SRecord.Get(d,this); break;
+                case Types.SUpdate: s = SUpdate.Get(d,this); break;
             }
             return s;
         }
-        public Serialisable Get(long pos)
+        public Serialisable GetOne(SDatabase d)
         {
             lock (file)
             {
-                return _Get(pos);
+                if (position == file.Length)
+                    return null;
+                rbuf = new Buffer(this, position);
+                var r = _Get(d);
+                position = rbuf.start + rbuf.pos;
+                return r;
+            }
+        }
+        /// <summary>
+        /// Called from Commit(): file is already locked
+        /// </summary>
+        /// <param name="tr"></param>
+        /// <param name="pos"></param>
+        /// <returns></returns>
+        public Serialisable[] GetAll(SDatabase d,long pos)
+        {
+            var r = new List<Serialisable>();
+            position = pos;
+            rbuf = new Buffer(this, pos);
+            while (position<file.Length)
+            {
+                r.Add(_Get(d));
+                position = rbuf.start + rbuf.pos;
+            }
+            return r.ToArray();
+        }
+        public Serialisable Get(SDatabase d,long pos)
+        {
+            lock (file)
+            {
+                position = pos;
+                rbuf = new Buffer(this, position);
+                return _Get(d);
             }
         }
         public override int ReadByte()
