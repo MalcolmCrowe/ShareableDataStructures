@@ -67,19 +67,14 @@ namespace Shareable
             Console.WriteLine("SMTree done");
             File.Delete("strong");
             File.Create("strong").Close();
-            var f = new AStream("strong");
-            var tr = new Transaction(f);
-            tr.Add(new SString("This is Strong"));
+            var d = SDatabase.Open("strong");
+            var tr = new Transaction(d);
+            tr= new Transaction(tr,new SString("This is Strong"));
             new STable(tr,"tbl");
             var c = tr.Commit();
-            Console.WriteLine(c[0].ToString());
-            Console.WriteLine(c[1].ToString());
-            f.Close();
-            f = new AStream("strong");
-            var s = f.GetOne();
-            var u = f.GetOne();
-            Console.WriteLine(s.ToString());
-            Console.WriteLine(u.ToString());
+            d.Close();
+            d = SDatabase.Open("strong");
+            Console.WriteLine(d.tables.First().Value.val.ToString());
             Console.ReadKey();
         }
         static Variant V(string s, int i)

@@ -35,7 +35,7 @@ namespace Shareable
             tables = db.tables;
             objects = db.objects;
         }
-        SDatabase(SDatabase db,STable t)
+        protected SDatabase(SDatabase db,STable t)
         {
             name = db.name;
             tables = db.tables.Add(t.uid, t);
@@ -72,19 +72,19 @@ namespace Shareable
                 f.Close();
             }
         }
-        SDatabase Install(STable t)
+        protected virtual SDatabase Install(STable t)
         {
             return new SDatabase(this, t);
         }
-        SDatabase Install(SColumn c)
+        protected virtual SDatabase Install(SColumn c)
         {
             return new SDatabase(this,tables.Lookup(c.table).Add(c));
         }
-        SDatabase Install(SRecord r)
+        protected virtual SDatabase Install(SRecord r)
         {
             return new SDatabase(this, tables.Lookup(r.table).Add(r));
         }
-        SDatabase Install(SDelete d)
+        protected virtual SDatabase Install(SDelete d)
         {
             return new SDatabase(this, tables.Lookup(d.table).Remove(d.delpos));
         }

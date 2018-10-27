@@ -43,6 +43,11 @@ namespace Shareable
             f.WriteByte((byte)type);
             return this;
         }
+        public virtual Transaction Commit(Transaction tr,int c,AStream f)
+        {
+            f.WriteByte((byte)type);
+            return (tr.committed==c)? tr:new Transaction(tr,c);
+        }
         public static Serialisable Get(AStream f)
         {
             return new Serialisable(Types.Serialisable);
@@ -67,11 +72,11 @@ namespace Shareable
         {
             ticks = f.GetLong();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutLong(ticks);
-            return this;
+            return r;
         }
         public new static STimestamp Get(AStream f)
         {
@@ -93,11 +98,11 @@ namespace Shareable
         {
             value = f.GetInt();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutInt(value);
-            return this;
+            return r;
         }
         public new static Serialisable Get(AStream f)
         {
@@ -125,13 +130,13 @@ namespace Shareable
             precision = f.GetInt();
             scale = f.GetInt();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutLong(mantissa);
             f.PutInt(precision);
             f.PutInt(scale);
-            return this;
+            return r;
         }
         public new static Serialisable Get(AStream f)
         {
@@ -153,11 +158,11 @@ namespace Shareable
         {
             str = f.GetString();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutString(str);
-            return this;
+            return r;
         }
         public new static Serialisable Get(AStream f)
         {
@@ -185,13 +190,13 @@ namespace Shareable
             month = f.GetInt();
             rest = f.GetLong();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutInt(year);
             f.PutInt(month);
             f.PutLong(rest);
-            return this;
+            return r;
         }
         public new static Serialisable Get(AStream f)
         {
@@ -213,11 +218,11 @@ namespace Shareable
         {
             ticks = f.GetLong();
         }
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
-            base.Commit(tr,f);
+            var r = base.Commit(tr,c,f);
             f.PutLong(ticks);
-            return this;
+            return r;
         }
         public new static Serialisable Get(AStream f)
         {
@@ -242,7 +247,6 @@ namespace Shareable
         }
         public override Serialisable Commit(Transaction tr,AStream f)
         {
-            base.Commit(tr,f);
             f.PutInt((int)sbool);
             return this;
         }
@@ -294,7 +298,7 @@ namespace Shareable
             {
                 var k = b.Value.key;
                 f.PutString(k);
-                c.Add(k, f.Commit(tr,b.Value.val)[0]);
+                c = c.Add(b.Value.key,b.Value.val.Commit(tr,f));
             }
             cols = c;
         }
@@ -341,7 +345,7 @@ namespace Shareable
         /// <param name="tr"></param>
         protected SDbObject(Types t,Transaction tr) :base(t)
         {
-            uid = tr.Add(this);
+            uid = tr.uid+1;
         }
         /// <summary>
         /// A modified database obejct will keep its uid
@@ -361,14 +365,7 @@ namespace Shareable
         {
             uid = f.Position;
         }
-        /// <summary>
-        /// During commit, database objects are appended to the
-        /// file, and we will have a (new) modified database object
-        /// with its file position as the uid.
-        /// </summary>
-        /// <param name="s"></param>
-        /// <param name="f"></param>
-        protected SDbObject(SDbObject s,AStream f) :base(s.type)
+        protected SDbObject(SDbObject s, AStream f):base(s.type)
         {
             uid = f.Length;
         }
@@ -428,7 +425,7 @@ namespace Shareable
             cols = SDict<long,SColumn>.Empty;
             rows = SDict<long, long>.Empty;
         }
-        STable(Transaction tr,STable t,AStream f) :base(t,f)
+        public STable(Transaction tr,STable t,AStream f) :base(t,f)
         {
             name = t.name;
             // if we already have columns, they need to be updated
@@ -436,30 +433,6 @@ namespace Shareable
             for (var b = t.cols.First(); b != null; b = b.Next())
                 nc = nc.Add(b.Value.key,new SColumn(b.Value.val, uid));
             cols = nc;
-            // we also need to update any records or deletions 
-            // in the transaction that refer to this table
-            for(var i=0;i<tr.steps.Count;i++)
-            {
-                var s = tr.steps[i];
-                switch (s.type)
-                {
-                    case Types.SUpdate:
-                    case Types.SRecord:
-                        {
-                            var sr = (SRecord)s;
-                            if (sr.table == t.uid)
-                                tr.steps[i] = sr.Fix(this);
-                            break;
-                        }
-                    case Types.SDelete:
-                        {
-                            var dl = (SDelete)s;
-                            if (dl.table == t.uid)
-                                tr.steps[i] = dl.Fix(this);
-                            break;
-                        }
-                }
-            }
         }
         /// <summary>
         /// Database objects should only be committed once.
@@ -468,14 +441,13 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
             if (Committed) // nothing to do!
-                return this;
-            var r = new STable(tr,this, f);
-            base.Commit(tr,f);
+                return tr;
+            var sn = new STable(tr,this, f);
             f.PutString(name);
-            return r;
+            return new Transaction(tr, c, this, sn);
         }
         public static STable Get(SDatabase d,AStream f)
         {
@@ -515,11 +487,14 @@ namespace Shareable
             dataType = (Types)f.ReadByte();
             table = f.GetLong();
         }
-        SColumn(Transaction tr,SColumn c,AStream f):base (c,f)
+        public SColumn(Transaction tr,SColumn c,AStream f):base (c,f)
         {
             name = c.name;
             dataType = c.dataType;
             table = c.table;
+            f.PutString(name);
+            f.WriteByte((byte)dataType);
+            f.PutLong(tr.Fix(table));
         }
         /// <summary>
         /// Database objects are only committed once.
@@ -527,12 +502,11 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public override Serialisable Commit(Transaction tr,AStream f)
+        public override Transaction Commit(Transaction tr,int c,AStream f)
         {
             if (Committed) // nothing to do!
-                return this;
-            var r = new SColumn(tr, this, f);
-            base.Commit(tr,f);
+                return base.Commit(tr,c,f);
+            var r = new Transaction(tr,c,tr.tables.Lookup(table),this, new SColumn(tr, this, f));
             f.PutString(name);
             f.WriteByte((byte)dataType);
             f.PutLong(table);
@@ -569,27 +543,17 @@ namespace Shareable
             table = t;
         }
         public virtual long Defpos => uid;
-        public Serialisable Field(string col)
-        {
-            return fields.Lookup(col);
-        }
-        public virtual SRecord Fix(STable t)
-        {
-            return new SRecord(this, t.uid);
-        }
         protected SRecord(SRecord r,long tb) :base(r)
         {
             fields = r.fields;
             table = tb;
         }
-        protected SRecord(Transaction tr,SRecord r,AStream f) : base(r,f)
+        public SRecord(Transaction tr,SRecord r,AStream f) : base(r,f)
         {
-            table = r.table;
-            f.PutLong(table);
+            f.PutLong(tr.Fix(table));
             var tb = tr.tables.Lookup(table);
-            var a = SDict<string, Serialisable>.Empty;
-            f.PutInt(fields.Count);
-            for (var b=fields.First();b!=null;b=b.Next())
+            f.PutInt(r.fields.Count);
+            for (var b=r.fields.First();b!=null;b=b.Next())
             {
                 var k = b.Value.key;
                 long p = 0;
@@ -597,25 +561,7 @@ namespace Shareable
                     if (c.Value.val.name == k)
                         p = c.Value.key;
                 f.PutLong(p);
-                a = a.Add(k, b.Value.val.Commit(tr,f));
-            }
-            fields = a;
-            for (var i=0;i<tr.steps.Count;i++)
-            {
-                var s = tr.steps[i];
-                switch(s.type)
-                {
-                    case Types.SUpdate:
-                        var u = (SUpdate)s;
-                        if (u.Defpos==r.Defpos)
-                            tr.steps[i] = new SUpdate(u, u.table, Defpos);
-                        break;
-                    case Types.SDelete:
-                        var d = (SDelete)s;
-                        if (d.delpos==r.Defpos)
-                        tr.steps[i] = new SDelete(d, d.table, Defpos);
-                        break;
-                }
+                b.Value.val.Commit(tr,f);
             }
         }
         protected SRecord(SDatabase d,AStream f) : base(Types.SRecord,f)
@@ -676,17 +622,13 @@ namespace Shareable
             defpos = r.Defpos;
         }
         public override long Defpos => defpos;
-        public override SRecord Fix(STable tb)
-        {
-            return new SUpdate(this,tb.uid,defpos);
-        }
         internal SUpdate(SUpdate u,long tbl,long dp) :base(u,tbl)
         {
             defpos = u.defpos;
         }
-        SUpdate(Transaction tr,SUpdate r, AStream f) : base(tr,r,f)
+        public SUpdate(Transaction tr,SUpdate r, AStream f) : base(tr,r,f)
         {
-            f.PutLong(defpos);
+            f.PutLong(tr.Fix(defpos));
         }
         SUpdate(SDatabase d,AStream f) : base(d,f)
         {
@@ -732,10 +674,10 @@ namespace Shareable
             table = tbl;
             delpos = del;
         }
-        SDelete(Transaction tr, SDelete r, AStream f) : base(r,f)
+        public SDelete(Transaction tr, SDelete r, AStream f) : base(r,f)
         {
-            f.PutLong(table);
-            f.PutLong(delpos);
+            f.PutLong(tr.Fix(table));
+            f.PutLong(tr.Fix(delpos));
         }
         SDelete(SDatabase d, AStream f) : base(Types.SDelete,f)
         {
@@ -749,10 +691,6 @@ namespace Shareable
         public static SDelete Get(SDatabase d, AStream f)
         {
             return new SDelete(d, f);
-        }
-        internal Serialisable Fix(STable sTable)
-        {
-            return new SDelete(this,sTable.uid,delpos);
         }
         public override bool Conflicts(Serialisable that)
         { 
@@ -847,17 +785,6 @@ namespace Shareable
             length = file.Seek(0, SeekOrigin.End);
             file.Seek(0, SeekOrigin.Begin);
         }
-        public Serialisable[] Commit(Transaction tr,params Serialisable[] obs)
-        {
-            wbuf = new Buffer(this);
-            var r = new Serialisable[obs.Length];
-            for (var i = 0; i < obs.Length; i++)
-                r[i] = obs[i].Commit(tr,this);
-            file.Seek(0, SeekOrigin.End);
-            file.Write(wbuf.buf, 0, wbuf.pos);
-            length += wbuf.pos;
-            return r;
-        }
         Serialisable _Get(SDatabase d)
         {
             Types tp = (Types)ReadByte();
@@ -918,6 +845,44 @@ namespace Shareable
                 rbuf = new Buffer(this, position);
                 return _Get(d);
             }
+        }
+        public Transaction Commit(Transaction tr)
+        {
+            wbuf = new Buffer(this);
+            for (var b=tr.steps.First();b!=null; b=b.Next())
+            {
+                switch (b.Value.val.type)
+                {
+                    case Types.STable:
+                        {
+                            var st = (STable)b.Value.val;
+                            tr = new Transaction(tr, b.Value.key, st, new STable(tr,st, this));
+                            break;
+                        }
+                    case Types.SColumn:
+                        {
+                            var sc = (SColumn)b.Value.val;
+                            var st = tr.tables.Lookup(sc.table);
+                            tr = new Transaction(tr, b.Value.key, st, sc, new SColumn(tr, sc, this));
+                            break;
+                        }
+                    case Types.SRecord:
+                        {
+                            var sr = (SRecord)b.Value.val;
+                            var st = tr.tables.Lookup(sr.table);
+                            tr = new Transaction(tr, b.Value.key, st, sr, new SRecord(tr, sr, this));
+                            break;
+                        }
+                    case Types.SDelete:
+                        {
+                            var sd = (SDelete)b.Value.val;
+                            var st = tr.tables.Lookup(sd.table);
+                            tr = new Transaction(tr, b.Value.key, st, sd);
+                            break;
+                        }
+                }
+            }
+            return tr;
         }
         public override int ReadByte()
         {
