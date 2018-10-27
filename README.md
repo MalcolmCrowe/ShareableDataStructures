@@ -3,4 +3,4 @@ I am developing a set of general-purpose shareable data structures for C# and Ja
 The updated files are in the subfolders: Shareable for C# and ShareableJ for Java.
 Follow on Twitter: @MalcolmCrowe #ShareableDataStructures
 
-25 Oct: Transaction.cs needs more work: can't be a subclass of SDatabase, should become shareable.
+27 Oct: Transactions redesigned and now shareable. I will do the Java classes next and then test everything.
