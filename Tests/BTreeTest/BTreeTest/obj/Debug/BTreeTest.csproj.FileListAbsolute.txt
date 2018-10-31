@@ -1,0 +1,12 @@
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\BTreeTest.exe.config
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\BTreeTest.exe
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\BTreeTest.pdb
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\BTree.dll
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\BTree.pdb
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\obj\Debug\BTreeTest.csprojResolveAssemblyReference.cache
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\obj\Debug\BTreeTest.csproj.CoreCompileInputs.cache
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\obj\Debug\BTreeTest.exe
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\obj\Debug\BTreeTest.pdb
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\Shareable.exe
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\Shareable.pdb
+C:\mkc\Shareable\Tests\BTreeTest\BTreeTest\bin\Debug\Shareable.exe.config

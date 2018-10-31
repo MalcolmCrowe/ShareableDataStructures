@@ -1,0 +1,11 @@
+E:\Shareable\Tests\ListTest\ListTest\obj\Debug\ListTest.csprojAssemblyReference.cache
+E:\Shareable\Tests\ListTest\ListTest\obj\Debug\ListTest.csproj.CoreCompileInputs.cache
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\ListTest.exe.config
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\ListTest.exe
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\ListTest.pdb
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\Shareable.exe
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\Shareable.pdb
+E:\Shareable\Tests\ListTest\ListTest\bin\Debug\Shareable.exe.config
+E:\Shareable\Tests\ListTest\ListTest\obj\Debug\ListTest.csproj.CopyComplete
+E:\Shareable\Tests\ListTest\ListTest\obj\Debug\ListTest.exe
+E:\Shareable\Tests\ListTest\ListTest\obj\Debug\ListTest.pdb
