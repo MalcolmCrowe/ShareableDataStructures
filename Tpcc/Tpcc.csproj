@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{988F076B-544E-4705-86A4-EE6CCCD00D0A}</ProjectGuid>
+    <ProjectGuid>{293FE6C6-8E24-46DB-AB63-05E9C437AF1C}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>StrongLink</RootNamespace>
-    <AssemblyName>StrongLink</AssemblyName>
+    <RootNamespace>Tpcc</RootNamespace>
+    <AssemblyName>Tpcc</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -43,16 +43,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="StrongLink.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Shareable\Shareable\Shareable.csproj">
+    <ProjectReference Include="..\Shareable\Shareable\Shareable.csproj">
       <Project>{ef9c322b-5745-4b78-ba6a-ffb35f1b4f1f}</Project>
       <Name>Shareable</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\StrongLink\StrongLink\StrongLink.csproj">
+      <Project>{988f076b-544e-4705-86a4-ee6cccd00d0a}</Project>
+      <Name>StrongLink</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

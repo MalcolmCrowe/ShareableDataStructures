@@ -95,6 +95,7 @@ namespace Shareable
     public class SInteger : Serialisable
     {
         public readonly int value;
+        public static readonly SInteger Zero = new SInteger(0);
         public SInteger(int v) : base(Types.SInteger)
         {
             value = v;
@@ -308,7 +309,7 @@ namespace Shareable
             {
                 var k = b.Value.key;
                 f.PutString(k);
-                c = c.Add(b.Value.key,b.Value.val.Commit(tr,f));
+                c = c.Add(b.Value.key,b.Value.val);
             }
             cols = c;
         }
@@ -330,7 +331,7 @@ namespace Shareable
                 if (b.Value.val is Serialisable s)
                     s.Put(f);
                 else
-                    Serialisable.Null.Put(f);
+                    Null.Put(f);
             }
         }
         public override string ToString()
