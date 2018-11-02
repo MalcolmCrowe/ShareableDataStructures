@@ -42,7 +42,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SArray.cs" />
     <Compile Include="SCList.cs" />
@@ -54,7 +53,8 @@
     <Compile Include="SSearchTree.cs" />
     <Compile Include="SList.cs" />
     <Compile Include="SListOfInt.cs" />
-    <Compile Include="Transaction.cs" />
+    <Compile Include="STransaction.cs" />
+    <Compile Include="Strong.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
