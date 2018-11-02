@@ -78,19 +78,37 @@ namespace StrongLink
                 asy.PutString(s);
             var b = asy.Receive();
         }
-        public void Insert(string tn,string[] cols,Serialisable[][] rows)
+        public void Insert(string tn,string[] cols,params Serialisable[][] rows)
         {
             asy.Write(Protocol.Insert);
             asy.PutString(tn);
-            asy.PutInt(cols.Length);
-            foreach (var s in cols)
-                asy.PutString(s);
+            if (cols == null)
+                asy.PutInt(0);
+            else
+            {
+                asy.PutInt(cols.Length);
+                foreach (var s in cols)
+                    asy.PutString(s);
+            }
             asy.PutInt(rows[0].Length);
             asy.PutInt(rows.Length);
             for (var i = 0; i < rows.Length; i++)
                 for (var j = 0; j < rows[i].Length; j++)
                     rows[i][j].Put(asy);
             var b = asy.Receive();
+        }
+        public string Get(string tn,params Serialisable[] key)
+        {
+            asy.Write(Protocol.Get);
+            asy.PutString(tn);
+            asy.PutInt(key.Length);
+            foreach (var s in key)
+                s.Put(asy);
+            var b = asy.Receive();
+            if (b == Responses.Done)
+                return "[]";
+            else
+                return asy.GetString();
         }
     }
     class AsyncClient : StreamBase
@@ -107,6 +125,9 @@ namespace StrongLink
             client = c;
             wbuf = new Buffer(this);
             rbuf = new Buffer(this);
+            rbuf.pos = 2;
+            rbuf.len = 0;
+            wbuf.pos = 2;
             connect = pc;
         }
         protected override void GetBuf(Buffer b)
@@ -168,30 +189,19 @@ namespace StrongLink
         }
         public Responses Receive()
         {
+            if (wbuf.pos > 2)
+                Flush();
             return (Responses)ReadByte();
         }
         protected override void PutBuf(Buffer b)
         {
-            wbuf.wait = new ManualResetEvent(false);
-            // now always send bSize bytes (not wcount)
-            wbuf.pos -= 2;
-            wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-            wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
-            try
-            {
-                client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);
-                if (wbuf.wait != null)
-                    wbuf.wait.WaitOne();
-            }
-            catch (SocketException)
-            {
-            }
-            wbuf.pos = 2;
+            Flush();
         }
         void Callback1(IAsyncResult ar)
         {
             Buffer buf = ar.AsyncState as Buffer;
             buf.wait.Set();
+            Console.WriteLine("Flush done");
         }
         public override void Write(byte[] buffer, int offset, int count)
         {
@@ -213,6 +223,7 @@ namespace StrongLink
             wbuf.pos -= 2;
             wbuf.buf[0] = (byte)(wbuf.pos >> 7);
             wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
+            Console.WriteLine("Sending " + wbuf.pos + " bytes, first is " + wbuf.buf[2]);
             try
             {
                 IAsyncResult br = client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);
@@ -220,8 +231,9 @@ namespace StrongLink
                     br.AsyncWaitHandle.WaitOne();
                 wbuf.pos = 2;
             }
-            catch (SocketException)
+            catch (SocketException e)
             {
+                Console.WriteLine("Flush reports exception " + e.Message);
             }
         }
         internal int GetException()
@@ -254,7 +266,7 @@ namespace StrongLink
         }
         public override long Length
         {
-            get { throw new Exception("The method or operation is not implemented."); }
+            get => 0;
         }
         public override long Position
         {

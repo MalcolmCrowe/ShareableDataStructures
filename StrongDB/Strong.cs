@@ -1,23 +1,15 @@
 ﻿using System;
+using System.Text;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Security.Principal;
 using System.Security.AccessControl;
+using Shareable;
 
-namespace Shareable
+namespace StrongDB
 {
-    public enum Protocol
-    { 
-        EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
-        Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
-        Update = 10, Delete = 11, View = 12
-    }
-    public enum Responses
-    {
-        Done = 0, Exception = 1
-    }
     class StrongServer
     {
         /// <summary>
@@ -29,11 +21,9 @@ namespace Shareable
         /// </summary>
 		internal AsyncStream asy;
         SDatabase db;
-        bool disposed = false;
         public DateTime lastop = DateTime.Now;
         public Thread myThread = null;
-        private int nextCol = 0;
-        private Serialisable nextCell = null;
+        public static string path= "";
         /// <summary>
         /// Constructor: called on Accept
         /// </summary>
@@ -55,7 +45,7 @@ namespace Shareable
             try
             {
                 var fn = asy.GetString();
-                var db = SDatabase.Open(fn);
+                var db = SDatabase.Open(path,fn);
             } catch (Exception e)
             {
                 try
@@ -85,7 +75,28 @@ namespace Shareable
                 {
                     switch ((Protocol)p)
                     {
-                        case Protocol.Get: { break; }
+                        case Protocol.Get:
+                            {
+                                var tr = db.Transact();
+                                var tb = STable.Get(tr, asy);
+                                var n = asy.GetInt();
+                                var k = SCList<Variant>.Empty;
+                                for (var i = 0; i < n; i++)
+                                    k = k.InsertAt(new Variant(Variants.Single,asy._Get(tr)), k.Length);
+                                SIndex px = null;
+                                for (var b = tr.objects.First(); px == null && b != null; b = b.Next())
+                                    if (b.Value.val is SIndex x && x.table == tb.uid)
+                                        px = x;
+                                var sb = new StringBuilder();
+                                var cm = '[';
+                                for (var b=px.rows.PositionAt(k);b!=null; b=(MTreeBookmark)b.Next())
+                                {
+                                    sb.Append(cm); cm = ',';
+                                    tr.Get(b.value()).Append(sb);
+                                }
+                                db = db.MaybeAutoCommit(tr);
+                                break;
+                            }
                         case Protocol.Table:
                             {
                                 var tr = db.Transact();
@@ -129,7 +140,7 @@ namespace Shareable
                                 db = db.MaybeAutoCommit(tr);
                                 break;
                             }
-                        case Protocol.Alter:
+                          case Protocol.Alter:
                             {
                                 var tr = db.Transact();
 
@@ -159,12 +170,11 @@ namespace Shareable
         /// The Client Listener for the StrongDBMS.
         /// The Main entry point is here
         /// </summary>
-        class StrongStart
+    class StrongStart
     {
         /// <summary>
         /// the default database folder
         /// </summary>
-        internal static string path = "";
         internal static string host = "127.0.0.1";
         internal static int port = 50433;
         /// <summary>
@@ -194,8 +204,8 @@ namespace Shareable
             if (tcp == null)
                 throw new Exception("Cannot open a port on " + host);
             Console.WriteLine("StrongDBMS protocol on " + host + ":" + port);
-            if (path != "")
-                Console.WriteLine("Database folder " + path);
+            if (StrongServer.path != "")
+                Console.WriteLine("Database folder " + StrongServer.path);
             int cid = 0;
             for (; ; )
                 try
@@ -233,7 +243,7 @@ namespace Shareable
                     case 'p': port = int.Parse(args[k].Substring(3)); break;
                     case 'h': host = args[k].Substring(3); break;
                     case 'd':
-                        path = args[k].Substring(3);
+                        StrongServer.path = args[k].Substring(3);
                         FixPath();
                         break;
                     default: Usage(); return;
@@ -244,13 +254,13 @@ namespace Shareable
         }
         static void FixPath()
         {
-            if (path == "")
+            if (StrongServer.path == "")
                 return;
-            if (path.Contains("/") && !path.EndsWith("/"))
-                path += "/";
-            else if (!path.EndsWith("\\"))
-                path += "\\";
-            var acl = Directory.GetAccessControl(path);
+            if (StrongServer.path.Contains("/") && !StrongServer.path.EndsWith("/"))
+                StrongServer.path += "/";
+            else if (!StrongServer.path.EndsWith("\\"))
+                StrongServer.path += "\\";
+            var acl = Directory.GetAccessControl(StrongServer.path);
             if (acl == null)
                 goto bad;
             var acr = acl.GetAccessRules(true, true, typeof(SecurityIdentifier));
@@ -260,7 +270,7 @@ namespace Shareable
                 if ((FileSystemRights.Write & r.FileSystemRights) == FileSystemRights.Write
                     && r.AccessControlType == AccessControlType.Allow)
                     return;
-                bad: throw new Exception("Cannot access path " + path);
+                bad: throw new Exception("Cannot access path " + StrongServer.path);
         }
         /// <summary>
         /// Provide help about the command line options
@@ -299,12 +309,14 @@ namespace Shareable
 
         public override long Position { get => 0; set => throw new NotImplementedException(); }
 
-        internal AsyncStream(Socket client)
+        internal AsyncStream(Socket c)
         {
+            client = c;
             rbuf = new Buffer(this);
             wbuf = new Buffer(this);
             wbuf.pos = 2;
             rbuf.pos = 2;
+            rbuf.len = 0;
         }
 
         public override void Flush()
@@ -387,12 +399,12 @@ namespace Shareable
                 {
                     rcount = 0;
                     buf.wait.Set();
-                    return;
                 }
                 if (rc + rx == Buffer.Size)
                 {
                     rcount = ((buf.buf[0]) << 7) + buf.buf[1];
                     buf.wait.Set();
+                    buf.len = rcount + 2;
                 }
                 else
                 {
@@ -406,6 +418,7 @@ namespace Shareable
                 buf.wait.Set();
                 Close();
             }
+            Console.WriteLine("Received " + rcount + " bytes, starting with " + rbuf.buf[2]);
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -428,22 +441,7 @@ namespace Shareable
 
         protected override void PutBuf(Buffer b)
         {
-            wbuf.wait = new ManualResetEvent(false);
-            // now always send bSize bytes (not wcount)
-            wbuf.pos -= 2;
-            wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-            wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
-            try
-            {
-                client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);
-                if (wbuf.wait != null)
-                    wbuf.wait.WaitOne();
-            }
-            catch (Exception)
-            {
-                Console.WriteLine("Socket Exception reported on Write");
-            }
-            wbuf.pos = 2;
+            Flush();
         }
         /// <summary>
         /// Callback on completion of a write request to the network

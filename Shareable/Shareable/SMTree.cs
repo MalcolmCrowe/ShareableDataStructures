@@ -229,15 +229,15 @@ namespace Shareable
     }
     public class MTreeBookmark : Bookmark<SSlot<SCList<Variant>, Variant>>
     {
-        readonly SDictBookmark<Variant,Variant> _outer;
+        readonly SDictBookmark<Variant, Variant> _outer;
         internal readonly SList<TreeInfo> _info;
         internal readonly MTreeBookmark _inner;
         readonly Bookmark<SSlot<int, bool>> _pmk;
         internal readonly bool _changed;
         internal SCList<Variant> _filter;
         MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo> info,
-            bool changed, MTreeBookmark inner,Bookmark<SSlot<int, bool>> pmk, 
-            int pos, SCList<Variant> key=null) :base(pos)
+            bool changed, MTreeBookmark inner, Bookmark<SSlot<int, bool>> pmk,
+            int pos, SCList<Variant> key = null) : base(pos)
         {
             _outer = outer; _info = info; _changed = changed;
             _inner = inner; _pmk = pmk; _filter = key;
@@ -249,14 +249,14 @@ namespace Shareable
         /// <returns></returns>
         public static MTreeBookmark New(SMTree mt)
         {
-            for (var outer = mt._impl?.First() as SDictBookmark<Variant, Variant>; outer!=null;outer=outer.Next() as SDictBookmark<Variant, Variant>)
+            for (var outer = mt._impl?.First() as SDictBookmark<Variant, Variant>; outer != null; outer = outer.Next() as SDictBookmark<Variant, Variant>)
             {
                 var ov = outer.Value.val;
                 switch (ov.variant)
                 {
                     case Variants.Compound:
                         if ((ov.ob as SMTree)?.First() is MTreeBookmark inner)
-                            return new MTreeBookmark(outer, mt._info, false, inner,null, 0);
+                            return new MTreeBookmark(outer, mt._info, false, inner, null, 0);
                         break;
                     case Variants.Partial:
                         if ((ov.ob as SDict<int, bool>)?.First() is Bookmark<SSlot<int, bool>> pmk)
@@ -274,7 +274,7 @@ namespace Shareable
         /// <param name="mt"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        public static MTreeBookmark New(SMTree mt,SCList<Variant> key)
+        public static MTreeBookmark New(SMTree mt, SCList<Variant> key)
         {
             if (key == null || key.Length == 0)
                 return New(mt);
@@ -293,7 +293,7 @@ namespace Shareable
                         return new MTreeBookmark(outer, mt._info, true, null, pmk, 0, key);
                     break;
                 case Variants.Single:
-                    if (key.next==null)
+                    if (key.next == null)
                         return new MTreeBookmark(outer, mt._info, true, null, null, 0, key);
                     break;
             }
@@ -308,8 +308,12 @@ namespace Shareable
         public override SSlot<SCList<Variant>, Variant> Value => throw new NotImplementedException();
         public int value()
         {
-            return (_inner!=null)?_inner.value() : (_pmk!=null)?_pmk.Value.key : 
-                (_outer.val!=null)?(int)_outer.val.ob : 0;
+            return (_inner != null) ? _inner.value() : (_pmk != null) ? _pmk.Value.key :
+                (_outer.val != null) ? (int)_outer.val.ob : 0;
+        }
+        public Serialisable Get(SDatabase db)
+        {
+            return db.Get(value());
         }
         public override Bookmark<SSlot<SCList<Variant>, Variant>> Next()
         {

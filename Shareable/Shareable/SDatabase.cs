@@ -1,6 +1,16 @@
 ﻿using System.IO;
 namespace Shareable
 {
+    public enum Protocol
+    {
+        EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
+        Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
+        Update = 10, Delete = 11, View = 12
+    }
+    public enum Responses
+    {
+        Done = 0, Exception = 1
+    }
     public class SDatabase
     {
         public readonly string name;
@@ -10,14 +20,14 @@ namespace Shareable
         static object files = new object(); // a lock
         protected static SDict<string,AStream> dbfiles = SDict<string,AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string,SDatabase>.Empty;
-        public static SDatabase Open(string fname)
+        public static SDatabase Open(string path,string fname)
         {
             if (dbfiles.Contains(fname))
                 return databases.Lookup(fname);
             var db = new SDatabase(fname);
             lock (files)
             {
-                dbfiles = dbfiles.Add(fname, new AStream(fname));
+                dbfiles = dbfiles.Add(fname, new AStream(path+fname));
                 databases = databases.Add(fname, db);
             }
             return db.Load();
@@ -107,6 +117,10 @@ namespace Shareable
                     db = db.Add(s,f.Position);
             }
             return db;
+        }
+        public Serialisable Get(long pos)
+        {
+            return dbfiles.Lookup(name).Get(this, pos);
         }
         public SDatabase Add(Serialisable s,long p)
         {

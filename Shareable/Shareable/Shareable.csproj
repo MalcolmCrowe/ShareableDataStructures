@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <RootNamespace>Shareable</RootNamespace>
     <AssemblyName>Shareable</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
@@ -31,6 +31,9 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -54,7 +57,6 @@
     <Compile Include="SList.cs" />
     <Compile Include="SListOfInt.cs" />
     <Compile Include="STransaction.cs" />
-    <Compile Include="Strong.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

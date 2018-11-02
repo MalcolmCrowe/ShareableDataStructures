@@ -61,6 +61,10 @@ namespace Shareable
         {
             return false;
         }
+        public virtual void Append(StringBuilder sb)
+        {
+            sb.Append("null");
+        }
         public override string ToString()
         {
             return "Serialisable (null)";
@@ -114,6 +118,10 @@ namespace Shareable
         {
             return new SInteger(f);
         }
+        public override void Append(StringBuilder sb)
+        {
+            sb.Append(value);
+        }
         public override string ToString()
         {
             return "Integer " + value.ToString();
@@ -148,6 +156,10 @@ namespace Shareable
         {
             return new SNumeric(f);
         }
+        public override void Append(StringBuilder sb)
+        {
+            sb.Append(mantissa * Math.Pow(10.0, -scale));
+        }
         public override string ToString()
         {
             return "Numeric " + ((mantissa * Math.Pow(10.0,-scale)).ToString());
@@ -173,6 +185,10 @@ namespace Shareable
         public new static Serialisable Get(StreamBase f)
         {
             return new SString(f);
+        }
+        public override void Append(StringBuilder sb)
+        {
+            sb.Append("'"); sb.Append(str); sb.Append("'");
         }
         public override string ToString()
         {
@@ -265,6 +281,10 @@ namespace Shareable
             base.Put(f);
             f.WriteByte((byte)sbool);
         }
+        public override void Append(StringBuilder sb)
+        {
+            sb.Append(sbool);
+        }
         public override string ToString()
         {
             return "Boolean "+sbool.ToString();
@@ -334,11 +354,11 @@ namespace Shareable
                     Null.Put(f);
             }
         }
-        public override string ToString()
+        public override void Append(StringBuilder sb)
         {
-            var sb = new StringBuilder("SRow (");
+            sb.Append('(');
             var cm = "";
-            for (var b=cols.First();b!=null;b=b.Next())
+            for (var b = cols.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(b.Value.key);
@@ -346,6 +366,11 @@ namespace Shareable
                 sb.Append(b.Value.val.ToString());
             }
             sb.Append(")");
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("SRow ");
+            Append(sb);
             return sb.ToString();
         }
     }
@@ -361,6 +386,14 @@ namespace Shareable
         /// Once committed the uid will become the position in the AStream file.
         /// </summary>
         public readonly long uid;
+        /// <summary>
+        /// We will allow clients to define SColumns etc, with an impossible uid
+        /// </summary>
+        /// <param name="t"></param>
+        protected SDbObject(Types t) : base(t)
+        {
+            uid = -1; 
+        }
         /// <summary>
         /// For a new database object we add it to the transaction steps
         /// and set the transaction-based uid
@@ -538,6 +571,10 @@ namespace Shareable
         public readonly string name;
         public readonly Types dataType;
         public readonly long table;
+        public SColumn(string n,Types t) :base(Types.SColumn)
+        {
+            name = n; dataType = t; table = -1;
+        }
         public SColumn(STransaction tr,string n, Types t, long tbl) : base(Types.SColumn,tr)
         {
             name = n; dataType = t; table = tbl;
@@ -843,9 +880,8 @@ namespace Shareable
         {
             return new SRecord(d,f);
         }
-        protected void Append(StringBuilder sb)
+        public override void Append(StringBuilder sb)
         {
-            sb.Append(" for "); sb.Append(Uid());
             var cm = "(";
             for (var b = fields.First(); b != null; b = b.Next())
             {
@@ -868,6 +904,7 @@ namespace Shareable
         {
             var sb = new StringBuilder("Record ");
             sb.Append(Uid());
+            sb.Append(" for "); sb.Append(Uid());
             Append(sb);
             return sb.ToString();
         }
@@ -915,6 +952,7 @@ namespace Shareable
             var sb = new StringBuilder("Update ");
             sb.Append(Uid());
             sb.Append(" of "); sb.Append(STransaction.Uid(defpos));
+            sb.Append(" for "); sb.Append(Uid());
             Append(sb);
             return sb.ToString();
         }
@@ -1192,18 +1230,17 @@ namespace Shareable
     /// </summary>
     public class AStream : StreamBase
     {
-
         public readonly string filename;
         internal Stream file;
         long position = 0, length = 0;
         public AStream(string fn)
         {
             filename = fn;
-            file = new FileStream(fn,FileMode.Open,FileAccess.ReadWrite,FileShare.None);
+            file = new FileStream(fn,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
             length = file.Seek(0, SeekOrigin.End);
             file.Seek(0, SeekOrigin.Begin);
         }
-        public AStream(AsyncStream asy)
+        public AStream(StreamBase asy)
         {
             file = asy;
         }

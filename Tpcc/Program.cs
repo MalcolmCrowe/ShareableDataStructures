@@ -22,139 +22,139 @@ namespace Tpcc
         public void CreationScript()
         {
             conn.CreateTable("WAREHOUSE",
-                new SColumn(null, "W_ID", Types.SInteger),
-                new SColumn(null, "W_NAME", Types.SString),
-                new SColumn(null, "W_STREET_1", Types.SString),
-                new SColumn(null, "W_STREET_2", Types.SString),
-                new SColumn(null, "W_CITY", Types.SString),
-                new SColumn(null, "W_STATE", Types.SString),
-                new SColumn(null, "W_ZIP", Types.SString),
-                new SColumn(null, "W_TAX", Types.SNumeric),
-                new SColumn(null, "W_YTD", Types.SNumeric)
+                new SColumn("W_ID", Types.SInteger),
+                new SColumn("W_NAME", Types.SString),
+                new SColumn("W_STREET_1", Types.SString),
+                new SColumn("W_STREET_2", Types.SString),
+                new SColumn("W_CITY", Types.SString),
+                new SColumn("W_STATE", Types.SString),
+                new SColumn("W_ZIP", Types.SString),
+                new SColumn("W_TAX", Types.SNumeric),
+                new SColumn("W_YTD", Types.SNumeric)
             );
             conn.CreateIndex("WAREHOUSE", IndexType.Primary, null, "W_ID");
             conn.CreateTable("DISTRICT",
-                new SColumn(null, "D_ID", Types.SInteger),
-                new SColumn(null, "D_W_ID", Types.SInteger),
-                new SColumn(null, "D_NAME", Types.SString),
-                new SColumn(null, "D_STREET_1", Types.SString),
-                new SColumn(null, "D_STREET_2", Types.SString),
-                new SColumn(null, "D_CITY", Types.SString),
-                new SColumn(null, "D_STATE", Types.SString),
-                new SColumn(null, "D_ZIP", Types.SString),
-                new SColumn(null, "D_TAX", Types.SNumeric),
-                new SColumn(null, "D_YTD", Types.SNumeric),
-                new SColumn(null, "D_NEXT_O_ID", Types.SInteger)
+                new SColumn("D_ID", Types.SInteger),
+                new SColumn("D_W_ID", Types.SInteger),
+                new SColumn("D_NAME", Types.SString),
+                new SColumn("D_STREET_1", Types.SString),
+                new SColumn("D_STREET_2", Types.SString),
+                new SColumn("D_CITY", Types.SString),
+                new SColumn("D_STATE", Types.SString),
+                new SColumn("D_ZIP", Types.SString),
+                new SColumn("D_TAX", Types.SNumeric),
+                new SColumn("D_YTD", Types.SNumeric),
+                new SColumn("D_NEXT_O_ID", Types.SInteger)
                 );
             conn.CreateIndex("DISTRICT", IndexType.Primary, null, "D_W_ID,", "D_ID");
             conn.CreateIndex("DISTRICT", IndexType.Reference, "WAREHOUSE", "D_W_ID");
             conn.CreateTable("CUSTOMER",
-                new SColumn(null, "C_ID", Types.SInteger),
-                new SColumn(null, "C_D_ID", Types.SInteger),
-                new SColumn(null, "C_W_ID", Types.SInteger),
-                new SColumn(null, "C_FIRST", Types.SString),
-                new SColumn(null, "C_MIDDLE", Types.SString),
-                new SColumn(null, "C_LAST", Types.SString),
-                new SColumn(null, "C_STREET_1", Types.SString),
-                new SColumn(null, "C_STREET_2", Types.SString),
-                new SColumn(null, "C_CITY", Types.SString),
-                new SColumn(null, "C_STATE", Types.SString),
-                new SColumn(null, "C_ZIP", Types.SString),
-                new SColumn(null, "C_PHONE", Types.SString),
-                new SColumn(null, "C_SINCE", Types.SDate),
-                new SColumn(null, "C_CREDIT", Types.SString),
-                new SColumn(null, "C_CREDIT_LIM", Types.SNumeric),
-                new SColumn(null, "C_DISCOUNT", Types.SNumeric),
-                new SColumn(null, "C_BALANCE", Types.SNumeric),
-                new SColumn(null, "C_YTD_PAYMENT", Types.SNumeric),
-                new SColumn(null, "C_PAYMENT_CNT", Types.SNumeric),
-                new SColumn(null, "C_DELIVERY_CNT", Types.SNumeric),
-                new SColumn(null, "C_DATA", Types.SString)
+                new SColumn("C_ID", Types.SInteger),
+                new SColumn("C_D_ID", Types.SInteger),
+                new SColumn("C_W_ID", Types.SInteger),
+                new SColumn("C_FIRST", Types.SString),
+                new SColumn("C_MIDDLE", Types.SString),
+                new SColumn("C_LAST", Types.SString),
+                new SColumn("C_STREET_1", Types.SString),
+                new SColumn("C_STREET_2", Types.SString),
+                new SColumn("C_CITY", Types.SString),
+                new SColumn("C_STATE", Types.SString),
+                new SColumn("C_ZIP", Types.SString),
+                new SColumn("C_PHONE", Types.SString),
+                new SColumn("C_SINCE", Types.SDate),
+                new SColumn("C_CREDIT", Types.SString),
+                new SColumn("C_CREDIT_LIM", Types.SNumeric),
+                new SColumn("C_DISCOUNT", Types.SNumeric),
+                new SColumn("C_BALANCE", Types.SNumeric),
+                new SColumn("C_YTD_PAYMENT", Types.SNumeric),
+                new SColumn("C_PAYMENT_CNT", Types.SNumeric),
+                new SColumn("C_DELIVERY_CNT", Types.SNumeric),
+                new SColumn("C_DATA", Types.SString)
                 );
             conn.CreateIndex("CUSTOMER", IndexType.Primary, null, "C_W_ID", "C_D_ID", "C_ID");
             conn.CreateIndex("CUSTOMER", IndexType.Reference, "DISTRICT", "C_W_ID", "C_D_ID");
             conn.CreateTable("HISTORY",
-                new SColumn(null, "H_C_ID", Types.SInteger),
-                new SColumn(null, "H_C_D_ID", Types.SInteger),
-                new SColumn(null, "H_C_W_ID", Types.SInteger),
-                new SColumn(null, "H_D_ID", Types.SInteger),
-                new SColumn(null, "H_W_ID", Types.SInteger),
-                new SColumn(null, "H_DATE", Types.SDate),
-                new SColumn(null, "H_AMOUNT", Types.SNumeric),
-                new SColumn(null, "H_DATA", Types.SString)
+                new SColumn("H_C_ID", Types.SInteger),
+                new SColumn("H_C_D_ID", Types.SInteger),
+                new SColumn("H_C_W_ID", Types.SInteger),
+                new SColumn("H_D_ID", Types.SInteger),
+                new SColumn("H_W_ID", Types.SInteger),
+                new SColumn("H_DATE", Types.SDate),
+                new SColumn("H_AMOUNT", Types.SNumeric),
+                new SColumn("H_DATA", Types.SString)
                 );
             conn.CreateIndex("HISTORY", IndexType.Reference, "CUSTOMER", "H_C_W_ID", "H_C_D_ID", "H_C_ID");
             conn.CreateIndex("HISTORY", IndexType.Reference, "DISTRICT", "H_W_ID", "H_D_ID");
             conn.CreateTable("ORDER",
-                new SColumn(null, "O_ID", Types.SInteger),
-                new SColumn(null, "O_D_ID", Types.SInteger),
-                new SColumn(null, "O_W_ID", Types.SInteger),
-                new SColumn(null, "O_C_ID", Types.SInteger),
-                new SColumn(null, "O_ENTRY_D", Types.SDate),
-                new SColumn(null, "O_CARRIER_ID", Types.SInteger),
-                new SColumn(null, "O_OL_CNT", Types.SInteger),
-                new SColumn(null, "O_ALL_LOCAL", Types.SNumeric)
+                new SColumn("O_ID", Types.SInteger),
+                new SColumn("O_D_ID", Types.SInteger),
+                new SColumn("O_W_ID", Types.SInteger),
+                new SColumn("O_C_ID", Types.SInteger),
+                new SColumn("O_ENTRY_D", Types.SDate),
+                new SColumn("O_CARRIER_ID", Types.SInteger),
+                new SColumn("O_OL_CNT", Types.SInteger),
+                new SColumn("O_ALL_LOCAL", Types.SNumeric)
                 );
             conn.CreateIndex("ORDER", IndexType.Primary, null, "O_W_ID", "O_D_ID", "O_ID");
             conn.CreateIndex("ORDER", IndexType.Reference, "CUSTOMER", "O_W_ID", "O_D_ID", "O_C_ID");
             conn.CreateTable("NEW_ORDER",
-                new SColumn(null, "NO_O_ID", Types.SInteger),
-                new SColumn(null, "NO_D_ID", Types.SInteger),
-                new SColumn(null, "NO_W_ID", Types.SInteger)
+                new SColumn("NO_O_ID", Types.SInteger),
+                new SColumn("NO_D_ID", Types.SInteger),
+                new SColumn("NO_W_ID", Types.SInteger)
                 );
             conn.CreateIndex("NEW_ORDER", IndexType.Primary, null, "NO_W_ID", "NO_D_ID", "NO_O_ID");
             conn.CreateIndex("NEW_ORDER", IndexType.Reference, "ORDER", "NO_W_ID", "NO_D_ID", "NO_O_ID");
             conn.CreateTable("ITEM",
-                new SColumn(null, "I_ID", Types.SInteger),
-                new SColumn(null, "I_IM_ID", Types.SInteger),
-                new SColumn(null, "I_NAME", Types.SString),
-                new SColumn(null, "I_PRICE", Types.SNumeric),
-                new SColumn(null, "I_DATA", Types.SString)
+                new SColumn("I_ID", Types.SInteger),
+                new SColumn("I_IM_ID", Types.SInteger),
+                new SColumn("I_NAME", Types.SString),
+                new SColumn("I_PRICE", Types.SNumeric),
+                new SColumn("I_DATA", Types.SString)
                 );
             conn.CreateIndex("ITEM", IndexType.Primary, null, "I_ID");
             conn.CreateTable("STOCK",
-                new SColumn(null, "S_I_ID", Types.SInteger),
-                new SColumn(null, "S_W_ID", Types.SInteger),
-                new SColumn(null, "S_QUANTITY", Types.SNumeric),
-                new SColumn(null, "S_DIST_01", Types.SString),
-                new SColumn(null, "S_DIST_02", Types.SString),
-                new SColumn(null, "S_DIST_03", Types.SString),
-                new SColumn(null, "S_DIST_04", Types.SString),
-                new SColumn(null, "S_DIST_05", Types.SString),
-                new SColumn(null, "S_DIST_06", Types.SString),
-                new SColumn(null, "S_DIST_07", Types.SString),
-                new SColumn(null, "S_DIST_08", Types.SString),
-                new SColumn(null, "S_DIST_09", Types.SString),
-                new SColumn(null, "S_DIST_10", Types.SString),
-                new SColumn(null, "S_YTD", Types.SNumeric),
-                new SColumn(null, "S_ORDER_CNT", Types.SInteger),
-                new SColumn(null, "S_REMOTE_CNT", Types.SInteger),
-                new SColumn(null, "S_DATA", Types.SString)
+                new SColumn("S_I_ID", Types.SInteger),
+                new SColumn("S_W_ID", Types.SInteger),
+                new SColumn("S_QUANTITY", Types.SNumeric),
+                new SColumn("S_DIST_01", Types.SString),
+                new SColumn("S_DIST_02", Types.SString),
+                new SColumn("S_DIST_03", Types.SString),
+                new SColumn("S_DIST_04", Types.SString),
+                new SColumn("S_DIST_05", Types.SString),
+                new SColumn("S_DIST_06", Types.SString),
+                new SColumn("S_DIST_07", Types.SString),
+                new SColumn("S_DIST_08", Types.SString),
+                new SColumn("S_DIST_09", Types.SString),
+                new SColumn("S_DIST_10", Types.SString),
+                new SColumn("S_YTD", Types.SNumeric),
+                new SColumn("S_ORDER_CNT", Types.SInteger),
+                new SColumn("S_REMOTE_CNT", Types.SInteger),
+                new SColumn("S_DATA", Types.SString)
                 );
             conn.CreateIndex("STOCK", IndexType.Primary, null, "S_W_ID", "S_I_ID");
             conn.CreateIndex("STOCK", IndexType.Reference, "ITEM", "S_I_ID");
             conn.CreateIndex("STOCK", IndexType.Reference, "WAREHOUSE", "S_W_ID");
             conn.CreateTable("ORDER_LINE",
-                new SColumn(null, "OL_O_ID", Types.SInteger),
-                new SColumn(null, "OL_D_ID", Types.SInteger),
-                new SColumn(null, "OL_W_ID", Types.SInteger),
-                new SColumn(null, "OL_NUMBER", Types.SInteger),
-                new SColumn(null, "OL_I_ID", Types.SInteger),
-                new SColumn(null, "OL_SUPPLY_W_ID", Types.SInteger),
-                new SColumn(null, "OL_DELIVERY_D", Types.SDate),
-                new SColumn(null, "OL_QUANTITY", Types.SNumeric),
-                new SColumn(null, "OL_AMOUNT", Types.SNumeric),
-                new SColumn(null, "OL_DIST_INFO", Types.SString)
+                new SColumn("OL_O_ID", Types.SInteger),
+                new SColumn("OL_D_ID", Types.SInteger),
+                new SColumn("OL_W_ID", Types.SInteger),
+                new SColumn("OL_NUMBER", Types.SInteger),
+                new SColumn("OL_I_ID", Types.SInteger),
+                new SColumn("OL_SUPPLY_W_ID", Types.SInteger),
+                new SColumn("OL_DELIVERY_D", Types.SDate),
+                new SColumn("OL_QUANTITY", Types.SNumeric),
+                new SColumn("OL_AMOUNT", Types.SNumeric),
+                new SColumn("OL_DIST_INFO", Types.SString)
                 );
             conn.CreateIndex("ORDER_LINE", IndexType.Primary, null, "OL_W_ID", "OL_D_ID", "OL_O_ID", "OL_NUMBER");
             conn.CreateIndex("ORDER_LINE", IndexType.Reference, "ORDER", "OL_W_ID", "OL_D_ID", "OL_O_ID");
             conn.CreateIndex("ORDER_LINE", IndexType.Reference, "STOCK", "OL_SUPPLY_W_ID", "OL_I_ID");
             conn.CreateTable("DELIVERY",
-                new SColumn(null, "DL_W_ID", Types.SInteger),
-                new SColumn(null, "DL_ID", Types.SInteger),
-                new SColumn(null, "DL_CARRIER_ID", Types.SInteger),
-                new SColumn(null, "DL_DONE", Types.SInteger),
-                new SColumn(null, "DL_SKIPPED", Types.SInteger)
+                new SColumn("DL_W_ID", Types.SInteger),
+                new SColumn("DL_ID", Types.SInteger),
+                new SColumn("DL_CARRIER_ID", Types.SInteger),
+                new SColumn("DL_DONE", Types.SInteger),
+                new SColumn("DL_SKIPPED", Types.SInteger)
                 );
             conn.CreateIndex("DELIVERY", IndexType.Primary, null, "DL_W_ID", "DL_ID");
 

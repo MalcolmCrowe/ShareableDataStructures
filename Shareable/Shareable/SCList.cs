@@ -32,6 +32,28 @@ namespace Shareable
             }
             return (me.Length > 0) ? 1 : (them.Length > 0) ? -1 : 0;
         }
+        public new SCList<K> InsertAt(K x, int n) // n>=0
+        {
+            if (Length == 0 || n == 0)
+                return new SCList<K>(x, this);
+            return new SCList<K>(element, ((SCList<K>)next).InsertAt(x, n - 1));
+        }
+        public new SCList<K> RemoveAt(int n)
+        {
+            if (Length == 0)
+                return Empty;
+            if (n == 0)
+                return (SCList<K>)next;
+            return new SCList<K>(element, ((SCList<K>)next).RemoveAt(n - 1));
+        }
+        public new SCList<K> UpdateAt(K x, int n)
+        {
+            if (Length == 0)
+                return Empty;
+            if (n == 0)
+                return new SCList<K>(x, (SCList<K>)next);
+            return new SCList<K>(element, ((SCList<K>)next).UpdateAt(x, n - 1));
+        }
         public override Bookmark<K> First()
         {
             return (Length == 0) ? null : new SCListBookmark<K>(this);

@@ -13,8 +13,8 @@ namespace Shareable
     /// <typeparam name="T"></typeparam>
     public class SList<T> : Shareable<T>
     {
-        internal readonly T element;
-        internal readonly SList<T> next;
+        public readonly T element;
+        public readonly SList<T> next;
         public static readonly SList<T> Empty = new SList<T>();
         protected SList() { element = default(T); next = null; }
         internal SList(T e,SList<T> n) : base(n.Length+1)

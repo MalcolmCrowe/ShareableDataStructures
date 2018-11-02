@@ -1,0 +1,11 @@
+E:\Shareable\StrongDB\obj\Debug\StrongDB.csprojAssemblyReference.cache
+E:\Shareable\StrongDB\obj\Debug\StrongDB.csproj.CoreCompileInputs.cache
+E:\Shareable\StrongDB\bin\Debug\StrongDB.exe.config
+E:\Shareable\StrongDB\bin\Debug\StrongDB.exe
+E:\Shareable\StrongDB\bin\Debug\StrongDB.pdb
+E:\Shareable\StrongDB\bin\Debug\Shareable.dll
+E:\Shareable\StrongDB\bin\Debug\Shareable.pdb
+E:\Shareable\StrongDB\bin\Debug\Shareable.dll.config
+E:\Shareable\StrongDB\obj\Debug\StrongDB.csproj.CopyComplete
+E:\Shareable\StrongDB\obj\Debug\StrongDB.exe
+E:\Shareable\StrongDB\obj\Debug\StrongDB.pdb
