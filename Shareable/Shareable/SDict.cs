@@ -72,6 +72,35 @@ namespace Shareable
             return (SBookmark<K, V>.Next(null, this) is SBookmark<K,V> b)?
                 new SDictBookmark<K, V>(b):null;
         }
+        public SDict<K,V> Merge(SDict<K,V>ud)
+        {
+            var r = Empty;
+            var ob = First();
+            var ub = ud.First();
+            while (ob != null && ub != null)
+            {
+                var c = ob.Value.key.CompareTo(ub.Value.key);
+                if (c == 0)
+                {
+                    r = r.Add(ub.Value.key, ub.Value.val);
+                    ob = ob.Next();
+                    ub = ub.Next();
+                } else if (c < 0)
+                {
+                    r = r.Add(ob.Value.key, ob.Value.val);
+                    ob = ob.Next();
+                } else
+                {
+                    r = r.Add(ub.Value.key, ub.Value.val);
+                    ub = ub.Next();
+                }
+            }
+            for (; ob != null; ob = ob.Next())
+                r = r.Add(ob.Value.key, ob.Value.val);
+            for (; ub != null; ub = ub.Next())
+                r = r.Add(ub.Value.key, ub.Value.val);
+            return r;
+        }
     }
     public class SDictBookmark<K, V> : Bookmark<SSlot<K, V>> where K : IComparable
     {

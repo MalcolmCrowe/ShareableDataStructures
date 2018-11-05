@@ -12,6 +12,16 @@ namespace Shareable
         public readonly SDict<int,Serialisable> steps;
         public readonly int committed;
         public readonly SDict<long, long> uids; // old->new
+        public override bool Contains(long pos)
+        { 
+            return uids.Contains(pos) || base.Contains(pos);
+        }
+        public override SDbObject Lookup(long pos)
+        {
+            if (uids.Contains(pos))
+                pos = uids.Lookup(pos);
+            return base.Lookup(pos);
+        }
         public STransaction(SDatabase d) :base(d)
         {
             rollback = (d is STransaction t)?t.rollback:d;
@@ -20,10 +30,6 @@ namespace Shareable
             committed = 0;
             uids = SDict<long, long>.Empty;
         }
-        /// <summary>
-        /// This routine is public only for testing the transaction mechanism
-        /// on non-database objects.
-        /// </summary>
         public STransaction(STransaction tr,Serialisable s) :base(tr.Add(s,tr.uid+1))
         {
             rollback = tr.rollback;
@@ -173,15 +179,15 @@ namespace Shareable
         }
         protected override SDatabase Install(SColumn c,long p)
         {
-            return new STransaction(this,((STable)objects.Lookup(c.table)).Add(c),p);
+            return new STransaction(this,((STable)Lookup(c.table)).Add(c),p);
         }
         protected override SDatabase Install(SRecord r,long p)
         {
-            return new STransaction(this,((STable)objects.Lookup(r.table)).Add(r),p);
+            return new STransaction(this,((STable)Lookup(r.table)).Add(r),p);
         }
         protected override SDatabase Install(SDelete d, long p)
         {
-            return new STransaction(this,((STable)objects.Lookup(d.table)).Remove(d.delpos),p);
+            return new STransaction(this,((STable)Lookup(d.table)).Remove(d.delpos),p);
         }
         protected override SDatabase Install(SAlter a, long p)
         {

@@ -1,2 +1,0 @@
-E:\Shareable\StrongLink\StrongLink\obj\Debug\StrongLink.csprojAssemblyReference.cache
-E:\Shareable\StrongLink\StrongLink\obj\Debug\StrongLink.csproj.CoreCompileInputs.cache

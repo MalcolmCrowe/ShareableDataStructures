@@ -21,6 +21,9 @@ namespace StrongDB
         /// </summary>
 		internal AsyncStream asy;
         SDatabase db;
+        static int _cid = 0;
+        int cid = _cid++;
+        static Random testlock = new Random();
         public DateTime lastop = DateTime.Now;
         public Thread myThread = null;
         public static string path= "";
@@ -37,7 +40,7 @@ namespace StrongDB
         /// </summary>
         public void Server()
         {
-            //     client.Blocking = false;
+            // client.Blocking = false;
             // process the connection string
             asy = new AsyncStream(client);
             myThread = Thread.CurrentThread;
@@ -45,8 +48,49 @@ namespace StrongDB
             try
             {
                 var fn = asy.GetString();
-                var db = SDatabase.Open(path,fn);
-            } catch (Exception e)
+         //       Console.WriteLine("Received " + fn);
+                db = SDatabase.Open(path,fn);
+         /*       if (fn.CompareTo("AsynTest")==0)
+                    var rnd = new Random(0);
+                for (var j = 0; j < 10; j++)
+                    {
+
+          //          Thread.Sleep(testlock.Next(1000, 5000));
+                        lock (testlock)
+                        {
+          //                  asy.Flush();
+
+                            var n = rnd.Next(10, 30);
+                        Console.WriteLine("Receive group should be " + n);
+                            for (var i = 0; i < n; i++)
+                            {
+                                var x = rnd.Next(1, 255);
+                                var y = asy.ReadByte();
+                                if (asy.rcount != n)
+                                    Console.WriteLine("Buffer length " + asy.rcount + "!=" + n);
+                                if (x != y)
+                                    Console.WriteLine("Mismatch " + x + " vs " + y);
+                            }
+                            Console.WriteLine("Matched " + n);
+                            var m = rnd.Next(10, 30);
+                        Console.WriteLine("Send group will be " + m);
+                            for (var i = 0; i < m; i++)
+                            {
+                                var x = rnd.Next(1, 255);
+                                Console.Write(" " + x);
+                                asy.WriteByte((byte)x);
+                            }
+                        asy.Flush();
+                            Console.WriteLine(" Sent " + m);
+                        }
+                } */
+            } 
+            catch (IOException)
+            {
+                asy.Close();
+                return;
+            }
+            catch (Exception e)
             {
                 try
                 {
@@ -77,31 +121,35 @@ namespace StrongDB
                     {
                         case Protocol.Get:
                             {
-                                var tr = db.Transact();
-                                var tb = STable.Get(tr, asy);
+                                var tb = STable.Get(db, asy);
                                 var n = asy.GetInt();
                                 var k = SCList<Variant>.Empty;
                                 for (var i = 0; i < n; i++)
-                                    k = k.InsertAt(new Variant(Variants.Single,asy._Get(tr)), k.Length);
+                                    k = k.InsertAt(new Variant(Variants.Single,asy._Get(db)), k.Length);
                                 SIndex px = null;
-                                for (var b = tr.objects.First(); px == null && b != null; b = b.Next())
+                                for (var b = db.objects.First(); px == null && b != null; b = b.Next())
                                     if (b.Value.val is SIndex x && x.table == tb.uid)
                                         px = x;
-                                var sb = new StringBuilder();
-                                var cm = '[';
+                                var sb = new StringBuilder("[");
+                                var cm = "";
                                 for (var b=px.rows.PositionAt(k);b!=null; b=(MTreeBookmark)b.Next())
                                 {
-                                    sb.Append(cm); cm = ',';
-                                    tr.Get(b.value()).Append(sb);
+                                    sb.Append(cm); cm = ",";
+                                    db.Get(b.value()).Append(sb);
                                 }
-                                db = db.MaybeAutoCommit(tr);
+                                sb.Append(']');
+                                asy.PutString(sb.ToString());
+                                asy.Flush();
                                 break;
                             }
                         case Protocol.Table:
                             {
                                 var tr = db.Transact();
-                                var tb = STable.Get(tr, asy);
-                                tr = new STransaction(tr,tb); // table name
+                                var tn = asy.GetString();// table name
+                                if (tr.names.Contains(tn))
+                                    throw new Exception("Duplicate table name " + tn);
+                                var tb = new STable(tr, tn);
+                                tr = new STransaction(tr,tb); 
                                 var n = asy.GetInt(); // #cols
                                 for (var i = 0; i < n; i++)
                                 {
@@ -110,6 +158,8 @@ namespace StrongDB
                                     tr = new STransaction(tr, new SColumn(tr,cn,dt,tb.uid));
                                 }
                                 db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
                                 break;
                             }
                         case Protocol.Insert:
@@ -117,34 +167,123 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var tb = (STable)tr.names.Lookup(asy.GetString()); // table name
                                 var n = asy.GetInt(); // # named cols
-                                var cs = (n==0)?tb.cpos:SList<SColumn>.Empty;
+                                var cs = SList<string>.Empty;
                                 for (var i = 0; i < n; i++)
-                                {
-                                    var cn = asy.GetString();
-                                    for (var b = tb.cpos; b.Length != 0; b = b.next)
-                                        if (b.element.name.CompareTo(cn) == 0)
-                                        {
-                                            cs = cs.InsertAt(b.element, cs.Length);
-                                            break;
-                                        }
-                                }
-                                var nc = cs.Length;
+                                    cs = cs.InsertAt(asy.GetString(),cs.Length);
+                                var nc = (n==0)?tb.cpos.Length:cs.Length;
                                 var nr = asy.GetInt(); // #records
-                                for (var i=0;i<nr;i++)
+                                for (var i = 0; i < nr; i++)
                                 {
                                     var f = SDict<string, Serialisable>.Empty;
-                                    for (var b = cs; b.Length != 0; b = b.next)
-                                        f = f.Add(b.element.name, asy._Get(tr)); // serialsable values
+                                    if (n == 0)
+                                        for (var b = tb.cpos; b.Length != 0; b = b.next)
+                                            f = f.Add(b.element.name, asy._Get(tr)); // serialsable values
+                                    else
+                                        for (var b = cs; b.Length != 0; b = b.next)
+                                            f = f.Add(b.element, asy._Get(tr)); // serialsable values
                                     tr = new STransaction(tr, new SRecord(tr, tb.uid, f));
                                 }
                                 db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
                                 break;
                             }
                           case Protocol.Alter:
                             {
                                 var tr = db.Transact();
-
+                                var tn = asy.GetString(); // table name
+                                var tb = (STable)tr.names.Lookup(tn)??
+                                    throw new Exception("Table "+tn+" not found"); 
+                                var cn = asy.GetString(); // column name or ""
+                                var nm = asy.GetString(); // new name
+                                if (cn.Length==0)
+                                    tr = new STransaction(tr,new SAlter(tr, nm, Types.STable, tb.uid, 0));
+                                else
+                                    tr = new STransaction(tr, new SAlter(tr, nm, Types.SColumn, tb.uid, 
+                                        tb.Find(cn)?.uid??throw new Exception("Column "+cn+" not found")));
                                 db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Drop:
+                            {
+                                var tr = db.Transact();
+                                var nm = asy.GetString(); // object name
+                                var pt = tr.names.Lookup(nm) ??
+                                    throw new Exception("Object " + nm + " not found");
+                                var cn = asy.GetString();
+                                if (cn.Length==0)
+                                    tr = new STransaction(tr,new SDrop(tr,pt.uid,-1));
+                                else
+                                    tr = new STransaction(tr, new SDrop(tr,
+                                        ((STable)pt).Find(cn)?.uid ?? throw new Exception("Column " + cn + " not found"),
+                                        pt.uid));
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Index:
+                            {
+                                var tr = db.Transact();
+                                var tn = asy.GetString(); // table name
+                                var tb = (STable)tr.names.Lookup(tn) ??
+                                    throw new Exception("Table " + tn + " not found");
+                                var xt = asy.ReadByte();
+                                var rn = asy.GetString();
+                                var nc = asy.GetInt();
+                                var cs = SList<long>.Empty;
+                                for (var i=0;i<nc;i++)
+                                {
+                                    var cn = asy.GetString();
+                                    cs = cs.InsertAt(tb.Find(cn)?.uid ??
+                                        throw new Exception("Column " + cn + " not found"), cs.Length);
+                                }
+                                tr = new STransaction(tr, new SIndex(tr, tb.uid, xt < 2, cs));
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Read:
+                            {
+                                var id = asy.GetLong();
+                                var sb = new StringBuilder();
+                                db.Get(id).Append(sb);
+                                asy.PutString(sb.ToString());
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Update:
+                            {
+                                var tr = db.Transact();
+                                var id = asy.GetLong();
+                                var rc = db.Get(id);
+                                var tb = (STable)tr.Lookup(rc.table); 
+                                var n = asy.GetInt(); // # cols updated
+                                var f = SDict<string, Serialisable>.Empty;
+                                for (var i = 0; i < n; i++)
+                                {
+                                    var cn = asy.GetString();
+                                    f = f.Add(cn, asy._Get(db));
+                                }
+                                tr = new STransaction(tr, new SUpdate(tr, rc, f));
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Delete:
+                            {
+                                var tr = db.Transact();
+                                var id = asy.GetLong();
+                                var rc = db.Get(id) as SRecord ??
+                                    throw new Exception("Record " + id + " not found");
+                                tr = new STransaction(tr, new SDelete(tr, rc.table,rc.uid));
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Responses.Done);
+                                asy.Flush();
                                 break;
                             }
                     }
@@ -299,6 +438,7 @@ namespace StrongDB
         internal int rx = 0;
         internal int rcount = 0;
         bool exception = false;
+
         public override bool CanRead => throw new NotImplementedException();
 
         public override bool CanSeek => throw new NotImplementedException();
@@ -336,6 +476,7 @@ namespace StrongDB
                     wbuf.pos -= 4;
                     wbuf.buf[2] = (byte)(wbuf.pos >> 7);
                     wbuf.buf[3] = (byte)(wbuf.pos & 0x7f);
+                    rcount = 0;
                 }
             else
             {
@@ -369,20 +510,22 @@ namespace StrongDB
         /// Get a byte from the stream: if necessary refill the buffer from the network
         /// </summary>
         /// <returns>the byte</returns>
-        protected override void GetBuf(Buffer b)
+        protected override bool GetBuf(Buffer b)
         {
             b.pos = 2;
             rcount = 0;
             rx = 0;
             try
             {
-                rbuf.wait = new ManualResetEvent(false);
-                int x = rcount;
-                client.BeginReceive(rbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), rbuf);
-                rbuf.wait.WaitOne();
+                b.wait = new ManualResetEvent(false);
+                client.BeginReceive(b.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), b);
+                b.wait.WaitOne();
+                b.len = rcount + 2;
+                return rcount > 0;
             }
             catch (SocketException)
             {
+                return false;
             }
         }
         /// <summary>
@@ -404,7 +547,6 @@ namespace StrongDB
                 {
                     rcount = ((buf.buf[0]) << 7) + buf.buf[1];
                     buf.wait.Set();
-                    buf.len = rcount + 2;
                 }
                 else
                 {
@@ -418,9 +560,13 @@ namespace StrongDB
                 buf.wait.Set();
                 Close();
             }
-            Console.WriteLine("Received " + rcount + " bytes, starting with " + rbuf.buf[2]);
         }
-
+        public override int ReadByte()
+        {
+            if (rbuf.pos >= rcount + 2)
+                GetBuf(rbuf);
+            return base.ReadByte();
+        }
         public override int Read(byte[] buffer, int offset, int count)
         {
             int j;

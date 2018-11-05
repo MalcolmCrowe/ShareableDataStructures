@@ -5,7 +5,7 @@ namespace Shareable
     {
         EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
         Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
-        Update = 10, Delete = 11, View = 12
+        Read = 10, Update = 11, Delete = 12, View = 13
     }
     public enum Responses
     {
@@ -31,6 +31,14 @@ namespace Shareable
                 databases = databases.Add(fname, db);
             }
             return db.Load();
+        }
+        public virtual SDbObject Lookup(long pos)
+        {
+            return objects.Lookup(pos);
+        }
+        public virtual bool Contains(long pos)
+        {
+            return objects.Contains(pos);
         }
         SDatabase(string fname)
         {
@@ -65,13 +73,13 @@ namespace Shareable
             name = db.name;
             if (a.parent==0)
             {
-                var ot = (STable)db.objects.Lookup(a.defpos);
+                var ot = (STable)db.Lookup(a.defpos);
                 var nt = new STable(ot,a.name);
                 objects = db.objects.Add(a.defpos, nt);
                 names = db.names.Remove(ot.name).Add(a.name,nt);
             } else
             {
-                var ot = (STable)db.objects.Lookup(a.parent);
+                var ot = (STable)db.Lookup(a.parent);
                 var oc = ot.cols.Lookup(a.defpos);
                 var nc = new SColumn(oc, a.name, a.dataType);
                 var nt = ot.Add(nc);
@@ -85,11 +93,11 @@ namespace Shareable
             name = db.name;
             if (d.parent == 0)
             {
-                var ot = (STable)db.objects.Lookup(d.drpos);
+                var ot = (STable)db.Lookup(d.drpos);
                 objects = db.objects.Remove(d.drpos);
                 names = names.Remove(ot.name);
             } else { 
-                var ot = (STable)db.objects.Lookup(d.parent);
+                var ot = (STable)db.Lookup(d.parent);
                 var nt = ot.Remove(d.drpos);
                 objects = db.objects.Add(d.parent, nt);
             }
@@ -118,9 +126,18 @@ namespace Shareable
             }
             return db;
         }
-        public Serialisable Get(long pos)
+        public SRecord Get(long pos)
         {
-            return dbfiles.Lookup(name).Get(this, pos);
+            var f = dbfiles.Lookup(name);
+            lock (f) { 
+                var rc = f.Get(this, pos) as SRecord ?? 
+                    throw new System.Exception("Record "+pos+" never defined");
+                var tb = Lookup(rc.table) as STable ??
+                    throw new System.Exception("Table " + rc.table + " has been dropped");
+                if (!tb.rows.Contains(rc.Defpos))
+                    throw new System.Exception("Record " + pos + " has been dropped");
+                return f.Get(this, tb.rows.Lookup(rc.Defpos)) as SRecord;
+            }
         }
         public SDatabase Add(Serialisable s,long p)
         {
@@ -142,7 +159,7 @@ namespace Shareable
             return new SDatabase(this, p);
         }
         /// <summary>
-        /// Only for testing environments!
+        /// Close() is only for testing environments!
         /// </summary>
         public void Close()
         {
@@ -160,15 +177,15 @@ namespace Shareable
         }
         protected virtual SDatabase Install(SColumn c,long p)
         {
-            return new SDatabase(this,((STable)objects.Lookup(c.table)).Add(c),p);
+            return new SDatabase(this,((STable)Lookup(c.table)).Add(c),p);
         }
         protected virtual SDatabase Install(SRecord r,long c)
         {
-            return new SDatabase(this, ((STable)objects.Lookup(r.table)).Add(r),c);
+            return new SDatabase(this, ((STable)Lookup(r.table)).Add(r),c);
         }
         protected virtual SDatabase Install(SDelete d,long c)
         {
-            return new SDatabase(this, ((STable)objects.Lookup(d.table)).Remove(d.delpos),c);
+            return new SDatabase(this, ((STable)Lookup(d.table)).Remove(d.delpos),c);
         }
         protected virtual SDatabase Install(SAlter a,long c)
         {

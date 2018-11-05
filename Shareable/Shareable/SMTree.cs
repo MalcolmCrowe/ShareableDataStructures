@@ -311,7 +311,7 @@ namespace Shareable
             return (_inner != null) ? _inner.value() : (_pmk != null) ? _pmk.Value.key :
                 (_outer.val != null) ? (int)_outer.val.ob : 0;
         }
-        public Serialisable Get(SDatabase db)
+        public SRecord Get(SDatabase db)
         {
             return db.Get(value());
         }

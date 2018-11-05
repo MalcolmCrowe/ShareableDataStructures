@@ -8,7 +8,7 @@ using Shareable;
 
 namespace StrongLink
 {
-    public enum IndexType { Primary, Unique, Reference };
+    public enum IndexType { Primary =0, Unique=1, Reference=2 };
     public class StrongConnect
     {
         internal AsyncClient asy;
@@ -51,6 +51,7 @@ namespace StrongLink
                 throw new Exception("No connection to " + host + ":" + port);
             asy = new AsyncClient(this, socket);
             asy.PutString(fn);
+            asy.Flush();
         }
         public void CreateTable(string n,params SColumn[] cols)
         {
@@ -104,11 +105,42 @@ namespace StrongLink
             asy.PutInt(key.Length);
             foreach (var s in key)
                 s.Put(asy);
-            var b = asy.Receive();
-            if (b == Responses.Done)
-                return "[]";
-            else
-                return asy.GetString();
+            var r = asy.GetString();
+            return r;
+        }
+/*        public bool RoundTrip(Random rnd)
+        {
+      //      asy.Flush();
+            var n = rnd.Next(10, 30);
+            Console.WriteLine("Send group will be " + n);
+            for (int i = 0; i < n; i++)
+            {
+                var x = rnd.Next(1, 255);
+                Console.Write(" " + x);
+                asy.WriteByte((byte)x);
+            }
+            asy.Flush();
+            Console.WriteLine(" Sent "+n);
+            var m = rnd.Next(10,30);
+            Console.WriteLine("Receive group should be " + m);
+            for(var i=0;i<m;i++)
+            {
+                var x = rnd.Next(1, 255);
+                var y = asy.ReadByte();
+                if (y < 0)
+                {
+                    Console.WriteLine("EOF seen");
+                    return false;
+                }
+                if (x != y)
+                    Console.WriteLine("Mismatch " + x + " vs " + y+ " rbuf is "+asy.rbuf.bid);
+            }
+            Console.WriteLine(" Matched " + m);
+            return true;
+        } */
+        public void Close()
+        {
+            asy.Close();
         }
     }
     class AsyncClient : StreamBase
@@ -130,7 +162,7 @@ namespace StrongLink
             wbuf.pos = 2;
             connect = pc;
         }
-        protected override void GetBuf(Buffer b)
+        protected override bool GetBuf(Buffer b)
         {
             b.pos = 2;
             rcount = 0;
@@ -138,41 +170,45 @@ namespace StrongLink
             try
             {
                 b.wait = new ManualResetEvent(false);
-                client.BeginReceive(b.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), this);
+                client.BeginReceive(b.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), b);
                 b.wait.WaitOne();
+                b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
+                return rcount> 0;
             }
             catch (SocketException)
             {
+                return false;
             }
         }
         void Callback(IAsyncResult ar)
         {
+            var buf = ar.AsyncState as Buffer;
             try
             {
                 int rc = client.EndReceive(ar);
                 if (rc == 0)
                 {
                     rcount = 0;
-                    rbuf.wait.Set();
+                    buf.wait.Set();
                     return;
                 }
                 if (rc + rx == Buffer.Size)
                 {
-                    rcount = (((int)rbuf.buf[0]) << 7) + (int)rbuf.buf[1];
-                    rbuf.wait.Set();
+                    rcount = ((buf.buf[0]) << 7) + buf.buf[1];
+                    buf.wait.Set();
                 }
                 else
                 {
                     rx += rc;
-                    client.BeginReceive(rbuf.buf, rx, Buffer.Size - rx, 0, new AsyncCallback(Callback), this);
+                    client.BeginReceive(buf.buf, rx, Buffer.Size - rx, 0, new AsyncCallback(Callback), buf);
                 }
             }
             catch (SocketException)
             {
                 rcount = 0;
-                rbuf.wait.Set();
+                buf.wait.Set();
             }
         }
         public override int Read(byte[] buffer, int offset, int count)
@@ -200,8 +236,8 @@ namespace StrongLink
         void Callback1(IAsyncResult ar)
         {
             Buffer buf = ar.AsyncState as Buffer;
+            client.EndSend(ar);
             buf.wait.Set();
-            Console.WriteLine("Flush done");
         }
         public override void Write(byte[] buffer, int offset, int count)
         {
@@ -216,6 +252,7 @@ namespace StrongLink
         {
             rcount = 0;
             rbuf.pos = 2;
+            rbuf.len = 0;
             if (wbuf.wait != null)
                 wbuf.wait.WaitOne();
             wbuf.wait = new ManualResetEvent(false);
@@ -223,7 +260,6 @@ namespace StrongLink
             wbuf.pos -= 2;
             wbuf.buf[0] = (byte)(wbuf.pos >> 7);
             wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
-            Console.WriteLine("Sending " + wbuf.pos + " bytes, first is " + wbuf.buf[2]);
             try
             {
                 IAsyncResult br = client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);

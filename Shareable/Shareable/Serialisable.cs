@@ -414,7 +414,7 @@ namespace Shareable
         }
         /// <summary>
         /// A database object got from the file will have
-        /// its uid given by the position it is read from
+        /// its uid given by the position it is read from.
         /// </summary>
         /// <param name="t"></param>
         /// <param name="f"></param>
@@ -486,6 +486,13 @@ namespace Shareable
             }
             else
                 return new STable(this, rows.Remove(n));
+        }
+        public SColumn Find(string cn)
+        {
+            for (var b = cols.First(); b != null; b = b.Next())
+                if (b.Value.val.name.CompareTo(cn) == 0)
+                    return b.Value.val;
+            return null;
         }
         public STable(STable t,string n) :base(t)
         {
@@ -613,7 +620,7 @@ namespace Shareable
         {
             if (Committed) // nothing to do!
                 return base.Commit(tr,c,f);
-            return new STransaction(tr,c,(STable)tr.objects.Lookup(table),this, new SColumn(tr, this, f),f.Length);
+            return new STransaction(tr,c,(STable)tr.Lookup(table),this, new SColumn(tr, this, f),f.Length);
         }
         public static SColumn Get(SDatabase d, StreamBase f)
         {
@@ -846,7 +853,7 @@ namespace Shareable
             table = tr.Fix(r.table);
             fields = r.fields;
             f.PutLong(table);
-            var tb = (STable)tr.objects.Lookup(table);
+            var tb = (STable)tr.Lookup(table);
             f.PutInt(r.fields.Count);
             for (var b=r.fields.First();b!=null;b=b.Next())
             {
@@ -863,7 +870,7 @@ namespace Shareable
         {
             table = f.GetLong();
             var n = f.GetInt();
-            var tb = (STable)d.objects.Lookup(table);
+            var tb = (STable)d.Lookup(table);
             var a = SDict<string, Serialisable>.Empty;
             for(var i = 0;i< n;i++)
             {
@@ -882,11 +889,11 @@ namespace Shareable
         }
         public override void Append(StringBuilder sb)
         {
-            var cm = "(";
+            sb.Append("(_id:");sb.Append(Defpos);
             for (var b = fields.First(); b != null; b = b.Next())
             {
-                sb.Append(cm); cm = ",";
-                sb.Append(b.Value.key); sb.Append("=");
+                sb.Append(","); 
+                sb.Append(b.Value.key); sb.Append(":");
                 sb.Append(b.Value.val.ToString());
             }
             sb.Append(")");
@@ -912,7 +919,7 @@ namespace Shareable
     public class SUpdate : SRecord
     {
         public readonly long defpos;
-        public SUpdate(STransaction tr,SRecord r) : base(tr,r.table,r.fields)
+        public SUpdate(STransaction tr,SRecord r,SDict<string,Serialisable>u) : base(tr,r.table,r.fields.Merge(u))
         {
             defpos = r.Defpos;
         }
@@ -1029,7 +1036,7 @@ namespace Shareable
             primary = p;
             cols = c;
             references = 0;
-            rows = new SMTree(Info((STable)tr.objects.Lookup(table), cols));
+            rows = new SMTree(Info((STable)tr.Lookup(table), cols));
         }
         internal SIndex(SIndex x, long t, SList<long> c) : base(x)
         {
@@ -1047,7 +1054,7 @@ namespace Shareable
                 c[i] = f.GetInt();
             references = f.GetLong();
             cols = SList<long>.New(c);
-            rows = new SMTree(Info((STable)d.objects.Lookup(table), cols));
+            rows = new SMTree(Info((STable)d.Lookup(table), cols));
         }
         public SIndex(STransaction tr, SIndex x, AStream f) : base(x, f)
         {
@@ -1106,7 +1113,6 @@ namespace Shareable
             public long start;
             public int len;
             public int pos;
-            bool eof;
             StreamBase fs;
             public ManualResetEvent wait = null; // for AsyncStream
             public Buffer(StreamBase f)
@@ -1115,7 +1121,6 @@ namespace Shareable
                 pos = 0;
                 len = Size;
                 start = f.Length;
-                eof = false;
                 fs = f;
             }
             internal Buffer(AStream f, long s)
@@ -1124,19 +1129,16 @@ namespace Shareable
                 start = s;
                 pos = 0;
                 f.GetBuf(this);
-                eof = len < Size;
                 fs = f;
             }
             internal int GetByte()
             {
                 if (pos >= len)
                 {
-                    if (eof)
-                        return -1;
                     start += len;
                     pos = 0;
-                    fs.GetBuf(this);
-                    eof = len < Size;
+                    if (!fs.GetBuf(this))
+                        return -1;
                 }
                 return buf[pos++];
             }
@@ -1151,9 +1153,9 @@ namespace Shareable
                 buf[pos++] = b;
             }
         }
-        protected Buffer rbuf, wbuf;
+        protected Buffer rbuf,wbuf;
         protected StreamBase() { }
-        protected abstract void GetBuf(Buffer b);
+        protected abstract bool GetBuf(Buffer b);
         protected abstract void PutBuf(Buffer b);
         public override int ReadByte()
         {
@@ -1299,21 +1301,21 @@ namespace Shareable
                     case Types.SColumn:
                         {
                             var sc = (SColumn)b.Value.val;
-                            var st = (STable)tr.objects.Lookup(sc.table);
+                            var st = (STable)tr.Lookup(sc.table);
                             tr = new STransaction(tr, b.Value.key, st, sc, new SColumn(tr, sc, this),Length);
                             break;
                         }
                     case Types.SRecord:
                         {
                             var sr = (SRecord)b.Value.val;
-                            var st = (STable)tr.objects.Lookup(sr.table);
+                            var st = (STable)tr.Lookup(sr.table);
                             tr = new STransaction(tr, b.Value.key, st, sr, new SRecord(tr, sr, this),Length);
                             break;
                         }
                     case Types.SDelete:
                         {
                             var sd = (SDelete)b.Value.val;
-                            var st = (STable)tr.objects.Lookup(sd.table);
+                            var st = (STable)tr.Lookup(sd.table);
                             tr = new STransaction(tr, b.Value.key, st, sd,Length);
                             break;
                         }
@@ -1362,16 +1364,20 @@ namespace Shareable
             throw new System.NotImplementedException();
         }
 
-        protected override void GetBuf(Buffer b)
+        protected override bool GetBuf(Buffer b)
         {
+            if (b.start > length)
+                return false;
             file.Seek(b.start, SeekOrigin.Begin);
             b.len = file.Read(b.buf, 0, Buffer.Size);
+            return b.len>0;
         }
 
         protected override void PutBuf(Buffer b)
         {
             file.Seek(0, SeekOrigin.End);
             file.Write(b.buf, 0, b.pos);
+            length = Length;
             file.Flush();
         }
     }
