@@ -65,34 +65,6 @@ namespace Shareable
                 return "'" + (uid - _uid);
             return "" + uid;
         }
- /*       protected override SDatabase Install(STable t,long p)
-        {
-            return new STransaction(this,t,p);
-        }
-        protected override SDatabase Install(SColumn c,long p)
-        {
-            return new STransaction(this,((STable)Lookup(c.table)).Add(c),p);
-        }
-        protected override SDatabase Install(SRecord r,long p)
-        {
-            return new STransaction(this,((STable)Lookup(r.table)).Add(r),p);
-        }
-        protected override SDatabase Install(SDelete d, long p)
-        {
-            return new STransaction(this,((STable)Lookup(d.table)).Remove(d.delpos),p);
-        }
-        protected override SDatabase Install(SAlter a, long p)
-        {
-            return new STransaction(this, a, p);
-        }
-        protected override SDatabase Install(SDrop d, long p)
-        {
-            return new STransaction(this, d, p);
-        }
-        protected override SDatabase Install(SView v, long p)
-        {
-            return new STransaction(this, v, p);
-        } */
         public override STransaction Transact(bool auto=true)
         {
             return this; // ignore the parameter
