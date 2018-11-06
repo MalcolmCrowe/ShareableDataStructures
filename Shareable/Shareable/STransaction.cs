@@ -8,156 +8,52 @@ namespace Shareable
         // uids above this number are for uncommitted objects
         public static readonly long _uid = 0x80000000;
         public readonly long uid;
+        public readonly bool autoCommit;
         public readonly SDatabase rollback;
         public readonly SDict<int,Serialisable> steps;
-        public readonly int committed;
-        public readonly SDict<long, long> uids; // old->new
-        public override bool Contains(long pos)
-        { 
-            return uids.Contains(pos) || base.Contains(pos);
-        }
-        public override SDbObject Lookup(long pos)
+        public STransaction(SDatabase d,bool auto) :base(d)
         {
-            if (uids.Contains(pos))
-                pos = uids.Lookup(pos);
-            return base.Lookup(pos);
-        }
-        public STransaction(SDatabase d) :base(d)
-        {
+            autoCommit = auto;
             rollback = (d is STransaction t)?t.rollback:d;
             uid = _uid;
             steps = SDict<int,Serialisable>.Empty;
-            committed = 0;
-            uids = SDict<long, long>.Empty;
         }
         public STransaction(STransaction tr,Serialisable s) :base(tr.Add(s,tr.uid+1))
         {
+            autoCommit = tr.autoCommit;
             rollback = tr.rollback;
             steps = tr.steps.Add(tr.steps.Count,s);
             uid =  tr.uid+1;
-            committed = tr.committed;
-            uids = tr.uids;
         }
         public STransaction(STransaction tr,int c) :base(tr)
         {
+            autoCommit = tr.autoCommit;
             rollback = tr.rollback;
             steps = tr.steps;
             uid = tr.uid;
-            committed = c;
-            uids = tr.uids;
         }
-        public STransaction(STransaction tr, STable t, long p) : base(tr,t,p)
+        public SDatabase Commit()
         {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = tr.committed;
-            uids = tr.uids;
-        }
-        public STransaction(STransaction tr, SAlter t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = tr.committed;
-            uids = tr.uids;
-        }
-        public STransaction(STransaction tr, SDrop t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = tr.committed;
-            uids = tr.uids;
-        }
-        public STransaction(STransaction tr, SView t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = tr.committed;
-            uids = tr.uids;
-        }
-        public STransaction(STransaction tr, int c, STable old, STable t,long p) :base(tr.Remove(old.uid),t,p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = c;
-            uids = tr.uids.Add(old.uid,t.uid);
-        }
-        public STransaction(STransaction tr, int c, SAlter old, SAlter t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = c;
-            uids = tr.uids.Add(old.uid, t.uid);
-        }
-        public STransaction(STransaction tr, int c, SDrop old, SDrop t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = c;
-            uids = tr.uids.Add(old.uid, t.uid);
-        }
-        public STransaction(STransaction tr, int c, SView old, SView t, long p) : base(tr, t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = c;
-            uids = tr.uids.Add(old.uid, t.uid);
-        }
-        public STransaction(STransaction tr, int c, SIndex old, SIndex t, long p) : base(tr.Remove(old.uid), t, p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = c;
-            uids = tr.uids.Add(old.uid, t.uid);
-        }
-        public STransaction(STransaction tr, int n, STable t, SColumn old, SColumn c,long p) :base(tr, t.Remove(old.uid).Add(c),p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = n;
-            uids = tr.uids.Add(old.uid,c.uid);
-        }
-        public STransaction(STransaction tr, int n,STable t,SRecord old, SRecord r,long p) :base(tr,t.Remove(old.uid).Add(r),p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = n;
-            uids = tr.uids.Add(old.uid, r.uid);
-        }
-        public STransaction(STransaction tr, int n,STable t,SDelete d,long p) :base(tr,t.Remove(d.delpos),p)
-        {
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-            committed = n;
-            uids = tr.uids;
-        }
-        /// <summary>
-        /// If there are concurrent transactions there will be more code here.
-        /// </summary>
-        /// <returns>the steps as modified by the commit process</returns>
-        public STransaction Commit()
-        {
-            var dbfile = dbfiles.Lookup(name);
+            AStream dbfile = dbfiles.Lookup(name);
+            SDatabase db = databases.Lookup(name);
+            long pos = 0;
+            var since = dbfile.GetAll(this, curpos, db.curpos);
+            for (var i = 0; i < since.Length; i++)
+                for (var b = steps.First(); b != null; b = b.Next())
+                    if (since[i].Conflicts(b.Value.val))
+                        throw new Exception("Transaction Conflict on " + b.Value);
             lock (dbfile.file)
             {
-                var since = dbfile.GetAll(this, curpos);
+                db = databases.Lookup(name);
+                since = dbfile.GetAll(this, pos,dbfile.Length);
                 for (var i = 0; i < since.Length; i++)
-                    for (var b=steps.First();b!=null;b=b.Next())
+                    for (var b = steps.First(); b != null; b = b.Next())
                         if (since[i].Conflicts(b.Value.val))
-                            throw new Exception("Transaction Conflict on "+b.Value);
-                return dbfile.Commit(this);
+                            throw new Exception("Transaction Conflict on " + b.Value);
+                db = dbfile.Commit(db,steps);
             }
+            Install(db);
+            return db;
         }
         /// <summary>
         /// We will single-quote transaction-local uids
@@ -169,11 +65,7 @@ namespace Shareable
                 return "'" + (uid - _uid);
             return "" + uid;
         }
-        internal long Fix(long uid)
-        {
-            return (uids.Contains(uid)) ? uids.Lookup(uid) : uid;
-        }
-        protected override SDatabase Install(STable t,long p)
+ /*       protected override SDatabase Install(STable t,long p)
         {
             return new STransaction(this,t,p);
         }
@@ -200,14 +92,10 @@ namespace Shareable
         protected override SDatabase Install(SView v, long p)
         {
             return new STransaction(this, v, p);
-        }
-        public override STransaction Transact()
+        } */
+        public override STransaction Transact(bool auto=true)
         {
-            return this;
-        }
-        public override STransaction MaybeAutoCommit(STransaction tr)
-        {
-            return tr;
+            return this; // ignore the parameter
         }
         public override SDatabase Rollback()
         {

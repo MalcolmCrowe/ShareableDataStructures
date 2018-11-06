@@ -17,20 +17,24 @@ namespace Shareable
         public readonly SDict<long, SDbObject> objects;
         public readonly SDict<string, SDbObject> names;
         public readonly long curpos;
-        static object files = new object(); // a lock
+        protected static object files = new object(); // a lock
         protected static SDict<string,AStream> dbfiles = SDict<string,AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string,SDatabase>.Empty;
         public static SDatabase Open(string path,string fname)
         {
             if (dbfiles.Contains(fname))
                 return databases.Lookup(fname);
-            var db = new SDatabase(fname);
+            var db = new SDatabase(fname).Load();
             lock (files)
             {
                 dbfiles = dbfiles.Add(fname, new AStream(path+fname));
                 databases = databases.Add(fname, db);
             }
-            return db.Load();
+            return db;
+        }
+        public static void Install(SDatabase db)
+        {
+             databases = databases.Add(db.name, db);
         }
         public virtual SDbObject Lookup(long pos)
         {
@@ -47,7 +51,7 @@ namespace Shareable
             names = SDict<string, SDbObject>.Empty;
             curpos = 0;
         }
-        protected SDatabase(SDatabase db)
+        public SDatabase(SDatabase db)
         {
             name = db.name;
             objects = db.objects;
@@ -61,14 +65,14 @@ namespace Shareable
             names = db.names;
             curpos = db.curpos;
         }
-        protected SDatabase(SDatabase db,STable t,long c)
+        public SDatabase(SDatabase db,STable t,long c)
         {
             name = db.name;
             objects = db.objects.Add(t.uid, t);
             names = db.names.Add(t.name, t);
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SAlter a,long c)
+        public SDatabase(SDatabase db,SAlter a,long c)
         {
             name = db.name;
             if (a.parent==0)
@@ -88,7 +92,7 @@ namespace Shareable
             }
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SDrop d,long c)
+        public SDatabase(SDatabase db,SDrop d,long c)
         {
             name = db.name;
             if (d.parent == 0)
@@ -103,14 +107,14 @@ namespace Shareable
             }
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SView v,long c)
+        public SDatabase(SDatabase db,SView v,long c)
         {
             name = db.name;
             objects = objects.Add(v.uid, v);
             names = names.Add(v.name, v);
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SIndex x,long c)
+        public SDatabase(SDatabase db,SIndex x,long c)
         {
             name = db.name;
             objects = objects.Add(x.uid, x);
@@ -203,13 +207,13 @@ namespace Shareable
         {
             return new SDatabase(this, x, c);
         }
-        public virtual STransaction Transact()
+        public virtual STransaction Transact(bool auto=true)
         {
-            return new STransaction(this);
+            return new STransaction(this,auto);
         }
-        public virtual STransaction MaybeAutoCommit(STransaction tr)
+        public SDatabase MaybeAutoCommit(STransaction tr)
         {
-            return tr.Commit();
+            return tr.autoCommit ? tr.Commit() : tr;
         }
         public virtual SDatabase Rollback()
         {
