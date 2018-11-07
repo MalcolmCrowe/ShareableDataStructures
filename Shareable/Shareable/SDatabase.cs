@@ -17,19 +17,19 @@ namespace Shareable
         public readonly SDict<long, SDbObject> objects;
         public readonly SDict<string, SDbObject> names;
         public readonly long curpos;
-        protected static object files = new object(); // a lock
+        protected static object files = new object(); // a lock (not normally ever used)
         protected static SDict<string,AStream> dbfiles = SDict<string,AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string,SDatabase>.Empty;
-        public static SDatabase Open(string path,string fname)
+        protected virtual bool Committed => true;
+        public static SDatabase Open(string path, string fname)
         {
             if (dbfiles.Contains(fname))
-                return databases.Lookup(fname);
-            var db = new SDatabase(fname).Load();
-            lock (files)
-            {
-                dbfiles = dbfiles.Add(fname, new AStream(path+fname));
-                databases = databases.Add(fname, db);
-            }
+                return databases.Lookup(fname)
+                    ?? throw new System.Exception("Database is loading");
+            var db = new SDatabase(fname);
+            dbfiles = dbfiles.Add(fname, new AStream(path + fname));
+            db = db.Load();
+            databases = databases.Add(fname, db);
             return db;
         }
         public static void Install(SDatabase db)
@@ -51,28 +51,35 @@ namespace Shareable
             names = SDict<string, SDbObject>.Empty;
             curpos = 0;
         }
-        public SDatabase(SDatabase db)
+        protected SDatabase(SDatabase db)
         {
             name = db.name;
             objects = db.objects;
             names = db.names;
             curpos = db.curpos;
         }
-        protected SDatabase(SDatabase db,long p)
+        /// <summary>
+        /// CRUD on Records changes indexes as well as table, so we need this
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="obs"></param>
+        /// <param name="c"></param>
+        protected SDatabase(SDatabase db,SDict<long,SDbObject> obs,long c)
         {
             name = db.name;
-            objects = db.objects.Remove(p);
+            objects = obs;
             names = db.names;
-            curpos = db.curpos;
+            curpos = c;
         }
-        public SDatabase(SDatabase db,STable t,long c)
+        protected SDatabase(SDatabase db,STable t,long c)
         {
+            t.Check(db.Committed);
             name = db.name;
             objects = db.objects.Add(t.uid, t);
             names = db.names.Add(t.name, t);
             curpos = c;
         }
-        public SDatabase(SDatabase db,SAlter a,long c)
+        protected SDatabase(SDatabase db,SAlter a,long c)
         {
             name = db.name;
             if (a.parent==0)
@@ -92,7 +99,7 @@ namespace Shareable
             }
             curpos = c;
         }
-        public SDatabase(SDatabase db,SDrop d,long c)
+        protected SDatabase(SDatabase db,SDrop d,long c)
         {
             name = db.name;
             if (d.parent == 0)
@@ -107,27 +114,33 @@ namespace Shareable
             }
             curpos = c;
         }
-        public SDatabase(SDatabase db,SView v,long c)
+        protected SDatabase(SDatabase db,SView v,long c)
         {
             name = db.name;
             objects = objects.Add(v.uid, v);
             names = names.Add(v.name, v);
             curpos = c;
         }
-        public SDatabase(SDatabase db,SIndex x,long c)
+        protected SDatabase(SDatabase db,SIndex x,long c)
         {
             name = db.name;
-            objects = objects.Add(x.uid, x);
+            var tb = (STable)db.Lookup(x.table);
+            for (var b = tb.rows.First(); b != null; b = b.Next())
+                x = x.Add(db.Get(b.Value.val), b.Value.val);
+            objects = db.objects.Add(x.uid, x);
+            names = db.names;
+            curpos = c;
         }
         SDatabase Load()
         {
             var f = dbfiles.Lookup(name);
             var db = this;
-            lock (f)
-            {
-                for (var s = f.GetOne(this); s != null; s = f.GetOne(this))
-                    db = db.Add(s,f.Position);
-            }
+            if (f != null)
+                lock (f)
+                {
+                    for (var s = f.GetOne(this); s != null; s = f.GetOne(db))
+                        db = db.Add(s, s.uid);
+                }
             return db;
         }
         public SRecord Get(long pos)
@@ -149,18 +162,15 @@ namespace Shareable
             {
                 case Types.STable: return Install((STable)s, p); 
                 case Types.SColumn: return Install((SColumn)s, p); 
-                case Types.SUpdate:
+                case Types.SUpdate: return Install((SUpdate)s, p);
                 case Types.SRecord: return Install((SRecord)s, p); 
                 case Types.SDelete: return Install((SDelete)s, p); 
                 case Types.SAlter: return Install((SAlter)s, p); 
                 case Types.SDrop: return Install((SDrop)s, p); 
-                case Types.SView: return Install((SView)s, p); 
+                case Types.SView: return Install((SView)s, p);
+                case Types.SIndex: return Install((SIndex)s, p);
             }
             return this;
-        }
-        public SDatabase Remove(long p)
-        {
-            return new SDatabase(this, p);
         }
         /// <summary>
         /// Close() is only for testing environments!
@@ -185,11 +195,58 @@ namespace Shareable
         }
         protected virtual SDatabase Install(SRecord r,long c)
         {
-            return new SDatabase(this, ((STable)Lookup(r.table)).Add(r),c);
+            var obs = objects;
+            var st = ((STable)Lookup(r.table)).Add(r);
+            obs = obs.Add(r.table, st);
+            for (var b = obs.First(); b != null; b = b.Next())
+                if (b.Value.val is SIndex x)
+                {
+                    if (x.table == r.table)
+                        obs = obs.Add(x.uid, x.Add(r, r.uid));
+                    if (x.references == r.table && !x.Contains(r))
+                        throw new System.Exception("Referential constraint");
+                }
+            return new SDatabase(this, obs,c);
+        }
+        protected virtual SDatabase Install(SUpdate u, long c)
+        {
+            var obs = objects;
+            var st = ((STable)Lookup(u.table)).Add(u);
+            SRecord sr = null;
+            obs = obs.Add(u.table, st);
+            for (var b = obs.First(); b != null; b = b.Next())
+                if (b.Value.val is SIndex x)
+                {
+                    if (x.table == u.table)
+                    {
+                        if (sr == null)
+                            sr = Get(u.defpos);
+                        obs = obs.Add(x.uid, x.Update(sr,u, c));
+                    }
+                    if (x.references == u.table && !x.Contains(u))
+                        throw new System.Exception("Referential constraint");
+                }
+            return new SDatabase(this, obs, c);
         }
         protected virtual SDatabase Install(SDelete d,long c)
         {
-            return new SDatabase(this, ((STable)Lookup(d.table)).Remove(d.delpos),c);
+            var obs = objects;
+            var st = ((STable)Lookup(d.table)).Remove(d.delpos);
+            SRecord sr = null;
+            obs = obs.Add(d.table, st);
+            for (var b = obs.First(); b != null; b = b.Next())
+                if (b.Value.val is SIndex x)
+                {
+                    if (x.table == d.table)
+                    {
+                        if (sr==null)
+                            sr = Get(d.delpos);
+                        obs = obs.Add(x.uid, x.Remove(sr,c));
+                    }
+                    if (x.references==d.table && x.Contains(sr))
+                            throw new System.Exception("Referential constraint");
+                }
+            return new SDatabase(this,obs,c);
         }
         protected virtual SDatabase Install(SAlter a,long c)
         {

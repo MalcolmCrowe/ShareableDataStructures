@@ -105,6 +105,7 @@ namespace StrongLink
             asy.PutInt(key.Length);
             foreach (var s in key)
                 s.Put(asy);
+            asy.Flush();
             var r = asy.GetString();
             return r;
         }

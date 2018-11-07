@@ -121,7 +121,7 @@ namespace StrongDB
                     {
                         case Protocol.Get:
                             {
-                                var tb = STable.Get(db, asy);
+                                var tb = STable.Get(asy);
                                 var n = asy.GetInt();
                                 var k = SCList<Variant>.Empty;
                                 for (var i = 0; i < n; i++)
@@ -132,7 +132,7 @@ namespace StrongDB
                                         px = x;
                                 var sb = new StringBuilder("[");
                                 var cm = "";
-                                for (var b=px.rows.PositionAt(k);b!=null; b=(MTreeBookmark)b.Next())
+                                for (var b=px.rows.PositionAt(k);b!=null; b=(MTreeBookmark<long>)b.Next())
                                 {
                                     sb.Append(cm); cm = ",";
                                     db.Get(b.value()).Append(sb);
@@ -167,22 +167,33 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var tb = (STable)tr.names.Lookup(asy.GetString()); // table name
                                 var n = asy.GetInt(); // # named cols
-                                var cs = SList<string>.Empty;
+                                var cs = SList<long>.Empty;
+                                Exception ex = null;
                                 for (var i = 0; i < n; i++)
-                                    cs = cs.InsertAt(asy.GetString(),cs.Length);
-                                var nc = (n==0)?tb.cpos.Length:cs.Length;
+                                {
+                                    var cn = asy.GetString();
+                                    if (tb.names.Lookup(cn) is SColumn sc)
+                                        cs = cs.InsertAt(sc.uid, cs.Length);
+                                    else
+                                        ex = new Exception("Column " + cn + " not found");
+                                }
+                                var nc = asy.GetInt(); // #cols
+                                if ((n==0 && nc!=tb.cpos.Length) || (n!=0 && n!=nc))
+                                    throw new Exception("Wrong number of columns");
                                 var nr = asy.GetInt(); // #records
                                 for (var i = 0; i < nr; i++)
                                 {
-                                    var f = SDict<string, Serialisable>.Empty;
+                                    var f = SDict<long, Serialisable>.Empty;
                                     if (n == 0)
                                         for (var b = tb.cpos; b.Length != 0; b = b.next)
-                                            f = f.Add(b.element.name, asy._Get(tr)); // serialsable values
+                                            f = f.Add(b.element.uid, asy._Get(tr)); // serialsable values
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
-                                            f = f.Add(b.element, asy._Get(tr)); // serialsable values
+                                            f = f.Add(b.element, asy._Get(tr)); // serialisable values
                                     tr = new STransaction(tr, new SRecord(tr, tb.uid, f));
                                 }
+                                if (ex != null)
+                                    throw ex;
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -200,7 +211,7 @@ namespace StrongDB
                                     tr = new STransaction(tr,new SAlter(tr, nm, Types.STable, tb.uid, 0));
                                 else
                                     tr = new STransaction(tr, new SAlter(tr, nm, Types.SColumn, tb.uid, 
-                                        tb.Find(cn)?.uid??throw new Exception("Column "+cn+" not found")));
+                                        tb.names.Lookup(cn)?.uid??throw new Exception("Column "+cn+" not found")));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -217,7 +228,7 @@ namespace StrongDB
                                     tr = new STransaction(tr,new SDrop(tr,pt.uid,-1));
                                 else
                                     tr = new STransaction(tr, new SDrop(tr,
-                                        ((STable)pt).Find(cn)?.uid ?? throw new Exception("Column " + cn + " not found"),
+                                        ((STable)pt).names.Lookup(cn)?.uid ?? throw new Exception("Column " + cn + " not found"),
                                         pt.uid));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
@@ -237,7 +248,7 @@ namespace StrongDB
                                 for (var i=0;i<nc;i++)
                                 {
                                     var cn = asy.GetString();
-                                    cs = cs.InsertAt(tb.Find(cn)?.uid ??
+                                    cs = cs.InsertAt(tb.names.Lookup(cn)?.uid ??
                                         throw new Exception("Column " + cn + " not found"), cs.Length);
                                 }
                                 tr = new STransaction(tr, new SIndex(tr, tb.uid, xt < 2, cs));
@@ -262,13 +273,19 @@ namespace StrongDB
                                 var rc = db.Get(id);
                                 var tb = (STable)tr.Lookup(rc.table); 
                                 var n = asy.GetInt(); // # cols updated
-                                var f = SDict<string, Serialisable>.Empty;
+                                var f = SDict<long, Serialisable>.Empty;
+                                Exception ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = asy.GetString();
-                                    f = f.Add(cn, asy._Get(db));
+                                    if (tb.names.Lookup(cn) is SColumn sc)
+                                        f = f.Add(sc.uid, asy._Get(db));
+                                    else
+                                        ex = new Exception("Column "+cn+" not found");
                                 }
                                 tr = new STransaction(tr, new SUpdate(tr, rc, f));
+                                if (ex != null)
+                                    throw (ex);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();

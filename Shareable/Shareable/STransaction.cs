@@ -11,6 +11,7 @@ namespace Shareable
         public readonly bool autoCommit;
         public readonly SDatabase rollback;
         public readonly SDict<int,Serialisable> steps;
+        protected override bool Committed => false;
         public STransaction(SDatabase d,bool auto) :base(d)
         {
             autoCommit = auto;
@@ -18,6 +19,12 @@ namespace Shareable
             uid = _uid;
             steps = SDict<int,Serialisable>.Empty;
         }
+        /// <summary>
+        /// This clever routine indirectly calls the protected SDtabase constructors
+        /// that add new objects to the SDatabase (see the call to tr.Add).
+        /// </summary>
+        /// <param name="tr"></param>
+        /// <param name="s"></param>
         public STransaction(STransaction tr,Serialisable s) :base(tr.Add(s,tr.uid+1))
         {
             autoCommit = tr.autoCommit;
@@ -25,18 +32,10 @@ namespace Shareable
             steps = tr.steps.Add(tr.steps.Count,s);
             uid =  tr.uid+1;
         }
-        public STransaction(STransaction tr,int c) :base(tr)
-        {
-            autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
-            steps = tr.steps;
-            uid = tr.uid;
-        }
         public SDatabase Commit()
         {
             AStream dbfile = dbfiles.Lookup(name);
             SDatabase db = databases.Lookup(name);
-            long pos = 0;
             var since = dbfile.GetAll(this, curpos, db.curpos);
             for (var i = 0; i < since.Length; i++)
                 for (var b = steps.First(); b != null; b = b.Next())
@@ -44,8 +43,7 @@ namespace Shareable
                         throw new Exception("Transaction Conflict on " + b.Value);
             lock (dbfile.file)
             {
-                db = databases.Lookup(name);
-                since = dbfile.GetAll(this, pos,dbfile.Length);
+                since = dbfile.GetAll(this, db.curpos,dbfile.length);
                 for (var i = 0; i < since.Length; i++)
                     for (var b = steps.First(); b != null; b = b.Next())
                         if (since[i].Conflicts(b.Value.val))
