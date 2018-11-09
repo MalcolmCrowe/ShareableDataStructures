@@ -38,6 +38,14 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
             gtr = v;
         }
         @Override
+        public boolean Contains(K k)
+        {
+            MatchPos m = PositionFor(k);
+            if (m.pos == count)
+                return gtr.Contains(k);
+            return slots[m.pos].val.Contains(k);
+        }
+        @Override
         public V Lookup(K k)
         {
             MatchPos m = PositionFor(k);
@@ -94,13 +102,13 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
             {
                 SSlot<K,SBucket<K,V>> d = slots[m.pos];
                 b = d.val;
-                if (b.count == SDict.Size)
+                if (b.count == SDict.SIZE)
                     return Split(m.pos).Add(k, v); // try again
                 return new SInner<K, V>(gtr, total + 1, Replace(m.pos, new SSlot<K, SBucket<K, V>>(d.key, b.Add(k, v))));
             }
             else
             {
-                if (gtr.count == SDict.Size)
+                if (gtr.count == SDict.SIZE)
                     return SplitGtr().Add(k, v); // try again
                 return new SInner<K, V>(gtr.Add(k, v), total + 1, slots);
             }
@@ -111,7 +119,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         }
         SSlot<K,SBucket<K,V>> LowHalf()
         {
-            int m = SDict.Size >> 1;
+            int m = SDict.SIZE >> 1;
             int h = 0;
             for (int i = 0; i < m; i++)
                 h += slots[i].val.total;
@@ -122,7 +130,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         {
             MatchPos nj = PositionFor(k);
             SBucket<K, V> nb;
-            int m = SDict.Size >> 1;
+            int m = SDict.SIZE >> 1;
             if (nj.pos < count)
             {
                 SSlot<K,SBucket<K,V>> e = slots[nj.pos];
@@ -139,7 +147,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
             }
             // completely rebuild the current non-leaf node (too many cases to consider otherwise)
             // still two different cases depending on whether children are leaves
-            int S = SDict.Size;
+            int S = SDict.SIZE;
             SBucket<K, V> b, g = null;
             ArrayList ab = new ArrayList();
             int i, j;
@@ -250,11 +258,11 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
 
         SBucket<K, V> TopHalf()
         {
-            int m = SDict.Size >> 1;
+            int m = SDict.SIZE >> 1;
             int h = total;
             for (int i = 0; i < m; i++)
                 h -= slots[i].val.total;
-            return new SInner<K, V>(gtr, h, slots, m, SDict.Size - 1);
+            return new SInner<K, V>(gtr, h, slots, m, SDict.SIZE - 1);
         }
         SBucket<K,V> Split(int j)
         {

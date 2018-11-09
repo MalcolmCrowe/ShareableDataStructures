@@ -7,7 +7,7 @@ package org.shareabledata;
 
 @SuppressWarnings("unchecked")
 /**
- *
+ * An empty list is null.
  * @author Malcolm Crowe shareabledata.org
  */
 public class SList<T> extends Shareable<T> 
@@ -23,7 +23,7 @@ public class SList<T> extends Shareable<T>
     public SList(T... args) throws Exception 
     {
         super(args.length);
-        if (args.length == 0) {
+        if (args.length == 0) { // empty list is null so this won't do
             throw new Exception("Bad parameter");
         }
         SList<T> n = null;

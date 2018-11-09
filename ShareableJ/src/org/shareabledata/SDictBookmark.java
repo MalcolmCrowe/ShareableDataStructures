@@ -11,20 +11,19 @@ package org.shareabledata;
  */
 public class SDictBookmark<K extends Comparable,V> extends Bookmark<SSlot<K,V>> {
     public final SBookmark<K,V> _bmk;
-    SDictBookmark(SBookmark<K,V> bmk,int pos) 
+    SDictBookmark(SBookmark<K,V> bmk) 
     { 
-        super(pos);
+        super(bmk.position());
         _bmk = bmk; 
     }
     @Override
     public Bookmark<SSlot<K, V>> Next() {
         SBookmark<K,V> b = _bmk.Next(_bmk,null);
-        return (b==null)?null:new SDictBookmark<K,V>(b,b.position());
+        return (b==null)?null:new SDictBookmark<K,V>(b);
     }
 
     @Override
     public SSlot<K, V> getValue() {
         return ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos];
     }
-    
 }

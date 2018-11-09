@@ -15,7 +15,7 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
 
     public final SSlot<K, V>[] slots;
 
-    public SLeaf(SSlot<K, V>[] s) {
+    public SLeaf(SSlot<K, V>... s) {
         super(s.length, s.length);
         slots = s;
     }
@@ -26,6 +26,12 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
         for (int i = 0; i < count; i++) {
             slots[i] = s[i + low];
         }
+    }
+
+    @Override
+    public boolean Contains(K k) {
+        MatchPos m = PositionFor(k);
+        return m.match;
     }
 
     @Override
@@ -71,12 +77,12 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
 
     @Override
     SBucket<K, V> TopHalf() {
-        return new SLeaf<K, V>(slots, SDict.Size >> 1, SDict.Size - 1);
+        return new SLeaf<K, V>(slots, SDict.SIZE >> 1, SDict.SIZE - 1);
     }
 
     @Override
     SSlot<K, SBucket<K, V>> LowHalf() {
-        int m = SDict.Size >> 1;
+        int m = SDict.SIZE >> 1;
         return new SSlot<K, SBucket<K, V>>(slots[m - 1].key, new SLeaf<K, V>(slots, 0, m - 1));
     }
 
@@ -87,60 +93,62 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
 
     @Override
     void Add(ArrayList ab) {
-        for (int i=0;i<count;i++)
+        for (int i = 0; i < count; i++) {
             ab.add(slots[i]);
+        }
     }
-        SSlot<K,V>[] Splice(int ix,SSlot<K,V> ns,SSlot<K,V> os)
-        {
-            SSlot<K,V>[] s = (SSlot<K,V>[])new Object[count + 1];
-            int j = 0, k = 0;
-            while (j < ix)
-                s[k++] = slots[j++];
-            s[k++] = ns;
-            s[k++] = os;
+
+    SSlot<K, V>[] Splice(int ix, SSlot<K, V> ns, SSlot<K, V> os) {
+        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count + 1];
+        int j = 0, k = 0;
+        while (j < ix) {
+            s[k++] = slots[j++];
+        }
+        s[k++] = ns;
+        s[k++] = os;
+        j++;
+        while (j < count) {
+            s[k++] = slots[j++];
+        }
+        return s;
+    }
+
+    SSlot<K, V>[] Replace(int j, SSlot<K, V> d) {
+        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count];
+        int i = 0;
+        while (i < count) {
+            s[i] = slots[i];
+            i++;
+        }
+        s[j] = d;
+        return s;
+    }
+
+    SSlot<K, V>[] Add(int ix, SSlot<K, V> s) {
+        SSlot<K, V>[] t = (SSlot<K, V>[]) new Object[count + 1];
+        int j = 0, k = 0;
+        while (j < ix) {
+            t[k++] = slots[j++];
+        }
+        t[k++] = s;
+        while (j < count) {
+            t[k++] = slots[j++];
+        }
+        return t;
+    }
+
+    SSlot<K, V>[] Remove(int ix) {
+        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count - 1];
+        int j = 0;
+        while (j < ix && j < count - 1) {
+            s[j] = slots[j];
             j++;
-            while (j < count)
-                s[k++] = slots[j++];
-            return s;
         }
-        SSlot<K,V>[] Replace(int j,SSlot<K,V> d)
-        {
-            SSlot<K,V>[] s = (SSlot<K,V>[])new Object[count];
-            int i = 0;
-            while (i < count)
-            {
-                s[i] = slots[i];
-                i++;
-            }
-            s[j] = d;
-            return s;
+        while (j < count - 1) {
+            s[j] = slots[j + 1];
+            j++;
         }
-        SSlot<K,V>[] Add(int ix, SSlot<K,V> s)
-        {
-            SSlot<K,V>[] t = (SSlot<K,V>[])new Object[count + 1];
-            int j = 0, k = 0;
-            while (j < ix)
-                t[k++] = slots[j++];
-            t[k++] = s;
-            while (j < count)
-                t[k++] = slots[j++];
-            return t;
-        }
-        SSlot<K,V>[] Remove(int ix)
-        {
-            SSlot<K,V>[] s = (SSlot<K,V>[])new Object[count - 1];
-            int j = 0;
-            while (j < ix && j < count - 1)
-            {
-                s[j] = slots[j];
-                j++;
-            }
-            while (j < count - 1)
-            {
-                s[j] = slots[j + 1];
-                j++;
-            }
-            return s;
-        }
+        return s;
+    }
 
 }

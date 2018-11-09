@@ -14,6 +14,7 @@ public abstract class SBucket<K extends Comparable,V> {
         public final int total;
         protected SBucket(int c,int tot) { count = (byte)c; total = tot; }
         // API for SDict to call
+        public abstract boolean Contains(K k);
         public abstract V Lookup(K k);
         abstract SBucket<K, V> Add(K k, V v);
         abstract SBucket<K, V> Update(K k, V v);
