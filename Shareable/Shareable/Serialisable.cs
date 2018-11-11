@@ -27,6 +27,16 @@ namespace Shareable
         SView = 16,
         SIndex = 17
     }
+    public enum Protocol
+    {
+        EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
+        Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
+        Read = 10, Update = 11, Delete = 12, View = 13
+    }
+    public enum Responses
+    {
+        Done = 0, Exception = 1
+    }
     public class Serialisable:IComparable
     {
         public readonly Types type;
@@ -53,7 +63,7 @@ namespace Shareable
         }
         public virtual void Append(StringBuilder sb)
         {
-            sb.Append("null");
+            sb.Append(this);
         }
         public virtual int CompareTo(object ob)
         {
@@ -61,7 +71,7 @@ namespace Shareable
         }
         public override string ToString()
         {
-            return "Serialisable (null)";
+            return "Null";
         }
     }
     public class STimestamp : Serialisable,IComparable
@@ -367,18 +377,6 @@ namespace Shareable
             }
             cols = r;
         }
-        SRow(STransaction tr,SRow s,StreamBase f) :base(Types.SRow,f)
-        {
-            var c = s.cols;
-            f.PutInt(s.cols.Count);
-            for (var b=s.cols.First();b!=null;b=b.Next())
-            {
-                var k = b.Value.key;
-                f.PutString(k);
-                c = c.Add(b.Value.key,b.Value.val);
-            }
-            cols = c;
-        }
         public static SRow Get(SDatabase d,StreamBase f)
         {
             return new SRow(d,f);
@@ -668,8 +666,8 @@ namespace Shareable
     {
         public readonly long defpos;
         public readonly long parent;
-        public string name;
-        public Types dataType;
+        public readonly string name;
+        public readonly Types dataType;
         public SAlter(STransaction tr,string n,Types d,long o,long p) :base(Types.SAlter,tr)
         {
             defpos = o;  name = n; dataType = d; parent = p;
@@ -769,13 +767,13 @@ namespace Shareable
     public class SView : SDbObject
     {
         public readonly string name;
-        public readonly SDict<int, SColumn> cols;
+        public readonly SList<SColumn> cols;
         public readonly string viewdef;
-        public SView(STransaction tr,string n,SDict<int,SColumn> c,string d) :base(Types.SView,tr)
+        public SView(STransaction tr,string n,SList<SColumn> c,string d) :base(Types.SView,tr)
         {
             name = n; cols = c; viewdef = d;
         }
-        internal SView(SView v,SDict<int,SColumn>c):base(v)
+        internal SView(SView v,SList<SColumn>c):base(v)
         {
             cols = c; name = v.name; viewdef = v.viewdef;
         }
@@ -783,11 +781,11 @@ namespace Shareable
         {
             name = f.GetString();
             var n = f.GetInt();
-            var c = SDict<int, SColumn>.Empty;
+            var c = SList<SColumn>.Empty;
             for (var i = 0; i < n; i++)
             {
                 var nm = f.GetString();
-                c = c.Add(i, new SColumn(null, nm, (Types)f.ReadByte(), 0));
+                c = c.InsertAt(new SColumn(null, nm, (Types)f.ReadByte(), 0),i);
             }
             cols = c;
             viewdef = f.GetString();
@@ -798,11 +796,11 @@ namespace Shareable
             cols = v.cols;
             viewdef = v.viewdef;
             f.PutString(name);
-            f.PutInt(cols.Count);
+            f.PutInt(cols.Length);
             for (var b=cols.First();b!=null;b=b.Next())
             {
-                f.PutString(b.Value.val.name);
-                f.WriteByte((byte)b.Value.val.type);
+                f.PutString(b.Value.name);
+                f.WriteByte((byte)b.Value.type);
             }
             f.PutString(viewdef);
         }
@@ -833,11 +831,6 @@ namespace Shareable
             table = t;
         }
         public virtual long Defpos => uid;
-        protected SRecord(SRecord r,long tb) :base(r)
-        {
-            fields = r.fields;
-            table = tb;
-        }
         public SRecord(SDatabase db,SRecord r,AStream f) : base(r,f)
         {
             table = f.Fix(r.table);
@@ -1005,6 +998,7 @@ namespace Shareable
         SIndex(SDatabase d, StreamBase f) : base(Types.SIndex, f)
         {
             table = f.GetLong();
+            primary = f.ReadByte()!=0;
             var n = f.GetInt();
             var c = new long[n];
             for (var i = 0; i < n; i++)
@@ -1017,6 +1011,8 @@ namespace Shareable
         {
             table = f.Fix(x.table);
             f.PutLong(table);
+            primary = x.primary;
+            f.WriteByte((byte)(primary ? 1 : 0));
             long[] c = new long[x.cols.Length];
             f.PutInt(x.cols.Length);
             var i = 0;
@@ -1028,7 +1024,6 @@ namespace Shareable
             references =f.Fix(x.references);
             f.PutLong(references);
             cols = SList<long>.New(c);
-            primary = x.primary;
             rows = x.rows;
         }
         public SIndex(SIndex x,SMTree<long> nt) :base(x)
@@ -1071,10 +1066,6 @@ namespace Shareable
                 return SCList<Variant>.Empty;
             return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next));
         }
-        public override bool Conflicts(Serialisable that)
-        {
-            return base.Conflicts(that);
-        }
         public override string ToString()
         {
             var sb = new StringBuilder("Index " + uid + " [" + table + "] (");
@@ -1101,7 +1092,6 @@ namespace Shareable
             public int len;
             public int pos;
             StreamBase fs;
-            public ManualResetEvent wait = null; // for AsyncStream
             public Buffer(StreamBase f)
             {
                 buf = new byte[Size];
@@ -1227,17 +1217,13 @@ namespace Shareable
         internal Stream file;
         long position = 0;
         public long length = 0;
-        internal SDict<long, long> uids = null; // used for movement or SDbObjects
+        internal SDict<long, long> uids = null; // used for movement of SDbObjects
         public AStream(string fn)
         {
             filename = fn;
             file = new FileStream(fn,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
             length = file.Seek(0, SeekOrigin.End);
             file.Seek(0, SeekOrigin.Begin);
-        }
-        public AStream(StreamBase asy)
-        {
-            file = asy;
         }
         public SDbObject GetOne(SDatabase d)
         {
@@ -1289,7 +1275,7 @@ namespace Shareable
                 pos = uids.Lookup(pos);
             return pos;
         }
-        public SDatabase Commit(SDatabase db,SDict<int,Serialisable> steps)
+        public SDatabase Commit(SDatabase db,SDict<int,SDbObject> steps)
         {
             wbuf = new Buffer(this);
             uids = SDict<long, long>.Empty;
@@ -1301,7 +1287,7 @@ namespace Shareable
                         {
                             var st = (STable)b.Value.val;
                             var nt = new STable(st, this);
-                            db = db.Add(nt,Length);
+                            db = db._Add(nt,Length);
                             break;
                         }
                     case Types.SColumn:
@@ -1309,7 +1295,7 @@ namespace Shareable
                             var sc = (SColumn)b.Value.val;
                             var st = (STable)Lookup(db,Fix(sc.table));
                             var nc = new SColumn(sc, this);
-                            db = db.Add(nc,Length);
+                            db = db._Add(nc,Length);
                             break;
                         }
                     case Types.SRecord:
@@ -1317,7 +1303,7 @@ namespace Shareable
                             var sr = (SRecord)b.Value.val;
                             var st = (STable)Lookup(db,Fix(sr.table));
                             var nr = new SRecord(db, sr, this);
-                            db = db.Add(nr,Length);
+                            db = db._Add(nr,Length);
                             break;
                         }
                     case Types.SDelete:
@@ -1325,7 +1311,7 @@ namespace Shareable
                             var sd = (SDelete)b.Value.val;
                             var st = (STable)Lookup(db,Fix(sd.table));
                             var nd = new SDelete(sd, this);
-                            db = db.Add(nd,Length);
+                            db = db._Add(nd,Length);
                             break;
                         }
                     case Types.SUpdate:
@@ -1333,25 +1319,25 @@ namespace Shareable
                             var sr = (SUpdate)b.Value.val;
                             var st = (STable)Lookup(db, Fix(sr.table));
                             var nr = new SUpdate(db, sr, this);
-                            db = db.Add(nr, Length);
+                            db = db._Add(nr, Length);
                             break;
                         }
                     case Types.SAlter:
                         {
                             var sa = new SAlter((SAlter)b.Value.val,this);
-                            db = db.Add(sa,Length);
+                            db = db._Add(sa,Length);
                             break;
                         }
                     case Types.SDrop:
                         {
                             var sd = new SDrop((SDrop)b.Value.val, this);
-                            db = db.Add(sd, Length);
+                            db = db._Add(sd, Length);
                             break;
                         }
                     case Types.SIndex:
                         {
                             var si = new SIndex((SIndex)b.Value.val, this);
-                            db = db.Add(si, Length);
+                            db = db._Add(si, Length);
                             break;
                         }
                 }

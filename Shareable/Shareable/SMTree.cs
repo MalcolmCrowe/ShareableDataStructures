@@ -193,11 +193,11 @@ namespace Shareable
             var r = Add(k, v, out TreeBehaviour tb);
             return (tb==TreeBehaviour.Allow)?r:throw new Exception("internal error");
         }
-        public SMTree<K> Remove(SCList<Variant> k,long p)
+        public SMTree<K> Remove(SCList<Variant> k, long p)
         {
             if (!Contains(k))
                 return this;
-            SITree st = _impl; 
+            SITree st = _impl;
             var k0 = k.element;
             Variant tv = _impl.Lookup(k0);
             var nc = _count;
@@ -212,12 +212,54 @@ namespace Shareable
                         if (mt.Count == 0)
                             st = st.Remove(k0) as SITree;
                         else
+                            st = st.Update(k0, new Variant(Variants.Compound, mt));
+                        break;
+                    }
+                case Variants.Partial:
+                    {
+                        var bt = tv.ob as SDict<long, bool>;
+                        if (!bt.Contains(p))
+                            return this;
+                        nc--;
+                        bt = bt.Remove(p);
+                        if (bt.Count == 0)
+                            st = st.Remove(k0) as SITree;
+                        else
+                            st = st.Update(k0, new Variant(Variants.Partial, bt));
+                        break;
+                    }
+                case Variants.Single:
+                    nc--;
+                    st = st.Remove(k0) as SITree;
+                    break;
+            }
+            return new SMTree<K>(_info, st, nc);
+        }
+        public SMTree<K> Remove(SCList<Variant> k)
+        {
+            if (!Contains(k))
+                return this;
+            SITree st = _impl; 
+            var k0 = k.element;
+            Variant tv = _impl.Lookup(k0);
+            var nc = _count;
+            switch (tv.variant)
+            {
+                case Variants.Compound:
+                    {
+                        var mt = tv.ob as SMTree<K>;
+                        var c = mt._count;
+                        mt = mt.Remove(k.next as SCList<Variant>) as SMTree<K>;
+                        nc -= c - mt._count;
+                        if (mt.Count == 0)
+                            st = st.Remove(k0) as SITree;
+                        else
                             st = st.Update(k0, new Variant(Variants.Compound,mt));
                         break;
                     }
                 case Variants.Partial:
                     {
-                        var bt = tv.ob as SDict<int,bool>;
+                        var bt = tv.ob as SDict<long,bool>;
                         nc -= bt.Count;
                         st = st.Remove(k0) as SITree;
                         break;

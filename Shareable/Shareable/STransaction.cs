@@ -10,22 +10,27 @@ namespace Shareable
         public readonly long uid;
         public readonly bool autoCommit;
         public readonly SDatabase rollback;
-        public readonly SDict<int,Serialisable> steps;
+        public readonly SDict<int,SDbObject> steps;
+        internal override SDatabase _Rollback => rollback;
         protected override bool Committed => false;
+        public STransaction Add(SDbObject s)
+        {
+            return new STransaction(this, s);
+        }
         public STransaction(SDatabase d,bool auto) :base(d)
         {
             autoCommit = auto;
-            rollback = (d is STransaction t)?t.rollback:d;
+            rollback = d._Rollback;
             uid = _uid;
-            steps = SDict<int,Serialisable>.Empty;
+            steps = SDict<int,SDbObject>.Empty;
         }
         /// <summary>
         /// This clever routine indirectly calls the protected SDtabase constructors
-        /// that add new objects to the SDatabase (see the call to tr.Add).
+        /// that add new objects to the SDatabase (see the call to tr._Add).
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="s"></param>
-        public STransaction(STransaction tr,Serialisable s) :base(tr.Add(s,tr.uid+1))
+        STransaction(STransaction tr,SDbObject s) :base(tr._Add(s,tr.uid+1))
         {
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;

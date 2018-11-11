@@ -1,16 +1,6 @@
 ﻿using System.IO;
 namespace Shareable
 {
-    public enum Protocol
-    {
-        EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
-        Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
-        Read = 10, Update = 11, Delete = 12, View = 13
-    }
-    public enum Responses
-    {
-        Done = 0, Exception = 1
-    }
     public class SDatabase
     {
         public readonly string name;
@@ -20,6 +10,7 @@ namespace Shareable
         protected static object files = new object(); // a lock (not normally ever used)
         protected static SDict<string,AStream> dbfiles = SDict<string,AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string,SDatabase>.Empty;
+        internal virtual SDatabase _Rollback => this;
         protected virtual bool Committed => true;
         public static SDatabase Open(string path, string fname)
         {
@@ -29,7 +20,7 @@ namespace Shareable
             var db = new SDatabase(fname);
             dbfiles = dbfiles.Add(fname, new AStream(path + fname));
             db = db.Load();
-            databases = databases.Add(fname, db);
+            Install(db);
             return db;
         }
         public static void Install(SDatabase db)
@@ -106,19 +97,20 @@ namespace Shareable
             {
                 var ot = (STable)db.Lookup(d.drpos);
                 objects = db.objects.Remove(d.drpos);
-                names = names.Remove(ot.name);
+                names = db.names.Remove(ot.name);
             } else { 
                 var ot = (STable)db.Lookup(d.parent);
                 var nt = ot.Remove(d.drpos);
                 objects = db.objects.Add(d.parent, nt);
+                names = db.names;
             }
             curpos = c;
         }
         protected SDatabase(SDatabase db,SView v,long c)
         {
             name = db.name;
-            objects = objects.Add(v.uid, v);
-            names = names.Add(v.name, v);
+            objects = db.objects.Add(v.uid, v);
+            names = db.names.Add(v.name, v);
             curpos = c;
         }
         protected SDatabase(SDatabase db,SIndex x,long c)
@@ -139,7 +131,7 @@ namespace Shareable
                 lock (f)
                 {
                     for (var s = f.GetOne(this); s != null; s = f.GetOne(db))
-                        db = db.Add(s, s.uid);
+                        db = db._Add(s, s.uid);
                 }
             return db;
         }
@@ -156,7 +148,7 @@ namespace Shareable
                 return f.Get(this, tb.rows.Lookup(rc.Defpos)) as SRecord;
             }
         }
-        public SDatabase Add(Serialisable s,long p)
+        public SDatabase _Add(SDbObject s,long p)
         {
             switch (s.type)
             {
@@ -185,15 +177,15 @@ namespace Shareable
                 f.Close();
             }
         }
-        protected virtual SDatabase Install(STable t,long c)
+        protected SDatabase Install(STable t,long c)
         {
             return new SDatabase(this, t, c);
         }
-        protected virtual SDatabase Install(SColumn c,long p)
+        protected SDatabase Install(SColumn c,long p)
         {
             return new SDatabase(this,((STable)Lookup(c.table)).Add(c),p);
         }
-        protected virtual SDatabase Install(SRecord r,long c)
+        protected SDatabase Install(SRecord r,long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(r.table)).Add(r);
@@ -208,7 +200,7 @@ namespace Shareable
                 }
             return new SDatabase(this, obs,c);
         }
-        protected virtual SDatabase Install(SUpdate u, long c)
+        protected SDatabase Install(SUpdate u, long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(u.table)).Add(u);
@@ -228,7 +220,7 @@ namespace Shareable
                 }
             return new SDatabase(this, obs, c);
         }
-        protected virtual SDatabase Install(SDelete d,long c)
+        protected SDatabase Install(SDelete d,long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(d.table)).Remove(d.delpos);
@@ -248,19 +240,19 @@ namespace Shareable
                 }
             return new SDatabase(this,obs,c);
         }
-        protected virtual SDatabase Install(SAlter a,long c)
+        protected SDatabase Install(SAlter a,long c)
         {
             return new SDatabase(this, a, c);
         }
-        protected virtual SDatabase Install(SDrop d, long c)
+        protected SDatabase Install(SDrop d, long c)
         {
             return new SDatabase(this, d, c);
         }
-        protected virtual SDatabase Install(SView v, long c)
+        protected SDatabase Install(SView v, long c)
         {
             return new SDatabase(this, v, c);
         }
-        protected virtual SDatabase Install(SIndex x,long c)
+        protected SDatabase Install(SIndex x,long c)
         {
             return new SDatabase(this, x, c);
         }

@@ -17,9 +17,9 @@ namespace StrongDB
         /// </summary>
         Socket client;
         /// <summary>
-        /// the Pyrrho protocol stream for this client
+        /// the Strong protocol stream for this client
         /// </summary>
-		internal AsyncStream asy;
+		internal ServerStream asy;
         SDatabase db;
         static int _cid = 0;
         int cid = _cid++;
@@ -42,7 +42,7 @@ namespace StrongDB
         {
             // client.Blocking = false;
             // process the connection string
-            asy = new AsyncStream(client);
+            asy = new ServerStream(client);
             myThread = Thread.CurrentThread;
             int p = -1;
             try
@@ -149,13 +149,13 @@ namespace StrongDB
                                 if (tr.names.Contains(tn))
                                     throw new Exception("Duplicate table name " + tn);
                                 var tb = new STable(tr, tn);
-                                tr = new STransaction(tr,tb); 
+                                tr = tr.Add(tb); 
                                 var n = asy.GetInt(); // #cols
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = asy.GetString(); // column name
                                     var dt = (Types)asy.ReadByte(); // dataType
-                                    tr = new STransaction(tr, new SColumn(tr,cn,dt,tb.uid));
+                                    tr = tr.Add(new SColumn(tr,cn,dt,tb.uid));
                                 }
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
@@ -190,7 +190,7 @@ namespace StrongDB
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
                                             f = f.Add(b.element, asy._Get(tr)); // serialisable values
-                                    tr = new STransaction(tr, new SRecord(tr, tb.uid, f));
+                                    tr = tr.Add(new SRecord(tr, tb.uid, f));
                                 }
                                 if (ex != null)
                                     throw ex;
@@ -203,15 +203,17 @@ namespace StrongDB
                             {
                                 var tr = db.Transact();
                                 var tn = asy.GetString(); // table name
-                                var tb = (STable)tr.names.Lookup(tn)??
-                                    throw new Exception("Table "+tn+" not found"); 
+                                var tb = (STable)tr.names.Lookup(tn) ??
+                                    throw new Exception("Table " + tn + " not found");
                                 var cn = asy.GetString(); // column name or ""
                                 var nm = asy.GetString(); // new name
-                                if (cn.Length==0)
-                                    tr = new STransaction(tr,new SAlter(tr, nm, Types.STable, tb.uid, 0));
-                                else
-                                    tr = new STransaction(tr, new SAlter(tr, nm, Types.SColumn, tb.uid, 
-                                        tb.names.Lookup(cn)?.uid??throw new Exception("Column "+cn+" not found")));
+                                tr = tr.Add(
+                                    (cn.Length == 0) ?
+                                        new SAlter(tr, nm, Types.STable, tb.uid, 0) :
+                                        new SAlter(tr, nm, Types.SColumn, tb.uid,
+                                            tb.names.Lookup(cn)?.uid ?? 
+                                            throw new Exception("Column " + cn + " not found"))
+                                        );
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -224,12 +226,14 @@ namespace StrongDB
                                 var pt = tr.names.Lookup(nm) ??
                                     throw new Exception("Object " + nm + " not found");
                                 var cn = asy.GetString();
-                                if (cn.Length==0)
-                                    tr = new STransaction(tr,new SDrop(tr,pt.uid,-1));
-                                else
-                                    tr = new STransaction(tr, new SDrop(tr,
-                                        ((STable)pt).names.Lookup(cn)?.uid ?? throw new Exception("Column " + cn + " not found"),
-                                        pt.uid));
+                                tr = tr.Add(
+                                    (cn.Length==0)?
+                                        new SDrop(tr,pt.uid,-1) :
+                                        new SDrop(tr,
+                                            ((STable)pt).names.Lookup(cn)?.uid ?? 
+                                            throw new Exception("Column " + cn + " not found"),
+                                        pt.uid)
+                                    );
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -251,7 +255,7 @@ namespace StrongDB
                                     cs = cs.InsertAt(tb.names.Lookup(cn)?.uid ??
                                         throw new Exception("Column " + cn + " not found"), cs.Length);
                                 }
-                                tr = new STransaction(tr, new SIndex(tr, tb.uid, xt < 2, cs));
+                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, cs));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -283,7 +287,7 @@ namespace StrongDB
                                     else
                                         ex = new Exception("Column "+cn+" not found");
                                 }
-                                tr = new STransaction(tr, new SUpdate(tr, rc, f));
+                                tr = tr.Add(new SUpdate(tr, rc, f));
                                 if (ex != null)
                                     throw (ex);
                                 db = db.MaybeAutoCommit(tr);
@@ -297,7 +301,7 @@ namespace StrongDB
                                 var id = asy.GetLong();
                                 var rc = db.Get(id) as SRecord ??
                                     throw new Exception("Record " + id + " not found");
-                                tr = new STransaction(tr, new SDelete(tr, rc.table,rc.uid));
+                                tr = tr.Add(new SDelete(tr, rc.table,rc.uid));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -328,17 +332,14 @@ namespace StrongDB
         /// </summary>
     class StrongStart
     {
-        /// <summary>
-        /// the default database folder
-        /// </summary>
         internal static string host = "127.0.0.1";
         internal static int port = 50433;
         /// <summary>
-        /// a TCP listener for the Pyrrho service
+        /// a TCP listener for the Strong service
         /// </summary>
 		static TcpListener tcp;
         /// <summary>
-        /// The main service loop of the Pyrrho DBMS is here
+        /// The main service loop of the StrongDBMS is here
         /// </summary>
         internal static void Run()
         {
@@ -449,7 +450,7 @@ namespace StrongDB
     "0.0"," (15 November 2018)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
-    public class AsyncStream :StreamBase
+    public class ServerStream :StreamBase
     {
         internal Socket client;
         internal int rx = 0;
@@ -466,7 +467,7 @@ namespace StrongDB
 
         public override long Position { get => 0; set => throw new NotImplementedException(); }
 
-        internal AsyncStream(Socket c)
+        internal ServerStream(Socket c)
         {
             client = c;
             rbuf = new Buffer(this);
@@ -480,9 +481,6 @@ namespace StrongDB
         {
             if (wbuf.pos == 2)
                 return;
-            if (wbuf.wait != null)
-                wbuf.wait.WaitOne();
-            wbuf.wait = new ManualResetEvent(false);
             // now always send bSize bytes (not wcount)
             if (exception) // version 2.0
                 unchecked
@@ -503,9 +501,7 @@ namespace StrongDB
             }
             try
             {
-                IAsyncResult br = client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);
-                if (!br.IsCompleted)
-                    br.AsyncWaitHandle.WaitOne();
+                client.Send(wbuf.buf, Buffer.Size,SocketFlags.None);
                 wbuf.pos = 2;
             }
             catch (Exception)
@@ -534,48 +530,19 @@ namespace StrongDB
             rx = 0;
             try
             {
-                b.wait = new ManualResetEvent(false);
-                client.BeginReceive(b.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), b);
-                b.wait.WaitOne();
-                b.len = rcount + 2;
+                var rc = client.Receive(b.buf, Buffer.Size, 0);
+                if (rc == 0)
+                {
+                    rcount = 0;
+                    return false;
+                }
+                rcount = (((int)b.buf[0]) << 7) + (int)b.buf[1];
+                b.len = rcount+2;
                 return rcount > 0;
             }
             catch (SocketException)
             {
                 return false;
-            }
-        }
-        /// <summary>
-        /// Callback on completion of a read request from the network
-        /// </summary>
-        /// <param name="ar">the async result</param>
-        protected void Callback(IAsyncResult ar)
-        {
-            var buf = ar.AsyncState as Buffer;
-            try
-            {
-                int rc = client.EndReceive(ar);
-                if (rc == 0)
-                {
-                    rcount = 0;
-                    buf.wait.Set();
-                }
-                if (rc + rx == Buffer.Size)
-                {
-                    rcount = ((buf.buf[0]) << 7) + buf.buf[1];
-                    buf.wait.Set();
-                }
-                else
-                {
-                    rx += rc;
-                    client.BeginReceive(buf.buf, rx, Buffer.Size - rx, 0, new AsyncCallback(Callback), buf);
-                }
-            }
-            catch (SocketException)
-            {
-                rcount = 0;
-                buf.wait.Set();
-                Close();
             }
         }
         public override int ReadByte()
@@ -605,23 +572,6 @@ namespace StrongDB
         protected override void PutBuf(Buffer b)
         {
             Flush();
-        }
-        /// <summary>
-        /// Callback on completion of a write request to the network
-        /// </summary>
-        /// <param name="ar">the async result</param>
-        void Callback1(IAsyncResult ar)
-        {
-            try
-            {
-                Buffer buf = ar.AsyncState as Buffer;
-                client.EndSend(ar);
-                buf.wait.Set();
-            }
-            catch (Exception)
-            {
-                  Console.WriteLine("Socket Exception reported on Write");
-            }
         }
         internal void StartException()
         {
