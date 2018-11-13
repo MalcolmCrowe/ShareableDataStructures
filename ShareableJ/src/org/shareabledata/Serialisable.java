@@ -12,7 +12,7 @@ import java.io.*;
  * @author Malcolm
  */
 
-class Serialisable implements Comparable {
+public class Serialisable implements Comparable {
 
     public final int type;
     public final static Serialisable Null = new Serialisable(0);

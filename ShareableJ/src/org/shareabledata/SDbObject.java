@@ -21,7 +21,15 @@ public class SDbObject extends Serialisable {
     /// </summary>
 
     public final long uid;
-
+        /// <summary>
+        /// We will allow clients to define SColumns etc, with an impossible uid
+        /// </summary>
+        /// <param name="t"></param>
+        protected SDbObject(int t)
+        {
+            super(t);
+            uid = -1; 
+        }
     /// <summary>
     /// For a new database object we set the transaction-based uid
     /// </summary>

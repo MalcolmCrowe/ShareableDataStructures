@@ -16,7 +16,7 @@ public class SString extends Serialisable {
             super(Types.SString);
             str = s;
         }
-        SString(AStream f) throws IOException
+        SString(AStream f) throws Exception
         {
             super(Types.SString, f);
             str = f.GetString();
@@ -26,7 +26,7 @@ public class SString extends Serialisable {
             super.Put(f);
             f.PutString(str);
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new SString(f);
         }

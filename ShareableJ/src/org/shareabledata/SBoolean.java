@@ -16,17 +16,17 @@ public class SBoolean extends Serialisable {
             super(Types.SBoolean);
             sbool = n;
         }
-        SBoolean(AStream f)throws IOException
+        SBoolean(AStream f)throws Exception
         {
             super(Types.SBoolean, f);
             sbool = f.GetInt();
         }
-        public Serialisable Commit(STransaction tr,AStream f) throws IOException
+        public Serialisable Commit(STransaction tr,AStream f) throws Exception
         {
             f.PutInt(sbool);
             return this;
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new SBoolean(f);
         }

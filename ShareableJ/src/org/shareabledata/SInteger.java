@@ -16,7 +16,7 @@ public class SInteger extends Serialisable {
             super(Types.SInteger);
             value = v;
         }
-        SInteger(AStream f) throws IOException
+        SInteger(AStream f) throws Exception
         {
             super(Types.SInteger, f);
             value = f.GetInt();
@@ -26,7 +26,7 @@ public class SInteger extends Serialisable {
             super.Put(f);
             f.PutInt(value);
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new SInteger(f);
         }

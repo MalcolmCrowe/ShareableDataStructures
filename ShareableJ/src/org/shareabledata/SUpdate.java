@@ -11,16 +11,16 @@ import java.io.*;
  */
 public class SUpdate extends SRecord {
         public final long defpos;
-        public SUpdate(STransaction tr,SRecord r)
+        public long Defpos() { return defpos; }
+        public SUpdate(STransaction tr,SRecord r,SDict<Long,Serialisable> u)
         {
-            super(tr,r.table,r.fields);
+            super(tr,r.table,r.fields.Merge(u));
             defpos = r.Defpos();
         }
-        public long Defpos() { return defpos; }
         public SUpdate(SDatabase db,SUpdate r, AStream f) throws Exception
         {
             super(db,r,f);
-            defpos = f.Fix(r.defpos);
+            defpos = f.Fix(r.Defpos());
             f.PutLong(defpos);
         }
         SUpdate(SDatabase d,AStream f) throws Exception

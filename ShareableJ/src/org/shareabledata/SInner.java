@@ -20,21 +20,23 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         public SInner(SBucket<K,V> v,int t, SSlot<K,SBucket<K,V>>[] s, int low, int high)
         {
             super(high+1-low,t);
-            slots = (SSlot<K,SBucket<K,V>>[])new Object[count];
+            var a = new ArrayList<SSlot<K,SBucket<K,V>>>();
             for (int i = 0; i < count; i++)
-                slots[i] = s[i + low];
+                a.add(s[i + low]);
+            slots = a.toArray(new SSlot[0]);
             gtr = v;
         }
         public SInner(SBucket<K,V> v,int t,SSlot<K,SBucket<K,V>>[] s1,int low1, int high1,
             SSlot<K, SBucket<K, V>>[] s2, int low2, int high2) 
         {
             super(high1+high2+2-low1-low2,t);
-            slots = (SSlot<K, SBucket<K, V>>[])new Object[count];
-            int j, k = 0;
+            var a = new ArrayList<SSlot<K,SBucket<K,V>>>();
+            int j;
             for (j = low1; j <= high1; j++)
-                slots[k++] = s1[j];
+                a.add(s1[j]);
             for (j = low2; j <= high2; j++)
-                slots[k++] = s2[j];
+                a.add(s2[j]);
+            slots = a.toArray(new SSlot[0]);
             gtr = v;
         }
         @Override
@@ -115,7 +117,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         }
         SInner<K, V> SplitGtr()
         {
-            return new SInner<K, V>(gtr.TopHalf(), total, slots, 0, count - 1, (SSlot<K, SBucket<K, V>>[])new Object[] { gtr.LowHalf() }, 0, 0);
+            return new SInner<K, V>(gtr.TopHalf(), total, slots, 0, count - 1, new SSlot[] { gtr.LowHalf() }, 0, 0);
         }
         SSlot<K,SBucket<K,V>> LowHalf()
         {
@@ -162,28 +164,30 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
             b.Add(ab);
             if (b instanceof SInner)
                 g = ((SInner<K, V>)b).gtr;
-            SSlot<K,V>[] s = (SSlot<K,V>[])ab.toArray();
+            var s = (SSlot<K,V>[])ab.toArray();
             if (g == null) // we use Size entries from s for each new Bucket (all Leaves)
             {
-                SSlot<K,V>[] ss = (SSlot<K, V>[])new Object[s.length];
+                var a = new ArrayList<SSlot<K, V>>();
                 for (j = 0; j < s.length; j++)
-                    ss[j] = (SSlot<K, V>)s[j];
+                    a.add(s[j]);
+                var ss = a.toArray(new SSlot[0]);
                 if (s.length <= S) // can happen at root: reduce height of tree
                     return new SLeaf<K, V>(ss);
                 // suppose s.Length = Size*A+B
                 int A = s.length / S;
                 int B = s.length - A * S;
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                SSlot<K, SBucket<K, V>>[] ts = (SSlot<K, SBucket<K, V>>[])new Object[(B == 0) ? (A - 1) : A]; // new list of children
-                int sce = 0, dst = 0;
+                var ts = new ArrayList<SSlot<K, SBucket<K, V>>>(); // new list of children
+                int sce = 0;
                 SSlot<K, V> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
                 // if 1<=B<(Size>>1) we need to keep one in hand for later
                 int C = (1 <= B && B < (S >> 1)) ? 1 : 0;
-                for (i = 0; i < ts.length - C; i++)
+                int D = (B == 0) ? (A - 1) : A;
+                for (i = 0; i < D - C; i++)
                 {
                     d = ss[sce + S - 1]; // last entry in new bucket
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + S - 1));
+                    ts.add(new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + S - 1)));
                     sce += S;
                 }
                 if (C == 1)
@@ -191,34 +195,36 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                     // be careful for the last entry: the new gtr still needs at least Size>>1 entries
                     m = S >> 1;
                     d = ss[sce + m - 1];
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + m - 1));
+                    ts.add(new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + m - 1)));
                     sce += m;
                 }
-                return new SInner<K, V>(new SLeaf<K, V>(ss, sce, s.length - 1), total - 1, ts);
+                return new SInner<K, V>(new SLeaf<K, V>(ss, sce, s.length - 1), total - 1, ts.toArray(new SSlot[0]));
             }
             else // we use Size+1 entries from s for each new Bucket: g is an extra one
             {
-                SSlot<K, SBucket<K, V>>[] ss = (SSlot<K, SBucket<K, V>>[])new Object[s.length];
+                var a = new ArrayList<SSlot<K, SBucket<K, V>>>();
                 for (j = 0; j < s.length; j++)
-                    ss[j] = (SSlot<K, SBucket<K, V>>)s[j];
+                    a.add((SSlot<K, SBucket<K, V>>)s[j]);
+                var ss = a.toArray(new SSlot[0]);
                 if (s.length <= S) // can happen at root: reduce height of tree
                     return new SInner<K, V>(g, total - 1, ss);
                 int A = (s.length + 1) / (S + 1); // not forgetting g
                 int B = s.length + 1 - A * (S + 1);
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                SSlot<K, SBucket<K, V>>[] ts = (SSlot<K, SBucket<K, V>>[])new Object[(B == 0) ? (A - 1) : A]; // new list of children
-                int sce = 0, dst = 0;
+                var ts = new ArrayList<SSlot<K, SBucket<K, V>>>(); // new list of children
+                int sce = 0;
                 SSlot<K, SBucket<K, V>> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
                 // if 1<=B<(Size>>1) we need to keep one in hand for later
                 int C = (1 <= B && B < (S >> 1)) ? 1 : 0;
-                for (i = 0; i < ts.length - C; i++)
+                int D = (B == 0) ? (A - 1) : A;
+                for (i = 0; i < D - C; i++)
                 {
                     d = ss[sce + S]; // last entry in new bucket
                     int dt = 0;
                     for (int di = sce; di < sce + S; di++)
-                        dt += ss[di].val.total;
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + S - 1));
+                        dt += ((SBucket)ss[di].val).total;
+                    ts.add(new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + S - 1)));
                     sce += S + 1;
                 }
                 if (C == 1)
@@ -227,14 +233,14 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                     d = ss[sce + m];
                     int dt = 0;
                     for (int di = sce; di < sce + m; di++)
-                        dt += ss[di].val.total;
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + m - 1));
+                        dt += ((SBucket)ss[di].val).total;
+                    ts.add(new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + m - 1)));
                     sce += m + 1;
                 }
                 int gt = 0;
                 for (int di = sce; di < s.length; di++)
-                    gt += ss[di].val.total;
-                return new SInner<K, V>(new SInner<K, V>(g, gt, ss, sce, s.length - 1), total - 1, ts);
+                    gt += ((SBucket)ss[di].val).total;
+                return new SInner<K, V>(new SInner<K, V>(g, gt, ss, sce, s.length - 1), total - 1, ts.toArray(new SSlot[0]));
             }
 
         }

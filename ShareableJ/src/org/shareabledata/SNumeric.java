@@ -20,7 +20,7 @@ public class SNumeric extends Serialisable {
             precision = p;
             scale = s;
         }
-        SNumeric(AStream f) throws IOException
+        SNumeric(AStream f) throws Exception
         {
             super(Types.SNumeric, f);
             mantissa = f.GetLong();
@@ -34,7 +34,7 @@ public class SNumeric extends Serialisable {
             f.PutInt(precision);
             f.PutInt(scale);
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new SNumeric(f);
         }

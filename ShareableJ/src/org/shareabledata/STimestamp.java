@@ -18,7 +18,7 @@ public class STimestamp extends Serialisable {
             super(Types.STimestamp);
             ticks = t.getTime();
         }
-        STimestamp(AStream f)throws IOException
+        STimestamp(AStream f)throws Exception
         {
             super(Types.STimestamp,f);
             ticks = f.GetLong();
@@ -28,7 +28,7 @@ public class STimestamp extends Serialisable {
             super.Put(f);
             f.PutLong(ticks);
         }
-        public static STimestamp Get(AStream f) throws IOException
+        public static STimestamp Get(AStream f) throws Exception
         {
             return new STimestamp(f);
         }

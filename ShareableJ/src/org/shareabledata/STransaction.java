@@ -22,6 +22,10 @@ public class STransaction extends SDatabase {
         SDatabase getRollback() {
             return rollback;
         }
+        public STransaction Add(SDbObject s) throws Exception
+        {
+            return new STransaction(this,s);
+        }
         public STransaction(SDatabase d, boolean auto)
         {
             super(d);
@@ -36,11 +40,12 @@ public class STransaction extends SDatabase {
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="s"></param>
-        public STransaction(STransaction tr,SDbObject s) throws Exception
+        private STransaction(STransaction tr,SDbObject s) throws Exception
         {
-            super(tr.Add(s, tr.uid+1));
+            super(tr._Add(s, tr.uid+1));
             uid =  tr.uid+1;
-            steps = tr.steps.Add(tr.steps.Count(),s);
+            steps = (tr.steps==null)?new SDict<Integer,SDbObject>(0,s):
+                    tr.steps.Add(tr.steps.Count(),s);
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
         }
@@ -52,7 +57,7 @@ public class STransaction extends SDatabase {
         {
             AStream dbfile = dbfiles.Lookup(name);
             SDatabase db = databases.Lookup(name);
-            var since = dbfile.GetAll(this, curpos, db.curpos);
+            var since = dbfile.GetAll(this, rollback.curpos, db.curpos);
             for (var i = 0; i < since.length; i++)
                 for (var b = steps.First(); b != null; b = b.Next())
                     if (since[i].Conflicts(b.getValue().val))

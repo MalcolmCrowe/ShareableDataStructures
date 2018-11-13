@@ -17,7 +17,7 @@ public class STimeSpan extends Serialisable {
             super(Types.STimeSpan);
             ticks = s.toNanos()/1000;
         }
-        STimeSpan(AStream f)  throws IOException
+        STimeSpan(AStream f)  throws Exception
         {
             super(Types.STimeSpan, f);
             ticks = f.GetLong();
@@ -27,7 +27,7 @@ public class STimeSpan extends Serialisable {
             super.Put(f);
             f.PutLong(ticks);
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new STimeSpan(f);
         }

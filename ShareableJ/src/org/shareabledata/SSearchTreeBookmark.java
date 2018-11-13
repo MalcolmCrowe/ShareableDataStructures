@@ -31,11 +31,16 @@ public class SSearchTreeBookmark<T extends Comparable<T>> extends Bookmark<T> {
         {
             return _s.node;
         }
-        public Bookmark<T> Next()
+        public Bookmark<T> Next() 
         {
+            try{
             return (_s.right != null)?
                 new SSearchTreeBookmark<T>(_s.right, true, _stk, Position + 1)
                 : (_stk == null) ? null
                 : new SSearchTreeBookmark<T>(_stk.First().getValue(), false, _stk.RemoveAt(0), Position + 1);
+            } catch(Exception e) 
+            {
+                return null;
+            }
         }    
 }

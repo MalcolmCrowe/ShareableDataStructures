@@ -25,7 +25,7 @@ public class SDate extends Serialisable {
             LocalDateTime ts = LocalDateTime.of(year, month, 0,0,0);
             rest = Duration.between(t,ts).toMillis();
         }
-        SDate(AStream f) throws IOException
+        SDate(AStream f) throws Exception
         {
             super(Types.SDate, f);
             year = f.GetInt();
@@ -39,7 +39,7 @@ public class SDate extends Serialisable {
             f.PutInt(month);
             f.PutLong(rest);
         }
-        public static Serialisable Get(AStream f) throws IOException
+        public static Serialisable Get(AStream f) throws Exception
         {
             return new SDate(f);
         }

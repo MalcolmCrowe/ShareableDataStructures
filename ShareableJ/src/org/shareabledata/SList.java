@@ -16,7 +16,7 @@ public class SList<T> extends Shareable<T>
     public final SList<T> next;
     public SList(T e, SList<T> n) 
     {
-        super(((n==null)?0:n.getLength())+1);
+        super(((n==null)?0:n.Length)+1);
         element = e;
         next = n;
     }
@@ -33,28 +33,30 @@ public class SList<T> extends Shareable<T>
         element = args[0];
         next = n;
     }
-    public int getLength() {
-        return (next != null) ? next.getLength() + 1 : 1;
-    }
 
-    public SList<T> InsertAt(T x, int n) {
-        if (n == 0) {
+    public SList<T> InsertAt(T x, int n) throws Exception {
+        if (n>Length)
+            throw new Exception("Cannot add beyond end of list");
+        if (n == 0) 
             return new SList<>(x, this);
-        }
+        if (next==null)
+            return new SList<T>(element,new SList(x,null));
         return new SList<T>(element, next.InsertAt(x, n - 1));
     }
 
-    public SList<T> RemoveAt(int n) {
-        if (n == 0) {
+    public SList<T> RemoveAt(int n) throws Exception {
+        if (n>=Length)
+            throw new Exception("Cannot remove beyond end of list");
+        if (n == 0) 
             return next;
-        }
         return new SList<T>(element, next.RemoveAt(n - 1));
     }
 
-    public SList<T> UpdateAt(T x, int n) {
-        if (n == 0) {
+    public SList<T> UpdateAt(T x, int n) throws Exception {
+        if (n>=Length)
+            throw new Exception("Cannot update beyond end of list");
+        if (n == 0)
             return new SList<>(x, next);
-        }
         return new SList<>(element, next.UpdateAt(x, n - 1));
     }
 

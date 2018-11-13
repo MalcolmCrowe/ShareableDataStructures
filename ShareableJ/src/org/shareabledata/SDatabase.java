@@ -38,7 +38,7 @@ public class SDatabase {
             return r;
         }
         var db = new SDatabase(fname);
-        var fs = new AStream(path + fname);
+        var fs = new AStream(path,fname);
         if (dbfiles == null) {
             dbfiles = new SDict<>(fname, fs);
         } else {
@@ -58,13 +58,16 @@ public class SDatabase {
     }
 
     public SDbObject Lookup(long pos) {
-        return objects.Lookup(pos);
+        return (objects==null)?null:objects.Lookup(pos);
     }
 
     public SRecord Get(long pos) throws Exception {
-        var f = dbfiles.Lookup(name);
+        var f = (dbfiles==null)?null:dbfiles.Lookup(name);
         synchronized (f) {
-            var rc = (SRecord) f.Get(this, pos);
+            var s= f.Get(this, pos);
+            SRecord rc = null;
+            if (s!=null && s.type==Types.SRecord || s.type==Types.SUpdate)
+                rc = (SRecord)s;
             if (rc == null) {
                 throw new Exception("Record " + pos + " never defined");
             }
@@ -72,7 +75,7 @@ public class SDatabase {
             if (tb == null) {
                 throw new Exception("Table " + rc.table + " has been dropped");
             }
-            if (!tb.rows.Contains(rc.Defpos())) {
+            if (tb.rows==null || !tb.rows.Contains(rc.Defpos())) {
                 throw new Exception("Record " + pos + " has been dropped");
             }
             return (SRecord) f.Get(this, tb.rows.Lookup(rc.Defpos()));
@@ -116,13 +119,19 @@ public class SDatabase {
     protected SDatabase(SDatabase db, SAlter a, long c) throws Exception {
         name = db.name;
         if (a.parent == 0) {
-            var ot = (STable) db.Lookup(a.defpos);
+            var o = db.Lookup(a.defpos);
+            if (o==null || o.type!=Types.STable)
+                throw new Exception("Not a Table");
+            var ot = (STable)o;
             var nt = new STable(ot, a.name);
             objects = db.objects.Add(a.defpos, nt);
             names = db.names.Remove(ot.name).Add(a.name, nt);
         } else {
-            var ot = (STable) db.Lookup(a.parent);
-            var oc = ot.cols.Lookup(a.defpos);
+            var o = db.Lookup(a.parent);
+            if (o==null || o.type!=Types.STable)
+                throw new Exception("Not a Table");
+            var ot = (STable)o;
+            var oc = (ot.cols==null)?null:ot.cols.Lookup(a.defpos);
             var nc = new SColumn(oc, a.name, a.dataType);
             var nt = ot.Add(nc);
             objects = db.objects.Add(a.defpos, nt);
@@ -170,14 +179,14 @@ public class SDatabase {
         if (f != null) {
             synchronized (f) {
                 for (var s = f.GetOne(this); s != null; s = f.GetOne(db)) {
-                    db = db.Add(s, s.uid);
+                    db = db._Add(s, s.uid);
                 }
             }
         }
         return db;
     }
 
-    public SDatabase Add(SDbObject s, long p) throws Exception {
+    public SDatabase _Add(SDbObject s, long p) throws Exception {
         switch (s.type) {
             case Types.STable:
                 return Install((STable) s, p);
@@ -296,5 +305,17 @@ public class SDatabase {
 
     protected SDatabase Install(SIndex x, long c) throws Exception {
         return new SDatabase(this, x, c);
+    }
+    public STransaction Transact(boolean auto)
+    {
+        return new STransaction(this,auto);
+    }
+    public SDatabase MaybeAutoCommit(STransaction tr) throws Exception
+    {
+        return tr.autoCommit ? tr.Commit() : tr;
+    }
+    public SDatabase Rollback()
+    {
+        return this;
     }
 }

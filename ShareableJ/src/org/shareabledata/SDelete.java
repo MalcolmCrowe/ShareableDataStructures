@@ -26,7 +26,7 @@ public class SDelete extends SDbObject {
             f.PutLong(table);
             f.PutLong(delpos);
         }
-        SDelete(StreamBase f) throws IOException
+        SDelete(StreamBase f) throws Exception
         {
             super(Types.SDelete,f);
             table = f.GetLong();

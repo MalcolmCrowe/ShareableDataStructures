@@ -166,7 +166,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
         Variant nv = null;
         SITree st = _impl;
-        if (st.Contains(k.element)) {
+        if (st!=null && st.Contains(k.element)) {
             Variant tv = st.Lookup(k.element);
             switch (tv.variant) {
                 case Compound: {

@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-
+import java.util.*;
 /**
  *
  * @author 66668214
@@ -14,9 +14,10 @@ public class SArray<T> extends Shareable<T> {
         public SArray(T ... els)
         { 
             super(els.length);
-            elements = (T[]) new Object[els.length];
+            var e = new ArrayList<T>();
             for (int i = 0; i <els.length; i++)
-                elements[i] = els[i];
+                e.add(els[i]);
+            elements = (T[])e.toArray();
         }
         public SArray<T> InsertAt(int n, T ... els)
         {

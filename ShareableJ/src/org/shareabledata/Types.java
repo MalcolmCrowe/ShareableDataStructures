@@ -11,7 +11,7 @@ package org.shareabledata;
  */
 public class Types
 {
-    static final int Serialisable = 0,
+    public static final int Serialisable = 0,
         STimestamp = 1,
         SInteger = 2,
         SNumeric = 3,

@@ -18,46 +18,38 @@ public class Buffer {
     public long start;
     public int len;
     public int pos;
-    boolean eof;
-    AStream fs;
+    public boolean busy = false;
+    StreamBase fs;
 
-    public Buffer(AStream f) throws IOException {
+    public Buffer(StreamBase f) throws IOException {
         buf = new byte[Size];
         pos = 0;
         len = Size;
-        start = f.file.length();
-        eof = false;
+        start = f.getLength();
         fs = f;
     }
 
-    Buffer(AStream f, long s) throws IOException {
+    Buffer(AStream f, long s) throws Exception {
         buf = new byte[Size];
         start = s;
         pos = 0;
-        f.file.seek(start);
-        len = f.file.read(buf, 0, Size);
-        eof = len < Size;
+        f.GetBuf(this);
         fs = f;
     }
 
-    int GetByte() throws IOException {
+    int GetByte() throws Exception {
         if (pos >= len) {
-            if (eof) {
-                return -1;
-            }
             start += len;
             pos = 0;
-            fs.file.seek(start);
-            len = fs.file.read(buf, 0, Size);
-            eof = len < Size;
+            if (!fs.GetBuf(this))
+               return -1;
         }
         return buf[pos++];
     }
 
-    void PutByte(byte b) throws IOException {
+    void PutByte(byte b) throws Exception {
         if (pos >= len) {
-            fs.file.seek(fs.file.length());
-            fs.file.write(buf, 0, len);
+            fs.PutBuf(this);
             start += len;
             pos = 0;
         }

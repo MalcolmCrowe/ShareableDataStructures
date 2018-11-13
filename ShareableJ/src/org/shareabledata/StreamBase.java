@@ -20,8 +20,9 @@ public abstract class StreamBase {
     protected Buffer rbuf, wbuf;
     protected long position = 0;
     protected StreamBase() {}
-        protected abstract boolean GetBuf(Buffer b) throws Exception;
-        protected abstract void PutBuf(Buffer b)throws Exception;
+    protected abstract long getLength();
+    protected abstract boolean GetBuf(Buffer b) throws Exception;
+    protected abstract void PutBuf(Buffer b)throws Exception;
     public Serialisable _Get(SDatabase d) throws Exception {
         int tp = ReadByte();
         Serialisable s = null;
@@ -72,25 +73,25 @@ public abstract class StreamBase {
         }
         return s;
     }
-    public int ReadByte() throws IOException {
+    public int ReadByte() throws Exception {
         return rbuf.GetByte();
     }
-    public void WriteByte(byte value) throws IOException {
+    public void WriteByte(byte value) throws Exception {
         wbuf.PutByte(value);
     }
-    public void PutInt(int n) throws IOException {
+    public void PutInt(int n) throws Exception {
         for (int j = 24; j >= 0; j -= 8) {
             WriteByte((byte) (n >> j));
         }
     }
 
-    public void PutLong(long t)  throws IOException {
+    public void PutLong(long t)  throws Exception {
         for (int j = 56; j >= 0; j -= 8) {
             WriteByte((byte) (t >> j));
         }
     }
 
-    public void PutString(String s)  throws IOException{
+    public void PutString(String s)  throws Exception{
         byte[] cs = s.getBytes("UTF-8");
         PutInt(cs.length);
         for (int i = 0; i < cs.length; i++) {
@@ -98,7 +99,7 @@ public abstract class StreamBase {
         }
     }
 
-    public int GetInt() throws IOException{
+    public int GetInt() throws Exception{
         int v = 0;
         for (int j = 0; j < 4; j++) {
             v = (v << 8) + ReadByte();
@@ -106,7 +107,7 @@ public abstract class StreamBase {
         return v;
     }
 
-    public long GetLong() throws IOException {
+    public long GetLong() throws Exception {
         long v = 0;
         for (int j = 0; j < 8; j++) {
             v = (v << 8) + ReadByte();
@@ -114,7 +115,7 @@ public abstract class StreamBase {
         return v;
     }
 
-    public String GetString() throws IOException {
+    public String GetString() throws Exception {
         int n = GetInt();
         byte[] cs = new byte[n];
         for (int j = 0; j < n; j++) {

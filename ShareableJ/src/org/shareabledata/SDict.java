@@ -14,7 +14,7 @@ public class SDict<K extends Comparable, V> extends Shareable<SSlot<K, V>> {
     public static final int SIZE = 8;
     public final SBucket<K, V> root;
 
-    SDict(K k, V v) {
+    public SDict(K k, V v) {
         this(new SLeaf<K, V>(new SSlot<K, V>(k, v)));
     }
 

@@ -22,10 +22,11 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
 
     public SLeaf(SSlot<K, V>[] s, int low, int high) {
         super(high + 1 - low, high + 1 - low);
-        slots = (SSlot<K, V>[]) new Object[count];
+        var a = new ArrayList<SSlot<K, V>>();
         for (int i = 0; i < count; i++) {
-            slots[i] = s[i + low];
+            a.add(s[i + low]);
         }
+        slots = a.toArray(new SSlot[0]);
     }
 
     @Override
@@ -99,56 +100,51 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
     }
 
     SSlot<K, V>[] Splice(int ix, SSlot<K, V> ns, SSlot<K, V> os) {
-        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count + 1];
-        int j = 0, k = 0;
+        var s = new ArrayList<SSlot<K,V>>();
+        int j = 0;
         while (j < ix) {
-            s[k++] = slots[j++];
+            s.add(slots[j++]);
         }
-        s[k++] = ns;
-        s[k++] = os;
+        s.add(ns);
+        s.add(os);
         j++;
         while (j < count) {
-            s[k++] = slots[j++];
+            s.add(slots[j++]);
         }
-        return s;
+        return s.toArray(new SSlot[0]);
     }
 
     SSlot<K, V>[] Replace(int j, SSlot<K, V> d) {
-        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count];
+        var s = new ArrayList<SSlot<K,V>>();
         int i = 0;
         while (i < count) {
-            s[i] = slots[i];
+            s.add((i==j)?d:slots[i]);
             i++;
         }
-        s[j] = d;
-        return s;
+        return s.toArray(new SSlot[0]);
     }
 
     SSlot<K, V>[] Add(int ix, SSlot<K, V> s) {
-        SSlot<K, V>[] t = (SSlot<K, V>[]) new Object[count + 1];
-        int j = 0, k = 0;
+        var t = new ArrayList<SSlot<K,V>>();
+        int j = 0;
         while (j < ix) {
-            t[k++] = slots[j++];
+            t.add(slots[j++]);
         }
-        t[k++] = s;
+        t.add(s);
         while (j < count) {
-            t[k++] = slots[j++];
+            t.add(slots[j++]);
         }
-        return t;
+        return t.toArray(new SSlot[0]);
     }
 
     SSlot<K, V>[] Remove(int ix) {
-        SSlot<K, V>[] s = (SSlot<K, V>[]) new Object[count - 1];
+        var s = new ArrayList<SSlot<K,V>>();
         int j = 0;
-        while (j < ix && j < count - 1) {
-            s[j] = slots[j];
-            j++;
-        }
-        while (j < count - 1) {
-            s[j] = slots[j + 1];
-            j++;
-        }
-        return s;
+        while (j < ix && j < count - 1)
+            s.add(slots[j++]);
+        while (j < count - 1)
+            s.add(slots[j++ + 1]);
+        return s.toArray(new SSlot[0]);
     }
 
 }

@@ -27,9 +27,9 @@ public class STable extends SDbObject {
         {
             return new STable(this,rows.Add(r.Defpos(), r.uid));
         }
-        public STable Remove(long n)
+        public STable Remove(long n) throws Exception
         {
-            if (cols.Contains(n))
+            if (cols!=null && cols.Contains(n))
             {
                 var k = 0;
                 var cp = cpos;
@@ -44,6 +44,15 @@ public class STable extends SDbObject {
             }
             else
                 return new STable(this,rows.Remove(n));
+        }
+        public STable(STransaction tr,String n)
+        {
+            super(Types.STable,tr);
+            name = n;
+            cols = null;
+            cpos = null;
+            rows = null;
+            names = null;
         }
         public STable(STable t,String n)
         {

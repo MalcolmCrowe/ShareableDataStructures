@@ -13,6 +13,11 @@ public class SColumn extends SDbObject {
         public final String name;
         public final int dataType;
         public final long table;
+        public SColumn(String n,int d)
+        {
+            super(Types.SColumn);
+            name = n; dataType = d; table = -1;
+        }
         public SColumn(STransaction tr,String n, int t, long tbl)
         {
             super(Types.SColumn,tr);
