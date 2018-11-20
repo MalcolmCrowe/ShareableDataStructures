@@ -107,11 +107,11 @@ public class SIndex extends SDbObject {
     }
 
     SList<TreeInfo> Info(STable tb, SList<Long> cols) throws Exception {
-        if (cols.Length == 0) {
+        if (cols==null || cols.Length == 0) {
             return null;
         }
         var n = Info(tb, cols.next);
-        var ti = new TreeInfo<Long>(tb.cols.Lookup(cols.element).uid, 'D', 'D');
+        var ti = new TreeInfo<Long>(cols.element, 'D', 'D');
         if (n == null) {
             return new SList<TreeInfo>(ti);
         }
@@ -119,19 +119,19 @@ public class SIndex extends SDbObject {
     }
 
     SCList<Variant> Key(SRecord sr, SList<Long> cols) throws Exception {
-        if (cols.Length == 0) {
+        if (cols==null || cols.Length == 0) {
             return null;
         }
         return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next));
     }
 
     public String ToString() {
-        var sb = new StringBuilder("Index " + uid + " [" + table + "] (");
+        var sb = new StringBuilder(super.toString() + " [" + STransaction.Uid(table) + "] (");
         var cm = "";
         for (var b = cols.First(); b != null; b = b.Next()) {
             sb.append(cm);
             cm = ",";
-            sb.append("" + b.getValue());
+            sb.append(STransaction.Uid(b.getValue()));
         }
         sb.append(")");
         return sb.toString();

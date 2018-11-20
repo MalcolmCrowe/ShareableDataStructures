@@ -11,7 +11,7 @@ namespace StrongLink
     public enum IndexType { Primary =0, Unique=1, Reference=2 };
     public class StrongConnect
     {
-        internal AsyncClient asy;
+        internal ClientStream asy;
         public StrongConnect(string host,int port,string fn)
         {
             Socket socket = null;
@@ -49,9 +49,10 @@ namespace StrongLink
             }
             if (socket == null || !socket.Connected)
                 throw new Exception("No connection to " + host + ":" + port);
-            asy = new AsyncClient(this, socket);
+            asy = new ClientStream(this, socket);
             asy.PutString(fn);
             asy.Flush();
+            asy.ReadByte();
         }
         public void CreateTable(string n,params SColumn[] cols)
         {
@@ -98,10 +99,10 @@ namespace StrongLink
                     rows[i][j].Put(asy);
             var b = asy.Receive();
         }
-        public string Get(string tn,params Serialisable[] key)
+        public string Get(Serialisable tn,params Serialisable[] key)
         {
             asy.Write(Protocol.Get);
-            asy.PutString(tn);
+            tn.Put(asy);
             asy.PutInt(key.Length);
             foreach (var s in key)
                 s.Put(asy);
@@ -144,7 +145,7 @@ namespace StrongLink
             asy.Close();
         }
     }
-    class AsyncClient : StreamBase
+    class ClientStream : StreamBase
     {
         /// <summary>
         /// For asynchronous IO
@@ -153,7 +154,7 @@ namespace StrongLink
         internal Socket client;
         internal int rx = 0;
         internal int rcount = 0;
-        internal AsyncClient(StrongConnect pc, Socket c)
+        internal ClientStream(StrongConnect pc, Socket c)
         {
             client = c;
             wbuf = new Buffer(this);
@@ -170,9 +171,13 @@ namespace StrongLink
             rx = 0;
             try
             {
-                b.wait = new ManualResetEvent(false);
-                client.BeginReceive(b.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback), b);
-                b.wait.WaitOne();
+                var rc = client.Receive(b.buf, Buffer.Size, 0);
+                if (rc == 0)
+                {
+                    rcount = 0;
+                    return false;
+                }
+                rcount = (((int)rbuf.buf[0]) << 7) + (int)rbuf.buf[1];
                 b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
@@ -181,35 +186,6 @@ namespace StrongLink
             catch (SocketException)
             {
                 return false;
-            }
-        }
-        void Callback(IAsyncResult ar)
-        {
-            var buf = ar.AsyncState as Buffer;
-            try
-            {
-                int rc = client.EndReceive(ar);
-                if (rc == 0)
-                {
-                    rcount = 0;
-                    buf.wait.Set();
-                    return;
-                }
-                if (rc + rx == Buffer.Size)
-                {
-                    rcount = ((buf.buf[0]) << 7) + buf.buf[1];
-                    buf.wait.Set();
-                }
-                else
-                {
-                    rx += rc;
-                    client.BeginReceive(buf.buf, rx, Buffer.Size - rx, 0, new AsyncCallback(Callback), buf);
-                }
-            }
-            catch (SocketException)
-            {
-                rcount = 0;
-                buf.wait.Set();
             }
         }
         public override int Read(byte[] buffer, int offset, int count)
@@ -234,12 +210,6 @@ namespace StrongLink
         {
             Flush();
         }
-        void Callback1(IAsyncResult ar)
-        {
-            Buffer buf = ar.AsyncState as Buffer;
-            client.EndSend(ar);
-            buf.wait.Set();
-        }
         public override void Write(byte[] buffer, int offset, int count)
         {
             for (int j = 0; j < count; j++)
@@ -254,18 +224,13 @@ namespace StrongLink
             rcount = 0;
             rbuf.pos = 2;
             rbuf.len = 0;
-            if (wbuf.wait != null)
-                wbuf.wait.WaitOne();
-            wbuf.wait = new ManualResetEvent(false);
             // now always send bSize bytes (not wcount)
             wbuf.pos -= 2;
             wbuf.buf[0] = (byte)(wbuf.pos >> 7);
             wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
             try
             {
-                IAsyncResult br = client.BeginSend(wbuf.buf, 0, Buffer.Size, 0, new AsyncCallback(Callback1), wbuf);
-                if (!br.IsCompleted)
-                    br.AsyncWaitHandle.WaitOne();
+                client.Send(wbuf.buf, Buffer.Size, 0);
                 wbuf.pos = 2;
             }
             catch (SocketException e)
@@ -275,7 +240,7 @@ namespace StrongLink
         }
         internal int GetException()
         {
-            return (int)GetException(Responses.Exception);
+            return GetException(Responses.Exception);
         }
         // v2.0 exception handling during server comms
         // an illegal nonzero rcount value indicates an exception

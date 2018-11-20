@@ -11,7 +11,7 @@ import java.io.*;
  */
 public class STransaction extends SDatabase {
         // uids above this number are for uncommitted objects
-        public static final long _uid = 0x80000000;
+        public static final long _uid = 0x40000000;
         public final long uid;
         public final boolean autoCommit;
         public final SDatabase rollback;

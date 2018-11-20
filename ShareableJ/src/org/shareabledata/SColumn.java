@@ -18,6 +18,17 @@ public class SColumn extends SDbObject {
             super(Types.SColumn);
             name = n; dataType = d; table = -1;
         }
+                /// <summary>
+        /// For system column
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="t"></param>
+        /// <param name="u"> will be negative</param>
+        public SColumn(String n,int t,long u)
+        {
+            super(Types.SColumn,u);
+            name = n; dataType = t; table = -1;
+        }
         public SColumn(STransaction tr,String n, int t, long tbl)
         {
             super(Types.SColumn,tr);
@@ -68,6 +79,6 @@ public class SColumn extends SDbObject {
         }
         public String toString()
         {
-            return "Column " + name + " [" + Uid() + "]: " + dataType;
+            return super.toString() +"(" +STransaction.Uid(table)+ ")"+ name + " (" + Types.ToString(dataType)+")";
         }
 }

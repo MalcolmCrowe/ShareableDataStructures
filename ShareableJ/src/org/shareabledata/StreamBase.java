@@ -77,6 +77,8 @@ public abstract class StreamBase {
         return rbuf.GetByte();
     }
     public void WriteByte(byte value) throws Exception {
+        if (wbuf==null)
+            System.out.println("Panic");
         wbuf.PutByte(value);
     }
     public void PutInt(int n) throws Exception {

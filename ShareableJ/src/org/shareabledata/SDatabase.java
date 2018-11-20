@@ -20,7 +20,7 @@ public class SDatabase {
     static Object files = new Object(); // a lock (not normally ever used)
     protected static SDict<String, AStream> dbfiles = null;
     protected static SDict<String, SDatabase> databases = null;
-    
+
     SDatabase getRollback() {
         return this;
     }
@@ -38,7 +38,7 @@ public class SDatabase {
             return r;
         }
         var db = new SDatabase(fname);
-        var fs = new AStream(path,fname);
+        var fs = new AStream(path, fname);
         if (dbfiles == null) {
             dbfiles = new SDict<>(fname, fs);
         } else {
@@ -58,16 +58,20 @@ public class SDatabase {
     }
 
     public SDbObject Lookup(long pos) {
-        return (objects==null)?null:objects.Lookup(pos);
+        return (objects == null) ? null : objects.Lookup(pos);
     }
 
     public SRecord Get(long pos) throws Exception {
-        var f = (dbfiles==null)?null:dbfiles.Lookup(name);
+        var f = (dbfiles == null) ? null : dbfiles.Lookup(name);
+        if (f == null) {
+            throw new Exception("File is null");
+        }
         synchronized (f) {
-            var s= f.Get(this, pos);
+            var s = f.Get(this, pos);
             SRecord rc = null;
-            if (s!=null && s.type==Types.SRecord || s.type==Types.SUpdate)
-                rc = (SRecord)s;
+            if (s != null && s.item.type == Types.SRecord || s.item.type == Types.SUpdate) {
+                rc = (SRecord) s.item;
+            }
             if (rc == null) {
                 throw new Exception("Record " + pos + " never defined");
             }
@@ -75,10 +79,20 @@ public class SDatabase {
             if (tb == null) {
                 throw new Exception("Table " + rc.table + " has been dropped");
             }
-            if (tb.rows==null || !tb.rows.Contains(rc.Defpos())) {
+            if (tb.rows == null || !tb.rows.Contains(rc.Defpos())) {
                 throw new Exception("Record " + pos + " has been dropped");
             }
-            return (SRecord) f.Get(this, tb.rows.Lookup(rc.Defpos()));
+            return (SRecord) f.Get(this, tb.rows.Lookup(rc.Defpos())).item;
+        }
+    }
+
+    public SysItem _Get(long pos) throws Exception {
+        var f = (dbfiles == null) ? null : dbfiles.Lookup(name);
+        if (f == null) {
+            throw new Exception("File is null");
+        }
+        synchronized (f) {
+            return f.Get(this, pos);
         }
     }
 
@@ -120,18 +134,20 @@ public class SDatabase {
         name = db.name;
         if (a.parent == 0) {
             var o = db.Lookup(a.defpos);
-            if (o==null || o.type!=Types.STable)
+            if (o == null || o.type != Types.STable) {
                 throw new Exception("Not a Table");
-            var ot = (STable)o;
+            }
+            var ot = (STable) o;
             var nt = new STable(ot, a.name);
             objects = db.objects.Add(a.defpos, nt);
             names = db.names.Remove(ot.name).Add(a.name, nt);
         } else {
             var o = db.Lookup(a.parent);
-            if (o==null || o.type!=Types.STable)
+            if (o == null || o.type != Types.STable) {
                 throw new Exception("Not a Table");
-            var ot = (STable)o;
-            var oc = (ot.cols==null)?null:ot.cols.Lookup(a.defpos);
+            }
+            var ot = (STable) o;
+            var oc = (ot.cols == null) ? null : ot.cols.Lookup(a.defpos);
             var nc = new SColumn(oc, a.name, a.dataType);
             var nt = ot.Add(nc);
             objects = db.objects.Add(a.defpos, nt);
@@ -148,7 +164,15 @@ public class SDatabase {
             names = db.names.Remove(ot.name);
         } else {
             var ot = (STable) db.Lookup(d.parent);
-            var nt = ot.Remove(d.drpos);
+            STable nt = null;
+            try {
+                nt = ot.Remove(d.drpos);
+            } catch (Exception e) {
+                objects = db.objects;
+                names = db.names;
+                curpos = c;
+                return;
+            }
             objects = db.objects.Add(d.parent, nt);
             names = db.names;
         }
@@ -165,9 +189,10 @@ public class SDatabase {
     protected SDatabase(SDatabase db, SIndex x, long c) throws Exception {
         name = db.name;
         var tb = (STable) db.Lookup(x.table);
-        for (var b = tb.rows.First(); b != null; b = b.Next()) {
-            x = x.Add(db.Get(b.getValue().val), b.getValue().val);
-        }
+        if (tb.rows!=null)
+            for (var b = tb.rows.First(); b != null; b = b.Next()) {
+                x = x.Add(db.Get(b.getValue().val), b.getValue().val);
+            }
         objects = db.objects.Add(x.uid, x);
         names = db.names;
         curpos = c;
@@ -187,6 +212,10 @@ public class SDatabase {
     }
 
     public SDatabase _Add(SDbObject s, long p) throws Exception {
+        if (getRollback() == this) // not for STransaction
+        {
+            System.out.println(s);
+        }
         switch (s.type) {
             case Types.STable:
                 return Install((STable) s, p);
@@ -237,7 +266,9 @@ public class SDatabase {
             if (b.getValue().val.type == Types.SIndex) {
                 var x = (SIndex) b.getValue().val;
                 if (x.table == r.table) {
-                    obs = obs.Add(x.uid, x.Add(r, r.uid));
+                    var k = x.uid;
+                    var v = x.Add(r, r.uid);
+                    obs = obs.Add(k,v);
                 }
                 if (x.references == r.table && !x.Contains(r)) {
                     throw new Exception("Referential constraint");
@@ -306,16 +337,34 @@ public class SDatabase {
     protected SDatabase Install(SIndex x, long c) throws Exception {
         return new SDatabase(this, x, c);
     }
-    public STransaction Transact(boolean auto)
-    {
-        return new STransaction(this,auto);
+
+    public STransaction Transact(boolean auto) {
+        return new STransaction(this, auto);
     }
-    public SDatabase MaybeAutoCommit(STransaction tr) throws Exception
-    {
+
+    public SDatabase MaybeAutoCommit(STransaction tr) throws Exception {
         return tr.autoCommit ? tr.Commit() : tr;
     }
-    public SDatabase Rollback()
-    {
+
+    public SDatabase Rollback() {
         return this;
+    }
+
+    STable GetTable(String tn)
+    {
+        var ob = names.Lookup(tn);
+        return (ob!=null && ob.type==Types.STable)?
+            (STable)ob :null;
+    }
+    SIndex GetIndex(long t) {
+        for (var b = objects.First(); b != null; b = b.Next()) {
+            if (b.getValue().val.type == Types.SIndex) {
+                var x = (SIndex) b.getValue().val;
+                if (x.table == t) {
+                    return x;
+                }
+            }
+        }
+        return null;
     }
 }

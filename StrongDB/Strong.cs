@@ -48,42 +48,9 @@ namespace StrongDB
             try
             {
                 var fn = asy.GetString();
-         //       Console.WriteLine("Received " + fn);
                 db = SDatabase.Open(path,fn);
-         /*       if (fn.CompareTo("AsynTest")==0)
-                    var rnd = new Random(0);
-                for (var j = 0; j < 10; j++)
-                    {
-
-          //          Thread.Sleep(testlock.Next(1000, 5000));
-                        lock (testlock)
-                        {
-          //                  asy.Flush();
-
-                            var n = rnd.Next(10, 30);
-                        Console.WriteLine("Receive group should be " + n);
-                            for (var i = 0; i < n; i++)
-                            {
-                                var x = rnd.Next(1, 255);
-                                var y = asy.ReadByte();
-                                if (asy.rcount != n)
-                                    Console.WriteLine("Buffer length " + asy.rcount + "!=" + n);
-                                if (x != y)
-                                    Console.WriteLine("Mismatch " + x + " vs " + y);
-                            }
-                            Console.WriteLine("Matched " + n);
-                            var m = rnd.Next(10, 30);
-                        Console.WriteLine("Send group will be " + m);
-                            for (var i = 0; i < m; i++)
-                            {
-                                var x = rnd.Next(1, 255);
-                                Console.Write(" " + x);
-                                asy.WriteByte((byte)x);
-                            }
-                        asy.Flush();
-                            Console.WriteLine(" Sent " + m);
-                        }
-                } */
+                asy.Write(Responses.Done);
+                asy.Flush();
             } 
             catch (IOException)
             {
@@ -121,23 +88,18 @@ namespace StrongDB
                     {
                         case Protocol.Get:
                             {
-                                var tb = STable.Get(asy);
-                                var n = asy.GetInt();
-                                var k = SCList<Variant>.Empty;
-                                for (var i = 0; i < n; i++)
-                                    k = k.InsertAt(new Variant(Variants.Single,asy._Get(db)), k.Length);
-                                SIndex px = null;
-                                for (var b = db.objects.First(); px == null && b != null; b = b.Next())
-                                    if (b.Value.val is SIndex x && x.table == tb.uid)
-                                        px = x;
+                                var qy = asy._Get(db) as SQuery ??
+                                    throw new Exception("Bad query");
                                 var sb = new StringBuilder("[");
                                 var cm = "";
-                                for (var b=px.rows.PositionAt(k);b!=null; b=(MTreeBookmark<long>)b.Next())
+                                qy = qy.Lookup(db);
+                                RowSet rs = qy.RowSet(db);
+                                for (var b = rs?.First();b!=null;b=b.Next())
                                 {
                                     sb.Append(cm); cm = ",";
-                                    db.Get(b.value()).Append(sb);
+                                    ((RowBookmark)b)._ob.Append(sb);
                                 }
-                                sb.Append(']');
+                                sb.Append(']'); 
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
@@ -584,4 +546,5 @@ namespace StrongDB
             WriteByte((byte)p);
         }
     }
+
 }

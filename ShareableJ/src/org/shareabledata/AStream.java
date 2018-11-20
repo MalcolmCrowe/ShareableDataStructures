@@ -18,7 +18,6 @@ public class AStream extends StreamBase {
 
     public RandomAccessFile file;
     public String filename;
-    Buffer rbuf, wbuf;
     long length = 0;
     SDict<Long, Long> uids = null; // used for movement of SDbObjects
 
@@ -27,10 +26,9 @@ public class AStream extends StreamBase {
         return length;
     }
 
-    public AStream(String path, String fn) throws FileNotFoundException, IOException {
+    public AStream(String path, String fn) throws IOException {
         file = new RandomAccessFile(new File(path, fn), "rws");
         filename = fn;
-        rbuf = new Buffer(this);
         wbuf = new Buffer(this);
         length = file.length();
         file.seek(0);
@@ -65,23 +63,31 @@ public class AStream extends StreamBase {
         return (SDbObject[]) r.toArray(new SDbObject[0]);
     }
 
-    public Serialisable Get(SDatabase d, long pos) throws Exception {
-        synchronized (file) {
-            position = pos;
-            rbuf = new Buffer(this, position);
-            return _Get(d);
+    public SysItem Get(SDatabase d, long pos) throws Exception {
+        if (pos == length) {
+            return null;
         }
+        position = pos;
+        rbuf = new Buffer(this, position);
+        var r = _Get(d);
+        return new SysItem(r, rbuf.start + rbuf.pos);
     }
 
-    Serialisable Lookup(SDatabase db, long pos) {
+    Serialisable Lookup(SDatabase db, long pos) 
+    {
         return db.Lookup(Fix(pos));
     }
 
-    long Fix(long pos) {
+    long Fix(long pos) 
+    {
         if (uids != null && uids.Contains(pos)) {
             pos = uids.Lookup(pos);
         }
         return pos;
+    }
+
+    long pos() {
+        return length + wbuf.pos;
     }
 
     public SDatabase Commit(SDatabase db, SDict<Integer, SDbObject> steps) throws Exception {
@@ -93,47 +99,50 @@ public class AStream extends StreamBase {
                 case Types.STable: {
                     var st = (STable) b.getValue().val;
                     var nt = new STable(st, this);
-                    db = db._Add(nt, length);
+                    db = db._Add(nt, pos());
                     break;
                 }
                 case Types.SColumn: {
                     var sc = (SColumn) bs.val;
                     var st = (STable) Lookup(db, Fix(sc.table));
-                    db = db._Add(new SColumn(sc, this), length);
+                    var nc = new SColumn(sc, this);
+                    db = db._Add(nc, pos());
                     break;
                 }
                 case Types.SRecord: {
                     var sr = (SRecord) bs.val;
                     var st = (STable) Lookup(db, Fix(sr.table));
-                    db = db._Add(new SRecord(db, sr, this), length);
+                    var nr = new SRecord(db, sr, this);
+                    db = db._Add(nr, pos());
                     break;
                 }
                 case Types.SDelete: {
                     var sd = (SDelete) bs.val;
                     var st = (STable) Lookup(db, Fix(sd.table));
-                    db = db._Add(new SDelete(sd, this), length);
+                    var nd = new SDelete(sd, this);
+                    db = db._Add(nd, pos());
                     break;
                 }
                 case Types.SUpdate: {
                     var sr = (SUpdate) b.getValue().val;
                     var st = (STable) Lookup(db, Fix(sr.table));
                     var nr = new SUpdate(db, sr, this);
-                    db = db._Add(nr, length);
+                    db = db._Add(nr, pos());
                     break;
                 }
                 case Types.SAlter: {
                     var sa = new SAlter((SAlter) b.getValue().val, this);
-                    db = db._Add(sa, length);
+                    db = db._Add(sa, pos());
                     break;
                 }
                 case Types.SDrop: {
                     var sd = new SDrop((SDrop) b.getValue().val, this);
-                    db = db._Add(sd, length);
+                    db = db._Add(sd, pos());
                     break;
                 }
                 case Types.SIndex: {
                     var si = new SIndex((SIndex) b.getValue().val, this);
-                    db = db._Add(si, length);
+                    db = db._Add(si, pos());
                     break;
                 }
             }
@@ -168,7 +177,7 @@ public class AStream extends StreamBase {
         b.pos = 0;
     }
 
-    void Flush() throws Exception {
+    public void Flush() throws Exception {
         PutBuf(wbuf);
     }
 }

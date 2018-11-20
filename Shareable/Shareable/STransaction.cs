@@ -6,7 +6,7 @@ namespace Shareable
     public class STransaction :SDatabase 
     {
         // uids above this number are for uncommitted objects
-        public static readonly long _uid = 0x80000000;
+        public static readonly long _uid = 0x40000000;
         public readonly long uid;
         public readonly bool autoCommit;
         public readonly SDatabase rollback;

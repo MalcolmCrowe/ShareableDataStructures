@@ -25,7 +25,10 @@ public class STable extends SDbObject {
         }
         public STable Add(SRecord r)
         {
-            return new STable(this,rows.Add(r.Defpos(), r.uid));
+            var k = r.Defpos();
+            var v = r.uid;
+            var rws = (rows==null)?new SDict<Long,Long>(k,v):rows.Add(k,v);
+            return new STable(this,rws);
         }
         public STable Remove(long n) throws Exception
         {
@@ -44,6 +47,15 @@ public class STable extends SDbObject {
             }
             else
                 return new STable(this,rows.Remove(n));
+        }
+        STable(String n, long u)
+        {
+            super(Types.STable,u);
+            name = n;
+            cols = null;
+            cpos = null;
+            rows = null;
+            names = null;            
         }
         public STable(STransaction tr,String n)
         {
@@ -115,6 +127,6 @@ public class STable extends SDbObject {
         }
         public String toString()
         {
-            return "Table "+name+"["+Uid()+"]";
+            return super.toString()+name;
         }
 }

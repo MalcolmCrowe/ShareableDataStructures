@@ -29,4 +29,13 @@ public class Types
         SDrop = 15,
         SView = 16,
         SIndex = 17;
+    static String[] types = new String[]{
+        "","Timestamp","Integer","Numeric","String","Date","TimeSpan",
+        "Boolean","Row","Table","Column","Record","Update","Delete",
+        "Alter","Drop","View","Index"
+    };
+    public static String ToString(int t)
+    {
+      return types[t];  
+    }
 }

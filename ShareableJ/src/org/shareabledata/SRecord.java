@@ -65,7 +65,7 @@ public class SRecord extends SDbObject {
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.append(cm); cm = ",";
-                sb.append(b.getValue().key); sb.append(":");
+                sb.append(STransaction.Uid(b.getValue().key)); sb.append(":");
                 sb.append(b.getValue().val.toString());
             }
             sb.append(")");
@@ -81,8 +81,7 @@ public class SRecord extends SDbObject {
         }
         public String toString()
         {
-            StringBuilder sb = new StringBuilder("Record ");
-            sb.append(Uid());
+            StringBuilder sb = new StringBuilder(super.toString());
             Append(sb);
             return sb.toString();
         }

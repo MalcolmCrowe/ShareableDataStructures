@@ -21,15 +21,26 @@ public class SDbObject extends Serialisable {
     /// </summary>
 
     public final long uid;
-        /// <summary>
-        /// We will allow clients to define SColumns etc, with an impossible uid
-        /// </summary>
-        /// <param name="t"></param>
-        protected SDbObject(int t)
-        {
-            super(t);
-            uid = -1; 
-        }
+    /// <summary>
+    /// We will allow clients to define SColumns etc, with an impossible uid
+    /// </summary>
+    /// <param name="t"></param>
+
+    protected SDbObject(int t) {
+        super(t);
+        uid = -1;
+    }
+    /// <summary>
+    /// For system tables and columns, with negative uids
+    /// </summary>
+    /// <param name="t"></param>
+    /// <param name="u"></param>
+
+    protected SDbObject(int t, long u) {
+        super(t);
+        uid = u;
+    }
+
     /// <summary>
     /// For a new database object we set the transaction-based uid
     /// </summary>
@@ -65,7 +76,9 @@ public class SDbObject extends Serialisable {
         if (s.uid < STransaction._uid) {
             throw new Exception("Internal error - misplaced database object");
         }
-        uid = f.length;
+        uid = f.pos();
+        f.uids = f.uids.Add(s.uid, uid);
+        f.WriteByte((byte) s.type);
     }
 
     void Check(Boolean committed) throws Exception {
@@ -76,5 +89,9 @@ public class SDbObject extends Serialisable {
 
     String Uid() {
         return STransaction.Uid(uid);
+    }
+
+    public String toString() {
+        return Types.ToString(type) + "[" + Uid() + "] ";
     }
 }

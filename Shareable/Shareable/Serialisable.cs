@@ -25,7 +25,8 @@ namespace Shareable
         SAlter = 14,
         SDrop = 15,
         SView = 16,
-        SIndex = 17
+        SIndex = 17,
+        SSearch = 18
     }
     public enum Protocol
     {
@@ -424,15 +425,21 @@ namespace Shareable
         /// needs to create a new instance of the Serialisable. 
         /// The uid will initially belong to the Transaction. 
         /// Once committed the uid will become the position in the AStream file.
+        /// We assume that the database file is smaller than 0x40000000.
+        /// Other ranges of uids:
+        /// Transaction-local uids: 0x40000000-0x7fffffff
+        /// System uids (_Log tables etc): 0x90000000-0x80000001
+        /// Client session-local uids (disambiguation): 0xffffffff-0x90000001
         /// </summary>
         public readonly long uid;
         /// <summary>
-        /// We will allow clients to define SColumns etc, with an impossible uid
+        /// For system tables and columns, with negative uids
         /// </summary>
         /// <param name="t"></param>
-        protected SDbObject(Types t) : base(t)
+        /// <param name="u"></param>
+        protected SDbObject(Types t,long u) :base(t)
         {
-            uid = -1; 
+            uid = u;
         }
         /// <summary>
         /// For a new database object we set the transaction-based uid
@@ -485,7 +492,7 @@ namespace Shareable
         internal void Check(bool committed)
         {
             if (committed != uid < STransaction._uid)
-                throw new Exception("Internal error - Commited check fails");
+                throw new Exception("Internal error - Committed check fails");
         }
         public override void Put(StreamBase f)
         {
@@ -496,27 +503,22 @@ namespace Shareable
             return STransaction.Uid(uid);
         }
     }
-    public class STable : SDbObject
+    public class STable : SQuery
     {
         public readonly string name;
-        public readonly SList<SColumn> cpos;
-        public readonly SDict<string, SColumn> names;
-        public readonly SDict<long,SColumn> cols;
         public readonly SDict<long, long> rows; // defpos->uid of latest update
         public STable(STransaction tr,string n) :base(Types.STable,tr)
         {
             if (tr.names.Contains(n))
                 throw new Exception("Table n already exists");
             name = n;
-            cols = SDict<long,SColumn>.Empty;
-            cpos = SList<SColumn>.Empty;
             rows = SDict<long, long>.Empty;
-            names = SDict<string, SColumn>.Empty;
         }
-        public STable Add(SColumn c)
+        public virtual STable Add(SColumn c)
         {
-            return new STable(this,cols.Add(c.uid,c),cpos.InsertAt(c,cpos.Length),
+            var t = new STable(this,cols.Add(c.uid,c),cpos.InsertAt(c,cpos.Length),
                 names.Add(c.name,c));
+            return t;
         }
         public STable Add(SRecord r)
         {
@@ -545,50 +547,70 @@ namespace Shareable
             else
                 return new STable(this, rows.Remove(n));
         }
+        /// <summary>
+        /// for system and client table references
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="u">will be negative</param>
+        public STable(string n, long u)
+            : base(Types.STable, u)
+        {
+            name = n;
+            rows = SDict<long, long>.Empty;
+        }
         public STable(STable t,string n) :base(t)
         {
             name = n;
-            cols = t.cols;
-            cpos = t.cpos;
-            rows = t.rows;
-            names = t.names;
-        }
-        STable(STable t,SDict<long,SColumn> c,SList<SColumn> p,SDict<string,SColumn> n) :base(t)
-        {
-            name = t.name;
-            cpos = p;
-            cols = c;
-            names = n;
             rows = t.rows;
         }
-        STable(STable t,SDict<long,long> r) : base(t)
+        protected STable(STable t,SDict<long,SSelector> c,SList<SSelector> p,SDict<string,SSelector> n) :base(t,c,p,n)
         {
             name = t.name;
-            cols = t.cols;
-            cpos = t.cpos;
-            names = t.names;
+            rows = t.rows;
+        }
+        protected STable(STable t,SDict<long,long> r) : base(t)
+        {
+            name = t.name;
             rows = r;
         }
         STable(StreamBase f):base(Types.STable,f)
         {
             name = f.GetString();
-            cols = SDict<long,SColumn>.Empty;
-            cpos = SList<SColumn>.Empty;
-            names = SDict<string,SColumn>.Empty;
             rows = SDict<long, long>.Empty;
         }
         public STable(STable t,AStream f) :base(t,f)
         {
             name = t.name;
             f.PutString(name);
-            cols = t.cols;
-            cpos = t.cpos;
-            names = t.names;
             rows = t.rows;
         }
         public new static STable Get(StreamBase f)
         {
             return new STable(f);
+        }
+        public override SQuery Lookup(SDatabase db)
+        {
+            var tb = (name[0] == '_' && SysTable.system.Lookup(name) is SysTable st) ?
+                new SysTable(name) :
+                db.GetTable(name) ??
+                throw new Exception("No such table " + name);
+            if (cols.Length == 0)
+                return tb;
+            var co = SDict<long, SSelector>.Empty;
+            var cp = SList<SSelector>.Empty;
+            var cn = SDict<string, SSelector>.Empty;
+            for (var c = cpos;c!=null && c.Length!=0;c=c.next)
+            {
+                var tc = tb.names.Lookup(((SColumn)c.element).name);
+                co = co.Add(tc.uid, tc);
+                cp = cp.InsertAt(tc, cp.Length);
+                cn = cn.Add(tc.name, tc);
+            }
+            return new STable(tb, co, cp, cn);
+        }
+        public override RowSet RowSet(SDatabase db)
+        {
+            return new TableRowSet(db, this);
         }
         public override bool Conflicts(Serialisable that)
         {
@@ -599,40 +621,116 @@ namespace Shareable
             }
             return false;
         }
+        public override void Put(StreamBase f)
+        {
+            f.WriteByte((byte)type);
+            f.PutString(name);
+        }
         public override string ToString()
         {
             return "Table "+name+"["+Uid()+"]";
         }
     }
-    public class SColumn : SDbObject
+    public class SysTable : STable
+    {
+        public static long _uid = 0x90000000;
+        public static SDict<string, SysTable> system = SDict<string, SysTable>.Empty;
+        /// <summary>
+        /// System tables are like templates: need to be virtually specialised for a db
+        /// </summary>
+        /// <param name="n"></param>
+        public SysTable(string n) : base(n, --_uid)
+        {
+        }
+        SysTable(SysTable t, SDict<long, SSelector> c, SList<SSelector> p, SDict<string, SSelector> n)
+            : base(t, c, p, n)
+        {
+        }
+        static SysTable()
+        {
+            var t = new SysTable("_Log");
+            t = t.Add("Uid", Types.SString);
+            t = t.Add("Type", Types.SInteger);
+            t = t.Add("Desc", Types.SString);
+            system = system.Add(t.name, t);
+        }
+        public override STable Add(SColumn c)
+        {
+            return new SysTable(this, cols.Add(c.uid, c), cpos.InsertAt(c, cpos.Length),
+                names.Add(c.name, c));
+        }
+        SysTable Add(string n, Types t)
+        {
+            return Add(new SysColumn(n, t)) as SysTable;
+        }
+        public override RowSet RowSet(SDatabase db)
+        {
+            return new SysRows(db,this);
+        }
+    }
+    internal class SysColumn : SColumn
+    {
+        internal SysColumn(string n, Types t) : base(n, t, --SysTable._uid)
+        { }
+    }
+    public abstract class SSelector : SDbObject
     {
         public readonly string name;
+        public SSelector(Types t, string n, long u) : base(t, u)
+        {
+            name = n;
+        }
+        public SSelector(Types t, string n, STransaction tr) : base(t, tr)
+        {
+            name = n;
+        }
+        public SSelector(SSelector s, string n) : base(s)
+        {
+            name = n;
+        }
+        protected SSelector(Types t, StreamBase f) : base(t, f)
+        {
+            name = f.GetString();
+        }
+        protected SSelector(SSelector s,AStream f) : base(s,f)
+        {
+            name = s.name;
+            f.PutString(name);
+        }
+        public abstract SSelector Lookup(SQuery qry);
+    }
+    public class SColumn : SSelector
+    {
         public readonly Types dataType;
         public readonly long table;
-        public SColumn(string n,Types t) :base(Types.SColumn)
+        /// <summary>
+        /// For system or client column
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="t"></param>
+        /// <param name="u"> will be negative</param>
+        public SColumn(string n,Types t,long u) :base(Types.SColumn,n,u)
         {
-            name = n; dataType = t; table = -1;
+            dataType = t; table = -1;
         }
-        public SColumn(STransaction tr,string n, Types t, long tbl) : base(Types.SColumn,tr)
+        public SColumn(STransaction tr,string n, Types t, long tbl) 
+            : base(Types.SColumn,n,tr)
         {
-            name = n; dataType = t; table = tbl;
+            dataType = t; table = tbl;
         }
-        public SColumn(SColumn c,string n,Types d) : base(c)
+        public SColumn(SColumn c,string n,Types d) : base(c,n)
         {
-            name = n; dataType = d; table = c.table;
+            dataType = d; table = c.table;
         }
         SColumn(StreamBase f) :base(Types.SColumn,f)
         {
-            name = f.GetString();
             dataType = (Types)f.ReadByte();
             table = f.GetLong();
         }
         public SColumn(SColumn c,AStream f):base (c,f)
         {
-            name = c.name;
             dataType = c.dataType;
             table = f.Fix(c.table);
-            f.PutString(name);
             f.WriteByte((byte)dataType);
             f.PutLong(table);
         }
@@ -656,6 +754,10 @@ namespace Shareable
                     }
             }
             return false;
+        }
+        public override SSelector Lookup(SQuery qry)
+        {
+            return qry.names.Lookup(name);
         }
         public override string ToString()
         {
@@ -871,6 +973,13 @@ namespace Shareable
                 sb.Append(b.Value.val.ToString());
             }
             sb.Append(")");
+        }
+        public bool Matches(SDict<SSelector,Serialisable> wh)
+        {
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (fields.Lookup(b.Value.key.uid).CompareTo(b.Value.val)!=0)
+                    return false;
+            return true;
         }
         public override bool Conflicts(Serialisable that)
         {
@@ -1256,14 +1365,23 @@ namespace Shareable
             }
             return r.ToArray();
         }
-        public Serialisable Get(SDatabase d,long pos)
+        public class SysItem
         {
-            lock (file)
+            public readonly Serialisable item;
+            public readonly long next;
+            internal SysItem(Serialisable i, long n)
             {
-                position = pos;
-                rbuf = new Buffer(this, position);
-                return _Get(d);
+                item = i; next = n;
             }
+        }
+        public SysItem Get(SDatabase d, long pos) // we are already locked
+        {
+            if (pos == file.Length)
+                return null;
+            position = pos;
+            rbuf = new Buffer(this, position);
+            var r = _Get(d);
+            return new SysItem(r, rbuf.start + rbuf.pos);
         }
         Serialisable Lookup(SDatabase db,long pos)
         {

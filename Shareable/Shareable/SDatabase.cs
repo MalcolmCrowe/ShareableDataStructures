@@ -8,8 +8,8 @@ namespace Shareable
         public readonly SDict<string, SDbObject> names;
         public readonly long curpos;
         protected static object files = new object(); // a lock (not normally ever used)
-        protected static SDict<string,AStream> dbfiles = SDict<string,AStream>.Empty;
-        protected static SDict<string, SDatabase> databases = SDict<string,SDatabase>.Empty;
+        protected static SDict<string, AStream> dbfiles = SDict<string, AStream>.Empty;
+        protected static SDict<string, SDatabase> databases = SDict<string, SDatabase>.Empty;
         internal virtual SDatabase _Rollback => this;
         protected virtual bool Committed => true;
         public static SDatabase Open(string path, string fname)
@@ -25,7 +25,7 @@ namespace Shareable
         }
         public static void Install(SDatabase db)
         {
-             databases = databases.Add(db.name, db);
+            databases = databases.Add(db.name, db);
         }
         public virtual SDbObject Lookup(long pos)
         {
@@ -55,14 +55,14 @@ namespace Shareable
         /// <param name="db"></param>
         /// <param name="obs"></param>
         /// <param name="c"></param>
-        protected SDatabase(SDatabase db,SDict<long,SDbObject> obs,long c)
+        protected SDatabase(SDatabase db, SDict<long, SDbObject> obs, SDict<string,SDbObject> nms, long c)
         {
             name = db.name;
             objects = obs;
-            names = db.names;
+            names = nms;
             curpos = c;
         }
-        protected SDatabase(SDatabase db,STable t,long c)
+        protected SDatabase(SDatabase db, STable t, long c)
         {
             t.Check(db.Committed);
             name = db.name;
@@ -70,19 +70,20 @@ namespace Shareable
             names = db.names.Add(t.name, t);
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SAlter a,long c)
+        protected SDatabase(SDatabase db, SAlter a, long c)
         {
             name = db.name;
-            if (a.parent==0)
+            if (a.parent == 0)
             {
                 var ot = (STable)db.Lookup(a.defpos);
-                var nt = new STable(ot,a.name);
+                var nt = new STable(ot, a.name);
                 objects = db.objects.Add(a.defpos, nt);
-                names = db.names.Remove(ot.name).Add(a.name,nt);
-            } else
+                names = db.names.Remove(ot.name).Add(a.name, nt);
+            }
+            else
             {
                 var ot = (STable)db.Lookup(a.parent);
-                var oc = ot.cols.Lookup(a.defpos);
+                var oc = (SColumn)ot.cols.Lookup(a.defpos);
                 var nc = new SColumn(oc, a.name, a.dataType);
                 var nt = ot.Add(nc);
                 objects = db.objects.Add(a.defpos, nt);
@@ -90,7 +91,7 @@ namespace Shareable
             }
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SDrop d,long c)
+        protected SDatabase(SDatabase db, SDrop d, long c)
         {
             name = db.name;
             if (d.parent == 0)
@@ -98,7 +99,9 @@ namespace Shareable
                 var ot = (STable)db.Lookup(d.drpos);
                 objects = db.objects.Remove(d.drpos);
                 names = db.names.Remove(ot.name);
-            } else { 
+            }
+            else
+            {
                 var ot = (STable)db.Lookup(d.parent);
                 var nt = ot.Remove(d.drpos);
                 objects = db.objects.Add(d.parent, nt);
@@ -106,14 +109,14 @@ namespace Shareable
             }
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SView v,long c)
+        protected SDatabase(SDatabase db, SView v, long c)
         {
             name = db.name;
             objects = db.objects.Add(v.uid, v);
             names = db.names.Add(v.name, v);
             curpos = c;
         }
-        protected SDatabase(SDatabase db,SIndex x,long c)
+        protected SDatabase(SDatabase db, SIndex x, long c)
         {
             name = db.name;
             var tb = (STable)db.Lookup(x.table);
@@ -138,27 +141,36 @@ namespace Shareable
         public SRecord Get(long pos)
         {
             var f = dbfiles.Lookup(name);
-            lock (f) { 
-                var rc = f.Get(this, pos) as SRecord ?? 
-                    throw new System.Exception("Record "+pos+" never defined");
+            lock (f)
+            {
+                var rc = f.Get(this, pos).item as SRecord ??
+                    throw new System.Exception("Record " + pos + " never defined");
                 var tb = Lookup(rc.table) as STable ??
                     throw new System.Exception("Table " + rc.table + " has been dropped");
                 if (!tb.rows.Contains(rc.Defpos))
                     throw new System.Exception("Record " + pos + " has been dropped");
-                return f.Get(this, tb.rows.Lookup(rc.Defpos)) as SRecord;
+                return f.Get(this, tb.rows.Lookup(rc.Defpos)).item as SRecord;
             }
         }
-        public SDatabase _Add(SDbObject s,long p)
+        public AStream.SysItem _Get(long pos)
+        {
+            var f = dbfiles.Lookup(name);
+            lock (f)
+            {
+                return f.Get(this, pos);
+            }
+        }
+        public SDatabase _Add(SDbObject s, long p)
         {
             switch (s.type)
             {
-                case Types.STable: return Install((STable)s, p); 
-                case Types.SColumn: return Install((SColumn)s, p); 
+                case Types.STable: return Install((STable)s, p);
+                case Types.SColumn: return Install((SColumn)s, p);
                 case Types.SUpdate: return Install((SUpdate)s, p);
-                case Types.SRecord: return Install((SRecord)s, p); 
-                case Types.SDelete: return Install((SDelete)s, p); 
-                case Types.SAlter: return Install((SAlter)s, p); 
-                case Types.SDrop: return Install((SDrop)s, p); 
+                case Types.SRecord: return Install((SRecord)s, p);
+                case Types.SDelete: return Install((SDelete)s, p);
+                case Types.SAlter: return Install((SAlter)s, p);
+                case Types.SDrop: return Install((SDrop)s, p);
                 case Types.SView: return Install((SView)s, p);
                 case Types.SIndex: return Install((SIndex)s, p);
             }
@@ -169,7 +181,7 @@ namespace Shareable
         /// </summary>
         public void Close()
         {
-            lock(files)
+            lock (files)
             {
                 var f = dbfiles.Lookup(name);
                 databases = databases.Remove(name);
@@ -177,19 +189,20 @@ namespace Shareable
                 f.Close();
             }
         }
-        protected SDatabase Install(STable t,long c)
+        protected SDatabase Install(STable t, long c)
         {
             return new SDatabase(this, t, c);
         }
-        protected SDatabase Install(SColumn c,long p)
+        protected SDatabase Install(SColumn c, long p)
         {
-            return new SDatabase(this,((STable)Lookup(c.table)).Add(c),p);
+            return new SDatabase(this, ((STable)Lookup(c.table)).Add(c), p);
         }
-        protected SDatabase Install(SRecord r,long c)
+        protected SDatabase Install(SRecord r, long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(r.table)).Add(r);
             obs = obs.Add(r.table, st);
+            var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
                 if (b.Value.val is SIndex x)
                 {
@@ -198,7 +211,7 @@ namespace Shareable
                     if (x.references == r.table && !x.Contains(r))
                         throw new System.Exception("Referential constraint");
                 }
-            return new SDatabase(this, obs,c);
+            return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SUpdate u, long c)
         {
@@ -206,6 +219,7 @@ namespace Shareable
             var st = ((STable)Lookup(u.table)).Add(u);
             SRecord sr = null;
             obs = obs.Add(u.table, st);
+            var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
                 if (b.Value.val is SIndex x)
                 {
@@ -213,34 +227,35 @@ namespace Shareable
                     {
                         if (sr == null)
                             sr = Get(u.defpos);
-                        obs = obs.Add(x.uid, x.Update(sr,u, c));
+                        obs = obs.Add(x.uid, x.Update(sr, u, c));
                     }
                     if (x.references == u.table && !x.Contains(u))
                         throw new System.Exception("Referential constraint");
                 }
-            return new SDatabase(this, obs, c);
+            return new SDatabase(this, obs, nms, c);
         }
-        protected SDatabase Install(SDelete d,long c)
+        protected SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(d.table)).Remove(d.delpos);
             SRecord sr = null;
             obs = obs.Add(d.table, st);
+            var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
                 if (b.Value.val is SIndex x)
                 {
                     if (x.table == d.table)
                     {
-                        if (sr==null)
+                        if (sr == null)
                             sr = Get(d.delpos);
-                        obs = obs.Add(x.uid, x.Remove(sr,c));
+                        obs = obs.Add(x.uid, x.Remove(sr, c));
                     }
-                    if (x.references==d.table && x.Contains(sr))
-                            throw new System.Exception("Referential constraint");
+                    if (x.references == d.table && x.Contains(sr))
+                        throw new System.Exception("Referential constraint");
                 }
-            return new SDatabase(this,obs,c);
+            return new SDatabase(this, obs, nms, c);
         }
-        protected SDatabase Install(SAlter a,long c)
+        protected SDatabase Install(SAlter a, long c)
         {
             return new SDatabase(this, a, c);
         }
@@ -252,13 +267,13 @@ namespace Shareable
         {
             return new SDatabase(this, v, c);
         }
-        protected SDatabase Install(SIndex x,long c)
+        protected SDatabase Install(SIndex x, long c)
         {
             return new SDatabase(this, x, c);
         }
-        public virtual STransaction Transact(bool auto=true)
+        public virtual STransaction Transact(bool auto = true)
         {
-            return new STransaction(this,auto);
+            return new STransaction(this, auto);
         }
         public SDatabase MaybeAutoCommit(STransaction tr)
         {
@@ -267,6 +282,17 @@ namespace Shareable
         public virtual SDatabase Rollback()
         {
             return this;
+        }
+        public STable GetTable(string tn)
+        {
+            return names.Lookup(tn) as STable;
+        }
+        public SIndex GetPrimaryIndex(long t)
+        {
+            for (var b = objects.First(); b != null; b = b.Next())
+                if (b.Value.val is SIndex x && x.table == t)
+                    return x;
+            return null;
         }
     }
 }

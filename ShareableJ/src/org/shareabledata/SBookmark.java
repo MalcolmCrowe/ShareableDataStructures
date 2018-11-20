@@ -86,7 +86,7 @@ public class SBookmark<K extends Comparable,V> {
                 else // might be leaf or not
                 {
                     d = stk._bucket.Slot(stkPos);
-                    b = (SBucket<K,V>)d.val;
+                    b = (d.val instanceof SBucket)?(SBucket<K,V>)d.val:null;
                 }
             }
             while (b != null) // now ensure we are at a leaf
