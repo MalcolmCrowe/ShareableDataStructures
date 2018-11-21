@@ -46,11 +46,11 @@ namespace Shareable
         {
             type = t;
         }
-        public Serialisable(Types t, StreamBase f)
+        public Serialisable(Types t, Reader f)
         {
             type = t;
         }
-        public static Serialisable Get(StreamBase f)
+        public static Serialisable Get(Reader f)
         {
             return Null;
         }
@@ -82,7 +82,7 @@ namespace Shareable
         {
             ticks = t.Ticks;
         }
-        STimestamp(StreamBase f) : base(Types.STimestamp,f)
+        STimestamp(Reader f) : base(Types.STimestamp,f)
         {
             ticks = f.GetLong();
         }
@@ -91,7 +91,7 @@ namespace Shareable
             base.Put(f);
             f.PutLong(ticks);
         }
-        public new static STimestamp Get(StreamBase f)
+        public new static STimestamp Get(Reader f)
         {
             return new STimestamp(f);
         }
@@ -116,11 +116,11 @@ namespace Shareable
         {
             value = v;
         }
-        SInteger(StreamBase f) : base(Types.SInteger, f)
+        SInteger(Reader f) : base(Types.SInteger, f)
         {
             value = f.GetInt();
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new SInteger(f);
         }
@@ -156,7 +156,7 @@ namespace Shareable
             precision = p;
             scale = s;
         }
-        SNumeric(StreamBase f) : base(Types.SNumeric, f)
+        SNumeric(Reader f) : base(Types.SNumeric, f)
         {
             mantissa = f.GetLong();
             precision = f.GetInt();
@@ -169,7 +169,7 @@ namespace Shareable
             f.PutInt(precision);
             f.PutInt(scale);
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new SNumeric(f);
         }
@@ -200,7 +200,7 @@ namespace Shareable
         {
             str = s;
         }
-        SString(StreamBase f) :base(Types.SString, f)
+        SString(Reader f) :base(Types.SString, f)
         {
             str = f.GetString();
         }
@@ -209,7 +209,7 @@ namespace Shareable
             base.Put(f);
             f.PutString(str);
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new SString(f);
         }
@@ -241,7 +241,7 @@ namespace Shareable
             month = s.Month;
             rest = (s - new DateTime(year, month, 1)).Ticks;
         }
-        SDate(StreamBase f) : base(Types.SDate, f)
+        SDate(Reader f) : base(Types.SDate, f)
         {
             year = f.GetInt();
             month = f.GetInt();
@@ -254,7 +254,7 @@ namespace Shareable
             f.PutInt(month);
             f.PutLong(rest);
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new SDate(f);
         }
@@ -283,7 +283,7 @@ namespace Shareable
         {
             ticks = s.Ticks;
         }
-        STimeSpan(StreamBase f) : base(Types.STimeSpan, f)
+        STimeSpan(Reader f) : base(Types.STimeSpan, f)
         {
             ticks = f.GetLong();
         }
@@ -292,7 +292,7 @@ namespace Shareable
             base.Put(f);
             f.PutLong(ticks);
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new STimeSpan(f);
         }
@@ -317,11 +317,11 @@ namespace Shareable
         {
             sbool = n;
         }
-        SBoolean(StreamBase f) : base(Types.SBoolean, f)
+        SBoolean(Reader f) : base(Types.SBoolean, f)
         {
             sbool = (SBool)f.GetInt();
         }
-        public new static Serialisable Get(StreamBase f)
+        public new static Serialisable Get(Reader f)
         {
             return new SBoolean(f);
         }
@@ -366,7 +366,7 @@ namespace Shareable
         {
             cols = c;
         }
-        SRow(SDatabase d, StreamBase f) :base(Types.SRow)
+        SRow(SDatabase d, Reader f) :base(Types.SRow)
         {
             var n = f.GetInt();
             var r = SDict<string, Serialisable>.Empty;
@@ -378,7 +378,7 @@ namespace Shareable
             }
             cols = r;
         }
-        public static SRow Get(SDatabase d,StreamBase f)
+        public static SRow Get(SDatabase d,Reader f)
         {
             return new SRow(d,f);
         }
@@ -427,9 +427,9 @@ namespace Shareable
         /// Once committed the uid will become the position in the AStream file.
         /// We assume that the database file is smaller than 0x40000000.
         /// Other ranges of uids:
-        /// Transaction-local uids: 0x40000000-0x7fffffff
-        /// System uids (_Log tables etc): 0x90000000-0x80000001
-        /// Client session-local uids (disambiguation): 0xffffffff-0x90000001
+        /// Transaction-local uids: 0x4000000000000000-0x7fffffffffffffff
+        /// System uids (_Log tables etc): 0x9000000000000000-0x8000000000000001
+        /// Client session-local uids (disambiguation): 0xffffffffffffffff-0x9000000000000001
         /// </summary>
         public readonly long uid;
         /// <summary>
@@ -461,12 +461,13 @@ namespace Shareable
         /// <summary>
         /// A database object got from the file will have
         /// its uid given by the position it is read from.
+        /// For AStream we subtract 1 to account for the Types byte.
         /// </summary>
         /// <param name="t"></param>
         /// <param name="f"></param>
-        protected SDbObject(Types t,StreamBase f) : base(t)
+        protected SDbObject(Types t,Reader f) : base(t)
         {
-            uid = f.Position;
+            uid = (f is SocketReader)?f.GetLong():f.Position-1;
         }
         /// <summary>
         /// During commit, database objects are appended to the
@@ -485,6 +486,11 @@ namespace Shareable
             f.uids = f.uids.Add(s.uid, uid);
             f.WriteByte((byte)s.type);
         }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            f.PutLong(uid);
+        }
         /// <summary>
         /// This little routine provides a check on DBMS implementation
         /// </summary>
@@ -494,13 +500,19 @@ namespace Shareable
             if (committed != uid < STransaction._uid)
                 throw new Exception("Internal error - Committed check fails");
         }
-        public override void Put(StreamBase f)
-        {
-            throw new NotImplementedException();
-        }
         internal string Uid()
         {
-            return STransaction.Uid(uid);
+            return _Uid(uid);
+        }
+        internal static string _Uid(long uid)
+        {
+            if (uid > STransaction._uid)
+                return "'" + (uid - STransaction._uid);
+            if (uid < 0 && uid > -0x7000000000000000)
+                return "#" + (-uid);
+            if (uid <= -0x7000000000000000)
+                return "@" + (0x7000000000000000 + uid);
+            return "" + uid;
         }
     }
     public class STable : SQuery
@@ -573,7 +585,7 @@ namespace Shareable
             name = t.name;
             rows = r;
         }
-        STable(StreamBase f):base(Types.STable,f)
+        STable(Reader f):base(Types.STable,f)
         {
             name = f.GetString();
             rows = SDict<long, long>.Empty;
@@ -584,14 +596,14 @@ namespace Shareable
             f.PutString(name);
             rows = t.rows;
         }
-        public new static STable Get(StreamBase f)
+        public new static STable Get(Reader f)
         {
             return new STable(f);
         }
         public override SQuery Lookup(SDatabase db)
         {
             var tb = (name[0] == '_' && SysTable.system.Lookup(name) is SysTable st) ?
-                new SysTable(name) :
+                st :
                 db.GetTable(name) ??
                 throw new Exception("No such table " + name);
             if (cols.Length == 0)
@@ -623,7 +635,7 @@ namespace Shareable
         }
         public override void Put(StreamBase f)
         {
-            f.WriteByte((byte)type);
+            base.Put(f);
             f.PutString(name);
         }
         public override string ToString()
@@ -633,7 +645,7 @@ namespace Shareable
     }
     public class SysTable : STable
     {
-        public static long _uid = 0x90000000;
+        public static long _uid = -0x7000000000000000;
         public static SDict<string, SysTable> system = SDict<string, SysTable>.Empty;
         /// <summary>
         /// System tables are like templates: need to be virtually specialised for a db
@@ -688,13 +700,18 @@ namespace Shareable
         {
             name = n;
         }
-        protected SSelector(Types t, StreamBase f) : base(t, f)
+        protected SSelector(Types t, Reader f) : base(t, f)
         {
             name = f.GetString();
         }
         protected SSelector(SSelector s,AStream f) : base(s,f)
         {
             name = s.name;
+            f.PutString(name);
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
             f.PutString(name);
         }
         public abstract SSelector Lookup(SQuery qry);
@@ -722,7 +739,7 @@ namespace Shareable
         {
             dataType = d; table = c.table;
         }
-        SColumn(StreamBase f) :base(Types.SColumn,f)
+        SColumn(Reader f) :base(Types.SColumn,f)
         {
             dataType = (Types)f.ReadByte();
             table = f.GetLong();
@@ -734,7 +751,7 @@ namespace Shareable
             f.WriteByte((byte)dataType);
             f.PutLong(table);
         }
-        public new static SColumn Get(StreamBase f)
+        public new static SColumn Get(Reader f)
         {
             return new SColumn(f);
         }
@@ -774,7 +791,7 @@ namespace Shareable
         {
             defpos = o;  name = n; dataType = d; parent = p;
         }
-        SAlter(StreamBase f):base(Types.SAlter,f)
+        SAlter(Reader f):base(Types.SAlter,f)
         {
             defpos = f.GetLong();
             parent = f.GetLong(); //may be -1
@@ -792,7 +809,7 @@ namespace Shareable
             f.PutString(name);
             f.WriteByte((byte)dataType);
         }
-        public new static SAlter Get(StreamBase f)
+        public new static SAlter Get(Reader f)
         {
             return new SAlter(f);
         }
@@ -823,7 +840,7 @@ namespace Shareable
         {
             drpos = d; parent = p;
         }
-        SDrop(StreamBase f) :base(Types.SDrop,f)
+        SDrop(Reader f) :base(Types.SDrop,f)
         {
             drpos = f.GetLong();
             parent = f.GetLong();
@@ -835,7 +852,7 @@ namespace Shareable
             f.PutLong(drpos);
             f.PutLong(parent);
         }
-        public new static SDrop Get(StreamBase f)
+        public new static SDrop Get(Reader f)
         {
             return new SDrop(f);
         }
@@ -879,7 +896,7 @@ namespace Shareable
         {
             cols = c; name = v.name; viewdef = v.viewdef;
         }
-        SView(SDatabase d, StreamBase f):base(Types.SView,f)
+        SView(SDatabase d, Reader f):base(Types.SView,f)
         {
             name = f.GetString();
             var n = f.GetInt();
@@ -906,7 +923,7 @@ namespace Shareable
             }
             f.PutString(viewdef);
         }
-        public static SView Get(SDatabase d, StreamBase f)
+        public static SView Get(SDatabase d, Reader f)
         {
             return new SView(d, f);
         }
@@ -946,7 +963,7 @@ namespace Shareable
                 b.Value.val.Put(f);
             }
         }
-        protected SRecord(SDatabase d, StreamBase f) : base(Types.SRecord,f)
+        protected SRecord(SDatabase d, Reader f) : base(Types.SRecord,f)
         {
             table = f.GetLong();
             var n = f.GetInt();
@@ -959,7 +976,7 @@ namespace Shareable
             }
             fields = a;
         }
-        public static SRecord Get(SDatabase d, StreamBase f)
+        public static SRecord Get(SDatabase d, Reader f)
         {
             return new SRecord(d,f);
         }
@@ -1012,11 +1029,11 @@ namespace Shareable
             defpos = f.Fix(defpos);
             f.PutLong(defpos);
         }
-        SUpdate(SDatabase d, StreamBase f) : base(d,f)
+        SUpdate(SDatabase d, Reader f) : base(d,f)
         {
             defpos = f.GetLong();
         }
-        public new static SRecord Get(SDatabase d, StreamBase f)
+        public new static SRecord Get(SDatabase d, Reader f)
         {
             return new SUpdate(d,f);
         }
@@ -1055,12 +1072,12 @@ namespace Shareable
             f.PutLong(table);
             f.PutLong(delpos);
         }
-        SDelete(StreamBase f) : base(Types.SDelete,f)
+        SDelete(Reader f) : base(Types.SDelete,f)
         {
             table = f.GetLong();
             delpos = f.GetLong();
         }
-        public new static SDelete Get(StreamBase f)
+        public new static SDelete Get(Reader f)
         {
             return new SDelete(f);
         }
@@ -1104,7 +1121,7 @@ namespace Shareable
             references = -1;
             rows = new SMTree<long>(Info((STable)tr.Lookup(table), cols));
         }
-        SIndex(SDatabase d, StreamBase f) : base(Types.SIndex, f)
+        SIndex(SDatabase d, Reader f) : base(Types.SIndex, f)
         {
             table = f.GetLong();
             primary = f.ReadByte()!=0;
@@ -1143,7 +1160,7 @@ namespace Shareable
             cols = x.cols;
             rows = nt;
         }
-        public static SIndex Get(SDatabase d, StreamBase f)
+        public static SIndex Get(SDatabase d, Reader f)
         {
             return new SIndex(d, f);
         }
@@ -1196,57 +1213,45 @@ namespace Shareable
         public class Buffer
         {
             public const int Size = 1024;
-            public byte[] buf;
+            public readonly bool input;
             public long start;
+            public byte[] buf;
             public int len;
-            public int pos;
-            StreamBase fs;
+            public int wpos;
+            internal StreamBase fs;
             public Buffer(StreamBase f)
             {
                 buf = new byte[Size];
-                pos = 0;
+                wpos = 0;
                 len = Size;
                 start = f.Length;
                 fs = f;
             }
-            internal Buffer(AStream f, long s)
+            public Buffer(StreamBase f,long s)
             {
                 buf = new byte[Size];
+                wpos = 0;
+                len = Size;
                 start = s;
-                pos = 0;
                 f.GetBuf(this);
                 fs = f;
             }
-            internal int GetByte()
-            {
-                if (pos >= len)
-                {
-                    start += len;
-                    pos = 0;
-                    if (!fs.GetBuf(this))
-                        return -1;
-                }
-                return buf[pos++];
-            }
             internal void PutByte(byte b)
             {
-                if (pos >= len)
+                if (wpos >= len)
                 {
                     fs.PutBuf(this);
                     start += len;
-                    pos = 0;
+                    wpos = 0;
                 }
-                buf[pos++] = b;
+                buf[wpos++] = b;
             }
         }
-        protected Buffer rbuf,wbuf;
+        protected Buffer wbuf;
+        public int rcount;
         protected StreamBase() { }
-        protected abstract bool GetBuf(Buffer b);
+        public abstract bool GetBuf(Buffer b);
         protected abstract void PutBuf(Buffer b);
-        public override int ReadByte()
-        {
-            return rbuf.GetByte();
-        }
         public override void WriteByte(byte value)
         {
             wbuf.PutByte(value);
@@ -1267,6 +1272,29 @@ namespace Shareable
             PutInt(cs.Length);
             for (var i = 0; i < cs.Length; i++)
                 WriteByte(cs[i]);
+        }
+    }
+    /// <summary>
+    /// This class is not shareable
+    /// </summary>
+    public class Reader
+    {
+        public StreamBase.Buffer buf;
+        public int pos = 0;
+        internal Reader(StreamBase f)
+        {
+            buf = new StreamBase.Buffer(f);
+        }
+        internal Reader(StreamBase f, long s)
+        {
+            buf = new StreamBase.Buffer(f, s);
+        }
+        internal long Position => buf.start + pos;
+        public virtual int ReadByte()
+        {
+            if (pos >= buf.len)
+                buf = new StreamBase.Buffer(buf.fs, buf.start + buf.len);
+            return (buf.len == 0) ? -1 : buf.buf[pos++];
         }
         public int GetInt()
         {
@@ -1316,6 +1344,40 @@ namespace Shareable
             }
             return s;
         }
+        /// <summary>
+        /// Called from Transaction.Commit()
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="pos"></param>
+        /// <param name="max"></param>
+        /// <returns></returns>
+        public SDbObject[] GetAll(SDatabase d,long max)
+        {
+            var r = new List<SDbObject>();
+            while (Position < max)
+                r.Add((SDbObject)_Get(d));
+            return r.ToArray();
+        }
+        Serialisable Lookup(SDatabase db, long pos)
+        {
+            return db.Lookup(((AStream)buf.fs).Fix(pos));
+        }
+    }
+    public class SocketReader : Reader
+    {
+        public SocketReader(StreamBase f) : base(f)
+        {
+            pos = 2;
+        }
+        public override int ReadByte()
+        {
+            if (pos >= buf.fs.rcount + 2)
+            {
+                buf.fs.GetBuf(buf);
+                pos = 2;
+            }
+            return (buf.len == 0) ? -1 : buf.buf[pos++];
+        }
     }
     /// <summary>
     /// This class is not shareable
@@ -1324,7 +1386,7 @@ namespace Shareable
     {
         public readonly string filename;
         internal Stream file;
-        long position = 0;
+        long wposition = 0;
         public long length = 0;
         internal SDict<long, long> uids = null; // used for movement of SDbObjects
         public AStream(string fn)
@@ -1333,65 +1395,6 @@ namespace Shareable
             file = new FileStream(fn,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
             length = file.Seek(0, SeekOrigin.End);
             file.Seek(0, SeekOrigin.Begin);
-        }
-        public SDbObject GetOne(SDatabase d)
-        {
-            lock (file)
-            {
-                if (position == file.Length)
-                    return null;
-                rbuf = new Buffer(this, position);
-                var r = _Get(d);
-                position = rbuf.start + rbuf.pos;
-                return (SDbObject)r;
-            }
-        }
-        /// <summary>
-        /// Called from Transaction.Commit(): file is already locked
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="pos"></param>
-        /// <param name="max"></param>
-        /// <returns></returns>
-        public SDbObject[] GetAll(SDatabase d,long pos,long max)
-        {
-            var r = new List<SDbObject>();
-            position = pos;
-            rbuf = new Buffer(this, pos);
-            while (position<max)
-            {
-                r.Add((SDbObject)_Get(d));
-                position = rbuf.start + rbuf.pos;
-            }
-            return r.ToArray();
-        }
-        public class SysItem
-        {
-            public readonly Serialisable item;
-            public readonly long next;
-            internal SysItem(Serialisable i, long n)
-            {
-                item = i; next = n;
-            }
-        }
-        public SysItem Get(SDatabase d, long pos) // we are already locked
-        {
-            if (pos == file.Length)
-                return null;
-            position = pos;
-            rbuf = new Buffer(this, position);
-            var r = _Get(d);
-            return new SysItem(r, rbuf.start + rbuf.pos);
-        }
-        Serialisable Lookup(SDatabase db,long pos)
-        {
-            return db.Lookup(Fix(pos));
-        }
-        internal long Fix(long pos)
-        {
-            if (uids.Contains(pos))
-                pos = uids.Lookup(pos);
-            return pos;
         }
         public SDatabase Commit(SDatabase db,SDict<int,SDbObject> steps)
         {
@@ -1464,15 +1467,23 @@ namespace Shareable
             SDatabase.Install(db);
             return db;
         }
+        internal Serialisable Lookup(SDatabase db, long pos)
+        {
+            return new Reader(this, pos)._Get(db);
+        }
+        internal long Fix(long pos)
+        {
+            return (uids.Contains(pos))?uids.Lookup(pos):pos;
+        }
         public override bool CanRead => throw new System.NotImplementedException();
 
         public override bool CanSeek => throw new System.NotImplementedException();
 
         public override bool CanWrite => throw new System.NotImplementedException();
 
-        public override long Length => length + (wbuf?.pos)??0;
+        public override long Length => length + (wbuf?.wpos)??0;
 
-        public override long Position { get => position; set => throw new System.NotImplementedException(); }
+        public override long Position { get => wposition; set => throw new System.NotImplementedException(); }
         public override void Close()
         {
             file.Close();
@@ -1504,25 +1515,28 @@ namespace Shareable
             throw new System.NotImplementedException();
         }
 
-        protected override bool GetBuf(Buffer b)
+        public override bool GetBuf(Buffer b)
         {
-            if (b.start > length)
-                return false;
-            file.Seek(b.start, SeekOrigin.Begin);
-            var n = length - b.start;
-            if (n > Buffer.Size)
-                n = Buffer.Size;
-            b.len = file.Read(b.buf, 0, (int)n);
-            return b.len>0;
+            lock (file)
+            {
+                if (b.start > length)
+                    return false;
+                file.Seek(b.start, SeekOrigin.Begin);
+                var n = length - b.start;
+                if (n > Buffer.Size)
+                    n = Buffer.Size;
+                b.len = file.Read(b.buf, 0, (int)n);
+                return b.len > 0;
+            }
         }
 
         protected override void PutBuf(Buffer b)
         {
             var p = file.Seek(0, SeekOrigin.End);
-            file.Write(b.buf, 0, b.pos);
+            file.Write(b.buf, 0, b.wpos);
             file.Flush();
-            length = p+b.pos;
-            b.pos = 0;
+            length = p+b.wpos;
+            b.wpos = 0;
         }
     }
 }

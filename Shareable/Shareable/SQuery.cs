@@ -35,7 +35,7 @@ namespace Shareable
             cols = c;
             names = n;
         }
-        protected SQuery(Types t, StreamBase f) : base(t, f)
+        protected SQuery(Types t, Reader f) : base(t, f)
         {
             cols = SDict<long, SSelector>.Empty;
             cpos = SList<SSelector>.Empty;
@@ -65,7 +65,7 @@ namespace Shareable
     {
         public readonly SQuery sce;
         public readonly SDict<SSelector,Serialisable> where;
-        public SSearch(SDatabase db, StreamBase f):base(Types.SSearch,f)
+        public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
         {
             sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
             var w = SDict<SSelector, Serialisable>.Empty;
@@ -100,7 +100,7 @@ namespace Shareable
             var s = sce.Lookup(db);
             var w = SDict<SSelector, Serialisable>.Empty;
             for (var b = where.First(); b != null; b = b.Next())
-                w = w.Add(b.Value.key.Lookup(s), v.Value.val);
+                w = w.Add(b.Value.key.Lookup(s), b.Value.val);
             return new SSearch(this,s,w);
         }
         public override RowSet RowSet(SDatabase db)

@@ -52,7 +52,7 @@ namespace StrongLink
             asy = new ClientStream(this, socket);
             asy.PutString(fn);
             asy.Flush();
-            asy.ReadByte();
+            asy.rbuf.ReadByte();
         }
         public void CreateTable(string n,params SColumn[] cols)
         {
@@ -107,39 +107,9 @@ namespace StrongLink
             foreach (var s in key)
                 s.Put(asy);
             asy.Flush();
-            var r = asy.GetString();
+            var r = asy.rbuf.GetString();
             return r;
         }
-/*        public bool RoundTrip(Random rnd)
-        {
-      //      asy.Flush();
-            var n = rnd.Next(10, 30);
-            Console.WriteLine("Send group will be " + n);
-            for (int i = 0; i < n; i++)
-            {
-                var x = rnd.Next(1, 255);
-                Console.Write(" " + x);
-                asy.WriteByte((byte)x);
-            }
-            asy.Flush();
-            Console.WriteLine(" Sent "+n);
-            var m = rnd.Next(10,30);
-            Console.WriteLine("Receive group should be " + m);
-            for(var i=0;i<m;i++)
-            {
-                var x = rnd.Next(1, 255);
-                var y = asy.ReadByte();
-                if (y < 0)
-                {
-                    Console.WriteLine("EOF seen");
-                    return false;
-                }
-                if (x != y)
-                    Console.WriteLine("Mismatch " + x + " vs " + y+ " rbuf is "+asy.rbuf.bid);
-            }
-            Console.WriteLine(" Matched " + m);
-            return true;
-        } */
         public void Close()
         {
             asy.Close();
@@ -153,20 +123,19 @@ namespace StrongLink
         StrongConnect connect = null;
         internal Socket client;
         internal int rx = 0;
-        internal int rcount = 0;
+        internal Reader rbuf;
         internal ClientStream(StrongConnect pc, Socket c)
         {
             client = c;
             wbuf = new Buffer(this);
-            rbuf = new Buffer(this);
+            rbuf = new SocketReader(this);
             rbuf.pos = 2;
-            rbuf.len = 0;
-            wbuf.pos = 2;
+            rbuf.buf.len = 0;
+            wbuf.wpos = 2;
             connect = pc;
         }
-        protected override bool GetBuf(Buffer b)
+        public override bool GetBuf(Buffer b)
         {
-            b.pos = 2;
             rcount = 0;
             rx = 0;
             try
@@ -177,7 +146,7 @@ namespace StrongLink
                     rcount = 0;
                     return false;
                 }
-                rcount = (((int)rbuf.buf[0]) << 7) + (int)rbuf.buf[1];
+                rcount = (b.buf[0] << 7) + b.buf[1];
                 b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
@@ -193,7 +162,7 @@ namespace StrongLink
             int j;
             for (j = 0; j < count; j++)
             {
-                int x = ReadByte();
+                int x = rbuf.ReadByte();
                 if (x < 0)
                     break;
                 buffer[offset + j] = (byte)x;
@@ -202,9 +171,9 @@ namespace StrongLink
         }
         public Responses Receive()
         {
-            if (wbuf.pos > 2)
+            if (wbuf.wpos > 2)
                 Flush();
-            return (Responses)ReadByte();
+            return (Responses)rbuf.ReadByte();
         }
         protected override void PutBuf(Buffer b)
         {
@@ -223,15 +192,15 @@ namespace StrongLink
         {
             rcount = 0;
             rbuf.pos = 2;
-            rbuf.len = 0;
+            rbuf.buf.len = 0;
             // now always send bSize bytes (not wcount)
-            wbuf.pos -= 2;
-            wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-            wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
+            wbuf.wpos -= 2;
+            wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
+            wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
             try
             {
                 client.Send(wbuf.buf, Buffer.Size, 0);
-                wbuf.pos = 2;
+                wbuf.wpos = 2;
             }
             catch (SocketException e)
             {
@@ -246,13 +215,14 @@ namespace StrongLink
         // an illegal nonzero rcount value indicates an exception
         internal int GetException(Responses proto)
         {
+            Buffer bf = rbuf.buf;
             if (proto == Responses.Exception)
             {
-                rcount = (((int)rbuf.buf[rbuf.pos++]) << 7) + (((int)rbuf.buf[rbuf.pos++]) & 0x7f);
+                rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
                 rcount += 2;
-                proto = (Responses)rbuf.buf[rbuf.pos++];
+                proto = (Responses)bf.buf[rbuf.pos++];
             }
-            throw new Exception(GetString());
+            throw new Exception(rbuf.GetString());
         }
         public override bool CanRead
         {

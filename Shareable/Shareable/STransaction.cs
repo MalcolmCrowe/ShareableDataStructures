@@ -5,7 +5,7 @@ namespace Shareable
 {
     public class STransaction :SDatabase 
     {
-        // uids above this number are for uncommitted objects
+        // uids above this number are for uncommitted objects in this tranbsaction
         public static readonly long _uid = 0x40000000;
         public readonly long uid;
         public readonly bool autoCommit;
@@ -39,21 +39,22 @@ namespace Shareable
         }
         public SDatabase Commit()
         {
-            AStream dbfile = dbfiles.Lookup(name);
+            var f = dbfiles.Lookup(name);
             SDatabase db = databases.Lookup(name);
-            var since = dbfile.GetAll(this, curpos, db.curpos);
+            var rdr = new Reader(f, curpos);
+            var since = rdr.GetAll(db,db.curpos);
             for (var i = 0; i < since.Length; i++)
                 for (var b = steps.First(); b != null; b = b.Next())
                     if (since[i].Conflicts(b.Value.val))
                         throw new Exception("Transaction Conflict on " + b.Value);
-            lock (dbfile.file)
+            lock (f)
             {
-                since = dbfile.GetAll(this, db.curpos,dbfile.length);
+                since = rdr.GetAll(this, f.length);
                 for (var i = 0; i < since.Length; i++)
                     for (var b = steps.First(); b != null; b = b.Next())
                         if (since[i].Conflicts(b.Value.val))
                             throw new Exception("Transaction Conflict on " + b.Value);
-                db = dbfile.Commit(db,steps);
+                db = f.Commit(db,steps);
             }
             Install(db);
             return db;
@@ -64,9 +65,7 @@ namespace Shareable
         /// <returns>a more readable version of the uid</returns>
         internal static string Uid(long uid)
         {
-            if (uid > _uid)
-                return "'" + (uid - _uid);
-            return "" + uid;
+            return SDbObject._Uid(uid);
         }
         public override STransaction Transact(bool auto=true)
         {

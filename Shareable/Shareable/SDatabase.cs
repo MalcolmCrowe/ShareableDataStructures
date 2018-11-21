@@ -31,6 +31,10 @@ namespace Shareable
         {
             return objects.Lookup(pos);
         }
+        public AStream File()
+        {
+            return dbfiles.Lookup(name);
+        }
         public virtual bool Contains(long pos)
         {
             return objects.Contains(pos);
@@ -128,37 +132,25 @@ namespace Shareable
         }
         SDatabase Load()
         {
-            var f = dbfiles.Lookup(name);
+            var rd = new Reader(dbfiles.Lookup(name), 0);
             var db = this;
-            if (f != null)
-                lock (f)
-                {
-                    for (var s = f.GetOne(this); s != null; s = f.GetOne(db))
-                        db = db._Add(s, s.uid);
-                }
+            for (var s = rd._Get(this) as SDbObject; s != null; s = rd._Get(db) as SDbObject)
+                db = db._Add(s, s.uid);
             return db;
+        }
+        Serialisable _Get(long pos)
+        {
+            return new Reader(dbfiles.Lookup(name), pos)._Get(this);
         }
         public SRecord Get(long pos)
         {
-            var f = dbfiles.Lookup(name);
-            lock (f)
-            {
-                var rc = f.Get(this, pos).item as SRecord ??
-                    throw new System.Exception("Record " + pos + " never defined");
-                var tb = Lookup(rc.table) as STable ??
-                    throw new System.Exception("Table " + rc.table + " has been dropped");
-                if (!tb.rows.Contains(rc.Defpos))
-                    throw new System.Exception("Record " + pos + " has been dropped");
-                return f.Get(this, tb.rows.Lookup(rc.Defpos)).item as SRecord;
-            }
-        }
-        public AStream.SysItem _Get(long pos)
-        {
-            var f = dbfiles.Lookup(name);
-            lock (f)
-            {
-                return f.Get(this, pos);
-            }
+            var rc = _Get(pos) as SRecord ??
+                throw new System.Exception("Record " + pos + " never defined");
+            var tb = Lookup(rc.table) as STable ??
+                throw new System.Exception("Table " + rc.table + " has been dropped");
+            if (!tb.rows.Contains(rc.Defpos))
+                throw new System.Exception("Record " + pos + " has been dropped");
+            return _Get(tb.rows.Lookup(rc.Defpos)) as SRecord;
         }
         public SDatabase _Add(SDbObject s, long p)
         {

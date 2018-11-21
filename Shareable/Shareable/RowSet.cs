@@ -155,9 +155,10 @@
     public class SysRows : RowSet
     {
         public readonly SysTable tb;
+        public readonly AStream fs;
         internal SysRows(SDatabase d, SysTable t) : base(d, t)
         {
-            tb = t;
+            tb = t; fs = d.File();
         }
         public override Bookmark<Serialisable> First()
         {
@@ -175,15 +176,16 @@
             {
                 _log = lg; _next = nx;
             }
-            internal static LogBookmark New(RowSet rs, long lg, int pos)
+            internal static LogBookmark New(SysRows rs, long lg, int pos)
             {
-                return (rs._db._Get(lg) is AStream.SysItem si) ?
-                    new LogBookmark(rs, lg, si.item, si.next, pos) : null;
+                var rdr = new Reader(rs.fs, lg);
+                return (rdr._Get(rs._db) is SDbObject ob) ?
+                    new LogBookmark(rs, lg, ob, rdr.Position, pos) : null;
             }
 
             public override Bookmark<Serialisable> Next()
             {
-                return New(_rs, _next, Position + 1);
+                return New((SysRows)_rs, _next, Position + 1);
             }
         }
     }

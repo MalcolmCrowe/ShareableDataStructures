@@ -43,11 +43,12 @@ namespace StrongDB
             // client.Blocking = false;
             // process the connection string
             asy = new ServerStream(client);
+            var rdr = asy.rbuf;
             myThread = Thread.CurrentThread;
             int p = -1;
             try
             {
-                var fn = asy.GetString();
+                var fn = rdr.GetString();
                 db = SDatabase.Open(path,fn);
                 asy.Write(Responses.Done);
                 asy.Flush();
@@ -75,7 +76,7 @@ namespace StrongDB
                 p = -1;
                 try
                 {
-                    p = asy.ReadByte();
+                    p = rdr.ReadByte();
                 } catch(Exception)
                 {
                     p = -1;
@@ -88,7 +89,7 @@ namespace StrongDB
                     {
                         case Protocol.Get:
                             {
-                                var qy = asy._Get(db) as SQuery ??
+                                var qy = rdr._Get(db) as SQuery ??
                                     throw new Exception("Bad query");
                                 var sb = new StringBuilder("[");
                                 var cm = "";
@@ -107,16 +108,16 @@ namespace StrongDB
                         case Protocol.Table:
                             {
                                 var tr = db.Transact();
-                                var tn = asy.GetString();// table name
+                                var tn = rdr.GetString();// table name
                                 if (tr.names.Contains(tn))
                                     throw new Exception("Duplicate table name " + tn);
                                 var tb = new STable(tr, tn);
                                 tr = tr.Add(tb); 
-                                var n = asy.GetInt(); // #cols
+                                var n = rdr.GetInt(); // #cols
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = asy.GetString(); // column name
-                                    var dt = (Types)asy.ReadByte(); // dataType
+                                    var cn = rdr.GetString(); // column name
+                                    var dt = (Types)rdr.ReadByte(); // dataType
                                     tr = tr.Add(new SColumn(tr,cn,dt,tb.uid));
                                 }
                                 db = db.MaybeAutoCommit(tr);
@@ -127,31 +128,31 @@ namespace StrongDB
                         case Protocol.Insert:
                             {
                                 var tr = db.Transact();
-                                var tb = (STable)tr.names.Lookup(asy.GetString()); // table name
-                                var n = asy.GetInt(); // # named cols
+                                var tb = (STable)tr.names.Lookup(rdr.GetString()); // table name
+                                var n = rdr.GetInt(); // # named cols
                                 var cs = SList<long>.Empty;
                                 Exception ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = asy.GetString();
+                                    var cn = rdr.GetString();
                                     if (tb.names.Lookup(cn) is SColumn sc)
                                         cs = cs.InsertAt(sc.uid, cs.Length);
                                     else
                                         ex = new Exception("Column " + cn + " not found");
                                 }
-                                var nc = asy.GetInt(); // #cols
+                                var nc = rdr.GetInt(); // #cols
                                 if ((n==0 && nc!=tb.cpos.Length) || (n!=0 && n!=nc))
                                     throw new Exception("Wrong number of columns");
-                                var nr = asy.GetInt(); // #records
+                                var nr = rdr.GetInt(); // #records
                                 for (var i = 0; i < nr; i++)
                                 {
                                     var f = SDict<long, Serialisable>.Empty;
                                     if (n == 0)
                                         for (var b = tb.cpos; b.Length != 0; b = b.next)
-                                            f = f.Add(b.element.uid, asy._Get(tr)); // serialsable values
+                                            f = f.Add(b.element.uid, rdr._Get(tr)); // serialsable values
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
-                                            f = f.Add(b.element, asy._Get(tr)); // serialisable values
+                                            f = f.Add(b.element, rdr._Get(tr)); // serialisable values
                                     tr = tr.Add(new SRecord(tr, tb.uid, f));
                                 }
                                 if (ex != null)
@@ -164,11 +165,11 @@ namespace StrongDB
                           case Protocol.Alter:
                             {
                                 var tr = db.Transact();
-                                var tn = asy.GetString(); // table name
+                                var tn = rdr.GetString(); // table name
                                 var tb = (STable)tr.names.Lookup(tn) ??
                                     throw new Exception("Table " + tn + " not found");
-                                var cn = asy.GetString(); // column name or ""
-                                var nm = asy.GetString(); // new name
+                                var cn = rdr.GetString(); // column name or ""
+                                var nm = rdr.GetString(); // new name
                                 tr = tr.Add(
                                     (cn.Length == 0) ?
                                         new SAlter(tr, nm, Types.STable, tb.uid, 0) :
@@ -184,10 +185,10 @@ namespace StrongDB
                         case Protocol.Drop:
                             {
                                 var tr = db.Transact();
-                                var nm = asy.GetString(); // object name
+                                var nm = rdr.GetString(); // object name
                                 var pt = tr.names.Lookup(nm) ??
                                     throw new Exception("Object " + nm + " not found");
-                                var cn = asy.GetString();
+                                var cn = rdr.GetString();
                                 tr = tr.Add(
                                     (cn.Length==0)?
                                         new SDrop(tr,pt.uid,-1) :
@@ -204,16 +205,16 @@ namespace StrongDB
                         case Protocol.Index:
                             {
                                 var tr = db.Transact();
-                                var tn = asy.GetString(); // table name
+                                var tn = rdr.GetString(); // table name
                                 var tb = (STable)tr.names.Lookup(tn) ??
                                     throw new Exception("Table " + tn + " not found");
-                                var xt = asy.ReadByte();
-                                var rn = asy.GetString();
-                                var nc = asy.GetInt();
+                                var xt = rdr.ReadByte();
+                                var rn = rdr.GetString();
+                                var nc = rdr.GetInt();
                                 var cs = SList<long>.Empty;
                                 for (var i=0;i<nc;i++)
                                 {
-                                    var cn = asy.GetString();
+                                    var cn = rdr.GetString();
                                     cs = cs.InsertAt(tb.names.Lookup(cn)?.uid ??
                                         throw new Exception("Column " + cn + " not found"), cs.Length);
                                 }
@@ -225,7 +226,7 @@ namespace StrongDB
                             }
                         case Protocol.Read:
                             {
-                                var id = asy.GetLong();
+                                var id = rdr.GetLong();
                                 var sb = new StringBuilder();
                                 db.Get(id).Append(sb);
                                 asy.PutString(sb.ToString());
@@ -235,17 +236,17 @@ namespace StrongDB
                         case Protocol.Update:
                             {
                                 var tr = db.Transact();
-                                var id = asy.GetLong();
+                                var id = rdr.GetLong();
                                 var rc = db.Get(id);
                                 var tb = (STable)tr.Lookup(rc.table); 
-                                var n = asy.GetInt(); // # cols updated
+                                var n = rdr.GetInt(); // # cols updated
                                 var f = SDict<long, Serialisable>.Empty;
                                 Exception ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = asy.GetString();
+                                    var cn = rdr.GetString();
                                     if (tb.names.Lookup(cn) is SColumn sc)
-                                        f = f.Add(sc.uid, asy._Get(db));
+                                        f = f.Add(sc.uid, rdr._Get(db));
                                     else
                                         ex = new Exception("Column "+cn+" not found");
                                 }
@@ -260,7 +261,7 @@ namespace StrongDB
                         case Protocol.Delete:
                             {
                                 var tr = db.Transact();
-                                var id = asy.GetLong();
+                                var id = rdr.GetLong();
                                 var rc = db.Get(id) as SRecord ??
                                     throw new Exception("Record " + id + " not found");
                                 tr = tr.Add(new SDelete(tr, rc.table,rc.uid));
@@ -416,7 +417,7 @@ namespace StrongDB
     {
         internal Socket client;
         internal int rx = 0;
-        internal int rcount = 0;
+        internal Reader rbuf;
         bool exception = false;
 
         public override bool CanRead => throw new NotImplementedException();
@@ -432,16 +433,17 @@ namespace StrongDB
         internal ServerStream(Socket c)
         {
             client = c;
-            rbuf = new Buffer(this);
+            rcount = 0;
+            rbuf = new SocketReader(this);
             wbuf = new Buffer(this);
-            wbuf.pos = 2;
+            wbuf.wpos = 2;
             rbuf.pos = 2;
-            rbuf.len = 0;
+            rbuf.buf.len = 0;
         }
 
         public override void Flush()
         {
-            if (wbuf.pos == 2)
+            if (wbuf.wpos == 2)
                 return;
             // now always send bSize bytes (not wcount)
             if (exception) // version 2.0
@@ -450,21 +452,21 @@ namespace StrongDB
                     exception = false;
                     wbuf.buf[0] = (byte)((Buffer.Size - 1) >> 7);
                     wbuf.buf[1] = (byte)((Buffer.Size - 1) & 0x7f);
-                    wbuf.pos -= 4;
-                    wbuf.buf[2] = (byte)(wbuf.pos >> 7);
-                    wbuf.buf[3] = (byte)(wbuf.pos & 0x7f);
+                    wbuf.wpos -= 4;
+                    wbuf.buf[2] = (byte)(wbuf.wpos >> 7);
+                    wbuf.buf[3] = (byte)(wbuf.wpos & 0x7f);
                     rcount = 0;
                 }
             else
             {
-                wbuf.pos -= 2;
-                wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-                wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
+                wbuf.wpos -= 2;
+                wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
+                wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
             }
             try
             {
                 client.Send(wbuf.buf, Buffer.Size,SocketFlags.None);
-                wbuf.pos = 2;
+                wbuf.wpos = 2;
             }
             catch (Exception)
             {
@@ -485,9 +487,8 @@ namespace StrongDB
         /// Get a byte from the stream: if necessary refill the buffer from the network
         /// </summary>
         /// <returns>the byte</returns>
-        protected override bool GetBuf(Buffer b)
+        public override bool GetBuf(Buffer b)
         {
-            b.pos = 2;
             rcount = 0;
             rx = 0;
             try
@@ -498,7 +499,7 @@ namespace StrongDB
                     rcount = 0;
                     return false;
                 }
-                rcount = (((int)b.buf[0]) << 7) + (int)b.buf[1];
+                rcount = (b.buf[0] << 7) + b.buf[1];
                 b.len = rcount+2;
                 return rcount > 0;
             }
@@ -506,12 +507,6 @@ namespace StrongDB
             {
                 return false;
             }
-        }
-        public override int ReadByte()
-        {
-            if (rbuf.pos >= rcount + 2)
-                GetBuf(rbuf);
-            return base.ReadByte();
         }
         public override int Read(byte[] buffer, int offset, int count)
         {
@@ -538,7 +533,7 @@ namespace StrongDB
         internal void StartException()
         {
             rcount = 0;
-            wbuf.pos = 4;
+            wbuf.wpos = 4;
             exception = true;
         }
         public void Write(Responses p)
