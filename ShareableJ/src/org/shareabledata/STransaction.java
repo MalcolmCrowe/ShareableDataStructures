@@ -57,14 +57,15 @@ public class STransaction extends SDatabase {
         {
             AStream dbfile = dbfiles.Lookup(name);
             SDatabase db = databases.Lookup(name);
-            var since = dbfile.GetAll(this, rollback.curpos, db.curpos);
+            var rdr = new Reader(dbfile,curpos);
+            var since = rdr.GetAll(this, rollback.curpos, db.curpos);
             for (var i = 0; i < since.length; i++)
                 for (var b = steps.First(); b != null; b = b.Next())
                     if (since[i].Conflicts(b.getValue().val))
                         throw new Exception("Transaction Conflict on " + b.getValue());
-            synchronized (dbfile.file)
+            synchronized (dbfile)
             {
-                since = dbfile.GetAll(this, db.curpos,dbfile.length);
+                since = rdr.GetAll(this, db.curpos,dbfile.length);
                 for (var i = 0; i < since.length; i++)
                     for (var b = steps.First(); b != null; b = b.Next())
                         if (since[i].Conflicts(b.getValue().val))

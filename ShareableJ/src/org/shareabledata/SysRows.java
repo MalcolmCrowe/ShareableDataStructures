@@ -9,20 +9,30 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SysRows extends SDict<Long,Long> {
-        public final SDatabase db;
-        public final SysTable tb;
-        SysRows(SDatabase d,SysTable t)
-        {
-            super(null);
-            db = d; tb = t;
-        }
-        public Bookmark<SSlot<Long, Long>> First()
-        {
-            switch (tb.name)
-            {
-                case "_Log": return LogBookmark.New(db,0,0);
+public class SysRows extends RowSet {
+
+    public final SysTable tb;
+    public final AStream fs;
+
+    SysRows(SDatabase d, SysTable t) {
+        super(d, t);
+        fs = d.File();
+        tb = t;
+    }
+
+    @Override
+    public Bookmark<Serialisable> First() {
+        try {
+            var rdr = new Reader(fs, 0);
+            switch (tb.name) {
+                case "_Log": {
+                    var s = rdr._Get(_db);
+                    return (s == null) ? null
+                            : new LogBookmark(this, 0, s, rdr.getPosition(), 0);
+                }
             }
-            return null;
+        } catch (Exception e) {
         }
+        return null;
+    }
 }

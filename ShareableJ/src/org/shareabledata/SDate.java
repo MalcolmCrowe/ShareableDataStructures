@@ -25,21 +25,21 @@ public class SDate extends Serialisable {
             LocalDateTime ts = LocalDateTime.of(year, month, 0,0,0);
             rest = Duration.between(t,ts).toMillis();
         }
-        SDate(AStream f) throws Exception
+        SDate(Reader f) throws Exception
         {
             super(Types.SDate, f);
             year = f.GetInt();
             month = f.GetInt();
             rest = f.GetLong();
         }
-        public void Put(AStream f) throws Exception
+        public void Put(StreamBase f) throws Exception
         {
             super.Put(f);
             f.PutInt(year);
             f.PutInt(month);
             f.PutLong(rest);
         }
-        public static Serialisable Get(AStream f) throws Exception
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SDate(f);
         }

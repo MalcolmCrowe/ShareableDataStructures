@@ -26,13 +26,13 @@ public class SDelete extends SDbObject {
             f.PutLong(table);
             f.PutLong(delpos);
         }
-        SDelete(StreamBase f) throws Exception
+        SDelete(Reader f) throws Exception
         {
             super(Types.SDelete,f);
             table = f.GetLong();
             delpos = f.GetLong();
         }
-        public static SDelete Get(SDatabase d, AStream f) throws Exception
+        public static SDelete Get(SDatabase d, Reader f) throws Exception
         {
             return new SDelete(f);
         }

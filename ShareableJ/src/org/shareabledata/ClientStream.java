@@ -10,28 +10,25 @@ import java.net.*;
  * @author Malcolm
  */
 public class ClientStream extends StreamBase {
-            /// <summary>
-        /// For asynchronous IO
-        /// </summary>
         StrongConnect connect = null;
         Socket client;
+        Reader rbuf;
         int rx = 0;
-        int rcount = 0;
         ClientStream(StrongConnect pc, Socket c) throws Exception
         {
             client = c;
             wbuf = new Buffer(this);
-            rbuf = new Buffer(this);
+            rbuf = new Reader(this);
             rbuf.pos = 2;
-            rbuf.len = 0;
-            wbuf.pos = 2;
+            rbuf.buf.len = 0;
+            wbuf.wpos = 2;
             connect = pc;
         }
         @Override
         protected boolean GetBuf(Buffer b) throws Exception
         {
-            b.pos = 2;
-            rcount = 0;
+            b.wpos = 2;
+            var rcount = 0;
             rx = 0;
             try
             {
@@ -41,7 +38,7 @@ public class ClientStream extends StreamBase {
                     rcount = 0;
                     return false;
                 }
-                rcount = (((int)rbuf.buf[0]) << 7) + (int)rbuf.buf[1];
+                rcount = (((int)b.buf[0]) << 7) + (int)b.buf[1];
                 b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
@@ -57,7 +54,7 @@ public class ClientStream extends StreamBase {
             int j;
             for (j = 0; j < count; j++)
             {
-                int x = ReadByte();
+                int x = rbuf.ReadByte();
                 if (x < 0)
                     break;
                 buffer[offset + j] = (byte)x;
@@ -66,9 +63,9 @@ public class ClientStream extends StreamBase {
         }
         public byte Receive() throws Exception
         {
-            if (wbuf.pos > 2)
+            if (wbuf.wpos > 2)
                 Flush();
-            return (byte)ReadByte();
+            return (byte)rbuf.ReadByte();
         }
         protected void PutBuf(Buffer b)
         {
@@ -85,19 +82,18 @@ public class ClientStream extends StreamBase {
         }
         public void Flush()
         {
-            rcount = 0;
             rbuf.pos = 2;
-            rbuf.len = 0;
+            rbuf.buf.len = 0;
             // now always send bSize bytes (not wcount)
-            wbuf.pos -= 2;
-            wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-            wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
+            wbuf.wpos -= 2;
+            wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
+            wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
             try
             {
                 var s = client.getOutputStream();
                 s.write(wbuf.buf, 0, Buffer.Size);
                 s.flush();
-                wbuf.pos = 2;
+                wbuf.wpos = 2;
             }
             catch (Exception e)
             {
@@ -111,13 +107,14 @@ public class ClientStream extends StreamBase {
         // an illegal nonzero rcount value indicates an exception
         int GetException(byte proto) throws Exception
         {
+            Buffer bf = rbuf.buf;
             if (proto == Responses.Exception)
             {
-                rcount = (((int)rbuf.buf[rbuf.pos++]) << 7) + (((int)rbuf.buf[rbuf.pos++]) & 0x7f);
-                rcount += 2;
-                proto = rbuf.buf[rbuf.pos++];
+                var rcount = (((int)bf.buf[rbuf.pos++]) << 7) + (((int)bf.buf[rbuf.pos++]) & 0x7f);
+                bf.len = rcount + 2;
+                proto = bf.buf[rbuf.pos++];
             }
-            throw new Exception(GetString());
+            throw new Exception(rbuf.GetString());
         }
 
     @Override

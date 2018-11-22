@@ -66,9 +66,9 @@ public class SDbObject extends Serialisable {
     /// <param name="t"></param>
     /// <param name="f"></param>
 
-    protected SDbObject(int t, StreamBase f) {
+    protected SDbObject(int t, Reader f) {
         super(t);
-        uid = f.position;
+        uid = (f instanceof SocketReader)?-1:f.getPosition()-1;
     }
 
     protected SDbObject(SDbObject s, AStream f) throws Exception {

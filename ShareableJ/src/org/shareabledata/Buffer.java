@@ -17,42 +17,42 @@ public class Buffer {
     public byte[] buf;
     public long start;
     public int len;
-    public int pos;
+    public int wpos;
     public boolean busy = false;
     StreamBase fs;
 
     public Buffer(StreamBase f) throws IOException {
         buf = new byte[Size];
-        pos = 0;
+        wpos = 0;
         len = Size;
         start = f.getLength();
         fs = f;
     }
 
-    Buffer(AStream f, long s) throws Exception {
+    Buffer(StreamBase f, long s) throws Exception {
         buf = new byte[Size];
         start = s;
-        pos = 0;
+        wpos = 0;
         f.GetBuf(this);
         fs = f;
     }
 
     int GetByte() throws Exception {
-        if (pos >= len) {
+        if (wpos >= len) {
             start += len;
-            pos = 0;
+            wpos = 0;
             if (!fs.GetBuf(this))
                return -1;
         }
-        return buf[pos++];
+        return buf[wpos++];
     }
 
     void PutByte(byte b) throws Exception {
-        if (pos >= len) {
+        if (wpos >= len) {
             fs.PutBuf(this);
             start += len;
-            pos = 0;
+            wpos = 0;
         }
-        buf[pos++] = b;
+        buf[wpos++] = b;
     }
 }

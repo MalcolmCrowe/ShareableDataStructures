@@ -17,7 +17,9 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
         if (_impl != null) {
             Variant v = _impl.Lookup(k.element);
-            if (v != null && v.variant == Variants.Compound) {
+            if (v==null)
+                return false;
+            if (v.variant == Variants.Compound) {
                 return ((SMTree<K>) v.ob).Contains((SCList<Variant>) k.next);
             }
             return true;

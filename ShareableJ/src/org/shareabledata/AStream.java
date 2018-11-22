@@ -34,44 +34,7 @@ public class AStream extends StreamBase {
         file.seek(0);
     }
 
-    public SDbObject GetOne(SDatabase d) throws Exception {
-        synchronized (file) {
-            if (position == file.length()) {
-                return null;
-            }
-            rbuf = new Buffer(this, position);
-            Serialisable r = _Get(d);
-            position = rbuf.start + rbuf.pos;
-            return (SDbObject) r;
-        }
-    }
-    /// <summary>
-    /// Called from Commit(): file is already locked
-    /// </summary>
-    /// <param name="tr"></param>
-    /// <param name="pos"></param>
-    /// <returns></returns>
 
-    public SDbObject[] GetAll(SDatabase d, long pos, long max) throws Exception {
-        List<SDbObject> r = new ArrayList<SDbObject>();
-        position = pos;
-        rbuf = new Buffer(this, pos);
-        while (position < max) {
-            r.add((SDbObject) _Get(d));
-            position = rbuf.start + rbuf.pos;
-        }
-        return (SDbObject[]) r.toArray(new SDbObject[0]);
-    }
-
-    public SysItem Get(SDatabase d, long pos) throws Exception {
-        if (pos == length) {
-            return null;
-        }
-        position = pos;
-        rbuf = new Buffer(this, position);
-        var r = _Get(d);
-        return new SysItem(r, rbuf.start + rbuf.pos);
-    }
 
     Serialisable Lookup(SDatabase db, long pos) 
     {
@@ -87,7 +50,7 @@ public class AStream extends StreamBase {
     }
 
     long pos() {
-        return length + wbuf.pos;
+        return length + wbuf.wpos;
     }
 
     public SDatabase Commit(SDatabase db, SDict<Integer, SDbObject> steps) throws Exception {
@@ -172,9 +135,9 @@ public class AStream extends StreamBase {
     protected void PutBuf(Buffer b) throws Exception {
         var p = file.length();
         file.seek(p);
-        file.write(b.buf, 0, b.pos);
-        length = p + b.pos;
-        b.pos = 0;
+        file.write(b.buf, 0, b.wpos);
+        length = p + b.wpos;
+        b.wpos = 0;
     }
 
     public void Flush() throws Exception {

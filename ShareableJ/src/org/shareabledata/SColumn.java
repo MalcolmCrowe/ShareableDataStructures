@@ -9,14 +9,13 @@ import java.io.*;
  *
  * @author Malcolm
  */
-public class SColumn extends SDbObject {
-        public final String name;
+public class SColumn extends SSelector {
         public final int dataType;
         public final long table;
         public SColumn(String n,int d)
         {
-            super(Types.SColumn);
-            name = n; dataType = d; table = -1;
+            super(Types.SColumn,n,-1);
+            dataType = d; table = -1;
         }
                 /// <summary>
         /// For system column
@@ -26,37 +25,34 @@ public class SColumn extends SDbObject {
         /// <param name="u"> will be negative</param>
         public SColumn(String n,int t,long u)
         {
-            super(Types.SColumn,u);
-            name = n; dataType = t; table = -1;
+            super(Types.SColumn,n,u);
+            dataType = t; table = -1;
         }
         public SColumn(STransaction tr,String n, int t, long tbl)
         {
-            super(Types.SColumn,tr);
-            name = n; dataType = t; table = tbl;
+            super(Types.SColumn,n,tr);
+            dataType = t; table = tbl;
         }
         public SColumn(SColumn c,String n,int d)
         {
-            super(c);
-            name = n; dataType = d; table = c.table;
+            super(c,n);
+            dataType = d; table = c.table;
         }
-        SColumn(StreamBase f) throws Exception
+        SColumn(Reader f) throws Exception
         {
             super(Types.SColumn,f);
-            name = f.GetString();
             dataType = f.ReadByte();
             table = f.GetLong();
         }
         public SColumn(SColumn c,AStream f) throws Exception
         {
             super(c,f);
-            name = c.name;
             dataType = c.dataType;
             table = f.Fix(c.table);
-            f.PutString(name);
             f.WriteByte((byte)dataType);
             f.PutLong(table);
         }
-        public static SColumn Get(AStream f) throws Exception
+        public static SColumn Get(Reader f) throws Exception
         {
             return new SColumn(f);
         }
@@ -76,6 +72,10 @@ public class SColumn extends SDbObject {
                     }
             }
             return false;
+        }
+        public SSelector Lookup(SQuery qry)
+        {
+            return qry.names.Lookup(name);
         }
         public String toString()
         {

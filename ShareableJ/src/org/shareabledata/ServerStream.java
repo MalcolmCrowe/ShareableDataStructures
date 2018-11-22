@@ -12,24 +12,23 @@ import java.net.*;
 public class ServerStream extends StreamBase {
         Socket client;
         int rx = 0;
-        int rcount = 0;
+        Reader rbuf;
         boolean exception = false;
 
         ServerStream(Socket c) throws Exception
         {
             super();
             client = c;
-            rbuf = new Buffer(this);
+            rbuf = new SocketReader(this);
             wbuf = new Buffer(this);
-            wbuf.pos = 2;
+            wbuf.wpos = 2;
             rbuf.pos = 2;
-            rbuf.len = 0;
-            position = 0;
+            rbuf.buf.len = 0;
         }
 
         public void Flush() 
         {
-            if (wbuf.pos == 2)
+            if (wbuf.wpos == 2)
                 return;
             // now always send bSize bytes (not wcount)
             if (exception) // version 2.0
@@ -37,20 +36,19 @@ public class ServerStream extends StreamBase {
                     exception = false;
                     wbuf.buf[0] = (byte)((Buffer.Size - 1) >> 7);
                     wbuf.buf[1] = (byte)((Buffer.Size - 1) & 0x7f);
-                    wbuf.pos -= 4;
-                    wbuf.buf[2] = (byte)(wbuf.pos >> 7);
-                    wbuf.buf[3] = (byte)(wbuf.pos & 0x7f);
-                    rcount = 0;
+                    wbuf.wpos -= 4;
+                    wbuf.buf[2] = (byte)(wbuf.wpos >> 7);
+                    wbuf.buf[3] = (byte)(wbuf.wpos & 0x7f);
                 }
             else
             {
-                wbuf.pos -= 2;
-                wbuf.buf[0] = (byte)(wbuf.pos >> 7);
-                wbuf.buf[1] = (byte)(wbuf.pos & 0x7f);
+                wbuf.wpos -= 2;
+                wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
+                wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
             }
             try {
             client.getOutputStream().write(wbuf.buf, 0, Buffer.Size);
-            wbuf.pos = 2;
+            wbuf.wpos = 2;
             } catch(Exception e)
             {
             }
@@ -62,8 +60,8 @@ public class ServerStream extends StreamBase {
         @Override
         protected boolean GetBuf(Buffer b)
         {
-            b.pos = 2;
-            rcount = 0;
+            b.wpos = 2;
+            var rcount = 0;
             rx = 0;
             try{
                 var rc = client.getInputStream().read(b.buf, 0, Buffer.Size);
@@ -72,7 +70,7 @@ public class ServerStream extends StreamBase {
                     rcount = 0;
                     return false;
                 }
-                rcount = (((int)rbuf.buf[0]) << 7) + (int)rbuf.buf[1];
+                rcount = (((int)b.buf[0]) << 7) + (int)b.buf[1];
                 b.len = rcount + 2;
                 return rcount > 0;
             }
@@ -81,13 +79,6 @@ public class ServerStream extends StreamBase {
                 return false;
             }
         }
-        public int ReadByte() throws Exception
-        {
-            if (rbuf.pos >= rcount + 2)
-                GetBuf(rbuf);
-            return super.ReadByte();
-        }
-
         @Override
         protected void PutBuf(Buffer b)
         {
@@ -95,8 +86,7 @@ public class ServerStream extends StreamBase {
         }
         void StartException()
         {
-            rcount = 0;
-            wbuf.pos = 4;
+            wbuf.wpos = 4;
             exception = true;
         }
 

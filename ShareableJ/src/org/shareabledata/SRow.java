@@ -30,7 +30,7 @@ public class SRow extends Serialisable {
             super(Types.SRow);
             cols = c;
         }
-        SRow(SDatabase d,StreamBase f) throws Exception
+        SRow(SDatabase d,Reader f) throws Exception
         {
             super(Types.SRow);
             int n = f.GetInt();
@@ -43,7 +43,7 @@ public class SRow extends Serialisable {
             }
             cols = r;
         }
-        public static SRow Get(SDatabase d,StreamBase f) throws Exception
+        public static SRow Get(SDatabase d,Reader f) throws Exception
         {
             return new SRow(d,f);
         }

@@ -18,20 +18,22 @@ public class STimestamp extends Serialisable {
             super(Types.STimestamp);
             ticks = t.getTime();
         }
-        STimestamp(AStream f)throws Exception
+        STimestamp(Reader f)throws Exception
         {
             super(Types.STimestamp,f);
             ticks = f.GetLong();
         }
-        public void Put(AStream f) throws Exception
+        @Override
+        public void Put(StreamBase f) throws Exception
         {
             super.Put(f);
             f.PutLong(ticks);
         }
-        public static STimestamp Get(AStream f) throws Exception
+        public static STimestamp Get(Reader f) throws Exception
         {
             return new STimestamp(f);
         }
+        @Override
         public String ToString()
         {
             return "Timestamp " + new Timestamp(ticks).toString();

@@ -36,7 +36,7 @@ public class SRecord extends SDbObject {
                 b.getValue().val.Put(f);
             }
         }
-        protected SRecord(SDatabase d,StreamBase f) throws Exception
+        protected SRecord(SDatabase d,Reader f) throws Exception
         {
             super(Types.SRecord,f);
             table = f.GetLong();
@@ -53,7 +53,7 @@ public class SRecord extends SDbObject {
             }
             fields = a;
         }
-        public static SRecord Get(SDatabase d,StreamBase f) throws Exception
+        public static SRecord Get(SDatabase d,Reader f) throws Exception
         {
             return new SRecord(d,f);
         }

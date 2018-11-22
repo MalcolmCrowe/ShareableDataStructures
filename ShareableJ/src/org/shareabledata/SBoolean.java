@@ -16,7 +16,7 @@ public class SBoolean extends Serialisable {
             super(Types.SBoolean);
             sbool = n;
         }
-        SBoolean(AStream f)throws Exception
+        SBoolean(Reader f)throws Exception
         {
             super(Types.SBoolean, f);
             sbool = f.GetInt();
@@ -26,10 +26,17 @@ public class SBoolean extends Serialisable {
             f.PutInt(sbool);
             return this;
         }
-        public static Serialisable Get(AStream f) throws Exception
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SBoolean(f);
         }
+        @Override
+        public void Put(StreamBase f) throws Exception
+        {
+            super.Put(f);
+            f.PutInt(sbool);
+        }
+        @Override
         public String ToString()
         {
             return "Boolean "+sbool;
