@@ -16,17 +16,17 @@ public class SString extends Serialisable {
             super(Types.SString);
             str = s;
         }
-        SString(AStream f) throws Exception
+        SString(Reader f) throws Exception
         {
             super(Types.SString, f);
             str = f.GetString();
         }
-        public void Put(AStream f) throws Exception
+        public void Put(StreamBase f) throws Exception
         {
             super.Put(f);
             f.PutString(str);
         }
-        public static Serialisable Get(AStream f) throws Exception
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SString(f);
         }

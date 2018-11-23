@@ -23,7 +23,7 @@ public class SUpdate extends SRecord {
             defpos = f.Fix(r.Defpos());
             f.PutLong(defpos);
         }
-        SUpdate(SDatabase d,AStream f) throws Exception
+        SUpdate(SDatabase d,Reader f) throws Exception
         {
             super(d,f);
             defpos = f.GetLong();
@@ -32,7 +32,7 @@ public class SUpdate extends SRecord {
         {
             return new SUpdate(tr,this, f);
         }
-        public static SRecord Get(SDatabase d,AStream f) throws Exception
+        public static SRecord Get(SDatabase d,Reader f) throws Exception
         {
             return new SUpdate(d,f);
         }

@@ -9,18 +9,15 @@ import java.io.*;
  *
  * @author Malcolm
  */
-public class STable extends SDbObject {
+public class STable extends SQuery {
         public final String name;
-        public final SList<SColumn> cpos;
-        public final SDict<String, SColumn> names;
-        public final SDict<Long,SColumn> cols;
         public final SDict<Long, Long> rows; // defpos->uid of latest update
         public STable Add(SColumn c) throws Exception
         {
             return new STable(this,
-                    (cols==null)?new SDict<Long,SColumn>(c.uid,c):cols.Add(c.uid,c),
-                    (cpos==null)?new SList<SColumn>(c):cpos.InsertAt(c, cpos.Length),
-                    (names==null)?new SDict<String,SColumn>(c.name,c):names.Add(c.name, c)
+                    (cols==null)?new SDict<>(c.uid,c):cols.Add(c.uid,c),
+                    (cpos==null)?new SList<>(c):cpos.InsertAt(c, cpos.Length),
+                    (names==null)?new SDict<>(c.name,c):names.Add(c.name, c)
            );
         }
         public STable Add(SRecord r)
@@ -52,54 +49,42 @@ public class STable extends SDbObject {
         {
             super(Types.STable,u);
             name = n;
-            cols = null;
-            cpos = null;
-            rows = null;
-            names = null;            
+            rows = null;          
+        }
+        public STable(String n)
+        {
+            super(Types.STable,-1);
+            name = n;
+            rows = null;          
         }
         public STable(STransaction tr,String n)
         {
             super(Types.STable,tr);
             name = n;
-            cols = null;
-            cpos = null;
             rows = null;
-            names = null;
         }
         public STable(STable t,String n)
         {
             super(t);
             name = n;
-            cols = t.cols;
-            cpos = t.cpos;
             rows = t.rows;
-            names = t.names;
         }
-        STable(STable t,SDict<Long,SColumn> c,SList<SColumn> p,SDict<String,SColumn> n) 
+        STable(STable t,SDict<Long,SSelector> c,SList<SSelector> p,SDict<String,SSelector> n) 
         {
-            super(t);
+            super(t,c,p,n);
             name = t.name;
-            cols = c;
-            cpos = p;
-            names = n;
             rows = t.rows;
         }
         STable(STable t,SDict<Long,Long> r)
         {
             super(t);
             name = t.name;
-            cpos = t.cpos;
-            cols = t.cols;
-            names = t.names;
             rows = r;
         }
-        STable(StreamBase f) throws Exception
+        STable(Reader f) throws Exception
         {
             super(Types.STable,f);
             name = f.GetString();
-            cols = null;
-            cpos = null;
-            names = null;
             rows = null;
         }
         public STable(STable t,AStream f) throws Exception
@@ -107,14 +92,47 @@ public class STable extends SDbObject {
             super(t,f);
             name = t.name;
             f.PutString(name);
-            cols = t.cols;
-            cpos = t.cpos;
-            names = t.names;
             rows = t.rows;
         }
-        public static STable Get(SDatabase d,AStream f) throws Exception
+        public static STable Get(Reader f) throws Exception
         {
             return new STable(f);
+        }
+        @Override
+        public void Put(StreamBase f) throws Exception
+        {
+            super.Put(f);
+            f.PutString(name);
+        }
+        @Override
+        public SQuery Lookup(SDatabase db) throws Exception
+        {
+            STable tb = null;
+            if (name.charAt(0) == '_')
+            {
+                var st = SysTable.system.Lookup(name);
+                if (st!=null)
+                    tb = st;
+            } else
+                tb = db.GetTable(name);
+            if (tb==null)
+                throw new Exception("No such table " + name);
+            if (cols==null || cols.Length == 0)
+                return tb;
+            SDict<Long, SSelector> co = null;
+            SList<SSelector> cp = null;
+            SDict<String, SSelector> cn = null;
+            for (var c = cpos;c!=null && c.Length!=0;c=c.next)
+            {
+                var tc = tb.names.Lookup(((SColumn)c.element).name);
+                co = (co==null)?new SDict<Long,SSelector>(tc.uid,tc)
+                        :co.Add(tc.uid, tc);
+                cp = (cp==null)?new SList<SSelector>(tc)
+                        :cp.InsertAt(tc, cp.Length);
+                cn = (cn==null)?new SDict<String,SSelector>(tc.name,tc)
+                        :cn.Add(tc.name, tc);
+            }
+            return new STable(tb, co, cp, cn);
         }
         public boolean Conflicts(Serialisable that)
         {
@@ -124,6 +142,10 @@ public class STable extends SDbObject {
                     return ((STable)that).name.compareTo(name) == 0;
             }
             return false;
+        }
+        public RowSet RowSet(SDatabase db)
+        {
+            return new TableRowSet(db, this);
         }
         public String toString()
         {

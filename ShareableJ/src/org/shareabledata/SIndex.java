@@ -32,7 +32,7 @@ public class SIndex extends SDbObject {
         rows = new SMTree<Long>(Info((STable) tr.Lookup(table), cols));
     }
 
-    SIndex(SDatabase d, StreamBase f) throws Exception {
+    SIndex(SDatabase d, Reader f) throws Exception {
         super(Types.SIndex, f);
         table = f.GetLong();
         primary = f.ReadByte() != 0;
@@ -86,7 +86,7 @@ public class SIndex extends SDbObject {
         rows = mt;
     }
 
-    public static SIndex Get(SDatabase d, StreamBase f) throws Exception {
+    public static SIndex Get(SDatabase d, Reader f) throws Exception {
         return new SIndex(d, f);
     }
 
@@ -125,7 +125,8 @@ public class SIndex extends SDbObject {
         return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next));
     }
 
-    public String ToString() {
+    @Override
+    public String toString() {
         var sb = new StringBuilder(super.toString() + " [" + STransaction.Uid(table) + "] (");
         var cm = "";
         for (var b = cols.First(); b != null; b = b.Next()) {

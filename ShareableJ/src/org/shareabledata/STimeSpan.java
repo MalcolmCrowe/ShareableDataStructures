@@ -17,20 +17,22 @@ public class STimeSpan extends Serialisable {
             super(Types.STimeSpan);
             ticks = s.toNanos()/1000;
         }
-        STimeSpan(AStream f)  throws Exception
+        STimeSpan(Reader f)  throws Exception
         {
             super(Types.STimeSpan, f);
             ticks = f.GetLong();
         }
-        public void Put(AStream f) throws Exception
+        @Override
+        public void Put(StreamBase f) throws Exception
         {
             super.Put(f);
             f.PutLong(ticks);
         }
-        public static Serialisable Get(AStream f) throws Exception
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new STimeSpan(f);
         }
+        @Override
         public String ToString()
         {
             return "TimeSpan "+ticks;

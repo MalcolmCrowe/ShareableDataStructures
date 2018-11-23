@@ -55,8 +55,10 @@ public class StrongStart {
         /// The main entry point for the application. Process arguments and create the main service loop
         public static void main(String[] args) throws Exception
         {
-            for (var i=0;i<args.length;i++)
-                System.out.print(args[i] + " ");
+            SysTable.Init();
+            for (String arg : args) {
+                System.out.print(arg + " ");
+            }
             System.out.print(" Enter to start up");
             System.in.read();
             for (int j = 0; j < Version.length; j++)

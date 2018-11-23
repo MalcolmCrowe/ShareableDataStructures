@@ -23,7 +23,7 @@ public class SView extends SDbObject {
             super(v);
             cols = c; name = v.name; viewdef = v.viewdef;
         }
-        SView(SDatabase d, StreamBase f) throws Exception
+        SView(SDatabase d, Reader f) throws Exception
         {
             super(Types.SView,f);
             name = f.GetString();
@@ -56,7 +56,7 @@ public class SView extends SDbObject {
             }
             f.PutString(viewdef);
         }
-        public static SView Get(SDatabase d, StreamBase f) throws Exception
+        public static SView Get(SDatabase d, Reader f) throws Exception
         {
             return new SView(d, f);
         }

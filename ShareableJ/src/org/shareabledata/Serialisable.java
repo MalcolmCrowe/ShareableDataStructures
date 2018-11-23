@@ -21,11 +21,11 @@ public class Serialisable implements Comparable {
         type = t;
     }
 
-    public Serialisable(int t, StreamBase f) {
+    public Serialisable(int t, Reader f) {
         type = t;
     }
 
-    public static Serialisable Get(StreamBase f) throws Exception {
+    public static Serialisable Get(Reader f) throws Exception {
         return Null;
     }
     
@@ -40,7 +40,7 @@ public class Serialisable implements Comparable {
     
     public void Append(StringBuilder sb)
     {
-        sb.append(this);
+        sb.append(toString());
     }
 
     public String ToString() {

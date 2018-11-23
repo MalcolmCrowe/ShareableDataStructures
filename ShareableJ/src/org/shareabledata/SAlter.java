@@ -22,7 +22,7 @@ public class SAlter extends SDbObject {
             dataType = d; 
             parent = p;
         }
-        SAlter(StreamBase f) throws Exception
+        SAlter(Reader f) throws Exception
         {
             super(Types.SAlter,f);
             defpos = f.GetLong();
@@ -42,7 +42,7 @@ public class SAlter extends SDbObject {
             f.PutString(name);
             f.WriteByte((byte)dataType);
         }
-        public static SAlter Get(StreamBase f) throws Exception
+        public static SAlter Get(Reader f) throws Exception
         {
             return new SAlter(f);
         }

@@ -23,6 +23,7 @@ public class StrongServer implements Runnable {
     /// the Strong protocol stream for this client
     /// </summary>
     ServerStream asy;
+    Reader rdr;
     SDatabase db;
     static int _cid = 0;
     int cid = _cid++;
@@ -43,7 +44,8 @@ public class StrongServer implements Runnable {
         int p = -1;
         try {
             asy = new ServerStream(client);
-            var fn = asy.GetString();
+            rdr = asy.rbuf;
+            var fn = rdr.GetString();
             //       Console.WriteLine("Received " + fn);
             db = SDatabase.Open(path, fn);
             asy.WriteByte(Responses.Done);
@@ -64,7 +66,7 @@ public class StrongServer implements Runnable {
         for (;;) {
             p = -1;
             try {
-                p = asy.ReadByte();
+                p = rdr.ReadByte();
             } catch (Exception e) {
                 p = -1;
             }
@@ -74,65 +76,36 @@ public class StrongServer implements Runnable {
             try {
                 switch ((byte) p) {
                     case Protocol.Get: {
-                        var tn = asy.GetString();
-                        STable tb = null;
-                        if (tn.charAt(0) == '_') {
-                            var st = SysTable.system.Lookup(tn);
-                            if (st != null) {
-                                tb = new SysTable(db, st);
-                            }
-                        } else {
-                            tb = db.GetTable(tn);
-                        }
-                        if (tb == null) {
-                            throw new Exception("No such table " + tn);
-                        }
-                        var n = asy.GetInt();
-                        SCList<Variant> k = null;
-                        for (var i = 0; i < n; i++) {
-                            var v = new Variant(Variants.Single, asy._Get(db));
-                            k = (k == null) ? new SCList<>(v) : (SCList<Variant>) k.InsertAt(v, k.Length);
-                        }
-                        var sb = new StringBuilder("[");
-                        var cm = "";
-                        var px = db.GetIndex(tb.uid);
-                        if (px != null) {
-                            for (var b = px.rows.PositionAt(k); b != null; b = (MTreeBookmark<Long>) b.Next()) {
-                                sb.append(cm);
-                                cm = ",";
-                                db.Get(b.value()).Append(sb);
-                            }
-                        } else {
-                            if (n != 0) {
-                                throw new Exception("No primary index for " + tn);
-                            }
-                            for (var b = tb.rows.First(); b != null; b = b.Next()) {
-                                sb.append(cm);
-                                cm = ",";
-                                if (b instanceof SysBookmark) {
-                                    ((SysBookmark) b)._ob.Append(sb);
-                                } else {
-                                    db.Get(b.getValue().val).Append(sb);
+                                var q = rdr._Get(db);
+                                if (!(q instanceof SQuery))
+                                    throw new Exception("Bad query");
+                                var qy = (SQuery) q;
+                                var sb = new StringBuilder("[");
+                                var cm = "";
+                                qy = qy.Lookup(db);
+                                RowSet rs = qy.RowSet(db);
+                                for (var b = rs.First();b!=null;b=b.Next())
+                                {
+                                    sb.append(cm); cm = ",";
+                                    sb.append(((RowBookmark)b)._ob.toString());
                                 }
-                            }
-                        }
-                        sb.append(']');
-                        asy.PutString(sb.toString());
-                        asy.Flush();
+                                sb.append(']'); 
+                                asy.PutString(sb.toString());
+                                asy.Flush();
                         break;
                     }
                     case Protocol.Table: {
                         var tr = db.Transact(true);
-                        var tn = asy.GetString();// table name
+                        var tn = rdr.GetString();// table name
                         if (tr.names != null && tr.names.Contains(tn)) {
                             throw new Exception("Duplicate table name " + tn);
                         }
                         var tb = new STable(tr, tn);
                         tr = tr.Add(tb);
-                        var n = asy.GetInt(); // #cols
+                        var n = rdr.GetInt(); // #cols
                         for (var i = 0; i < n; i++) {
-                            var cn = asy.GetString(); // column name
-                            var dt = asy.ReadByte(); // dataType
+                            var cn = rdr.GetString(); // column name
+                            var dt = rdr.ReadByte(); // dataType
                             tr = tr.Add(new SColumn(tr, cn, dt, tb.uid));
                         }
                         db = db.MaybeAutoCommit(tr);
@@ -142,7 +115,7 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Insert: {
                         var tr = db.Transact(true);
-                        var tn = asy.GetString();
+                        var tn = rdr.GetString();
                         SDbObject t = null;
                         if (tr.names != null) {
                             t = tr.names.Lookup(tn);
@@ -151,14 +124,14 @@ public class StrongServer implements Runnable {
                             throw new Exception("No table " + tn);
                         }
                         var tb = (STable) t;
-                        var n = asy.GetInt(); // # named cols
+                        var n = rdr.GetInt(); // # named cols
                         SList<Long> cs = null;
                         Exception ex = null;
                         for (var i = 0; i < n; i++) {
-                            var cn = asy.GetString();
+                            var cn = rdr.GetString();
                             SColumn sc = null;
                             if (tb.names != null) {
-                                sc = tb.names.Lookup(cn);
+                                sc = (SColumn)tb.names.Lookup(cn);
                             }
                             if (sc != null) {
                                 cs = cs.InsertAt(sc.uid, cs.Length);
@@ -166,24 +139,24 @@ public class StrongServer implements Runnable {
                                 ex = new Exception("Column " + cn + " not found");
                             }
                         }
-                        var nc = asy.GetInt(); // #cols
+                        var nc = rdr.GetInt(); // #cols
                         if ((n == 0 && nc != tb.cpos.Length) || (n != 0 && n != nc)) {
                             throw new Exception("Wrong number of columns");
                         }
-                        var nr = asy.GetInt(); // #records
+                        var nr = rdr.GetInt(); // #records
                         for (var i = 0; i < nr; i++) {
                             SDict<Long, Serialisable> f = null;
                             if (n == 0) {
                                 for (var b = tb.cpos; b!=null && b.Length != 0; b = b.next) {
                                     var k = b.element.uid;
-                                    var v = asy._Get(tr);
-                                    f = (f==null)?new SDict<Long,Serialisable>(k,v):f.Add(k,v); // serialisable values
+                                    var v = rdr._Get(tr);
+                                    f = (f==null)?new SDict<>(k,v):f.Add(k,v); // serialisable values
                                 }
                             } else {
                                 for (var b = cs; b!=null && b.Length != 0; b = b.next) {
                                     var k = b.element;
-                                    var v = asy._Get(tr);
-                                    f = (f==null)?new SDict<Long,Serialisable>(k,v):f.Add(k,v); // serialisable values
+                                    var v = rdr._Get(tr);
+                                    f = (f==null)?new SDict<>(k,v):f.Add(k,v); // serialisable values
                                 }
                             }
                             tr = tr.Add(new SRecord(tr, tb.uid, f));
@@ -198,7 +171,7 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Alter: {
                         var tr = db.Transact(true);
-                        var tn = asy.GetString(); // table name
+                        var tn = rdr.GetString(); // table name
                         SDbObject t = null;
                         if (tr.names != null) {
                             t = tr.names.Lookup(tn);
@@ -207,15 +180,15 @@ public class StrongServer implements Runnable {
                             throw new Exception("Table " + tn + " not found");
                         }
                         var tb = (STable) t;
-                        var cn = asy.GetString(); // column name or ""
-                        var nm = asy.GetString(); // new name
+                        var cn = rdr.GetString(); // column name or ""
+                        var nm = rdr.GetString(); // new name
                         if (cn.length() == 0) {
                             tr = tr.Add(new SAlter(tr, nm, Types.STable,
                                     tb.uid, 0));
                         } else {
                             SColumn sc = null;
                             if (tb.names != null) {
-                                sc = tb.names.Lookup(cn);
+                                sc = (SColumn)tb.names.Lookup(cn);
                             }
                             if (sc == null) {
                                 throw new Exception("Column " + cn + " not found");
@@ -230,12 +203,12 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Drop: {
                         var tr = db.Transact(true);
-                        var nm = asy.GetString(); // object name
+                        var nm = rdr.GetString(); // object name
                         var pt = (tr.names == null) ? null : tr.names.Lookup(nm);
                         if (pt == null) {
                             throw new Exception("Object " + nm + " not found");
                         }
-                        var cn = asy.GetString();
+                        var cn = rdr.GetString();
                         SDrop nd = null;
                         if (cn.length() == 0) {
                             nd = new SDrop(tr, pt.uid, -1);
@@ -243,7 +216,7 @@ public class StrongServer implements Runnable {
                             SColumn sc = null;
                             var tb = (STable) pt;
                             if (tb.names != null) {
-                                sc = tb.names.Lookup(cn);
+                                sc = (SColumn)tb.names.Lookup(cn);
                             }
                             if (sc == null) {
                                 throw new Exception("Column " + cn + " not found");
@@ -260,21 +233,21 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Index: {
                         var tr = db.Transact(true);
-                        var tn = asy.GetString(); // table name
+                        var tn = rdr.GetString(); // table name
                         var t = (tr.names == null) ? null : tr.names.Lookup(tn);
                         if (t == null || t.type != Types.STable) {
                             throw new Exception("Table " + tn + " not found");
                         }
                         var tb = (STable) t;
-                        var xt = asy.ReadByte();
-                        var rn = asy.GetString();
-                        var nc = asy.GetInt();
+                        var xt = rdr.ReadByte();
+                        var rn = rdr.GetString();
+                        var nc = rdr.GetInt();
                         SList<Long> cs = null;
                         for (var i = 0; i < nc; i++) {
-                            var cn = asy.GetString();
+                            var cn = rdr.GetString();
                             SColumn sc = null;
                             if (tb.names != null) {
-                                sc = tb.names.Lookup(cn);
+                                sc = (SColumn)tb.names.Lookup(cn);
                             }
                             if (sc == null) {
                                 throw new Exception("Column " + cn + " not found");
@@ -290,7 +263,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Protocol.Read: {
-                        var id = asy.GetLong();
+                        var id = rdr.GetLong();
                         var sb = new StringBuilder();
                         db.Get(id).Append(sb);
                         asy.PutString(sb.toString());
@@ -299,22 +272,22 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Update: {
                         var tr = db.Transact(true);
-                        var id = asy.GetLong();
+                        var id = rdr.GetLong();
                         var rc = db.Get(id);
                         var tb = (STable) tr.Lookup(rc.table);
-                        var n = asy.GetInt(); // # cols updated
+                        var n = rdr.GetInt(); // # cols updated
                         SDict<Long, Serialisable> f = null;
                         Exception ex = null;
                         for (var i = 0; i < n; i++) {
-                            var cn = asy.GetString();
+                            var cn = rdr.GetString();
                             SColumn sc = null;
                             if (tb.names != null) {
-                                sc = tb.names.Lookup(cn);
+                                sc = (SColumn)tb.names.Lookup(cn);
                             }
                             if (sc == null) {
                                 ex = new Exception("Column " + cn + " not found");
                             } else {
-                                f = f.Add(sc.uid, asy._Get(db));
+                                f = f.Add(sc.uid, rdr._Get(db));
                             }
                         }
                         tr = tr.Add(new SUpdate(tr, rc, f));
@@ -328,7 +301,7 @@ public class StrongServer implements Runnable {
                     }
                     case Protocol.Delete: {
                         var tr = db.Transact(true);
-                        var id = asy.GetLong();
+                        var id = rdr.GetLong();
                         var rc = db.Get(id);
                         if (rc == null) {
                             throw new Exception("Record " + id + " not found");

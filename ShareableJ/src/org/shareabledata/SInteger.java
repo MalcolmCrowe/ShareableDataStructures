@@ -16,17 +16,18 @@ public class SInteger extends Serialisable {
             super(Types.SInteger);
             value = v;
         }
-        SInteger(AStream f) throws Exception
+        SInteger(Reader f) throws Exception
         {
             super(Types.SInteger, f);
             value = f.GetInt();
         }
-        public void Put(AStream f) throws Exception
+        @Override
+        public void Put(StreamBase f) throws Exception
         {
             super.Put(f);
             f.PutInt(value);
         }
-        public static Serialisable Get(AStream f) throws Exception
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SInteger(f);
         }

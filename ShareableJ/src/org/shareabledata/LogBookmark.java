@@ -9,35 +9,23 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class LogBookmark extends SysBookmark {
-                public final SDatabase _db;
+public class LogBookmark extends RowBookmark {
+            public final SysRows _sr;
             public final long _log;
             public final long _next;
-            LogBookmark(SDatabase d,long lg,Serialisable ob,long nx,int p)
+            LogBookmark(SysRows rs,long lg,Serialisable ob,long nx,int p)
             {
-                super(ob,p);
-                _db = d; _log = lg; _next = nx;
+                super(rs,ob,p);
+                _sr = rs; _log = lg; _next = nx;
             }
-            static LogBookmark New(SDatabase db,long lg,int pos) 
+            @Override
+            public Bookmark<Serialisable> Next()
             {
-                try
-                {
-                var si = db._Get(lg);
-                return (si==null)?null:
-                    new LogBookmark(db, lg, si.item, si.next, pos);
-                } catch(Exception e)
-                {
-                    return null;
-                }
-            }
-
-            public SSlot<Long, Long> getValue()
-            {
-                return new SSlot<Long, Long>(_log,_log);
-            }
-
-            public Bookmark<SSlot<Long, Long>> Next()
-            {
-                return New(_db, _next, Position + 1);
+                try{
+                var rdr = new Reader(_sr.fs,_next);
+                var s = rdr._Get(_rs._db);
+                return (s==null)?null:new LogBookmark(_sr,_next, s, rdr.getPosition(),
+                  Position + 1);
+                } catch(Exception e) { return null; }
             }
 }

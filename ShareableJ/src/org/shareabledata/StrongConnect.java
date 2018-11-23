@@ -33,10 +33,9 @@ public class StrongConnect {
             asy.Write(Protocol.Table);
             asy.PutString(n);
             asy.PutInt(cols.length);
-            for(var i=0;i<cols.length;i++)
-            {
-                asy.PutString(cols[i].name);
-                asy.WriteByte((byte)cols[i].dataType);
+            for (SColumn col : cols) {
+                asy.PutString(col.name);
+                asy.WriteByte((byte) col.dataType);
             }
             var b = asy.Receive();
         }
@@ -51,8 +50,9 @@ public class StrongConnect {
             else
                 asy.PutString(rt);
             asy.PutInt(key.length);
-            for (var i=0;i<key.length;i++)
-                asy.PutString(key[i]);
+            for (String key1 : key) {
+                asy.PutString(key1);
+            }
             var b = asy.Receive();
         }
         public void Insert(String tn,String[] cols,Serialisable[]... rows)
@@ -65,25 +65,25 @@ public class StrongConnect {
             else
             {
                 asy.PutInt(cols.length);
-                for (var i=0;i<cols.length;i++)
-                    asy.PutString(cols[i]);
+                for (String col : cols) {
+                    asy.PutString(col);
+                }
             }
             asy.PutInt(rows[0].length); // cols
             asy.PutInt(rows.length);  // rows
-            for (var i = 0; i < rows.length; i++)
-                for (var j = 0; j < rows[i].length; j++)
-                    rows[i][j].Put(asy);
+            for (Serialisable[] row : rows) {
+                for (Serialisable row1 : row) {
+                    row1.Put(asy);
+                }
+            }
             var b = asy.Receive();
         }
-        public String Get(String tn,Serialisable... key) throws Exception
+        public String Get(SQuery qy) throws Exception
         {
             asy.Write(Protocol.Get);
-            asy.PutString(tn);
-            asy.PutInt(key.length);
-            for (var i=0;i<key.length;i++)
-                key[i].Put(asy);
+            qy.Put(asy);
             asy.Flush();
-            var r = asy.GetString();
+            var r = asy.rbuf.GetString();
             return r; //Json
         }
 /*        public bool RoundTrip(Random rnd)
