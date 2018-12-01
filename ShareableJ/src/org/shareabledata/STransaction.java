@@ -45,7 +45,7 @@ public class STransaction extends SDatabase {
             super(tr._Add(s, tr.uid+1));
             uid =  tr.uid+1;
             steps = (tr.steps==null)?new SDict<Integer,SDbObject>(0,s):
-                    tr.steps.Add(tr.steps.Count(),s);
+                    tr.steps.Add(tr.steps.Length,s);
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
         }

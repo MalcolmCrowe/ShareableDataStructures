@@ -38,7 +38,7 @@ public class ClientStream extends StreamBase {
                     rcount = 0;
                     return false;
                 }
-                rcount = (((int)b.buf[0]) << 7) + (int)b.buf[1];
+                rcount = ((b.buf[0] & 0xff) << 7) + (b.buf[1] &0xff);
                 b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();

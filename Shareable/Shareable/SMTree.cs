@@ -12,20 +12,20 @@ namespace Shareable
         {
             public readonly TreeInfo<K> info;
             public readonly Variants variant;
-            internal SITree(TreeInfo<K> ti) : base(null)
+            internal SITree(TreeInfo<K> ti,Variants vt) : base(null)
             {
-                info = ti; variant = Variants.Single;
+                info = ti; variant = vt;
             }
-            SITree(TreeInfo<K> ti,SBucket<Variant, Variant> r) : base(r)
+            SITree(TreeInfo<K> ti,Variants vt,SBucket<Variant, Variant> r) : base(r)
             {
                 info = ti;
-                variant = ((r?.count??0)>0)?((Variant)r.Slot(0).val).variant:Variants.Compound;
+                variant = vt;
             }
-            internal SITree(TreeInfo<K> ti, Variant k, Variant v)
-                : this(ti, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v))) { }
+            internal SITree(TreeInfo<K> ti, Variants vt, Variant k, Variant v)
+                : this(ti, vt, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v))) { }
             internal SITree Update(Variant k, Variant v)
             {
-                return new SITree(info, root.Update(k, v));
+                return new SITree(info, variant, root.Update(k, v));
             }
             public Bookmark<SSlot<Variant, Variant>> PositionAt(Variant k)
             {
@@ -51,45 +51,42 @@ namespace Shareable
             }
             public override SDict<Variant, Variant> Add(Variant k, Variant v)
             {
-                return (root == null || root.total == 0) ? new SITree(info,k, v) :
-                    (root.Contains(k)) ? new SITree(info, root.Update(k, v)) :
-                    (root.count == Size) ? new SITree(info, root.Split()).Add(k, v) :
-                    new SITree(info, root.Add(k, v));
+                return (root == null || root.total == 0) ? new SITree(info,variant, k, v) :
+                    (root.Contains(k)) ? new SITree(info, variant, root.Update(k, v)) :
+                    (root.count == Size) ? new SITree(info, variant, root.Split()).Add(k, v) :
+                    new SITree(info, variant, root.Add(k, v));
             }
             public override SDict<Variant, Variant> Remove(Variant k)
             {
                 return (root == null || root.Lookup(k) == null) ? this :
                     (root.total == 1) ? Empty :
-                    new SITree(info,root.Remove(k));
+                    new SITree(info,variant, root.Remove(k));
             }
         }
         public readonly SITree _impl;
         public readonly SList<TreeInfo<K>> _info;
-        public readonly int _count;
-        public int Count => _count;
         SMTree(SList<TreeInfo<K>> ti, SITree impl,int c) :base(c)
         {
             _info = ti;
             _impl = impl;
-            _count = c;
             if (ti.Length>1 && ti.element.onDuplicate != TreeBehaviour.Disallow)
                 throw new Exception("Duplicates are allowed only on last TreeInfo");
         }
-        public SMTree(SList<TreeInfo<K>> ti) : this(ti, (SITree)null, 0)  { }
-        public SMTree(SList<TreeInfo<K>> ti,SList<Variant> k,long v) :this(ti)
+        public SMTree(SList<TreeInfo<K>> ti) : base(0)
         {
-            if (ti.Length<2)
-            {
-                if (ti.element.onDuplicate == TreeBehaviour.Allow)
-                    _impl = new SITree(ti.element, k.element,
-                        new Variant(Variants.Partial, new SDict<long,bool>(v, true)));
-                else
-                    _impl = new SITree(ti.element, k.element, new Variant(v));
-            }
-            else
-                _impl = new SITree(ti.element, k.element,
+            _info = ti;
+            _impl = null;
+        }
+        public SMTree(SList<TreeInfo<K>> ti,SList<Variant> k,long v) :base(1)
+        {
+            _info = ti;
+            _impl = (ti.Length < 2) ?
+                ((ti.element.onDuplicate == TreeBehaviour.Allow) ?
+                    new SITree(ti.element, Variants.Partial, k.element,
+                        new Variant(Variants.Partial, new SDict<long, bool>(v, true))) :
+                    new SITree(ti.element, Variants.Single, k.element, new Variant(v))) :
+                new SITree(ti.element, Variants.Compound, k.element,
                     new Variant(Variants.Compound, new SMTree<K>(ti.next, k.next, v)));
-            _count = 1;
         }
         public override Bookmark<SSlot<SCList<Variant>,long>> First()
         {
@@ -102,7 +99,7 @@ namespace Shareable
         public bool Contains(SCList<Variant> k)
         {
             return (k.Length == 0) ? 
-                Count != 0 :
+                Length != 0 :
                 (_impl?.Lookup(k.element) is Variant v) ?
                     ((v.variant == Variants.Compound) ?
                         ((SMTree<K>)v.ob).Contains((SCList<Variant>)k.next) :
@@ -186,7 +183,7 @@ namespace Shareable
                 st = _impl.Add(k.element, nv) as SITree;
             }
             tb = TreeBehaviour.Allow;
-            return new SMTree<K>(_info, st, _count + 1);
+            return new SMTree<K>(_info, st, Length + 1);
         }
         public SMTree<K> Add(SCList<Variant> k, long v)
         {
@@ -200,16 +197,16 @@ namespace Shareable
             SITree st = _impl;
             var k0 = k.element;
             Variant tv = _impl.Lookup(k0);
-            var nc = _count;
+            var nc = Length;
             switch (tv.variant)
             {
                 case Variants.Compound:
                     {
                         var mt = tv.ob as SMTree<K>;
-                        var c = mt._count;
+                        var c = mt.Length;
                         mt = mt.Remove(k.next as SCList<Variant>,p) as SMTree<K>;
-                        nc -= c - mt._count;
-                        if (mt.Count == 0)
+                        nc -= c - mt.Length;
+                        if (mt.Length == 0)
                             st = st.Remove(k0) as SITree;
                         else
                             st = st.Update(k0, new Variant(Variants.Compound, mt));
@@ -222,7 +219,7 @@ namespace Shareable
                             return this;
                         nc--;
                         bt = bt.Remove(p);
-                        if (bt.Count == 0)
+                        if (bt.Length == 0)
                             st = st.Remove(k0) as SITree;
                         else
                             st = st.Update(k0, new Variant(Variants.Partial, bt));
@@ -242,16 +239,16 @@ namespace Shareable
             SITree st = _impl; 
             var k0 = k.element;
             Variant tv = _impl.Lookup(k0);
-            var nc = _count;
+            var nc = Length;
             switch (tv.variant)
             {
                 case Variants.Compound:
                     {
                         var mt = tv.ob as SMTree<K>;
-                        var c = mt._count;
+                        var c = mt.Length;
                         mt = mt.Remove(k.next as SCList<Variant>) as SMTree<K>;
-                        nc -= c - mt._count;
-                        if (mt.Count == 0)
+                        nc -= c - mt.Length;
+                        if (mt.Length == 0)
                             st = st.Remove(k0) as SITree;
                         else
                             st = st.Update(k0, new Variant(Variants.Compound,mt));
@@ -260,7 +257,7 @@ namespace Shareable
                 case Variants.Partial:
                     {
                         var bt = tv.ob as SDict<long,bool>;
-                        nc -= bt.Count;
+                        nc -= bt.Length;
                         st = st.Remove(k0) as SITree;
                         break;
                     }
@@ -274,7 +271,7 @@ namespace Shareable
         public int CompareTo(object obj)
         {
             var that = obj as SMTree<K>;
-            if (that == null || that.Count == 0)
+            if (that == null || that.Length == 0)
                 return 1;
             return First().Value.key.CompareTo(that.First().Value.key);
         }

@@ -385,7 +385,7 @@ namespace Shareable
         public override void Put(StreamBase f)
         {
             base.Put(f);
-            f.PutInt(cols.Count);
+            f.PutInt(cols.Length);
             for (var b = cols.First(); b != null; b = b.Next())
             {
                 f.PutString(b.Value.key);
@@ -429,7 +429,7 @@ namespace Shareable
         /// Other ranges of uids:
         /// Transaction-local uids: 0x4000000000000000-0x7fffffffffffffff
         /// System uids (_Log tables etc): 0x9000000000000000-0x8000000000000001
-        /// Client session-local uids (disambiguation): 0xffffffffffffffff-0x9000000000000001
+        /// Client session-local objects are given negative uids with default -1
         /// </summary>
         public readonly long uid;
         /// <summary>
@@ -437,7 +437,7 @@ namespace Shareable
         /// </summary>
         /// <param name="t"></param>
         /// <param name="u"></param>
-        protected SDbObject(Types t,long u) :base(t)
+        protected SDbObject(Types t,long u=-1) :base(t)
         {
             uid = u;
         }
@@ -564,7 +564,7 @@ namespace Shareable
         /// </summary>
         /// <param name="n"></param>
         /// <param name="u">will be negative</param>
-        public STable(string n, long u)
+        public STable(string n, long u=-1)
             : base(Types.STable, u)
         {
             name = n;
@@ -726,7 +726,7 @@ namespace Shareable
         /// <param name="n"></param>
         /// <param name="t"></param>
         /// <param name="u"> will be negative</param>
-        public SColumn(string n,Types t,long u) :base(Types.SColumn,n,u)
+        public SColumn(string n,Types t,long u = -1) :base(Types.SColumn,n,u)
         {
             dataType = t; table = -1;
         }
@@ -956,7 +956,7 @@ namespace Shareable
             fields = r.fields;
             f.PutLong(table);
             var tb = (STable)db.Lookup(table);
-            f.PutInt(r.fields.Count);
+            f.PutInt(r.fields.Length);
             for (var b=r.fields.First();b!=null;b=b.Next())
             {
                 f.PutLong(b.Value.key);
@@ -1248,7 +1248,6 @@ namespace Shareable
             }
         }
         protected Buffer wbuf;
-        public int rcount;
         protected StreamBase() { }
         public abstract bool GetBuf(Buffer b);
         protected abstract void PutBuf(Buffer b);
@@ -1371,7 +1370,7 @@ namespace Shareable
         }
         public override int ReadByte()
         {
-            if (pos >= buf.fs.rcount + 2)
+            if (pos >= buf.len)
             {
                 buf.fs.GetBuf(buf);
                 pos = 2;

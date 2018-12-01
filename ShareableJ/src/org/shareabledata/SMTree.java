@@ -17,8 +17,9 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
         if (_impl != null) {
             Variant v = _impl.Lookup(k.element);
-            if (v==null)
+            if (v == null) {
                 return false;
+            }
             if (v.variant == Variants.Compound) {
                 return ((SMTree<K>) v.ob).Contains((SCList<Variant>) k.next);
             }
@@ -32,25 +33,24 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         public final TreeInfo info;
         public final Variants variant;
 
-        SITree(TreeInfo ti) {
+        SITree(TreeInfo ti, Variants vt) {
             super(null);
             info = ti;
-            variant = Variants.Single;
+            variant = vt;
         }
 
-        SITree(TreeInfo ti, SBucket<Variant, Variant> r) {
+        SITree(TreeInfo ti, Variants vt, SBucket<Variant, Variant> r) {
             super(r);
             info = ti;
-            variant = (((r == null) ? 0 : r.count) > 0) ? ((Variant) r.Slot(0).val).variant
-                    : Variants.Compound;
+            variant = vt;
         }
 
-        SITree(TreeInfo ti, Variant k, Variant v) {
-            this(ti, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v)));
+        SITree(TreeInfo ti, Variants vt, Variant k, Variant v) {
+            this(ti, vt, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v)));
         }
 
         SITree Update(Variant k, Variant v) {
-            return new SITree(info, root.Update(k, v));
+            return new SITree(info, variant, root.Update(k, v));
         }
 
         public Bookmark<SSlot<Variant, Variant>> PositionAt(Variant k) {
@@ -76,16 +76,19 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
 
         public SDict<Variant, Variant> Add(Variant k, Variant v) {
-            return (root == null || root.total == 0) ? new SITree(info, k, v)
-                    : (root.Contains(k)) ? new SITree(info, root.Update(k, v))
-                    : (root.count == SIZE) ? new SITree(info, root.Split()).Add(k, v)
-                            : new SITree(info, root.Add(k, v));
+            return (root == null || root.total == 0)
+                    ? new SITree(info, variant, k, v)
+                    : (root.Contains(k))
+                    ? new SITree(info, variant, root.Update(k, v))
+                    : (root.count == SIZE)
+                            ? new SITree(info, variant, root.Split()).Add(k, v)
+                            : new SITree(info, variant, root.Add(k, v));
         }
 
-        public SDict<Variant, Variant> Remove(Variant k,long p) {
+        public SDict<Variant, Variant> Remove(Variant k, long p) {
             return (root == null || root.Lookup(k) == null) ? this
                     : (root.total == 1) ? new SDict<Variant, Variant>(null)
-                            : new SITree(info, root.Remove(k));
+                            : new SITree(info, variant, root.Remove(k));
         }
     }
 
@@ -101,13 +104,11 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
     }
     public final SITree _impl;
     public final SList<TreeInfo> _info;
-    public final int _count;
 
     SMTree(SList<TreeInfo> ti, SITree impl, int c) throws Exception {
-        super(0);
+        super(c);
         _info = ti;
         _impl = impl;
-        _count = c;
         if (ti.Length > 1 && ti.element.onDuplicate != TreeBehaviour.Disallow) {
             throw new Exception("Dplicates are allowed only on last TreeInfo");
         }
@@ -118,23 +119,18 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
     }
 
     public SMTree(SList<TreeInfo> ti, SList<Variant> k, long v) throws Exception {
-        super(0);
-        SITree impl;
-        if (ti.Length < 2) {
-            if (ti.element.onDuplicate == TreeBehaviour.Allow) {
-                impl = new SITree(ti.element, k.element,
-                        new Variant(Variants.Partial,
-                                new SDict<>(v, true)));
-            } else {
-                impl = new SITree(ti.element, k.element, new Variant(v));
-            }
-        } else {
-            impl = new SITree(ti.element, k.element,
-                    new Variant(Variants.Compound, new SMTree(ti.next, k.next, v)));
-        }
+        super(1);
         _info = ti;
-        _impl = impl;
-        _count = 1;
+        _impl = (ti.Length < 2)
+                ? ((ti.element.onDuplicate == TreeBehaviour.Allow)
+                        ? new SITree(ti.element, Variants.Partial, k.element,
+                                new Variant(Variants.Partial, 
+                                        new SDict<>(v, true)))
+                        : new SITree(ti.element, Variants.Single, k.element, 
+                                new Variant(v)))
+                : new SITree(ti.element, Variants.Compound, k.element,
+                        new Variant(Variants.Compound, 
+                                new SMTree(ti.next, k.next, v)));
     }
 
     public Bookmark<SSlot<SCList<Variant>, Long>> First() {
@@ -168,7 +164,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
         Variant nv = null;
         SITree st = _impl;
-        if (st!=null && st.Contains(k.element)) {
+        if (st != null && st.Contains(k.element)) {
             Variant tv = st.Lookup(k.element);
             switch (tv.variant) {
                 case Compound: {
@@ -205,7 +201,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
             }
             st = (SITree) _impl.Add(k.element, nv);
         }
-        return new MTResult(new SMTree(_info, st, _count + 1), TreeBehaviour.Allow);
+        return new MTResult(new SMTree(_info, st, Length + 1), TreeBehaviour.Allow);
     }
 
     public SMTree Remove(SCList<Variant> k) {
@@ -215,13 +211,13 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         SITree st = _impl;
         Variant k0 = k.element;
         Variant tv = _impl.Lookup(k0);
-        int nc = _count;
+        int nc = Length;
         switch (tv.variant) {
             case Compound: {
                 SMTree mt = (SMTree) tv.ob;
-                int c = mt._count;
+                int c = mt.Length;
                 mt = (SMTree) mt.Remove((SCList<Variant>) k.next);
-                nc -= c - mt._count;
+                nc -= c - mt.Length;
                 if (mt.Length == 0) {
                     st = (SITree) st.Remove(k0);
                 } else {
@@ -231,7 +227,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
             }
             case Partial: {
                 SDict<Integer, Boolean> bt = (SDict<Integer, Boolean>) tv.ob;
-                nc -= bt.Count();
+                nc -= bt.Length;
                 st = (SITree) st.Remove(k0);
                 break;
             }
@@ -246,21 +242,21 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         }
         return this;
     }
-    
-    public SMTree Remove(SCList<Variant> k,long v) {
+
+    public SMTree Remove(SCList<Variant> k, long v) {
         if (!Contains(k)) {
             return this;
         }
         SITree st = _impl;
         Variant k0 = k.element;
         Variant tv = _impl.Lookup(k0);
-        int nc = _count;
+        int nc = Length;
         switch (tv.variant) {
             case Compound: {
                 SMTree mt = (SMTree) tv.ob;
-                int c = mt._count;
-                mt = (SMTree) mt.Remove((SCList<Variant>) k.next,v);
-                nc -= c - mt._count;
+                int c = mt.Length;
+                mt = (SMTree) mt.Remove((SCList<Variant>) k.next, v);
+                nc -= c - mt.Length;
                 if (mt.Length == 0) {
                     st = (SITree) st.Remove(k0);
                 } else {
@@ -270,14 +266,16 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
             }
             case Partial: {
                 var bt = (SDict<Long, Boolean>) tv.ob;
-                if (!bt.Contains(v))
+                if (!bt.Contains(v)) {
                     return this;
-                nc --;
+                }
+                nc--;
                 bt = bt.Remove(v);
-                if (bt.Count()==0)
+                if (bt.Length == 0) {
                     st = (SITree) st.Remove(k0);
-                else
-                    st = st.Update(k0, new Variant(Variants.Partial,bt));
+                } else {
+                    st = st.Update(k0, new Variant(Variants.Partial, bt));
+                }
                 break;
             }
             case Single:

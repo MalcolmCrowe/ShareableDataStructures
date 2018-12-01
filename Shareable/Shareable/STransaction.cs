@@ -34,7 +34,7 @@ namespace Shareable
         {
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
-            steps = tr.steps.Add(tr.steps.Count,s);
+            steps = tr.steps.Add(tr.steps.Length,s);
             uid =  tr.uid+1;
         }
         public SDatabase Commit()

@@ -23,10 +23,6 @@ public class SDict<K extends Comparable, V> extends Shareable<SSlot<K, V>> {
         root = r;
     }
 
-    public int Count() {
-        return (root == null) ? 0 : root.total;
-    }
-
     @Override
     public Bookmark<SSlot<K, V>> First() {
         return (root == null || root.total == 0) ? null

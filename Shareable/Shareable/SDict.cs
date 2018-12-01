@@ -23,9 +23,8 @@ namespace Shareable
         /// using values in the range 8 to 32.
         /// </summary>
         public const int Size = 8;
-        public virtual int Count { get { return root?.total ?? 0; }}
         public readonly SBucket<K, V> root;
-        protected SDict(SBucket<K,V> r) { root = r; }
+        protected SDict(SBucket<K,V> r):base(r?.total??0) { root = r; }
         internal SDict(K k, V v) : this(new SLeaf<K, V>(new SSlot<K, V>(k, v))) { }
         /// <summary>
         /// Avoid unnecessary constructor calls by using this constant empty tree
@@ -198,7 +197,7 @@ namespace Shareable
             if (stk == null) // following Create or Reset
             {
                 // if Tree is empty return null
-                if (tree == null || tree.Count == 0)
+                if (tree == null || tree.Length == 0)
                     return null;
                 // The first entry is root.slots[0] or below
                 stk = new SBookmark<K, V>(tree.root, 0, null);

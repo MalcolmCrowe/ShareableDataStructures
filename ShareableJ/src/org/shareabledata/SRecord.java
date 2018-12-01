@@ -29,7 +29,7 @@ public class SRecord extends SDbObject {
             fields = r.fields;
             f.PutLong(table);
             var tb = (STable)db.Lookup(table);
-            f.PutInt(r.fields.Count());
+            f.PutInt(r.fields.Length);
             for (var b=r.fields.First();b!=null;b=b.Next())
             {
                 f.PutLong(b.getValue().key);
