@@ -8,7 +8,7 @@ LoadDataSet <- function(filename){
     fileName = paste(getwd(), filename, sep="/")
   print(fileName)
    
-  columns <- c("TestCaseID", "UniqueId", "TimeDifference", "TotalMemory", "FreeMemory" )
+  columns <- c("TestCaseID", "Cases", "TimeDifference", "TotalMemory", "FreeMemory" )
   
   dataSet <- loadFromXLCSV(fileName, TRUE, columns)
   # return(dataSet)
@@ -26,7 +26,7 @@ SetUpDataSet <- function(){
 
 }
 
-plotExecutionTime <- function(fullDataSet){
+plotInsertExecutionTime <- function(fullDataSet){
   #subsetting to first experiment
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 100 insert") |
                                 (fullDataSet$TestCaseID=="SList 100 insert")
@@ -34,10 +34,54 @@ plotExecutionTime <- function(fullDataSet){
   
   
   #meltdf <- melt(newData,id="DA")
-  p <- ggplot(newData,aes(x=UniqueId,y=TimeDifference,colour=DA,group=DA)) + geom_line()
+  p <- ggplot(newData,aes(x=Cases,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("100 Inserts") + xlab("number of elements")
+    
   print(p)
+  
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
+                                   (fullDataSet$TestCaseID=="SList 1000 insert")
+  ), ]
+  
+  
+  p <- ggplot(newData,aes(x=Cases,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("1.000 Inserts") + xlab("number of elements")
+  
+  print(p)
+  
+  # #Zoom in to First 100 inserts
+  # newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
+  #                                  (fullDataSet$TestCaseID=="SList 1000 insert")
+  # ), ]
+  # newData <- newData[ which( (newData$Cases < 25) ), ]
+  # 
+  # p <- ggplot(newData,aes(x=Cases,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+  #   ggtitle("10000 Inserts [First 100 cases] ") + xlab("number of elements")
+  # 
+  # print(p)
+  
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 10000 insert") |
+                                    (fullDataSet$TestCaseID=="SList 10000 insert")
+  ), ]
+  
+  
+  p <- ggplot(newData,aes(x=Cases,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("10.000 insert") + xlab("number of elements")
+  
+  print(p)
+  
+  
+}
+
+plotRemoveExecutionTime <- function(fullDataSet){
+  #subsetting to first experiment
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="Remove elements in 100") |
+                                   (fullDataSet$TestCaseID=="Remove elements in 100")
+  ), ]
+  
   
 }
 
 fullDataSet <- SetUpDataSet()
-plotExecutionTime(fullDataSet)
+plotInsertExecutionTime(fullDataSet)
+plotRemoveExecutionTime(fullDataSet)

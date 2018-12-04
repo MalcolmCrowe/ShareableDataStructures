@@ -9,6 +9,7 @@ import org.shareabledata.test.common.*;
 import static org.junit.Assert.*;
 
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -53,7 +54,7 @@ public class LinkedListTest {
 		{
 			list.add(new PayLoad("Load "+i));
 			
-			tml.logTimeAndMemoryUsage();
+			tml.logTimeAndMemoryUsage(i+1);
 		}
 		
 	}
@@ -83,5 +84,52 @@ public class LinkedListTest {
 	}
 	
 	
+        @Test
+        public void find25thElementIn100(){
+                tml.setTestCaseName("Find elements in 100");
+				
+		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
+                PayLoad toBeFound_25 = new PayLoad("Load 25");
+                PayLoad toBeFound_50 = new PayLoad("Load 50");
+                PayLoad toBeFound_100 = new PayLoad("Load 100");
+                tml.setInitialTimeAndMemory();
+                list.contains(toBeFound_25);
+                tml.logTimeAndMemoryUsage(25);
+                list.contains(toBeFound_50);
+                tml.logTimeAndMemoryUsage(50);
+                list.contains(toBeFound_100);
+                tml.logTimeAndMemoryUsage(100);
+                
+        }
+        
+        @Test
+        public void removeElementIn100(){
+                tml.setTestCaseName("Remove elements in 100");
+				
+		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
+                PayLoad toBeFound_25 = new PayLoad("Load 25");
+                PayLoad toBeFound_50 = new PayLoad("Load 50");
+                PayLoad toBeFound_100 = new PayLoad("Load 100");
+                tml.setInitialTimeAndMemory();
+                list.remove(24);
+                Assert.assertEquals(99, list.size());
+                tml.logTimeAndMemoryUsage(25);
+                list.remove(48);
+                Assert.assertEquals(98, list.size());
+                tml.logTimeAndMemoryUsage(50);
+                list.remove(97);
+                Assert.assertEquals(97, list.size());
+                tml.logTimeAndMemoryUsage(100);
+                
+        }
+        
+        private LinkedList<PayLoad> creatAlistWithNelement(int numberOfElements){
+            LinkedList<PayLoad> list = new LinkedList<PayLoad>();
+		for (int i = 0; i < 100; i++)
+		{
+                    list.add(new PayLoad("Load "+i));
+		}
+            return list;
+        }
 
 }

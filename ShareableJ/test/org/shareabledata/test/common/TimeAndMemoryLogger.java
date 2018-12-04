@@ -8,7 +8,6 @@ import com.opencsv.*;
 
 public class TimeAndMemoryLogger {
 	private long initialTime = 0L;
-	private int caseIdNumber = 1;
 	private String testCase;
 
 	private long totalMemory = 0L;
@@ -18,7 +17,7 @@ public class TimeAndMemoryLogger {
 	
 	public TimeAndMemoryLogger() {
 		contents = new ArrayList<String[]>();
-		contents.add(new String[] {"Test Case ID", "UniqueId", "TimeDifference", "TotalMemory", "FreeMemory"});
+		contents.add(new String[] {"Test Case ID", "CaseCounter", "TimeDifference", "TotalMemory", "FreeMemory"});
 	}
 	
 	public void resetCounters() {
@@ -36,16 +35,16 @@ public class TimeAndMemoryLogger {
 		this.initialTime = System.nanoTime();
 		this.totalMemory = Runtime.getRuntime().totalMemory();
 		this.freeMemory = Runtime.getRuntime().freeMemory();
-		contents.add(new String[] {testCase, ""+caseIdNumber,
+		contents.add(new String[] {testCase, ""+0,
 									0+"",
 									totalMemory+"",
 									freeMemory+""}
 					);
 		
-		caseIdNumber++;				
+						
 	}
 	
-	public void logTimeAndMemoryUsage() {
+	public void logTimeAndMemoryUsage(int caseIdNumber) {
 		long endTime = System.nanoTime();
 		long endTotalMemory = Runtime.getRuntime().totalMemory();
 		long endFreeMemory = Runtime.getRuntime().freeMemory();
@@ -56,7 +55,7 @@ public class TimeAndMemoryLogger {
 									endTotalMemory+"",
 									endFreeMemory+""}
 					);
-		caseIdNumber++;	
+			
 	}
 	
 	public void writeToCSV(String FileName) throws IOException {
