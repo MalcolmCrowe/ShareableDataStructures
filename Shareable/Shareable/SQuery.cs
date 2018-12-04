@@ -61,28 +61,27 @@ namespace Shareable
     {
         public readonly SQuery sce;
         public readonly SDict<SSelector,Serialisable> where;
-        public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
+        public SSearch(Reader f):base(Types.SSearch,f)
         {
-            sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            sce = f._Get(null) as SQuery ?? throw new Exception("Query expected");
             var w = SDict<SSelector, Serialisable>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
             {
-                var k = f._Get(db) as SSelector ?? throw new Exception("Selector expected");
-                k = k.Lookup(sce);
-                w = w.Add(k, f._Get(db));
+                var k = f._Get(null) as SSelector ?? throw new Exception("Selector expected");
+                w = w.Add(k, f._Get(null));
             }
             where = w;
         }
-        public SSearch(SSearch s,SQuery q,SDict<SSelector,Serialisable> w)
-            :base(s)
+        public SSearch(SQuery s,SDict<SSelector,Serialisable> w)
+            :base(Types.SSearch,-1)
         {
-            sce = q;
+            sce = s;
             where = w;
         }
         public override void Put(StreamBase f)
         {
-            f.WriteByte((byte)type);
+            base.Put(f);
             sce.Put(f);
             f.PutInt(where.Length);
             for (var b=where.First();b!=null;b=b.Next())
@@ -91,13 +90,17 @@ namespace Shareable
                 b.Value.val.Put(f);
             }
         }
+        public new static SSearch Get(Reader f)
+        {
+            return new SSearch(f);
+        }
         public override SQuery Lookup(SDatabase db)
         {
             var s = sce.Lookup(db);
             var w = SDict<SSelector, Serialisable>.Empty;
             for (var b = where.First(); b != null; b = b.Next())
                 w = w.Add(b.Value.key.Lookup(s), b.Value.val);
-            return new SSearch(this,s,w);
+            return new SSearch(s,w);
         }
         public override RowSet RowSet(SDatabase db)
         {

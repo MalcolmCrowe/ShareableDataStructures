@@ -12,7 +12,7 @@ namespace Shareable
         {
             public readonly TreeInfo<K> info;
             public readonly Variants variant;
-            internal SITree(TreeInfo<K> ti,Variants vt) : base(null)
+            internal SITree(TreeInfo<K> ti,Variants vt) : base((SBucket<Variant,Variant>)null)
             {
                 info = ti; variant = vt;
             }
@@ -69,8 +69,6 @@ namespace Shareable
         {
             _info = ti;
             _impl = impl;
-            if (ti.Length>1 && ti.element.onDuplicate != TreeBehaviour.Disallow)
-                throw new Exception("Duplicates are allowed only on last TreeInfo");
         }
         public SMTree(SList<TreeInfo<K>> ti) : base(0)
         {
@@ -354,7 +352,7 @@ namespace Shareable
         {
             if (_outer == null)
                 return null;
-            return new SCList<Variant>(_outer.key, _inner?.key());
+            return new SCList<Variant>(_outer.key, _inner?.key()??SCList<Variant>.Empty);
         }
         public long value()
         {
@@ -415,9 +413,7 @@ namespace Shareable
 
         }
         public override SSlot<SCList<Variant>, long> Value
-            => (_outer==null)?null:
-            new SSlot<SCList<Variant>,long>(new SCList<Variant>(_outer.key,_inner.key()),
-                _inner?.Value.val ?? _pmk?.Value.key ?? _outer.Value.val.ToLong());
+            => new SSlot<SCList<Variant>, long>(key(),value());
     }
     public enum TreeBehaviour { Ignore, Allow, Disallow  };
     public class TreeInfo<K> where K:IComparable<K>

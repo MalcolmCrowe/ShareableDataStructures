@@ -1,4 +1,6 @@
-﻿namespace Shareable
+﻿using System.Text;
+
+namespace Shareable
 {
     public abstract class RowSet : Shareable<Serialisable>
     {
@@ -18,6 +20,10 @@
             _rs = rs; _ob = ob;
         }
         public override Serialisable Value => _ob;
+        public override void Append(StringBuilder sb)
+        {
+            _ob.Append(sb);
+        }
     }
     public class TableRowSet : RowSet
     {
@@ -138,7 +144,7 @@
             }
             internal static SearchRowBookmark New(SearchRowSet rs)
             {
-                for (var b = rs.First(); b != null; b = b.Next())
+                for (var b = rs._sce.First(); b != null; b = b.Next())
                     if (((SRecord)((RowBookmark)b)._ob).Matches(rs._sch.where))
                         return new SearchRowBookmark(rs, (RowBookmark)b, 0);
                 return null;
@@ -165,6 +171,7 @@
             switch (tb.name)
             {
                 case "_Log": return LogBookmark.New(this, 0, 0);
+                case "_Table": return TablesBookmark.New(this, 0, 0);
             }
             return null;
         }
@@ -186,6 +193,42 @@
             public override Bookmark<Serialisable> Next()
             {
                 return New((SysRows)_rs, _next, Position + 1);
+            }
+            public override void Append(StringBuilder sb)
+            {
+                var ob = _ob as SDbObject;
+                sb.Append("{ Uid: "); sb.Append(ob.Uid());
+                sb.Append(", Type: "); sb.Append(ob.type.ToString());
+                sb.Append(", Desc: \""); sb.Append(ob); sb.Append("\"}");
+            }
+        }
+        internal class TablesBookmark : RowBookmark
+        {
+            public readonly Bookmark<SSlot<long,SDbObject>> _bmk;
+            internal TablesBookmark(RowSet rs, Bookmark<SSlot<long,SDbObject>> bmk, int p) :base(rs,null,p)
+            {
+                _bmk = bmk;
+            }
+            internal static TablesBookmark New(SysRows rs,long lg, int pos)
+            {
+                for (var b = rs._db.objects.First(); b != null; b = b.Next())
+                    if (b.Value.val is STable tb)
+                        return new TablesBookmark(rs, b, 0);
+                return null;
+            }
+            public override Bookmark<Serialisable> Next()
+            {
+                for (var b = _bmk.Next(); b != null; b = b.Next())
+                    if (b.Value.val is STable tb)
+                        return new TablesBookmark(_rs, b, 0);
+                return null;
+            }
+            public override void Append(StringBuilder sb)
+            {
+                var t = _bmk.Value.val as STable;
+                sb.Append("{ Name: '");sb.Append(t.name);
+                sb.Append("', Cols: ");sb.Append(t.cols.Length);
+                sb.Append(", Rows: ");sb.Append(t.rows.Length); sb.Append("}");
             }
         }
     }

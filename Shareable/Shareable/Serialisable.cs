@@ -32,7 +32,7 @@ namespace Shareable
     {
         EoF = -1, Get = 1, Begin = 2, Commit = 3, Rollback = 4,
         Table = 5, Alter = 6, Drop = 7, Index = 8, Insert = 9,
-        Read = 10, Update = 11, Delete = 12, View = 13
+        Read = 10, Update = 11, Delete = 12, View = 13, Select = 14
     }
     public enum Responses
     {
@@ -432,6 +432,8 @@ namespace Shareable
         /// Client session-local objects are given negative uids with default -1
         /// </summary>
         public readonly long uid;
+        static long _dbg = 0;
+        long dbg = ++_dbg;
         /// <summary>
         /// For system tables and columns, with negative uids
         /// </summary>
@@ -665,6 +667,11 @@ namespace Shareable
             t = t.Add("Type", Types.SInteger);
             t = t.Add("Desc", Types.SString);
             system = system.Add(t.name, t);
+            t = new SysTable("_Table");
+            t = t.Add("Name", Types.SString);
+            t = t.Add("Cols", Types.SInteger);
+            t = t.Add("Rows", Types.SInteger);
+            system = system.Add(t.name, t);
         }
         public override STable Add(SColumn c)
         {
@@ -726,7 +733,7 @@ namespace Shareable
         /// <param name="n"></param>
         /// <param name="t"></param>
         /// <param name="u"> will be negative</param>
-        public SColumn(string n,Types t,long u = -1) :base(Types.SColumn,n,u)
+        public SColumn(string n,Types t=Types.Serialisable,long u = -1) :base(Types.SColumn,n,u)
         {
             dataType = t; table = -1;
         }
@@ -754,6 +761,12 @@ namespace Shareable
         public new static SColumn Get(Reader f)
         {
             return new SColumn(f);
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            f.WriteByte((byte)dataType);
+            f.PutLong(table);
         }
         public override bool Conflicts(Serialisable that)
         {
@@ -983,6 +996,7 @@ namespace Shareable
         public override void Append(StringBuilder sb)
         {
             sb.Append("(_id:");sb.Append(Defpos);
+            sb.Append(",Table:"); sb.Append(table);
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.Append(","); 
@@ -1011,7 +1025,7 @@ namespace Shareable
         {
             var sb = new StringBuilder("Record ");
             sb.Append(Uid());
-            sb.Append(" for "); sb.Append(Uid());
+            sb.Append(" for "); sb.Append(_Uid(table));
             Append(sb);
             return sb.ToString();
         }
@@ -1106,6 +1120,7 @@ namespace Shareable
         public readonly long table;
         public readonly bool primary;
         public readonly long references;
+        public readonly long refindex;
         public readonly SList<long> cols;
         public readonly SMTree<long> rows;
         /// <summary>
@@ -1113,12 +1128,20 @@ namespace Shareable
         /// </summary>
         /// <param name="t"></param>
         /// <param name="c"></param>
-        public SIndex(STransaction tr, long t, bool p, SList<long> c) : base(Types.SIndex, tr)
+        public SIndex(STransaction tr, long t, bool p, long r, SList<long> c) : base(Types.SIndex, tr)
         {
             table = t;
             primary = p;
             cols = c;
-            references = -1;
+            references = r;
+            if (r >= 0)
+            {
+                var rx = tr.GetPrimaryIndex(r) ??
+                    throw new Exception("referenced table has no primary index");
+                refindex = rx.uid;
+            }
+            else
+                refindex = -1;
             rows = new SMTree<long>(Info((STable)tr.Lookup(table), cols));
         }
         SIndex(SDatabase d, Reader f) : base(Types.SIndex, f)
@@ -1130,6 +1153,8 @@ namespace Shareable
             for (var i = 0; i < n; i++)
                 c[i] = f.GetLong();
             references = f.GetLong();
+            refindex =  (references<0)?-1:d.GetPrimaryIndex(references)?.uid ??
+                throw new Exception("internal error");
             cols = SList<long>.New(c);
             rows = new SMTree<long>(Info((STable)d.Lookup(table), cols));
         }
@@ -1148,6 +1173,7 @@ namespace Shareable
                 f.PutLong(c[i++]);
             }
             references =f.Fix(x.references);
+            refindex = f.Fix(x.refindex);
             f.PutLong(references);
             cols = SList<long>.New(c);
             rows = x.rows;
@@ -1157,6 +1183,7 @@ namespace Shareable
             table = x.table;
             primary = x.primary;
             references = x.references;
+            refindex = x.refindex;
             cols = x.cols;
             rows = nt;
         }
@@ -1184,7 +1211,8 @@ namespace Shareable
         {
             if (cols.Length==0)
                 return SList<TreeInfo<long>>.Empty;
-            return Info(tb, cols.next).InsertAt(new TreeInfo<long>(tb.cols.Lookup(cols.element).uid, 'D', 'D'), 0);
+            return Info(tb, cols.next).InsertAt(new TreeInfo<long>(
+                tb.cols.Lookup(cols.element).uid, (cols.Length!=1 || !primary)?'A':'D', 'D'), 0);
         }
         SCList<Variant> Key(SRecord sr,SList<long> cols)
         {
@@ -1202,6 +1230,8 @@ namespace Shareable
                 sb.Append("" + b.Value);
             }
             sb.Append(")");
+            if (refindex >= 0)
+                sb.Append(" ref index " + refindex);
             return sb.ToString();
         }
     }
@@ -1242,7 +1272,6 @@ namespace Shareable
                 {
                     fs.PutBuf(this);
                     start += len;
-                    wpos = 0;
                 }
                 buf[wpos++] = b;
             }
@@ -1292,7 +1321,10 @@ namespace Shareable
         public virtual int ReadByte()
         {
             if (pos >= buf.len)
+            {
                 buf = new StreamBase.Buffer(buf.fs, buf.start + buf.len);
+                pos = 0;
+            }
             return (buf.len == 0) ? -1 : buf.buf[pos++];
         }
         public int GetInt()
@@ -1340,6 +1372,7 @@ namespace Shareable
                 case Types.SAlter: s = SAlter.Get(this); break;
                 case Types.SDrop: s = SDrop.Get(this); break;
                 case Types.SIndex: s = SIndex.Get(d, this); break;
+                case Types.SSearch: s = SSearch.Get(this); break;
             }
             return s;
         }

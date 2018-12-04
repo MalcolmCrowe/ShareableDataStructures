@@ -25,11 +25,18 @@ namespace Shareable
         public const int Size = 8;
         public readonly SBucket<K, V> root;
         protected SDict(SBucket<K,V> r):base(r?.total??0) { root = r; }
-        internal SDict(K k, V v) : this(new SLeaf<K, V>(new SSlot<K, V>(k, v))) { }
+        public SDict(K k, V v) : this(new SSlot<K, V>(k, v)) { }
+        public SDict(params SSlot<K, V>[] pairs):base(pairs.Length)
+        {
+            SBucket<K, V> r = null;
+            foreach (var p in pairs)
+                r = r?.Add(p.key, p.val)??new SLeaf<K,V>(new SSlot<K,V>(p.key,p.val));
+            root = r;
+        }
         /// <summary>
         /// Avoid unnecessary constructor calls by using this constant empty tree
         /// </summary>
-        public readonly static SDict<K, V> Empty = new SDict<K, V>(null);
+        public readonly static SDict<K, V> Empty = new SDict<K, V>(new SSlot<K,V>[0]);
         /// <summary>
         /// Add a new entry or update an existing one in the tree
         /// </summary>
