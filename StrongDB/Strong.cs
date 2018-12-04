@@ -98,10 +98,31 @@ namespace StrongDB
                                 for (var b = rs?.First();b!=null;b=b.Next())
                                 {
                                     sb.Append(cm); cm = ",";
-                                    ((RowBookmark)b)._ob.Append(sb);
+                                    b.Append(sb);
                                 }
                                 sb.Append(']'); 
                                 asy.PutString(sb.ToString());
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Begin:
+                            {
+                                db = db.Transact();
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Rollback:
+                            {
+                                db = db.Rollback();
+                                asy.Write(Responses.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Protocol.Commit:
+                            {
+                                db = ((STransaction)db).Commit();
+                                asy.Write(Responses.Done);
                                 asy.Flush();
                                 break;
                             }
@@ -210,6 +231,13 @@ namespace StrongDB
                                     throw new Exception("Table " + tn + " not found");
                                 var xt = rdr.ReadByte();
                                 var rn = rdr.GetString();
+                                long rt = -1;
+                                if (xt==2)
+                                {
+                                    var rtb = (STable)tr.names.Lookup(rn) ??
+                                        throw new Exception("Referenced table " + rn + " not found");
+                                    rt = rtb.uid;
+                                }
                                 var nc = rdr.GetInt();
                                 var cs = SList<long>.Empty;
                                 for (var i=0;i<nc;i++)
@@ -218,7 +246,7 @@ namespace StrongDB
                                     cs = cs.InsertAt(tb.names.Lookup(cn)?.uid ??
                                         throw new Exception("Column " + cn + " not found"), cs.Length);
                                 }
-                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, cs));
+                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, rt, cs));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Responses.Done);
                                 asy.Flush();
@@ -433,7 +461,6 @@ namespace StrongDB
         internal ServerStream(Socket c)
         {
             client = c;
-            rcount = 0;
             rbuf = new SocketReader(this);
             wbuf = new Buffer(this);
             wbuf.wpos = 2;
@@ -455,7 +482,6 @@ namespace StrongDB
                     wbuf.wpos -= 4;
                     wbuf.buf[2] = (byte)(wbuf.wpos >> 7);
                     wbuf.buf[3] = (byte)(wbuf.wpos & 0x7f);
-                    rcount = 0;
                 }
             else
             {
@@ -489,7 +515,7 @@ namespace StrongDB
         /// <returns>the byte</returns>
         public override bool GetBuf(Buffer b)
         {
-            rcount = 0;
+            var rcount = 0;
             rx = 0;
             try
             {
@@ -532,7 +558,6 @@ namespace StrongDB
         }
         internal void StartException()
         {
-            rcount = 0;
             wbuf.wpos = 4;
             exception = true;
         }

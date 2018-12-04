@@ -99,16 +99,30 @@ namespace StrongLink
                     rows[i][j].Put(asy);
             var b = asy.Receive();
         }
-        public string Get(Serialisable tn,params Serialisable[] key)
+        public Document Get(Serialisable tn)
         {
             asy.Write(Protocol.Get);
             tn.Put(asy);
-            asy.PutInt(key.Length);
-            foreach (var s in key)
-                s.Put(asy);
             asy.Flush();
-            var r = asy.rbuf.GetString();
-            return r;
+            return new Document(asy.rbuf.GetString());
+        }
+        public StrongConnect BeginTransaction()
+        {
+            asy.Write(Protocol.Begin);
+            var b = asy.Receive();
+            return this;
+        }
+        public StrongConnect Rollback()
+        {
+            asy.Write(Protocol.Rollback);
+            var b = asy.Receive();
+            return this;
+        }
+        public StrongConnect Commit()
+        {
+            asy.Write(Protocol.Commit);
+            var b = asy.Receive();
+            return this;
         }
         public void Close()
         {
@@ -117,9 +131,6 @@ namespace StrongLink
     }
     class ClientStream : StreamBase
     {
-        /// <summary>
-        /// For asynchronous IO
-        /// </summary>
         StrongConnect connect = null;
         internal Socket client;
         internal int rx = 0;
@@ -136,7 +147,7 @@ namespace StrongLink
         }
         public override bool GetBuf(Buffer b)
         {
-            rcount = 0;
+            var rcount = 0;
             rx = 0;
             try
             {
@@ -178,6 +189,7 @@ namespace StrongLink
         protected override void PutBuf(Buffer b)
         {
             Flush();
+            b.wpos = 2;
         }
         public override void Write(byte[] buffer, int offset, int count)
         {
@@ -190,7 +202,6 @@ namespace StrongLink
         }
         public override void Flush()
         {
-            rcount = 0;
             rbuf.pos = 2;
             rbuf.buf.len = 0;
             // now always send bSize bytes (not wcount)
@@ -205,6 +216,7 @@ namespace StrongLink
             catch (SocketException e)
             {
                 Console.WriteLine("Flush reports exception " + e.Message);
+                throw e;
             }
         }
         internal int GetException()
@@ -218,8 +230,8 @@ namespace StrongLink
             Buffer bf = rbuf.buf;
             if (proto == Responses.Exception)
             {
-                rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
-                rcount += 2;
+                var rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
+                bf.len = rcount + 2;
                 proto = (Responses)bf.buf[rbuf.pos++];
             }
             throw new Exception(rbuf.GetString());
