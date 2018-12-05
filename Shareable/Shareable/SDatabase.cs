@@ -196,13 +196,8 @@ namespace Shareable
             obs = obs.Add(r.table, st);
             var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x)
-                {
-                    if (x.table == r.table)
+                if (b.Value.val is SIndex x && x.table == r.table)
                         obs = obs.Add(x.uid, x.Add(r, r.uid));
-                    if (x.references == r.table && !x.Contains(r))
-                        throw new System.Exception("Referential constraint");
-                }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SUpdate u, long c)
@@ -213,17 +208,12 @@ namespace Shareable
             obs = obs.Add(u.table, st);
             var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x)
-                {
-                    if (x.table == u.table)
+                if (b.Value.val is SIndex x && x.table == u.table)
                     {
                         if (sr == null)
                             sr = Get(u.defpos);
                         obs = obs.Add(x.uid, x.Update(sr, u, c));
                     }
-                    if (x.references == u.table && !x.Contains(u))
-                        throw new System.Exception("Referential constraint");
-                }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SDelete d, long c)
@@ -234,17 +224,12 @@ namespace Shareable
             obs = obs.Add(d.table, st);
             var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x)
-                {
-                    if (x.table == d.table)
+                if (b.Value.val is SIndex x && x.table == d.table)
                     {
                         if (sr == null)
                             sr = Get(d.delpos);
                         obs = obs.Add(x.uid, x.Remove(sr, c));
                     }
-                    if (x.references == d.table && x.Contains(sr))
-                        throw new System.Exception("Referential constraint");
-                }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SAlter a, long c)

@@ -27,7 +27,10 @@ public class Reader {
         public int ReadByte() throws Exception
         {
             if (pos >= buf.len)
+            {
                 buf = new Buffer(buf.fs, buf.start + buf.len);
+                pos = 0;
+            }
             return (buf.len == 0) ? -1 : (buf.buf[pos++]&0xff);
         }
         public Serialisable _Get(SDatabase d) throws Exception {
