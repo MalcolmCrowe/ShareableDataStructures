@@ -27,7 +27,6 @@ public class ClientStream extends StreamBase {
         @Override
         protected boolean GetBuf(Buffer b) throws Exception
         {
-            b.wpos = 2;
             var rcount = 0;
             rx = 0;
             try
@@ -70,6 +69,7 @@ public class ClientStream extends StreamBase {
         protected void PutBuf(Buffer b)
         {
             Flush();
+            b.wpos = 2;
         }
         public void Write(byte[] buffer, int offset, int count) throws Exception
         {
