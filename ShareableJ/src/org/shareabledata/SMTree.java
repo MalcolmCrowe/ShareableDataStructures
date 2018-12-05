@@ -109,9 +109,6 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         super(c);
         _info = ti;
         _impl = impl;
-        if (ti.Length > 1 && ti.element.onDuplicate != TreeBehaviour.Disallow) {
-            throw new Exception("Dplicates are allowed only on last TreeInfo");
-        }
     }
 
     public SMTree(SList<TreeInfo> ti) throws Exception {
