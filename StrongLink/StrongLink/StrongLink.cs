@@ -12,6 +12,7 @@ namespace StrongLink
     public class StrongConnect
     {
         internal ClientStream asy;
+        public bool inTransaction = false;
         public StrongConnect(string host,int port,string fn)
         {
             Socket socket = null;
@@ -56,7 +57,7 @@ namespace StrongLink
         }
         public void CreateTable(string n,params SColumn[] cols)
         {
-            asy.Write(Protocol.Table);
+            asy.Write(Types.SCreateTable);
             asy.PutString(n);
             asy.PutInt(cols.Length);
             foreach(var c in cols)
@@ -68,7 +69,7 @@ namespace StrongLink
         }
         public void CreateIndex(string tn,IndexType t,string rt,params string[] key)
         {
-            asy.Write(Protocol.Index);
+            asy.Write(Types.SCreateIndex);
             asy.PutString(tn);
             asy.WriteByte((byte)t);
             if (rt == null)
@@ -82,7 +83,7 @@ namespace StrongLink
         }
         public void Insert(string tn,string[] cols,params Serialisable[][] rows)
         {
-            asy.Write(Protocol.Insert);
+            asy.Write(Types.Insert);
             asy.PutString(tn);
             if (cols == null)
                 asy.PutInt(0);
@@ -99,30 +100,77 @@ namespace StrongLink
                     rows[i][j].Put(asy);
             var b = asy.Receive();
         }
-        public Document Get(Serialisable tn)
+        public DocArray ExecuteQuery(string sql)
         {
-            asy.Write(Protocol.Get);
+            return Get(Parser.Parse(sql));
+        }
+        public Types ExecuteNonQuery(string sql)
+        {
+            var s = Parser.Parse(sql);
+            if (s == null)
+                return Types.Exception;
+            s.Put(asy);
+            var b = asy.Receive();
+            if (b == Types.Exception)
+                inTransaction = false;
+            else
+            {
+                var su = sql.Trim().Substring(0, 5).ToUpper();
+                switch (su)
+                {
+                    case "BEGIN": inTransaction = true; break;
+                    case "ROLLB":
+                    case "COMMI": inTransaction = false; break;
+                }
+            }
+            return b;
+        }
+        public DocArray Get(Serialisable tn)
+        {
+            asy.Write(Types.Get);
             tn.Put(asy);
             asy.Flush();
-            return new Document(asy.rbuf.GetString());
+            var b = asy.ReadByte();
+            if (b == (byte)Types.Exception)
+                inTransaction = false;
+            if (b==(byte)Types.Done)
+                return new DocArray(asy.rbuf.GetString());
+            throw new Exception("??");
         }
-        public StrongConnect BeginTransaction()
+        public void BeginTransaction()
         {
-            asy.Write(Protocol.Begin);
+            asy.Write(Types.SBegin);
             var b = asy.Receive();
-            return this;
+            if (b == Types.Exception)
+                inTransaction = false;
+            if (b == Types.Done)
+                inTransaction = true;
         }
-        public StrongConnect Rollback()
+        public void Rollback()
         {
-            asy.Write(Protocol.Rollback);
+            asy.Write(Types.SRollback);
             var b = asy.Receive();
-            return this;
+            inTransaction = false;
         }
-        public StrongConnect Commit()
+        public void Commit()
         {
-            asy.Write(Protocol.Commit);
+            asy.Write(Types.SCommit);
             var b = asy.Receive();
-            return this;
+            inTransaction = false;
+        }
+        public void ExecuteNonQuery(Serialisable s)
+        {
+            s.Put(asy);
+            var b = asy.Receive();
+            if (b == Types.Exception)
+                inTransaction = false;
+            else
+                switch (s.type)
+                {
+                    case Types.SBegin: inTransaction = true; break;
+                    case Types.SRollback:
+                    case Types.SCommit: inTransaction = false; break;
+                }
         }
         public void Close()
         {
@@ -180,11 +228,11 @@ namespace StrongLink
             }
             return j;
         }
-        public Responses Receive()
+        public Types Receive()
         {
             if (wbuf.wpos > 2)
                 Flush();
-            return (Responses)rbuf.ReadByte();
+            return (Types)rbuf.ReadByte();
         }
         protected override void PutBuf(Buffer b)
         {
@@ -196,7 +244,7 @@ namespace StrongLink
             for (int j = 0; j < count; j++)
                 WriteByte(buffer[offset + j]);
         }
-        public void Write(Protocol p)
+        public void Write(Types p)
         {
             WriteByte((byte)p);
         }
@@ -221,18 +269,18 @@ namespace StrongLink
         }
         internal int GetException()
         {
-            return GetException(Responses.Exception);
+            return GetException(Types.Exception);
         }
         // v2.0 exception handling during server comms
         // an illegal nonzero rcount value indicates an exception
-        internal int GetException(Responses proto)
+        internal int GetException(Types proto)
         {
             Buffer bf = rbuf.buf;
-            if (proto == Responses.Exception)
+            if (proto == Types.Exception)
             {
                 var rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
                 bf.len = rcount + 2;
-                proto = (Responses)bf.buf[rbuf.pos++];
+                proto = (Types)bf.buf[rbuf.pos++];
             }
             throw new Exception(rbuf.GetString());
         }

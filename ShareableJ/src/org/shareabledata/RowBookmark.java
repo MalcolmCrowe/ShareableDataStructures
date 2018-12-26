@@ -20,4 +20,9 @@ package org.shareabledata;
         }
         @Override
         public Serialisable getValue() { return  _ob; }
+        @Override
+        public void Append(StringBuilder sb)
+        {
+            _ob.Append(sb);
+        }
     }

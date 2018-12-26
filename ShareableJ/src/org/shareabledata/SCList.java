@@ -37,4 +37,32 @@ public class SCList<K extends Comparable> extends SList<K>
        }
        return (me!=null)?1:(them!=null)?-1:0;
     }
+    @Override
+        public SCList<K> InsertAt(K x, int n) throws Exception {
+        if (n>Length)
+            throw new Exception("Cannot add beyond end of list");
+        if (n == 0) 
+            return new SCList<>(x, this);
+        if (next==null)
+            return new SCList<K>(element,new SCList(x,null));
+        return new SCList<K>(element, ((SCList<K>)next).InsertAt(x, n - 1));
+    }
+
+    @Override
+    public SCList<K> RemoveAt(int n) throws Exception {
+        if (n>=Length)
+            throw new Exception("Cannot remove beyond end of list");
+        if (n == 0) 
+            return (SCList<K>)next;
+        return new SCList<K>(element, ((SCList<K>)next).RemoveAt(n - 1));
+    }
+
+    @Override
+    public SCList<K> UpdateAt(K x, int n) throws Exception {
+        if (n>=Length)
+            throw new Exception("Cannot update beyond end of list");
+        if (n == 0)
+            return new SCList<K>(x, (SCList<K>)next);
+        return new SCList<K>(element, ((SCList<K>)next).UpdateAt(x, n - 1));
+    }
 }

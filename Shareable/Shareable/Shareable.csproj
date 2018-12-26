@@ -45,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Integer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RowSet.cs" />
     <Compile Include="SArray.cs" />

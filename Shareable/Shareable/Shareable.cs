@@ -1,13 +1,16 @@
-﻿namespace Shareable
+﻿using System.Text;
+namespace Shareable
 {
     public abstract class Shareable<T>
     {
-        public readonly int Length;
-        protected Shareable(int c = 0) { Length = c; }
+        public readonly int? Length;
+        protected Shareable(int? c = null) { Length = c; }
         public abstract Bookmark<T> First();
         public T[] ToArray()
         {
-            var r = new T[Length];
+            if (Length == null)
+                return null;
+            var r = new T[Length.Value];
             for (var b = First(); b != null; b = b.Next())
                 r[b.Position] = b.Value;
             return r;
@@ -19,5 +22,6 @@
         protected Bookmark(int p) { Position = p; }
         public abstract Bookmark<T> Next();
         public abstract T Value { get; }
+        public virtual void Append(StringBuilder sb) { }
     }
 }

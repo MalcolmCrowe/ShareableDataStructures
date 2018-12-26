@@ -70,6 +70,13 @@ public class SRecord extends SDbObject {
             }
             sb.append(")");
         }
+        public boolean Matches(SDict<SSelector,Serialisable> wh)
+        {
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (fields.Lookup(b.getValue().key.uid).compareTo(b.getValue().val)!=0)
+                    return false;
+            return true;
+        }
         public boolean Conflicts(Serialisable that)
         {
             switch(that.type)

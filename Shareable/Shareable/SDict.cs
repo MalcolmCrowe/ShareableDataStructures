@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Text;
 
 namespace Shareable
 {
@@ -106,6 +107,19 @@ namespace Shareable
             for (; ub != null; ub = ub.Next())
                 r = r.Add(ub.Value.key, ub.Value.val);
             return r;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("[");
+            var cm = "";
+            for (var b=First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append('('); sb.Append(b.Value.key);
+                sb.Append('='); sb.Append(b.Value.val); sb.Append(')');
+            }
+            sb.Append(']');
+            return sb.ToString();
         }
     }
     public class SDictBookmark<K, V> : Bookmark<SSlot<K, V>> where K : IComparable

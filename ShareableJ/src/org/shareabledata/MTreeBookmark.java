@@ -9,16 +9,16 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-    public class MTreeBookmark<K extends Comparable> extends Bookmark<SSlot<SCList<Variant>, Variant>>
+    public class MTreeBookmark<K extends Comparable> extends Bookmark<SSlot<SCList<Variant>, Long>>
     {
         final SDictBookmark<Variant,Variant> _outer;
-        final SList<TreeInfo> _info;
+        final SList<TreeInfo<K>> _info;
         final MTreeBookmark _inner;
-        final Bookmark<SSlot<Integer, Boolean>> _pmk;
+        final Bookmark<SSlot<Long, Boolean>> _pmk;
         final boolean _changed;
         SCList<Variant> _filter;
-        MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo> info,
-            boolean changed, MTreeBookmark inner,Bookmark<SSlot<Integer, Boolean>> pmk, 
+        MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo<K>> info,
+            boolean changed, MTreeBookmark inner,Bookmark<SSlot<Long, Boolean>> pmk, 
             int pos, SCList<Variant> key) 
         {
             super(pos);
@@ -99,25 +99,27 @@ package org.shareabledata;
             SCList<Variant> ink = null;
             if (_inner !=null)
                 ink = _inner.key();
-            return new SCList<Variant>(_outer.getValue().key, ink);
+            return new SCList<>(_outer.getValue().key, ink);
         }
-        public SSlot<SCList<Variant>, Variant> getValue()
+        @Override
+        public SSlot<SCList<Variant>, Long> getValue()
         {
             try {
-                return new SSlot<SCList<Variant>,Variant>(key(),new Variant(value()));
+                return new SSlot<>(key(),value());
             } catch (Exception e) {}
             return null;
         }
-        public int value()
+        public long value()
         {
             return (_inner!=null)?_inner.value() : (_pmk!=null)?_pmk.getValue().key : 
-                (_outer.getValue().val!=null)?(int)_outer.getValue().val.ob : 0;
+                (_outer.getValue().val!=null)?(long)_outer.getValue().val.ob : 0;
         }
-        public Bookmark<SSlot<SCList<Variant>, Variant>> Next()
+        @Override
+        public Bookmark<SSlot<SCList<Variant>, Long>> Next()
         {
             SDictBookmark<Variant,Variant> outer = _outer;
             MTreeBookmark inner = _inner;
-            Bookmark<SSlot<Integer, Boolean>> pmk = _pmk;
+            Bookmark<SSlot<Long, Boolean>> pmk = _pmk;
             boolean changed = false;
             int pos = Position;
             for (boolean done = false;!done ; )
@@ -151,7 +153,7 @@ package org.shareabledata;
                             done = true;
                         break;
                     case Partial:
-                        pmk = ((SDict<Integer, Boolean>)oval.ob).First();
+                        pmk = ((SDict<Long, Boolean>)oval.ob).First();
                         if (pmk != null)
                             done = true;
                         break;

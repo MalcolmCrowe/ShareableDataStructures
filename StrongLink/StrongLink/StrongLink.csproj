@@ -47,6 +47,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Document.cs" />
+    <Compile Include="Parser.cs" />
     <Compile Include="StrongLink.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

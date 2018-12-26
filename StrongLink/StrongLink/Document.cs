@@ -37,6 +37,7 @@ namespace StrongLink
             if (i != n)
                 throw new DocumentException("unparsed input at " + (i - 1));
         }
+        public object this[int i] => fields[i].Value;
         public object this[string k]
         {
             get {
@@ -532,7 +533,7 @@ namespace StrongLink
 #if MONO1
         public ArrayList items = new ArrayList();
 #else
-        public List<object> items = new List<object>();
+        public List<Document> items = new List<Document>();
 #endif
         public DocArray() { }
         public DocArray(string s)
@@ -561,7 +562,7 @@ namespace StrongLink
                 switch (state)
                 {
                     case ParseState.StartValue:
-                        items.Add(GetValue(s, n, ref i));
+                        items.Add((Document)GetValue(s, n, ref i));
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
@@ -575,6 +576,9 @@ namespace StrongLink
             }
             return i;
         }
+        public int Length => items.Count;
+        public bool IsEmpty => items.Count == 0;
+        public Document this[int i] => items[i];
         internal DocArray(byte[] b) : this(b, 0) { }
         /// <summary>
         /// Parser from BSON to Document
@@ -591,7 +595,7 @@ namespace StrongLink
                 var s = i;
                 while (i < off + n && b[i++] != 0)
                     c++;
-                items.Add(Document.GetValue(t, b, ref i));
+                items.Add((Document)Document.GetValue(t, b, ref i));
             }
         }
         public byte[] ToBytes()

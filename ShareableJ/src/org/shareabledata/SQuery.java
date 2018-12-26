@@ -68,5 +68,5 @@ public abstract class SQuery extends SDbObject {
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public abstract RowSet RowSet(SDatabase db);
+        public abstract RowSet RowSet(SDatabase db) throws Exception;
 }

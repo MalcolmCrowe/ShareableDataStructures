@@ -6,15 +6,10 @@ using StrongLink;
 
 namespace Tpcc
 {
-    class Program
+    public class GenBase
     {
-        static StrongConnect conn;
+        static public StrongConnect conn;
         static Encoding enc = new ASCIIEncoding();
-        static void Main(string[] args)
-        {
-            conn = new StrongConnect("127.0.0.1", 50433, "Tpcc");
-            new Program().BuildTpcc();
-        }
         public void BuildTpcc()
         {
             CreationScript();

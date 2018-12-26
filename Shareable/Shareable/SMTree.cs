@@ -6,7 +6,11 @@ using System.Threading.Tasks;
 
 namespace Shareable
 {
-    public class SMTree<K> : Shareable<SSlot<SCList<Variant>, long>>,IComparable where K:IComparable<K>
+    /// <summary>
+    /// SMTree models a multilevel index leading to a long
+    /// </summary>
+    /// <typeparam name="K"></typeparam>
+    public class SMTree<K> : Shareable<SSlot<SCList<Variant>, long>>,IComparable where K:IComparable
     {
         public class SITree : SDict<Variant, Variant>
         {
@@ -78,12 +82,16 @@ namespace Shareable
         public SMTree(SList<TreeInfo<K>> ti,SList<Variant> k,long v) :base(1)
         {
             _info = ti;
+            var e = ti.element;
+            var ke = k.element;
+            if (e.asc == false && ke.variant == Variants.Ascending)
+                ke = new Variant(ke.ob, e.asc);
             _impl = (ti.Length < 2) ?
-                ((ti.element.onDuplicate == TreeBehaviour.Allow) ?
-                    new SITree(ti.element, Variants.Partial, k.element,
+                ((e.onDuplicate == TreeBehaviour.Allow) ?
+                    new SITree(e, Variants.Partial, ke,
                         new Variant(Variants.Partial, new SDict<long, bool>(v, true))) :
-                    new SITree(ti.element, Variants.Single, k.element, new Variant(v))) :
-                new SITree(ti.element, Variants.Compound, k.element,
+                    new SITree(e, e.asc?Variants.Ascending:Variants.Descending,ke, new Variant(v))) :
+                new SITree(e, Variants.Compound, ke,
                     new Variant(Variants.Compound, new SMTree<K>(ti.next, k.next, v)));
         }
         public override Bookmark<SSlot<SCList<Variant>,long>> First()
@@ -172,7 +180,8 @@ namespace Shareable
                             nv = new Variant(Variants.Partial,bt);
                             break;
                         }
-                    case Variants.Single:
+                    case Variants.Ascending:
+                    case Variants.Descending:
                         if (_info.element.onDuplicate == TreeBehaviour.Allow)
                             goto case Variants.Partial;
                         nv = new Variant(v);
@@ -181,7 +190,7 @@ namespace Shareable
                 st = _impl.Add(k.element, nv) as SITree;
             }
             tb = TreeBehaviour.Allow;
-            return new SMTree<K>(_info, st, Length + 1);
+            return new SMTree<K>(_info, st, Length.Value + 1);
         }
         public SMTree<K> Add(SCList<Variant> k, long v)
         {
@@ -223,12 +232,13 @@ namespace Shareable
                             st = st.Update(k0, new Variant(Variants.Partial, bt));
                         break;
                     }
-                case Variants.Single:
+                case Variants.Ascending:
+                case Variants.Descending:
                     nc--;
                     st = st.Remove(k0) as SITree;
                     break;
             }
-            return new SMTree<K>(_info, st, nc);
+            return new SMTree<K>(_info, st, nc.Value);
         }
         public SMTree<K> Remove(SCList<Variant> k)
         {
@@ -259,12 +269,13 @@ namespace Shareable
                         st = st.Remove(k0) as SITree;
                         break;
                     }
-                case Variants.Single:
+                case Variants.Ascending:
+                case Variants.Descending:
                     nc--;
                     st = st.Remove(k0) as SITree;
                     break;
             }
-            return new SMTree<K>(_info, st, nc);
+            return new SMTree<K>(_info, st, nc.Value);
         }
         public int CompareTo(object obj)
         {
@@ -274,21 +285,19 @@ namespace Shareable
             return First().Value.key.CompareTo(that.First().Value.key);
         }
     }
-    public class MTreeBookmark<K> :Bookmark<SSlot<SCList<Variant>,long>> where K:IComparable<K>
+    public class MTreeBookmark<K> :Bookmark<SSlot<SCList<Variant>,long>> where K:IComparable
     {
         readonly SDictBookmark<Variant, Variant> _outer;
         internal readonly SList<TreeInfo<K>> _info;
         internal readonly MTreeBookmark<K> _inner;
         readonly Bookmark<SSlot<long, bool>> _pmk;
-        internal readonly bool _changed;
         internal SCList<Variant> _filter;
 
-
         MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo<K>> info,
-            bool changed, MTreeBookmark<K> inner, Bookmark<SSlot<long, bool>> pmk,
+            MTreeBookmark<K> inner, Bookmark<SSlot<long, bool>> pmk,
             int pos, SCList<Variant> key = null) : base(pos)
         {
-            _outer = outer; _info = info; _changed = changed;
+            _outer = outer; _info = info;
             _inner = inner; _pmk = pmk; _filter = key;
         }
         /// <summary>
@@ -305,14 +314,15 @@ namespace Shareable
                 {
                     case Variants.Compound:
                         if ((ov.ob as SMTree<K>)?.First() is MTreeBookmark<K> inner)
-                            return new MTreeBookmark<K>(outer, mt._info, false, inner, null, 0);
+                            return new MTreeBookmark<K>(outer, mt._info, inner, null, 0);
                         break;
                     case Variants.Partial:
                         if ((ov.ob as SDict<long, bool>)?.First() is Bookmark<SSlot<long, bool>> pmk)
-                            return new MTreeBookmark<K>(outer, mt._info, false, null, pmk, 0);
+                            return new MTreeBookmark<K>(outer, mt._info, null, pmk, 0);
                         break;
-                    case Variants.Single:
-                        return new MTreeBookmark<K>(outer, mt._info, false, null, null, 0);
+                    case Variants.Ascending:
+                    case Variants.Descending:
+                        return new MTreeBookmark<K>(outer, mt._info, null, null, 0);
                 }
             }
             return null;
@@ -335,15 +345,16 @@ namespace Shareable
             {
                 case Variants.Compound:
                     if ((ov.ob as SMTree<K>)?.PositionAt(key.next as SCList<Variant>) is MTreeBookmark<K> inner)
-                        return new MTreeBookmark<K>(outer, mt._info, true, inner, null, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, inner, null, 0, key);
                     break;
                 case Variants.Partial:
                     if ((ov.ob as SDict<long, bool>)?.First() is Bookmark<SSlot<long, bool>> pmk)
-                        return new MTreeBookmark<K>(outer, mt._info, true, null, pmk, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, null, pmk, 0, key);
                     break;
-                case Variants.Single:
+                case Variants.Ascending:
+                case Variants.Descending:
                     if (key.next == null)
-                        return new MTreeBookmark<K>(outer, mt._info, true, null, null, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, null, null, 0, key);
                     break;
             }
             return null;
@@ -369,7 +380,6 @@ namespace Shareable
             var outer = _outer;
             var pmk = _pmk;
             var pos = Position;
-            var changed = false;
             for (; ; )
             {
                 if (inner != null)
@@ -390,7 +400,6 @@ namespace Shareable
                 outer = outer.Next() as SDictBookmark<Variant,Variant>;
                 if (outer == null)
                     return null;
-                changed = true;
                 var oval = outer.val;
                 switch (oval.variant)
                 {
@@ -404,22 +413,24 @@ namespace Shareable
                         if (pmk != null)
                             goto done;
                         break;
-                    case Variants.Single:
+                    case Variants.Ascending:
+                    case Variants.Descending:
                         goto done;
                 }
             }
             done:
-            return new MTreeBookmark<K>(outer, _info, changed, inner, pmk, pos + 1, _filter);
+            return new MTreeBookmark<K>(outer, _info, inner, pmk, pos + 1, _filter);
 
         }
         public override SSlot<SCList<Variant>, long> Value
             => new SSlot<SCList<Variant>, long>(key(),value());
     }
     public enum TreeBehaviour { Ignore, Allow, Disallow  };
-    public class TreeInfo<K> where K:IComparable<K>
+    public class TreeInfo<K> where K:IComparable
     {
         public readonly K headName;
         public readonly TreeBehaviour onDuplicate, onNullKey;
+        public bool asc;
         TreeBehaviour For(char c)
         {
             switch (c)
@@ -430,14 +441,15 @@ namespace Shareable
                 case 'D': return TreeBehaviour.Disallow;
             }
         }
-        public TreeInfo(K h, char d, char n)
+        public TreeInfo(K h, char d, char n, bool a=true)
         {
             headName = h;
             onDuplicate = For(d);
             onNullKey = For(n);
+            asc = a;
         }
     }
-    public enum Variants { Single, Partial, Compound }
+    public enum Variants { Ascending, Descending, Partial, Compound }
     public class Variant :IComparable
     {
         public readonly Variants variant;
@@ -447,16 +459,17 @@ namespace Shareable
             variant = t;
             ob = v;
         }
-        public Variant(object v)
+        public Variant(object v,bool asc=true)
         {
             if (v is Variant)
                 throw new Exception("Internal error");
-            variant = Variants.Single;
+            variant = asc?Variants.Ascending:Variants.Descending;
             ob = v;
         }
         public int CompareTo(object obj)
         {
-            return ((IComparable)ob).CompareTo(((Variant)obj).ob);
+            var c = ((IComparable)ob).CompareTo(((Variant)obj).ob);
+            return (variant == Variants.Descending) ? -c : c;
         }
 
         internal long ToLong()

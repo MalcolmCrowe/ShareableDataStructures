@@ -14,4 +14,5 @@ public abstract class Bookmark<T> {
         protected Bookmark(int p) { Position = p; }
         public abstract Bookmark<T> Next();
         public abstract T getValue();
+        public void Append(StringBuilder sb) { }
 }

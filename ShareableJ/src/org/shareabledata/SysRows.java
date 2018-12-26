@@ -30,6 +30,15 @@ public class SysRows extends RowSet {
                     return (s == null) ? null
                             : new LogBookmark(this, 0, s, rdr.getPosition(), 0);
                 }
+                case "_Table": {
+                for (var b = _db.objects.First(); b != null; b = b.Next())
+                {
+                    var tb = b.getValue().val;
+                    if (tb instanceof STable)
+                        return new TablesBookmark(this, b, 0);
+                }
+                return null;                    
+                }
             }
         } catch (Exception e) {
         }

@@ -347,7 +347,7 @@ public class SDatabase {
                 ? (STable) ob : null;
     }
 
-    SIndex GetIndex(long t) {
+    SIndex GetPrimaryIndex(long t) {
         for (var b = objects.First(); b != null; b = b.Next()) {
             if (b.getValue().val.type == Types.SIndex) {
                 var x = (SIndex) b.getValue().val;

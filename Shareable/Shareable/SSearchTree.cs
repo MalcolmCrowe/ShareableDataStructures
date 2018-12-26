@@ -14,7 +14,7 @@ namespace Shareable
         public readonly T node;
         public readonly SSearchTree<T> left, right;
         public static readonly SSearchTree<T> Empty = new SSearchTree<T>();
-        SSearchTree() { node = default(T); left = null; right = null; }
+        SSearchTree():base(0) { node = default(T); left = null; right = null; }
         internal SSearchTree(T n,SSearchTree<T> lf,SSearchTree<T> rg)
             : base(1 + lf.Length + rg.Length)
         {

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 /// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// See github.com/MalcolmCrowe/ShareableDataStructures
@@ -16,7 +17,7 @@ namespace Shareable
         public readonly T element;
         public readonly SList<T> next;
         public static readonly SList<T> Empty = new SList<T>();
-        protected SList() { element = default(T); next = null; }
+        protected SList():base(0) { element = default(T); next = null; }
         internal SList(T e,SList<T> n) : base(n.Length+1)
         {
             element = e;
@@ -54,6 +55,18 @@ namespace Shareable
         public override Bookmark<T> First()
         {
             return (Length==0)?null:new SListBookmark<T>(this);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("(");
+            var cm = "";
+            for (var b=First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.Value);
+            }
+            sb.Append(')');
+            return sb.ToString();
         }
     }
     public class SListBookmark<T> : Bookmark<T>
