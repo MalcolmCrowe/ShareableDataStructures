@@ -97,9 +97,10 @@ namespace StrongDB
                                 for (var b = rs?.First();b!=null;b=b.Next())
                                 {
                                     sb.Append(cm); cm = ",";
-                                    ((RowBookmark)b)._ob.Append(sb);
+                                    ((RowBookmark)b)._ob.Append(db,sb);
                                 }
-                                sb.Append(']'); 
+                                sb.Append(']');
+                                asy.Write(Types.Done);
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
@@ -125,6 +126,14 @@ namespace StrongDB
                                 break;
                             }
                         case Types.SInsert:
+                            {
+                                var tr = db.Transact();
+                                tr = SInsertStatement.Get(db,rdr).Obey(tr);
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Types.Done);
+                                asy.Flush();
+                                break;
+                            }
                         case Types.Insert:
                             {
                                 var tr = db.Transact();
@@ -232,7 +241,7 @@ namespace StrongDB
                             {
                                 var id = rdr.GetLong();
                                 var sb = new StringBuilder();
-                                db.Get(id).Append(sb);
+                                db.Get(id).Append(db,sb);
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
@@ -271,6 +280,25 @@ namespace StrongDB
                                 tr = tr.Add(new SDelete(tr, rc.table,rc.uid));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Types.SBegin:
+                            db = new STransaction(db, false);
+                            asy.WriteByte((byte)Types.Done);
+                            asy.Flush();
+                            break;
+                        case Types.SRollback:
+                            db = db.Rollback();
+                            asy.WriteByte((byte)Types.Done);
+                            asy.Flush();
+                            break;
+                        case Types.SCommit:
+                            {
+                                var tr = db as STransaction ??
+                                    throw new Exception("No transaction to commit");
+                                db = tr.Commit();
+                                asy.WriteByte((byte)Types.Done);
                                 asy.Flush();
                                 break;
                             }

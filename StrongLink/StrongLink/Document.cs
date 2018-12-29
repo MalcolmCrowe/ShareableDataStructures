@@ -542,7 +542,7 @@ namespace StrongLink
                 return;
             s = s.Trim();
             int n = s.Length;
-            if (n<=2 || s[0]!='[' || s[n-1]!=']')
+            if (n<2 || s[0]!='[' || s[n-1]!=']')
                 throw new DocumentException("[..] expected");
             int i = Items(s, 1, n);
             if (i != n)

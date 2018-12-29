@@ -140,16 +140,18 @@ namespace Shareable
         }
         Serialisable _Get(long pos)
         {
+            if (pos > STransaction._uid)
+                return objects.Lookup(pos);
             return new Reader(dbfiles.Lookup(name), pos)._Get(this);
         }
         public SRecord Get(long pos)
         {
             var rc = _Get(pos) as SRecord ??
-                throw new System.Exception("Record " + pos + " never defined");
+                throw new System.Exception("Record " + SDbObject._Uid(pos) + " never defined");
             var tb = Lookup(rc.table) as STable ??
                 throw new System.Exception("Table " + rc.table + " has been dropped");
             if (!tb.rows.Contains(rc.Defpos))
-                throw new System.Exception("Record " + pos + " has been dropped");
+                throw new System.Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
             return _Get(tb.rows.Lookup(rc.Defpos)) as SRecord;
         }
         public SDatabase _Add(SDbObject s, long p)
@@ -193,6 +195,8 @@ namespace Shareable
         {
             var obs = objects;
             var st = ((STable)Lookup(r.table)).Add(r);
+            if (r.uid > STransaction._uid)
+                obs = obs.Add(r.uid, r);
             obs = obs.Add(r.table, st);
             var nms = names.Add(st.name, st);
             for (var b = obs.First(); b != null; b = b.Next())

@@ -224,7 +224,7 @@ namespace StrongLink
                 }
                 else if (char.IsLetter(ch))
                 {
-                    for (NextChar(); char.IsLetter(ch); NextChar())
+                    for (NextChar(); char.IsLetter(ch) || ch=='_'; NextChar())
                         ;
                     if (ch != '\0')
                         --pos;
@@ -467,28 +467,12 @@ namespace StrongLink
                 throw new Exception("Syntax error: " + tok);
             }
         }
-        SSelectStatement Selects()
+        SQuery Selects(SQuery q)
         {
-            var q = new SQuery(Types.Serialisable, -1);
             for (; ;Next())
             {
-                var c = tok.val as Serialisable;
+                var c = Value();
                 var nms = q.names;
-                switch (tok.type)
-                {
-                    case Sym.LITERAL: Next(); break;
-                    case Sym.ID:
-                        Next();
-                        c = new SColumn(((SString)c).str);
-                        if (tok.type == Sym.DOT)
-                        {
-                            Next();
-                            var cc = tok.val as Serialisable;
-                            Mustbe(Sym.ID);
-                            c = new SExpression(c, SExpression.Op.Dot, new SColumn(((SString)cc).str));
-                        }
-                        break;
-                }
                 if (tok.type == Sym.AS)
                 {
                     Next();
@@ -500,7 +484,7 @@ namespace StrongLink
                 if (tok.type != Sym.COMMA)
                     break;
             }
-            return new SSelectStatement(q.cpos, null, null);
+            return q;
         }
         Serialisable CreateIndex(bool primary=false)
         {
@@ -676,12 +660,48 @@ namespace StrongLink
         Serialisable Select()
         {
             Next();
-            var c = SList<Serialisable>.Empty;
-            var nms = SDict<string, Serialisable>.Empty;
+            var dct = false;
+            if (tok.type == Sym.DISTINCT)
+            {
+                dct = true;
+                Next();
+            }
+            var q = new SQuery(Types.Serialisable, -1);
             if (tok.type!=Sym.FROM)
-                c = Selects().cpos;
+                q = Selects(q);
             Mustbe(Sym.FROM);
-            return new SSelectStatement(c, Query(), null);
+            var or = SList<SOrder>.Empty;
+            var i = 0;
+            if (tok.type == Sym.ORDER)
+            {
+                Next();
+                Mustbe(Sym.BY);
+                for (; ; )
+                {
+                    var cr = Serialisable.Null;
+                    var c = tok.val;
+                    Mustbe(Sym.ID);
+                    if (tok.type == Sym.DOT)
+                    {
+                        Next();
+                        cr = c;
+                        c = tok.val;
+                        Mustbe(Sym.ID);
+                    }
+                    var d = false;
+                    if (tok.type == Sym.DESC)
+                    {
+                        Next();
+                        d = true;
+                    }
+                    or = or.InsertAt(new SOrder(cr, new SColumn(c.ToString()), d), i++);
+                    if (tok.type == Sym.COMMA)
+                        Next();
+                    else
+                        break;
+                }
+            }
+            return new SSelectStatement(dct, q, Query(), or);
         }
         Serialisable Delete()
         {

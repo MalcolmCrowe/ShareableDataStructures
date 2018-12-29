@@ -279,7 +279,7 @@
             public readonly SelectRowSet _srs;
             public readonly RowBookmark _bmk;
             SelectRowBookmark(SelectRowSet rs,RowBookmark bmk,int p)
-                :base(rs,new SRow(rs._qry,bmk._ob as SRow),p)
+                :base(rs,_Row(rs,bmk._ob),p)
             {
                 _srs = rs; _bmk = bmk;
             }
@@ -291,6 +291,19 @@
             {
                 return (_bmk.Next() is RowBookmark bmk) ?
                     new SelectRowBookmark(_srs, bmk, Position + 1) : null;
+            }
+            static SRow _Row(RowSet rs,Serialisable ob)
+            {
+                SRow r = null;
+                switch (ob.type)
+                {
+                    case Types.SRow: r = ob as SRow; break;
+                    case Types.SRecord: r = new SRow(rs._db, ob as SRecord); break;
+                    default: throw new System.Exception("Was not a row");
+                }
+                if (rs._qry.cpos.Length.Value == 0)
+                    return r;
+                return new SRow(rs._qry, r);
             }
         }
     }

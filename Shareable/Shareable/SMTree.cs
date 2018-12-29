@@ -430,7 +430,7 @@ namespace Shareable
     {
         public readonly K headName;
         public readonly TreeBehaviour onDuplicate, onNullKey;
-        public bool asc;
+        public readonly bool asc;
         TreeBehaviour For(char c)
         {
             switch (c)

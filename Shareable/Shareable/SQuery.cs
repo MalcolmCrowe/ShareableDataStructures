@@ -26,6 +26,12 @@ namespace Shareable
             cpos = q.cpos;
             names = q.names;
         }
+        public SQuery(Types t,SQuery q) : base(t)
+        {
+            cols = q.cols;
+            cpos = q.cpos;
+            names = q.names;
+        }
         public SQuery(SQuery q,SDict<long,SSelector>co,SList<Serialisable>cp,SDict<string,Serialisable>cn) :base(q)
         {
             cols = co;
@@ -41,7 +47,7 @@ namespace Shareable
         /// <param name="t"></param>
         /// <param name="c"></param>
         /// <param name="nms"></param>
-        protected SQuery(Types t,SList<Serialisable> c,SDict<string,Serialisable>nms) : base(t,-1)
+        public SQuery(Types t,SList<Serialisable> c,SDict<string,Serialisable>nms) : base(t,-1)
         {
             var q = new SQuery(t, -1);
             var n = c.Length;
@@ -72,10 +78,6 @@ namespace Shareable
         {
             throw new NotImplementedException();
         }
-        public override void Append(StringBuilder sb)
-        {
-            base.Append(sb);
-        }
         public override string ToString()
         {
             return "SQuery";
@@ -97,7 +99,7 @@ namespace Shareable
             where = w;
         }
         public SSearch(SQuery s,Serialisable a, SList<Serialisable> w)
-            :base(Types.SSearch,-1)
+            :base(Types.SSearch, -1)
         {
             sce = s;
             alias = a;
@@ -120,49 +122,62 @@ namespace Shareable
         {
             return new SearchRowSet(db, this);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
-            sce.Append(sb);
+            sce.Append(db,sb);
             sb.Append(" where ");
             var cm = "";
             for (var b=where.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = " and ";
-                b.Value.Append(sb); 
+                b.Value.Append(db,sb); 
             }
         }
     }
     public class SSelectStatement : SQuery
     {
+        public readonly bool distinct;
         public readonly SQuery qry;
         public readonly SList<SOrder> order;
-        public SSelectStatement(SList<Serialisable> c, SQuery q, SList<SOrder> or) 
-            : base(Types.SSelect, c, q.names)
-        { qry = q; order = or; }
+        public SSelectStatement(bool d, SQuery c, SQuery q, SList<SOrder> or) 
+            : base(Types.SSelect, c)
+        { distinct = d;  qry = q; order = or; }
         public static SSelectStatement Get(SDatabase db,Reader f)
         {
+            f.GetInt(); // uid for the SSelectStatement probably -1
+            var d = f.ReadByte() == 1;
             var n = f.GetInt();
-            var c = SList<Serialisable>.Empty;
+            var cp = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
-                c = c.InsertAt(f._Get(null) as SSelector, i);
-            n = f.GetInt();
+            {
+                var s = f._Get(db) as SSelector;
+                cp = cp.InsertAt(s, i);
+            }
             var q = f._Get(db) as SQuery;
+            var c = new SQuery(Types.SSelect, cp, q.names);
             var o = SList<SOrder>.Empty;
+            n = f.GetInt();
             for (var i = 0; i < n; i++)
                 o = o.InsertAt(f._Get(null) as SOrder, i);
-            return new SSelectStatement(c,q,o);
+            return new SSelectStatement(d,c,q,o);
         }
         public override void Put(StreamBase f)
         {
             base.Put(f);
+            f.WriteByte((byte)(distinct ? 1 : 0));
             f.PutInt(cpos.Length);
             for (var b = cols.First(); b != null; b = b.Next())
                 b.Value.val.Put(f);
             qry.Put(f);
+            f.PutInt(order.Length.Value);
+            for (var b=order.First();b!=null;b=b.Next())
+                b.Value.Put(f);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
-            base.Append(sb);
+            if (distinct)
+                sb.Append("distinct ");
+            base.Append(db,sb);
         }
         public override string ToString()
         {
@@ -179,7 +194,9 @@ namespace Shareable
 
         public override RowSet RowSet(SDatabase db)
         {
-            var r = new SelectRowSet(db,this);
+            RowSet r = new SelectRowSet(db,this);
+            if (distinct)
+                r = new DistinctRowSet(r);
             return r;
         }
     }
@@ -188,11 +205,25 @@ namespace Shareable
         public readonly Serialisable corr;
         public readonly SColumn col;
         public readonly bool desc;
-        public SOrder(SDatabase db,Reader f) :base(Types.SOrder)
+        public SOrder(Serialisable cr,SColumn co,bool d) :base(Types.SOrder)
+        {
+            corr = cr; col = co; desc = d;
+        }
+        protected SOrder(SDatabase db,Reader f) :base(Types.SOrder)
         {
             corr = f._Get(null);
             col = f._Get(db) as SColumn;
             desc = f.ReadByte() == 1;
+        }
+        public static SOrder Get(SDatabase db,Reader f)
+        {
+            return new SOrder(db, f);
+        }
+        public override void Put(StreamBase f)
+        {
+            corr.Put(f);
+            col.Put(f);
+            f.WriteByte((byte)(desc ? 1 : 0));
         }
     }
 }

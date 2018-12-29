@@ -132,7 +132,10 @@ namespace StrongLink
             asy.Flush();
             var b = asy.ReadByte();
             if (b == (byte)Types.Exception)
+            {
                 inTransaction = false;
+                asy.GetException();
+            }
             if (b==(byte)Types.Done)
                 return new DocArray(asy.rbuf.GetString());
             throw new Exception("??");
@@ -142,7 +145,10 @@ namespace StrongLink
             asy.Write(Types.SBegin);
             var b = asy.Receive();
             if (b == Types.Exception)
+            {
                 inTransaction = false;
+                asy.GetException();
+            }
             if (b == Types.Done)
                 inTransaction = true;
         }
@@ -177,6 +183,9 @@ namespace StrongLink
             asy.Close();
         }
     }
+    /// <summary>
+    /// not shareable
+    /// </summary>
     class ClientStream : StreamBase
     {
         StrongConnect connect = null;

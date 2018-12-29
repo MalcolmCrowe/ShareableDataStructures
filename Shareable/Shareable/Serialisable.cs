@@ -75,7 +75,7 @@ namespace Shareable
         {
             return false;
         }
-        public virtual void Append(StringBuilder sb)
+        public virtual void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append(this);
         }
@@ -150,7 +150,7 @@ namespace Shareable
         public readonly Op op;
         public SExpression(SDatabase db,Serialisable lf,Op o,Reader f) : base(Types.SExpression)
         {
-            left = f._Get(db);
+            left = lf;
             op = o;
             right = f._Get(db);
         }
@@ -159,6 +159,13 @@ namespace Shareable
             left = lf; right = rt; op = o;
         }
         public enum Op { Plus, Minus, Times, Divide, Eql, NotEql, Lss, Leq, Gtr, Geq, Dot, And, Or, UMinus, Not };
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            left.Put(f);
+            f.WriteByte((byte)op);
+            right.Put(f);
+        }
         internal override Serialisable Lookup(SDict<string, Serialisable> nms)
         {
             return new SExpression(left.Lookup(nms),op,right.Lookup(nms));
@@ -474,6 +481,12 @@ namespace Shareable
             arg = a;
         }
         public enum Func { Sum, Count, Max, Min, Null };
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            f.WriteByte((byte)func);
+            arg.Put(f);
+        }
         internal override Serialisable Lookup(SDict<string, Serialisable> nms)
         {
             return new SFunction(func,arg.Lookup(nms));
@@ -579,6 +592,17 @@ namespace Shareable
         {
             arg = a; list = r;
         }
+        public static SInPredicate Get(SDatabase db,Reader f)
+        {
+            var a = f._Get(db);
+            return new SInPredicate(a, f._Get(db));
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            arg.Put(f);
+            list.Put(f);
+        }
         internal override Serialisable Lookup(SDict<string, Serialisable> nms)
         {
             return new SInPredicate(arg.Lookup(nms), list.Lookup(nms));
@@ -644,7 +668,7 @@ namespace Shareable
         {
             return new SInteger(f);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append(value);
         }
@@ -694,7 +718,7 @@ namespace Shareable
         {
             return new SNumeric(f);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append(num.mantissa * Math.Pow(10.0, -num.scale));
         }
@@ -734,7 +758,7 @@ namespace Shareable
         {
             return new SString(f);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append("'"); sb.Append(str); sb.Append("'");
         }
@@ -855,7 +879,7 @@ namespace Shareable
             base.Put(f);
             f.WriteByte((byte)sbool);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append(sbool);
         }
@@ -948,23 +972,24 @@ namespace Shareable
             }
         }
         public override Serialisable this[string col] => cols.Lookup(col);
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
-            sb.Append('(');
+            sb.Append('{');
             var cm = "";
             for (var b = cols.First(); b != null; b = b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(b.Value.key);
-                sb.Append(":");
-                sb.Append(b.Value.val.ToString());
-            }
-            sb.Append(")");
+                if (b.Value.val is Serialisable s && s!=Null)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.Value.key);
+                    sb.Append(":");
+                    s.Append(db, sb);
+                }
+            sb.Append("}");
         }
         public override string ToString()
         {
             var sb = new StringBuilder("SRow ");
-            Append(sb);
+            Append(null,sb);
             return sb.ToString();
         }
     }
@@ -1183,7 +1208,7 @@ namespace Shareable
             base.Put(f);
             f.PutString(name);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append("Table "); sb.Append(name);
         }
@@ -1301,7 +1326,7 @@ namespace Shareable
             new SSlot<string,Types>("Uid", Types.SString),
             new SSlot<string,Types>("Type", Types.SInteger),
             new SSlot<string,Types>("Desc", Types.SString));
-            Add("_Table",
+            Add("_Tables",
             new SSlot<string, Types>("Name", Types.SString),
             new SSlot<string, Types>("Cols", Types.SInteger),
             new SSlot<string, Types>("Rows", Types.SInteger));
@@ -1692,37 +1717,47 @@ namespace Shareable
         {
             tb = t; cols = c; vals = v;
         }
-        public static void Obey(STransaction tr,Reader rdr)
+        public STransaction Obey(STransaction tr)
         {
-            var tb = (STable)tr.names.Lookup(rdr.GetString()); // table name
-            var n = rdr.GetInt(); // # named cols
+            var tb = (STable)tr.names.Lookup(this.tb); 
+            var n = cols.Length; // # named cols
             var cs = SList<long>.Empty;
             Exception ex = null;
-            for (var i = 0; i < n; i++)
+            var i = 0;
+            for (var b=cols.First();b!=null;b=b.Next())
             {
-                var cn = rdr.GetString();
-                if (tb.names.Lookup(cn) is SColumn sc)
-                    cs = cs.InsertAt(sc.uid, i);
+                if (tb.names.Lookup(b.Value.name) is SColumn sc)
+                    cs = cs.InsertAt(sc.uid, i++);
                 else
-                    ex = new Exception("Column " + cn + " not found");
+                    ex = new Exception("Column " + b.Value.name + " not found");
             }
-            var nc = rdr.GetInt(); // #cols
-            if ((n == 0 && nc != tb.cpos.Length) || (n != 0 && n != nc))
-                ex = new Exception("Wrong number of columns");
-            var nr = rdr.GetInt(); // #records
-            for (var i = 0; i < nr; i++)
+            if (vals is SValues svs)
             {
+                var nc = svs.vals.Length.Value;
+                if ((n == 0 && nc != tb.cpos.Length) || (n != 0 && n != nc))
+                    ex = new Exception("Wrong number of columns");
                 var f = SDict<long, Serialisable>.Empty;
+                var c = svs.vals;
                 if (n == 0)
-                    for (var b = tb.cpos; b.Length != 0; b = b.next)
-                        f = f.Add((b.element as SSelector).uid, rdr._Get(tr)); // serialsable values
+                    for (var b = tb.cpos; b.Length != 0; b = b.next, c = c.next)
+                        f = f.Add((b.element as SSelector).uid, c.element);
                 else
-                    for (var b = cs; b.Length != 0; b = b.next)
-                        f = f.Add(b.element, rdr._Get(tr)); // serialisable values
+                    for (var b = cs; b.Length != 0; b = b.next, c = c.next)
+                        f = f.Add(b.element, c.element);
                 tr = tr.Add(new SRecord(tr, tb.uid, f));
             }
             if (ex != null)
                 throw ex;
+            return tr;
+        }
+        public static SInsertStatement Get(SDatabase db,Reader f)
+        {
+            var t = f.GetString();
+            var n = f.GetInt();
+            var c = SList<SSelector>.Empty;
+            for (var i = 0; i < n; i++)
+                c = c.InsertAt(f._Get(db) as SSelector, i);
+            return new SInsertStatement(t, c, f._Get(db));
         }
         public override void Put(StreamBase f)
         {
@@ -1744,9 +1779,19 @@ namespace Shareable
         public SValues(SDatabase db,Reader f) : base(Types.SValues)
         {
             var n = f.GetInt();
+            var nr = f.GetInt();
             vals = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
                 vals = vals.InsertAt(f._Get(db), i);
+        }
+        public static SValues Get(SDatabase db,Reader f)
+        {
+            var n = f.GetInt();
+            var nr = f.GetInt();
+            var v = SList<Serialisable>.Empty;
+            for (var i = 0; i < n; i++)
+                v = v.InsertAt(f._Get(db), i);
+            return new SValues(v);
         }
         public override void Put(StreamBase f)
         {
@@ -1770,15 +1815,24 @@ namespace Shareable
         public SRecord(SDatabase db,SRecord r,AStream f) : base(r,f)
         {
             table = f.Fix(r.table);
-            fields = r.fields;
+            var fs = r.fields;
             f.PutLong(table);
             var tb = (STable)db.Lookup(table);
             f.PutInt(r.fields.Length);
-            for (var b=r.fields.First();b!=null;b=b.Next())
+            for (var b=fs.First();b!=null;b=b.Next())
             {
-                f.PutLong(b.Value.key);
-                b.Value.val.Put(f);
+                var oc = b.Value.key;
+                var v = b.Value.val;
+                var c = oc;
+                if (f.uids.Contains(c))
+                {
+                    c = f.uids.Lookup(c);
+                    fs = fs.Remove(oc).Add(c, v);
+                }
+                f.PutLong(c);
+                v.Put(f);
             }
+            fields = fs;
         }
         protected SRecord(SDatabase d, Reader f) : base(Types.SRecord,f)
         {
@@ -1797,17 +1851,20 @@ namespace Shareable
         {
             return new SRecord(d,f);
         }
-        public override void Append(StringBuilder sb)
+        public override void Append(SDatabase db, StringBuilder sb)
         {
-            sb.Append("(_id:");sb.Append(Defpos);
-            sb.Append(",Table:"); sb.Append(table);
+            sb.Append("{_id:"); sb.Append(Defpos);
+            var tb = db?.objects.Lookup(table) as STable;
+            sb.Append(",_table:");
+            sb.Append('"'); sb.Append(tb?.name ?? ("" + table)); sb.Append('"');
             for (var b = fields.First(); b != null; b = b.Next())
             {
-                sb.Append(","); 
-                sb.Append(b.Value.key); sb.Append(":");
-                sb.Append(b.Value.val.ToString());
+                sb.Append(",");
+                var c = tb?.cols.Lookup(b.Value.key);
+                sb.Append(c?.name ?? ("" + b.Value.key)); sb.Append(":");
+                b.Value.val.Append(db,sb);
             }
-            sb.Append(")");
+            sb.Append("}");
         }
         public bool Matches(RowBookmark rb,SList<Serialisable> wh)
         {
@@ -1833,7 +1890,7 @@ namespace Shareable
             var sb = new StringBuilder("Record ");
             sb.Append(Uid());
             sb.Append(" for "); sb.Append(_Uid(table));
-            Append(sb);
+            Append(null,sb);
             return sb.ToString();
         }
     }
@@ -1881,7 +1938,7 @@ namespace Shareable
         public override string ToString()
         {
             var sb = new StringBuilder("Update ");
-            qry.Append(sb);
+            qry.Append(null,sb);
             sb.Append(" set ");
             var cm = "";
             for (var b = assigs.First();b!=null;b=b.Next())
@@ -1928,7 +1985,7 @@ namespace Shareable
             sb.Append(Uid());
             sb.Append(" of "); sb.Append(STransaction.Uid(defpos));
             sb.Append(" for "); sb.Append(Uid());
-            Append(sb);
+            Append(null,sb);
             return sb.ToString();
         }
     }
@@ -1953,7 +2010,7 @@ namespace Shareable
         public override string ToString()
         {
             var sb = new StringBuilder("Delete ");
-            qry.Append(sb);
+            qry.Append(null,sb);
             return sb.ToString();
         }
     }
@@ -2174,9 +2231,8 @@ namespace Shareable
         public void PutInt(int? n)
         {
             if (n == null)
-                WriteByte(0);
-            else
-                PutInt(new Integer(n.Value));
+                throw new Exception("Null PutInt");
+            PutInt(new Integer(n.Value));
         }
         public void PutInt(Integer b)
         {
@@ -2270,7 +2326,8 @@ namespace Shareable
                 case Types.SDrop: s = SDrop.Get(this); break;
                 case Types.SIndex: s = SIndex.Get(d, this); break;
                 case Types.SSearch: s = SSearch.Get(this); break;
-                case Types.SSelect: s = SSelectStatement.Get(this); break;
+                case Types.SSelect: s = SSelectStatement.Get(d, this); break;
+                case Types.SValues: s = SValues.Get(d, this); break;
             }
             return s;
         }
@@ -2293,6 +2350,9 @@ namespace Shareable
             return db.Lookup(((AStream)buf.fs).Fix(pos));
         }
     }
+    /// <summary>
+    /// this class is not shareable
+    /// </summary>
     public class SocketReader : Reader
     {
         public SocketReader(StreamBase f) : base(f)
