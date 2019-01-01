@@ -1,4 +1,5 @@
 ﻿using System.IO;
+#nullable enable
 namespace Shareable
 {
     public class SDatabase
@@ -98,11 +99,29 @@ namespace Shareable
         protected SDatabase(SDatabase db, SDrop d, long c)
         {
             name = db.name;
+            var obs = objects;
             if (d.parent == 0)
             {
-                var ot = (STable)db.Lookup(d.drpos);
-                objects = db.objects.Remove(d.drpos);
-                names = db.names.Remove(ot.name);
+                var ot = db.Lookup(d.drpos);
+                switch(ot.type)
+                {
+                    case Types.STable:
+                        names = db.names.Remove(((STable)ot).name);
+                        break;
+                    case Types.SIndex:
+                        {
+                            var x = (SIndex)ot;
+                            var tb = (STable)objects.Lookup(x.table);
+                            tb = new STable(tb, tb.indexes.Remove(x.uid));
+                            obs = obs.Add(tb.uid, tb);
+                            names = db.names;
+                            break;
+                        }
+                    default:
+                        names = db.names;
+                        break;
+                }
+                objects = obs.Remove(d.drpos);
             }
             else
             {
@@ -126,7 +145,8 @@ namespace Shareable
             var tb = (STable)db.Lookup(x.table);
             for (var b = tb.rows.First(); b != null; b = b.Next())
                 x = x.Add(db.Get(b.Value.val), b.Value.val);
-            objects = db.objects.Add(x.uid, x);
+            tb = new STable(tb, tb.indexes.Add(c, true));
+            objects = db.objects.Add(x.uid, x).Add(tb.uid,tb);
             names = db.names;
             curpos = c;
         }
@@ -152,7 +172,7 @@ namespace Shareable
                 throw new System.Exception("Table " + rc.table + " has been dropped");
             if (!tb.rows.Contains(rc.Defpos))
                 throw new System.Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
-            return _Get(tb.rows.Lookup(rc.Defpos)) as SRecord;
+            return (SRecord)_Get(tb.rows.Lookup(rc.Defpos));
         }
         public SDatabase _Add(SDbObject s, long p)
         {
@@ -199,41 +219,44 @@ namespace Shareable
                 obs = obs.Add(r.uid, r);
             obs = obs.Add(r.table, st);
             var nms = names.Add(st.name, st);
-            for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x && x.table == r.table)
-                        obs = obs.Add(x.uid, x.Add(r, r.uid));
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)objects.Lookup(b.Value.key);
+                if (x.references < 0)
+                    obs = obs.Add(x.uid, x.Add(r, r.uid));
+            }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SUpdate u, long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(u.table)).Add(u);
-            SRecord sr = null;
+            SRecord? sr = null;
             obs = obs.Add(u.table, st);
             var nms = names.Add(st.name, st);
-            for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x && x.table == u.table)
-                    {
-                        if (sr == null)
-                            sr = Get(u.defpos);
-                        obs = obs.Add(x.uid, x.Update(sr, u, c));
-                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)objects.Lookup(b.Value.key);
+                if (sr == null)
+                    sr = Get(u.defpos);
+                obs = obs.Add(x.uid, x.Update(sr, u, c));
+            }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
             var st = ((STable)Lookup(d.table)).Remove(d.delpos);
-            SRecord sr = null;
+            SRecord? sr = null;
             obs = obs.Add(d.table, st);
             var nms = names.Add(st.name, st);
-            for (var b = obs.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x && x.table == d.table)
-                    {
-                        if (sr == null)
-                            sr = Get(d.delpos);
-                        obs = obs.Add(x.uid, x.Remove(sr, c));
-                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)objects.Lookup(b.Value.key);
+                if (sr == null)
+                    sr = Get(d.delpos);
+                obs = obs.Add(x.uid, x.Remove(sr, c));
+            }
             return new SDatabase(this, obs, nms, c);
         }
         protected SDatabase Install(SAlter a, long c)
@@ -264,11 +287,11 @@ namespace Shareable
         {
             return this;
         }
-        public STable GetTable(string tn)
+        public STable? GetTable(string tn)
         {
-            return names.Lookup(tn) as STable;
+            return (STable)names.Lookup(tn);
         }
-        public SIndex GetPrimaryIndex(long t)
+        public SIndex? GetPrimaryIndex(long t)
         {
             for (var b = objects.First(); b != null; b = b.Next())
                 if (b.Value.val is SIndex x && x.table == t)

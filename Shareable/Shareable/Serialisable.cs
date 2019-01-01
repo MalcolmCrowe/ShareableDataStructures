@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Threading;
-
+#nullable enable
 namespace Shareable
 {
     public enum Types
@@ -75,7 +74,7 @@ namespace Shareable
         {
             return false;
         }
-        public virtual void Append(SDatabase db,StringBuilder sb)
+        public virtual void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append(this);
         }
@@ -104,19 +103,7 @@ namespace Shareable
                 case Types.SString: return new SString((string)v);
                 case Types.SInteger: return new SInteger((int)v);
             }
-            return null;
-        }
-        /// <summary>
-        /// Analyse the ith entry in the selectlist of q: replace selector strings by actual SColumns.
-        /// We are mentioned in the ith entry: we might know how to update the query so the ith entry is done.
-        /// </summary>
-        /// <param name="q">The query: transformed up to the ith entry</param>
-        /// <param name="i">where we are</param>
-        /// <param name="nms">The information for associating strings to SColumns</param>
-        /// <returns></returns>
-        internal virtual SQuery Analyse(SQuery q,int i,SDict<string,Serialisable> nms)
-        {
-            return q;
+            return Null;
         }
         /// <summary>
         /// We have been mentioned in a Serialisable. We might be able to improve it using a known list
@@ -159,6 +146,11 @@ namespace Shareable
             left = lf; right = rt; op = o;
         }
         public enum Op { Plus, Minus, Times, Divide, Eql, NotEql, Lss, Leq, Gtr, Geq, Dot, And, Or, UMinus, Not };
+        internal static SExpression Get(SDatabase db,Reader f)
+        {
+            var lf = f._Get(db);
+            return new SExpression(db, lf, (Op)f.ReadByte(), f);
+        }
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -170,6 +162,7 @@ namespace Shareable
         {
             return new SExpression(left.Lookup(nms),op,right.Lookup(nms));
         }
+#nullable disable
         public override Serialisable Eval(RowBookmark rs)
         {
             var lf = left.Eval(rs);
@@ -481,6 +474,10 @@ namespace Shareable
             arg = a;
         }
         public enum Func { Sum, Count, Max, Min, Null };
+        internal static SFunction Get(SDatabase db,Reader f)
+        {
+            return new SFunction(db, (Func)f.ReadByte(), f);
+        }
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -489,7 +486,7 @@ namespace Shareable
         }
         internal override Serialisable Lookup(SDict<string, Serialisable> nms)
         {
-            return new SFunction(func,arg.Lookup(nms));
+            return new SFunction(func,(nms.Length==0)?arg:arg.Lookup(nms));
         }
         /// <summary>
         /// rb gives the group if grouping is implemented
@@ -501,9 +498,10 @@ namespace Shareable
             if (func == Func.Null)
                 return new SBoolean(base.Eval(rb) == Null);
             var t = Types.Serialisable;
-            Integer ai = null;
-            Numeric an = null;
-            string ac = null;
+            var empty = false;
+            Integer ai = Integer.Zero;
+            Numeric an = Numeric.Zero;
+            string ac = "";
             int ic = 0;
             for (var b = rb._rs.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
                 if (b.SameGroupAs(rb))
@@ -512,19 +510,22 @@ namespace Shareable
                     t = a.type;
                     switch (func)
                     {
-                        case Func.Count: ic++; break;
+                        case Func.Count:
+                            if (a!=Null)
+                                ic++;
+                            break;
                         case Func.Sum:
                             switch (t)
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = (ai == null) ? xi: ai + xi; break;
+                                    ai = ai + xi; break;
                                 case Types.SBigInt:
                                     var xb = ((SInteger)a).big;
-                                    ai = (ai==null)? xb: ai + xb; break;
+                                    ai = ai + xb; break;
                                 case Types.SNumeric:
                                     var xn = ((SNumeric)a).num;
-                                    an = (an==null)? xn: an + xn; break;
+                                    an = an + xn; break;
                             }
                             break;
                         case Func.Max:
@@ -532,42 +533,44 @@ namespace Shareable
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = (ai == null || xi > ai) ? xi : ai;
+                                    ai = (empty || xi > ai) ? xi : ai;
                                     break;
                                 case Types.SBigInt:
                                     var xb = ((SInteger)a).big;
-                                    ai = (ai==null || xb > ai) ? xb : ai;
+                                    ai = (empty || xb > ai) ? xb : ai;
                                     break;
                                 case Types.SNumeric:
                                     var xn = ((SNumeric)a).num;
-                                    an = (an == null || xn > an) ? xn : an;
+                                    an = (empty || xn > an) ? xn : an;
                                     break;
                                 case Types.SString:
                                     var xc = ((SString)a).str;
-                                    ac = (ac==null || xc.CompareTo(ac) > 1)? xc : ac;
+                                    ac = (empty || xc.CompareTo(ac) > 1)? xc : ac;
                                     break;
                             }
+                            empty = false;
                             break;
                         case Func.Min:
                             switch (t)
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = (ai == null || xi < ai) ? xi : ai;
+                                    ai = (empty || xi < ai) ? xi : ai;
                                     break;
                                 case Types.SBigInt:
                                     var xb = ((SInteger)a).big;
-                                    ai = (ai == null || xb < ai) ? xb : ai;
+                                    ai = (empty || xb < ai) ? xb : ai;
                                     break;
                                 case Types.SNumeric:
                                     var xn = ((SNumeric)a).num;
-                                    an = (an == null || xn < an) ? xn : an;
+                                    an = (empty || xn < an) ? xn : an;
                                     break;
                                 case Types.SString:
                                     var xc = ((SString)a).str;
-                                    ac = (ac == null || xc.CompareTo(ac) < 1) ? xc : ac;
+                                    ac = (empty || xc.CompareTo(ac) < 1) ? xc : ac;
                                     break;
                             }
+                            empty = false;
                             break;
                     }
                 }
@@ -584,6 +587,7 @@ namespace Shareable
             throw new Exception("Unimplemented function");
         }
     }
+#nullable enable
     public class SInPredicate : Serialisable
     {
         public readonly Serialisable arg;
@@ -644,7 +648,7 @@ namespace Shareable
     public class SInteger : Serialisable, IComparable
     {
         public readonly int value;
-        public readonly Integer big;
+        public readonly Integer? big;
         public static readonly SInteger Zero = new SInteger(0);
         public SInteger(int v) : base(Types.SInteger)
         {
@@ -668,7 +672,7 @@ namespace Shareable
         {
             return new SInteger(f);
         }
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append(value);
         }
@@ -718,7 +722,7 @@ namespace Shareable
         {
             return new SNumeric(f);
         }
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append(num.mantissa * Math.Pow(10.0, -num.scale));
         }
@@ -758,7 +762,7 @@ namespace Shareable
         {
             return new SString(f);
         }
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append("'"); sb.Append(str); sb.Append("'");
         }
@@ -879,7 +883,7 @@ namespace Shareable
             base.Put(f);
             f.WriteByte((byte)sbool);
         }
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append(sbool);
         }
@@ -898,61 +902,99 @@ namespace Shareable
     }
     public class SRow : Serialisable
     {
-        public readonly SDict<string, Serialisable> cols;
-        public SRow() : base(Types.SRow)
+        public readonly SDict<int, string> names;
+        public readonly SDict<int, Serialisable> cols;
+        public readonly SDict<string, Serialisable> vals;
+        public readonly SRecord? rec;
+        public SRow(SRecord? r=null) : base(Types.SRow)
         {
-            cols = SDict<string, Serialisable>.Empty;
+            names = SDict<int,string>.Empty;
+            cols = SDict<int, Serialisable>.Empty;
+            vals = SDict<string, Serialisable>.Empty;
+            rec = r;
         }
         public SRow Add(string n, Serialisable v)
         {
-            return new SRow(cols.Add(n, v));
+            return new SRow(names.Add(names.Length.Value,n),cols.Add(cols.Length.Value,v),
+                vals.Add(n,v),rec);
         }
-        public SRow Remove(string n)
+        SRow(SDict<int,string> n,SDict<int,Serialisable> c,SDict<string,Serialisable> v,SRecord? rec) 
+            :this(rec)
         {
-            return new SRow(cols.Remove(n));
-        }
-        SRow(SDict<string,Serialisable> c) :base(Types.SRow)
-        {
+            names = n;
             cols = c;
+            vals = v;
         }
-        public SRow(SList<Serialisable> c) :base(Types.SRow)
+        public SRow(SList<Serialisable> s) :this()
         {
-            var cs = SDict<string, Serialisable>.Empty;
-            int j = 0;
-            for (var b = c.First(); b != null; b = b.Next())
-                cs = cs.Add("" + ++j, b.Value);
-            cols = cs;
+            var cn = SDict<int, string>.Empty;
+            var r = SDict<int, Serialisable>.Empty;
+            var vs = SDict<string, Serialisable>.Empty;
+            var k = 0;
+            for (;s.Length.Value!=0;s=s.next) // not null
+            {
+                var n = "col" + (k + 1);
+                cn = cn.Add(k, n);
+                r = r.Add(k, s.element);
+                vs = vs.Add(n, s.element);
+            }
         }
-        SRow(SDatabase d, Reader f) :base(Types.SRow)
+        SRow(SDatabase d, Reader f) :this()
         {
             var n = f.GetInt();
-            var r = SDict<string, Serialisable>.Empty;
+            var cn = SDict<int, string>.Empty;
+            var r = SDict<int, Serialisable>.Empty;
+            var vs = SDict<string, Serialisable>.Empty;
             for(var i=0;i<n;i++)
             {
                 var k = f.GetString();
+                cn = cn.Add(i, k);
                 var v = f._Get(d);
-                r = r.Add(k, v);
+                r = r.Add(i, v);
+                vs = vs.Add(k, v);
             }
+            names = cn;
             cols = r;
+            vals = vs;
         }
-        public SRow(SDatabase db,SRecord rec) :base(Types.SRow)
+        public SRow(SDatabase db,SRecord rec) :this(rec)
         {
-            var tb = db.Lookup(rec.table) as STable;
-            var r = SDict<string, Serialisable>.Empty;
+            var tb = (STable)db.Lookup(rec.table);
+            var cn = SDict<int, string>.Empty;
+            var r = SDict<int, Serialisable>.Empty;
+            var vs = SDict<string, Serialisable>.Empty;
+            var k = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
-                if (b.Value is SColumn sc)
-                    r = r.Add(sc.name, rec.fields.Lookup(sc.uid));
+                if (b.Value.val is SColumn sc)
+                {
+                    r = r.Add(k, rec.fields.Lookup(sc.uid));
+                    cn = cn.Add(k++, sc.name);
+                }
                 else
                     throw new Exception("Unimplemented selector");
+            names = cn;
             cols = r;
+            vals = vs;
         }
-        public SRow(SQuery q,SRow rw) :base(Types.SRow)
+        public SRow(SSelectStatement ss,RowBookmark bm):this(bm._ob.rec)
         {
-            var r = SDict<string, Serialisable>.Empty;
-            for (var b = q.cpos.First(); b != null; b = b.Next())
-                if (b.Value is SColumn sc)
-                r = r.Add(sc.name, rw.cols.Lookup(sc.name));
+            var r = SDict<int, Serialisable>.Empty;
+            var vs = SDict<string, Serialisable>.Empty;
+            if (ss.als.Length.Value > 0)
+            {
+                var cb = ss.cpos.First();
+                for (var b = ss.als.First(); cb!=null && b != null; b = b.Next(), cb = cb.Next())
+                {
+                    var v = cb.Value.val.Eval(bm);
+                    if (v == Null)
+                        continue;
+                    r = r.Add(b.Value.key, v);
+                    vs = vs.Add(b.Value.val, v);
+                }
+            } 
+            names = ss.als;
             cols = r;
+            vals = vs;
         }
         public static SRow Get(SDatabase d,Reader f)
         {
@@ -961,26 +1003,28 @@ namespace Shareable
         public override void Put(StreamBase f)
         {
             base.Put(f);
-            f.PutInt(cols.Length);
-            for (var b = cols.First(); b != null; b = b.Next())
+            f.PutInt(names.Length);
+            var cb = cols.First();
+            for (var b = names.First(); cb!=null && b != null; b = b.Next(),cb=cb.Next())
             {
-                f.PutString(b.Value.key);
-                if (b.Value.val is Serialisable s)
+                f.PutString(b.Value.val);
+                if (cb.Value.val is Serialisable s)
                     s.Put(f);
                 else
                     Null.Put(f);
             }
         }
-        public override Serialisable this[string col] => cols.Lookup(col);
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override Serialisable this[string col] => vals.Lookup(col);
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append('{');
             var cm = "";
-            for (var b = cols.First(); b != null; b = b.Next())
+            var nb = names.First();
+            for (var b = cols.First(); nb!=null && b != null; b = b.Next(),nb=nb.Next())
                 if (b.Value.val is Serialisable s && s!=Null)
                 {
                     sb.Append(cm); cm = ",";
-                    sb.Append(b.Value.key);
+                    sb.Append(nb.Value.val);
                     sb.Append(":");
                     s.Append(db, sb);
                 }
@@ -1102,17 +1146,21 @@ namespace Shareable
     public class STable : SQuery
     {
         public readonly string name;
+        public readonly SDict<long, SSelector> cols;
         public readonly SDict<long, long> rows; // defpos->uid of latest update
+        public readonly SDict<long,bool> indexes;
         public STable(STransaction tr,string n) :base(Types.STable,tr)
         {
             if (tr.names.Contains(n))
                 throw new Exception("Table n already exists");
             name = n;
+            cols = SDict<long, SSelector>.Empty;
             rows = SDict<long, long>.Empty;
+            indexes = SDict<long, bool>.Empty;
         }
         public virtual STable Add(SColumn c)
         {
-            var t = new STable(this,cols.Add(c.uid,c),cpos.InsertAt(c,cpos.Length.Value),
+            var t = new STable(this,cols.Add(c.uid,c),cpos.Add(cpos.Length.Value,c),
                 names.Add(c.name,c));
             return t;
         }
@@ -1130,14 +1178,11 @@ namespace Shareable
             if (cols.Contains(n))
             {
                 var k = 0;
-                var cp = cpos;
+                var cp = SDict<int, Serialisable>.Empty;
                 var sc = cols.Lookup(n);
-                for(var b=cpos.First();b!=null;b=b.Next(),k++)
-                    if (b.Value is SColumn c && c.uid==n)
-                    {
-                        cp = cp.RemoveAt(k);
-                        break;
-                    }
+                for (var b = cpos.First(); b != null; b = b.Next(), k++)
+                    if (b.Value.val is SColumn c && c.uid != n)
+                        cp = cp.Add(k++, c);
                 return new STable(this, cols.Remove(n),cp,names.Remove(sc.name));
             }
             else
@@ -1152,33 +1197,53 @@ namespace Shareable
             : base(Types.STable, u)
         {
             name = n;
+            cols = SDict<long, SSelector>.Empty;
             rows = SDict<long, long>.Empty;
+            indexes = SDict<long, bool>.Empty;
         }
         public STable(STable t,string n) :base(t)
         {
             name = n;
+            cols = t.cols;
             rows = t.rows;
+            indexes = t.indexes;
         }
-        protected STable(STable t, SDict<long, SSelector> co, SList<Serialisable> cp, SDict<string, Serialisable> cn) :base(t,co,cp,cn)
+        protected STable(STable t, SDict<long, SSelector> co, SDict<int,Serialisable> cp, 
+            SDict<string, Serialisable> cn) :base(t,cp,cn)
         {
             name = t.name;
+            cols = co;
             rows = t.rows;
+            indexes = t.indexes;
         }
         protected STable(STable t,SDict<long,long> r) : base(t)
         {
             name = t.name;
+            cols = t.cols;
             rows = r;
+            indexes = t.indexes;
         }
         public STable(STable t,AStream f) :base(t,f)
         {
             name = t.name;
             f.PutString(name);
+            cols = t.cols;
             rows = t.rows;
+            indexes = t.indexes;
         }
         STable(Reader f) :base(Types.STable,f)
         {
             name = f.GetString();
+            cols = SDict<long, SSelector>.Empty;
             rows = SDict<long, long>.Empty;
+            indexes = SDict<long, bool>.Empty;
+        }
+        internal STable(STable t,SDict<long,bool> x) :base(t)
+        {
+            name = t.name;
+            cols = t.cols;
+            rows = t.rows;
+            indexes = x;
         }
         public static STable Get(SDatabase db,Reader f)
         {
@@ -1192,7 +1257,17 @@ namespace Shareable
         }
         public override RowSet RowSet(SDatabase db)
         {
+            for (var b = indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects.Lookup(b.Value.key);
+                if (x.references < 0)
+                    return new IndexRowSet(db, this, x, SList<Serialisable>.Empty);
+            }
             return new TableRowSet(db, this);
+        }
+        public override SRow Eval(RowBookmark rb)
+        {
+            return rb._ob;
         }
         public override bool Conflicts(Serialisable that)
         {
@@ -1208,7 +1283,7 @@ namespace Shareable
             base.Put(f);
             f.PutString(name);
         }
-        public override void Append(SDatabase db,StringBuilder sb)
+        public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append("Table "); sb.Append(name);
         }
@@ -1260,17 +1335,18 @@ namespace Shareable
         public readonly SString index;
         public readonly SString table;
         public readonly SBoolean primary;
-        public readonly SString references;
+        public readonly Serialisable references; // SString or Null
         public readonly SList<SSelector> cols;
-        public SCreateIndex(SString i,SString t,SBoolean b,SString r,SList<SSelector>c)
+        public SCreateIndex(SString i,SString t,SBoolean b,Serialisable r,SList<SSelector>c)
             : base(Types.SCreateIndex)
         { index = i; table = t; primary = b; references = r; cols = c; }
         public override void Put(StreamBase f)
         {
             base.Put(f);
             f.PutString(table.str);
-            f.WriteByte((byte)(((references?.str.Length??0) == 0) ? 2 : (primary.sbool == SBool.True) ? 0 : 1));
-            f.PutString(references?.str??"");
+            var refer = references as SString;
+            f.WriteByte((byte)(((refer?.str.Length??0) == 0) ? 2 : (primary.sbool == SBool.True) ? 0 : 1));
+            f.PutString(refer?.str??"");
             f.PutInt(cols.Length);
             for (var b = cols.First(); b != null; b = b.Next())
                 f.PutString(b.Value.name);
@@ -1283,9 +1359,10 @@ namespace Shareable
             sb.Append("index ");
             sb.Append(index.str); sb.Append(" for ");
             sb.Append(table.str);
-            if (references.str.Length>0)
+            var refer = references as SString;
+            if (refer?.str.Length>0)
             {
-                sb.Append("references ");sb.Append(references.str); 
+                sb.Append("references ");sb.Append(refer?.str); 
             }
             sb.Append('(');
             var cm = "";
@@ -1309,7 +1386,7 @@ namespace Shareable
         public SysTable(string n) : base(n, --_uid)
         {
         }
-        SysTable(SysTable t, SDict<long, SSelector> c, SList<Serialisable> p, SDict<string, Serialisable> n)
+        SysTable(SysTable t, SDict<long, SSelector> c, SDict<int,Serialisable> p, SDict<string, Serialisable> n)
             : base(t, c, p, n)
         {
         }
@@ -1317,7 +1394,7 @@ namespace Shareable
         {
             var st = new SysTable(name);
             for (var i = 0; i < ss.Length; i++)
-                st = st.Add(new SColumn(ss[i].key, ss[i].val)) as SysTable;
+                st = (SysTable)st.Add(new SColumn(ss[i].key, ss[i].val));
             system = system.Add(st.name, st);
         }
         static SysTable()
@@ -1333,12 +1410,12 @@ namespace Shareable
         }
         public override STable Add(SColumn c)
         {
-            return new SysTable(this, cols.Add(c.uid, c), cpos.InsertAt(c, cpos.Length.Value),
+            return new SysTable(this, cols.Add(c.uid, c), cpos.Add(cpos.Length.Value,c),
                 names.Add(c.name, c));
         }
         SysTable Add(string n, Types t)
         {
-            return Add(new SysColumn(n, t)) as SysTable;
+            return (SysTable)Add(new SysColumn(n, t));
         }
         public override RowSet RowSet(SDatabase db)
         {
@@ -1378,10 +1455,6 @@ namespace Shareable
         {
             base.Put(f);
             f.PutString(name);
-        }
-        internal override SQuery Analyse(SQuery q, int i, SDict<string, Serialisable> nms)
-        {
-            return new SQuery(q,q.cols.Add(uid, this),q.cpos.InsertAt(this, i),q.names.Add(name, this));
         }
         internal override Serialisable Lookup(SDict<string, Serialisable> nms)
         {
@@ -1456,7 +1529,16 @@ namespace Shareable
         }
         public override Serialisable Eval(RowBookmark rs)
         {
-            return (rs._ob as SRow)?[name];
+            if (rs._ob.rec is SRecord rec)
+            {
+                var tb = (STable)rs._rs._db.objects.Lookup(rec.table);
+                return rec.fields.Lookup(
+                    ((SColumn)(tb.names.Lookup(name) ??
+                    throw new Exception("no column " + name))).uid) ??
+                    Null;
+            }
+            return rs._ob[name] ??
+                        throw new Exception("no column " + name);
         }
         public override string ToString()
         {
@@ -1671,7 +1753,7 @@ namespace Shareable
             for (var i = 0; i < n; i++)
             {
                 var nm = f.GetString();
-                c = c.InsertAt(new SColumn(null, nm, (Types)f.ReadByte(), 0),i);
+                c = c.InsertAt(new SColumn(nm, (Types)f.ReadByte(), 0),i);
             }
             cols = c;
             viewdef = f.GetString();
@@ -1722,7 +1804,7 @@ namespace Shareable
             var tb = (STable)tr.names.Lookup(this.tb); 
             var n = cols.Length; // # named cols
             var cs = SList<long>.Empty;
-            Exception ex = null;
+            Exception? ex = null;
             var i = 0;
             for (var b=cols.First();b!=null;b=b.Next())
             {
@@ -1739,10 +1821,10 @@ namespace Shareable
                 var f = SDict<long, Serialisable>.Empty;
                 var c = svs.vals;
                 if (n == 0)
-                    for (var b = tb.cpos; b.Length != 0; b = b.next, c = c.next)
-                        f = f.Add((b.element as SSelector).uid, c.element);
+                    for (var b = tb.cpos.First(); c.Length!=0 && b!=null; b = b.Next(), c = c.next) // not null
+                        f = f.Add(((SSelector)b.Value.val).uid, c.element);
                 else
-                    for (var b = cs; b.Length != 0; b = b.next, c = c.next)
+                    for (var b = cs; c.Length!=0 && b.Length != 0; b = b.next, c = c.next) // not null
                         f = f.Add(b.element, c.element);
                 tr = tr.Add(new SRecord(tr, tb.uid, f));
             }
@@ -1756,7 +1838,7 @@ namespace Shareable
             var n = f.GetInt();
             var c = SList<SSelector>.Empty;
             for (var i = 0; i < n; i++)
-                c = c.InsertAt(f._Get(db) as SSelector, i);
+                c = c.InsertAt((SSelector)f._Get(db), i);
             return new SInsertStatement(t, c, f._Get(db));
         }
         public override void Put(StreamBase f)
@@ -1851,11 +1933,15 @@ namespace Shareable
         {
             return new SRecord(d,f);
         }
-        public override void Append(SDatabase db, StringBuilder sb)
+        public override void Append(SDatabase? db, StringBuilder sb)
         {
-            sb.Append("{_id:"); sb.Append(Defpos);
+            sb.Append("{");
+            if (Defpos<STransaction._uid)
+            {
+                sb.Append("_id:"); sb.Append(Defpos); sb.Append(",");
+            }
             var tb = db?.objects.Lookup(table) as STable;
-            sb.Append(",_table:");
+            sb.Append("_table:");
             sb.Append('"'); sb.Append(tb?.name ?? ("" + table)); sb.Append('"');
             for (var b = fields.First(); b != null; b = b.Next())
             {
@@ -1869,9 +1955,7 @@ namespace Shareable
         public bool Matches(RowBookmark rb,SList<Serialisable> wh)
         {
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.Value is SExpression x && x.op==SExpression.Op.Eql &&
-                    x.left is SColumn sc && fields.Lookup(sc.uid) is Serialisable v
-                    && Eval(rb) is SBoolean e 
+                if (b.Value is SExpression x && x.Eval(rb) is SBoolean e 
                     && e.sbool!=SBool.True)
                     return false;
             return true;
@@ -1905,10 +1989,10 @@ namespace Shareable
         }
         public static void Obey(STransaction tr,Reader rdr)
         {
-            var qry = rdr._Get(tr) as SQuery;
+            var qry = (SQuery)rdr._Get(tr);
             var n = rdr.GetInt(); // # cols updated
             var f = SDict<long, Serialisable>.Empty;
-            Exception ex = null;
+            Exception? ex = null;
             for (var i = 0; i < n; i++)
             {
                 var cn = rdr.GetString();
@@ -1920,10 +2004,7 @@ namespace Shareable
             if (ex != null)
                 throw (ex);
             for (var b = qry.RowSet(tr).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
-            {
-                var rec = b._ob as SRecord;
-                tr = tr.Add(new SUpdate(tr, rec, f));
-            }
+                tr = tr.Add(new SUpdate(tr, b._ob.rec ?? throw new System.Exception("??"), f)); // not null
         }
         public override void Put(StreamBase f)
         {
@@ -1995,11 +2076,11 @@ namespace Shareable
         public SDeleteSearch(SQuery q) :base(Types.SDeleteSearch) { qry = q; }
         public static void Obey(STransaction tr,Reader rdr)
         {
-            var qry = rdr._Get(tr) as SQuery;
+            var qry = (SQuery)rdr._Get(tr);
             for (var b = qry.RowSet(tr).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
-                var rec = b._ob as SRecord;
-                tr = tr.Add(new SDelete(tr, rec.table, rec.uid));
+                var rc = b._ob.rec ?? throw new System.Exception("??");// not null
+                tr = tr.Add(new SDelete(tr, rc.table, rc.uid)); 
             }
         }
         public override void Put(StreamBase f)
@@ -2155,14 +2236,14 @@ namespace Shareable
         {
             if (cols.Length==0)
                 return SList<TreeInfo<long>>.Empty;
-            return Info(tb, cols.next).InsertAt(new TreeInfo<long>(
+            return Info(tb, cols.next).InsertAt(new TreeInfo<long>( // not null
                 tb.cols.Lookup(cols.element).uid, (cols.Length!=1 || !primary)?'A':'D', 'D'), 0);
         }
         SCList<Variant> Key(SRecord sr,SList<long> cols)
         {
             if (cols.Length == 0)
                 return SCList<Variant>.Empty;
-            return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next));
+            return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next)); // not null
         }
         public override string ToString()
         {
@@ -2220,13 +2301,13 @@ namespace Shareable
                 buf[wpos++] = b;
             }
         }
-        protected Buffer wbuf;
+        protected Buffer? wbuf = null;
         protected StreamBase() { }
         public abstract bool GetBuf(Buffer b);
         protected abstract void PutBuf(Buffer b);
         public override void WriteByte(byte value)
         {
-            wbuf.PutByte(value);
+            wbuf?.PutByte(value);
         }
         public void PutInt(int? n)
         {
@@ -2305,11 +2386,12 @@ namespace Shareable
         public Serialisable _Get(SDatabase d)
         {
             Types tp = (Types)ReadByte();
-            Serialisable s = null;
+            Serialisable s;
             switch (tp)
             {
                 case Types.Serialisable: s = Serialisable.Get(this); break;
                 case Types.STimestamp: s = STimestamp.Get(this); break;
+                case Types.SBigInt:
                 case Types.SInteger: s = SInteger.Get(this); break;
                 case Types.SNumeric: s = SNumeric.Get(this); break;
                 case Types.SString: s = SString.Get(this); break;
@@ -2325,9 +2407,14 @@ namespace Shareable
                 case Types.SAlter: s = SAlter.Get(this); break;
                 case Types.SDrop: s = SDrop.Get(this); break;
                 case Types.SIndex: s = SIndex.Get(d, this); break;
-                case Types.SSearch: s = SSearch.Get(this); break;
+                case Types.SSearch: s = SSearch.Get(d,this); break;
                 case Types.SSelect: s = SSelectStatement.Get(d, this); break;
                 case Types.SValues: s = SValues.Get(d, this); break;
+                case Types.SExpression: s = SExpression.Get(d, this); break;
+                case Types.SFunction: s = SFunction.Get(d, this); break;
+                case Types.SOrder: s = SOrder.Get(d, this); break;
+                case Types.SInPredicate: s = SInPredicate.Get(d, this); break;
+                default: s = Serialisable.Null; break;
             }
             return s;
         }
@@ -2379,7 +2466,7 @@ namespace Shareable
         internal Stream file;
         long wposition = 0;
         public long length = 0;
-        internal SDict<long, long> uids = null; // used for movement of SDbObjects
+        internal SDict<long, long> uids = SDict<long,long>.Empty; // used for movement of SDbObjects
         public AStream(string fn)
         {
             filename = fn;
@@ -2483,7 +2570,8 @@ namespace Shareable
 
         public override void Flush()
         {
-            PutBuf(wbuf);
+            if (wbuf!=null)
+                PutBuf(wbuf);
         }
 
         public override int Read(byte[] buffer, int offset, int count)

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+#nullable enable
 namespace Shareable
 {
     /// <summary>
@@ -16,7 +16,7 @@ namespace Shareable
         {
             public readonly TreeInfo<K> info;
             public readonly Variants variant;
-            internal SITree(TreeInfo<K> ti,Variants vt) : base((SBucket<Variant,Variant>)null)
+            internal SITree(TreeInfo<K> ti,Variants vt) : base((SBucket<Variant,Variant>?)null)
             {
                 info = ti; variant = vt;
             }
@@ -29,13 +29,15 @@ namespace Shareable
                 : this(ti, vt, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v))) { }
             internal SITree Update(Variant k, Variant v)
             {
+                if (root == null)
+                    return (SITree)Empty;
                 return new SITree(info, variant, root.Update(k, v));
             }
-            public Bookmark<SSlot<Variant, Variant>> PositionAt(Variant k)
+            public Bookmark<SSlot<Variant, Variant>>? PositionAt(Variant k)
             {
                 if (k?.ob == null)
                     return First();
-                SBookmark<Variant, Variant> bmk = null;
+                SBookmark<Variant, Variant>? bmk = null;
                 var cb = root;
                 while (cb != null)
                 {
@@ -49,9 +51,9 @@ namespace Shareable
                         cb = inr.gtr;
                     }
                     else
-                        cb = cb.Slot(bpos).val as SBucket<Variant, Variant>;
+                        cb = (SBucket<Variant, Variant>)(cb.Slot(bpos).val ?? throw new System.Exception("??"));
                 }
-                return new SDictBookmark<Variant, Variant>(bmk);
+                return (bmk==null)?null:new SDictBookmark<Variant, Variant>(bmk);
             }
             public override SDict<Variant, Variant> Add(Variant k, Variant v)
             {
@@ -92,13 +94,13 @@ namespace Shareable
                         new Variant(Variants.Partial, new SDict<long, bool>(v, true))) :
                     new SITree(e, e.asc?Variants.Ascending:Variants.Descending,ke, new Variant(v))) :
                 new SITree(e, Variants.Compound, ke,
-                    new Variant(Variants.Compound, new SMTree<K>(ti.next, k.next, v)));
+                    new Variant(Variants.Compound, new SMTree<K>(ti.next, k.next, v))); //these are not null
         }
-        public override Bookmark<SSlot<SCList<Variant>,long>> First()
+        public override Bookmark<SSlot<SCList<Variant>,long>>? First()
         {
             return MTreeBookmark<K>.New(this);
         }
-        public MTreeBookmark<K> PositionAt(SCList<Variant> k)
+        public MTreeBookmark<K>? PositionAt(SCList<Variant>? k)
         {
             return MTreeBookmark<K>.New(this, k);
         }
@@ -108,7 +110,7 @@ namespace Shareable
                 Length != 0 :
                 (_impl?.Lookup(k.element) is Variant v) ?
                     ((v.variant == Variants.Compound) ?
-                        ((SMTree<K>)v.ob).Contains((SCList<Variant>)k.next) :
+                        ((SMTree<K>)v.ob).Contains((SCList<Variant>)k.next) : // not null
                         true) :
                     false;
         }
@@ -126,7 +128,7 @@ namespace Shareable
                     tb = _info.element.onNullKey;
                     return this;
                 }
-                k = new SCList<Variant>(new Variant(0),null);
+                k = SCList<Variant>.Empty;
             }
             if (Contains(k) && _info.element.onDuplicate != TreeBehaviour.Allow)
             {
@@ -138,7 +140,7 @@ namespace Shareable
                 tb = TreeBehaviour.Allow;
                 return new SMTree<K>(_info, k, v);
             }
-            Variant nv = null;
+            Variant nv;
             SITree st = _impl;
             if (st.Contains(k.element))
             {
@@ -147,14 +149,14 @@ namespace Shareable
                 {
                     case Variants.Compound:
                         {
-                            var mt = tv.ob as SMTree<K>;
-                            mt = mt.Add(k.next as SCList<Variant>, v) as SMTree<K>;
+                            var mt = (SMTree<K>)tv.ob;
+                            mt = mt.Add((SCList<Variant>)k.next, v); // not null
                             nv = new Variant(Variants.Compound,mt); // care: immutable
                             break;
                         }
                     case Variants.Partial:
                         {
-                            var bt = tv.ob as SDict<long, bool>;
+                            var bt = (SDict<long, bool>)tv.ob;
                             bt = bt.Add(v, true);
                             nv = new Variant(Variants.Partial,bt); // care: immutable
                             break;
@@ -170,7 +172,7 @@ namespace Shareable
                 {
                     case Variants.Compound:
                         {
-                            var mt = new SMTree<K>(_info.next, k.next as SCList<Variant>, v);
+                            var mt = new SMTree<K>(_info.next, (SCList<Variant>)k.next, v); // these are not null
                             nv = new Variant(Variants.Compound,mt);
                             break;
                         }
@@ -186,8 +188,11 @@ namespace Shareable
                             goto case Variants.Partial;
                         nv = new Variant(v);
                         break;
+                    default: // assure VS that nv has been assigned!
+                        nv = new Variant(0);
+                        break;
                 }
-                st = _impl.Add(k.element, nv) as SITree;
+                st = (SITree)_impl.Add(k.element, nv); 
             }
             tb = TreeBehaviour.Allow;
             return new SMTree<K>(_info, st, Length.Value + 1);
@@ -209,25 +214,25 @@ namespace Shareable
             {
                 case Variants.Compound:
                     {
-                        var mt = tv.ob as SMTree<K>;
+                        var mt = (SMTree<K>)tv.ob;
                         var c = mt.Length;
-                        mt = mt.Remove(k.next as SCList<Variant>,p) as SMTree<K>;
+                        mt = mt.Remove((SCList<Variant>)k.next,p) as SMTree<K>; // not null
                         nc -= c - mt.Length;
                         if (mt.Length == 0)
-                            st = st.Remove(k0) as SITree;
+                            st = (SITree)st.Remove(k0);
                         else
                             st = st.Update(k0, new Variant(Variants.Compound, mt));
                         break;
                     }
                 case Variants.Partial:
                     {
-                        var bt = tv.ob as SDict<long, bool>;
+                        var bt = (SDict<long, bool>)tv.ob;
                         if (!bt.Contains(p))
                             return this;
                         nc--;
                         bt = bt.Remove(p);
                         if (bt.Length == 0)
-                            st = st.Remove(k0) as SITree;
+                            st = (SITree)st.Remove(k0);
                         else
                             st = st.Update(k0, new Variant(Variants.Partial, bt));
                         break;
@@ -235,7 +240,7 @@ namespace Shareable
                 case Variants.Ascending:
                 case Variants.Descending:
                     nc--;
-                    st = st.Remove(k0) as SITree;
+                    st = (SITree)st.Remove(k0);
                     break;
             }
             return new SMTree<K>(_info, st, nc.Value);
@@ -252,60 +257,64 @@ namespace Shareable
             {
                 case Variants.Compound:
                     {
-                        var mt = tv.ob as SMTree<K>;
+                        var mt = (SMTree<K>)tv.ob;
                         var c = mt.Length;
-                        mt = mt.Remove(k.next as SCList<Variant>) as SMTree<K>;
+                        mt = mt.Remove((SCList<Variant>)k.next); // not null
                         nc -= c - mt.Length;
                         if (mt.Length == 0)
-                            st = st.Remove(k0) as SITree;
+                            st = (SITree)st.Remove(k0);
                         else
                             st = st.Update(k0, new Variant(Variants.Compound,mt));
                         break;
                     }
                 case Variants.Partial:
                     {
-                        var bt = tv.ob as SDict<long,bool>;
+                        var bt = (SDict<long,bool>)tv.ob;
                         nc -= bt.Length;
-                        st = st.Remove(k0) as SITree;
+                        st = (SITree)st.Remove(k0);
                         break;
                     }
                 case Variants.Ascending:
                 case Variants.Descending:
                     nc--;
-                    st = st.Remove(k0) as SITree;
+                    st = (SITree)st.Remove(k0);
                     break;
             }
             return new SMTree<K>(_info, st, nc.Value);
         }
         public int CompareTo(object obj)
         {
-            var that = obj as SMTree<K>;
+            var that = (SMTree<K>)obj;
             if (that == null || that.Length == 0)
-                return 1;
-            return First().Value.key.CompareTo(that.First().Value.key);
+                return (Length == 0) ? 0 : 1;
+            if (Length == 0)
+                return -1;
+            var a = First() ?? throw new System.Exception("??");
+            var b = that.First() ?? throw new System.Exception("??");
+            return a.Value.key.CompareTo(b.Value.key); // not null
         }
     }
     public class MTreeBookmark<K> :Bookmark<SSlot<SCList<Variant>,long>> where K:IComparable
     {
         readonly SDictBookmark<Variant, Variant> _outer;
         internal readonly SList<TreeInfo<K>> _info;
-        internal readonly MTreeBookmark<K> _inner;
-        readonly Bookmark<SSlot<long, bool>> _pmk;
+        internal readonly MTreeBookmark<K>? _inner;
+        readonly Bookmark<SSlot<long, bool>>? _pmk;
         internal SCList<Variant> _filter;
 
         MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo<K>> info,
-            MTreeBookmark<K> inner, Bookmark<SSlot<long, bool>> pmk,
-            int pos, SCList<Variant> key = null) : base(pos)
+            MTreeBookmark<K>? inner, Bookmark<SSlot<long, bool>>? pmk,
+            int pos, SCList<Variant>? key = null) : base(pos)
         {
             _outer = outer; _info = info;
-            _inner = inner; _pmk = pmk; _filter = key;
+            _inner = inner; _pmk = pmk; _filter = key??SCList<Variant>.Empty;
         }
         /// <summary>
         /// Implementation of mt.First()
         /// </summary>
         /// <param name="mt"></param>
         /// <returns></returns>
-        public static MTreeBookmark<K> New(SMTree<K> mt)
+        public static MTreeBookmark<K>? New(SMTree<K> mt)
         {
             for (var outer = mt._impl?.First() as SDictBookmark<Variant, Variant>; outer != null; outer = outer.Next() as SDictBookmark<Variant, Variant>)
             {
@@ -333,7 +342,7 @@ namespace Shareable
         /// <param name="mt"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        public static MTreeBookmark<K> New(SMTree<K> mt, SCList<Variant> key)
+        public static MTreeBookmark<K>? New(SMTree<K> mt, SCList<Variant>? key)
         {
             if (key == null || key.Length == 0)
                 return New(mt);
@@ -344,7 +353,7 @@ namespace Shareable
             switch (ov.variant)
             {
                 case Variants.Compound:
-                    if ((ov.ob as SMTree<K>)?.PositionAt(key.next as SCList<Variant>) is MTreeBookmark<K> inner)
+                    if ((ov.ob as SMTree<K>)?.PositionAt((SCList<Variant>)key.next) is MTreeBookmark<K> inner) // next not null
                         return new MTreeBookmark<K>(outer, mt._info, inner, null, 0, key);
                     break;
                 case Variants.Partial:
@@ -361,9 +370,7 @@ namespace Shareable
         }
         public SCList<Variant> key()
         {
-            if (_outer == null)
-                return null;
-            return new SCList<Variant>(_outer.key, _inner?.key()??SCList<Variant>.Empty);
+            return new SCList<Variant>(_outer.key, _inner?.key()??SCList<Variant>.Empty); 
         }
         public long value()
         {
@@ -374,7 +381,7 @@ namespace Shareable
         {
             return db.Get(value());
         }
-        public override Bookmark<SSlot<SCList<Variant>,long>> Next()
+        public override Bookmark<SSlot<SCList<Variant>,long>>? Next()
         {
             var inner = _inner;
             var outer = _outer;
@@ -397,14 +404,18 @@ namespace Shareable
                 var h = _filter?.element;
                 if (h != null)
                     return null;
-                outer = outer.Next() as SDictBookmark<Variant,Variant>;
-                if (outer == null)
+                var ou = outer.Next();
+                if (ou == null)
                     return null;
+                else
+                    outer = (SDictBookmark<Variant,Variant>)ou;
                 var oval = outer.val;
                 switch (oval.variant)
                 {
                     case Variants.Compound:
-                        inner = ((SMTree<K>)oval.ob).PositionAt((SCList<Variant>)_filter?.next);
+                        var t = (SMTree<K>)oval.ob;
+                        inner = (_filter.Length != 0) ? t.PositionAt((SCList<Variant>)_filter.next) : // ok
+                            (MTreeBookmark<K>?)t.First();
                         if (inner != null)
                             goto done;
                         break;

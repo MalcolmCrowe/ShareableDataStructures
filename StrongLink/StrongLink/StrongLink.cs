@@ -5,7 +5,7 @@ using System.Threading;
 using System.Net;
 using System.Net.Sockets;
 using Shareable;
-
+#nullable enable
 namespace StrongLink
 {
     public enum IndexType { Primary =0, Unique=1, Reference=2 };
@@ -15,7 +15,7 @@ namespace StrongLink
         public bool inTransaction = false;
         public StrongConnect(string host,int port,string fn)
         {
-            Socket socket = null;
+            Socket? socket = null;
             try
             {
                 IPEndPoint ep;
@@ -67,7 +67,7 @@ namespace StrongLink
             }
             var b = asy.Receive();
         }
-        public void CreateIndex(string tn,IndexType t,string rt,params string[] key)
+        public void CreateIndex(string tn,IndexType t,string? rt,params string[] key)
         {
             asy.Write(Types.SCreateIndex);
             asy.PutString(tn);
@@ -188,7 +188,7 @@ namespace StrongLink
     /// </summary>
     class ClientStream : StreamBase
     {
-        StrongConnect connect = null;
+        StrongConnect connect;
         internal Socket client;
         internal int rx = 0;
         internal Reader rbuf;
@@ -239,6 +239,8 @@ namespace StrongLink
         }
         public Types Receive()
         {
+            if (wbuf == null)
+                return Types.Serialisable; // won't occur
             if (wbuf.wpos > 2)
                 Flush();
             return (Types)rbuf.ReadByte();
@@ -261,6 +263,8 @@ namespace StrongLink
         {
             rbuf.pos = 2;
             rbuf.buf.len = 0;
+            if (wbuf == null)
+                return;
             // now always send bSize bytes (not wcount)
             wbuf.wpos -= 2;
             wbuf.buf[0] = (byte)(wbuf.wpos >> 7);

@@ -1,4 +1,5 @@
-﻿/// <summary>
+﻿#nullable enable
+/// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// http://shareabledata.org 
 /// This is free-to-use software 

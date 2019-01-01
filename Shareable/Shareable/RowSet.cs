@@ -1,4 +1,5 @@
-﻿namespace Shareable
+﻿#nullable enable
+namespace Shareable
 {
     /// <summary>
     /// In the server, a rowSet is a Shareable(Serialisable),
@@ -22,8 +23,8 @@
     public abstract class RowBookmark : Bookmark<Serialisable>
     {
         public readonly RowSet _rs;
-        public readonly Serialisable _ob;
-        protected RowBookmark(RowSet rs, Serialisable ob, int p) : base(p)
+        public readonly SRow _ob;
+        protected RowBookmark(RowSet rs, SRow ob, int p) : base(p)
         {
             _rs = rs; _ob = ob;
         }
@@ -45,7 +46,7 @@
                 r = r.Add((SRow)((RowBookmark)b)._ob, true);
             rows = r;
         }
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return DistinctRowBookmark.New(this);
         }
@@ -56,12 +57,12 @@
             DistinctRowBookmark(DistinctRowSet drs,Bookmark<SSlot<SRow,bool>> bmk,int pos) 
                 : base(drs,bmk.Value.key,pos)
             { _drs = drs; _bmk = bmk; }
-            internal static DistinctRowBookmark New(DistinctRowSet drs)
+            internal static DistinctRowBookmark? New(DistinctRowSet drs)
             {
                 return (drs.rows.First() is Bookmark<SSlot<SRow, bool>> rb) ?
                     new DistinctRowBookmark(drs, rb, 0) : null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 return (_bmk.Next() is Bookmark<SSlot<SRow,bool>> rb)?
                     new DistinctRowBookmark(_drs,rb,Position+1):null;
@@ -72,15 +73,16 @@
     {
         public readonly RowSet _sce;
         public readonly SMTree<Serialisable> _tree;
-        public readonly SDict<int, Serialisable> _rows;
+        public readonly SDict<int, SRow> _rows;
         public OrderedRowSet(RowSet sce,SSelectStatement sel) :base(sce._db,sel,sce.Length)
         {
+            _sce = sce;
             var ti = SList<TreeInfo<Serialisable>>.Empty;
             int n = 0;
             for (var b = sel.order.First(); b != null; b = b.Next())
                 ti = ti.InsertAt(new TreeInfo<Serialisable>(b.Value, 'A', 'D',!b.Value.desc), n++);
             var t = new SMTree<Serialisable>(ti);
-            var r = SDict<int, Serialisable>.Empty;
+            var r = SDict<int, SRow>.Empty;
             int m = 0;
             for (var b = sce.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
@@ -94,7 +96,7 @@
             _tree = t;
             _rows = r;
         }
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return OrderedBookmark.New(this);
         }
@@ -107,12 +109,12 @@
             {
                 _ors = ors; _bmk = bmk;
             }
-            internal static OrderedBookmark New(OrderedRowSet ors)
+            internal static OrderedBookmark? New(OrderedRowSet ors)
             {
                 return (ors._tree.First() is MTreeBookmark<Serialisable> rb) ? 
                     new OrderedBookmark(ors, rb, 0) : null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 return (_bmk.Next() is MTreeBookmark<Serialisable> rb) ?
                     new OrderedBookmark(_ors, rb, Position+1) : null;
@@ -127,7 +129,7 @@
             _tb = t;
         }
 
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return TableRowBookmark.New(this);
         }
@@ -136,16 +138,16 @@
             public readonly TableRowSet _trs;
             public Bookmark<SSlot<long, long>> _bmk;
             protected TableRowBookmark(TableRowSet trs,Bookmark<SSlot<long,long>>bm,int p) 
-                :base(trs,trs._db.Get(bm.Value.val),p)
+                :base(trs,new SRow(trs._db,trs._db.Get(bm.Value.val)),p)
             {
                 _trs = trs; _bmk = bm;
             }
-            internal static TableRowBookmark New(TableRowSet trs)
+            internal static TableRowBookmark? New(TableRowSet trs)
             {
                 return (trs._tb.rows.First() is Bookmark<SSlot<long, long>> b) ?
                     new TableRowBookmark(trs, b, 0) : null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 return (_bmk.Next() is Bookmark<SSlot<long,long>> b)?
                     new TableRowBookmark(_trs,b,Position+1):null;
@@ -178,7 +180,7 @@
             _key = key;
             _unique = key.Length == _ix.cols.Length;
         }
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return IndexRowBookmark.New(this);
         }
@@ -186,30 +188,34 @@
         {
             public readonly IndexRowSet _irs;
             public readonly MTreeBookmark<long> _mbm;
-            protected IndexRowBookmark(IndexRowSet irs,Serialisable ob,MTreeBookmark<long> mbm,int p) :base(irs,ob,p)
+            protected IndexRowBookmark(IndexRowSet irs,SRow ob,MTreeBookmark<long> mbm,int p) :base(irs,ob,p)
             {
                 _irs = irs; _mbm = mbm;
             }
-            internal static IndexRowBookmark New(IndexRowSet irs)
+            internal static IndexRowBookmark? New(IndexRowSet irs)
             {
-                for (var b = irs._ix.rows.PositionAt(irs._key); b != null; b = b.Next() as MTreeBookmark<long>)
+                var k = irs._key;
+                var b = (MTreeBookmark<long>?)((k.Length.Value > 0) ? irs._ix.rows.PositionAt(k) 
+                    : irs._ix.rows.First());
+                for (;b != null; b = b.Next() as MTreeBookmark<long>)
                 {
-                    var r = irs._db.Get(b.Value.val);
-                    var rb = new IndexRowBookmark(irs, r, b, 0);
-                    if (r.Matches(rb, irs._wh))
+                    var rc = irs._db.Get(b.Value.val);
+                    var rb = new IndexRowBookmark(irs, new SRow(irs._db, rc), b, 0);
+                    if (rc.Matches(rb, irs._wh))
                         return rb;
                 }
                 return null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 if (_irs._unique)
                     return null;
                 for (var b = _mbm.Next(); b != null; b = b.Next())
                 {
-                    var r = _irs._db.Get(b.Value.val);
-                    var rb = new IndexRowBookmark(_irs, r, b as MTreeBookmark<long>, Position + 1);
-                    if (r.Matches(rb, _irs._wh))
+                    var rc = _irs._db.Get(b.Value.val);
+                    var rb = new IndexRowBookmark(_irs, new SRow(_irs._db,rc), 
+                        (MTreeBookmark<long>)b, Position + 1);
+                    if (rc.Matches(rb, _irs._wh))
                         return rb;
                 }
                 return null;
@@ -225,9 +231,9 @@
             _sch = sc;
             _sce = (_sch.sce is STable tb && db.GetPrimaryIndex(tb.uid) is SIndex ix) ?
                 new IndexRowSet(db, tb, ix, _sch.where) :
-                _sch.sce.RowSet(db);
+                _sch.sce?.RowSet(db) ?? throw new System.Exception("??");
         }
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return SearchRowBookmark.New(this);
         }
@@ -240,22 +246,22 @@
             {
                 _sch = sr; _bmk = bm;
             }
-            internal static SearchRowBookmark New(SearchRowSet rs)
+            internal static SearchRowBookmark? New(SearchRowSet rs)
             {
-                for (var b = rs.First(); b != null; b = b.Next())
+                for (var b = rs._sce.First(); b != null; b = b.Next())
                 {
                     var rb = new SearchRowBookmark(rs, (RowBookmark)b, 0);
-                    if (((SRecord)((RowBookmark)b)._ob).Matches(rb, rs._sch.where))
+                    if (((RowBookmark)b)._ob.rec?.Matches(rb, rs._sch.where)==true)
                         return rb;
                 }
                 return null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 for (var b = _bmk.Next(); b != null; b = b.Next())
                 {
                     var rb = new SearchRowBookmark(_sch, (RowBookmark)b, Position + 1);
-                    if (((SRecord)((RowBookmark)b)._ob).Matches(rb, _sch._sch.where))
+                    if (((RowBookmark)b)._ob.rec?.Matches(rb, _sch._sch.where)==true)
                         return rb;
                 }
                 return null;
@@ -264,13 +270,15 @@
     }
     public class SelectRowSet : RowSet
     {
+        public readonly SSelectStatement _sel;
         public readonly RowSet _source;
         public SelectRowSet(SDatabase db,SSelectStatement sel):base(db,sel,null)
         {
+            _sel = sel;
             _source = sel.qry.RowSet(db);
         }
 
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             return SelectRowBookmark.New(this);
         }
@@ -279,31 +287,32 @@
             public readonly SelectRowSet _srs;
             public readonly RowBookmark _bmk;
             SelectRowBookmark(SelectRowSet rs,RowBookmark bmk,int p)
-                :base(rs,_Row(rs,bmk._ob),p)
+                :base(rs,rs._qry.Eval(bmk),p)
             {
                 _srs = rs; _bmk = bmk;
             }
-            internal static SelectRowBookmark New(SelectRowSet rs)
+            internal static SelectRowBookmark? New(SelectRowSet rs)
             {
-                return new SelectRowBookmark(rs, rs._source.First() as RowBookmark, 0);
-            }
-            public override Bookmark<Serialisable> Next()
-            {
-                return (_bmk.Next() is RowBookmark bmk) ?
-                    new SelectRowBookmark(_srs, bmk, Position + 1) : null;
-            }
-            static SRow _Row(RowSet rs,Serialisable ob)
-            {
-                SRow r = null;
-                switch (ob.type)
+                for (var b = rs._source.First() as RowBookmark;b!=null;b=b.Next() as RowBookmark )
                 {
-                    case Types.SRow: r = ob as SRow; break;
-                    case Types.SRecord: r = new SRow(rs._db, ob as SRecord); break;
-                    default: throw new System.Exception("Was not a row");
+                    var rb = new SelectRowBookmark(rs, b, 0);
+                    if (((SRow)rb._ob).cols.Length.Value!=0)
+                        return rb;
+                    if (rs._sel.aggregates) // aggregates collapse the rowset
+                        break;
                 }
-                if (rs._qry.cpos.Length.Value == 0)
-                    return r;
-                return new SRow(rs._qry, r);
+                return null;
+            }
+            public override Bookmark<Serialisable>? Next()
+            {
+                if (!_srs._sel.aggregates) // aggregates collapse the rowset
+                    for (var b = _bmk.Next() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+                    {
+                        var rb = new SelectRowBookmark(_srs, b, Position + 1);
+                        if (((SRow)rb._ob).cols.Length.Value != 0)
+                            return rb;
+                    }
+                return null;
             }
         }
     }
@@ -315,7 +324,7 @@
         {
             tb = t; fs = d.File();
         }
-        public override Bookmark<Serialisable> First()
+        public override Bookmark<Serialisable>? First()
         {
             switch (tb.name)
             {
@@ -324,13 +333,13 @@
             }
             return null;
         }
-        public SRow _Row(params object[] vals)
+        public SRow _Row(params Serialisable[] vals)
         {
             var r = new SRow();
             int j = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
-                if (b.Value is SSelector s)
-                    r = r.Add(s.name, Serialisable.New(((SColumn)b.Value).dataType, vals[j++]));
+                if (b.Value.val is SSelector s)
+                    r = r.Add(s.name, Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
             return r;
         }
         internal class LogBookmark : RowBookmark
@@ -339,19 +348,19 @@
             public readonly long _log;
             public readonly long _next;
             internal LogBookmark(SysRows rs, long lg, SDbObject ob, long nx, int p) 
-                : base(rs, rs._Row(ob.Uid(), // Uid
-                    (int)ob.type, //Type
-                    ob.ToString()), p)  // Desc
+                : base(rs, rs._Row(new SString(ob.Uid()), // Uid
+                    new SInteger((int)ob.type), //Type
+                    new SString(ob.ToString())), p)  // Desc
             {
                 _srs = rs;  _log = lg; _next = nx;
             }
-            internal static LogBookmark New(SysRows rs, long lg, int pos)
+            internal static LogBookmark? New(SysRows rs, long lg, int pos)
             {
                 var rdr = new Reader(rs.fs, lg);
                 return (rdr._Get(rs._db) is SDbObject ob) ?
                     new LogBookmark(rs, lg, ob, rdr.Position, pos) : null;
             }
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 return New((SysRows)_rs, _next, Position + 1);
             }
@@ -362,13 +371,13 @@
             public readonly long _log;
             public readonly long _next;
             internal TablesBookmark(SysRows rs, long lg, STable tb, long nx, int p)
-                : base(rs, rs._Row(tb.name, // Name
-                    tb.cols.Length, // Cols
-                    tb.rows.Length), p)  //Rows
+                : base(rs, rs._Row(new SString(tb.name), // Name
+                    new SInteger(tb.cpos.Length.Value), // Cols
+                    new SInteger(tb.rows.Length.Value)), p)  //Rows
             {
                 _srs = rs; _log = lg; _next = nx;
             }
-            internal static TablesBookmark New(SysRows rs, long lg, int pos)
+            internal static TablesBookmark? New(SysRows rs, long lg, int pos)
             {
                 var rdr = new Reader(rs.fs, lg);
                 for (var ob = rdr._Get(rs._db);ob!=null;ob = rdr._Get(rs._db))
@@ -379,7 +388,7 @@
                 return null;
             }
 
-            public override Bookmark<Serialisable> Next()
+            public override Bookmark<Serialisable>? Next()
             {
                 return New((SysRows)_rs, _next, Position + 1);
             }

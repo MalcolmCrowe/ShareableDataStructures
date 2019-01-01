@@ -1,4 +1,5 @@
-﻿/// <summary>
+﻿#nullable enable
+/// <summary>
 /// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// http://shareabledata.org 
 /// This is free-to-use software
@@ -44,7 +45,7 @@ namespace Shareable
                 a[i] = elements[i];
             return new SArray<T>(a);
         }
-        public override Bookmark<T> First()
+        public override Bookmark<T>? First() // ok
         {
             return (Length==0)? null : new SArrayBookmark<T>(this,0);
         }
@@ -53,7 +54,7 @@ namespace Shareable
     {
         internal readonly SArray<T> _a;
         internal SArrayBookmark(SArray<T> a, int p) : base(p) { _a = a; }
-        public override Bookmark<T> Next()
+        public override Bookmark<T>? Next() // ok
         {
             return (Position+1 >= _a.elements.Length) ? null 
                 : new SArrayBookmark<T>(_a, Position+1);

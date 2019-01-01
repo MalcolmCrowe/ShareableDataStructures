@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Text;
+#nullable enable
 
 namespace Shareable
 {
@@ -24,12 +25,12 @@ namespace Shareable
         /// using values in the range 8 to 32.
         /// </summary>
         public const int Size = 8;
-        public readonly SBucket<K, V> root;
-        protected SDict(SBucket<K,V> r):base(r?.total??0) { root = r; }
+        public readonly SBucket<K, V>? root;
+        protected SDict(SBucket<K,V>? r):base(r?.total??0) { root = r; }
         public SDict(K k, V v) : this(new SSlot<K, V>(k, v)) { }
         public SDict(params SSlot<K, V>[] pairs):base(pairs.Length)
         {
-            SBucket<K, V> r = null;
+            SBucket<K, V>? r = null;
             foreach (var p in pairs)
                 r = r?.Add(p.key, p.val)??new SLeaf<K,V>(new SSlot<K,V>(p.key,p.val));
             root = r;
@@ -74,7 +75,7 @@ namespace Shareable
         /// Start a traversal of the tree
         /// </summary>
         /// <returns>A bookmark for the first entry or null</returns>
-        public override Bookmark<SSlot<K, V>> First()
+        public override Bookmark<SSlot<K, V>>? First()
         {
             return (SBookmark<K, V>.Next(null, this) is SBookmark<K,V> b)?
                 new SDictBookmark<K, V>(b):null;
@@ -125,13 +126,14 @@ namespace Shareable
     public class SDictBookmark<K, V> : Bookmark<SSlot<K, V>> where K : IComparable
     {
         public readonly SBookmark<K, V> _bmk;
-        public override SSlot<K, V> Value => ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos];
+        public override SSlot<K, V> Value => ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos]; // ok
         internal SDictBookmark(SBookmark<K,V> bmk) :base(bmk.position()) { _bmk = bmk; }
         public K key => Value.key;
         public V val => Value.val;
-        public override Bookmark<SSlot<K, V>> Next()
+        public override Bookmark<SSlot<K, V>>? Next() // ok
         {
-            return (_bmk.Next() is SBookmark<K,V> b)? new SDictBookmark<K,V>(b):null;
+            var b = _bmk.Next();
+            return (b==null)? null:(Bookmark<SSlot<K,V>>)new SDictBookmark<K,V>(b);
         }
     }
     public class SSlot<K, V> where K : IComparable
@@ -168,9 +170,12 @@ namespace Shareable
         // API for internal housekeeping
         internal SBucket<K,V> Split() { return new SInner<K, V>(TopHalf(), total, LowHalf()); }
         internal abstract SBucket<K, V> TopHalf();
-        internal abstract SSlot<K,SBucket<K,V>> LowHalf();
-        internal abstract SSlot<K, object> Slot(int i);
-        internal abstract void Add(ArrayList ab);
+        internal abstract SSlot<K, SBucket<K, V>> LowHalf();
+        internal abstract SSlot<K, object?> Slot(int i);
+        internal virtual void Add(ArrayList ab)
+        {
+            throw new NotImplementedException();
+        }
         // Implementation of the IBucket interface
         public byte Count() { return count; }
         public int Total() { return total; }
@@ -186,12 +191,12 @@ namespace Shareable
     {
         public readonly SBucket<K, V> _bucket;
         public readonly int _bpos;
-        public readonly SBookmark<K, V> _parent;
-        public SBookmark(SBucket<K,V> b,int bp,SBookmark<K,V> n)
+        public readonly SBookmark<K, V>? _parent;
+        public SBookmark(SBucket<K,V> b,int bp,SBookmark<K,V>? n)
         {
             _bucket = b; _bpos = bp; _parent = n;
         }
-        public SBookmark<K,V> Next() { return Next(this); }
+        public SBookmark<K,V>? Next() { return Next(this); }
         public K Key { get { return _bucket.Slot(_bpos).key; } }
         public V Value { get { return (_bucket.Slot(_bpos).val is V v) ? v : default(V); } }
         /// <summary>
@@ -211,14 +216,14 @@ namespace Shareable
         /// <param name="stk"></param>
         /// <param name="tree"></param>
         /// <returns></returns>
-        public static SBookmark<K,V> Next(SBookmark<K,V> stk,SDict<K,V> tree=null)
+        public static SBookmark<K,V>? Next(SBookmark<K,V>? stk,SDict<K,V>? tree=null)
         {
-            SBucket<K, V> b;
-            SSlot<K,object> d;
+            SBucket<K, V>? b;
+            SSlot<K,object?> d;
             if (stk == null) // following Create or Reset
             {
                 // if Tree is empty return null
-                if (tree == null || tree.Length == 0)
+                if (tree == null || tree.root==null || tree.Length == 0)
                     return null;
                 // The first entry is root.slots[0] or below
                 stk = new SBookmark<K, V>(tree.root, 0, null);
@@ -248,7 +253,7 @@ namespace Shareable
                 if (stk._bpos == stk._bucket.count)
                 { // will only happen for a non-leaf
                     b = ((SInner<K, V>)stk._bucket).gtr;
-                    d = new SSlot<K,object>(default(K), null); // or compiler complains
+                    d = new SSlot<K,object?>(default(K), null); // or compiler complains
                 }
                 else // might be leaf or not
                 {
@@ -281,8 +286,8 @@ namespace Shareable
             for (var i = 0; i < count; i++)
                 slots[i] = s[i + low];
         }
-        internal override SSlot<K,object> Slot(int i)
-        {   return new SSlot<K,object>(slots[i].key,slots[i].val);  }
+        internal override SSlot<K,object?> Slot(int i)
+        {   return new SSlot<K,object?>(slots[i].key,slots[i].val);  }
         public override bool Contains(K k)
         {
             PositionFor(k, out bool b);
@@ -544,7 +549,7 @@ namespace Shareable
             // completely rebuild the current non-leaf node (too many cases to consider otherwise)
             // still two different cases depending on whether children are leaves
             int S = SDict<K, V>.Size;
-            SBucket<K, V> b, g = null;
+            SBucket<K, V>? b, g = null;
             var ab = new ArrayList();
             int i, j;
             for (j = 0; j < count; j++)
@@ -647,9 +652,9 @@ namespace Shareable
             return s;
         }
 
-        internal override SSlot<K,object> Slot(int i)
+        internal override SSlot<K,object?> Slot(int i)
         {
-            return new SSlot<K,object>(slots[i].key,slots[i].val);
+            return new SSlot<K,object?>(slots[i].key,slots[i].val);
         }
 
         internal override SBucket<K, V> TopHalf()

@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 #endif
 using System.Text;
-
+#nullable enable
 namespace StrongLink
 {
     /// <summary>
@@ -21,7 +21,7 @@ namespace StrongLink
 #if MONO1
         public ArrayList fields = new ArrayList();
 #else
-        public List<KeyValuePair<string, object>> fields = new List<KeyValuePair<string,object>>();
+        public List<KeyValuePair<string, object?>> fields = new List<KeyValuePair<string,object?>>();
 #endif
         public Document()
         { }
@@ -37,8 +37,8 @@ namespace StrongLink
             if (i != n)
                 throw new DocumentException("unparsed input at " + (i - 1));
         }
-        public object this[int i] => fields[i].Value;
-        public object this[string k]
+        public object? this[int i] => fields[i].Value;
+        public object? this[string k]
         {
             get {
 #if MONO1
@@ -54,7 +54,7 @@ namespace StrongLink
             {
                 fields.Add(new KeyValuePair
 #if !MONO1
-                    <string, object>
+                    <string, object?>
 #endif
                     (k, value));
             }
@@ -81,7 +81,7 @@ namespace StrongLink
         internal int Fields(string s, int i, int n)
         {
             ParseState state = ParseState.StartKey;
-            StringBuilder kb = null;
+            StringBuilder kb = new StringBuilder(); // zapped below
             var keyquote = true;
             while (i < n)
             {
@@ -128,7 +128,7 @@ namespace StrongLink
                             continue;
                         fields.Add(new KeyValuePair
 #if !MONO1
-                                <string, object>
+                                <string, object?>
 #endif
                                 (kb.ToString(), GetValue(s, n, ref i)));
                         state = ParseState.Comma;
@@ -166,14 +166,14 @@ namespace StrongLink
                 var key = Encoding.UTF8.GetString(b, s, c);
                 fields.Add(new KeyValuePair
 #if !MONO1
-                    <string, object>
+                    <string, object?>
 #endif
                     (key, GetValue(t, b, ref i)));
             }
         }
-        internal static object GetValue(byte t, byte[] b, ref int i)
+        internal static object? GetValue(byte t, byte[] b, ref int i)
         {
-            object tv = null;
+            object? tv = null;
             switch (t)
             {
                 case 1:
@@ -256,7 +256,7 @@ namespace StrongLink
             }
             return tv;
         }
-        static void Field(object v, StringBuilder sb)
+        static void Field(object? v, StringBuilder sb)
         {
             if (v == null)
                 sb.Append("null");
@@ -316,7 +316,7 @@ namespace StrongLink
             r[2] = (byte)((n >> 16) & 0xff);
             r[3] = (byte)((n >> 24) & 0xff);
         }
-        internal static byte BsonType(object v)
+        internal static byte BsonType(object? v)
         {
             if (v == null)
                 return 10;
@@ -341,8 +341,10 @@ namespace StrongLink
             else
                 return 6;
         }
-        internal static byte[] GetBytes(object v)
+        internal static byte[] GetBytes(object? v)
         {
+            if (v == null)
+                return new byte[0];
             switch (BsonType(v))
             {
                 case 1:
@@ -388,7 +390,7 @@ namespace StrongLink
                         SetLength(r);
                         var rb = new byte[r.Count];
                         for(var i=0;i<r.Count;i++)
-                            rb[i] = (byte)r[i];
+                            rb[i] = r[i];
                         return rb;
                     }
                 case 7:
@@ -446,17 +448,17 @@ namespace StrongLink
                 if (v != null)
                     fields.Add(new KeyValuePair
 #if !MONO1
-                    <string, object>
+                    <string, object?>
 #endif
                     (f.Name, v));
             }
         }
 #if !MONO1
-        public C[] Extract<C>(params string[] p) where C : new()
+        public C[]? Extract<C>(params string[] p) where C : new()
         {
             return Extract<C>(p, 0);
         }
-        internal C[] Extract<C>(string[] p, int off) where C : new()
+        internal C[]? Extract<C>(string[] p, int off) where C : new()
         {
             var r = new List<C>();
             if (off >= p.Length)
@@ -466,15 +468,16 @@ namespace StrongLink
                 {
                     if (e.Key == p[off])
                     {
-                        C[] s = null;
+                        C[]? s = null;
                         var g = e.Value as Document;
                         if (g != null)
                             s = g.Extract<C>(p, off + 1);
                         var h = e.Value as DocArray;
                         if (h != null)
                             s = h.Extract<C>(p, off + 1);
-                        foreach (var a in s)
-                            r.Add(a);
+                        if (s != null)
+                            foreach (var a in s)
+                                r.Add(a);
                     }
                 }
             return r.ToArray();
@@ -562,7 +565,9 @@ namespace StrongLink
                 switch (state)
                 {
                     case ParseState.StartValue:
-                        items.Add((Document)GetValue(s, n, ref i));
+                        var v = GetValue(s, n, ref i) as Document;
+                        if (v!=null)
+                            items.Add(v);
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
@@ -595,7 +600,9 @@ namespace StrongLink
                 var s = i;
                 while (i < off + n && b[i++] != 0)
                     c++;
-                items.Add((Document)Document.GetValue(t, b, ref i));
+                var v = Document.GetValue(t, b, ref i) as Document;
+                if (v!=null)
+                    items.Add(v);
             }
         }
         public byte[] ToBytes()
@@ -646,11 +653,13 @@ namespace StrongLink
         internal C[] Extract<C>(string[] p, int off) where C : new()
         {
             var r = new List<C>();
-            foreach(var e in items)
+            foreach (var e in items)
             {
                 var d = e as Document;
-                foreach (var a in d.Extract<C>(p, off))
-                    r.Add(a);
+                var s = d.Extract<C>(p, off);
+                if (s != null)
+                    foreach (var a in s)
+                        r.Add(a);
             }
             return r.ToArray();
         }
@@ -721,7 +730,7 @@ namespace StrongLink
     public class DocBase
     {
         public DocBase() { }
-        protected object GetValue(string s, int n, ref int i)
+        protected object? GetValue(string s, int n, ref int i)
         {
             if (i < n)
             {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+#nullable enable
 namespace Shareable
 {
     /// <summary>
@@ -12,7 +13,7 @@ namespace Shareable
         /// <summary>
         /// The radix-256 digits in the Integer
         /// </summary>
-		public readonly byte[] bytes = null; // high to low, first bit is sign bit
+		public readonly byte[] bytes; // high to low, first bit is sign bit
         /// <summary>
         /// A table of powers of 10 to start off the hp
         /// </summary>
@@ -1080,8 +1081,6 @@ namespace Shareable
         /// <returns>The string representation of this</returns>
 		public override string ToString()
 		{
-            if (mantissa == null)
-                return "";
 			string m = mantissa.ToString();
 			int n = m.Length;
 			if (scale==0)

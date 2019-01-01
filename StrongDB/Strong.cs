@@ -157,9 +157,9 @@ namespace StrongDB
                                 {
                                     var f = SDict<long, Serialisable>.Empty;
                                     if (n == 0)
-                                        for (var b = tb.cpos; b.Length != 0; b = b.next)
+                                        for (var b = tb.cpos.First(); b!= null; b = b.Next())
                                         {
-                                            if (b.element is SColumn sc)
+                                            if (b.Value.val is SColumn sc)
                                                 f = f.Add(sc.uid, rdr._Get(tr)); // serialsable values
                                         }
                                     else
@@ -305,6 +305,10 @@ namespace StrongDB
                         default:
                             throw new Exception("Protocol error");
                     }
+                }
+                catch (SocketException)
+                {
+                    return;
                 }
                 catch (Exception e)
                 {
