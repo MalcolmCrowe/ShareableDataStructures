@@ -47,7 +47,9 @@ namespace Shareable
             var ab = a.First();
             for (var cb = c.First();ab!=null && cb!=null;ab=ab.Next(),cb=cb.Next())
             {
-                var s = cb.Value.val.Lookup(source)??cb.Value.val;
+                var s = cb.Value.val;
+                if (source.Length!=0)
+                    s = cb.Value.val.Lookup(source);
                 cp = cp.Add(cb.Value.key, s);
                 cn = cn.Add(ab.Value.val, s);
             }
@@ -63,6 +65,10 @@ namespace Shareable
         {
             cpos = q.cpos;
             names = q.names;
+        }
+        public virtual Serialisable Lookup(string a)
+        {
+            return names.Lookup(a) ?? Null;
         }
         /// <summary>
         /// Construct the Rowset for the given SDatabase (may have changed since SQuery was built)
@@ -112,6 +118,12 @@ namespace Shareable
             f.PutInt(where.Length);
             for (var b=where.First();b!=null;b=b.Next())
                 b.Value.Put(f);
+        }
+        public override Serialisable Lookup(string a)
+        {
+            if (alias is SString ss && ss.str.CompareTo(a) == 0)
+                return sce;
+            return sce.Lookup(a);
         }
         public static SSearch Get(SDatabase d,Reader f)
         {
@@ -227,6 +239,8 @@ namespace Shareable
             RowSet r = new SelectRowSet(db,this);
             if (distinct)
                 r = new DistinctRowSet(r);
+            if (order.Length != 0)
+                r = new OrderedRowSet(r, this);
             return r;
         }
         public override SRow Eval(RowBookmark rb)
@@ -238,17 +252,15 @@ namespace Shareable
     }
     public class SOrder : Serialisable
     {
-        public readonly Serialisable corr;
-        public readonly SColumn col;
+        public readonly Serialisable col;
         public readonly bool desc;
-        public SOrder(Serialisable cr,SColumn co,bool d) :base(Types.SOrder)
+        public SOrder(Serialisable c,bool d) :base(Types.SOrder)
         {
-            corr = cr; col = co; desc = d;
+            col = c; desc = d;
         }
         protected SOrder(SDatabase db,Reader f) :base(Types.SOrder)
         {
-            corr = f._Get(db);
-            col = (SColumn)f._Get(db);
+            col = f._Get(db);
             desc = f.ReadByte() == 1;
         }
         public static SOrder Get(SDatabase db,Reader f)
@@ -257,7 +269,7 @@ namespace Shareable
         }
         public override void Put(StreamBase f)
         {
-            corr.Put(f);
+            base.Put(f);
             col.Put(f);
             f.WriteByte((byte)(desc ? 1 : 0));
         }

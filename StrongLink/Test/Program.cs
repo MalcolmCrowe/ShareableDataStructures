@@ -65,7 +65,7 @@ namespace Test
             conn.ExecuteNonQuery("create table AA(B integer,C string)");
             conn.ExecuteNonQuery("insert AA(B) values(17)");
             conn.ExecuteNonQuery("insert AA(C) values('BC')");
-            conn.ExecuteNonQuery("insert AA(C,B) values('GH',67)");
+            conn.ExecuteNonQuery("insert AA(C,B) values('GH',+67)");
             CheckResults(1,"select from AA", "[{B:17},{C:'BC'},{B:67,C:'GH'}]");
             CheckResults(2,"select B from AA", "[{B:17},{B:67}]");
             CheckResults(3,"select C as E from AA", "[{E:'BC'},{E:'GH'}]");
@@ -94,9 +94,9 @@ namespace Test
             conn.ExecuteNonQuery("create table b(c integer,d string)");
             conn.ExecuteNonQuery("create primary index bx for b(c)");
             conn.ExecuteNonQuery("insert b values(45,'DE')");
-            conn.ExecuteNonQuery("insert b values(23,'HC')");
-            CheckResults(1,"select from b", "[{c:23,d:'HC'},{c:45,d:'DE'}]");
-            CheckResults(2,"select from b where c=23", "[{c:23,d:'HC'}]");
+            conn.ExecuteNonQuery("insert b values(-23,'HC')");
+            CheckResults(1,"select from b", "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
+            CheckResults(2,"select from b where c=-23", "[{c:-23,d:'HC'}]");
             conn.Rollback();
             conn.BeginTransaction();
             conn.CreateTable("b",
@@ -104,8 +104,8 @@ namespace Test
                 new SColumn("d", Types.SString));
             conn.CreateIndex("b", IndexType.Primary, null, new string[] { "c" });
             conn.Insert("b", new string[0], new Serialisable[] { new SInteger(45), new SString("DE") },
-                new Serialisable[] { new SInteger(23), new SString("HC") });
-            CheckResults(new STable("b"), "[{c:23,d:'HC'},{c:45,d:'DE'}]");
+                new Serialisable[] { new SInteger(-23), new SString("HC") });
+            CheckResults(new STable("b"), "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
             conn.Rollback();
         }
         void Test4(int t)
@@ -140,13 +140,13 @@ namespace Test
             CheckResults(1,"select from a", "[{b:17,c:15},{b:23,c:6}]");
             CheckResults(2,"select b-3 as f,22 as g from a", "[{f:14,g:22},{f:20,g:22}]");
             CheckResults(3,"select (a.b) as f,(c) from a", "[{f:17,col2:15},{f:23,col2:6}]");
-            CheckResults(4,"select b,d.c from a d", "[{b:17,\"d.c\":15},{b:23,\"d.c\":6}]");
-            CheckResults(5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:(d:23,c:6}}]");
+            CheckResults(4,"select b+3,d.c from a d", "[{col1:20,\"d.c\":15},{col1:26,\"d.c\":6}]");
+        //    CheckResults(5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:(d:23,c:6}}]");
             CheckResults(6,"select from a order by c", "[{b:23,c:6},{b:17,c:15}]");
             CheckResults(7,"select from a order by b desc", "[{b:23,c:6},{b:17,c:15}]");
-            CheckResults(8,"select from a order by b+c desc", "[{b:17,c:15},{b:17,c:6}]");
-            CheckResults(9,"select count(b) from a", "[{col1:40}]");
-            CheckResults(10,"select min(c),min(b) from a", "[{col1:17,col2:6}]");
+            CheckResults(8,"select from a order by b+c desc", "[{b:17,c:15},{b:23,c:6}]");
+            CheckResults(9,"select sum(b) from a", "[{col1:40}]");
+            CheckResults(10,"select max(c),min(b) from a", "[{col1:15,col2:17}]");
             CheckResults(11,"select count(c) as d from a where b<20", "[{d:1}]");
             conn.Rollback();
             conn.BeginTransaction();
@@ -156,13 +156,6 @@ namespace Test
             conn.Insert("a", new string[0], new Serialisable[] { new SInteger(17), new SInteger(15) },
                 new Serialisable[] { new SInteger(23), new SInteger(6) });
             CheckResults(new STable("a"), "[{b:17,c:15},{b:23,c:6}]");
-            conn.Rollback();
-        }
-        void Test6()
-        {
-            conn.BeginTransaction();
-            conn.Rollback();
-            conn.BeginTransaction();
             conn.Rollback();
         }
         void CheckResults(int q,string c,string d)

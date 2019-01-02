@@ -169,7 +169,7 @@ namespace Shareable
             var rg = right.Eval(rs);
             switch (op)
             {
-                case Op.Plus:
+                 case Op.Plus:
                     {
                         switch (lf.type)
                         {
@@ -440,19 +440,25 @@ namespace Shareable
                     break;
                 case Op.Not:
                     {
-                        if (left is SBoolean lb) return new SBoolean(lb.sbool == SBool.True ? SBool.False : SBool.True);
+                        if (left is SBoolean lb) return new SBoolean(!lb.sbool);
                         break;
                     }
                 case Op.And:
                     {
                         if (left is SBoolean lb && right is SBoolean rb)
-                            return new SBoolean(lb.sbool == SBool.True && rb.sbool == SBool.True);
+                            return new SBoolean(lb.sbool && rb.sbool);
                         break;
                     }
                 case Op.Or:
                     {
                         if (left is SBoolean lb && right is SBoolean rb)
-                            return new SBoolean(lb.sbool == SBool.True || rb.sbool == SBool.True);
+                            return new SBoolean(lb.sbool|| rb.sbool);
+                        break;
+                    }
+                case Op.Dot:
+                    {
+                        if (rs._rs._qry.Lookup(((SString)left).str) is SQuery q)
+                            return q.Lookup(((SString)right).str).Eval(rs);
                         break;
                     }
             }
@@ -498,7 +504,7 @@ namespace Shareable
             if (func == Func.Null)
                 return new SBoolean(base.Eval(rb) == Null);
             var t = Types.Serialisable;
-            var empty = false;
+            var empty = true;
             Integer ai = Integer.Zero;
             Numeric an = Numeric.Zero;
             string ac = "";
@@ -858,21 +864,16 @@ namespace Shareable
             return "TimeSpan "+new TimeSpan(ticks).ToString();
         }
     }
-    public enum SBool { Unknown=0, True=1, False=2 }
     public class SBoolean : Serialisable,IComparable
     {
-        public readonly SBool sbool;
-        public SBoolean(SBool n) : base(Types.SBoolean)
+        public readonly bool sbool;
+        public SBoolean(bool n) : base(Types.SBoolean)
         {
             sbool = n;
         }
-        public SBoolean(bool b) :base(Types.SBoolean)
-        {
-            sbool = b ? SBool.True : SBool.False;
-        }
         SBoolean(Reader f) : base(Types.SBoolean, f)
         {
-            sbool = (SBool)f.GetInt();
+            sbool = f.GetInt()==1;
         }
         public new static Serialisable Get(Reader f)
         {
@@ -881,11 +882,11 @@ namespace Shareable
         public override void Put(StreamBase f)
         {
             base.Put(f);
-            f.WriteByte((byte)sbool);
+            f.WriteByte((byte)(sbool?1:0));
         }
         public override void Append(SDatabase? db,StringBuilder sb)
         {
-            sb.Append(sbool);
+            sb.Append(sbool?"True":"False");
         }
 
         public override int CompareTo(object obj)
@@ -925,7 +926,7 @@ namespace Shareable
             cols = c;
             vals = v;
         }
-        public SRow(SList<Serialisable> s) :this()
+        public SRow(SList<Serialisable> s) :base(Types.SRow)
         {
             var cn = SDict<int, string>.Empty;
             var r = SDict<int, Serialisable>.Empty;
@@ -938,6 +939,10 @@ namespace Shareable
                 r = r.Add(k, s.element);
                 vs = vs.Add(n, s.element);
             }
+            names = cn;
+            cols = r;
+            vals = vs;
+            rec = null;
         }
         SRow(SDatabase d, Reader f) :this()
         {
@@ -988,6 +993,8 @@ namespace Shareable
                     var v = cb.Value.val.Eval(bm);
                     if (v == Null)
                         continue;
+                    if (v is SRow sr && sr.cols.Length == 1)
+                        v = sr.cols.Lookup(0);
                     r = r.Add(b.Value.key, v);
                     vs = vs.Add(b.Value.val, v);
                 }
@@ -1015,6 +1022,7 @@ namespace Shareable
             }
         }
         public override Serialisable this[string col] => vals.Lookup(col);
+        public Serialisable this[int col] => cols.Lookup(col);
         public override void Append(SDatabase? db,StringBuilder sb)
         {
             sb.Append('{');
@@ -1029,6 +1037,19 @@ namespace Shareable
                     s.Append(db, sb);
                 }
             sb.Append("}");
+        }
+        public override Serialisable Eval(RowBookmark rs)
+        {
+            var v = SDict<int, Serialisable>.Empty;
+            var r = SDict<string, Serialisable>.Empty;
+            var nb = names.First();
+            for (var b = cols.First(); nb != null && b != null; nb = nb.Next(), b = b.Next())
+            {
+                var e = b.Value.val.Eval(rs);
+                v = v.Add(b.Value.key, e);
+                r = r.Add(nb.Value.val, e);
+            }
+            return new SRow(names, v, r, rs._ob.rec);
         }
         public override string ToString()
         {
@@ -1269,6 +1290,12 @@ namespace Shareable
         {
             return rb._ob;
         }
+        public override Serialisable Lookup(string a)
+        {
+            if (a.CompareTo(name) == 0)
+                return this;
+            return base.Lookup(a);
+        }
         public override bool Conflicts(Serialisable that)
         {
             switch (that.type)
@@ -1345,7 +1372,7 @@ namespace Shareable
             base.Put(f);
             f.PutString(table.str);
             var refer = references as SString;
-            f.WriteByte((byte)(((refer?.str.Length??0) == 0) ? 2 : (primary.sbool == SBool.True) ? 0 : 1));
+            f.WriteByte((byte)(((refer?.str.Length??0) == 0) ? 2 : (primary.sbool) ? 0 : 1));
             f.PutString(refer?.str??"");
             f.PutInt(cols.Length);
             for (var b = cols.First(); b != null; b = b.Next())
@@ -1354,7 +1381,7 @@ namespace Shareable
         public override string ToString()
         {
             var sb = new StringBuilder("Create ");
-            if (primary.sbool == SBool.True)
+            if (primary.sbool)
                 sb.Append("primary ");
             sb.Append("index ");
             sb.Append(index.str); sb.Append(" for ");
@@ -1822,7 +1849,7 @@ namespace Shareable
                 var c = svs.vals;
                 if (n == 0)
                     for (var b = tb.cpos.First(); c.Length!=0 && b!=null; b = b.Next(), c = c.next) // not null
-                        f = f.Add(((SSelector)b.Value.val).uid, c.element);
+                        f = f.Add(((SSelector)b.Value.val).uid, c.element.Eval(null));
                 else
                     for (var b = cs; c.Length!=0 && b.Length != 0; b = b.next, c = c.next) // not null
                         f = f.Add(b.element, c.element);
@@ -1956,7 +1983,7 @@ namespace Shareable
         {
             for (var b = wh.First(); b != null; b = b.Next())
                 if (b.Value is SExpression x && x.Eval(rb) is SBoolean e 
-                    && e.sbool!=SBool.True)
+                    && !e.sbool)
                     return false;
             return true;
         }

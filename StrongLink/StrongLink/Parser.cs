@@ -187,7 +187,7 @@ namespace StrongLink
                     return new Token(Sym.LITERAL, st, pos - st)
                     { val = new SInteger((int)n), valType = Sym.INTEGER };
                 }
-                else if (ch == '-')
+/*                else if (ch == '-')
                 {
                     NextChar();
                     var tk = Next();
@@ -212,7 +212,7 @@ namespace StrongLink
                                 return tk;
                             }
                     }
-                }
+                } */
                 else if (ch == '\'')
                 {
                     st++;
@@ -263,6 +263,11 @@ namespace StrongLink
                 else
                     switch (ch)
                     {
+                        case '.': return new Token(Sym.DOT, st, 1);
+                        case '+': return new Token(Sym.PLUS, st, 1);
+                        case '-': return new Token(Sym.MINUS, st, 1);
+                        case '*': return new Token(Sym.TIMES, st, 1);
+                        case '/': return new Token(Sym.DIVIDE, st, 1);
                         case '(': return new Token(Sym.LPAREN, st, 1);
                         case ',': return new Token(Sym.COMMA, st, 1);
                         case ')': return new Token(Sym.RPAREN, st, 1);
@@ -465,23 +470,7 @@ namespace StrongLink
             Mustbe(Sym.LPAREN);
             for (; ; )
             {
-                var c = tok.val as Serialisable ?? throw new Exception("??");
-                switch(tok.type)
-                {
-                    case Sym.LITERAL: Next(); break;
-                    case Sym.ID: Next();
-                        if (c == null)
-                            throw new Exception("??");
-                        c = new SColumn(((SString)c).str);
-                        if (tok.type==Sym.DOT)
-                        {
-                            Next();
-                            var cc = MustBeID();
-                            c = new SExpression(c, SExpression.Op.Dot, new SColumn(cc.str));
-                        }
-                        break;
-                }
-                cols = cols.InsertAt(c, cols.Length.Value);
+                cols = cols.InsertAt(Value(), cols.Length.Value);
                 switch (tok.type)
                 {
                     case Sym.RPAREN: Next(); return new SValues(cols);
@@ -500,6 +489,8 @@ namespace StrongLink
                 var c = Value();
                 if (c is SSelector sc)
                     n = sc.name;
+                if (c is SExpression se && se.op == SExpression.Op.Dot)
+                    n = ((SString)se.left).str + "." + ((SString)se.right).str;
                 if (tok.type == Sym.AS)
                 {
                     Next();
@@ -545,6 +536,12 @@ namespace StrongLink
         {
             var id = MustBeID();
             var tb = new STable(id.str);
+            Serialisable alias = Serialisable.Null;
+            if (tok.type==Sym.ID && tok.val!=null)
+            {
+                alias = tok.val;
+                Next();
+            }
             var wh = SList<Serialisable>.Empty;
             var tt = Sym.WHERE;
             for (; tok.type==tt;)
@@ -552,8 +549,8 @@ namespace StrongLink
                 Next(); tt = Sym.AND;
                 wh = wh.InsertAt(Value(),wh.Length.Value);
             }
-            if (wh.Length == 0) return tb;
-            return new SSearch(tb, Serialisable.Null, wh);
+            if (wh.Length == 0 && alias==Serialisable.Null) return tb;
+            return new SSearch(tb, alias, wh);
         }
         Serialisable Value()
         {
@@ -578,27 +575,33 @@ namespace StrongLink
         }
         Serialisable OneVal()
         {
-            Serialisable? a = null;
-            if (tok.type==Sym.MINUS || tok.type==Sym.NOT)
-            {
-                var op = (tok.type == Sym.MINUS) ? SExpression.Op.UMinus : SExpression.Op.Not;
-                Next();
-                a = new SExpression(Term(), op, Serialisable.Null);
-            }
-            else
-                a = Term();
+            Serialisable a = Term();
             while (tok.type==Sym.PLUS || tok.type==Sym.MINUS)
             {
                 var op = (tok.type == Sym.PLUS) ? SExpression.Op.Plus : SExpression.Op.Minus;
                 Next();
                 a = new SExpression(a, op, Term());
             }
-            if (a == null)
-                throw new Exception("??");
             return a;
         }
         Serialisable Term()
         {
+            if (tok.type == Sym.MINUS || tok.type == Sym.PLUS || tok.type == Sym.NOT)
+            {
+                var op = SExpression.Op.Plus;
+                switch (tok.type)
+                {
+                    case Sym.MINUS:
+                        op = SExpression.Op.UMinus; break;
+                    case Sym.NOT:
+                        op = SExpression.Op.Not; break;
+                    case Sym.PLUS:
+                        Next();
+                        return Term();
+                }
+                Next();
+                return new SExpression(Term(), op, Serialisable.Null);
+            }
             var a = Factor();
             while (tok.type == Sym.TIMES || tok.type == Sym.DIVIDE)
             {
@@ -637,7 +640,6 @@ namespace StrongLink
                         {
                             Next();
                             var nv = MustBeID();
-                            MustBeID();
                             return new SExpression(v, SExpression.Op.Dot, nv);
                         }
                         return new SColumn(((SString)v).str);
@@ -716,28 +718,20 @@ namespace StrongLink
                 Mustbe(Sym.BY);
                 for (; ; )
                 {
-                    var cr = Serialisable.Null;
-                    var c = MustBeID();
-                    if (tok.type == Sym.DOT)
-                    {
-                        Next();
-                        cr = c;
-                        c = MustBeID();
-                    }
+                    var c = Value();
                     var d = false;
                     if (tok.type == Sym.DESC)
                     {
                         Next();
                         d = true;
                     }
-                    or = or.InsertAt(new SOrder(cr, new SColumn(c.ToString()), d), i++);
+                    or = or.InsertAt(new SOrder(c, d), i++);
                     if (tok.type == Sym.COMMA)
                         Next();
                     else
                         break;
                 }
             }
-            
             return new SSelectStatement(dct, als, cp, q, or);
         }
         Serialisable Delete()

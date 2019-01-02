@@ -89,7 +89,7 @@ namespace Shareable
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(b._ob[c.Value.col.name],!c.Value.desc);
+                    k[i] = new Variant(c.Value.col.Eval(b),!c.Value.desc);
                 t = t.Add(m,k);
                 r = r.Add(m++, b._ob);
             }
