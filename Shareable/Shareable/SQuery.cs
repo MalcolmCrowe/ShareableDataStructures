@@ -7,6 +7,7 @@ namespace Shareable
     {
         public readonly SDict<int,Serialisable> cpos;
         public readonly SDict<string, Serialisable> names;
+        internal virtual SDict<string, Serialisable> Names => names;
         public SQuery(Types t, long u) : base(t, u)
         {
             cpos = SDict<int,Serialisable>.Empty;
@@ -93,6 +94,7 @@ namespace Shareable
         public readonly SQuery sce;
         public readonly Serialisable alias;
         public readonly SList<Serialisable> where;
+        internal override SDict<string, Serialisable> Names => sce.Names;
         public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
         {
             sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
@@ -100,7 +102,7 @@ namespace Shareable
             var w = SList<Serialisable>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
-                w = w.InsertAt(f._Get(db),i);
+                w = w.InsertAt(f._Get(db).Lookup(sce.Names),i);
             where = w;
         }
         public SSearch(SQuery s,Serialisable a, SList<Serialisable> w)
@@ -166,8 +168,8 @@ namespace Shareable
         /// <param name="c">The column expressions</param>
         /// <param name="q">The source query, assumed analysed</param>
         /// <param name="or">The ordering</param>
-        public SSelectStatement(bool d, SDict<int,string> a, SDict<int,Serialisable> c, SQuery q, SList<SOrder> or) 
-            : base(Types.SSelect,a,c,q.names)
+        protected SSelectStatement(bool d, SDict<int,string> a, SDict<int,Serialisable> c, SQuery q, SList<SOrder> or) 
+            : base(Types.SSelect,a,c,q.Names)
         {
             distinct = d;  als = a; qry = q; order = or;
             var ag = false;

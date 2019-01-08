@@ -1576,15 +1576,8 @@ namespace Shareable
         public override Serialisable Eval(RowBookmark rs)
         {
             if (rs?._ob.rec is SRecord rec)
-            {
-                var tb = (STable)rs._rs._tr.objects.Lookup(rec.table);
-                return rec.fields.Lookup(
-                    ((SColumn)(tb.names.Lookup(name) ??
-                    throw new Exception("no column " + name))).uid) ??
-                    Null;
-            }
-            return rs?._ob[name] ??
-                        throw new Exception("no column " + name);
+                return rec.fields.Lookup(uid)??Null;
+            return rs?._ob[name] ?? throw new Exception("no column " + name);
         }
         public override string ToString()
         {

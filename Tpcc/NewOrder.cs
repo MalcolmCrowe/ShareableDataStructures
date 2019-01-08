@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using System.Threading;
 using Shareable;
 using StrongLink;
+using System.Net.Sockets;
 
 namespace Tpcc
 {
@@ -66,6 +67,10 @@ namespace Tpcc
                 {
                     Single();
                     txtBox.Text = "" + Tcount;
+                }
+                catch(SocketException e)
+                {
+                    throw e;
                 }
                 catch (Exception)
                 {
