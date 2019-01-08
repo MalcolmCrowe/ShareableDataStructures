@@ -7,6 +7,7 @@ using System.Threading;
 using System.Security.Principal;
 using System.Security.AccessControl;
 using Shareable;
+#nullable enable
 
 namespace StrongDB
 {
@@ -87,13 +88,15 @@ namespace StrongDB
                 {
                     switch ((Types)p)
                     {
+                        case Types.DescribedGet:
                         case Types.Get:
                             {
-                                var qy = rdr._Get(db) as SQuery ??
+                                var tr = db.Transact();
+                                var qy = rdr._Get(tr) as SQuery ??
                                     throw new Exception("Bad query");
+                                RowSet rs = qy.RowSet(tr);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
-                                RowSet rs = qy.RowSet(db);
                                 for (var b = rs?.First();b!=null;b=b.Next())
                                 {
                                     sb.Append(cm); cm = ",";
@@ -101,6 +104,15 @@ namespace StrongDB
                                 }
                                 sb.Append(']');
                                 asy.Write(Types.Done);
+                                if ((Types)p == Types.DescribedGet)
+                                {
+                                    asy.PutInt(rs._qry.cpos.Length.Value);
+                                    for (var b = rs._qry.cpos.First(); b != null; b = b.Next())
+                                        if (b.Value.val is SColumn sc)
+                                            asy.PutString(sc.name);
+                                        else
+                                            asy.PutString("col" + b.Value.key);
+                                }
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
@@ -160,11 +172,11 @@ namespace StrongDB
                                         for (var b = tb.cpos.First(); b!= null; b = b.Next())
                                         {
                                             if (b.Value.val is SColumn sc)
-                                                f = f.Add(sc.uid, rdr._Get(tr)); // serialsable values
+                                                f = f + (sc.uid, rdr._Get(tr)); // serialsable values
                                         }
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
-                                            f = f.Add(b.element, rdr._Get(tr)); // serialisable values
+                                            f = f + (b.element, rdr._Get(tr)); // serialisable values
                                     tr = tr.Add(new SRecord(tr, tb.uid, f));
                                 }
                                 if (ex != null)
@@ -222,6 +234,8 @@ namespace StrongDB
                                     throw new Exception("Table " + tn + " not found");
                                 var xt = rdr.ReadByte();
                                 var rn = rdr.GetString();
+                                var ru = (rn.Length==0)?-1: (tr.names.Lookup(rn)?.uid ??
+                                    throw new Exception("Table " + tn + " not found"));
                                 var nc = rdr.GetInt();
                                 var cs = SList<long>.Empty;
                                 for (var i=0;i<nc;i++)
@@ -231,7 +245,7 @@ namespace StrongDB
                                         throw new Exception("Column " + cn + " not found");
                                     cs = cs.InsertAt(se, i);
                                 }
-                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, -1,cs));
+                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, ru,cs));
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -246,6 +260,15 @@ namespace StrongDB
                                 asy.Flush();
                                 break;
                             }
+                        case Types.SUpdateSearch:
+                            {
+                                var tr = db.Transact();
+                                tr = SUpdateSearch.Get(db, rdr).Obey(tr);
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Types.Done);
+                                asy.Flush();
+                                break;
+                            }
                         case Types.SUpdate:
                             {
                                 var tr = db.Transact();
@@ -253,19 +276,25 @@ namespace StrongDB
                                 var rc = db.Get(id);
                                 var tb = (STable)tr.Lookup(rc.table); 
                                 var n = rdr.GetInt(); // # cols updated
-                                var f = SDict<long, Serialisable>.Empty;
+                                var f = SDict<string, Serialisable>.Empty;
                                 Exception ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = rdr.GetString();
-                                    if (tb.names.Lookup(cn) is SColumn sc)
-                                        f = f.Add(sc.uid, rdr._Get(db));
-                                    else
-                                        ex = new Exception("Column "+cn+" not found");
+                                    f = f+(cn, rdr._Get(db));
                                 }
                                 tr = tr.Add(new SUpdate(tr, rc, f));
                                 if (ex != null)
                                     throw (ex);
+                                db = db.MaybeAutoCommit(tr);
+                                asy.Write(Types.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Types.SDeleteSearch:
+                            {
+                                var tr = db.Transact();
+                                tr = SDeleteSearch.Get(db, rdr).Obey(tr);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -568,6 +597,7 @@ namespace StrongDB
         }
         internal void StartException()
         {
+            rbuf.pos = rbuf.buf.len;
             wbuf.wpos = 4;
             exception = true;
         }

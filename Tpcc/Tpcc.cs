@@ -31,7 +31,7 @@ namespace Tpcc
 		private Tpcc.StockLevel stockLevel1;
         private Tpcc.Delivery delivery1;
 		private System.ComponentModel.IContainer components;
-		public StrongConnect db;
+		public static StrongConnect conn;
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
@@ -62,7 +62,7 @@ namespace Tpcc
 			//
 			InitializeComponent();
             Control.CheckForIllegalCrossThreadCalls = false;
-			db = new StrongConnect("localhost",50433,"Tpcc");
+			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
 		}
 
 		/// <summary>
@@ -462,22 +462,22 @@ namespace Tpcc
 			Application.Run(new Form1());
 		}
 
-		private void Form1_Load(object sender, System.EventArgs e)
-		{
-			var s = db.ExecuteQuery("select count(W_ID) from WAREHOUSE");
-				try 
-				{
-					activewh = (int)(long)s.items[0].fields[0].Value;
-					textBox1.Text = ""+activewh;
-					wid = 1;
-		//			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
-        //          deferred.Name = "Deferred";
-		//			deferred.Start();
-				} 
-				catch(Exception)
-				{
-				}
-		}
+        private void Form1_Load(object sender, System.EventArgs e)
+        {
+            try
+            {
+                var s = conn.ExecuteQuery("select count(W_ID) from WAREHOUSE");
+                activewh = (int)(long)s.items[0].fields[0].Value;
+                textBox1.Text = "" + activewh;
+                wid = 1;
+                //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
+                //          deferred.Name = "Deferred";
+                //			deferred.Start();
+            }
+            catch (Exception)
+            {
+            }
+        }
 
 		private void button1_Click(object sender, System.EventArgs e)
 		{
@@ -497,13 +497,13 @@ namespace Tpcc
 					n.wid = wid;
 					vt = n;
 					n.activewh = activewh;
-					n.db = db;
+					n.db = conn;
 					n.status = label1;
 					break;
 				case 2:
 					OrderStatus o = (OrderStatus)tabPage3.Controls[0];
 					o.wid = wid;
-					o.db = db;
+					o.db = conn;
 					o.status = label1;
 					vt = o;
 					break;
@@ -512,27 +512,27 @@ namespace Tpcc
 					p.wid = wid;
 					vt = p;
 					p.status = label1;
-					p.db = db;
+					p.db = conn;
 					break;
 				case 4:
 					StockLevel s = (StockLevel)tabPage5.Controls[0];
 					s.wid = wid;
 					s.did = 1;
-					s.db = db;
+					s.db = conn;
 					s.status = label1;
 					vt = s;
 					break;
 				case 5:
 					Delivery d = (Delivery)tabPage6.Controls[0];
 					d.wid = wid;
-					d.db = db;
+					d.db = conn;
 					d.status = label1;
 					vt = d;
 					break;
 				case 6:
 					DelReport dl = (DelReport)tabPage7.Controls[0];
 					dl.wid = wid;
-					dl.db = db;
+					dl.db = conn;
 					dl.status = label1;
 					vt = dl;
 					break;
@@ -559,7 +559,7 @@ namespace Tpcc
 		private void button2_Click(object sender, System.EventArgs e) // Run button for New Order
 		{
 			NewOrder n = newOrder1;
-			n.db = db;
+			n.db = conn;
             n.oneDistrict = checkBox1.Checked;
             if (checkBox1.Checked)
             {
@@ -595,7 +595,7 @@ namespace Tpcc
 			stage = 0;
 			if (i<10)
 			{
-				newOrder1.db = db;
+				newOrder1.db = conn;
 				newOrder1.status = label1;
 				newOrder1.wid = 1;
 				newOrder1.PutBlanks();
@@ -608,7 +608,7 @@ namespace Tpcc
 			{
 				payment1.PutBlanks();
 				tabControl1.SelectedIndex=3;
-				payment1.db = db;
+				payment1.db = conn;
 				payment1.wid = wid;
 				payment1.status = label1;
 				action = 3;
@@ -618,7 +618,7 @@ namespace Tpcc
 			{
 				orderStatus1.PutBlanks();
 				tabControl1.SelectedIndex=2;
-				orderStatus1.db = db;
+				orderStatus1.db = conn;
 				orderStatus1.wid = wid;
 				orderStatus1.status = label1;
 				action = 2;
@@ -628,7 +628,7 @@ namespace Tpcc
 			{
 				delivery1.PutBlanks();
 				tabControl1.SelectedIndex=4;
-				delivery1.db = db;
+				delivery1.db = conn;
 				delivery1.wid = wid;
 				delivery1.status = label1;
 				action = 4;
@@ -638,7 +638,7 @@ namespace Tpcc
 			{
 				stockLevel1.PutBlanks();
 				tabControl1.SelectedIndex=5;
-				stockLevel1.db = db;
+				stockLevel1.db = conn;
 				stockLevel1.status = label1;
 				stockLevel1.wid = wid;
 				stockLevel1.did = 1;
@@ -718,7 +718,7 @@ namespace Tpcc
             if (checkBox1.Checked)
             {
                 int d = int.Parse(textBox4.Text);
-                db = new StrongConnect("localhost",50433,"Tpcc");
+                conn = new StrongConnect("localhost",50433,"Tpcc");
                 new GenBase().FillDistrict(int.Parse(textBox1.Text),d);
             }
             else

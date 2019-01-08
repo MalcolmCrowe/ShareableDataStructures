@@ -31,16 +31,16 @@ namespace StrongLink
             AS = 20,
             BEGIN = 21,
             BOOLEAN = 22,
-            BY = 23,
-            COLUMN = 24,
-            COMMIT = 25,
-            COUNT = 26,
-            CREATE = 27,
-            DATE = 28,
-            DELETE = 29,
-            DESC = 30,
-            DISTINCT = 31,
-            DROP = 32,
+            COLUMN = 23,
+            COMMIT = 24,
+            COUNT = 25,
+            CREATE = 26,
+            DATE = 27,
+            DELETE = 28,
+            DESC = 29,
+            DISTINCT = 30,
+            DROP = 31,
+            FALSE = 32,
             FOR = 33,
             FROM = 34,
             INDEX = 35,
@@ -54,7 +54,7 @@ namespace StrongLink
             NULL = 43,
             NUMERIC = 44,
             OR = 45,
-            ORDER = 46,
+            ORDERBY = 46,
             PRIMARY = 47,
             REFERENCES = 48,
             ROLLBACK = 49,
@@ -66,61 +66,64 @@ namespace StrongLink
             TIMESPAN = 55,
             TIMESTAMP = 56,
             TO = 57,
-            UPDATE = 58,
-            VALUES = 59,
-            WHERE = 60
-        }
-        internal class Token
-        {
-            public Sym type;
-            public int pos, len;
-            public Serialisable? val = null;
-            public Sym valType = Sym.Null;
-            internal Token(Sym t,int p,int n) { type = t; pos = p; ;len = n; }
-            internal static Token EOF = new Token(Sym.Null,-1,0);
-            public override string ToString()
-            {
-                return type.ToString() + " at "+pos;
-            }
+            TRUE = 58,
+            UPDATE = 59,
+            VALUES = 60,
+            WHERE = 61
         }
         internal class Lexer
         {
             public readonly char[] input;
-            int pos = 0;
+            int pos = -1;
+            int? pushPos = null;
+            internal Sym tok;
+            internal Sym pushBack = Sym.Null;
+            internal Serialisable val = Serialisable.Null;
             char ch = '\0';
+            char? pushCh = null;
             public Lexer(string inp)
             {
                 input = inp.ToCharArray();
+                Advance();
+                tok = Next();
             }
-            internal char NextChar()
+            internal char Advance()
             {
-                ch = (pos >= input.Length) ? '\0' : input[pos++];
+                if (pos >= input.Length)
+                    throw new Exception("Non-terminated string");
+                ch = (++pos >= input.Length) ? '\0' : input[pos];
                 return ch;
             }
-            long Unsigned()
+            internal Sym PushBack(Sym old)
             {
-                var v = ch - '0';
-                for (NextChar(); ch != '\0' && char.IsDigit(ch); NextChar())
-                    v = v * 10 + (ch - '0');
-                --pos;
+                pushBack = old;
+                pushCh = ch;
+                pushPos = pos;
+                tok = old;
+                return tok;
+            }
+            Integer Unsigned()
+            {
+                var v = new Integer(ch - '0');
+                for (Advance(); ch != '\0' && char.IsDigit(ch); Advance())
+                    v = v.Times(10) + new Integer(ch - '0');
                 return v;
             }
-            long Unsigned(long v)
+            Integer Unsigned(Integer v)
             {
-                for (NextChar(); ch != '\0' && char.IsDigit(ch); NextChar())
-                    v = v * 10 + (ch - '0');
-                --pos;
+                for (Advance(); ch != '\0' && char.IsDigit(ch); Advance())
+                    v = v.Times(10) + new Integer(ch - '0');
                 return v;
             }
             int Unsigned(int n)
             {
                 var st = pos;
-                var r = (int)Unsigned();
+                var r = Unsigned();
                 if (pos != st + n)
                     throw new Exception("Expected " + n + " digits");
-                return r;
+                return (int)r;
             }
-            int Unsigned(int n,int low,int high)
+            int Unsigned(int n, int low, int high)
             {
                 var r = Unsigned(n);
                 if (r < low || r > high)
@@ -131,7 +134,7 @@ namespace StrongLink
             {
                 if (c != ch)
                     throw new Exception("Expected " + c + " got " + ch);
-                NextChar();
+                Advance();
             }
             Serialisable DateTimeLiteral()
             {
@@ -143,7 +146,7 @@ namespace StrongLink
                 var d = Unsigned(2, 1, 31);
                 if (ch == '\'')
                 {
-                    NextChar();
+                    Advance();
                     return new SDate(new DateTime(y, mo, d));
                 }
                 Mustbe(' ');
@@ -165,13 +168,21 @@ namespace StrongLink
                 }
                 throw new Exception("Unexpected type " + t);
             }
-            internal Token Next()
+            internal Sym Next()
             {
-                for (NextChar(); ch != '\0' && char.IsWhiteSpace(ch); NextChar())
-                    ;
-                var st = pos-1;
+                if (pushBack!=Sym.Null)
+                {
+                    tok = pushBack;
+                    pos = pushPos.Value;
+                    ch = pushCh.Value;
+                    pushBack = Sym.Null;
+                    return tok;
+                }
+                while (char.IsWhiteSpace(ch))
+                    Advance();
+                var st = pos;
                 if (ch == '\0')
-                    return Token.EOF;
+                    return tok=Sym.Null;
                 if (char.IsDigit(ch))
                 {
                     var n = Unsigned();
@@ -179,148 +190,127 @@ namespace StrongLink
                     {
                         var p = pos;
                         var m = Unsigned(n);
-                        return new Token(Sym.LITERAL, st, pos - st)
-                        { val = new SNumeric(m, pos - p, pos - p), valType = Sym.NUMERIC };
+                        val = new SNumeric(m, pos - p, pos - p);
+                        return tok = Sym.LITERAL;
                     }
-                    if (n > int.MaxValue)
-                        throw new Exception("Inbteger overflow");
-                    return new Token(Sym.LITERAL, st, pos - st)
-                    { val = new SInteger((int)n), valType = Sym.INTEGER };
+                    val = new SInteger(n);
+                    return tok = Sym.LITERAL;
                 }
-/*                else if (ch == '-')
-                {
-                    NextChar();
-                    var tk = Next();
-                    var v = tk.val ?? throw new Exception("??");
-                    switch (tk.type)
-                    {
-                        case Sym.INTEGER:
-                            {
-                                tk.val = new SInteger(-((SInteger)v).value);
-                                return tk;
-                            }
-                        case Sym.NUMERIC:
-                            {
-                                var sn = (SNumeric)v;
-                                tk.val = new SNumeric(-(int)sn.num.mantissa, sn.num.precision, sn.num.scale);
-                                return tk;
-                            }
-                        case Sym.TIMESPAN:
-                            {
-                                var ts = (STimeSpan)v;
-                                tk.val = new STimeSpan(new TimeSpan(-ts.ticks));
-                                return tk;
-                            }
-                    }
-                } */
                 else if (ch == '\'')
                 {
                     st++;
-                    for (NextChar(); ch != '\0' && ch != '\''; NextChar())
+                    for (Advance(); ch != '\0' && ch != '\''; Advance())
                         ;
                     if (ch == '\0')
                         throw new Exception("non-terminated string literal");
-                    return new Token(Sym.LITERAL, st, pos - st - 1)
-                    { val = new SString(new string(input, st, pos - st - 1)), valType = Sym.STRING };
+                    Advance();
+                    val = new SString(new string(input, st, pos - st - 1));
+                    return tok = Sym.LITERAL;
                 }
                 else if (char.IsLetter(ch))
                 {
-                    for (NextChar(); char.IsLetter(ch) || ch=='_'; NextChar())
+                    for (Advance(); char.IsLetterOrDigit(ch) || ch == '_'; Advance())
                         ;
-                    if (ch != '\0')
-                        --pos;
                     var s = new string(input, st, pos - st);
                     var su = s.ToUpper();
-                    for (var t = Sym.ADD; ; t++)
-                    {
-                        var r = t.ToString();
-                        if (su.CompareTo(r) == 0)
-                        {
-                            if (t == Sym.DATE && ch == '\'')
+                    for (var t = Sym.ADD; t <= Sym.WHERE; t++)
+                        if (su.CompareTo(t.ToString()) == 0)
+                            switch (t)
                             {
-                                var d = DateTimeLiteral();
-                                return new Token(Sym.LITERAL, st, pos - st)
-                                { val = d, valType = For(d.type) };
+                                case Sym.DATE:
+                                    if (ch == '\'')
+                                    {
+                                        Advance();
+                                        val = DateTimeLiteral();
+                                        return tok = Sym.LITERAL;
+                                    }
+                                    return tok = t;
+                                case Sym.TIMESPAN:
+                                    if (ch == '\'')
+                                    {
+                                        Advance();
+                                        val = new STimeSpan(new TimeSpan(Unsigned()));
+                                        if (ch != '\'')
+                                            throw new Exception("non-terminated string literal");
+                                        Advance();
+                                        return tok = Sym.LITERAL;
+                                    }
+                                    return tok = t;
+                                case Sym.FALSE: val = SBoolean.False;
+                                    return tok = Sym.LITERAL;
+                                case Sym.TRUE:
+                                    val = SBoolean.True;
+                                    return tok = Sym.LITERAL;
+                                default:
+                                    return tok = t;
                             }
-                            if (t==Sym.TIMESPAN && ch=='\'')
-                            {
-                                NextChar();
-                                var ts = new STimeSpan(new TimeSpan(Unsigned()));
-                                if (ch != '\'')
-                                    throw new Exception("non-terminated string literal");
-                                NextChar();
-                                return new Token(Sym.LITERAL, st, pos - st)
-                                { val = ts, valType = Sym.TIMESPAN };
-                            }
-                            return new Token(t, st, pos - st);
-                        }
-                        if (t == Sym.WHERE)
-                            break;
-                    }
-                    return new Token(Sym.ID, st, pos - st)
-                    { val = new SString(s), valType = Sym.ID };
+                    val = new SString(s);
+                    return tok = Sym.ID;
                 }
                 else
                     switch (ch)
                     {
-                        case '.': return new Token(Sym.DOT, st, 1);
-                        case '+': return new Token(Sym.PLUS, st, 1);
-                        case '-': return new Token(Sym.MINUS, st, 1);
-                        case '*': return new Token(Sym.TIMES, st, 1);
-                        case '/': return new Token(Sym.DIVIDE, st, 1);
-                        case '(': return new Token(Sym.LPAREN, st, 1);
-                        case ',': return new Token(Sym.COMMA, st, 1);
-                        case ')': return new Token(Sym.RPAREN, st, 1);
-                        case '=': return new Token(Sym.EQUAL, st, 1);
-                        case '!': if (input[pos] == '=')
+                        case '.': Advance(); return tok = Sym.DOT;
+                        case '+': Advance(); return tok = Sym.PLUS;
+                        case '-': Advance(); return tok = Sym.MINUS;
+                        case '*': Advance(); return tok = Sym.TIMES;
+                        case '/': Advance(); return tok = Sym.DIVIDE;
+                        case '(': Advance(); return tok = Sym.LPAREN;
+                        case ',': Advance(); return tok = Sym.COMMA;
+                        case ')': Advance(); return tok = Sym.RPAREN;
+                        case '=': Advance(); return tok = Sym.EQUAL;
+                        case '!':
+                            Advance();
+                            if (ch == '=')
                             {
-                                NextChar();
-                                return new Token(Sym.NEQ, st, 2);
+                                Advance();
+                                return tok = Sym.NEQ;
                             }
                             else break;
-                        case '<': if (input[pos]=='=')
+                        case '<':
+                            Advance();
+                            if (ch == '=')
                             {
-                                NextChar();
-                                return new Token(Sym.LEQ, st, 2);
+                                Advance();
+                                return tok = Sym.LEQ;
                             }
-                            return new Token(Sym.LSS, st, 1);
+                            return tok = Sym.LSS;
                         case '>':
-                            if (input[pos] == '=')
+                            Advance();
+                            if (ch == '=')
                             {
-                                NextChar();
-                                return new Token(Sym.GEQ, st, 2);
+                                Advance();
+                                return tok = Sym.GEQ;
                             }
-                            return new Token(Sym.GTR, st, 1);
+                            return tok = Sym.GTR;
                     }
                 throw new Exception("Bad input " + ch + " at " + pos);
             }
         }
         Lexer lxr;
-        Token tok;
         Parser(string inp)
         {
             lxr = new Lexer(inp);
-            tok = lxr.Next();
         }
         public static Serialisable Parse(string sql)
         {
             return new Parser(sql).Statement();
         }
-        void Next()
+        Sym Next()
         {
-            tok = lxr.Next();
+            return lxr.Next();
         }
         void Mustbe(Sym t)
         {
-            if (tok.type != t)
-                throw new Exception("Syntax error: " + tok.ToString());
+            if (lxr.tok != t)
+                throw new Exception("Syntax error: " + lxr.tok.ToString());
             Next();
         }
         SString MustBeID()
         {
-            var s = tok.val;
-            if (tok.type != Sym.ID || s==null)
-                throw new Exception("Syntax error: " + tok.ToString());
+            var s = lxr.val;
+            if (lxr.tok != Sym.ID || s==null)
+                throw new Exception("Syntax error: " + lxr.tok.ToString());
             Next();
             return (SString)s;
         }
@@ -340,24 +330,25 @@ namespace StrongLink
         }
         public Serialisable Statement()
         {
-            switch(tok.type)
+            switch(lxr.tok)
             {
                 case Sym.ALTER:
                     return Alter();
                 case Sym.CREATE:
                     {
                         Next();
-                        switch (tok.type)
+                        switch (lxr.tok)
                         {
                             case Sym.TABLE:
                                 return CreateTable();
                             case Sym.INDEX:
+                                Next();
                                 return CreateIndex();
                             case Sym.PRIMARY:
                                 Next(); Mustbe(Sym.INDEX);
                                 return CreateIndex(true);
                         }
-                        throw new Exception("Unknown Create " + tok);
+                        throw new Exception("Unknown Create " + lxr.tok);
                     }
                 case Sym.DROP:
                     return Drop();
@@ -376,7 +367,7 @@ namespace StrongLink
                 case Sym.COMMIT:
                     return new Serialisable(Types.SCommit);
             }
-            throw new Exception("Syntax Error: " + tok);
+            throw new Exception("Syntax Error: " + lxr.tok);
         }
         /// <summary>
         /// Alter: ALTER table_id ADD id Type
@@ -390,7 +381,7 @@ namespace StrongLink
             var tb = MustBeID();
             SString? col = null;
             var add = false;
-            switch (tok.type)
+            switch (lxr.tok)
             {
                 case Sym.COLUMN:
                     Next();
@@ -409,7 +400,7 @@ namespace StrongLink
             }
             var nm = MustBeID();
             Types dt = Types.Serialisable;
-            switch (tok.type)
+            switch (lxr.tok)
             {
                 case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
                 case Sym.INTEGER: Next(); dt = Types.SInteger; break;
@@ -436,15 +427,15 @@ namespace StrongLink
             for (; ; )
             {
                 var c = MustBeID();
-                var t = For(tok.type);
+                var t = For(lxr.tok);
                 cols = cols.InsertAt(new SColumn(c.str, t), cols.Length.Value); // ok
                 Next();
-                switch(tok.type)
+                switch(lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return new SCreateTable(tb, cols);
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + tok);
+                throw new Exception("Syntax error: " + lxr.tok);
             }
         }
         SList<SSelector> Cols()
@@ -455,12 +446,12 @@ namespace StrongLink
             {
                 var c = MustBeID();
                 cols = cols.InsertAt(new SColumn(c.str), cols.Length.Value); // ok
-                switch (tok.type)
+                switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return cols;
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + tok);
+                throw new Exception("Syntax error: " + lxr.tok);
             }
         }
         SValues Vals()
@@ -471,12 +462,12 @@ namespace StrongLink
             for (; ; )
             {
                 cols = cols.InsertAt(Value(), cols.Length.Value);
-                switch (tok.type)
+                switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return new SValues(cols);
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + tok);
+                throw new Exception("Syntax error: " + lxr.tok);
             }
         }
         SList<SSlot<string,Serialisable>> Selects()
@@ -491,14 +482,14 @@ namespace StrongLink
                     n = sc.name;
                 if (c is SExpression se && se.op == SExpression.Op.Dot)
                     n = ((SString)se.left).str + "." + ((SString)se.right).str;
-                if (tok.type == Sym.AS)
+                if (lxr.tok == Sym.AS)
                 {
                     Next();
                     var tv = MustBeID();
                     n = ((SString)tv).str;
                 }
                 r = r.InsertAt(new SSlot<string, Serialisable>(n, c??Serialisable.Null), k++);
-                if (tok.type != Sym.COMMA)
+                if (lxr.tok != Sym.COMMA)
                     return r;
             }
         }
@@ -509,12 +500,12 @@ namespace StrongLink
             var tb = MustBeID();
             var cols = Cols();
             Serialisable rt = Serialisable.Null;
-            if (tok.type==Sym.REFERENCES)
+            if (lxr.tok==Sym.REFERENCES)
             {
                 Next();
                 rt = MustBeID();
             }
-            return new SCreateIndex(id, tb, new SBoolean(primary), rt, cols); // ok
+            return new SCreateIndex(id, tb, SBoolean.For(primary), rt, cols); // ok
         }
         Serialisable Drop() // also see Drop column in Alter
         {
@@ -527,9 +518,16 @@ namespace StrongLink
             Next();
             var id = MustBeID();
             var cols = SList<SSelector>.Empty;
-            if (tok.type == Sym.LPAREN)
+            if (lxr.tok == Sym.LPAREN)
                 cols = Cols();
-            var vals = (tok.type==Sym.VALUES)? Vals() :Select();
+            Serialisable vals;
+            if (lxr.tok == Sym.VALUES)
+                vals = Vals();
+            else
+            {
+                Mustbe(Sym.SELECT);
+                vals = Select();
+            }
             return new SInsertStatement(id.str, cols, vals);
         }
         SQuery Query()
@@ -537,14 +535,14 @@ namespace StrongLink
             var id = MustBeID();
             var tb = new STable(id.str);
             Serialisable alias = Serialisable.Null;
-            if (tok.type==Sym.ID && tok.val!=null)
+            if (lxr.tok==Sym.ID && lxr.val!=null)
             {
-                alias = tok.val;
+                alias = lxr.val;
                 Next();
             }
             var wh = SList<Serialisable>.Empty;
             var tt = Sym.WHERE;
-            for (; tok.type==tt;)
+            for (; lxr.tok==tt;)
             {
                 Next(); tt = Sym.AND;
                 wh = wh.InsertAt(Value(),wh.Length.Value);
@@ -554,11 +552,31 @@ namespace StrongLink
         }
         Serialisable Value()
         {
+            var a = Conjunct();
+            while (lxr.tok==Sym.AND)
+            {
+                Next();
+                a = new SExpression(a, SExpression.Op.And, Conjunct());
+            }
+            return a;
+        }
+        Serialisable Conjunct()
+        {
+            var a = Item();
+            while (lxr.tok==Sym.OR)
+            {
+                Next();
+                a = new SExpression(a, SExpression.Op.Or, Item());
+            }
+            return a;
+        }
+        Serialisable Item()
+        {
             var a = OneVal();
-            while ((tok.type >= Sym.EQUAL && tok.type <= Sym.GTR)|| tok.type==Sym.AND || tok.type==Sym.ORDER)
+            if (lxr.tok >= Sym.EQUAL && lxr.tok <= Sym.GTR)
             {
                 var op = SExpression.Op.Eql;
-                switch(tok.type)
+                switch(lxr.tok)
                 {
                     case Sym.NEQ: op = SExpression.Op.NotEql; break;
                     case Sym.LEQ: op = SExpression.Op.Leq; break;
@@ -576,9 +594,14 @@ namespace StrongLink
         Serialisable OneVal()
         {
             Serialisable a = Term();
-            while (tok.type==Sym.PLUS || tok.type==Sym.MINUS)
+            while (lxr.tok==Sym.PLUS || lxr.tok==Sym.MINUS)
             {
-                var op = (tok.type == Sym.PLUS) ? SExpression.Op.Plus : SExpression.Op.Minus;
+                SExpression.Op op = SExpression.Op.Or;
+                switch (lxr.tok)
+                {
+                    case Sym.PLUS: op = SExpression.Op.Plus; break;
+                    case Sym.MINUS: op = SExpression.Op.Minus; break;
+                }
                 Next();
                 a = new SExpression(a, op, Term());
             }
@@ -586,10 +609,10 @@ namespace StrongLink
         }
         Serialisable Term()
         {
-            if (tok.type == Sym.MINUS || tok.type == Sym.PLUS || tok.type == Sym.NOT)
+            if (lxr.tok == Sym.MINUS || lxr.tok == Sym.PLUS || lxr.tok == Sym.NOT)
             {
                 var op = SExpression.Op.Plus;
-                switch (tok.type)
+                switch (lxr.tok)
                 {
                     case Sym.MINUS:
                         op = SExpression.Op.UMinus; break;
@@ -603,19 +626,24 @@ namespace StrongLink
                 return new SExpression(Term(), op, Serialisable.Null);
             }
             var a = Factor();
-            while (tok.type == Sym.TIMES || tok.type == Sym.DIVIDE)
+            while (lxr.tok == Sym.TIMES || lxr.tok == Sym.DIVIDE)
             {
-                var op = (tok.type == Sym.TIMES) ? SExpression.Op.Times : SExpression.Op.Divide;
+                SExpression.Op op = SExpression.Op.And;
+                switch (lxr.tok)
+                {
+                    case Sym.TIMES: op = SExpression.Op.Times; break;
+                    case Sym.DIVIDE: op = SExpression.Op.Divide; break;
+                }
                 Next();
                 a = new SExpression(a, op, Factor());
             }
-            if (tok.type==Sym.IS)
+            if (lxr.tok==Sym.IS)
             {
                 Next();
                 Mustbe(Sym.NULL);
                 return new SExpression(a, SExpression.Op.Eql, Serialisable.Null);
             }
-            if (tok.type==Sym.IN)
+            if (lxr.tok==Sym.IN)
             {
                 Next();
                 return new SInPredicate(a, Value());
@@ -624,8 +652,8 @@ namespace StrongLink
         }
         Serialisable Factor()
         {
-            var v = tok.val;
-            switch (tok.type)
+            var v = lxr.val;
+            switch (lxr.tok)
             {
                 case Sym.LITERAL:
                     Next();
@@ -636,7 +664,7 @@ namespace StrongLink
                             throw new Exception("??");
                         var s = ((SString)v).str;
                         Next();
-                        if (tok.type == Sym.DOT)
+                        if (lxr.tok == Sym.DOT)
                         {
                             Next();
                             var nv = MustBeID();
@@ -649,7 +677,7 @@ namespace StrongLink
                 case Sym.MAX:
                 case Sym.MIN:
                     {
-                        var t = tok.type;
+                        var t = lxr.tok;
                         Next(); Mustbe(Sym.LPAREN);
                         var a = Value();
                         Mustbe(Sym.RPAREN);
@@ -660,10 +688,10 @@ namespace StrongLink
                         Next();
                         var a = SList<Serialisable>.Empty;
                         int n = 0;
-                        if (tok.type!=Sym.RPAREN)
+                        if (lxr.tok!=Sym.RPAREN)
                         {
                             a = a.InsertAt(Value(), n++);
-                            while (tok.type==Sym.COMMA)
+                            while (lxr.tok==Sym.COMMA)
                             {
                                 Next();
                                 a = a.InsertAt(Value(), n++);
@@ -692,41 +720,41 @@ namespace StrongLink
         {
             Next();
             var dct = false;
-            if (tok.type == Sym.DISTINCT)
+            if (lxr.tok == Sym.DISTINCT)
             {
                 dct = true;
                 Next();
             }
             var sels = SList<SSlot<string, Serialisable>>.Empty;
-            if (tok.type!=Sym.FROM)
+            if (lxr.tok!=Sym.FROM)
                 sels = Selects();
             var als = SDict<int, string>.Empty;
             var cp = SDict<int, Serialisable>.Empty;
             var k = 0;
             for (var b = sels.First();b!=null;b=b.Next())
             {
-                als = als.Add(k, b.Value.key);
-                cp = cp.Add(k++, b.Value.val);
+                als = als + (k, b.Value.key);
+                cp = cp + (k++, b.Value.val);
             }
             Mustbe(Sym.FROM);
             var q = Query();
             var or = SList<SOrder>.Empty;
             var i = 0;
-            if (tok.type == Sym.ORDER)
+            if (lxr.tok == Sym.ORDERBY)
             {
                 Next();
-                Mustbe(Sym.BY);
+     //           Mustbe(Sym.BY);
                 for (; ; )
                 {
                     var c = Value();
                     var d = false;
-                    if (tok.type == Sym.DESC)
+                    if (lxr.tok == Sym.DESC)
                     {
                         Next();
                         d = true;
                     }
                     or = or.InsertAt(new SOrder(c, d), i++);
-                    if (tok.type == Sym.COMMA)
+                    if (lxr.tok == Sym.COMMA)
                         Next();
                     else
                         break;
@@ -743,16 +771,15 @@ namespace StrongLink
         {
             Next();
             var q = Query();
-            var sa = SDict<SSelector, Serialisable>.Empty;
+            var sa = SDict<string, Serialisable>.Empty;
             Mustbe(Sym.SET);
             var tt = Sym.SET;
-            for (; tok.type == tt;)
+            for (; lxr.tok == tt;)
             {
                 Next(); tt = Sym.COMMA;
                 var c = MustBeID();
-                var cs = new SColumn(c.str);
                 Mustbe(Sym.EQUAL);
-                sa = sa.Add(cs, Value());
+                sa = sa + (c.str, Value());
             }
             return new SUpdateSearch(q, sa);
         }

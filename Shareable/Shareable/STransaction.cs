@@ -30,11 +30,11 @@ namespace Shareable
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="s"></param>
-        STransaction(STransaction tr,SDbObject s) :base(tr._Add(s,tr.uid+1))
+        STransaction(STransaction tr,SDbObject s) :base(tr+(s,tr.uid+1))
         {
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
-            steps = tr.steps.Add(tr.steps.Length.Value,s);
+            steps = tr.steps+(tr.steps.Length.Value,s);
             uid =  tr.uid+1;
         }
         public SDatabase Commit()

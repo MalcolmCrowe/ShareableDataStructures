@@ -255,7 +255,7 @@ namespace Shareable
         /// </summary>
         /// <param name="m">A byte multiplier</param>
         /// <returns></returns>
-        internal Integer Times(byte m)
+        public Integer Times(byte m)
         {
             if (bytes.Length == 0)
                 return this;
@@ -816,7 +816,7 @@ namespace Shareable
         /// </summary>
         /// <param name="m">The Integer mantissa</param>
         /// <param name="s">The int scale</param>
-		internal Numeric(Integer m,int s,int p=0)
+		public Numeric(Integer m,int s,int p=0)
         {
 			mantissa = m;
 			scale = s;

@@ -10,10 +10,10 @@ namespace Shareable
     public abstract class RowSet : Shareable<Serialisable>
     {
         public readonly SQuery _qry;
-        public readonly SDatabase _db;
-        public RowSet(SDatabase d, SQuery q, int? n):base(n)
+        public readonly STransaction _tr;
+        public RowSet(STransaction tr, SQuery q, int? n):base(n)
         {
-            _db = d; _qry = q;
+            _tr = tr; _qry = q;
         }
     }
     /// <summary>
@@ -33,17 +33,25 @@ namespace Shareable
         {
             return true;
         }
+        public virtual STransaction Update(STransaction tr,SDict<string,Serialisable> assigs)
+        {
+            return tr; // no changes here
+        }
+        public virtual STransaction Delete(STransaction tr)
+        {
+            return tr; // no changes here
+        }
     }
     public class DistinctRowSet : RowSet
     {
         public readonly RowSet _sce;
         public readonly SDict<SRow, bool> rows;
-        public DistinctRowSet(RowSet sce) : base(sce._db, sce._qry, null)
+        public DistinctRowSet(RowSet sce) : base(sce._tr, sce._qry, null)
         {
             _sce = sce;
             var r = SDict<SRow, bool>.Empty;
             for (var b = sce.First(); b != null; b = b.Next())
-                r = r.Add((SRow)((RowBookmark)b)._ob, true);
+                r = r + (((RowBookmark)b)._ob, true);
             rows = r;
         }
         public override Bookmark<Serialisable>? First()
@@ -67,6 +75,22 @@ namespace Shareable
                 return (_bmk.Next() is Bookmark<SSlot<SRow,bool>> rb)?
                     new DistinctRowBookmark(_drs,rb,Position+1):null;
             }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                throw new System.NotImplementedException();
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                throw new System.NotImplementedException();
+            }
+        }
+        internal class Play
+        {
+            public static void X()
+            {
+                var x = (5, 6);
+
+            }
         }
     }
     public class OrderedRowSet : RowSet
@@ -74,7 +98,7 @@ namespace Shareable
         public readonly RowSet _sce;
         public readonly SMTree<Serialisable> _tree;
         public readonly SDict<int, SRow> _rows;
-        public OrderedRowSet(RowSet sce,SSelectStatement sel) :base(sce._db,sel,sce.Length)
+        public OrderedRowSet(RowSet sce,SSelectStatement sel) :base(sce._tr,sel,sce.Length)
         {
             _sce = sce;
             var ti = SList<TreeInfo<Serialisable>>.Empty;
@@ -91,7 +115,7 @@ namespace Shareable
                 for (var c = sel.order.First(); c != null; c = c.Next())
                     k[i] = new Variant(c.Value.col.Eval(b),!c.Value.desc);
                 t = t.Add(m,k);
-                r = r.Add(m++, b._ob);
+                r = r+(m++, b._ob);
             }
             _tree = t;
             _rows = r;
@@ -119,16 +143,23 @@ namespace Shareable
                 return (_bmk.Next() is MTreeBookmark<Serialisable> rb) ?
                     new OrderedBookmark(_ors, rb, Position+1) : null;
             }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                throw new System.NotImplementedException();
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                throw new System.NotImplementedException();
+            }
         }
     }
     public class TableRowSet : RowSet
     {
         public readonly STable _tb;
-        public TableRowSet(SDatabase db,STable t) : base(db,t, t.rows.Length)
+        public TableRowSet(STransaction db,STable t) : base(db,t, t.rows.Length)
         {
             _tb = t;
         }
-
         public override Bookmark<Serialisable>? First()
         {
             return TableRowBookmark.New(this);
@@ -138,7 +169,7 @@ namespace Shareable
             public readonly TableRowSet _trs;
             public Bookmark<SSlot<long, long>> _bmk;
             protected TableRowBookmark(TableRowSet trs,Bookmark<SSlot<long,long>>bm,int p) 
-                :base(trs,new SRow(trs._db,trs._db.Get(bm.Value.val)),p)
+                :base(trs,new SRow(trs._tr,trs._tr.Get(bm.Value.val)),p)
             {
                 _trs = trs; _bmk = bm;
             }
@@ -152,6 +183,14 @@ namespace Shareable
                 return (_bmk.Next() is Bookmark<SSlot<long,long>> b)?
                     new TableRowBookmark(_trs,b,Position+1):null;
             }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                return tr.Add(new SUpdate(tr, _ob.rec, assigs)); // ok
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                return tr.Add(new SDelete(tr, _ob.rec.table, _ob.rec.Defpos)); // ok
+            }
         }
     }
     public class IndexRowSet : RowSet
@@ -160,7 +199,7 @@ namespace Shareable
         public readonly SList<Serialisable> _wh;
         public readonly SCList<Variant> _key;
         public readonly bool _unique;
-        public IndexRowSet(SDatabase db,STable t,SIndex ix,SList<Serialisable> wh) :base(db,t, t.rows.Length)
+        public IndexRowSet(STransaction tr,STable t,SIndex ix,SList<Serialisable> wh) :base(tr,t, t.rows.Length)
         {
             _ix = ix; _wh = wh;
             var key = SCList<Variant>.Empty;
@@ -199,8 +238,8 @@ namespace Shareable
                     : irs._ix.rows.First());
                 for (;b != null; b = b.Next() as MTreeBookmark<long>)
                 {
-                    var rc = irs._db.Get(b.Value.val);
-                    var rb = new IndexRowBookmark(irs, new SRow(irs._db, rc), b, 0);
+                    var rc = irs._tr.Get(b.Value.val);
+                    var rb = new IndexRowBookmark(irs, new SRow(irs._tr, rc), b, 0);
                     if (rc.Matches(rb, irs._wh))
                         return rb;
                 }
@@ -212,13 +251,21 @@ namespace Shareable
                     return null;
                 for (var b = _mbm.Next(); b != null; b = b.Next())
                 {
-                    var rc = _irs._db.Get(b.Value.val);
-                    var rb = new IndexRowBookmark(_irs, new SRow(_irs._db,rc), 
+                    var rc = _irs._tr.Get(b.Value.val);
+                    var rb = new IndexRowBookmark(_irs, new SRow(_irs._tr,rc), 
                         (MTreeBookmark<long>)b, Position + 1);
                     if (rc.Matches(rb, _irs._wh))
                         return rb;
                 }
                 return null;
+            }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                return tr.Add(new SUpdate(tr, _ob.rec, assigs)); // ok
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                return tr.Add(new SDelete(tr, _ob.rec.table, _ob.rec.Defpos)); // ok
             }
         }
     }
@@ -226,12 +273,12 @@ namespace Shareable
     {
         public readonly SSearch _sch;
         public readonly RowSet _sce;
-        public SearchRowSet(SDatabase db,SSearch sc) :base (db,sc, null)
+        public SearchRowSet(STransaction tr,SSearch sc) :base (tr,sc, null)
         {
             _sch = sc;
-            _sce = (_sch.sce is STable tb && db.GetPrimaryIndex(tb.uid) is SIndex ix) ?
-                new IndexRowSet(db, tb, ix, _sch.where) :
-                _sch.sce?.RowSet(db) ?? throw new System.Exception("??");
+            _sce = (_sch.sce is STable tb && tr.GetPrimaryIndex(tb.uid) is SIndex ix) ?
+                new IndexRowSet(tr, tb, ix, _sch.where) :
+                _sch.sce?.RowSet(tr) ?? throw new System.Exception("??");
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -266,16 +313,24 @@ namespace Shareable
                 }
                 return null;
             }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                return _bmk.Update(tr, assigs);
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                return _bmk.Delete(tr);
+            }
         }
     }
     public class SelectRowSet : RowSet
     {
         public readonly SSelectStatement _sel;
         public readonly RowSet _source;
-        public SelectRowSet(SDatabase db,SSelectStatement sel):base(db,sel,null)
+        public SelectRowSet(STransaction tr,SSelectStatement sel):base(tr,sel,null)
         {
             _sel = sel;
-            _source = sel.qry.RowSet(db);
+            _source = sel.qry.RowSet(tr);
         }
 
         public override Bookmark<Serialisable>? First()
@@ -314,15 +369,23 @@ namespace Shareable
                     }
                 return null;
             }
+            public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
+            {
+                return _bmk.Update(tr, assigs);
+            }
+            public override STransaction Delete(STransaction tr)
+            {
+                return _bmk.Delete(tr);
+            }
         }
     }
     public class SysRows : RowSet
     {
         public readonly SysTable tb;
         public readonly AStream fs;
-        internal SysRows(SDatabase d, SysTable t) : base(d, t, null)
+        internal SysRows(STransaction tr, SysTable t) : base(tr, t, null)
         {
-            tb = t; fs = d.File();
+            tb = t; fs = tr.File();
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -357,7 +420,7 @@ namespace Shareable
             internal static LogBookmark? New(SysRows rs, long lg, int pos)
             {
                 var rdr = new Reader(rs.fs, lg);
-                return (rdr._Get(rs._db) is SDbObject ob) ?
+                return (rdr._Get(rs._tr) is SDbObject ob) ?
                     new LogBookmark(rs, lg, ob, rdr.Position, pos) : null;
             }
             public override Bookmark<Serialisable>? Next()
@@ -380,7 +443,7 @@ namespace Shareable
             internal static TablesBookmark? New(SysRows rs, long lg, int pos)
             {
                 var rdr = new Reader(rs.fs, lg);
-                for (var ob = rdr._Get(rs._db);ob!=null;ob = rdr._Get(rs._db))
+                for (var ob = rdr._Get(rs._tr);ob!=null;ob = rdr._Get(rs._tr))
                 {
                     if (ob is STable tb)
                         return new TablesBookmark(rs, lg, tb, rdr.Position, pos);

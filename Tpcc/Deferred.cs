@@ -28,15 +28,15 @@ namespace Tpcc
 			var s = db.ExecuteQuery("select NO_O_ID from NEW_ORDER where NO_W_ID="+wid+" and NO_D_ID="+did);
 			if (s.items.Count==0)
 				return false;
-			oid = (int)(long)s.items[0].fields[0].Value;
+			oid = (int)(long)s[0][0];
 			db.ExecuteNonQuery("delete NEW_ORDER where NO_W_ID="+wid+" and NO_D_ID="+did+" and NO_O_ID="+oid);
 			s = db.ExecuteQuery("select O_C_ID from ORDER where O_W_ID="+wid+" and O_D_ID="+did+" and O_ID="+oid);
-		    ocid = (int)(long)s.items[0].fields[0].Value;
+		    ocid = (int)(long)s[0][0];
 			db.ExecuteNonQuery("update ORDER where O_W_ID="+wid+" and O_D_ID="+did+" and O_ID="+oid + " set O_CARRIER_ID = "+carid);
 			db.ExecuteNonQuery("update ORDER_LINE  where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid+ " set OL_DELIVERY_DATE=date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'");
 			decimal amount = 0.0M;
 			s = db.ExecuteQuery("select sum(OL_AMOUNT) from ORDER_LINE where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid);
-		    amount = (decimal)s.items[0].fields[0].Value;
+		    amount = (decimal)s[0][0];
 			db.ExecuteNonQuery("update CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + ocid+" set C_BALANCE =C_BALANCE+"+amount+",C_DELIVERY_CNT=C_DELIVERY_CNT+1");
 			return true;
 		}

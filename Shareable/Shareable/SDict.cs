@@ -32,8 +32,16 @@ namespace Shareable
         {
             SBucket<K, V>? r = null;
             foreach (var p in pairs)
-                r = r?.Add(p.key, p.val)??new SLeaf<K,V>(new SSlot<K,V>(p.key,p.val));
+                r = (r==null)?new SLeaf<K,V>(new SSlot<K,V>(p.key,p.val)): r + (p.key, p.val);
             root = r;
+        }
+        public static SDict<K,V> operator+(SDict<K,V> d,ValueTuple<K,V> x)
+        {
+            return d.Add(x.Item1, x.Item2);
+        }
+        public static SDict<K, V> operator-(SDict<K, V> d, K k)
+        {
+            return d.Remove(k);
         }
         /// <summary>
         /// Avoid unnecessary constructor calls by using this constant empty tree
@@ -45,19 +53,19 @@ namespace Shareable
         /// <param name="k">the key</param>
         /// <param name="v">the value to add</param>
         /// <returns>the modified tree</returns>
-        public virtual SDict<K,V> Add(K k,V v)
+        protected virtual SDict<K,V> Add(K k,V v)
         {
             return (root == null || root.total == 0)? new SDict<K, V>(k, v) :
                 (root.Contains(k))? new SDict<K,V>(root.Update(k,v)) :
-                (root.count == Size)? new SDict<K, V>(root.Split()).Add(k, v) :
-                new SDict<K, V>(root.Add(k, v));
+                (root.count == Size)? new SDict<K, V>(root.Split())+(k, v) :
+                new SDict<K, V>(root+(k, v));
         }
         /// <summary>
         /// Remove an entry from the tree (Note: we won't have duplicate keys)
         /// </summary>
         /// <param name="k"></param>
         /// <returns></returns>
-        public virtual SDict<K,V> Remove(K k)
+        protected virtual SDict<K,V> Remove(K k)
         {
             return (root==null || root.Lookup(k)==null) ? this :
                 (root.total == 1) ? Empty :
@@ -172,6 +180,14 @@ namespace Shareable
         internal abstract SBucket<K, V> TopHalf();
         internal abstract SSlot<K, SBucket<K, V>> LowHalf();
         internal abstract SSlot<K, object?> Slot(int i);
+        public static SBucket<K,V> operator+(SBucket<K,V>b,ValueTuple<K,V> x)
+        {
+            return b.Add(x.Item1, x.Item2);
+        }
+        public static SBucket<K, V> operator +(SBucket<K, V> b, SSlot<K, V> x)
+        {
+            return b.Add(x.key,x.val);
+        }
         internal virtual void Add(ArrayList ab)
         {
             throw new NotImplementedException();
@@ -499,13 +515,13 @@ namespace Shareable
                 var d = slots[j];
                 b = d.val;
                 if (b.count == SDict<K, V>.Size)
-                    return Split(j).Add(k, v); // try again
+                    return Split(j)+(k, v); // try again
                 return new SInner<K, V>(gtr, total + 1, Replace(j, new SSlot<K, SBucket<K, V>>(d.key, b.Add(k, v))));
             }
             else
             {
                 if (gtr.count == SDict<K, V>.Size)
-                    return SplitGtr().Add(k, v); // try again
+                    return SplitGtr()+(k, v); // try again
                 return new SInner<K, V>(gtr.Add(k, v), total + 1, slots);
             }
         }

@@ -50,8 +50,8 @@ namespace Shareable
                 var s = cb.Value.val;
                 if (source.Length!=0)
                     s = cb.Value.val.Lookup(source);
-                cp = cp.Add(cb.Value.key, s);
-                cn = cn.Add(ab.Value.val, s);
+                cp = cp+(cb.Value.key, s);
+                cn = cn+(ab.Value.val, s);
             }
             cpos = cp;
             names = cn;
@@ -75,7 +75,7 @@ namespace Shareable
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public virtual RowSet RowSet(SDatabase db)
+        public virtual RowSet RowSet(STransaction tr)
         {
             throw new NotImplementedException();
         }
@@ -129,9 +129,9 @@ namespace Shareable
         {
             return new SSearch(d,f);
         }
-        public override RowSet RowSet(SDatabase db)
+        public override RowSet RowSet(STransaction tr)
         {
-            return new SearchRowSet(db, this);
+            return new SearchRowSet(tr, this);
         }
         public override SRow Eval(RowBookmark rb)
         {
@@ -185,8 +185,8 @@ namespace Shareable
             var c = SDict<int,Serialisable>.Empty;
             for (var i = 0; i < n; i++)
             {
-                a = a.Add(i, f.GetString());
-                c = c.Add(i,f._Get(db));
+                a = a+(i, f.GetString());
+                c = c+(i,f._Get(db));
             }
             var q = (SQuery)f._Get(db);
             var o = SList<SOrder>.Empty;
@@ -234,9 +234,9 @@ namespace Shareable
             return sb.ToString();
         }
 
-        public override RowSet RowSet(SDatabase db)
+        public override RowSet RowSet(STransaction tr)
         {
-            RowSet r = new SelectRowSet(db,this);
+            RowSet r = new SelectRowSet(tr,this);
             if (distinct)
                 r = new DistinctRowSet(r);
             if (order.Length != 0)

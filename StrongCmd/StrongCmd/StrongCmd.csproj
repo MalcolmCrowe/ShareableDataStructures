@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{988F076B-544E-4705-86A4-EE6CCCD00D0A}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <RootNamespace>StrongLink</RootNamespace>
-    <AssemblyName>StrongLink</AssemblyName>
+    <ProjectGuid>{897314AB-B683-48D6-84CD-0DA579F395FA}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>StrongCmd</RootNamespace>
+    <AssemblyName>StrongCmd</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -23,7 +23,6 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -34,23 +33,13 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup>
-    <StartupObject />
-  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Document.cs" />
-    <Compile Include="Parser.cs" />
-    <Compile Include="StrongLink.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -60,6 +49,10 @@
     <ProjectReference Include="..\..\Shareable\Shareable\Shareable.csproj">
       <Project>{ef9c322b-5745-4b78-ba6a-ffb35f1b4f1f}</Project>
       <Name>Shareable</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\StrongLink\StrongLink\StrongLink.csproj">
+      <Project>{988f076b-544e-4705-86a4-ee6cccd00d0a}</Project>
+      <Name>StrongLink</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

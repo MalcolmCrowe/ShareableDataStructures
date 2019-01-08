@@ -12,6 +12,7 @@ namespace Tpcc
         static Encoding enc = new ASCIIEncoding();
         public void BuildTpcc()
         {
+            conn = Form1.conn;
             CreationScript();
             FillItems();
         }
@@ -63,8 +64,8 @@ namespace Tpcc
                 new SColumn("C_DISCOUNT", Types.SNumeric),
                 new SColumn("C_BALANCE", Types.SNumeric),
                 new SColumn("C_YTD_PAYMENT", Types.SNumeric),
-                new SColumn("C_PAYMENT_CNT", Types.SNumeric),
-                new SColumn("C_DELIVERY_CNT", Types.SNumeric),
+                new SColumn("C_PAYMENT_CNT", Types.SInteger),
+                new SColumn("C_DELIVERY_CNT", Types.SInteger),
                 new SColumn("C_DATA", Types.SString)
                 );
             conn.CreateIndex("CUSTOMER", IndexType.Primary, null, "C_W_ID", "C_D_ID", "C_ID");
@@ -89,7 +90,7 @@ namespace Tpcc
                 new SColumn("O_ENTRY_D", Types.SDate),
                 new SColumn("O_CARRIER_ID", Types.SInteger),
                 new SColumn("O_OL_CNT", Types.SInteger),
-                new SColumn("O_ALL_LOCAL", Types.SNumeric)
+                new SColumn("O_ALL_LOCAL", Types.SBoolean)
                 );
             conn.CreateIndex("ORDER", IndexType.Primary, null, "O_W_ID", "O_D_ID", "O_ID");
             conn.CreateIndex("ORDER", IndexType.Reference, "CUSTOMER", "O_W_ID", "O_D_ID", "O_C_ID");
@@ -111,7 +112,7 @@ namespace Tpcc
             conn.CreateTable("STOCK",
                 new SColumn("S_I_ID", Types.SInteger),
                 new SColumn("S_W_ID", Types.SInteger),
-                new SColumn("S_QUANTITY", Types.SNumeric),
+                new SColumn("S_QUANTITY", Types.SInteger),
                 new SColumn("S_DIST_01", Types.SString),
                 new SColumn("S_DIST_02", Types.SString),
                 new SColumn("S_DIST_03", Types.SString),
@@ -138,7 +139,7 @@ namespace Tpcc
                 new SColumn("OL_I_ID", Types.SInteger),
                 new SColumn("OL_SUPPLY_W_ID", Types.SInteger),
                 new SColumn("OL_DELIVERY_D", Types.SDate),
-                new SColumn("OL_QUANTITY", Types.SNumeric),
+                new SColumn("OL_QUANTITY", Types.SInteger),
                 new SColumn("OL_AMOUNT", Types.SNumeric),
                 new SColumn("OL_DIST_INFO", Types.SString)
                 );
@@ -189,7 +190,7 @@ namespace Tpcc
                     new SInteger(j), new SInteger(util.random(1, 10000)),
 #endif
                     GetString(ut.NextAString()),
-                    GetString(util.NextNString(100, 10000, 2)),
+                    new SNumeric(util.NextNString(100, 10000, 2)),
                     NextData() } });
         }
         public void FillWarehouse(int w)
@@ -206,7 +207,7 @@ namespace Tpcc
                 GetString(u2.NextAString()),
                 new SString(""+(char)util.random(65, 90) + (char)util.random(65, 90)),
                 GetString(util.NZip()),
-                GetString(util.NextNString(0, 2000, 4)),
+                new SNumeric(util.NextNString(0, 2000, 4)),
                 new SNumeric(30000000,12,2) } });
             FillStock(w);
         }
@@ -223,6 +224,7 @@ namespace Tpcc
             for (int siid = 1; siid <= 100000; siid++)
 #endif
                 conn.Insert("STOCK", cols, new Serialisable[][] { StockVals(siid, wid) });
+            Console.WriteLine("Done filling stock");
         }
         Serialisable[] StockVals(int siid, int wid)
         {
@@ -246,6 +248,7 @@ namespace Tpcc
         }
         public void FillDistrict(int wid, int did)
         {
+            Console.WriteLine("Filling District " + did);
             util us = new util(10, 20);
             util un = new util(6, 10);
             var cols = new string[] { "D_ID","D_W_ID","D_NAME","D_STREET_1","D_STREET_2",
@@ -257,14 +260,16 @@ namespace Tpcc
                 GetString(un.NextAString()),
                 GetString(un.NextAString()),
                 new SString(""+ (char)util.random(65, 90) + (char)util.random(65, 90)),
+                GetString(util.NZip()),new SNumeric(util.NextNString(0, 2000, 4)),
                 new SNumeric(300000,12,2), new SInteger(3001)
             } });
             FillCustomer(wid, did);
             FillOrder(wid, did);
+            Console.WriteLine("Done Filling District");
         }
         public void FillCustomer(int wid, int did)
         {
-            Console.WriteLine("starting customer (" + wid + ") using " + did);
+            Console.WriteLine("starting customer w=" + wid + " d=" + did);
             util uf = new util(8, 16);
             util us = new util(10, 20);
             util ud = new util(300, 500);
@@ -291,7 +296,7 @@ namespace Tpcc
                     GetString(uf.NextAString()),
                     GetString(uf.NextAString()),
                     new SString(""+(char)util.random(65, 90) + (char)util.random(65, 90)),
-                    GetString(util.NZip()), GetString(util.NString(16)),
+                    GetString(util.NZip()), new SInteger(util.NString(16)),
                     new SDate(DateTime.Now),new SString(credit()),new SNumeric(500000,12,2),
                     new SNumeric(util.random(0,5000),4,4),
                     new SNumeric(-1000,12,2),
@@ -306,6 +311,7 @@ namespace Tpcc
                     new SNumeric(1000,6,2), GetString(uh.NextAString())
                 } });
             }
+            Console.WriteLine("Customers done");
         }
         static string credit()
         {
@@ -319,6 +325,8 @@ namespace Tpcc
         {
             var ocols = new string[] { "O_ID", "O_D_ID", "O_W_ID", "O_C_ID",
                 "O_ENTRY_D","O_CARRIER_ID","O_OL_CNT","O_ALL_LOCAL" };
+            var ocols1 = new string[] { "O_ID", "O_D_ID", "O_W_ID", "O_C_ID",
+                "O_ENTRY_D","O_OL_CNT","O_ALL_LOCAL" };
             var ncols = new string[] { "NO_O_ID", "NO_D_ID", "NO_W_ID" };
 #if TRY
             int[] perm = util.Permute(3);//3000);
@@ -329,14 +337,22 @@ namespace Tpcc
 #endif
             {
                 int cnt = util.random(5, 15);
-                conn.Insert("ORDER", ocols, new Serialisable[][] { new Serialisable[] {
+                if (oid < 2101)
+                    conn.Insert("ORDER", ocols, new Serialisable[][] { new Serialisable[] {
                         new SInteger(oid),new SInteger(perm[oid - 1] + 1),new SInteger(did),
-                        new SInteger(wid),new SDate(DateTime.Now),new SInteger(cnt),new SInteger(1)
+                        new SInteger(wid),new SDate(DateTime.Now),new SInteger(util.random(1,10)),
+                        new SInteger(util.random(1,15)),SBoolean.True
                     } });
-                if (oid > 2100)
+                else
+                {
+                    conn.Insert("ORDER", ocols1, new Serialisable[][] { new Serialisable[] {
+                        new SInteger(oid),new SInteger(perm[oid - 1] + 1),new SInteger(did),
+                        new SInteger(wid),new SDate(DateTime.Now),new SInteger(cnt),SBoolean.True
+                    } });
                     conn.Insert("NEW_ORDER", ncols, new Serialisable[][] { new Serialisable[] {
                         new SInteger(oid),new SInteger(did),new SInteger(wid)
                     } });
+                }
                 FillOrderLine(wid, did, oid, cnt);
             }
         }
@@ -488,59 +504,17 @@ namespace Tpcc
                 r[j] = (byte)49;
             return r;
         }
-        public static byte[] NString(int ln)
+        public static Integer NString(int ln)
         {
-            byte[] r = new byte[ln];
-            bool in0 = true;
+            var r = Integer.Zero;
             for (int j = 0; j < ln; j++)
-            {
-                int d = rnd.Next(48, 58);
-                r[j] = (byte)d;
-                if (d == 48 && in0)
-                    r[j] = (byte)32;
-                else
-                    in0 = false;
-            }
+                r = r.Times((byte)rnd.Next(0, 9));
             return r;
         }
-        public static byte[] NextNString(int min, int max, int scale)
+        public static Numeric NextNString(int min, int max, int scale)
         {
-            int k = 0, n = rnd.Next(min, max);
-            ArrayList a = new ArrayList();
-            while (n > 0)
-            {
-                a.Add(n % 10);
-                n = n / 10;
-            }
-            n = a.Count;
-            byte[] r;
-            if (n <= scale)
-            {
-                r = new byte[scale + 2];
-                r[k++] = (byte)'0';
-                r[k++] = (byte)'.';
-                for (int j = 0; j < scale - n; j++)
-                    r[k++] = (byte)'0';
-                for (int j = n - 1; j >= 0; j--)
-                    r[k++] = (byte)(((int)a[j]) + 48);
-            }
-            else if (scale > 0)
-            {
-                r = new byte[n + 1];
-                for (int j = n - 1; j >= 0; j--)
-                {
-                    r[k++] = (byte)(((int)a[j]) + 48);
-                    if (j == scale)
-                        r[k++] = (byte)'.';
-                }
-            }
-            else
-            {
-                r = new byte[n];
-                for (int j = n - 1; j >= 0; j--)
-                    r[k++] = (byte)(((int)a[j]) + 48);
-            }
-            return r;
+            int n = rnd.Next(min, max);
+            return new Numeric(new Integer(n), scale);
         }
         static ByteArray orig = new ByteArray("ORIGINAL");
         public static byte[] fixStockData(byte[] s)

@@ -22,8 +22,8 @@ namespace Tpcc
 		public StrongConnect db;
 		public int did,cwid,cdid,cid;
 		public string clast;
-		decimal ytd,dytd,c_balance,camount,c_ytd_payment;
-		string cdata,c_credit,c_amount;
+		decimal ytd,dytd,c_balance,c_amount,c_ytd_payment;
+        string cdata, c_credit;
 		int count = 0,c_payment_cnt;
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
@@ -41,7 +41,7 @@ namespace Tpcc
             Set(3, (string)rdr[3]);
             Set(4, (string)rdr[4]);
             Set(5, (string)rdr[5]);
-            ytd = (decimal)rdr[6];
+            ytd = (decimal)s[0][6];
             s = db.ExecuteQuery("select D_NAME,D_STREET_1,D_STREET_2,D_CITY,D_STATE,D_ZIP,D_YTD from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did);
             if (!s.IsEmpty)
                 return true;
@@ -51,7 +51,7 @@ namespace Tpcc
             Set(10, (string)rdr[3]);
             Set(11, (string)rdr[4]);
             Set(12, (string)rdr[5]);
-            dytd = (decimal)rdr[6];
+            dytd = (decimal)s[0][6];
             Set(0, wid);
             Set(7, did);
             return false;
@@ -88,7 +88,7 @@ namespace Tpcc
             Set(31, (string)rdr[8]); // c_phone
             c_balance = (decimal)rdr[13];
             c_ytd_payment = (decimal)rdr[14];
-            c_payment_cnt = (int)(decimal)rdr[15];
+            c_payment_cnt = (int)(long)rdr[15];
             return false;
         }
         bool FetchCustFromId(ref string mess)
@@ -117,17 +117,16 @@ namespace Tpcc
             Set(31, (string)rdr[8]); // c_phone
             c_balance = (decimal)rdr[13];
             c_ytd_payment = (decimal)rdr[14];
-            c_payment_cnt = (int)(decimal)rdr[15];
+            c_payment_cnt = (int)(long)rdr[15];
             return false;
         }
         bool DoPayment(ref string mess)
         {
-            Set(35, c_amount);
-            camount = decimal.Parse(c_amount);
-            db.ExecuteNonQuery("update DISTRICT where D_W_ID=" + wid + " and D_ID=" + did + " set D_YTD=" + (dytd + camount));
-            Set(36, (c_balance + camount).ToString("F2"));
-            db.ExecuteNonQuery("update CUSTOMER where C_W_ID = " + cwid + " and C_D_ID = " + cdid + " and C_ID = " + cid + " set C_BALANCE=" + (camount + c_balance) + ",C_YTD_PAYMENT=" + (camount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1));
-            db.ExecuteQuery("update WAREHOUSE where W_ID=" + wid + " set W_YTD=" + (ytd + camount));
+            Set(35, c_amount.ToString());
+            db.ExecuteNonQuery("update DISTRICT where D_W_ID=" + wid + " and D_ID=" + did + " set D_YTD=" + (dytd + c_amount));
+            Set(36, (c_balance + c_amount).ToString("F2"));
+            db.ExecuteNonQuery("update CUSTOMER where C_W_ID = " + cwid + " and C_D_ID = " + cdid + " and C_ID = " + cid + " set C_BALANCE=" + (c_amount + c_balance) + ",C_YTD_PAYMENT=" + (c_amount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1));
+            db.ExecuteQuery("update WAREHOUSE where W_ID=" + wid + " set W_YTD=" + (ytd + c_amount));
             if (c_credit == "BC")
             {
                 var s = db.ExecuteQuery("select C_DATA from CUSTOMER where C_W_ID=" + cwid + " and C_D_ID=" + cdid + " and C_ID=" + cid);
@@ -173,7 +172,7 @@ namespace Tpcc
 				clast = enc.GetString(util.NextLast(9999));
 			else
 				cid = util.NURandCID();
-			c_amount = enc.GetString(util.NextNString(1,500000,2));
+			c_amount = decimal.Parse(util.NextNString(1,500000,2).ToString());
 			bool done = false;
 			string mess="";
 			while (!done && count++<1000)
@@ -329,7 +328,7 @@ namespace Tpcc
 						clast = s;
 						FetchCustFromLast(ref s); break;
 					case 35:	
-						c_amount = s;
+						c_amount = decimal.Parse(s);
 						DoPayment(ref s); break;
 				}
 			}

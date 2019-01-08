@@ -1,0 +1,8 @@
+create table a(b integer,c string)
+create primary index ax for a(b)
+create table d(e string,f integer)
+create index df for d(f) references a
+insert a values(1,'One')
+insert d values('Un',1)
+insert d values('Uno',1)
+

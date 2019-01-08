@@ -30,7 +30,7 @@ namespace Shareable
                 r = r.Add(t);
             return r;
         }
-        public SSearchTree<T> Add(T n)
+        protected SSearchTree<T> Add(T n)
         {
             if (this == Empty)
                 return new SSearchTree<T>(n, Empty, Empty);
@@ -39,6 +39,10 @@ namespace Shareable
                 return new SSearchTree<T>(node, left?.Add(n) ?? new SSearchTree<T>(n, Empty, Empty),right);
             else
                 return new SSearchTree<T>(node, left, right?.Add(n) ?? new SSearchTree<T>(n, Empty,Empty));
+        }
+        public static SSearchTree<T> operator+(SSearchTree<T> t,T n)
+        {
+            return t.Add(n);
         }
         public bool Contains(T n)
         {

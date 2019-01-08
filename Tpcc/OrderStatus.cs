@@ -96,7 +96,7 @@ namespace Tpcc
             {
                 Set(k++, (int)(long)s[i][1]);
                 Set(k++, (int)(long)s[i][0]);
-                Set(k++, (int)(decimal)s[i][2]);
+                Set(k++, (int)(long)s[i][2]);
                 Set(k++, String.Format("${0,8:F2}", (decimal)s[i][3]));
                 if (s[i][4] != Serialisable.Null)
                     Set(k++, ((DateTime)s[i][4]).ToShortDateString());

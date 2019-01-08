@@ -13,6 +13,7 @@ namespace StrongLink
     {
         internal ClientStream asy;
         public bool inTransaction = false;
+        public SDict<int, string>? description = null; // see ExecuteQuery
         public StrongConnect(string host,int port,string fn)
         {
             Socket? socket = null;
@@ -102,7 +103,10 @@ namespace StrongLink
         }
         public DocArray ExecuteQuery(string sql)
         {
-            return Get(Parser.Parse(sql));
+            var qry = Parser.Parse(sql) as SQuery;
+            if (qry == null)
+                throw new Exception("Bad query " + sql);
+            return Get(qry);
         }
         public Types ExecuteNonQuery(string sql)
         {
@@ -127,7 +131,7 @@ namespace StrongLink
         }
         public DocArray Get(Serialisable tn)
         {
-            asy.Write(Types.Get);
+            asy.Write(Types.DescribedGet);
             tn.Put(asy);
             asy.Flush();
             var b = asy.ReadByte();
@@ -136,8 +140,14 @@ namespace StrongLink
                 inTransaction = false;
                 asy.GetException();
             }
-            if (b==(byte)Types.Done)
+            if (b == (byte)Types.Done)
+            {
+                description = SDict<int, string>.Empty;
+                var n = asy.rbuf.GetInt();
+                for (var i = 0; i < n; i++)
+                    description = description + (i, asy.rbuf.GetString());
                 return new DocArray(asy.rbuf.GetString());
+            }
             throw new Exception("??");
         }
         public void BeginTransaction()
@@ -292,7 +302,7 @@ namespace StrongLink
             if (proto == Types.Exception)
             {
                 var rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
-                bf.len = rcount + 2;
+                bf.len = rcount + 4;
                 proto = (Types)bf.buf[rbuf.pos++];
             }
             throw new Exception(rbuf.GetString());

@@ -96,7 +96,7 @@ namespace Tpcc
             }
             Set(3, (string)s[0][1]);
             Set(4, (string)s[0][2]);
-            c_discount = (decimal)s[0][0];
+            c_discount = (decimal)s[0][0]; 
             Set(5, c_discount.ToString("F4").Substring(1));
 			return false;
 		}
@@ -129,10 +129,10 @@ namespace Tpcc
 		bool DoOLCount(ref string mess)
 		{
 			Set(7,ol_cnt);
-			db.ExecuteNonQuery("insert into ORDER(O_ID,O_D_ID,O_W_ID,O_C_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL)"+
+			db.ExecuteNonQuery("insert ORDER(O_ID,O_D_ID,O_W_ID,O_C_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL)"+
                     "values(" + o_id + "," + did + "," + wid + "," + cid + ",date'" + 
-                    DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? 1 : 0) + ")");
-			db.ExecuteNonQuery("insert into NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+
+                    DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? "true" : "false") + ")");
+			db.ExecuteNonQuery("insert NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+
 					o_id+","+did+","+wid+")");
             return true;
 		}
@@ -177,11 +177,7 @@ namespace Tpcc
             }
             Set(k + 2, i_name);
             object o = s[0][0];
-            s_quantity = 0;
-            if (o is long)
-                s_quantity = (int)(long)o;
-            else if (o is decimal)
-                s_quantity = (int)(decimal)o;
+            s_quantity = (int)(long)o;
             Set(k + 4, s_quantity);
             a.s_quantity = s_quantity;
             sdata = (string)s[0][2];
@@ -229,7 +225,7 @@ namespace Tpcc
                     if (s_quantity < 10)
                         s_quantity += 91;
                     db.ExecuteNonQuery("update STOCK where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id + " set S_QUANTITY=" + s_quantity);
-                    db.ExecuteNonQuery("insert into ORDER_LINE(OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER,OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT)values(" +
+                    db.ExecuteNonQuery("insert ORDER_LINE(OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER,OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT)values(" +
                             o_id + "," + did + "," + wid + "," + (j + 1) + "," + a.oliid + "," + a.ol_supply_w_id + "," + a.ol_quantity + "," + a.ol_amount + ")");
                 }
                 mess = "OKAY";
@@ -434,6 +430,8 @@ namespace Tpcc
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
+            if (wid == 0)
+                wid = 1;
 			VTerm vt1 = this;
 			Width = vt1.Width;
 			Height = vt1.Height+50;
@@ -566,6 +564,8 @@ namespace Tpcc
         public int step = 0,line = 0;
         internal void Step()
         {
+            if (wid == 0)
+                wid = 1;
             switch (step)
             {
                 case 0:
