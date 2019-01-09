@@ -51,6 +51,11 @@ namespace Shareable
         SInPredicate = 41,
         DescribedGet = 42
     }
+    public interface ILookup<K,V> where K:IComparable
+    {
+        bool defines(K s);
+        V this[K s] { get; }
+    }
     public class Serialisable:IComparable
     {
         public readonly Types type;
@@ -67,6 +72,7 @@ namespace Shareable
         {
             return Null;
         }
+        public virtual bool isValue => true;
         public virtual void Put(StreamBase f)
         {
             f.WriteByte((byte)type);
@@ -107,26 +113,20 @@ namespace Shareable
             return Null;
         }
         /// <summary>
+        /// During Analysis:
         /// We have been mentioned in a Serialisable. We might be able to improve it using a known list
-        /// of selectors
+        /// of selectors.
+        /// After Analysis:
+        /// The names argument is a set of Values.
         /// </summary>
         /// <param name="nms">The information for associating strings to SColumns</param>
         /// <returns></returns>
-        internal virtual Serialisable Lookup(SDict<string, Serialisable> nms)
+        public virtual Serialisable Lookup(ILookup<string, Serialisable> nms)
         {
             return this;
         }
         public virtual Serialisable this[string col]
         { get { throw new NotImplementedException(); } }
-        /// <summary>
-        /// Evaluate a Serialisable
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <returns></returns>
-        public virtual Serialisable Eval(RowBookmark rs)
-        {
-            return this;
-        }
         public override string ToString()
         {
             return "Serialisable " +type;
@@ -146,6 +146,7 @@ namespace Shareable
         {
             left = lf; right = rt; op = o;
         }
+        public override bool isValue => false;
         public enum Op { Plus, Minus, Times, Divide, Eql, NotEql, Lss, Leq, Gtr, Geq, Dot, And, Or, UMinus, Not };
         internal static SExpression Get(SDatabase db,Reader f)
         {
@@ -159,15 +160,12 @@ namespace Shareable
             f.WriteByte((byte)op);
             right.Put(f);
         }
-        internal override Serialisable Lookup(SDict<string, Serialisable> nms)
+        public override Serialisable Lookup(ILookup<string, Serialisable> nms)
         {
-            return new SExpression(left.Lookup(nms),op,right.Lookup(nms));
-        }
-#nullable disable
-        public override Serialisable Eval(RowBookmark rs)
-        {
-            var lf = left.Eval(rs);
-            var rg = right.Eval(rs);
+            var lf = left.Lookup(nms);
+            var rg = right.Lookup(nms);
+            if (!(lf.isValue && rg.isValue))
+                return new SExpression(lf, op, rg);
             switch (op)
             {
                  case Op.Plus:
@@ -182,7 +180,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv + ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv + ((SInteger)rg).big);
+                                            return new SInteger(lv + getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)rg).num);
                                     }
@@ -190,13 +188,13 @@ namespace Shareable
                                 }
                             case Types.SBigInt:
                                 {
-                                    var lv = ((SInteger)lf).big;
+                                    var lv = getbig(lf);
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
                                             return new SInteger(lv + ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv + ((SInteger)rg).big);
+                                            return new SInteger(lv + getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)rg).num);
                                     }
@@ -210,7 +208,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SNumeric(lv + new Numeric(((SInteger)rg).value));
                                         case Types.SBigInt:
-                                            return new SNumeric(lv + new Numeric(((SInteger)rg).big,0));
+                                            return new SNumeric(lv + new Numeric(getbig(rg), 0));
                                         case Types.SNumeric:
                                             return new SNumeric(lv + ((SNumeric)rg).num);
                                     }
@@ -231,7 +229,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv - ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv - ((SInteger)rg).big);
+                                            return new SInteger(lv - getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) - ((SNumeric)rg).num);
                                     }
@@ -239,13 +237,13 @@ namespace Shareable
                                 }
                             case Types.SBigInt:
                                 {
-                                    var lv = ((SInteger)lf).big;
+                                    var lv = getbig(lf);
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
                                             return new SInteger(lv - ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv - ((SInteger)rg).big);
+                                            return new SInteger(lv - getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) - ((SNumeric)rg).num);
                                     }
@@ -259,7 +257,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SNumeric(lv - new Numeric(((SInteger)rg).value));
                                         case Types.SBigInt:
-                                            return new SNumeric(lv - new Numeric(((SInteger)rg).big, 0));
+                                            return new SNumeric(lv - new Numeric(getbig(rg), 0));
                                         case Types.SNumeric:
                                             return new SNumeric(lv - ((SNumeric)rg).num);
                                     }
@@ -280,7 +278,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv * ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv * ((SInteger)rg).big);
+                                            return new SInteger(lv * getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) * ((SNumeric)rg).num);
                                     }
@@ -288,13 +286,13 @@ namespace Shareable
                                 }
                             case Types.SBigInt:
                                 {
-                                    var lv = ((SInteger)lf).big;
+                                    var lv = getbig(lf);
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
                                             return new SInteger(lv * ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv * ((SInteger)rg).big);
+                                            return new SInteger(lv * getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) * ((SNumeric)rg).num);
                                     }
@@ -308,7 +306,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SNumeric(lv * new Numeric(((SInteger)rg).value));
                                         case Types.SBigInt:
-                                            return new SNumeric(lv * new Numeric(((SInteger)rg).big, 0));
+                                            return new SNumeric(lv * new Numeric(getbig(rg), 0));
                                         case Types.SNumeric:
                                             return new SNumeric(lv * ((SNumeric)rg).num);
                                     }
@@ -329,7 +327,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv / ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv / ((SInteger)rg).big);
+                                            return new SInteger(lv / getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Numeric(new Integer(lv), 0) / ((SNumeric)rg).num));
                                     }
@@ -337,13 +335,13 @@ namespace Shareable
                                 }
                             case Types.SBigInt:
                                 {
-                                    var lv = ((SInteger)lf).big;
+                                    var lv = getbig(lf);
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
                                             return new SInteger(lv / ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv / ((SInteger)rg).big);
+                                            return new SInteger(lv / getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Numeric(new Integer(lv), 0) / ((SNumeric)rg).num));
                                     }
@@ -357,7 +355,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SNumeric(new Numeric(lv / new Numeric(((SInteger)rg).value)));
                                         case Types.SBigInt:
-                                            return new SNumeric(new Numeric(lv / new Numeric(((SInteger)rg).big, 0)));
+                                            return new SNumeric(new Numeric(lv / new Numeric(getbig(rg), 0)));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(lv / ((SNumeric)rg).num));
                                     }
@@ -384,7 +382,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             c = lv.CompareTo(((SInteger)rg).value); break;
                                         case Types.SBigInt:
-                                            c = lv.CompareTo(((SInteger)rg).big); break;
+                                            c = lv.CompareTo(getbig(rg)); break;
                                         case Types.SNumeric:
                                             c = new Numeric(new Integer(lv), 0).CompareTo(((SNumeric)rg).num); break;
                                     }
@@ -392,13 +390,13 @@ namespace Shareable
                                 }
                             case Types.SBigInt:
                                 {
-                                    var lv = ((SInteger)lf).big;
+                                    var lv = getbig(lf);
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
                                             c = lv.CompareTo(((SInteger)rg).value); break;
                                         case Types.SBigInt:
-                                            c = lv.CompareTo(((SInteger)rg).big); break;
+                                            c = lv.CompareTo(getbig(rg)); break;
                                         case Types.SNumeric:
                                             c = new Numeric(new Integer(lv), 0).CompareTo(((SNumeric)rg).num); break;
                                     }
@@ -412,7 +410,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             c = lv.CompareTo(new Numeric(((SInteger)rg).value)); break;
                                         case Types.SBigInt:
-                                            c = lv.CompareTo(new Numeric(((SInteger)rg).big, 0)); break;
+                                            c = lv.CompareTo(new Numeric(getbig(rg), 0)); break;
                                         case Types.SNumeric:
                                             c = lv.CompareTo(((SNumeric)rg).num); break;
                                     }
@@ -435,7 +433,7 @@ namespace Shareable
                     switch (left.type)
                     {
                         case Types.SInteger: return new SInteger(-((SInteger)left).value);
-                        case Types.SBigInt: return new SInteger(-((SInteger)left).big);
+                        case Types.SBigInt: return new SInteger(-getbig(lf));
                         case Types.SNumeric: return new SNumeric(-((SNumeric)left).num);
                     }
                     break;
@@ -458,12 +456,16 @@ namespace Shareable
                     }
                 case Op.Dot:
                     {
-                        if (rs._rs._qry.Lookup(((SString)left).str) is SQuery q)
-                            return q.Lookup(((SString)right).str).Eval(rs);
-                        break;
+                        var ls = ((SString)left).str;
+                        var a = nms.defines(ls) ? nms[ls]  : left;
+                        return a.Lookup(nms);
                     }
             }
             throw new Exception("Bad computation");
+        }
+        Integer getbig(Serialisable x)
+        {
+            return ((SInteger)x).big ?? throw new Exception("No Value?");
         }
         SBoolean For(bool v)
         {
@@ -484,6 +486,7 @@ namespace Shareable
             func = fn;
             arg = a;
         }
+        public override bool isValue => false;
         public enum Func { Sum, Count, Max, Min, Null };
         internal static SFunction Get(SDatabase db,Reader f)
         {
@@ -495,29 +498,24 @@ namespace Shareable
             f.WriteByte((byte)func);
             arg.Put(f);
         }
-        internal override Serialisable Lookup(SDict<string, Serialisable> nms)
+        public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            return new SFunction(func,(nms.Length==0)?arg:arg.Lookup(nms));
-        }
-        /// <summary>
-        /// rb gives the group if grouping is implemented
-        /// </summary>
-        /// <param name="rb"></param>
-        /// <returns></returns>
-        public override Serialisable Eval(RowBookmark rb)
-        {
+            var x = arg.Lookup(nms);
+            var rb = nms as RowBookmark;
+            if (!x.isValue || rb==null)
+                return new SFunction(func,x);
             if (func == Func.Null)
-                return SBoolean.For(base.Eval(rb) == Null);
+                return SBoolean.For(x == Null);
             var t = Types.Serialisable;
             var empty = true;
             Integer ai = Integer.Zero;
             Numeric an = Numeric.Zero;
             string ac = "";
             int ic = 0;
-            for (var b = rb._rs.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = rb?._rs.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
                 if (b.SameGroupAs(rb))
                 {
-                    var a = arg.Eval(b);
+                    var a = arg.Lookup(b);
                     t = a.type;
                     switch (func)
                     {
@@ -607,6 +605,7 @@ namespace Shareable
         {
             arg = a; list = r;
         }
+        public override bool isValue => false;
         public static SInPredicate Get(SDatabase db,Reader f)
         {
             var a = f._Get(db);
@@ -618,7 +617,7 @@ namespace Shareable
             arg.Put(f);
             list.Put(f);
         }
-        internal override Serialisable Lookup(SDict<string, Serialisable> nms)
+        public override Serialisable Lookup(ILookup<string, Serialisable> nms)
         {
             return new SInPredicate(arg.Lookup(nms), list.Lookup(nms));
         }
@@ -634,6 +633,7 @@ namespace Shareable
         {
             ticks = f.GetLong();
         }
+        public override bool isValue => true;
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -679,6 +679,7 @@ namespace Shareable
         SInteger(Reader f) : this(f.GetInt())
         {
         }
+        public override bool isValue => true;
         public new static Serialisable Get(Reader f)
         {
             return new SInteger(f);
@@ -722,6 +723,7 @@ namespace Shareable
             var scale = f.GetInt();
             num = new Numeric(mantissa, scale, precision);
         }
+        public override bool isValue => true;
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -764,6 +766,7 @@ namespace Shareable
         {
             str = f.GetString();
         }
+        public override bool isValue => true;
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -807,6 +810,7 @@ namespace Shareable
             month = f.GetInt();
             rest = f.GetLong();
         }
+        public override bool isValue => true;
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -853,6 +857,7 @@ namespace Shareable
             base.Put(f);
             f.PutLong(ts.Ticks);
         }
+        public override bool isValue => true;
         public new static Serialisable Get(Reader f)
         {
             return new STimeSpan(f);
@@ -879,6 +884,7 @@ namespace Shareable
         {
             sbool = n;
         }
+        public override bool isValue => true;
         public new static Serialisable Get(Reader f)
         {
             return For(f.ReadByte() == 1);
@@ -909,7 +915,7 @@ namespace Shareable
             return sbool ? "\"true\"" : "\"false\"";
         }
     }
-    public class SRow : Serialisable
+    public class SRow : Serialisable,ILookup<string,Serialisable>
     {
         public readonly SDict<int, string> names;
         public readonly SDict<int, Serialisable> cols;
@@ -922,6 +928,7 @@ namespace Shareable
             vals = SDict<string, Serialisable>.Empty;
             rec = r;
         }
+        public override bool isValue => true;
         public SRow Add(string n, Serialisable v)
         {
             return new SRow(names+(names.Length.Value,n),cols+(cols.Length.Value,v),
@@ -980,8 +987,10 @@ namespace Shareable
             for (var b = tb.cpos.First(); b != null; b = b.Next())
                 if (b.Value.val is SColumn sc)
                 {
-                    r = r+(k, rec.fields.Lookup(sc.uid));
+                    var v = rec.fields.Lookup(sc.uid);
+                    r = r+(k, v);
                     cn = cn+(k++, sc.name);
+                    vs = vs + (sc.name, v);
                 }
                 else
                     throw new Exception("Unimplemented selector");
@@ -998,7 +1007,7 @@ namespace Shareable
                 var cb = ss.cpos.First();
                 for (var b = ss.display.First(); cb!=null && b != null; b = b.Next(), cb = cb.Next())
                 {
-                    var v = cb.Value.val.Eval(bm);
+                    var v = cb.Value.val.Lookup(bm);
                     if (v == Null)
                         continue;
                     if (v is SRow sr && sr.cols.Length == 1)
@@ -1049,24 +1058,29 @@ namespace Shareable
                 }
             sb.Append("}");
         }
-        public override Serialisable Eval(RowBookmark rs)
+        public override Serialisable Lookup(ILookup<string,Serialisable> rs)
         {
             var v = SDict<int, Serialisable>.Empty;
             var r = SDict<string, Serialisable>.Empty;
             var nb = names.First();
             for (var b = cols.First(); nb != null && b != null; nb = nb.Next(), b = b.Next())
             {
-                var e = b.Value.val.Eval(rs);
+                var e = b.Value.val.Lookup(rs);
                 v = v + (b.Value.key, e);
                 r = r + (nb.Value.val, e);
             }
-            return new SRow(names, v, r, rs._ob.rec);
+            return new SRow(names, v, r, (rs as RowBookmark)?._ob.rec);
         }
         public override string ToString()
         {
             var sb = new StringBuilder("SRow ");
             Append(null,sb);
             return sb.ToString();
+        }
+
+        public bool defines(string s)
+        {
+            return vals.Contains(s);
         }
     }
     public abstract class SDbObject : Serialisable
@@ -1142,6 +1156,7 @@ namespace Shareable
             f.uids = f.uids + (s.uid, uid);
             f.WriteByte((byte)s.type);
         }
+        public override bool isValue => false;
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -1309,7 +1324,7 @@ namespace Shareable
                 db.GetTable(n) ??
                 throw new Exception("No such table " + n);
         }
-        public override RowSet RowSet(STransaction tr)
+        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable>nms)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
             {
@@ -1319,9 +1334,11 @@ namespace Shareable
             }
             return new TableRowSet(tr, this);
         }
-        public override SRow Eval(RowBookmark rb)
+        public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            return rb._ob;
+            if (nms is RowBookmark rb)
+                return rb._ob;
+            return this;
         }
         public override Serialisable Lookup(string a)
         {
@@ -1479,7 +1496,7 @@ namespace Shareable
         {
             return (SysTable)Add(new SysColumn(n, t));
         }
-        public override RowSet RowSet(STransaction tr)
+        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
         {
             return new SysRows(tr,this);
         }
@@ -1518,9 +1535,9 @@ namespace Shareable
             base.Put(f);
             f.PutString(name);
         }
-        internal override Serialisable Lookup(SDict<string, Serialisable> nms)
+        public override Serialisable Lookup(ILookup<string, Serialisable> nms)
         {
-            return nms.Lookup(name);
+            return nms[name];
         }
         public override string ToString()
         {
@@ -1589,11 +1606,9 @@ namespace Shareable
             }
             return false;
         }
-        public override Serialisable Eval(RowBookmark rs)
+        public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            if (rs?._ob.rec is SRecord rec)
-                return rec.fields.Lookup(uid)??Null;
-            return rs?._ob[name] ?? throw new Exception("no column " + name);
+            return nms.defines(name) ? nms[name] : this;
         }
         public override string ToString()
         {
@@ -1877,7 +1892,7 @@ namespace Shareable
                 var c = svs.vals;
                 if (n == 0)
                     for (var b = tb.cpos.First(); c.Length!=0 && b!=null; b = b.Next(), c = c.next) // not null
-                        f = f + (((SSelector)b.Value.val).uid, c.element.Eval(null));
+                        f = f + (((SSelector)b.Value.val).uid, c.element.Lookup(SDict<string,Serialisable>.Empty));
                 else
                     for (var b = cs; c.Length!=0 && b.Length != 0; b = b.next, c = c.next) // not null
                         f = f + (b.element, c.element);
@@ -1921,6 +1936,7 @@ namespace Shareable
             for (var i = 0; i < n; i++)
                 vals = vals.InsertAt(f._Get(db), i);
         }
+        public override bool isValue => true;
         public static SValues Get(SDatabase db,Reader f)
         {
             var n = f.GetInt();
@@ -2011,7 +2027,7 @@ namespace Shareable
         public bool Matches(RowBookmark rb,SList<Serialisable> wh)
         {
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.Value is SExpression x && x.Eval(rb) is SBoolean e 
+                if (b.Value is SExpression x && x.Lookup(rb) is SBoolean e 
                     && !e.sbool)
                     return false;
             return true;
@@ -2043,13 +2059,13 @@ namespace Shareable
         {
             qry = q; assigs = a;
         }
-        public STransaction Obey(STransaction tr)
+        public STransaction Obey(STransaction tr,ILookup<string,Serialisable> nms)
         {
-            for (var b = qry.RowSet(tr).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = qry.RowSet(tr,nms).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
                 var u = SDict<string, Serialisable>.Empty;
                 for (var c = assigs.First(); c != null; c = c.Next())
-                    u = u + (c.Value.key, c.Value.val.Eval(b));
+                    u = u + (c.Value.key, c.Value.val.Lookup(b));
                 tr = b.Update(tr,u);
             }
             return tr;
@@ -2149,9 +2165,9 @@ namespace Shareable
     {
         public readonly SQuery qry;
         public SDeleteSearch(SQuery q) :base(Types.SDeleteSearch) { qry = q; }
-        public STransaction Obey(STransaction tr)
+        public STransaction Obey(STransaction tr,ILookup<string,Serialisable>nms)
         {
-            for (var b = qry.RowSet(tr).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = qry.RowSet(tr,nms).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
                 var rc = b._ob.rec ?? throw new System.Exception("??");// not null
                 tr = tr.Add(new SDelete(tr, rc.table, rc.uid)); 

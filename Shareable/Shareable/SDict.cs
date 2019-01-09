@@ -16,7 +16,7 @@ namespace Shareable
     /// </summary>
     /// <typeparam name="K">The key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    public class SDict<K,V> : Shareable<SSlot<K,V>> where K: IComparable
+    public class SDict<K,V> : Shareable<SSlot<K,V>>,ILookup<K,V> where K: IComparable
     {
         /// <summary>
         /// Size is a system configuration parameter: the maximum number of entries in a Bucket.
@@ -47,6 +47,9 @@ namespace Shareable
         /// Avoid unnecessary constructor calls by using this constant empty tree
         /// </summary>
         public readonly static SDict<K, V> Empty = new SDict<K, V>(new SSlot<K,V>[0]);
+
+        public V this[K s] => Lookup(s);
+
         /// <summary>
         /// Add a new entry or update an existing one in the tree
         /// </summary>
@@ -77,7 +80,9 @@ namespace Shareable
         }
         public V Lookup(K k)
         {
-            return (root==null)?default(V):root.Lookup(k);
+            if (root==null)
+                throw new Exception("empty");
+            return root.Lookup(k);
         }
         /// <summary>
         /// Start a traversal of the tree
@@ -129,6 +134,11 @@ namespace Shareable
             }
             sb.Append(']');
             return sb.ToString();
+        }
+
+        public bool defines(K s)
+        {
+            return Contains(s);
         }
     }
     public class SDictBookmark<K, V> : Bookmark<SSlot<K, V>> where K : IComparable

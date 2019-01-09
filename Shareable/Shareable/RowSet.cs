@@ -20,7 +20,7 @@ namespace Shareable
     /// A RowBookmark evaluates its Serialisable _ob (usually an SRow).
     /// This matters especially for SSelectStatements
     /// </summary>
-    public abstract class RowBookmark : Bookmark<Serialisable>
+    public abstract class RowBookmark : Bookmark<Serialisable>,ILookup<string,Serialisable>
     {
         public readonly RowSet _rs;
         public readonly SRow _ob;
@@ -29,6 +29,9 @@ namespace Shareable
             _rs = rs; _ob = ob;
         }
         public override Serialisable Value => _ob; // should always be an SRow
+
+        public Serialisable this[string s] => _ob.vals[s];
+
         public virtual bool SameGroupAs(RowBookmark r)
         {
             return true;
@@ -40,6 +43,11 @@ namespace Shareable
         public virtual STransaction Delete(STransaction tr)
         {
             return tr; // no changes here
+        }
+
+        public bool defines(string s)
+        {
+            return _ob.vals.Contains(s);
         }
     }
     public class DistinctRowSet : RowSet
@@ -113,7 +121,7 @@ namespace Shareable
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.Value.col.Eval(b),!c.Value.desc);
+                    k[i] = new Variant(c.Value.col.Lookup(b),!c.Value.desc);
                 t = t.Add(m,k);
                 r = r+(m++, b._ob);
             }
@@ -261,11 +269,12 @@ namespace Shareable
             }
             public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
             {
-                return tr.Add(new SUpdate(tr, _ob.rec, assigs)); // ok
+                return tr.Add(new SUpdate(tr, _ob.rec??throw new System.Exception("No record"), assigs)); // ok
             }
             public override STransaction Delete(STransaction tr)
             {
-                return tr.Add(new SDelete(tr, _ob.rec.table, _ob.rec.Defpos)); // ok
+                var rc = _ob.rec ?? throw new System.Exception("No record");
+                return tr.Add(new SDelete(tr, rc.table, rc.Defpos)); // ok
             }
         }
     }
@@ -273,12 +282,40 @@ namespace Shareable
     {
         public readonly SSearch _sch;
         public readonly RowSet _sce;
-        public SearchRowSet(STransaction tr,SSearch sc) :base (tr,sc, null)
+        public SearchRowSet(STransaction tr,SSearch sc,ILookup<string,Serialisable> nms) :base (tr,sc, null)
         {
             _sch = sc;
-            _sce = (_sch.sce is STable tb && tr.GetPrimaryIndex(tb.uid) is SIndex ix) ?
-                new IndexRowSet(tr, tb, ix, _sch.where) :
-                _sch.sce?.RowSet(tr) ?? throw new System.Exception("??");
+            RowSet? s = null;
+            var matches = SDict<long,Serialisable>.Empty;
+            if (_sch.sce is STable tb)
+            {
+                for (var wb = _sch.where.First(); wb != null; wb = wb.Next())
+                    if (wb.Value.Lookup(nms) is SExpression x && x.op == SExpression.Op.Eql)
+                    {
+                        if (x.left is SColumn c && tb.names.Contains(c.name) &&
+                            x.right != null && x.right.isValue)
+                            matches = matches+ (c.uid, x);
+                        else if (x.right is SColumn cr && tb.names.Contains(cr.name) &&
+                                x.left != null && x.left.isValue)
+                            matches = matches+(cr.uid,x);
+                    }
+                var best = SList<Serialisable>.Empty;
+                for (var b = tb.indexes.First(); matches.Length.Value > best.Length.Value && b != null; 
+                    b = b.Next())
+                {
+                    var ma = SList<Serialisable>.Empty;
+                    var ix = (SIndex)tr.objects.Lookup(b.Value.key);
+                    for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
+                        if (matches.Contains(wb.Value))
+                            ma = ma.InsertAt(matches[wb.Value], ma.Length.Value);
+                    if (ma.Length.Value > best.Length.Value)
+                    {
+                        best = ma;
+                        s = new IndexRowSet(tr, tb, ix, ma);
+                    }
+                }
+            }
+            _sce = s?? _sch.sce?.RowSet(tr,nms) ?? throw new System.Exception("??");
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -327,10 +364,11 @@ namespace Shareable
     {
         public readonly SSelectStatement _sel;
         public readonly RowSet _source;
-        public SelectRowSet(STransaction tr,SSelectStatement sel):base(tr,sel,null)
+        public SelectRowSet(STransaction tr,SSelectStatement sel,ILookup<string,Serialisable> nms)
+            :base(tr,sel,null)
         {
             _sel = sel;
-            _source = sel.qry.RowSet(tr);
+            _source = sel.qry.RowSet(tr,nms);
         }
 
         public override Bookmark<Serialisable>? First()
@@ -342,7 +380,7 @@ namespace Shareable
             public readonly SelectRowSet _srs;
             public readonly RowBookmark _bmk;
             SelectRowBookmark(SelectRowSet rs,RowBookmark bmk,int p)
-                :base(rs,rs._qry.Eval(bmk),p)
+                :base(rs,(SRow)rs._qry.Lookup(bmk),p)
             {
                 _srs = rs; _bmk = bmk;
             }

@@ -85,11 +85,7 @@ namespace Shareable
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public virtual RowSet RowSet(STransaction tr)
-        {
-            throw new NotImplementedException();
-        }
-        public new virtual SRow Eval(RowBookmark rb)
+        public virtual RowSet RowSet(STransaction tr,ILookup<string,Serialisable>nms)
         {
             throw new NotImplementedException();
         }
@@ -139,14 +135,13 @@ namespace Shareable
         {
             return new SSearch(d,f);
         }
-        public override RowSet RowSet(STransaction tr)
+        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
         {
-            return new SearchRowSet(tr, this);
+            return new SearchRowSet(tr, this,nms);
         }
-        public override SRow Eval(RowBookmark rb)
+        public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            var srb = (SearchRowSet.SearchRowBookmark)rb;
-            return sce.Eval(srb._bmk);
+            return (nms is SearchRowSet.SearchRowBookmark srb)?sce.Lookup(srb._bmk):this;
         }
         public override void Append(SDatabase? db,StringBuilder sb)
         {
@@ -243,18 +238,18 @@ namespace Shareable
             return sb.ToString();
         }
 
-        public override RowSet RowSet(STransaction tr)
+        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
         {
-            RowSet r = new SelectRowSet(tr,this);
+            RowSet r = new SelectRowSet(tr,this,nms);
             if (distinct)
                 r = new DistinctRowSet(r);
             if (order.Length != 0)
                 r = new OrderedRowSet(r, this);
             return r;
         }
-        public override SRow Eval(RowBookmark rb)
+        public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            return new SRow(this,rb);
+            return new SRow(this,(RowBookmark)nms);
         }
     }
     public class SOrder : Serialisable
@@ -270,6 +265,7 @@ namespace Shareable
             col = f._Get(db);
             desc = f.ReadByte() == 1;
         }
+        public override bool isValue => false;
         public static SOrder Get(SDatabase db,Reader f)
         {
             return new SOrder(db, f);

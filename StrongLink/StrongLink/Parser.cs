@@ -545,7 +545,7 @@ namespace StrongLink
             for (; lxr.tok==tt;)
             {
                 Next(); tt = Sym.AND;
-                wh = wh.InsertAt(Value(),wh.Length.Value);
+                wh = wh.InsertAt(Conjunct(),wh.Length.Value);
             }
             if (wh.Length == 0 && alias==Serialisable.Null) return tb;
             return new SSearch(tb, alias, wh);
