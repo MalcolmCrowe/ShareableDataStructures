@@ -5,31 +5,37 @@ namespace Shareable
 {
     public class SQuery : SDbObject
     {
+        public readonly SDict<int, string> display;
         public readonly SDict<int,Serialisable> cpos;
         public readonly SDict<string, Serialisable> names;
-        internal virtual SDict<string, Serialisable> Names => names;
         public SQuery(Types t, long u) : base(t, u)
         {
+            display = SDict<int, string>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             names = SDict<string, Serialisable>.Empty;
         }
         public SQuery(Types t, STransaction tr) : base(t, tr)
         {
+            display = SDict<int, string>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             names = SDict<string, Serialisable>.Empty;
         }
         public SQuery(SQuery q) : base(q)
         {
+            display = q.display;
             cpos = q.cpos;
             names = q.names;
         }
         public SQuery(Types t,SQuery q) : base(t)
         {
+            display = q.display;
             cpos = q.cpos;
             names = q.names;
         }
-        public SQuery(SQuery q,SDict<int,Serialisable>cp,SDict<string,Serialisable>cn) :base(q)
+        public SQuery(SQuery q,SDict<int,string> a,SDict<int,Serialisable>cp,
+            SDict<string,Serialisable>cn) :base(q)
         {
+            display = a;
             cpos = cp;
             names = cn;
         }
@@ -39,7 +45,7 @@ namespace Shareable
         /// <param name="t"></param>
         /// <param name="a">aliases</param>
         /// <param name="c">column expressions</param>
-        /// <param name="source"></param>
+        /// <param name="source">symbol table for Lookup</param>
         public SQuery(Types t,SDict<int,string> a,SDict<int,Serialisable>c,
             SDict<string,Serialisable> source) : base(t)
         {
@@ -54,16 +60,19 @@ namespace Shareable
                 cp = cp+(cb.Value.key, s);
                 cn = cn+(ab.Value.val, s);
             }
+            display = a;
             cpos = cp;
             names = cn;
         }
         protected SQuery(Types t, Reader f) : base(t, f)
         {
+            display = SDict<int, string>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             names = SDict<string, Serialisable>.Empty;
         }
         protected SQuery(SQuery q, AStream f) : base(q, f)
         {
+            display = q.display;
             cpos = q.cpos;
             names = q.names;
         }
@@ -94,7 +103,6 @@ namespace Shareable
         public readonly SQuery sce;
         public readonly Serialisable alias;
         public readonly SList<Serialisable> where;
-        internal override SDict<string, Serialisable> Names => sce.Names;
         public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
         {
             sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
@@ -102,11 +110,11 @@ namespace Shareable
             var w = SList<Serialisable>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
-                w = w.InsertAt(f._Get(db).Lookup(sce.Names),i);
+                w = w.InsertAt(f._Get(db).Lookup(sce.names),i);
             where = w;
         }
         public SSearch(SQuery s,Serialisable a, SList<Serialisable> w)
-            :base(Types.SSearch, -1)
+            :base(Types.SSearch, s.display, s.cpos, s.names)
         {
             sce = s;
             alias = a;
@@ -155,7 +163,6 @@ namespace Shareable
     public class SSelectStatement : SQuery
     {
         public readonly bool distinct,aggregates;
-        public readonly SDict<int, string> als;
         public readonly SList<SOrder> order;
         public readonly SQuery qry;
         /// <summary>
@@ -164,14 +171,14 @@ namespace Shareable
         /// and an ordering
         /// </summary>
         /// <param name="d">Whrther distinct has been specified</param>
-        /// <param name="a">The aliases</param>
-        /// <param name="c">The column expressions</param>
+        /// <param name="a">The aliases (display) or null</param>
+        /// <param name="c">The column expressions or null</param>
         /// <param name="q">The source query, assumed analysed</param>
         /// <param name="or">The ordering</param>
-        protected SSelectStatement(bool d, SDict<int,string> a, SDict<int,Serialisable> c, SQuery q, SList<SOrder> or) 
-            : base(Types.SSelect,a,c,q.Names)
+        public SSelectStatement(bool d, SDict<int,string>? a, SDict<int,Serialisable>? c, SQuery q, SList<SOrder> or) 
+            : base(Types.SSelect,a??q.display,c??q.cpos,q.names)
         {
-            distinct = d;  als = a; qry = q; order = or;
+            distinct = d;  qry = q; order = or;
             var ag = false;
             for (var b = cpos.First(); b != null; b = b.Next())
                 if (b.Value.val.type == Types.SFunction)
@@ -183,8 +190,8 @@ namespace Shareable
             f.GetInt(); // uid for the SSelectStatement probably -1
             var d = f.ReadByte() == 1;
             var n = f.GetInt();
-            var a = SDict<int, string>.Empty;
-            var c = SDict<int,Serialisable>.Empty;
+            SDict<int,string>? a = (n>0)?SDict<int,string>.Empty:null;
+            SDict<int,Serialisable>? c = (n>0)?SDict<int,Serialisable>.Empty:null;
             for (var i = 0; i < n; i++)
             {
                 a = a+(i, f.GetString());
@@ -201,8 +208,8 @@ namespace Shareable
         {
             base.Put(f);
             f.WriteByte((byte)(distinct ? 1 : 0));
-            f.PutInt(als.Length);
-            var ab = als.First();
+            f.PutInt(display.Length);
+            var ab = display.First();
             for (var b = cpos.First(); ab!=null && b != null; b = b.Next(), ab=ab.Next())
             {
                 f.PutString(ab.Value.val);
@@ -223,7 +230,7 @@ namespace Shareable
         {
             var sb = new StringBuilder("Select ");
             var cm = "";
-            var ab = als.First();
+            var ab = display.First();
             for (var b = cpos.First(); ab!=null && b != null; b = b.Next(),ab=ab.Next())
             {
                 sb.Append(cm); cm = ",";
@@ -247,9 +254,7 @@ namespace Shareable
         }
         public override SRow Eval(RowBookmark rb)
         {
-            if (als.Length.Value > 0)
-                return new SRow(this, rb);
-            return qry.Eval(rb);
+            return new SRow(this,rb);
         }
     }
     public class SOrder : Serialisable

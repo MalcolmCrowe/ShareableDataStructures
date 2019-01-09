@@ -106,12 +106,9 @@ namespace StrongDB
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    asy.PutInt(rs._qry.cpos.Length.Value);
-                                    for (var b = rs._qry.cpos.First(); b != null; b = b.Next())
-                                        if (b.Value.val is SColumn sc)
-                                            asy.PutString(sc.name);
-                                        else
-                                            asy.PutString("col" + b.Value.key);
+                                    asy.PutInt(rs._qry.display.Length.Value);
+                                    for (var b = rs._qry.display.First(); b != null; b = b.Next())
+                                         asy.PutString(b.Value.val);
                                 }
                                 asy.PutString(sb.ToString());
                                 asy.Flush();

@@ -993,10 +993,10 @@ namespace Shareable
         {
             var r = SDict<int, Serialisable>.Empty;
             var vs = SDict<string, Serialisable>.Empty;
-            if (ss.als.Length.Value > 0)
+            if (ss.display.Length.Value > 0)
             {
                 var cb = ss.cpos.First();
-                for (var b = ss.als.First(); cb!=null && b != null; b = b.Next(), cb = cb.Next())
+                for (var b = ss.display.First(); cb!=null && b != null; b = b.Next(), cb = cb.Next())
                 {
                     var v = cb.Value.val.Eval(bm);
                     if (v == Null)
@@ -1010,7 +1010,7 @@ namespace Shareable
                     }
                 }
             } 
-            names = ss.als;
+            names = ss.display;
             cols = r;
             vals = vs;
         }
@@ -1181,6 +1181,11 @@ namespace Shareable
         public readonly SDict<long, SSelector> cols;
         public readonly SDict<long, long> rows; // defpos->uid of latest update
         public readonly SDict<long,bool> indexes;
+        /// <summary>
+        /// A newly defined empty table
+        /// </summary>
+        /// <param name="tr"></param>
+        /// <param name="n"></param>
         public STable(STransaction tr,string n) :base(Types.STable,tr)
         {
             if (tr.names.Contains(n))
@@ -1192,7 +1197,9 @@ namespace Shareable
         }
         protected virtual STable Add(SColumn c)
         {
-            var t = new STable(this,cols + (c.uid,c),cpos + (cpos.Length.Value,c),
+            var t = new STable(this,cols + (c.uid,c),
+                display+(display.Length.Value,c.name),
+                cpos + (cpos.Length.Value,c),
                 names + (c.name,c));
             return t;
         }
@@ -1219,11 +1226,16 @@ namespace Shareable
             {
                 var k = 0;
                 var cp = SDict<int, Serialisable>.Empty;
+                var di = SDict<int, string>.Empty;
                 var sc = cols.Lookup(n);
-                for (var b = cpos.First(); b != null; b = b.Next(), k++)
+                var db = display.First();
+                for (var b = cpos.First();db!=null && b != null; db=db.Next(), b = b.Next())
                     if (b.Value.val is SColumn c && c.uid != n)
+                    {
+                        di = di + (k, db.Value.val);
                         cp = cp + (k++, c);
-                return new STable(this, cols-n,cp,names-sc.name);
+                    }
+                return new STable(this,cols-n,di,cp,names-sc.name);
             }
             else
                 return new STable(this, rows-n);
@@ -1248,8 +1260,10 @@ namespace Shareable
             rows = t.rows;
             indexes = t.indexes;
         }
-        protected STable(STable t, SDict<long, SSelector> co, SDict<int,Serialisable> cp, 
-            SDict<string, Serialisable> cn) :base(t,cp,cn)
+        protected STable(STable t, SDict<long, SSelector> co, 
+            SDict<int,string> a,
+            SDict<int,Serialisable> cp, SDict<string,Serialisable> na) 
+            :base(t,a,cp,na)
         {
             name = t.name;
             cols = co;
@@ -1432,8 +1446,9 @@ namespace Shareable
         public SysTable(string n) : base(n, --_uid)
         {
         }
-        SysTable(SysTable t, SDict<long, SSelector> c, SDict<int,Serialisable> p, SDict<string, Serialisable> n)
-            : base(t, c, p, n)
+        SysTable(SysTable t, SDict<long, SSelector> c, SDict<int,string> d,
+            SDict<int,Serialisable> p, SDict<string, Serialisable> n)
+            : base(t, c, d, p, n)
         {
         }
         static void Add(string name,params SSlot<string,Types>[] ss)
@@ -1456,7 +1471,8 @@ namespace Shareable
         }
         protected override STable Add(SColumn c)
         {
-            return new SysTable(this, cols + (c.uid, c), cpos + (cpos.Length.Value,c),
+            return new SysTable(this, cols + (c.uid, c), display+(display.Length.Value,c.name), 
+                cpos + (cpos.Length.Value,c),
                 names + (c.name, c));
         }
         SysTable Add(string n, Types t)
