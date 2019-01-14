@@ -87,14 +87,18 @@ namespace StrongLink
                 Advance();
                 tok = Next();
             }
-            internal char Advance()
+            char Advance()
             {
                 if (pos >= input.Length)
                     throw new Exception("Non-terminated string");
                 ch = (++pos >= input.Length) ? '\0' : input[pos];
                 return ch;
             }
-            internal Sym PushBack(Sym old)
+            char Peek()
+            {
+                return (pos+1 >= input.Length)?'\0':input[pos + 1];
+            }
+            Sym PushBack(Sym old)
             {
                 pushBack = old;
                 pushCh = ch;
@@ -199,15 +203,23 @@ namespace StrongLink
                 else if (ch == '\'')
                 {
                     st++;
-                    for (Advance(); ch != '\0' && ch != '\''; Advance())
-                        ;
+                    for (Advance(); ch != '\0'; Advance())
+                    {
+                        if (ch=='\'')
+                        {
+                            if (Peek() == '\'')
+                                Advance();
+                            else
+                                break;
+                        }
+                    }
                     if (ch == '\0')
                         throw new Exception("non-terminated string literal");
                     Advance();
-                    val = new SString(new string(input, st, pos - st - 1));
+                    val = new SString(new string(input, st, pos - st - 1).Replace("''","'"));
                     return tok = Sym.LITERAL;
                 }
-                else if (char.IsLetter(ch))
+                else if (char.IsLetter(ch) || ch=='_')
                 {
                     for (Advance(); char.IsLetterOrDigit(ch) || ch == '_'; Advance())
                         ;
@@ -476,17 +488,15 @@ namespace StrongLink
             var k = 0;
             for (; ;Next())
             {
-                var n = "col" + (k+1);
+
                 var c = Value();
-                if (c is SSelector sc)
-                    n = sc.name;
+                var n = c.Alias(k+1);
                 if (c is SExpression se && se.op == SExpression.Op.Dot)
                     n = ((SString)se.left).str + "." + ((SString)se.right).str;
                 if (lxr.tok == Sym.AS)
                 {
                     Next();
-                    var tv = MustBeID();
-                    n = ((SString)tv).str;
+                    n = MustBeID().str;
                 }
                 r = r.InsertAt(new SSlot<string, Serialisable>(n, c??Serialisable.Null), k++);
                 if (lxr.tok != Sym.COMMA)
@@ -686,19 +696,30 @@ namespace StrongLink
                 case Sym.LPAREN:
                     {
                         Next();
-                        var a = SList<Serialisable>.Empty;
+                        var a = SList<string>.Empty;
+                        var c = SList<Serialisable>.Empty;
                         int n = 0;
-                        if (lxr.tok!=Sym.RPAREN)
+                        bool asseen = false;
+                        for (; ; )
                         {
-                            a = a.InsertAt(Value(), n++);
-                            while (lxr.tok==Sym.COMMA)
+                            var cv = Value();
+                            var als = cv.Alias(n);
+                            if (lxr.tok == Sym.AS)
                             {
                                 Next();
-                                a = a.InsertAt(Value(), n++);
+                                als = MustBeID().str;
+                                asseen = true;
                             }
+                            c = c.InsertAt(cv, n);
+                            a = a.InsertAt(als, n++);
+                            if (lxr.tok != Sym.COMMA)
+                                break;
+                            Next();
                         }
                         Mustbe(Sym.RPAREN);
-                        return new SRow(a);
+                        if (n == 1 && !asseen)
+                            return c.element;
+                        return new SRow(a, c);
                     }
                 case Sym.SELECT:
                     return Select();

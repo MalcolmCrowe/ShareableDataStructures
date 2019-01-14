@@ -112,8 +112,6 @@ namespace StrongLink
                         }
                         if (c == ':' && !keyquote)
                             goto case ParseState.Colon;
-                        if (c == '\\')
-                            c = GetEscape(s, n, ref i);
                         kb.Append(c);
                         continue;
                     case ParseState.Colon:
@@ -813,47 +811,32 @@ namespace StrongLink
         bad:
             throw new DocumentException("Value expected at " + (i - 1));
         }
+        /// <summary>
+        /// This routine is only used for retrieving an embedded string.
+        /// PRE: s[i-1] is ' or " and a matching quote occurs at or before s[n-1].
+        /// </summary>
+        /// <param name="s"></param>
+        /// <param name="n"></param>
+        /// <param name="i"></param>
+        /// <returns></returns>
         protected string GetString(string s, int n, ref int i)
         {
             var sb = new StringBuilder();
-            var quote = s[i-1];
+            var quote = s[i - 1];
             while (i < n)
             {
                 var c = s[i++];
                 if (c == quote)
-                    return sb.ToString();
-                if (c == '\\')
-                    c = GetEscape(s, n, ref i);
+                {
+                    // Two adjacent quotes are replaced by one.
+                    if (i < n && s[i] == c)
+                        i++;
+                    else
+                        return sb.ToString();
+                }
                 sb.Append(c);
             }
             throw new DocumentException("Non-terminated string at " + (i - 1));
-        }
-        protected char GetEscape(string s, int n, ref int i)
-        {
-            if (i < n)
-            {
-                var c = s[i++];
-                switch (c)
-                {
-                    case '"': return c;
-                    case '\\': return c;
-                    case '/': return c;
-                    case 'b': return '\b';
-                    case 'f': return '\f';
-                    case 'n': return '\n';
-                    case 'r': return '\r';
-                    case 't': return '\t';
-                    case 'u':
-                        {
-                            int v = 0;
-                            for (int j = 0; j < 4; j++)
-                                v = (v << 4) + GetHex(s, n, ref i);
-                            return (char)v;
-                        }
-                    case 'U': goto case 'u';
-                }
-            }
-            throw new DocumentException("Illegal escape");
         }
         internal static int GetHex(string s, int n, ref int i)
         {
@@ -887,6 +870,5 @@ namespace StrongLink
             }
             throw new DocumentException("Hex digit expected at " + (i - 1));
         }
-
     }
 }

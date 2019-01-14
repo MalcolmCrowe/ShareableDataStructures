@@ -164,8 +164,8 @@ namespace StrongCmd
                     str = line;
                 try
                 {
-                    str = str.Trim().Trim(';').ToLower();
-                    switch (str)
+                    var strlow = str.Trim().Trim(';').ToLower();
+                    switch (strlow)
                     {
                         case "begin":
                             if (db.inTransaction)
@@ -315,7 +315,7 @@ namespace StrongCmd
             {
                 Console.Write("|");
                 var c = cols[j];
-                var v = r.Lookup(c.name);
+                var v = r.Lookup(c.name)??"";
                 Console.Write(v);
                 for (int k = 0; k < c.width - v.Length; k++)
                     Console.Write(" ");
