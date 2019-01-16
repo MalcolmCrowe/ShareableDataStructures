@@ -5,6 +5,15 @@ namespace Shareable
     public class SDatabase
     {
         public readonly string name;
+        /// <summary>
+        /// The base SDatabase class db.objects contains only committed non-SRecord SDbObjects
+        /// (i.e. uids in range 0 to STransaction._uid)
+        /// In the STransaction subclass, objects also contains uncommitted SDbObjects of any kind 
+        /// (i.e. uids outside this range).
+        /// This means that STransaction can lookup any kind of object using objects[]
+        /// whereas SDatabase needs to fetch SRecords from the transaction log.
+        /// SRecords are not looked up or Installed in the same way as other objects: see _Get and _Add.
+        /// </summary>
         public readonly SDict<long, SDbObject> objects;
         public readonly SDict<string, SDbObject> names;
         public readonly long curpos;
@@ -16,7 +25,7 @@ namespace Shareable
         public static SDatabase Open(string path, string fname)
         {
             if (dbfiles.Contains(fname))
-                return databases.Lookup(fname)
+                return databases[fname]
                     ?? throw new System.Exception("Database is loading");
             var db = new SDatabase(fname);
             dbfiles = dbfiles+(fname, new AStream(path + fname));
@@ -28,17 +37,9 @@ namespace Shareable
         {
             databases = databases+(db.name, db);
         }
-        public virtual SDbObject Lookup(long pos)
-        {
-            return objects.Lookup(pos);
-        }
         public AStream File()
         {
-            return dbfiles.Lookup(name);
-        }
-        public virtual bool Contains(long pos)
-        {
-            return objects.Contains(pos);
+            return dbfiles[name];
         }
         SDatabase(string fname)
         {
@@ -67,112 +68,27 @@ namespace Shareable
             names = nms;
             curpos = c;
         }
-        protected SDatabase(SDatabase db, STable t, long c)
-        {
-            t.Check(db.Committed);
-            name = db.name;
-            objects = db.objects+(t.uid, t);
-            names = db.names+(t.name, t);
-            curpos = c;
-        }
-        protected SDatabase(SDatabase db, SAlter a, long c)
-        {
-            name = db.name;
-            if (a.parent == 0)
-            {
-                var ot = (STable)db.Lookup(a.defpos);
-                var nt = new STable(ot, a.name);
-                objects = db.objects+(a.defpos, nt);
-                names = db.names-ot.name+(a.name, nt);
-            }
-            else
-            {
-                var ot = (STable)db.Lookup(a.parent);
-                var oc = (SColumn)ot.cols.Lookup(a.defpos);
-                var nc = new SColumn(oc, a.name, a.dataType);
-                var nt = ot + nc;
-                objects = db.objects+(a.defpos, nt);
-                names = db.names+(a.name, nt);
-            }
-            curpos = c;
-        }
-        protected SDatabase(SDatabase db, SDrop d, long c)
-        {
-            name = db.name;
-            var obs = objects;
-            if (d.parent == 0)
-            {
-                var ot = db.Lookup(d.drpos);
-                switch(ot.type)
-                {
-                    case Types.STable:
-                        names = db.names-((STable)ot).name;
-                        break;
-                    case Types.SIndex:
-                        {
-                            var x = (SIndex)ot;
-                            var tb = (STable)objects.Lookup(x.table);
-                            tb = new STable(tb, tb.indexes-x.uid);
-                            obs = obs+(tb.uid, tb);
-                            names = db.names;
-                            break;
-                        }
-                    default:
-                        names = db.names;
-                        break;
-                }
-                objects = obs-d.drpos;
-            }
-            else
-            {
-                var ot = (STable)db.Lookup(d.parent);
-                var nt = ot.Remove(d.drpos);
-                objects = db.objects+(d.parent, nt);
-                names = db.names;
-            }
-            curpos = c;
-        }
-        protected SDatabase(SDatabase db, SView v, long c)
-        {
-            name = db.name;
-            objects = db.objects+(v.uid, v);
-            names = db.names+(v.name, v);
-            curpos = c;
-        }
-        protected SDatabase(SDatabase db, SIndex x, long c)
-        {
-            name = db.name;
-            var tb = (STable)db.Lookup(x.table);
-            for (var b = tb.rows.First(); b != null; b = b.Next())
-                x = x + (db.Get(b.Value.val), b.Value.val);
-            tb = new STable(tb, tb.indexes + (x.uid, true));
-            objects = db.objects + (x.uid, x) + (tb.uid,tb);
-            names = db.names;
-            curpos = c;
-        }
         SDatabase Load()
         {
-            var rd = new Reader(dbfiles.Lookup(name), 0);
+            var rd = new Reader(dbfiles[name], 0);
             var db = this;
             for (var s = rd._Get(this) as SDbObject; s != null; s = rd._Get(db) as SDbObject)
                 db = db + (s, s.uid);
             return db;
         }
-        Serialisable _Get(long pos)
+        protected virtual Serialisable _Get(long pos)
         {
-            if (pos > STransaction._uid)
-                return objects.Lookup(pos);
-            return new Reader(dbfiles.Lookup(name), pos)._Get(this);
+            return new Reader(dbfiles[name], pos)._Get(this);
         }
         public SRecord Get(long pos)
         {
             var rc = _Get(pos) as SRecord ??
                 throw new System.Exception("Record " + SDbObject._Uid(pos) + " never defined");
-            var tb = Lookup(rc.table) as STable ??
+            var tb = objects[rc.table] as STable ??
                 throw new System.Exception("Table " + rc.table + " has been dropped");
             if (!tb.rows.Contains(rc.Defpos))
                 throw new System.Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
-            return (SRecord)_Get(tb.rows.Lookup(rc.Defpos));
+            return (SRecord)_Get(tb.rows[rc.Defpos]);
         }
         protected SDatabase _Add(SDbObject s, long p)
         {
@@ -201,82 +117,133 @@ namespace Shareable
         {
             lock (files)
             {
-                var f = dbfiles.Lookup(name);
+                var f = dbfiles[name];
                 databases = databases-name;
                 dbfiles = dbfiles-name;
                 f.Close();
             }
         }
-        protected SDatabase Install(STable t, long c)
+        protected virtual SDatabase New(SDict<long,SDbObject> o,SDict<string,SDbObject>ns,long c)
         {
-            return new SDatabase(this, t, c);
+            return new SDatabase(this, o, ns, c);
         }
-        protected SDatabase Install(SColumn c, long p)
+        public SDatabase Install(STable t, long c)
         {
-            return new SDatabase(this, ((STable)Lookup(c.table))+c, p);
+            return New(objects + (t.uid, t),names + (t.name, t),c);
         }
-        protected SDatabase Install(SRecord r, long c)
+        public SDatabase Install(SColumn c, long p)
+        {
+            var tb = ((STable)objects[c.table])+c;
+            return New(objects+(c.table,tb), names+(tb.name,tb), p);
+        }
+        public SDatabase Install(SRecord r, long c)
         {
             var obs = objects;
-            var st = ((STable)Lookup(r.table))+r;
+            var st = ((STable)objects[r.table])+r;
             if (r.uid > STransaction._uid)
                 obs = obs+(r.uid, r);
             obs = obs+(r.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects.Lookup(b.Value.key);
+                var x = (SIndex)objects[b.Value.key];
                 obs = obs + (x.uid, x + (r, r.uid));
             }
-            return new SDatabase(this, obs, nms, c);
+            return New(obs, nms, c);
         }
-        protected SDatabase Install(SUpdate u, long c)
+        public SDatabase Install(SUpdate u, long c)
         {
             var obs = objects;
-            var st = ((STable)Lookup(u.table))+u;
+            var st = ((STable)objects[u.table])+u;
             SRecord? sr = null;
             obs = obs+(u.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects.Lookup(b.Value.key);
+                var x = (SIndex)objects[b.Value.key];
                 if (sr == null)
                     sr = Get(u.defpos);
                 obs = obs+(x.uid, x.Update(sr, u, c));
             }
-            return new SDatabase(this, obs, nms, c);
+            return New(obs, nms, c);
         }
-        protected SDatabase Install(SDelete d, long c)
+        public SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
-            var st = ((STable)Lookup(d.table)).Remove(d.delpos);
+            var st = ((STable)objects[d.table]).Remove(d.delpos);
             SRecord? sr = null;
             obs = obs+(d.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects.Lookup(b.Value.key);
+                var x = (SIndex)objects[b.Value.key];
                 if (sr == null)
                     sr = Get(d.delpos);
                 obs = obs+(x.uid, x-(sr, c));
             }
-            return new SDatabase(this, obs, nms, c);
+            return New(obs, nms, c);
         }
-        protected SDatabase Install(SAlter a, long c)
+        public SDatabase Install(SAlter a, long c)
         {
-            return new SDatabase(this, a, c);
+            if (a.parent == 0)
+            {
+                var ot = (STable)objects[a.defpos];
+                var nt = new STable(ot, a.name);
+                return New(objects + (a.defpos, nt), names - ot.name + (a.name, nt), c);
+            }
+            else
+            {
+                var ot = (STable)objects[a.parent];
+                var oc = (SColumn)ot.cols[a.defpos];
+                var nc = new SColumn(oc, a.name, a.dataType);
+                var nt = ot + nc;
+                return New(objects + (a.defpos, nt),names + (a.name, nt),c);
+            }
         }
-        protected SDatabase Install(SDrop d, long c)
+        public SDatabase Install(SDrop d, long c)
         {
-            return new SDatabase(this, d, c);
+
+            if (d.parent == 0)
+            {
+                var obs = objects;
+                var nms = names;
+                var ot = objects[d.drpos];
+                switch (ot.type)
+                {
+                    case Types.STable:
+                        nms = nms - ((STable)ot).name;
+                        break;
+                    case Types.SIndex:
+                        {
+                            var x = (SIndex)ot;
+                            var tb = (STable)objects[x.table];
+                            tb = new STable(tb, tb.indexes - x.uid);
+                            obs = obs + (tb.uid, tb);
+                            break;
+                        }
+                    default:
+                        break;
+                }
+                return New(obs - d.drpos, nms, c);
+            }
+            else
+            {
+                var ot = (STable)objects[d.parent];
+                var nt = ot.Remove(d.drpos);
+                return New(objects + (d.parent, nt), names, c);
+            }
         }
-        protected SDatabase Install(SView v, long c)
+        public SDatabase Install(SView v, long c)
         {
-            return new SDatabase(this, v, c);
+            return New(objects + (v.uid, v),names + (v.name, v),c);
         }
-        protected SDatabase Install(SIndex x, long c)
+        public SDatabase Install(SIndex x, long c)
         {
-            return new SDatabase(this, x, c);
+            var tb = (STable)objects[x.table];
+            for (var b = tb.rows.First(); b != null; b = b.Next())
+                x = x + (Get(b.Value.val), b.Value.val);
+            tb = new STable(tb, tb.indexes + (x.uid, true));
+            return New(objects + (x.uid, x) + (tb.uid, tb),names,c);
         }
         public virtual STransaction Transact(bool auto = true)
         {
@@ -290,11 +257,11 @@ namespace Shareable
         {
             return this;
         }
-        public STable? GetTable(string tn)
+        public virtual STable? GetTable(string tn)
         {
-            return (STable)names.Lookup(tn);
+            return (STable?)names[tn];
         }
-        public SIndex? GetPrimaryIndex(long t)
+        public virtual SIndex? GetPrimaryIndex(long t)
         {
             for (var b = objects.First(); b != null; b = b.Next())
                 if (b.Value.val is SIndex x && x.table == t)

@@ -137,7 +137,7 @@ namespace Shareable
             public readonly OrderedRowSet _ors;
             public readonly MTreeBookmark<Serialisable> _bmk;
             OrderedBookmark(OrderedRowSet ors,MTreeBookmark<Serialisable> bmk,int pos)
-                :base(ors,ors._rows.Lookup((int)bmk.Value.val),pos)
+                :base(ors,ors._rows[(int)bmk.Value.val],pos)
             {
                 _ors = ors; _bmk = bmk;
             }
@@ -193,11 +193,11 @@ namespace Shareable
             }
             public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
             {
-                return tr.Add(new SUpdate(tr, _ob.rec, assigs)); // ok
+                return (STransaction)tr.Install(new SUpdate(tr, _ob.rec, assigs),tr.curpos); // ok
             }
             public override STransaction Delete(STransaction tr)
             {
-                return tr.Add(new SDelete(tr, _ob.rec.table, _ob.rec.Defpos)); // ok
+                return (STransaction)tr.Install(new SDelete(tr, _ob.rec.table, _ob.rec.Defpos),tr.curpos); // ok
             }
         }
     }
@@ -269,12 +269,12 @@ namespace Shareable
             }
             public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
             {
-                return tr.Add(new SUpdate(tr, _ob.rec??throw new System.Exception("No record"), assigs)); // ok
+                return (STransaction)tr.Install(new SUpdate(tr, _ob.rec??throw new System.Exception("No record"), assigs),tr.curpos); // ok
             }
             public override STransaction Delete(STransaction tr)
             {
                 var rc = _ob.rec ?? throw new System.Exception("No record");
-                return tr.Add(new SDelete(tr, rc.table, rc.Defpos)); // ok
+                return (STransaction)tr.Install(new SDelete(tr, rc.table, rc.Defpos),tr.curpos); // ok
             }
         }
     }
@@ -304,7 +304,7 @@ namespace Shareable
                     b = b.Next())
                 {
                     var ma = SList<Serialisable>.Empty;
-                    var ix = (SIndex)tr.objects.Lookup(b.Value.key);
+                    var ix = (SIndex)tr.objects[b.Value.key];
                     for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
                         if (matches.Contains(wb.Value))
                             ma = ma.InsertAt(matches[wb.Value], ma.Length.Value);
@@ -379,8 +379,8 @@ namespace Shareable
         {
             public readonly SelectRowSet _srs;
             public readonly RowBookmark _bmk;
-            SelectRowBookmark(SelectRowSet rs,RowBookmark bmk,int p)
-                :base(rs,(SRow)rs._qry.Lookup(bmk),p)
+            SelectRowBookmark(SelectRowSet rs,RowBookmark bmk,SRow rw,int p)
+                :base(rs,rw,p)
             {
                 _srs = rs; _bmk = bmk;
             }
@@ -388,7 +388,10 @@ namespace Shareable
             {
                 for (var b = rs._source.First() as RowBookmark;b!=null;b=b.Next() as RowBookmark )
                 {
-                    var rb = new SelectRowBookmark(rs, b, 0);
+                    var rw = (SRow)rs._qry.Lookup(b);
+                    if (rw.isNull)
+                        continue;
+                    var rb = new SelectRowBookmark(rs, b, rw, 0);
                     if (((SRow)rb._ob).cols.Length.Value!=0)
                         return rb;
                     if (rs._sel.aggregates) // aggregates collapse the rowset
@@ -401,7 +404,10 @@ namespace Shareable
                 if (!_srs._sel.aggregates) // aggregates collapse the rowset
                     for (var b = _bmk.Next() as RowBookmark; b != null; b = b.Next() as RowBookmark)
                     {
-                        var rb = new SelectRowBookmark(_srs, b, Position + 1);
+                        var rw = (SRow)_srs._qry.Lookup(b);
+                        if (rw.isNull)
+                            continue;
+                        var rb = new SelectRowBookmark(_srs, b, rw, Position + 1);
                         if (((SRow)rb._ob).cols.Length.Value != 0)
                             return rb;
                     }
@@ -440,7 +446,8 @@ namespace Shareable
             int j = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
                 if (b.Value.val is SSelector s)
-                    r = r.Add(s.name, Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
+                    r = r.Add(s.name, vals[j++]);
+                        // Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
             return r;
         }
         internal class LogBookmark : RowBookmark

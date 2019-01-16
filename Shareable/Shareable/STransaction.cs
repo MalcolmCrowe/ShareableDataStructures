@@ -5,56 +5,61 @@ namespace Shareable
 {
     public class STransaction :SDatabase 
     {
-        // uids above this number are for uncommitted objects in this tranbsaction
-        public static readonly long _uid = 0x40000000;
+        // uids above this number are for uncommitted objects in this transaction
+        // Note: uncommitted objects of any type are added to tr.objects 
+        public static readonly long _uid = 0x4000000000000000;
         public readonly long uid;
         public readonly bool autoCommit;
         public readonly SDatabase rollback;
-        public readonly SDict<int,SDbObject> steps;
         internal override SDatabase _Rollback => rollback;
         protected override bool Committed => false;
-        public STransaction Add(SDbObject s)
-        {
-            return new STransaction(this, s);
-        }
         public STransaction(SDatabase d,bool auto) :base(d)
         {
             autoCommit = auto;
             rollback = d._Rollback;
             uid = _uid;
-            steps = SDict<int,SDbObject>.Empty;
         }
         /// <summary>
-        /// This clever routine indirectly calls the protected SDtabase constructors
-        /// that add new objects to the SDatabase (see the call to tr._Add).
+        /// Some other set of updates to existing (and maybe named) objects 
         /// </summary>
         /// <param name="tr"></param>
-        /// <param name="s"></param>
-        STransaction(STransaction tr,SDbObject s) :base(tr+(s,tr.uid+1))
+        /// <param name="obs"></param>
+        /// <param name="nms"></param>
+        protected STransaction(STransaction tr, SDict<long,SDbObject> obs,SDict<string,SDbObject> nms,long c)
+            : base(tr, obs, nms, c)
         {
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
-            steps = tr.steps+(tr.steps.Length.Value,s);
-            uid =  tr.uid+1;
+            uid = tr.uid + 1;
+        }
+        protected override SDatabase New(SDict<long, SDbObject> o, SDict<string, SDbObject> ns, long c)
+        {
+            return new STransaction(this,o, ns, c);
+        }
+        protected override Serialisable _Get(long pos)
+        {
+            if (pos < 0 || pos >= _uid)
+                return objects[pos];
+            return base._Get(pos);
         }
         public SDatabase Commit()
         {
-            var f = dbfiles.Lookup(name);
-            SDatabase db = databases.Lookup(name);
+            var f = dbfiles[name];
+            SDatabase db = databases[name];
             var rdr = new Reader(f, curpos);
             var since = rdr.GetAll(db,db.curpos);
             for (var i = 0; i < since.Length; i++)
-                for (var b = steps.First(); b != null; b = b.Next())
+                for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
                     if (since[i].Conflicts(b.Value.val))
                         throw new Exception("Transaction Conflict on " + b.Value);
             lock (f)
             {
                 since = rdr.GetAll(this, f.length);
                 for (var i = 0; i < since.Length; i++)
-                    for (var b = steps.First(); b != null; b = b.Next())
+                    for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
                         if (since[i].Conflicts(b.Value.val))
                             throw new Exception("Transaction Conflict on " + b.Value);
-                db = f.Commit(db,steps);
+                db = f.Commit(db,this);
             }
             Install(db);
             return db;

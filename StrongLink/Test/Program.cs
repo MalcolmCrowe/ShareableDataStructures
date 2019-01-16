@@ -6,18 +6,21 @@ namespace Test
 {
     class Program
     {
-        static int test = -1, qry = -1;
+        static int test = 0, qry = 0;
+        static bool commit = false;
         static StrongConnect conn;
         static void Main(string[] args)
         {
             try
             {
                 conn = new StrongConnect("127.0.0.1", 50433, "test");
-                if (args.Length == 2)
+                if (args.Length >= 2)
                 {
                     test = int.Parse(args[0]);
                     qry = int.Parse(args[1]);
                 }
+                if (args.Length == 3)
+                    commit = true;
                 new Program().Tests();
             }
             catch (Exception e)
@@ -27,6 +30,16 @@ namespace Test
             Console.WriteLine("Testing complete");
             Console.ReadLine();
         }
+        void Begin()
+        {
+            if (!commit)
+                conn.BeginTransaction();
+        }
+        void Rollback()
+        {
+            if (!commit)
+                conn.Rollback();
+        }
         void Tests()
         {
             Test1(test);
@@ -34,34 +47,38 @@ namespace Test
             Test3(test);
             Test4(test);
             Test5(test);
+            Test6(test);
         }
         void Test1(int t)
         {
-            if (t >= 0 && t != 1)
+            if (t > 0 && t != 1)
                 return;
-            conn.BeginTransaction();
-                conn.ExecuteNonQuery("create table A(B integer,C integer,D string)");
-                conn.ExecuteNonQuery("create primary index ax for A(B,C)");
-                conn.ExecuteNonQuery("insert A values(2,3,'TwentyThree')");
-                conn.ExecuteNonQuery("insert A values(1,9,'Nineteen')");
-                CheckResults(1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
-            conn.Rollback();
-            conn.BeginTransaction();
-            conn.CreateTable("A",
-                    new SColumn("B", Types.SInteger),
-                    new SColumn("C", Types.SInteger),
-                    new SColumn("D", Types.SString));
+            Begin();
+            conn.ExecuteNonQuery("create table A(B integer,C integer,D string)");
+            conn.ExecuteNonQuery("create primary index ax for A(B,C)");
+            conn.ExecuteNonQuery("insert A values(2,3,'TwentyThree')");
+            conn.ExecuteNonQuery("insert A values(1,9,'Nineteen')");
+            CheckResults(1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("A",
+                        new SColumn("B", Types.SInteger),
+                        new SColumn("C", Types.SInteger),
+                        new SColumn("D", Types.SString));
                 conn.CreateIndex("A", IndexType.Primary, null, "B", "C");
                 conn.Insert("A", new string[0], new Serialisable[] { new SInteger(2), new SInteger(3), new SString("TwentyThree") },
-                  new Serialisable[] { new SInteger(1), new SInteger(9), new SString("Nineteen") });
+                    new Serialisable[] { new SInteger(1), new SInteger(9), new SString("Nineteen") });
                 CheckResults(new STable("A"), "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
-            conn.Rollback();
+                Rollback();
+            }
         }
         void Test2(int t)
         {
-            if (t >= 0 && t != 2)
+            if (t > 0 && t != 2)
                 return;
-            conn.BeginTransaction();
+            Begin();
             conn.ExecuteNonQuery("create table AA(B integer,C string)");
             conn.ExecuteNonQuery("insert AA(B) values(17)");
             conn.ExecuteNonQuery("insert AA(C) values('BC')");
@@ -72,95 +89,127 @@ namespace Test
             CheckResults(4,"select C from AA where B<20", "[]");
             CheckResults(5,"select C from AA where B>20", "[{C:'GH'}]");
             CheckResults(6,"select count(C) from AA", "[{col1:2}]");
-            conn.Rollback();
-            conn.BeginTransaction();
-            conn.CreateTable("AA",
-                new SColumn("B", Types.SInteger),
-                new SColumn("C", Types.SString));
-            conn.Insert("AA", new string[] { "B" },
-                new Serialisable[] { new SInteger(17) });
-            conn.Insert("AA", new string[] { "C" },
-                new Serialisable[] { new SString("BC") });
-            conn.Insert("AA", new string[] { "C", "B" },
-                new Serialisable[] { new SString("GH"), new SInteger(67) });
-            CheckResults(new STable("AA"), "[{B:17},{C:'BC'},{B:67,C:'GH'}]");
-            conn.Rollback();
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("AA",
+                    new SColumn("B", Types.SInteger),
+                    new SColumn("C", Types.SString));
+                conn.Insert("AA", new string[] { "B" },
+                    new Serialisable[] { new SInteger(17) });
+                conn.Insert("AA", new string[] { "C" },
+                    new Serialisable[] { new SString("BC") });
+                conn.Insert("AA", new string[] { "C", "B" },
+                    new Serialisable[] { new SString("GH"), new SInteger(67) });
+                CheckResults(new STable("AA"), "[{B:17},{C:'BC'},{B:67,C:'GH'}]");
+                Rollback();
+            }
         }
         void Test3(int t)
         {
-            if (t >= 0 && t != 3)
+            if (t > 0 && t != 3)
                 return;
-            conn.BeginTransaction();
+            Begin();
             conn.ExecuteNonQuery("create table b(c integer,d string)");
             conn.ExecuteNonQuery("create primary index bx for b(c)");
             conn.ExecuteNonQuery("insert b values(45,'DE')");
             conn.ExecuteNonQuery("insert b values(-23,'HC')");
             CheckResults(1,"select from b", "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
             CheckResults(2,"select from b where c=-23", "[{c:-23,d:'HC'}]");
-            conn.Rollback();
-            conn.BeginTransaction();
-            conn.CreateTable("b",
-                new SColumn("c", Types.SInteger),
-                new SColumn("d", Types.SString));
-            conn.CreateIndex("b", IndexType.Primary, null, new string[] { "c" });
-            conn.Insert("b", new string[0], new Serialisable[] { new SInteger(45), new SString("DE") },
-                new Serialisable[] { new SInteger(-23), new SString("HC") });
-            CheckResults(new STable("b"), "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
-            conn.Rollback();
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("b",
+                    new SColumn("c", Types.SInteger),
+                    new SColumn("d", Types.SString));
+                conn.CreateIndex("b", IndexType.Primary, null, new string[] { "c" });
+                conn.Insert("b", new string[0], new Serialisable[] { new SInteger(45), new SString("DE") },
+                    new Serialisable[] { new SInteger(-23), new SString("HC") });
+                CheckResults(new STable("b"), "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
+                Rollback();
+            }
         }
         void Test4(int t)
         {
-            if (t >= 0 && t != 4)
+            if (t > 0 && t != 4)
                 return;
-            conn.BeginTransaction();
+            Begin();
             conn.ExecuteNonQuery("create table e(f integer,g string)");
             conn.ExecuteNonQuery("create primary index ex for e(f,g)");
             conn.ExecuteNonQuery("insert e values(23,'XC')");
             conn.ExecuteNonQuery("insert e values(45,'DE')");
             CheckResults(1,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
-            conn.Rollback();
-            conn.BeginTransaction();
-            conn.CreateTable("e",
-                new SColumn("f", Types.SInteger),
-                new SColumn("g", Types.SString));
-            conn.CreateIndex("e", IndexType.Primary, null, new string[] { "f", "g" });
-            conn.Insert("e", new string[0], new Serialisable[] { new SInteger(23), new SString("XC") },
-                new Serialisable[] { new SInteger(45), new SString("DE") });
-            CheckResults(new STable("e"), "[{f:23,g:'XC'},{f:45,g:'DE'}]");
-            conn.Rollback();
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("e",
+                    new SColumn("f", Types.SInteger),
+                    new SColumn("g", Types.SString));
+                conn.CreateIndex("e", IndexType.Primary, null, new string[] { "f", "g" });
+                conn.Insert("e", new string[0], new Serialisable[] { new SInteger(23), new SString("XC") },
+                    new Serialisable[] { new SInteger(45), new SString("DE") });
+                CheckResults(new STable("e"), "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+                Rollback();
+            }
         }
         void Test5(int t)
         {
-            if (t >= 0 && t != 5)
+            if (t > 0 && t != 5)
                 return;
-            conn.BeginTransaction();
+            Begin();
             conn.ExecuteNonQuery("create table a(b integer,c integer)");
             conn.ExecuteNonQuery("insert a values(17,15)");
             conn.ExecuteNonQuery("insert a values(23,6)");
             CheckResults(1,"select from a", "[{b:17,c:15},{b:23,c:6}]");
             CheckResults(2,"select b-3 as f,22 as g from a", "[{f:14,g:22},{f:20,g:22}]");
-            CheckResults(3,"select (a.b) as f,(c) from a", "[{f:17,col2:15},{f:23,col2:6}]");
+            CheckResults(3,"select (a.b) as f,(c) from a", "[{f:17,c:15},{f:23,c:6}]");
             CheckResults(4,"select b+3,d.c from a d", "[{col1:20,\"d.c\":15},{col1:26,\"d.c\":6}]");
-        //    CheckResults(5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:(d:23,c:6}}]");
-            CheckResults(6,"select from a order by c", "[{b:23,c:6},{b:17,c:15}]");
-            CheckResults(7,"select from a order by b desc", "[{b:23,c:6},{b:17,c:15}]");
-            CheckResults(8,"select from a order by b+c desc", "[{b:17,c:15},{b:23,c:6}]");
+            CheckResults(5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:{d:23,c:6}}]");
+            CheckResults(6,"select from a orderby c", "[{b:23,c:6},{b:17,c:15}]");
+            CheckResults(7,"select from a orderby b desc", "[{b:23,c:6},{b:17,c:15}]");
+            CheckResults(8,"select from a orderby b+c desc", "[{b:17,c:15},{b:23,c:6}]");
             CheckResults(9,"select sum(b) from a", "[{col1:40}]");
             CheckResults(10,"select max(c),min(b) from a", "[{col1:15,col2:17}]");
             CheckResults(11,"select count(c) as d from a where b<20", "[{d:1}]");
-            conn.Rollback();
-            conn.BeginTransaction();
-            conn.CreateTable("a",
-                new SColumn("b", Types.SInteger),
-                new SColumn("c", Types.SInteger));
-            conn.Insert("a", new string[0], new Serialisable[] { new SInteger(17), new SInteger(15) },
-                new Serialisable[] { new SInteger(23), new SInteger(6) });
-            CheckResults(new STable("a"), "[{b:17,c:15},{b:23,c:6}]");
-            conn.Rollback();
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("a",
+                    new SColumn("b", Types.SInteger),
+                    new SColumn("c", Types.SInteger));
+                conn.Insert("a", new string[0], new Serialisable[] { new SInteger(17), new SInteger(15) },
+                    new Serialisable[] { new SInteger(23), new SInteger(6) });
+                CheckResults(new STable("a"), "[{b:17,c:15},{b:23,c:6}]");
+                Rollback();
+            }
+        }
+        void Test6(int t)
+        {
+            if (t > 0 && t != 6)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table ta(b date,c timespan,d boolean)");
+            conn.ExecuteNonQuery("insert ta values(date'2018-01-06',timespan'72000000000',false)");
+            CheckResults(1, "select from ta", "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
+            Rollback();
+            if (!commit)
+            {
+                Begin();
+                conn.CreateTable("a", new SColumn("b", Types.SDate), new SColumn("c", Types.STimeSpan),
+                        new SColumn("d", Types.SBoolean));
+                conn.Insert("a", new string[0], new Serialisable[] { new SDate(new DateTime(2018,01,06)),
+            new STimeSpan(new TimeSpan(2,0,0)),SBoolean.False});
+                CheckResults(new STable("a"), "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
+                Rollback();
+            }
         }
         void CheckResults(int q,string c,string d)
         {
-            if (qry >= 0 && qry != q)
+            if (qry > 0 && qry != q)
                 return;
             Check(conn.ExecuteQuery(c),new DocArray(d));
         }
