@@ -30,7 +30,7 @@ namespace Shareable
         }
         public override Serialisable Value => _ob; // should always be an SRow
 
-        public Serialisable this[string s] => _ob.vals[s];
+        public Serialisable this[string s] => (s.CompareTo(_rs._qry.Alias) == 0)?_ob:_ob.vals[s];
 
         public virtual bool SameGroupAs(RowBookmark r)
         {
@@ -47,7 +47,7 @@ namespace Shareable
 
         public bool defines(string s)
         {
-            return _ob.vals.Contains(s);
+            return s.CompareTo(_rs._qry.Alias)==0 || _ob.vals.Contains(s);
         }
     }
     public class DistinctRowSet : RowSet
@@ -207,24 +207,10 @@ namespace Shareable
         public readonly SList<Serialisable> _wh;
         public readonly SCList<Variant> _key;
         public readonly bool _unique;
-        public IndexRowSet(STransaction tr,STable t,SIndex ix,SList<Serialisable> wh) :base(tr,t, t.rows.Length)
+        public IndexRowSet(STransaction tr,STable t,SIndex ix,SCList<Variant> key, SList<Serialisable> wh) 
+            :base(tr,t, t.rows.Length)
         {
-            _ix = ix; _wh = wh;
-            var key = SCList<Variant>.Empty;
-            int n = 0;
-            for (var c = _ix.cols; c != null && c.Length != 0; c = c.next)
-            {
-                for (var b = _wh.First(); b != null; b = b.Next())
-                    if (b.Value is SExpression x && x.op==SExpression.Op.Eql &&
-                        x.left is SColumn sc && sc.uid == c.element)
-                    {
-                        key = (SCList<Variant>)key.InsertAt(new Variant(Variants.Ascending,x.right), n++);
-                        goto okay;
-                    }
-                break;
-            okay:;
-            }
-            _key = key;
+            _ix = ix; _key = key; _wh = wh;
             _unique = key.Length == _ix.cols.Length;
         }
         public override Bookmark<Serialisable>? First()
@@ -294,24 +280,28 @@ namespace Shareable
                     {
                         if (x.left is SColumn c && tb.names.Contains(c.name) &&
                             x.right != null && x.right.isValue)
-                            matches = matches+ (c.uid, x);
+                            matches = matches+ (c.uid, x.right);
                         else if (x.right is SColumn cr && tb.names.Contains(cr.name) &&
                                 x.left != null && x.left.isValue)
-                            matches = matches+(cr.uid,x);
+                            matches = matches+(cr.uid,x.left);
                     }
-                var best = SList<Serialisable>.Empty;
+                var best = SCList<Variant>.Empty;
                 for (var b = tb.indexes.First(); matches.Length.Value > best.Length.Value && b != null; 
                     b = b.Next())
                 {
-                    var ma = SList<Serialisable>.Empty;
+                    var ma = SCList<Variant>.Empty;
                     var ix = (SIndex)tr.objects[b.Value.key];
                     for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
-                        if (matches.Contains(wb.Value))
-                            ma = ma.InsertAt(matches[wb.Value], ma.Length.Value);
+                    {
+                        if (!matches.Contains(wb.Value))
+                            break;
+                        ma = ma.InsertAt(new Variant(Variants.Ascending,matches[wb.Value]),
+                            ma.Length.Value);
+                    }
                     if (ma.Length.Value > best.Length.Value)
                     {
                         best = ma;
-                        s = new IndexRowSet(tr, tb, ix, ma);
+                        s = new IndexRowSet(tr, tb, ix, ma, sc.where);
                     }
                 }
             }

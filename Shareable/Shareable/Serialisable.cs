@@ -171,10 +171,13 @@ namespace Shareable
                 if (nms is RowBookmark rb)
                 {
                     var ls = ((SString)left).str;
+                    if (!nms.defines(ls))
+                        return this;
                     var rs = ((SString)right).str;
                     if (ls.CompareTo(rb._rs._qry.Alias) == 0)
-                        return nms[rs];
-                    return ((SRow)rb._ob[ls])?.vals[rs];
+                        return nms.defines(rs)?nms[rs]:this;
+                    var rw = (SRow)rb._ob[ls];
+                    return rw.defines(rs)?rw.vals[rs]:Null;
                 }
                 return this;
             }
@@ -1328,12 +1331,18 @@ namespace Shareable
             rows = r;
             indexes = t.indexes;
         }
+        /// <summary>
+        /// When we commit a table, the newly committed table should
+        /// not have any columns or rows. Preserve only the name.
+        /// </summary>
+        /// <param name="t">The current state of the table in the transaction</param>
+        /// <param name="f"></param>
         public STable(STable t,AStream f) :base(t,f)
         {
             name = t.name;
             f.PutString(name);
-            cols = t.cols;
-            rows = t.rows;
+            cols = SDict<long, SSelector>.Empty;
+            rows = SDict<long,long>.Empty;
             indexes = t.indexes;
         }
         STable(Reader f) :base(Types.STable,f)
@@ -1366,7 +1375,7 @@ namespace Shareable
             {
                 var x = (SIndex)tr.objects[b.Value.key];
                 if (x.references < 0)
-                    return new IndexRowSet(tr, this, x, SList<Serialisable>.Empty);
+                    return new IndexRowSet(tr, this, x, SCList<Variant>.Empty, SList<Serialisable>.Empty);
             }
             return new TableRowSet(tr, this);
         }
@@ -1658,7 +1667,7 @@ namespace Shareable
         }
         public override string ToString()
         {
-            return "Column " + name + " [" + Uid() + "]: " + dataType.ToString();
+            return "Column " + name + " [" + Uid() + "] for "+_Uid(table)+": " + dataType.ToString();
         }
     }
     public class SAlterStatement : Serialisable
@@ -2059,12 +2068,12 @@ namespace Shareable
             }
             var tb = db?.objects[table] as STable;
             sb.Append("_table:");
-            sb.Append('"'); sb.Append(tb?.name ?? ("" + table)); sb.Append('"');
+            sb.Append('"'); sb.Append(tb?.name ?? _Uid(table)); sb.Append('"');
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.Append(",");
                 var c = tb?.cols.Lookup(b.Value.key);
-                sb.Append(c?.name ?? ("" + b.Value.key)); sb.Append(":");
+                sb.Append(c?.name ?? _Uid(b.Value.key)); sb.Append(":");
                 b.Value.val.Append(db,sb);
             }
             sb.Append("}");
@@ -2123,7 +2132,7 @@ namespace Shareable
             for (var i=0;i<n;i++)
             {
                 var s = f.GetString();
-                if (q.names.Lookup(s) is SColumn sc)
+                if (q.Lookup(s) is SColumn sc)
                     a = a + (sc.name, f._Get(db));
                 else
                     throw new Exception("Column " + s + " not found");
@@ -2165,7 +2174,7 @@ namespace Shareable
         public override long Defpos => defpos;
         public SUpdate(SDatabase db,SUpdate r, AStream f) : base(db,r,f)
         {
-            defpos = f.Fix(defpos);
+            defpos = f.Fix(r.defpos);
             f.PutLong(defpos);
         }
         SUpdate(SDatabase d, Reader f) : base(Types.SUpdate,d,f)
@@ -2370,7 +2379,7 @@ namespace Shareable
         }
         public SIndex Update(SRecord o,SUpdate u, long c)
         {
-            return new SIndex(this, rows-(Key(o,cols),c)+(Key(u, cols), c));
+            return new SIndex(this, rows-(Key(o,cols),o.uid)+(Key(u, cols), u.uid));
         }
         protected SIndex Remove(SRecord sr,long c)
         {
@@ -2395,12 +2404,12 @@ namespace Shareable
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Index " + uid + " [" + table + "] (");
+            var sb = new StringBuilder("Index " + _Uid(uid) + " [" + _Uid(table) + "] (");
             var cm = "";
             for (var b = cols.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append("" + b.Value);
+                sb.Append(_Uid(b.Value));
             }
             sb.Append(")");
             if (refindex >= 0)

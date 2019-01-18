@@ -133,8 +133,11 @@ namespace Shareable
         }
         public SDatabase Install(SColumn c, long p)
         {
-            var tb = ((STable)objects[c.table])+c;
-            return New(objects+(c.table,tb), names+(tb.name,tb), p);
+            var obs = objects;
+            if (c.uid > STransaction._uid)
+                obs = obs + (c.uid, c);
+            var tb = ((STable)obs[c.table])+c;
+            return New(obs+(c.table,tb), names+(tb.name,tb), p);
         }
         public SDatabase Install(SRecord r, long c)
         {
@@ -156,6 +159,8 @@ namespace Shareable
             var obs = objects;
             var st = ((STable)objects[u.table])+u;
             SRecord? sr = null;
+            if (u.uid > STransaction._uid)
+                obs = obs + (u.uid, u);
             obs = obs+(u.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
@@ -170,6 +175,8 @@ namespace Shareable
         public SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
+            if (d.uid > STransaction._uid)
+                obs = obs + (d.uid, d);
             var st = ((STable)objects[d.table]).Remove(d.delpos);
             SRecord? sr = null;
             obs = obs+(d.table, st);
@@ -185,11 +192,14 @@ namespace Shareable
         }
         public SDatabase Install(SAlter a, long c)
         {
+            var obs = objects;
+            if (a.uid > STransaction._uid)
+                obs = obs + (a.uid, a);
             if (a.parent == 0)
             {
-                var ot = (STable)objects[a.defpos];
+                var ot = (STable)obs[a.defpos];
                 var nt = new STable(ot, a.name);
-                return New(objects + (a.defpos, nt), names - ot.name + (a.name, nt), c);
+                return New(obs + (a.defpos, nt), names - ot.name + (a.name, nt), c);
             }
             else
             {
@@ -197,15 +207,16 @@ namespace Shareable
                 var oc = (SColumn)ot.cols[a.defpos];
                 var nc = new SColumn(oc, a.name, a.dataType);
                 var nt = ot + nc;
-                return New(objects + (a.defpos, nt),names + (a.name, nt),c);
+                return New(obs + (a.defpos, nt),names + (a.name, nt),c);
             }
         }
         public SDatabase Install(SDrop d, long c)
         {
-
+            var obs = objects;
+            if (d.uid > STransaction._uid)
+                obs = obs + (d.uid, d);
             if (d.parent == 0)
             {
-                var obs = objects;
                 var nms = names;
                 var ot = objects[d.drpos];
                 switch (ot.type)
@@ -230,7 +241,7 @@ namespace Shareable
             {
                 var ot = (STable)objects[d.parent];
                 var nt = ot.Remove(d.drpos);
-                return New(objects + (d.parent, nt), names, c);
+                return New(obs + (d.parent, nt), names, c);
             }
         }
         public SDatabase Install(SView v, long c)

@@ -50,7 +50,7 @@ namespace Tpcc
             if (s.IsEmpty)
                 return true;
             clast = (string)s[0][3];
-            c_balance = (decimal)s[0][0];
+            c_balance = util.GetDecimal(s[0][0]);
             c_first = (string)s[0][1];
             c_middle = (string)s[0][2];
             return false;
@@ -97,7 +97,7 @@ namespace Tpcc
                 Set(k++, (int)(long)s[i][1]);
                 Set(k++, (int)(long)s[i][0]);
                 Set(k++, (int)(long)s[i][2]);
-                Set(k++, String.Format("${0,8:F2}", (decimal)s[i][3]));
+                Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[i][3])));
                 if (s[i][4] != Serialisable.Null)
                     Set(k++, ((DateTime)s[i][4]).ToShortDateString());
                 else

@@ -81,132 +81,138 @@ namespace StrongCmd
                     files += ((files.Length > 0) ? "," : "") + args[k];
                 k++;
             }
-            StrongConnect db = new StrongConnect(host, int.Parse(port), files);
-            for (bool done = false; !done; done = !interactive)
+            try
             {
-                if (interactive)
+                StrongConnect db = new StrongConnect(host, int.Parse(port), files);
+                for (bool done = false; !done; done = !interactive)
                 {
-                    if (file != null)
-                    {
-                        str = file.ReadLine();
-                        if (newfile)
-                            newfile = false;
-                    }
-                    else
-                    {
-                        if (db.inTransaction)
-                            Console.Write("SQL-T>");
-                        else
-                            Console.Write("SQL> ");
-                        str = Console.ReadLine();
-                    }
-                    if (str == null)
-                        return;
-                    str = str.Trim();
-                    if (str.Length == 0)
-                        continue;
-                    // support QUIT
-                    if (str.Length >= 4 && str.ToUpper().StartsWith("QUIT"))
-                        break;
-                    // support comments
-                    if (str[0] == '/')
-                        continue;
-                    // support file input
-                    if (str[0] == '@')
+                    if (interactive)
                     {
                         if (file != null)
-                            stack = new Link(file, stack);
-                        try
                         {
-                            file = new StreamReader(str.Substring(1).Trim());
-                            newfile = true;
+                            str = file.ReadLine();
+                            if (newfile)
+                                newfile = false;
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            Console.WriteLine(ex.Message);
-                        }
-                        continue;
-                    }
-                    // support multiline SQL statements for people who don't like wraparound
-                    if (str[0] == '[')
-                    {
-                        line = "";
-                        for (; ; )
-                        {
-                            if (str[str.Length - 1] == ']')
-                                break;
-                            if (file != null)
-                                line = file.ReadLine();
+                            if (db.inTransaction)
+                                Console.Write("SQL-T>");
                             else
-                            {
-                                Console.Write("> ");
-                                line = Console.ReadLine();
-                            }
-                            RemoveTrailingComment(ref line);
-                            if (line == null)
-                            {
-                                str += "]";
-                                break;
-                            }
-                            if (line.Length > 0)
-                            {
-                                line = line.Trim();
-                                if (str[str.Length - 1] == '\'' && line[0] == '\'')
-                                    str = str.Substring(0, str.Length - 1) + line.Substring(1);
-                                else
-                                    str += " " + line;
-                            }
+                                Console.Write("SQL> ");
+                            str = Console.ReadLine();
                         }
-                        str = str.Substring(1, str.Length - 2);
+                        if (str == null)
+                            return;
+                        str = str.Trim();
+                        if (str.Length == 0)
+                            continue;
+                        // support QUIT
+                        if (str.Length >= 4 && str.ToUpper().StartsWith("QUIT"))
+                            break;
+                        // support comments
+                        if (str[0] == '/')
+                            continue;
+                        // support file input
+                        if (str[0] == '@')
+                        {
+                            if (file != null)
+                                stack = new Link(file, stack);
+                            try
+                            {
+                                file = new StreamReader(str.Substring(1).Trim());
+                                newfile = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex.Message);
+                            }
+                            continue;
+                        }
+                        // support multiline SQL statements for people who don't like wraparound
+                        if (str[0] == '[')
+                        {
+                            line = "";
+                            for (; ; )
+                            {
+                                if (str[str.Length - 1] == ']')
+                                    break;
+                                if (file != null)
+                                    line = file.ReadLine();
+                                else
+                                {
+                                    Console.Write("> ");
+                                    line = Console.ReadLine();
+                                }
+                                RemoveTrailingComment(ref line);
+                                if (line == null)
+                                {
+                                    str += "]";
+                                    break;
+                                }
+                                if (line.Length > 0)
+                                {
+                                    line = line.Trim();
+                                    if (str[str.Length - 1] == '\'' && line[0] == '\'')
+                                        str = str.Substring(0, str.Length - 1) + line.Substring(1);
+                                    else
+                                        str += " " + line;
+                                }
+                            }
+                            str = str.Substring(1, str.Length - 2);
+                        }
                     }
-                }
-                else
-                    str = line;
-                try
-                {
-                    var strlow = str.Trim().Trim(';').ToLower();
-                    switch (strlow)
-                    {
-                        case "begin":
-                            if (db.inTransaction)
-                            {
-                                Console.WriteLine("Transaction already started");
-                                continue;
-                            }
-                            db.BeginTransaction();
-                            continue;
-                        case "rollback":
-                            if (!db.inTransaction)
-                            {
-                                Console.WriteLine("No current transaction");
-                                continue;
-                            }
-                            db.Rollback();
-                            continue;
-                        case "commit":
-                            if (db.inTransaction)
-                            {
-                                Console.WriteLine("No current transaction");
-                                continue;
-                            }
-                            db.Commit();
-                            continue;
-                    }
-                    if (str.StartsWith("select"))
-                        Show(db, db.ExecuteQuery(str));
                     else
-                        db.ExecuteNonQuery(str);
+                        str = line;
+                    try
+                    {
+                        var strlow = str.Trim().Trim(';').ToLower();
+                        switch (strlow)
+                        {
+                            case "begin":
+                                if (db.inTransaction)
+                                {
+                                    Console.WriteLine("Transaction already started");
+                                    continue;
+                                }
+                                db.BeginTransaction();
+                                continue;
+                            case "rollback":
+                                if (!db.inTransaction)
+                                {
+                                    Console.WriteLine("No current transaction");
+                                    continue;
+                                }
+                                db.Rollback();
+                                continue;
+                            case "commit":
+                                if (!db.inTransaction)
+                                {
+                                    Console.WriteLine("No current transaction");
+                                    continue;
+                                }
+                                db.Commit();
+                                continue;
+                        }
+                        if (str.StartsWith("select"))
+                            Show(db, db.ExecuteQuery(str));
+                        else
+                            db.ExecuteNonQuery(str);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                        if (!interactive)
+                            break;
+                        file?.Close();
+                        file = null;
+                    }
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                    if (!interactive)
-                        break;
-                    file?.Close();
-                    file = null;
-                }
+                file?.Close();
+            } catch(Exception e)
+            {
+                Console.WriteLine(e.Message);
             }
-            file?.Close();
         }
         /// <summary>
         /// remove comment starting with unquoted -- and extending to end of line

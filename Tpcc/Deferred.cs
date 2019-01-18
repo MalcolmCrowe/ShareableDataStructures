@@ -36,7 +36,7 @@ namespace Tpcc
 			db.ExecuteNonQuery("update ORDER_LINE  where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid+ " set OL_DELIVERY_DATE=date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'");
 			decimal amount = 0.0M;
 			s = db.ExecuteQuery("select sum(OL_AMOUNT) from ORDER_LINE where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid);
-		    amount = (decimal)s[0][0];
+		    amount = util.GetDecimal(s[0][0]);
 			db.ExecuteNonQuery("update CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + ocid+" set C_BALANCE =C_BALANCE+"+amount+",C_DELIVERY_CNT=C_DELIVERY_CNT+1");
 			return true;
 		}

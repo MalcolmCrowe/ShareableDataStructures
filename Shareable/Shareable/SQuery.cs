@@ -70,11 +70,17 @@ namespace Shareable
             cpos = SDict<int,Serialisable>.Empty;
             names = SDict<string, Serialisable>.Empty;
         }
+        /// <summary>
+        /// This constructor is only called when committing am STable.
+        /// Ignore the columns defined in the transaction.
+        /// </summary>
+        /// <param name="q">The current state of the STable in the transaction</param>
+        /// <param name="f"></param>
         protected SQuery(SQuery q, AStream f) : base(q, f)
         {
-            display = q.display;
-            cpos = q.cpos;
-            names = q.names;
+            display = SDict<int, string>.Empty;
+            cpos = SDict<int, Serialisable>.Empty;
+            names = SDict<string, Serialisable>.Empty;
         }
         public virtual Serialisable Lookup(string a)
         {
@@ -89,6 +95,8 @@ namespace Shareable
         {
             throw new NotImplementedException();
         }
+        public new virtual string Alias => "";
+        public virtual SDict<int, string> Display => display;
         public override string ToString()
         {
             return "SQuery";
@@ -154,6 +162,8 @@ namespace Shareable
                 b.Value.Append(db,sb); 
             }
         }
+        public override string Alias => (alias is SString ss)?ss.str:base.Alias;
+        public override SDict<int, string> Display => (display==SDict<int,string>.Empty)?sce.Display:display;
     }
     public class SSelectStatement : SQuery
     {
@@ -249,8 +259,13 @@ namespace Shareable
         }
         public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
-            return new SRow(this,(RowBookmark)nms);
+            var r = (RowBookmark)nms;
+            if (display.Length == 0)
+                return r._ob;
+            return new SRow(this,r);
         }
+        public override string Alias => qry.Alias;
+        public override SDict<int, string> Display => (display == SDict<int, string>.Empty) ? qry.Display : display;
     }
     public class SOrder : Serialisable
     {

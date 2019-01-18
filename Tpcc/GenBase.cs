@@ -554,6 +554,18 @@ namespace Tpcc
                 r++;
             return r;
         }
+        public static decimal GetDecimal(object ob)
+        {
+            if (ob is int)
+                return ((int)ob) * 1.0M;
+            if (ob is long)
+                return ((long)ob) * 1.0M;
+            if (ob is double)
+                return (decimal)(double)ob;
+            if (ob is decimal)
+                return (decimal)ob;
+            throw new Exception("unknown type " + ob.GetType().Name);
+        }
         public static int NURand(int a, int c, int x, int y)
         {
             return (((random(0, a) | random(x, y) + c) % (y - x + 1)) + x);

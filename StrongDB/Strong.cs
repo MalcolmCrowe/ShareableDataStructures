@@ -94,7 +94,7 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var qy = rdr._Get(tr) as SQuery ??
                                     throw new Exception("Bad query");
-                                RowSet rs = qy.RowSet(tr);
+                                RowSet rs = qy.RowSet(tr,SDict<string,Serialisable>.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
                                 for (var b = rs?.First();b!=null;b=b.Next())
@@ -106,8 +106,8 @@ namespace StrongDB
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    asy.PutInt(rs._qry.display.Length.Value);
-                                    for (var b = rs._qry.display.First(); b != null; b = b.Next())
+                                    asy.PutInt(rs._qry.Display.Length.Value);
+                                    for (var b = rs._qry.Display.First(); b != null; b = b.Next())
                                          asy.PutString(b.Value.val);
                                 }
                                 asy.PutString(sb.ToString());
@@ -121,13 +121,13 @@ namespace StrongDB
                                 if (tr.names.Contains(tn))
                                     throw new Exception("Duplicate table name " + tn);
                                 var tb = new STable(tr, tn);
-                                tr = tr.Add(tb); 
+                                tr = (STransaction)tr.Install(tb,tr.curpos); 
                                 var n = rdr.GetInt(); // #cols
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = rdr.GetString(); // column name
                                     var dt = (Types)rdr.ReadByte(); // dataType
-                                    tr = tr.Add(new SColumn(tr,cn,dt,tb.uid));
+                                    tr = (STransaction)tr.Install(new SColumn(tr,cn,dt,tb.uid),tr.curpos);
                                 }
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
@@ -174,7 +174,7 @@ namespace StrongDB
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
                                             f = f + (b.element, rdr._Get(tr)); // serialisable values
-                                    tr = tr.Add(new SRecord(tr, tb.uid, f));
+                                    tr = (STransaction)tr.Install(new SRecord(tr, tb.uid, f),tr.curpos);
                                 }
                                 if (ex != null)
                                     throw ex;
@@ -191,13 +191,12 @@ namespace StrongDB
                                     throw new Exception("Table " + tn + " not found");
                                 var cn = rdr.GetString(); // column name or ""
                                 var nm = rdr.GetString(); // new name
-                                tr = tr.Add(
-                                    (cn.Length == 0) ?
-                                        new SAlter(tr, nm, Types.STable, tb.uid, 0) :
-                                        new SAlter(tr, nm, Types.SColumn, tb.uid,
-                                            (tb.names.Lookup(cn) is SColumn sc)?sc.uid : 
-                                            throw new Exception("Column " + cn + " not found"))
-                                        );
+                                if (cn.Length == 0)
+                                    tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.STable, tb.uid, 0), tr.curpos);
+                                else
+                                    tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.SColumn, tb.uid,
+                                            (tb.names.Lookup(cn) is SColumn sc) ? sc.uid :
+                                            throw new Exception("Column " + cn + " not found")), tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -210,14 +209,13 @@ namespace StrongDB
                                 var pt = tr.names.Lookup(nm) ??
                                     throw new Exception("Object " + nm + " not found");
                                 var cn = rdr.GetString();
-                                tr = tr.Add(
-                                    (cn.Length==0)?
-                                        new SDrop(tr,pt.uid,-1) :
+                                tr = (STransaction)tr.Install(
+                                    (cn.Length == 0) ?
+                                        new SDrop(tr, pt.uid, -1) :
                                         new SDrop(tr,
-                                            (((STable)pt).names.Lookup(cn) is SColumn sc)? sc.uid : 
+                                            (((STable)pt).names.Lookup(cn) is SColumn sc) ? sc.uid :
                                             throw new Exception("Column " + cn + " not found"),
-                                        pt.uid)
-                                    );
+                                        pt.uid), tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -242,7 +240,7 @@ namespace StrongDB
                                         throw new Exception("Column " + cn + " not found");
                                     cs = cs.InsertAt(se, i);
                                 }
-                                tr = tr.Add(new SIndex(tr, tb.uid, xt < 2, ru,cs));
+                                tr = (STransaction)tr.Install(new SIndex(tr, tb.uid, xt < 2, ru,cs),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -260,7 +258,7 @@ namespace StrongDB
                         case Types.SUpdateSearch:
                             {
                                 var tr = db.Transact();
-                                tr = SUpdateSearch.Get(db, rdr).Obey(tr);
+                                tr = SUpdateSearch.Get(db, rdr).Obey(tr,SDict<string,Serialisable>.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -271,18 +269,15 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id);
-                                var tb = (STable)tr.Lookup(rc.table); 
+                                var tb = (STable)tr.objects[rc.table]; 
                                 var n = rdr.GetInt(); // # cols updated
                                 var f = SDict<string, Serialisable>.Empty;
-                                Exception ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = rdr.GetString();
                                     f = f+(cn, rdr._Get(db));
                                 }
-                                tr = tr.Add(new SUpdate(tr, rc, f));
-                                if (ex != null)
-                                    throw (ex);
+                                tr = (STransaction)tr.Install(new SUpdate(tr, rc, f),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -291,7 +286,7 @@ namespace StrongDB
                         case Types.SDeleteSearch:
                             {
                                 var tr = db.Transact();
-                                tr = SDeleteSearch.Get(db, rdr).Obey(tr);
+                                tr = SDeleteSearch.Get(db, rdr).Obey(tr,SDict<string,Serialisable>.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -303,7 +298,7 @@ namespace StrongDB
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id) as SRecord ??
                                     throw new Exception("Record " + id + " not found");
-                                tr = tr.Add(new SDelete(tr, rc.table,rc.uid));
+                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();

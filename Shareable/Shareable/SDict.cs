@@ -93,6 +93,26 @@ namespace Shareable
             return (SBookmark<K, V>.Next(null, this) is SBookmark<K,V> b)?
                 new SDictBookmark<K, V>(b):null;
         }
+        public virtual Bookmark<SSlot<K,V>>? PositionAt(K k)
+        {
+            SBookmark<K, V>? bmk = null;
+            var cb = root;
+            while (cb != null)
+            {
+                var bpos = cb.PositionFor(k, out bool b);
+                bmk = new SBookmark<K, V>(cb, bpos, bmk);
+                if (bpos == cb.count)
+                {
+                    var inr = cb as SInner<K, V>;
+                    if (inr == null)
+                        return null;
+                    cb = inr.gtr;
+                }
+                else
+                    cb = (cb.Slot(bpos).val ?? throw new System.Exception("??")) as SBucket<K,V>;
+            }
+            return (bmk==null)?null:new SDictBookmark<K,V>(bmk);
+        }
         public SDict<K,V> Merge(SDict<K,V>ud)
         {
             var r = Empty;
@@ -159,6 +179,10 @@ namespace Shareable
         public readonly K key;
         public readonly V val;
         public SSlot(K k, V v) { key = k; val = v; }
+        public override string ToString()
+        {
+            return "("+key.ToString()+":"+(val?.ToString()??"null")+")";
+        }
     }
     /// <summary>
     /// C# version 7 is picky about generic matching so we need this (7.1 should be easier)

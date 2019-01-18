@@ -38,7 +38,6 @@ namespace Tpcc
         string bg;
         int s_quantity;
         decimal total;
-        public StrongConnect tr = null;
         bool allhome = true;
         public int activewh;
         public StrongConnect db;
@@ -74,7 +73,7 @@ namespace Tpcc
                 }
                 catch (Exception)
                 {
-                    tr = null;
+                    db.Rollback();
                 }
             }
         }
@@ -87,7 +86,7 @@ namespace Tpcc
             }
             catch (Exception)
             {
-                tr = null;
+                db.Rollback();
             }
             return true;
         }
@@ -101,7 +100,7 @@ namespace Tpcc
             }
             Set(3, (string)s[0][1]);
             Set(4, (string)s[0][2]);
-            c_discount = (decimal)s[0][0]; 
+            c_discount = util.GetDecimal(s[0][0]);
             Set(5, c_discount.ToString("F4").Substring(1));
 			return false;
 		}
@@ -114,17 +113,17 @@ namespace Tpcc
                 mess = "No District " + did;
                 return true;
             }
-            d_tax = (decimal)s[0][0];
+            d_tax = util.GetDecimal(s[0][0]);
             o_id = (int)(long)s[0][1];
             Set(6, o_id);
             Set(132, DateTime.Now.ToString());
-            db.ExecuteQuery("select W_TAX from WAREHOUSE where W_ID=" + wid);
+            s = db.ExecuteQuery("select W_TAX from WAREHOUSE where W_ID=" + wid);
             if (s.IsEmpty)
             {
                 mess = "No warehouse " + wid;
                 return true;
             }
-            w_tax = (decimal)s[0][0];
+            w_tax = util.GetDecimal(s[0][0]);
             Set(8, w_tax.ToString("F4").Substring(1));
             Set(9, d_tax.ToString("F4").Substring(1));
             db.ExecuteNonQuery("update DISTRICT  where D_W_ID=" + wid + " and D_ID=" + did + " set D_NEXT_O_ID=" + (o_id + 1));
@@ -139,7 +138,7 @@ namespace Tpcc
                     DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? "true" : "false") + ")");
 			db.ExecuteNonQuery("insert NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+
 					o_id+","+did+","+wid+")");
-            return true;
+            return false;
 		}
 
         bool FetchItemData(int j, ref string mess)
@@ -158,7 +157,7 @@ namespace Tpcc
                 mess = "No such item " + a.oliid;
                 return true;
             }
-            i_price = (decimal)s[0][0];
+            i_price = util.GetDecimal(s[0][0]);
             a.ol_price = i_price;
             i_name = (string)s[0][1];
             i_data = (string)s[0][2];
@@ -241,7 +240,7 @@ namespace Tpcc
                     done = true;
                 }
                 else
-                    tr.Commit();
+                    db.Commit();
                 // Phase 3 display the results
                 Set(130, "OKAY");
                 done = true;
@@ -249,7 +248,7 @@ namespace Tpcc
             catch (Exception ex)
             {
                 Set(130, ex.Message);
-                tr = null;
+                db.Rollback();
             }
             return done;
         }
@@ -309,9 +308,8 @@ namespace Tpcc
 				if (DoCommit(ref mess))
 					break;
 			bad:
-				if (tr!=null)
-					tr.Rollback();
-				Set(130,mess);
+                db.Rollback();
+                Set(130,mess);
 				Invalidate(true);
 			}
 			Invalidate(true);
@@ -421,9 +419,8 @@ namespace Tpcc
 				btn.Enabled = true;
 			return;
 			bad:
-				if (tr!=null)
-					tr.Rollback();
-				Set(130,mess);
+            db.Rollback();
+            Set(130,mess);
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
@@ -561,8 +558,8 @@ namespace Tpcc
 			}
 			catch(Exception ex) {
 				status.Text = ex.Message;
-                tr = null;
-			}
+                db.Rollback();
+            }
 			Invalidate(true);
 		}
 

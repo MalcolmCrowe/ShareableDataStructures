@@ -41,7 +41,7 @@ namespace Tpcc
             Set(3, (string)rdr[3]);
             Set(4, (string)rdr[4]);
             Set(5, (string)rdr[5]);
-            ytd = (decimal)s[0][6];
+            ytd = util.GetDecimal(s[0][6]);
             s = db.ExecuteQuery("select D_NAME,D_STREET_1,D_STREET_2,D_CITY,D_STATE,D_ZIP,D_YTD from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did);
             if (!s.IsEmpty)
                 return true;
@@ -51,7 +51,7 @@ namespace Tpcc
             Set(10, (string)rdr[3]);
             Set(11, (string)rdr[4]);
             Set(12, (string)rdr[5]);
-            dytd = (decimal)s[0][6];
+            dytd = util.GetDecimal(s[0][6]);
             Set(0, wid);
             Set(7, did);
             return false;
@@ -83,8 +83,8 @@ namespace Tpcc
             Set(26, rdr[9].ToString()); // c_since
             c_credit = (string)rdr[10];
             Set(29, c_credit);
-            Set(37, ((decimal)rdr[11]).ToString("F2"));
-            Set(30, ((decimal)rdr[12]).ToString("F4").Substring(1)); // c_discount
+            Set(37, (util.GetDecimal(rdr[11])).ToString("F2"));
+            Set(30, (util.GetDecimal(rdr[12])).ToString("F4").Substring(1)); // c_discount
             Set(31, (string)rdr[8]); // c_phone
             c_balance = (decimal)rdr[13];
             c_ytd_payment = (decimal)rdr[14];
@@ -115,8 +115,8 @@ namespace Tpcc
             Set(37, ((decimal)rdr[11]).ToString("F2"));
             Set(30, ((decimal)rdr[12]).ToString("F4").Substring(1)); // c_discount
             Set(31, (string)rdr[8]); // c_phone
-            c_balance = (decimal)rdr[13];
-            c_ytd_payment = (decimal)rdr[14];
+            c_balance = util.GetDecimal(rdr[13]);
+            c_ytd_payment = util.GetDecimal(rdr[14]);
             c_payment_cnt = (int)(long)rdr[15];
             return false;
         }
