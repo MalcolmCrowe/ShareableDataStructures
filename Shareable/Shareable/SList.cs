@@ -31,19 +31,27 @@ namespace Shareable
                 r = new SList<T>(els[i], r);
             return r;
         }
-        public SList<T> InsertAt(T x, int n) // n>=0
+        protected SList<T> InsertAt(T x, int n) // n>=0
         {
             if (Length==0 || n==0)
                 return new SList<T>(x, this);
             return new SList<T>(element, next.InsertAt(x, n - 1));
         }
-        public SList<T> RemoveAt(int n)
+        public static SList<T> operator+(SList<T> s,ValueTuple<T,int> x)
+        {
+            return s.InsertAt(x.Item1, x.Item2);
+        }
+        protected SList<T> RemoveAt(int n)
         {
             if (Length==0)
                 return Empty;
             if (n == 0)
                 return next;
             return new SList<T>(element, next.RemoveAt(n - 1));
+        }
+        public static SList<T> operator-(SList<T> s,int n)
+        {
+            return s.RemoveAt(n);
         }
         public SList<T> UpdateAt(T x,int n)
         {

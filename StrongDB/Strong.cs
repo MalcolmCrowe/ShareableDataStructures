@@ -154,7 +154,7 @@ namespace StrongDB
                                 {
                                     var cn = rdr.GetString();
                                     if (tb.names.Lookup(cn) is SColumn sc)
-                                        cs = cs.InsertAt(sc.uid, i);
+                                        cs = cs+(sc.uid, i);
                                     else
                                         ex = new Exception("Column " + cn + " not found");
                                 }
@@ -238,7 +238,7 @@ namespace StrongDB
                                     var cn = rdr.GetString();
                                     var se = (tb.names.Lookup(cn) is SColumn sc)? sc.uid :
                                         throw new Exception("Column " + cn + " not found");
-                                    cs = cs.InsertAt(se, i);
+                                    cs = cs+(se, i);
                                 }
                                 tr = (STransaction)tr.Install(new SIndex(tr, tb.uid, xt < 2, ru,cs),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);

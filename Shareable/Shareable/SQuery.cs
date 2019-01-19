@@ -102,22 +102,86 @@ namespace Shareable
             return "SQuery";
         }
     }
+    public class SJoin : SQuery
+    {
+        public enum JoinType { None=0, Natural=1, Cross=2, Left=3, Right=4, Full=5 };
+        public readonly JoinType joinType;
+        public readonly bool outer;
+        public readonly SQuery left,right;
+        public readonly SList<SExpression> ons;
+        public SJoin(SDatabase db,Reader f): base(Types.STableExp,f)
+        {
+            left = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            outer = f.GetInt() == 1;
+            joinType = (JoinType)f.GetInt();
+            right = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            var n = f.GetInt();
+            var on = SList<SExpression>.Empty;
+            for (var i = 0; i < n; i++)
+                on = on + (f._Get(db) as SExpression ?? throw new Exception("ON exp expected"), i);
+            ons = on;
+        }
+        public SJoin(SQuery lf,bool ou,JoinType jt,SQuery rg,SList<SExpression> on,
+            SDict<int,string> d,SDict<int,Serialisable> c,SDict<string,Serialisable> n) 
+            :base(Types.STableExp,d,c,n)
+        {
+            left = lf; right = rg; outer = ou; joinType = jt; ons = on;
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            left.Put(f);
+            f.PutInt(outer ? 1 : 0);
+            f.PutInt((int)joinType);
+            right.Put(f);
+            f.PutInt(ons.Length.Value);
+            for (var b = ons.First(); b != null; b = b.Next())
+                b.Value.Put(f);
+        }
+        public static SJoin Get(SDatabase d,Reader f)
+        {
+            return new SJoin(d, f);
+        }
+        public override RowSet RowSet(STransaction tr, ILookup<string, Serialisable> nms)
+        {
+            return new JoinRowSet(tr, this, nms);
+        }
+        public override void Append(SDatabase db, StringBuilder sb)
+        {
+            left.Append(db, sb);
+            if (outer)
+                sb.Append(" outer ");
+            if (joinType != JoinType.None)
+            { sb.Append(" "); sb.Append(joinType); sb.Append(" "); }
+            right.Append(db, sb);
+            if (ons.Length.Value>0)
+            {
+                sb.Append(" on ");
+                var cm = "";
+                for (var b=ons.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    b.Value.Append(db, sb);
+                }
+            }
+        }
+    }
     public class SSearch : SQuery
     {
         public readonly SQuery sce;
-        public readonly Serialisable alias;
+        public readonly string alias;
         public readonly SList<Serialisable> where;
         public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
         {
             sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
-            alias = f._Get(db);
+            alias = f.GetString();
             var w = SList<Serialisable>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
-                w = w.InsertAt(f._Get(db).Lookup(sce.names),i);
+                w = w+(f._Get(db).Lookup(sce.names),i);
             where = w;
         }
-        public SSearch(SQuery s,Serialisable a, SList<Serialisable> w)
+        public SSearch(SQuery s,string a, SList<Serialisable> w)
             :base(Types.SSearch, s.display, s.cpos, s.names)
         {
             sce = s;
@@ -128,14 +192,14 @@ namespace Shareable
         {
             base.Put(f);
             sce.Put(f);
-            alias.Put(f);
+            f.PutString(alias);
             f.PutInt(where.Length);
             for (var b=where.First();b!=null;b=b.Next())
                 b.Value.Put(f);
         }
         public override Serialisable Lookup(string a)
         {
-            if (alias is SString ss && ss.str.CompareTo(a) == 0)
+            if (alias.CompareTo(a) == 0)
                 return sce;
             return sce.Lookup(a);
         }
@@ -162,8 +226,81 @@ namespace Shareable
                 b.Value.Append(db,sb); 
             }
         }
-        public override string Alias => (alias is SString ss)?ss.str:base.Alias;
+        public override string Alias => (alias.Length!=0)?alias:base.Alias;
         public override SDict<int, string> Display => (display==SDict<int,string>.Empty)?sce.Display:display;
+    }
+    public class SGroupQuery : SQuery
+    {
+        public readonly SQuery source;
+        public readonly SDict<int, string> groupby;
+        public readonly SList<Serialisable> having;
+        public SGroupQuery(SDatabase db,Reader f):base(Types.SGroupQuery,f)
+        {
+            source = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            var g = SDict<int, string>.Empty;
+            var h = SList<Serialisable>.Empty;
+            var n = f.GetInt();
+            for (var i = 0; i < n; i++)
+                g = g + (i, f.GetString());
+            n = f.GetInt();
+            for (var i = 0; i < n; i++)
+                h = h+(f._Get(db).Lookup(source.names), i);
+            groupby = g;
+            having = h;
+        }
+        public SGroupQuery(SQuery s,SDict<int,string> d,SDict<int,Serialisable> c,
+            SDict<string,Serialisable> n,SDict<int,string> g,SList<Serialisable> h) 
+            : base(Types.SGroupQuery, d,c,n) 
+        {
+            source = s;
+            groupby = g;
+            having = h;
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            source.Put(f);
+            f.PutInt(groupby.Length);
+            for (var b = groupby.First(); b != null; b = b.Next())
+                f.PutString(b.Value.val);
+            f.PutInt(having.Length);
+            for (var b = having.First(); b != null; b = b.Next())
+                b.Value.Put(f);
+        }
+        public static SGroupQuery Get(SDatabase d,Reader f)
+        {
+            return new SGroupQuery(d, f);
+        }
+        public override RowSet RowSet(STransaction tr, ILookup<string, Serialisable> nms)
+        {
+            return new GroupRowSet(tr, this, nms);
+        }
+        public override Serialisable Lookup(ILookup<string, Serialisable> nms)
+        {
+            return (nms is SearchRowSet.SearchRowBookmark srb) ? source.Lookup(srb._bmk) : this;
+        }
+        public override void Append(SDatabase? db, StringBuilder sb)
+        {
+            source.Append(db, sb);
+            sb.Append(" groupby ");
+            var cm = "";
+            for (var b =groupby.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.Value.val);
+            }
+            if (having.Length>0)
+            {
+                sb.Append(" having ");
+                cm = "";
+                for (var b=having.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = " and ";
+                    b.Value.Append(db,sb);
+                }
+            }
+        }
+        public override string Alias => source.Alias;
     }
     public class SSelectStatement : SQuery
     {
@@ -206,7 +343,7 @@ namespace Shareable
             var o = SList<SOrder>.Empty;
             n = f.GetInt();
             for (var i = 0; i < n; i++)
-                o = o.InsertAt((SOrder)f._Get(db), i);
+                o = o+((SOrder)f._Get(db), i);
             return new SSelectStatement(d,a,c,q,o);
         }
         public override void Put(StreamBase f)

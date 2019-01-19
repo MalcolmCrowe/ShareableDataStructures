@@ -49,7 +49,9 @@ namespace Shareable
         SOrder = 39,
         SBigInt = 40,
         SInPredicate = 41,
-        DescribedGet = 42
+        DescribedGet = 42,
+        SGroupQuery = 43,
+        STableExp = 44
     }
     public interface ILookup<K,V> where K:IComparable
     {
@@ -1434,7 +1436,7 @@ namespace Shareable
             for (var i = 0; i < n; i++)
             {
                 var co = SColumn.Get(f);
-                c = coldefs.InsertAt(new SColumn(co,co.name,(Types)f.ReadByte()), i);
+                c = c + (new SColumn(co,co.name,(Types)f.ReadByte()), i);
             }
             coldefs = c;
         }
@@ -1877,7 +1879,7 @@ namespace Shareable
             for (var i = 0; i < n; i++)
             {
                 var nm = f.GetString();
-                c = c.InsertAt(new SColumn(nm, (Types)f.ReadByte(), 0),i);
+                c = c+(new SColumn(nm, (Types)f.ReadByte(), 0),i);
             }
             cols = c;
             viewdef = f.GetString();
@@ -1933,7 +1935,7 @@ namespace Shareable
             for (var b=cols.First();b!=null;b=b.Next())
             {
                 if (tb.names.Lookup(b.Value.name) is SColumn sc)
-                    cs = cs.InsertAt(sc.uid, i++);
+                    cs = cs+(sc.uid, i++);
                 else
                     ex = new Exception("Column " + b.Value.name + " not found");
             }
@@ -1962,7 +1964,7 @@ namespace Shareable
             var n = f.GetInt();
             var c = SList<SSelector>.Empty;
             for (var i = 0; i < n; i++)
-                c = c.InsertAt((SSelector)f._Get(db), i);
+                c = c+((SSelector)f._Get(db), i);
             return new SInsertStatement(t, c, f._Get(db));
         }
         public override void Put(StreamBase f)
@@ -1988,7 +1990,7 @@ namespace Shareable
             var nr = f.GetInt();
             vals = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
-                vals = vals.InsertAt(f._Get(db), i);
+                vals = vals+(f._Get(db), i);
         }
         public override bool isValue => true;
         public static SValues Get(SDatabase db,Reader f)
@@ -1997,7 +1999,7 @@ namespace Shareable
             var nr = f.GetInt();
             var v = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
-                v = v.InsertAt(f._Get(db), i);
+                v = v+(f._Get(db), i);
             return new SValues(v);
         }
         public override void Put(StreamBase f)
@@ -2175,6 +2177,11 @@ namespace Shareable
         public SUpdate(SDatabase db,SUpdate r, AStream f) : base(db,r,f)
         {
             defpos = f.Fix(r.defpos);
+            if (defpos < 0)
+            {
+                Console.WriteLine("Here");
+                throw new Exception("!!");
+            }
             f.PutLong(defpos);
         }
         SUpdate(SDatabase d, Reader f) : base(Types.SUpdate,d,f)
@@ -2393,7 +2400,7 @@ namespace Shareable
         {
             if (cols.Length==0)
                 return SList<TreeInfo<long>>.Empty;
-            return Info(tb, cols.next,fkey).InsertAt(new TreeInfo<long>( // not null
+            return Info(tb, cols.next,fkey)+(new TreeInfo<long>( // not null
                 tb.cols.Lookup(cols.element).uid, (cols.Length!=1 || fkey)?'A':'D', 'D'), 0);
         }
         SCList<Variant> Key(SRecord sr,SList<long> cols)

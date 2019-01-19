@@ -48,6 +48,8 @@ namespace Test
             Test4(test);
             Test5(test);
             Test6(test);
+            Test7(test);
+            Test8(test);
         }
         void Test1(int t)
         {
@@ -58,7 +60,9 @@ namespace Test
             conn.ExecuteNonQuery("create primary index ax for A(B,C)");
             conn.ExecuteNonQuery("insert A values(2,3,'TwentyThree')");
             conn.ExecuteNonQuery("insert A values(1,9,'Nineteen')");
-            CheckResults(1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            CheckResults(t,1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            conn.ExecuteNonQuery("update A where C=9 set C=19");
+            CheckResults(t,2, "select from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             Rollback();
             if (!commit)
             {
@@ -83,12 +87,12 @@ namespace Test
             conn.ExecuteNonQuery("insert AA(B) values(17)");
             conn.ExecuteNonQuery("insert AA(C) values('BC')");
             conn.ExecuteNonQuery("insert AA(C,B) values('GH',+67)");
-            CheckResults(1,"select from AA", "[{B:17},{C:'BC'},{B:67,C:'GH'}]");
-            CheckResults(2,"select B from AA", "[{B:17},{B:67}]");
-            CheckResults(3,"select C as E from AA", "[{E:'BC'},{E:'GH'}]");
-            CheckResults(4,"select C from AA where B<20", "[]");
-            CheckResults(5,"select C from AA where B>20", "[{C:'GH'}]");
-            CheckResults(6,"select count(C) from AA", "[{col1:2}]");
+            CheckResults(t,1,"select from AA", "[{B:17},{C:'BC'},{B:67,C:'GH'}]");
+            CheckResults(t,2,"select B from AA", "[{B:17},{B:67}]");
+            CheckResults(t, 3,"select C as E from AA", "[{E:'BC'},{E:'GH'}]");
+            CheckResults(t, 4,"select C from AA where B<20", "[]");
+            CheckResults(t, 5,"select C from AA where B>20", "[{C:'GH'}]");
+            CheckResults(t, 6,"select count(C) from AA", "[{col1:2}]");
             Rollback();
             if (!commit)
             {
@@ -115,8 +119,8 @@ namespace Test
             conn.ExecuteNonQuery("create primary index bx for b(c)");
             conn.ExecuteNonQuery("insert b values(45,'DE')");
             conn.ExecuteNonQuery("insert b values(-23,'HC')");
-            CheckResults(1,"select from b", "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
-            CheckResults(2,"select from b where c=-23", "[{c:-23,d:'HC'}]");
+            CheckResults(t, 1,"select from b", "[{c:-23,d:'HC'},{c:45,d:'DE'}]");
+            CheckResults(t, 2,"select from b where c=-23", "[{c:-23,d:'HC'}]");
             Rollback();
             if (!commit)
             {
@@ -140,7 +144,7 @@ namespace Test
             conn.ExecuteNonQuery("create primary index ex for e(f,g)");
             conn.ExecuteNonQuery("insert e values(23,'XC')");
             conn.ExecuteNonQuery("insert e values(45,'DE')");
-            CheckResults(1,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+            CheckResults(t, 1,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
             Rollback();
             if (!commit)
             {
@@ -163,17 +167,17 @@ namespace Test
             conn.ExecuteNonQuery("create table a(b integer,c integer)");
             conn.ExecuteNonQuery("insert a values(17,15)");
             conn.ExecuteNonQuery("insert a values(23,6)");
-            CheckResults(1,"select from a", "[{b:17,c:15},{b:23,c:6}]");
-            CheckResults(2,"select b-3 as f,22 as g from a", "[{f:14,g:22},{f:20,g:22}]");
-            CheckResults(3,"select (a.b) as f,(c) from a", "[{f:17,c:15},{f:23,c:6}]");
-            CheckResults(4,"select b+3,d.c from a d", "[{col1:20,\"d.c\":15},{col1:26,\"d.c\":6}]");
-            CheckResults(5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:{d:23,c:6}}]");
-            CheckResults(6,"select from a orderby c", "[{b:23,c:6},{b:17,c:15}]");
-            CheckResults(7,"select from a orderby b desc", "[{b:23,c:6},{b:17,c:15}]");
-            CheckResults(8,"select from a orderby b+c desc", "[{b:17,c:15},{b:23,c:6}]");
-            CheckResults(9,"select sum(b) from a", "[{col1:40}]");
-            CheckResults(10,"select max(c),min(b) from a", "[{col1:15,col2:17}]");
-            CheckResults(11,"select count(c) as d from a where b<20", "[{d:1}]");
+            CheckResults(t, 1,"select from a", "[{b:17,c:15},{b:23,c:6}]");
+            CheckResults(t, 2,"select b-3 as f,22 as g from a", "[{f:14,g:22},{f:20,g:22}]");
+            CheckResults(t, 3,"select (a.b) as f,(c) from a", "[{f:17,c:15},{f:23,c:6}]");
+            CheckResults(t, 4,"select b+3,d.c from a d", "[{col1:20,\"d.c\":15},{col1:26,\"d.c\":6}]");
+            CheckResults(t, 5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:{d:23,c:6}}]");
+            CheckResults(t, 6,"select from a orderby c", "[{b:23,c:6},{b:17,c:15}]");
+            CheckResults(t, 7,"select from a orderby b desc", "[{b:23,c:6},{b:17,c:15}]");
+            CheckResults(t, 8,"select from a orderby b+c desc", "[{b:17,c:15},{b:23,c:6}]");
+            CheckResults(t, 9,"select sum(b) from a", "[{col1:40}]");
+            CheckResults(t, 10,"select max(c),min(b) from a", "[{col1:15,col2:17}]");
+            CheckResults(t, 11,"select count(c) as d from a where b<20", "[{d:1}]");
             Rollback();
             if (!commit)
             {
@@ -194,7 +198,7 @@ namespace Test
             Begin();
             conn.ExecuteNonQuery("create table ta(b date,c timespan,d boolean)");
             conn.ExecuteNonQuery("insert ta values(date'2018-01-06',timespan'72000000000',false)");
-            CheckResults(1, "select from ta", "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
+            CheckResults(t, 1, "select from ta", "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
             Rollback();
             if (!commit)
             {
@@ -207,11 +211,60 @@ namespace Test
                 Rollback();
             }
         }
-        void CheckResults(int q,string c,string d)
+        void Test7(int t)
+        {
+            if (t > 0 && t != 7)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table TB(S string,D integer,C integer)");
+            conn.ExecuteNonQuery("insert TB values('Glasgow',2,43)");
+            conn.ExecuteNonQuery("insert TB values('Paisley',3,82)");
+            conn.ExecuteNonQuery("insert TB values('Glasgow',4,29)");
+            CheckResults(t, 1, "select S,count(C) as occ,sum(C) as total from TB groupby S",
+                "[{S:\"Glasgow\",occ:2,total:72},{S:\"Paisley\",occ:1,total:82}]");
+            Rollback();
+        }
+        void Test8(int t)
+        {
+            if (t > 0 && t != 7)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table A(B integer,C integer,D integer)");
+            conn.ExecuteNonQuery("insert A values(4,2,43)");
+            conn.ExecuteNonQuery("insert A values(8,3,82)");
+            conn.ExecuteNonQuery("insert A values(7,4,29)");
+            conn.ExecuteNonQuery("create table E(F integer,C integer,G integer)");
+            conn.ExecuteNonQuery("insert E values(4,3,22)");
+            conn.ExecuteNonQuery("insert E values(11,4,10)");
+            conn.ExecuteNonQuery("insert E values(7,2,31)");
+            CheckResults(t, 1, "select from A natural join E" ,
+                "[{B:4,C:2,D:43,F:7,G:31},{B:8,C:3,D:82,F:4,G:22},{B:7,C:4,D:29,F:11,G:10}]");
+            CheckResults(t, 2, "select D,G from A cross join E where D<G",
+                "[{D:29,G:31}]");
+            CheckResults(t, 3, "select B,D,G from A, E where B=F",
+                "[{B:4,D:43,G:22},{B:7,D:29,G:31}]");
+            CheckResults(t, 4, "select B,D,G from A H, E where H.C=E.C",
+                "[{B:4,D:43,G:31},{B:8,D:82,G:22},{B:7,D:29,G:10}]");
+            CheckResults(t, 5, "select from A inner join E on B<F",
+                "[{B:4,\"A.C\":2,D:43,F:7,\"E.C\":2,G:31},{B:4,\"A.C\":2,D:43,F:11,\"E.C\":4,G:10},"+
+                "{B:7,\"A.C\":4,D:29,F:11,\"E.C\":4,G:10},{B:8,\"A.C\":3:,D:82,F:11,\"E.C\":4,G:10}]");
+       //     CheckResults(t, 6, "select from A full join E on B=F",
+       //         "[TBD]");
+       //     CheckResults(t, 7, "select from A right join E on B=F",
+       //          "[TBD]");
+            Rollback();
+        }
+        void CheckResults(int t,int q,string c,string d)
         {
             if (qry > 0 && qry != q)
                 return;
-            Check(conn.ExecuteQuery(c),new DocArray(d));
+            try
+            {
+                Check(conn.ExecuteQuery(c), new DocArray(d));
+            } catch(Exception e)
+            {
+                Console.WriteLine("Exception (" + t + " " + q + ") " + e.Message);
+            }
         }
         void CheckResults(Serialisable c, string d)
         {

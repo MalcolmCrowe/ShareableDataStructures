@@ -112,7 +112,7 @@ namespace Shareable
             var ti = SList<TreeInfo<Serialisable>>.Empty;
             int n = 0;
             for (var b = sel.order.First(); b != null; b = b.Next())
-                ti = ti.InsertAt(new TreeInfo<Serialisable>(b.Value, 'A', 'D',!b.Value.desc), n++);
+                ti = ti+(new TreeInfo<Serialisable>(b.Value, 'A', 'D',!b.Value.desc), n++);
             var t = new SMTree<Serialisable>(ti);
             var r = SDict<int, SRow>.Empty;
             int m = 0;
@@ -350,6 +350,42 @@ namespace Shareable
             }
         }
     }
+    public class GroupRowSet : RowSet
+    {
+        public readonly SGroupQuery _gqry;
+        public readonly RowSet _sce;
+        public GroupRowSet(STransaction tr,SGroupQuery gqry,ILookup<string,Serialisable> nms) :base(tr,gqry,null)
+        {
+            _gqry = gqry;
+            _sce = gqry.source.RowSet(tr, nms);
+        }
+        public override Bookmark<Serialisable>? First()
+        {
+            return GroupRowBookmark.New(this);
+        }
+        internal class GroupRowBookmark : RowBookmark
+        {
+            public readonly GroupRowSet _grs;
+            public RowBookmark _bmk;
+            protected GroupRowBookmark(GroupRowSet grs,RowBookmark bm,int p)
+                : base(grs,_Row(grs,bm),p)
+            {
+                _grs = grs; _bmk = bm;
+            }
+            static SRow _Row(GroupRowSet grs,RowBookmark bm)
+            {
+                throw new System.NotImplementedException();
+            }
+            internal static GroupRowBookmark? New(GroupRowSet rs)
+            {
+                return (rs._sce.First() is RowBookmark b) ? new GroupRowBookmark(rs, b,0) : null;
+            }
+            public override Bookmark<Serialisable>? Next()
+            {
+                return (_bmk.Next() is RowBookmark b) ? new GroupRowBookmark(_grs, b, 0) : null;
+            }
+        }
+    }
     public class SelectRowSet : RowSet
     {
         public readonly SSelectStatement _sel;
@@ -410,6 +446,45 @@ namespace Shareable
             public override STransaction Delete(STransaction tr)
             {
                 return _bmk.Delete(tr);
+            }
+        }
+    }
+    public class JoinRowSet : RowSet
+    {
+        public readonly SJoin _join;
+        public readonly RowSet _left, _right;
+        internal JoinRowSet(STransaction tr,SJoin j,ILookup<string,Serialisable> nms)
+            : base(tr,j,null)
+        {
+            _join = j;
+            _left = j.left.RowSet(tr, nms);
+            _right = j.right.RowSet(tr, nms);
+        }
+        public override Bookmark<Serialisable>? First()
+        {
+            return JoinRowBookmark.New(this);
+        }
+        public class JoinRowBookmark : RowBookmark
+        {
+            public readonly JoinRowSet _jrs;
+            public readonly RowBookmark _lbm, _rbm;
+            protected JoinRowBookmark(JoinRowSet jrs,RowBookmark lbm,RowBookmark rbm,int pos)
+                : base(jrs,_Row(jrs,lbm,rbm),pos)
+            {
+                _jrs = jrs; _lbm = lbm; _rbm = rbm;
+            }
+            static SRow _Row(JoinRowSet jrs,RowBookmark lbm,RowBookmark rbm)
+            {
+                throw new System.NotImplementedException();
+            }
+            public static RowBookmark? New(JoinRowSet jrs)
+            {
+                return (jrs._left.First() is RowBookmark lb && jrs._right.First() is RowBookmark rb) ?
+                    new JoinRowBookmark(jrs, lb, rb, 0) : null;
+            }
+            public override Bookmark<Serialisable>? Next()
+            {
+                throw new System.NotImplementedException();
             }
         }
     }

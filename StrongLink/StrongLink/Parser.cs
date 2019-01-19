@@ -35,41 +35,52 @@ namespace StrongLink
             COMMIT = 24,
             COUNT = 25,
             CREATE = 26,
-            DATE = 27,
-            DELETE = 28,
-            DESC = 29,
-            DISTINCT = 30,
-            DROP = 31,
-            FALSE = 32,
-            FOR = 33,
-            FROM = 34,
-            INDEX = 35,
-            INSERT = 36,
-            INTEGER = 37,
-            IN = 38,
-            IS = 39,
-            MAX = 40,
-            MIN = 41,
-            NOT = 42,
-            NULL = 43,
-            NUMERIC = 44,
-            OR = 45,
-            ORDERBY = 46,
-            PRIMARY = 47,
-            REFERENCES = 48,
-            ROLLBACK = 49,
-            SELECT = 50,
-            SET = 51,
-            STRING = 52,
-            SUM = 53,
-            TABLE = 54,
-            TIMESPAN = 55,
-            TIMESTAMP = 56,
-            TO = 57,
-            TRUE = 58,
-            UPDATE = 59,
-            VALUES = 60,
-            WHERE = 61
+            CROSS = 27,
+            DATE = 28,
+            DELETE = 29,
+            DESC = 30,
+            DISTINCT = 31,
+            DROP = 32,
+            FALSE = 33,
+            FOR = 34,
+            FROM = 35,
+            FULL = 36,
+            GROUPBY = 37,
+            HAVING = 38,
+            INDEX = 39,
+            INSERT = 40,
+            INTEGER = 41,
+            IN = 42,
+            INNER = 43,
+            IS = 44,
+            JOIN = 45,
+            LEFT = 46,
+            MAX = 47,
+            MIN = 48,
+            NATURAL = 49,
+            NOT = 50,
+            NULL = 51,
+            NUMERIC = 52,
+            ON = 53,
+            OR = 54,
+            ORDERBY = 55,
+            OUTER = 56,
+            PRIMARY = 57,
+            REFERENCES = 58,
+            RIGHT = 59,
+            ROLLBACK = 60,
+            SELECT = 61,
+            SET = 62,
+            STRING = 63,
+            SUM = 64,
+            TABLE = 65,
+            TIMESPAN = 66,
+            TIMESTAMP = 67,
+            TO = 68,
+            TRUE = 69,
+            UPDATE = 70,
+            VALUES = 71,
+            WHERE = 72
         }
         internal class Lexer
         {
@@ -440,7 +451,7 @@ namespace StrongLink
             {
                 var c = MustBeID();
                 var t = For(lxr.tok);
-                cols = cols.InsertAt(new SColumn(c.str, t), cols.Length.Value); // ok
+                cols = cols+(new SColumn(c.str, t), cols.Length.Value); // ok
                 Next();
                 switch(lxr.tok)
                 {
@@ -457,7 +468,7 @@ namespace StrongLink
             for (; ;)
             {
                 var c = MustBeID();
-                cols = cols.InsertAt(new SColumn(c.str), cols.Length.Value); // ok
+                cols = cols+(new SColumn(c.str), cols.Length.Value); // ok
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return cols;
@@ -473,7 +484,7 @@ namespace StrongLink
             Mustbe(Sym.LPAREN);
             for (; ; )
             {
-                cols = cols.InsertAt(Value(), cols.Length.Value);
+                cols = cols+(Value(), cols.Length.Value);
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return new SValues(cols);
@@ -498,7 +509,7 @@ namespace StrongLink
                     Next();
                     n = MustBeID().str;
                 }
-                r = r.InsertAt(new SSlot<string, Serialisable>(n, c??Serialisable.Null), k++);
+                r = r+(new SSlot<string, Serialisable>(n, c??Serialisable.Null), k++);
                 if (lxr.tok != Sym.COMMA)
                     return r;
             }
@@ -540,25 +551,73 @@ namespace StrongLink
             }
             return new SInsertStatement(id.str, cols, vals);
         }
-        SQuery Query()
+        SQuery Query(SDict<int,string>als,SDict<int,Serialisable>cp)
         {
-            var id = MustBeID();
-            var tb = new STable(id.str);
-            Serialisable alias = Serialisable.Null;
-            if (lxr.tok==Sym.ID && lxr.val!=null)
-            {
-                alias = lxr.val;
-                Next();
-            }
+            var tb = TableExp(als,cp);
             var wh = SList<Serialisable>.Empty;
             var tt = Sym.WHERE;
             for (; lxr.tok==tt;)
             {
                 Next(); tt = Sym.AND;
-                wh = wh.InsertAt(Conjunct(),wh.Length.Value);
+                wh = wh+(Conjunct(),wh.Length.Value);
             }
-            if (wh.Length == 0 && alias==Serialisable.Null) return tb;
-            return new SSearch(tb, alias, wh);
+            if (wh.Length == 0 && tb.Alias.Length==0) return tb;
+            var sqry = new SSearch(tb, tb.Alias, wh);
+            if (lxr.tok!=Sym.GROUPBY)
+                return sqry;
+            Next();
+            var gp = SDict<int, string>.Empty;
+            while (lxr.tok==Sym.ID)
+            {
+                gp = gp + (gp.Length.Value, ((SString)lxr.val).str);
+                Next();
+                if (lxr.tok == Sym.COMMA)
+                    Next();
+                else
+                    break;
+            }
+            var h = SList<Serialisable>.Empty;
+            if (lxr.tok == Sym.HAVING)
+                for (; ; )
+                {
+                    Next();
+                    h = h + (Conjunct(), h.Length.Value);
+                    if (lxr.tok != Sym.AND)
+                        break;
+                }
+            return new SGroupQuery(sqry, sqry.display, sqry.cpos, sqry.names, gp, h);
+        }
+        SQuery TableExp(SDict<int, string> als, SDict<int, Serialisable> cp)
+        {
+            if (lxr.tok==Sym.LPAREN)
+            {
+                SQuery r;
+                Next();
+                if (lxr.tok == Sym.SELECT)
+                    r= (SQuery)Select();
+                else
+                    r =TableExp(SDict<int,string>.Empty,SDict<int,Serialisable>.Empty);
+                Mustbe(Sym.RPAREN);
+                return r;
+            }
+            var id = MustBeID();
+            var tb = new STable(id.str);
+            Serialisable alias = Serialisable.Null;
+            if (lxr.tok == Sym.ID && lxr.val != null)
+            {
+                alias = lxr.val;
+                Next();
+            }
+            if (lxr.tok==Sym.COMMA)
+            {
+                Next();
+                var ra = TableExp(SDict<int, string>.Empty, SDict<int, Serialisable>.Empty);
+                var da = SDict<int, string>.Empty;
+                var ca = SDict<int, Serialisable>.Empty;
+                var na = SDict<string, Serialisable>.Empty;
+                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, SList<SExpression>.Empty, da, ca, na); 
+            }
+            return tb;
         }
         Serialisable Value()
         {
@@ -710,8 +769,8 @@ namespace StrongLink
                                 als = MustBeID().str;
                                 asseen = true;
                             }
-                            c = c.InsertAt(cv, n);
-                            a = a.InsertAt(als, n++);
+                            c = c+(cv, n);
+                            a = a+(als, n++);
                             if (lxr.tok != Sym.COMMA)
                                 break;
                             Next();
@@ -758,7 +817,7 @@ namespace StrongLink
                 cp = cp + (k++, b.Value.val);
             }
             Mustbe(Sym.FROM);
-            var q = Query();
+            var q = Query(als,cp);
             var or = SList<SOrder>.Empty;
             var i = 0;
             if (lxr.tok == Sym.ORDERBY)
@@ -774,7 +833,7 @@ namespace StrongLink
                         Next();
                         d = true;
                     }
-                    or = or.InsertAt(new SOrder(c, d), i++);
+                    or = or+(new SOrder(c, d), i++);
                     if (lxr.tok == Sym.COMMA)
                         Next();
                     else
@@ -786,15 +845,16 @@ namespace StrongLink
         Serialisable Delete()
         {
             Next();
-            return new SDeleteSearch(Query());
+            return new SDeleteSearch(Query(SDict<int,string>.Empty,SDict<int,Serialisable>.Empty));
         }
         Serialisable Update()
         {
             Next();
-            var q = Query();
+            var q = Query(SDict<int, string>.Empty, SDict<int, Serialisable>.Empty);
             var sa = SDict<string, Serialisable>.Empty;
-            Mustbe(Sym.SET);
-            var tt = Sym.SET;
+            if (lxr.tok != Sym.SET)
+                throw new Exception("Expected SET");
+            var tt = lxr.tok;
             for (; lxr.tok == tt;)
             {
                 Next(); tt = Sym.COMMA;

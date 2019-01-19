@@ -67,7 +67,7 @@ namespace Shareable
             if (stk == null) stk = SList<SSearchTree<T>>.Empty;
             for (; doLeft && s.left != SSearchTree<T>.Empty; 
                 s = s.left ?? throw new System.Exception("??")) 
-                stk = stk.InsertAt(s, 0);
+                stk = stk+(s, 0);
             _s = s; _stk = stk;
         }
         public override T Value => _s.node;
@@ -77,7 +77,7 @@ namespace Shareable
                 new SSearchTreeBookmark<T>(_s.right ?? throw new System.Exception("??"), true, _stk, Position + 1) // ok
                 : (_stk == SList<SSearchTree<T>>.Empty) ? null
                 : new SSearchTreeBookmark<T>((_stk?.First() ?? throw new System.Exception("??")).Value, false, //ok
-            (_stk ?? throw new System.Exception("??")).RemoveAt(0), Position + 1);
+            (_stk ?? throw new System.Exception("??"))-0, Position + 1);
         }
     }
 
