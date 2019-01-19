@@ -2177,11 +2177,6 @@ namespace Shareable
         public SUpdate(SDatabase db,SUpdate r, AStream f) : base(db,r,f)
         {
             defpos = f.Fix(r.defpos);
-            if (defpos < 0)
-            {
-                Console.WriteLine("Here");
-                throw new Exception("!!");
-            }
             f.PutLong(defpos);
         }
         SUpdate(SDatabase d, Reader f) : base(Types.SUpdate,d,f)

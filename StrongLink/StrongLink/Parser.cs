@@ -561,8 +561,8 @@ namespace StrongLink
                 Next(); tt = Sym.AND;
                 wh = wh+(Conjunct(),wh.Length.Value);
             }
-            if (wh.Length == 0 && tb.Alias.Length==0) return tb;
-            var sqry = new SSearch(tb, tb.Alias, wh);
+            if (wh.Length == 0) return tb;
+            var sqry = new SSearch(tb, wh);
             if (lxr.tok!=Sym.GROUPBY)
                 return sqry;
             Next();
@@ -602,11 +602,11 @@ namespace StrongLink
             }
             var id = MustBeID();
             var tb = new STable(id.str);
-            Serialisable alias = Serialisable.Null;
             if (lxr.tok == Sym.ID && lxr.val != null)
             {
-                alias = lxr.val;
+                var alias = ((SString)lxr.val).str;
                 Next();
+                tb = new SAliasedTable(tb,alias);
             }
             if (lxr.tok==Sym.COMMA)
             {
