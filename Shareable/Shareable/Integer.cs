@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
     /// <summary>
     /// This namespace has its own concept of Integer

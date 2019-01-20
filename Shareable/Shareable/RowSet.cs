@@ -1,13 +1,13 @@
 ﻿#nullable enable
-namespace Shareable
+namespace Collection
 {
     /// <summary>
-    /// In the server, a rowSet is a Shareable(Serialisable),
+    /// In the server, a rowSet is a Collection(Serialisable),
     /// and the rows are generally fully-evaluated SRows.
     /// The SRows are sometimes instantiated on traversal instead of on definition.
     /// At the client, a rowset is a DocArray and the rows are Documents.
     /// </summary>
-    public abstract class RowSet : Shareable<Serialisable>
+    public abstract class RowSet : Collection<Serialisable>
     {
         public readonly SQuery _qry;
         public readonly STransaction _tr;

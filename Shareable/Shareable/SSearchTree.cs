@@ -1,16 +1,16 @@
 ﻿#nullable enable
 /// <summary>
-/// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
-/// http://shareabledata.org 
+/// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
+/// http://Collectiondata.org 
 /// This is free-to-use software 
 /// </summary>
-namespace Shareable
+namespace Collection
 {
     /// <summary>
     /// Implementation of an UNBALANCED binary search tree
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class SSearchTree<T> :Shareable<T> where T : System.IComparable
+    public class SSearchTree<T> :Collection<T> where T : System.IComparable
     {
         public readonly T node;
         public readonly SSearchTree<T>? left, right;

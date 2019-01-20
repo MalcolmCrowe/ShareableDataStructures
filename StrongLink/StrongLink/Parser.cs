@@ -136,7 +136,7 @@ namespace StrongLink
                 var r = Unsigned();
                 if (pos != st + n)
                     throw new Exception("Expected " + n + " digits");
-                return (int)r;
+                return r;
             }
             int Unsigned(int n, int low, int high)
             {
@@ -493,9 +493,9 @@ namespace StrongLink
                 throw new Exception("Syntax error: " + lxr.tok);
             }
         }
-        SList<SSlot<string,Serialisable>> Selects()
+        SList<ValueTuple<string,Serialisable>> Selects()
         {
-            var r = SList<SSlot<string, Serialisable>>.Empty;
+            var r = SList<ValueTuple<string, Serialisable>>.Empty;
             var k = 0;
             for (; ;Next())
             {
@@ -509,7 +509,7 @@ namespace StrongLink
                     Next();
                     n = MustBeID().str;
                 }
-                r = r+(new SSlot<string, Serialisable>(n, c??Serialisable.Null), k++);
+                r += (new ValueTuple<string, Serialisable>(n, c??Serialisable.Null), k++);
                 if (lxr.tok != Sym.COMMA)
                     return r;
             }
@@ -559,7 +559,7 @@ namespace StrongLink
             for (; lxr.tok==tt;)
             {
                 Next(); tt = Sym.AND;
-                wh = wh+(Conjunct(),wh.Length.Value);
+                wh += (Conjunct(),wh.Length.Value);
             }
             if (wh.Length == 0) return tb;
             var sqry = new SSearch(tb, wh);
@@ -569,7 +569,7 @@ namespace StrongLink
             var gp = SDict<int, string>.Empty;
             while (lxr.tok==Sym.ID)
             {
-                gp = gp + (gp.Length.Value, ((SString)lxr.val).str);
+                gp += (gp.Length.Value, ((SString)lxr.val).str);
                 Next();
                 if (lxr.tok == Sym.COMMA)
                     Next();
@@ -581,7 +581,7 @@ namespace StrongLink
                 for (; ; )
                 {
                     Next();
-                    h = h + (Conjunct(), h.Length.Value);
+                    h += (Conjunct(), h.Length.Value);
                     if (lxr.tok != Sym.AND)
                         break;
                 }
@@ -769,8 +769,8 @@ namespace StrongLink
                                 als = MustBeID().str;
                                 asseen = true;
                             }
-                            c = c+(cv, n);
-                            a = a+(als, n++);
+                            c += (cv, n);
+                            a += (als, n++);
                             if (lxr.tok != Sym.COMMA)
                                 break;
                             Next();
@@ -805,7 +805,7 @@ namespace StrongLink
                 dct = true;
                 Next();
             }
-            var sels = SList<SSlot<string, Serialisable>>.Empty;
+            var sels = SList<ValueTuple<string, Serialisable>>.Empty;
             if (lxr.tok!=Sym.FROM)
                 sels = Selects();
             var als = SDict<int, string>.Empty;
@@ -813,8 +813,8 @@ namespace StrongLink
             var k = 0;
             for (var b = sels.First();b!=null;b=b.Next())
             {
-                als = als + (k, b.Value.key);
-                cp = cp + (k++, b.Value.val);
+                als += (k, b.Value.Item1);
+                cp += (k++, b.Value.Item2);
             }
             Mustbe(Sym.FROM);
             var q = Query(als,cp);
@@ -860,7 +860,7 @@ namespace StrongLink
                 Next(); tt = Sym.COMMA;
                 var c = MustBeID();
                 Mustbe(Sym.EQUAL);
-                sa = sa + (c.str, Value());
+                sa += (c.str, Value());
             }
             return new SUpdateSearch(q, sa);
         }

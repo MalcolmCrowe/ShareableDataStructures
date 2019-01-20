@@ -1,11 +1,11 @@
 ﻿using System.Text;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
-    public abstract class Shareable<T>
+    public abstract class Collection<T>
     {
         public readonly int? Length;
-        protected Shareable(int? c = null) { Length = c; }
+        protected Collection(int? c = null) { Length = c; }
         public abstract Bookmark<T>? First();
         public T[]? ToArray()
         {

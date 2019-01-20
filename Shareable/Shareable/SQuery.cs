@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
     public class SQuery : SDbObject
     {

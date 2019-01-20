@@ -2,11 +2,11 @@ using System;
 using System.IO;
 
 /// <summary>
-/// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
-/// http://shareabledata.org 
+/// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
+/// http://Collectiondata.org 
 /// This is free-to-use software
 /// </summary>
-namespace Shareable
+namespace Collection
 {
     class Program
     {

@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace Shareable
+namespace Collection
 {
     internal class SIndex :SDbObject
     {

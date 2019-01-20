@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
     public enum Types
     {
@@ -2422,7 +2422,7 @@ namespace Shareable
     public abstract class StreamBase : Stream
     {
         /// <summary>
-        /// This class is not shareable
+        /// This class is not Collection
         /// </summary>
         public class Buffer
         {
@@ -2494,7 +2494,7 @@ namespace Shareable
         }
     }
     /// <summary>
-    /// This class is not shareable
+    /// This class is not Collection
     /// </summary>
     public class Reader
     {
@@ -2599,7 +2599,7 @@ namespace Shareable
         }
     }
     /// <summary>
-    /// this class is not shareable
+    /// this class is not Collection
     /// </summary>
     public class SocketReader : Reader
     {
@@ -2619,7 +2619,7 @@ namespace Shareable
         }
     }
     /// <summary>
-    /// This class is not shareable
+    /// This class is not Collection
     /// </summary>
     public class AStream : StreamBase
     {

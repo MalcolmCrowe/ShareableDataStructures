@@ -3,11 +3,11 @@ using System.Collections;
 using System.Text;
 #nullable enable
 
-namespace Shareable
+namespace Collection
 {
     /// <summary>
     /// B-star Tree implementation.
-    /// All trees contain SSlots (shareable key-value pairs) in key order.
+    /// All trees contain SSlots (Collection key-value pairs) in key order.
     /// Each node in the tree is an SBucket containing at most Size SSlots.
     /// The algorithm ensures that all branches of the tree have the same length.
     /// All nodes except the root have at least Size/2 slots
@@ -16,7 +16,7 @@ namespace Shareable
     /// </summary>
     /// <typeparam name="K">The key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    public class SDict<K,V> : Shareable<SSlot<K,V>>,ILookup<K,V> where K: IComparable
+    public class SDict<K,V> : Collection<SSlot<K,V>>,ILookup<K,V> where K: IComparable
     {
         /// <summary>
         /// Size is a system configuration parameter: the maximum number of entries in a Bucket.

@@ -33,6 +33,22 @@ namespace Shareable
             }
             return (me.Length > 0) ? 1 : (them.Length > 0) ? -1 : 0;
         }
+        protected new SCList<K> Push(K x)
+        {
+            return new SCList<K>(x, this);
+        }
+        public static SCList<K> operator+(SCList<K>s,K x)
+        {
+            return s.Push(x);
+        }
+        protected new SCList<K> Pop()
+        {
+            return (SCList<K>)next;
+        }
+        public static SCList<K> operator--(SCList<K> s)
+        {
+            return s.Pop();
+        }
         public new SCList<K> InsertAt(K x, int n) // n>=0
         {
             if (Length == 0 || n == 0)

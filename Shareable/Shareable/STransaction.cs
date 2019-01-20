@@ -1,7 +1,7 @@
 ﻿using System;
 #nullable enable
 
-namespace Shareable
+namespace Collection
 {
     public class STransaction :SDatabase 
     {

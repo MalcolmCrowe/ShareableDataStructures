@@ -4,13 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
     /// <summary>
     /// SMTree models a multilevel index leading to a long
     /// </summary>
     /// <typeparam name="K"></typeparam>
-    public class SMTree<K> : Shareable<SSlot<SCList<Variant>, long>>,IComparable where K:IComparable
+    public class SMTree<K> : Collection<SSlot<SCList<Variant>, long>>,IComparable where K:IComparable
     {
         public class SITree : SDict<Variant, Variant>
         {

@@ -145,7 +145,7 @@ namespace StrongLink
                 description = SDict<int, string>.Empty;
                 var n = asy.rbuf.GetInt();
                 for (var i = 0; i < n; i++)
-                    description = description + (i, asy.rbuf.GetString());
+                    description += (i, asy.rbuf.GetString());
                 return new DocArray(asy.rbuf.GetString());
             }
             throw new Exception("??");
@@ -198,7 +198,6 @@ namespace StrongLink
     /// </summary>
     class ClientStream : StreamBase
     {
-        StrongConnect connect;
         internal Socket client;
         internal int rx = 0;
         internal Reader rbuf;
@@ -210,7 +209,6 @@ namespace StrongLink
             rbuf.pos = 2;
             rbuf.buf.len = 0;
             wbuf.wpos = 2;
-            connect = pc;
         }
         public override bool GetBuf(Buffer b)
         {

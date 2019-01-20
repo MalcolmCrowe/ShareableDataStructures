@@ -108,7 +108,7 @@ namespace StrongDB
                                 {
                                     asy.PutInt(rs._qry.Display.Length.Value);
                                     for (var b = rs._qry.Display.First(); b != null; b = b.Next())
-                                         asy.PutString(b.Value.val);
+                                         asy.PutString(b.Value.Item2);
                                 }
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
@@ -149,12 +149,12 @@ namespace StrongDB
                                 var tb = (STable)tr.names.Lookup(rdr.GetString()); // table name
                                 var n = rdr.GetInt(); // # named cols
                                 var cs = SList<long>.Empty;
-                                Exception ex = null;
+                                Exception? ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = rdr.GetString();
                                     if (tb.names.Lookup(cn) is SColumn sc)
-                                        cs = cs+(sc.uid, i);
+                                        cs += (sc.uid, i);
                                     else
                                         ex = new Exception("Column " + cn + " not found");
                                 }
@@ -168,12 +168,12 @@ namespace StrongDB
                                     if (n == 0)
                                         for (var b = tb.cpos.First(); b!= null; b = b.Next())
                                         {
-                                            if (b.Value.val is SColumn sc)
-                                                f = f + (sc.uid, rdr._Get(tr)); // serialsable values
+                                            if (b.Value.Item2 is SColumn sc)
+                                                f += (sc.uid, rdr._Get(tr)); // serialisable values
                                         }
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
-                                            f = f + (b.element, rdr._Get(tr)); // serialisable values
+                                            f += (b.element, rdr._Get(tr)); // serialisable values
                                     tr = (STransaction)tr.Install(new SRecord(tr, tb.uid, f),tr.curpos);
                                 }
                                 if (ex != null)
@@ -238,7 +238,7 @@ namespace StrongDB
                                     var cn = rdr.GetString();
                                     var se = (tb.names.Lookup(cn) is SColumn sc)? sc.uid :
                                         throw new Exception("Column " + cn + " not found");
-                                    cs = cs+(se, i);
+                                    cs += (se, i);
                                 }
                                 tr = (STransaction)tr.Install(new SIndex(tr, tb.uid, xt < 2, ru,cs),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
@@ -275,7 +275,7 @@ namespace StrongDB
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = rdr.GetString();
-                                    f = f+(cn, rdr._Get(db));
+                                    f += (cn, rdr._Get(db));
                                 }
                                 tr = (STransaction)tr.Install(new SUpdate(tr, rc, f),tr.curpos);
                                 db = db.MaybeAutoCommit(tr);

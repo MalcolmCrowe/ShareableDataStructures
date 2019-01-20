@@ -2,7 +2,7 @@
 using System.Text;
 #nullable enable
 /// <summary>
-/// See "Shareable Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
+/// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// See github.com/MalcolmCrowe/ShareableDataStructures
 /// This is free-to-use software
 /// </summary>
@@ -11,9 +11,11 @@ namespace Shareable
     /// <summary>
     /// An empty list is Empty. 
     /// SLists are never null, so don't test for null. Use Length>0.
+    /// SList can also be used as a stack, as we define suitable methods
+    /// for this special case.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public class SList<T> : Shareable<T>
+    /// <typeparam name="T">All fields of type T should be public readonly</typeparam>
+    public class SList<T> : Collection<T>
     {
         public readonly T element;
         public readonly SList<T> next;
@@ -31,6 +33,14 @@ namespace Shareable
                 r = new SList<T>(els[i], r);
             return r;
         }
+        protected SList<T> Push(T x)
+        {
+            return new SList<T>(x, this);
+        }
+        public static SList<T> operator+(SList<T> s,T x)
+        {
+            return s.Push(x);
+        }
         protected SList<T> InsertAt(T x, int n) // n>=0
         {
             if (Length==0 || n==0)
@@ -40,6 +50,14 @@ namespace Shareable
         public static SList<T> operator+(SList<T> s,ValueTuple<T,int> x)
         {
             return s.InsertAt(x.Item1, x.Item2);
+        }
+        protected SList<T> Pop()
+        {
+            return next;
+        }
+        public static SList<T> operator--(SList<T>s)
+        {
+            return s.Pop();
         }
         protected SList<T> RemoveAt(int n)
         {

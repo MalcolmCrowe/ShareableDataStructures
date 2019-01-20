@@ -263,8 +263,8 @@ namespace StrongCmd
             SDict<int, SDict<string, string>> rows = SDict<int, SDict<string, string>>.Empty; // of string[]
             for (var b = c.description.First(); b != null; b = b.Next())
             {
-                names = names + (b.Value.val, b.Value.key);
-                cols.Add(new Column(b.Value.val, b.Value.val.Length));
+                names = names + (b.Value.Item2, b.Value.Item1);
+                cols.Add(new Column(b.Value.Item2, b.Value.Item2.Length));
             }
             for (int i = 0; i < da.items.Count; i++)
             {
