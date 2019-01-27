@@ -9,10 +9,10 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant>, Long>> implements Comparable {
+public class SMTree<K extends Comparable> extends Collection<SSlot<SCList<Variant>, Long>> implements Comparable {
 
     public boolean Contains(SCList<Variant> k) {
-        if (k.Length == 0) {
+        if (k==null) {
             return Length != 0;
         }
         if (_impl != null) {
@@ -69,7 +69,10 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                     }
                     cb = inr.gtr;
                 } else {
-                    cb = (SBucket<Variant, Variant>) cb.Slot(m.pos).val;
+                    var v = cb.Slot(m.pos).val;
+                    if (!(v instanceof SBucket))
+                        break;
+                    cb = (SBucket<Variant, Variant>)v;
                 }
             }
             return new SDictBookmark<Variant, Variant>(bmk);
@@ -85,10 +88,12 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                             : new SITree(info, variant, root.Add(k, v));
         }
 
-        public SDict<Variant, Variant> Remove(Variant k, long p) {
-            return (root == null || root.Lookup(k) == null) ? this
-                    : (root.total == 1) ? new SDict<Variant, Variant>(null)
-                            : new SITree(info, variant, root.Remove(k));
+        @Override
+        public SITree Remove(Variant k)
+        {
+            return (root == null || root.Lookup(k) == null) ? this :
+                (root.total == 1) ? null :
+                new SITree(info,variant, root.Remove(k));
         }
     }
 
@@ -105,32 +110,37 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
     public final SITree _impl;
     public final SList<TreeInfo> _info;
 
-    SMTree(SList<TreeInfo> ti, SITree impl, int c) throws Exception {
+    SMTree(SList<TreeInfo> ti, SITree impl, int c)  {
         super(c);
         _info = ti;
         _impl = impl;
     }
 
-    public SMTree(SList<TreeInfo> ti) throws Exception {
+    public SMTree(SList<TreeInfo> ti)  {
         this(ti, (SITree) null, 0);
     }
 
-    public SMTree(SList<TreeInfo> ti, SList<Variant> k, long v) throws Exception {
+    public SMTree(SList<TreeInfo> ti, SList<Variant> k, long v) {
         super(1);
         _info = ti;
+        var e = ti.element;
+        var ke = k.element;
+        if (e.asc != (ke.variant==Variants.Ascending))
+            ke = new Variant(ke.ob,e.asc);
         _impl = (ti.Length < 2)
                 ? ((ti.element.onDuplicate == TreeBehaviour.Allow)
                         ? new SITree(ti.element, Variants.Partial, k.element,
                                 new Variant(Variants.Partial, 
                                         new SDict<>(v, true)))
-                        : new SITree(ti.element, Variants.Single, k.element, 
-                                new Variant(v)))
+                        : new SITree(ti.element, 
+                                e.asc?Variants.Ascending:Variants.Descending, 
+                                k.element, new Variant(v,true)))
                 : new SITree(ti.element, Variants.Compound, k.element,
                         new Variant(Variants.Compound, 
                                 new SMTree(ti.next, k.next, v)));
     }
 
-    public Bookmark<SSlot<SCList<Variant>, Long>> First() {
+    public Bookmark<SSlot<SCList<Variant>, Long>> First(){
         return (Length == 0) ? null : MTreeBookmark.New(this);
     }
 
@@ -146,12 +156,12 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         throw new Exception(r.tb.toString());
     }
 
-    public MTResult Add(SCList<Variant> k, long v) throws Exception {
+    public MTResult Add(SCList<Variant> k, long v) {
         if (k == null) {
             if (_info.element.onNullKey != TreeBehaviour.Allow) {
                 return new MTResult(this, _info.element.onNullKey);
             }
-            k = new SCList<Variant>(new Variant(0), null);
+            k = new SCList<Variant>(new Variant(0,true), null);
         }
         if (Contains(k) && _info.element.onDuplicate != TreeBehaviour.Allow) {
             return new MTResult(this, _info.element.onDuplicate);
@@ -177,7 +187,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                     break;
                 }
                 default:
-                    throw new Exception("internal error");
+                    throw new Error("internal error");
             }
             st = _impl.Update(k.element, nv);
         } else {
@@ -186,9 +196,9 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                     SMTree mt = new SMTree(_info.next, (SCList<Variant>) k.next, v);
                     nv = new Variant(Variants.Compound, mt);
                     break;
-                case Single:
+                default:
                     if (_info.element.onDuplicate != TreeBehaviour.Allow) {
-                        nv = new Variant(v);
+                        nv = new Variant(v,true);
                         break;
                     } // else fall into
                 case Partial:
@@ -228,7 +238,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                 st = (SITree) st.Remove(k0);
                 break;
             }
-            case Single:
+            default:
                 nc--;
                 st = (SITree) st.Remove(k0);
                 break;
@@ -275,7 +285,7 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
                 }
                 break;
             }
-            case Single:
+            default:
                 nc--;
                 st = (SITree) st.Remove(k0);
                 break;
@@ -287,7 +297,8 @@ public class SMTree<K extends Comparable> extends Shareable<SSlot<SCList<Variant
         return this;
     }
 
-    public int compareTo(Object obj) {
+    @Override
+    public int compareTo(Object obj){
         SMTree that = (SMTree) obj;
         if (that == null || that.Length == 0) {
             return 1;

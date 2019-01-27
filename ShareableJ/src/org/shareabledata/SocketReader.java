@@ -16,7 +16,7 @@ public class SocketReader extends Reader {
             pos = 2;
         }
         @Override
-        public int ReadByte() throws Exception
+        public int ReadByte()
         {
             if (pos >= buf.len)
             {

@@ -41,7 +41,7 @@ public class SView extends SDbObject {
             cols = c;
             viewdef = f.GetString();
         }
-        public SView(STransaction tr,SView v,AStream f) throws Exception
+        public SView(STransaction tr,SView v,AStream f)
         {
             super(v,f);
             name = v.name;

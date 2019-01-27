@@ -15,16 +15,16 @@ import java.util.List;
 public class Reader {
         public Buffer buf;
         public int pos = 0;
-        Reader(StreamBase f) throws Exception
+        Reader(StreamBase f)
         {
             buf = new Buffer(f);
         }
-        Reader(StreamBase f, long s) throws Exception
+        Reader(StreamBase f, long s) 
         {
             buf = new Buffer(f, s);
         }
         long getPosition(){ return buf.start + pos; }
-        public int ReadByte() throws Exception
+        public int ReadByte()
         {
             if (pos >= buf.len)
             {
@@ -37,76 +37,69 @@ public class Reader {
         int tp = ReadByte();
         Serialisable s = null;
         switch (tp) {
-            case Types.Serialisable:
-                s = Serialisable.Get(this);
-                break;
-            case Types.STimestamp:
-                s = STimestamp.Get(this);
-                break;
-            case Types.SInteger:
-                s = SInteger.Get(this);
-                break;
-            case Types.SNumeric:
-                s = SNumeric.Get(this);
-                break;
-            case Types.SString:
-                s = SString.Get(this);
-                break;
-            case Types.SDate:
-                s = SDate.Get(this);
-                break;
-            case Types.STimeSpan:
-                s = STimeSpan.Get(this);
-                break;
-            case Types.SBoolean:
-                s = SBoolean.Get(this);
-                break;
-            case Types.STable:
-                s = STable.Get(this);
-                break;
-            case Types.SRow:
-                s = SRow.Get(d, this);
-                break;
-            case Types.SColumn:
-                s = SColumn.Get(this);
-                break;
-            case Types.SRecord:
-                s = SRecord.Get(d, this);
-                break;
-            case Types.SUpdate:
-                s = SUpdate.Get(d, this);
-                break;
-                case Types.SDelete: s = SDelete.Get(this); break;
-                case Types.SAlter: s = SAlter.Get(this); break;
-                case Types.SDrop: s = SDrop.Get(this); break;
-                case Types.SIndex: s = SIndex.Get(d, this); break;
+            case Types.Serialisable: s = Serialisable.Get(this); break;
+            case Types.STimestamp:   s = STimestamp.Get(this);   break;
+            case Types.SInteger:     s = SInteger.Get(this);     break;
+            case Types.SNumeric:     s = SNumeric.Get(this);     break;
+            case Types.SString:      s = SString.Get(this);      break;
+            case Types.SDate:        s = SDate.Get(this);        break;
+            case Types.STimeSpan:    s = STimeSpan.Get(this);    break;
+            case Types.SBoolean:     s = SBoolean.Get(this);     break;
+            case Types.STable:       s = STable.Get(d,this);     break;
+            case Types.SRow:         s = SRow.Get(d, this);      break;
+            case Types.SColumn:      s = SColumn.Get(this);      break;
+            case Types.SRecord:      s = SRecord.Get(d, this);   break;
+            case Types.SUpdate:      s = SUpdate.Get(d, this);   break;
+            case Types.SDelete:      s = SDelete.Get(this);      break;
+            case Types.SAlter:       s = SAlter.Get(this);       break;
+            case Types.SDrop:        s = SDrop.Get(this);        break;
+            case Types.SIndex:       s = SIndex.Get(d, this);    break;
+            case Types.SExpression:  s = SExpression.Get(d,this);break;
+            case Types.SFunction:    s = SFunction.Get(d,this);  break;
+            case Types.SInPredicate: s = SInPredicate.Get(d,this);break;
+            case Types.SValues:      s = SValues.Get(d,this);    break;
+            case Types.SSelect:      s = SSelectStatement.Get(d,this); break;
+            case Types.SOrder:       s = SOrder.Get(d,this);     break;
+            case Types.SUpdateSearch: s= SUpdateSearch.Get(d,this);break;
+            case Types.SDeleteSearch:s = SDeleteSearch.Get(d,this);break;
+            case Types.SSearch:      s = SSearch.Get(d,this);     break;
+            case Types.SAliasedTable:s = SAliasedTable.Get(d,this);break;
+            case Types.SDropStatement:s= SDropStatement.Get(this);break;
+            case Types.SAlterStatement:s=SAlterStatement.Get(this);break;
         }
         return s;
     }
         
-    public int GetInt() throws Exception{
-        int v = 0;
-        for (int j = 0; j < 4; j++) {
-            v = (v << 8) + (ReadByte()&0xff);
-        }
-        return v;
+    public Bigint GetInteger() {
+        var n = ReadByte();
+        var cs = new byte[n];
+        for (int j = 0; j < n; j++)
+            cs[j] = (byte)ReadByte();
+        return new Bigint(cs);
+    }
+    
+    public int GetInt() 
+    {
+        return GetInteger().toInt();
+    }
+    
+    public long GetLong() 
+    {
+        return GetInteger().toLong();
     }
 
-    public long GetLong() throws Exception {
-        long v = 0;
-        for (int j = 0; j < 8; j++) {
-            v = (v << 8) + (ReadByte()&0xff);
-        }
-        return v;
-    }
-
-    public String GetString() throws Exception {
+    public String GetString() {
         int n = GetInt();
         byte[] cs = new byte[n];
         for (int j = 0; j < n; j++) {
             cs[j] = (byte) ReadByte();
         }
-        return new String(cs, 0, n, "UTF-8");
+        try {
+            return new String(cs, 0, n, "UTF-8");
+        } catch(Exception e)
+        {
+            return "!! Encoding error";
+        }
     }
     /// <summary>
     /// Called from Commit(): file is already locked

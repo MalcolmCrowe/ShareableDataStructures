@@ -8,9 +8,12 @@ import java.net.*;
 /**
  *
  * @author Malcolm
+ * This class is not shareable
  */
 public class StrongConnect {
         ClientStream asy;
+        public boolean inTransaction = false;
+        public SDict<Integer,String> description = null;
         public StrongConnect(String host,int port,String fn) throws Exception
         {
             Socket socket = null;
@@ -30,7 +33,7 @@ public class StrongConnect {
         }
         public void CreateTable(String n,SColumn... cols) throws Exception
         {
-            asy.Write(Protocol.Table);
+            asy.Write((byte)Types.SCreateTable);
             asy.PutString(n);
             asy.PutInt(cols.length);
             for (SColumn col : cols) {
@@ -42,7 +45,7 @@ public class StrongConnect {
         public void CreateIndex(String tn,byte t,String rt,String... key)
                 throws Exception
         {
-            asy.Write(Protocol.Index);
+            asy.Write((byte)Types.SCreateIndex);
             asy.PutString(tn);
             asy.WriteByte(t);
             if (rt == null)
@@ -58,7 +61,7 @@ public class StrongConnect {
         public void Insert(String tn,String[] cols,Serialisable[]... rows)
                 throws Exception
         {
-            asy.Write(Protocol.Insert);
+            asy.Write((byte)Types.Insert);
             asy.PutString(tn);
             if (cols == null)
                 asy.PutInt(0);
@@ -78,44 +81,78 @@ public class StrongConnect {
             }
             var b = asy.Receive();
         }
-        public String Get(SQuery qy) throws Exception
+        public DocArray ExecuteQuery(String sql) throws Exception
         {
-            asy.Write(Protocol.Get);
-            qy.Put(asy);
-            asy.Flush();
-            var r = asy.rbuf.GetString();
-            return r; //Json
+            var qry = (SQuery)Parser.Parse(sql);
+            return Get(qry);
         }
-/*        public bool RoundTrip(Random rnd)
+        public int ExecuteNonQuery(String sql) throws Exception
         {
-      //      asy.Flush();
-            var n = rnd.Next(10, 30);
-            Console.WriteLine("Send group will be " + n);
-            for (int i = 0; i < n; i++)
+            var s = Parser.Parse(sql);
+            if (s == null)
+                return Types.Exception;
+            s.Put(asy);
+            var b = asy.Receive();
+            if (b == Types.Exception)
+                inTransaction = false;
+            else
             {
-                var x = rnd.Next(1, 255);
-                Console.Write(" " + x);
-                asy.WriteByte((byte)x);
-            }
-            asy.Flush();
-            Console.WriteLine(" Sent "+n);
-            var m = rnd.Next(10,30);
-            Console.WriteLine("Receive group should be " + m);
-            for(var i=0;i<m;i++)
-            {
-                var x = rnd.Next(1, 255);
-                var y = asy.ReadByte();
-                if (y < 0)
+                var su = sql.trim().substring(0, 5).toUpperCase();
+                switch (su)
                 {
-                    Console.WriteLine("EOF seen");
-                    return false;
+                    case "BEGIN": inTransaction = true; break;
+                    case "ROLLB":
+                    case "COMMI": inTransaction = false; break;
                 }
-                if (x != y)
-                    Console.WriteLine("Mismatch " + x + " vs " + y+ " rbuf is "+asy.rbuf.bid);
             }
-            Console.WriteLine(" Matched " + m);
-            return true;
-        } */
+            return b;
+        }
+        public DocArray Get(Serialisable tn) throws Exception
+        {
+            asy.Write((byte)Types.DescribedGet);
+            tn.Put(asy);
+            var b = asy.Receive();
+            if (b == (byte)Types.Exception)
+            {
+                inTransaction = false;
+                asy.GetException();
+            }
+            if (b == (byte)Types.Done)
+            {
+                description = null;
+                var n = asy.rbuf.GetInt();
+                for (var i = 0; i < n; i++)
+                    description = (description==null)?
+                            new SDict(i, asy.rbuf.GetString()):
+                            description.Add(i, asy.rbuf.GetString());
+                return new DocArray(asy.rbuf.GetString());
+            }
+            throw new Exception("??");
+        }
+        public void BeginTransaction() throws Exception
+        {
+            asy.Write((byte)Types.SBegin);
+            var b = asy.Receive();
+            if (b == Types.Exception)
+            {
+                inTransaction = false;
+                asy.GetException();
+            }
+            if (b == Types.Done)
+                inTransaction = true;
+        }
+        public void Rollback() throws Exception
+        {
+            asy.Write((byte)Types.SRollback);
+            var b = asy.Receive();
+            inTransaction = false;
+        }
+        public void Commit() throws Exception
+        {
+            asy.Write((byte)Types.SCommit);
+            var b = asy.Receive();
+            inTransaction = false;
+        }
         public void Close() throws Exception
         {
             asy.client.close();

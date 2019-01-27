@@ -15,6 +15,10 @@ public class Bigint implements Comparable {
     public final byte[] bytes;
     public static Bigint Zero = new Bigint(new byte[0]);
     public static Bigint One = new Bigint(1);
+    public static Bigint intMax = new Bigint(Integer.MAX_VALUE);
+    public static Bigint intMin = new Bigint(Integer.MIN_VALUE);
+    public static Bigint longMax = new Bigint(Long.MAX_VALUE);
+    public static Bigint longMin = new Bigint(Long.MIN_VALUE);    
     static byte[][] pow10 = new byte[][]{
         new byte[]{1},
         new byte[]{10},
@@ -96,6 +100,25 @@ public class Bigint implements Comparable {
             }
             bytes = bs;
         }
+    }
+    
+    int toInt()
+    {
+        int n = bytes.length; // better <4
+        int j=0;
+        int iVal = (n>0 && bytes[0]<0)?-1:0;
+        for (;j<n;j++)
+                iVal = (iVal<<8)|((int)bytes[j]&0xff);
+        return iVal;
+    }
+    long toLong()
+    {
+        int n = bytes.length; // better <8
+        int j=0;
+        long Val = (n>0 && bytes[0]<0)?-1:0;
+        for (;j<n;j++)
+                Val = (Val<<8)|((int)bytes[j]&0xff);
+        return Val;
     }
     
     public boolean getSign()

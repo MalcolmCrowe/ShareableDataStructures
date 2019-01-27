@@ -10,5 +10,5 @@ package org.shareabledata;
  * @author Malcolm
  */
 public enum Variants {
-     Single, Partial, Compound
+     Ascending, Descending, Partial, Compound
 }

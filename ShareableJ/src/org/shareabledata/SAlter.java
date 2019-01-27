@@ -22,7 +22,7 @@ public class SAlter extends SDbObject {
             dataType = d; 
             parent = p;
         }
-        SAlter(Reader f) throws Exception
+        SAlter(Reader f) 
         {
             super(Types.SAlter,f);
             defpos = f.GetLong();
@@ -42,7 +42,7 @@ public class SAlter extends SDbObject {
             f.PutString(name);
             f.WriteByte((byte)dataType);
         }
-        public static SAlter Get(Reader f) throws Exception
+        public static SAlter Get(Reader f)
         {
             return new SAlter(f);
         }
@@ -59,7 +59,7 @@ public class SAlter extends SDbObject {
             }
             return false;
         }
-        public String ToString()
+        public String toString()
         {
             return "Alter " + defpos + ((parent!=0)?"":(" of "+parent)) 
                 + name + " " + dataType;

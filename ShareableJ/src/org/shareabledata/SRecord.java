@@ -18,17 +18,23 @@ public class SRecord extends SDbObject {
             fields = f;
             table = t;
         }
+        public SRecord(int ty,STransaction tr,long t,SDict<Long,Serialisable> f)
+        {
+            super(ty,tr);
+            fields = f;
+            table = t;
+        }
         public long Defpos()
         {
             return uid;
         }
-        public SRecord(SDatabase db,SRecord r,AStream f) throws Exception
+        public SRecord(SDatabase db,SRecord r,AStream f)
         {
             super(r,f); 
             table = f.Fix(r.table);
             fields = r.fields;
             f.PutLong(table);
-            var tb = (STable)db.Lookup(table);
+            var tb = (STable)db.objects.Lookup(table);
             f.PutInt(r.fields.Length);
             for (var b=r.fields.First();b!=null;b=b.Next())
             {
@@ -41,7 +47,7 @@ public class SRecord extends SDbObject {
             super(Types.SRecord,f);
             table = f.GetLong();
             int n = f.GetInt();
-            var tb = (STable)d.Lookup(table);
+            var tb = (STable)d.objects.Lookup(table);
             SDict<Long,Serialisable> a = null;
             for(int i = 0;i< n;i++)
             {
@@ -58,23 +64,35 @@ public class SRecord extends SDbObject {
             return new SRecord(d,f);
         }
         @Override
-        public void Append(StringBuilder sb)
+        public void Append(SDatabase db,StringBuilder sb)
         {
             sb.append(" for "); sb.append(Uid());
             String cm = "(";
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.append(cm); cm = ",";
-                sb.append(STransaction.Uid(b.getValue().key)); sb.append(":");
+                sb.append(SDbObject._Uid(b.getValue().key)); sb.append(":");
                 sb.append(b.getValue().val.toString());
             }
             sb.append(")");
         }
-        public boolean Matches(SDict<SSelector,Serialisable> wh)
+        public boolean Matches(RowBookmark rb,SList<Serialisable> wh)
         {
-            for (var b = wh.First(); b != null; b = b.Next())
-                if (fields.Lookup(b.getValue().key.uid).compareTo(b.getValue().val)!=0)
-                    return false;
+            if (wh!=null)
+                for (var b = wh.First(); b != null; b = b.Next())
+                {
+                    var v = b.getValue();
+                    if (v instanceof SExpression)
+                     try {
+                        var e = ((SExpression)v).Lookup(rb);
+                        if (e!=SBoolean.True)
+                            return false;
+                        } catch(Exception e)
+                        {
+                            System.out.println("Evaluation error: "+e.getMessage());
+                            return false;
+                        }
+                }
             return true;
         }
         public boolean Conflicts(Serialisable that)
@@ -89,7 +107,7 @@ public class SRecord extends SDbObject {
         public String toString()
         {
             StringBuilder sb = new StringBuilder(super.toString());
-            Append(sb);
+            Append(null,sb);
             return sb.toString();
         }
 }

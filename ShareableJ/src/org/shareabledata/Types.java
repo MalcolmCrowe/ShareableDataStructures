@@ -40,16 +40,35 @@ public class Types {
             SAlterStatement = 26,
             SDropStatement = 27,
             SInsert = 28,
-            SSelect = 29;
+            SSelect = 29,
+            EoF = 30,
+            Get = 31,
+            Insert = 32,
+            Read = 33,
+            Done = 34,
+            Exception = 35,
+            SExpression = 36,
+            SFunction = 37,
+            SValues = 38,
+            SOrder = 39,
+            SBigInt = 40,
+            SInPredicate = 41,
+            DescribedGet = 42,
+            SGroupQuery = 43,
+            STableExp = 44,
+            SAliasedTable = 45;
     static String[] types = new String[]{
-        "", "Timestamp", "Integer", "Numeric", "String", "Date", "TimeSpan",
-        "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",
-        "Alter", "Drop", "View", "Index", "Begin", "Rollback", "Commit",
-        "CreateTable", "CreateIndex", "UpdateSearch", "DeleteSearch",
-        "AlterStatement", "DropStatement", "Insert", "Select"
+        "", "Timestamp", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
+        "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",//7-13
+        "Alter", "Drop", "View", "Index", "Search", "Begin", "Rollback", "Commit",//14-21
+        "CreateTable", "CreateIndex", "UpdateSearch", "DeleteSearch",//22-25
+        "AlterStatement", "DropStatement", "SInsert", "SSelect",//26-29
+        "EoF","Get","Insert","Read","Done","Exception","SExpression",//30-36
+        "SFunction","SValues","SOrder","SBigInt","SInPredicate",//37-41
+        "DescribedGet","SGroupQuery","STableExp","SAliasedTable"//42-45
     };
 
-    public static String ToString(int t) {
+    public static String toString(int t) {
         return types[t];
     }
 }

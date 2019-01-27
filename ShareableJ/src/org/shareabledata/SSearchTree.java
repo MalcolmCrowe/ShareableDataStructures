@@ -9,7 +9,7 @@ package org.shareabledata;
  *
  * @author 66668214
  */
-public class SSearchTree<T extends Comparable<T>> extends Shareable<T>
+public class SSearchTree<T extends Comparable<T>> extends Collection<T>
 {
         public final T node;
         public final SSearchTree<T> left, right;

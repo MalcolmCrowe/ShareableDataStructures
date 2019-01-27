@@ -9,7 +9,8 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SDict<K extends Comparable, V> extends Shareable<SSlot<K, V>> {
+public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
+        implements ILookup<K,V> {
 
     public static final int SIZE = 8;
     public final SBucket<K, V> root;
@@ -22,7 +23,26 @@ public class SDict<K extends Comparable, V> extends Shareable<SSlot<K, V>> {
         super((r == null) ? 0 : r.total);
         root = r;
     }
-
+    public Bookmark<SSlot<K,V>> PositionAt(K k)
+    {
+        SBookmark<K,V> bmk = null;
+        var cb = root;
+        while (cb!=null)
+        {
+                var bpos = cb.PositionFor(k);
+                bmk = new SBookmark<K, V>(cb, bpos.pos, bmk);
+                if (bpos.pos == cb.count)
+                {
+                    if (!(cb instanceof SInner))
+                        return null;
+                    var inr = (SInner<K,V>)cb;
+                    cb = inr.gtr;
+                }
+                else
+                    cb = (SBucket<K,V>)cb.Slot(bpos.pos).val;
+            }
+            return (bmk==null)?null:new SDictBookmark<K,V>(bmk);
+    }
     @Override
     public Bookmark<SSlot<K, V>> First() {
         return (root == null || root.total == 0) ? null
@@ -84,6 +104,16 @@ public class SDict<K extends Comparable, V> extends Shareable<SSlot<K, V>> {
             r = (r == null) ? new SDict<K, V>(uk, uv) : r.Add(uk, uv);
         }
         return r;
+    }
+
+    @Override
+    public boolean defines(K s) {
+        return Contains(s);
+    }
+
+    @Override
+    public V get(K s) {
+        return Lookup(s);
     }
 }
 

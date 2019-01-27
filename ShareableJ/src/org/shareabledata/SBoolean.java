@@ -9,35 +9,46 @@ import java.io.*;
  *
  * @author Malcolm
  */
-public class SBoolean extends Serialisable {
-        public final int sbool;
-        public SBoolean(int n)
+public class SBoolean extends Serialisable implements Comparable {
+        public final boolean sbool;
+        public static final SBoolean True = new SBoolean(true);
+        public static final SBoolean False = new SBoolean(false);        
+        private SBoolean(boolean n)
         {
             super(Types.SBoolean);
             sbool = n;
         }
-        SBoolean(Reader f)throws Exception
+        static SBoolean For(boolean r)
         {
-            super(Types.SBoolean, f);
-            sbool = f.GetInt();
+            return r? True:False;
         }
-        public Serialisable Commit(STransaction tr,AStream f) throws Exception
+        public Serialisable Commit(STransaction tr,AStream f)
         {
-            f.PutInt(sbool);
+            f.PutInt(sbool?1:0);
             return this;
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(Reader f)
         {
-            return new SBoolean(f);
+            return For(f.ReadByte()==1);
         }
         @Override
-        public void Put(StreamBase f) throws Exception
+        public void Put(StreamBase f)
         {
             super.Put(f);
-            f.PutInt(sbool);
+            f.WriteByte((byte)(sbool?1:0));
         }
         @Override
-        public String ToString()
+        public int compareTo(Object o) {
+            var that = (SBoolean)o;
+            return (sbool==that.sbool)?0:sbool?1:-1;
+        }
+        @Override
+        public void Append(SDatabase db,StringBuilder sb)
+        {
+            sb.append('"');sb.append(sbool);sb.append('"');
+        }
+        @Override
+        public String toString()
         {
             return "Boolean "+sbool;
         }

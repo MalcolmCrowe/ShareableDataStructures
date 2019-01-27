@@ -10,7 +10,7 @@ package org.shareabledata;
  * An empty list is null.
  * @author Malcolm Crowe shareabledata.org
  */
-public class SList<T> extends Shareable<T> 
+public class SList<T> extends Collection<T> 
 {
     public final T element;
     public final SList<T> next;
@@ -20,11 +20,11 @@ public class SList<T> extends Shareable<T>
         element = e;
         next = n;
     }
-    public SList(T... args) throws Exception 
+    public SList(T... args)
     {
         super(args.length);
         if (args.length == 0) { // empty list is null so this won't do
-            throw new Exception("Bad parameter");
+            throw new Error("Bad parameter");
         }
         SList<T> n = null;
         for (int i = args.length - 1; i > 0; i--) {
@@ -34,9 +34,9 @@ public class SList<T> extends Shareable<T>
         next = n;
     }
 
-    public SList<T> InsertAt(T x, int n) throws Exception {
+    public SList<T> InsertAt(T x, int n) {
         if (n>Length)
-            throw new Exception("Cannot add beyond end of list");
+            throw new Error("Cannot add beyond end of list");
         if (n == 0) 
             return new SList<>(x, this);
         if (next==null)

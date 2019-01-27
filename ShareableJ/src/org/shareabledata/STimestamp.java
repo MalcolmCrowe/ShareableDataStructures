@@ -4,38 +4,54 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.io.*;
-import java.sql.Timestamp;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
 /**
  *
  * @author Malcolm
  */
-public class STimestamp extends Serialisable {
+public class STimestamp extends Serialisable implements Comparable {
         public final long ticks;
-        public STimestamp(Timestamp t)
+        public STimestamp(int y,int mo, int d,int h, int mi, int s)
         {
             super(Types.STimestamp);
-            ticks = t.getTime();
+            var dt = new GregorianCalendar();
+            dt.set(y,mo-1,d,h,mi,s);
+            ticks = dt.getTimeInMillis();
         }
-        STimestamp(Reader f)throws Exception
+        STimestamp(Reader f)
         {
             super(Types.STimestamp,f);
             ticks = f.GetLong();
         }
         @Override
-        public void Put(StreamBase f) throws Exception
+        public void Put(StreamBase f) 
         {
             super.Put(f);
             f.PutLong(ticks);
         }
-        public static STimestamp Get(Reader f) throws Exception
+        public static STimestamp Get(Reader f)
         {
             return new STimestamp(f);
         }
         @Override
-        public String ToString()
+        public int compareTo(Object o) {
+            var that = (STimestamp)o;
+            return (ticks==that.ticks)?0:(ticks<that.ticks)?-1:1;
+        }
+        @Override
+        public void Append(SDatabase db,StringBuilder sb)
         {
-            return "Timestamp " + new Timestamp(ticks).toString();
+            sb.append('"');sb.append(ticks);sb.append('"');
+        }
+        @Override
+        public String toString()
+        {
+            var ins = Instant.ofEpochMilli(ticks);
+            var dt = Date.from(ins);
+            var f = new SimpleDateFormat("dd:HH:mm:ss");
+            return "Timestamp " + f.format(dt);
         }
 }

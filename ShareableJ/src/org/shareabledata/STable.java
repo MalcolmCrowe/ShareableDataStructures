@@ -10,12 +10,15 @@ package org.shareabledata;
  */
 public class STable extends SQuery {
         public final String name;
+        public final SDict<Long,SSelector> cols;
         public final SDict<Long, Long> rows; // defpos->uid of latest update
-        public STable Add(SColumn c) throws Exception
+        public final SDict<Long,Boolean> indexes;
+        public STable Add(SColumn c) 
         {
             return new STable(this,
                     (cols==null)?new SDict<>(c.uid,c):cols.Add(c.uid,c),
-                    (cpos==null)?new SList<>(c):cpos.InsertAt(c, cpos.Length),
+                    (display==null)?new SDict<>(0,c.name):display.Add(display.Length,c.name),
+                    (cpos==null)?new SDict<>(0,c):cpos.Add(cpos.Length,c),
                     (names==null)?new SDict<>(c.name,c):names.Add(c.name, c)
            );
         }
@@ -26,113 +29,142 @@ public class STable extends SQuery {
             var rws = (rows==null)?new SDict<Long,Long>(k,v):rows.Add(k,v);
             return new STable(this,rws);
         }
-        public STable Remove(long n) throws Exception
+        public STable Remove(long n)
         {
             if (cols!=null && cols.Contains(n))
             {
                 var k = 0;
-                var cp = cpos;
                 var sc = cols.Lookup(n);
-                for(var b=cpos.First();b!=null;b=b.Next(),k++)
-                    if (b.getValue().uid==n)
+                SDict<Integer,Serialisable> cp = null;
+                SDict<Integer,String> di = null;
+                var db = display.First();
+                for(var b=cpos.First();db!=null && b!=null;b=b.Next(),
+                        db=db.Next(),k++)
+                {
+                    var v = b.getValue().val;
+                    if (v instanceof SColumn && ((SColumn)v).uid!=n)
                     {
-                        cp = cp.RemoveAt(k);
-                        break;
+                        var c = (SColumn)v;
+                        di = (di==null)?new SDict<>(k,c.name):di.Add(k,c.name);
+                        cp = (cp==null)?new SDict<>(k,c):cp.Add(k,c);   
                     }
-                return new STable(this, cols.Remove(n),cp,names.Remove(sc.name));
+                }
+                return new STable(this, cols.Remove(n),di,cp,names.Remove(sc.name));
             }
             else
                 return new STable(this,rows.Remove(n));
+        }
+        STable(int ty,STable tb)
+        {
+            super(ty,tb.uid);
+            name = tb.name;
+            cols = tb.cols;
+            rows = tb.rows;
+            indexes = tb.indexes;
         }
         STable(String n, long u)
         {
             super(Types.STable,u);
             name = n;
-            rows = null;          
+            cols = null;
+            rows = null;
+            indexes = null;
         }
         public STable(String n)
         {
             super(Types.STable,-1);
             name = n;
-            rows = null;          
+            cols = null;
+            rows = null;
+            indexes = null;
         }
         public STable(STransaction tr,String n)
         {
             super(Types.STable,tr);
             name = n;
+            cols = null;
             rows = null;
+            indexes = null;
         }
         public STable(STable t,String n)
         {
             super(t);
             name = n;
+            cols = t.cols;
             rows = t.rows;
+            indexes = t.indexes;
         }
-        STable(STable t,SDict<Long,SSelector> c,SList<SSelector> p,SDict<String,SSelector> n) 
+        STable(STable t,SDict<Long,SSelector> c,SDict<Integer,String>a,
+                SDict<Integer,Serialisable> p,SDict<String,Serialisable> n) 
         {
-            super(t,c,p,n);
+            super(t,a,p,n);
             name = t.name;
+            cols = c;
             rows = t.rows;
+            indexes = t.indexes;
         }
         STable(STable t,SDict<Long,Long> r)
         {
             super(t);
             name = t.name;
+            cols = t.cols;
             rows = r;
+            indexes = t.indexes;
         }
-        STable(Reader f) throws Exception
+        STable(SDict<Long,Boolean> x,STable t)
+        {
+            super(t);
+            name = t.name;
+            cols = t.cols;
+            rows = t.rows;
+            indexes = x;
+        }
+        STable(Reader f)
         {
             super(Types.STable,f);
             name = f.GetString();
+            cols = null;
             rows = null;
+            indexes = null;
         }
+        // When an STable is committed is should be empty.
+        // If the transactions has cols/rows for it they will committed later.
         public STable(STable t,AStream f) throws Exception
         {
             super(t,f);
             name = t.name;
             f.PutString(name);
-            rows = t.rows;
+            cols = null;
+            rows = null;
+            indexes = null;
         }
-        public static STable Get(Reader f) throws Exception
+        public static STable Get(SDatabase db,Reader f)throws Exception
         {
-            return new STable(f);
+            var tb = new STable(f);
+            var n = tb.name;
+            if (tb.uid<0)
+            {
+                if (n.charAt(0) == '_')
+                    tb = (STable)SysTable.system.Lookup(n);
+                else
+                    tb = db.GetTable(n);
+            }
+            if (tb==null)
+                    throw new Exception("No such table "+tb.name);
+            return tb;
         }
         @Override
-        public void Put(StreamBase f) throws Exception
+        public void Put(StreamBase f) 
         {
             super.Put(f);
             f.PutString(name);
         }
         @Override
-        public SQuery Lookup(SDatabase db) throws Exception
+        public Serialisable Lookup(ILookup<String,Serialisable> nms) 
         {
-            STable tb = null;
-            if (name.charAt(0) == '_')
-            {
-                var st = SysTable.system.Lookup(name);
-                if (st!=null)
-                    tb = st;
-            } else
-                tb = db.GetTable(name);
-            if (tb==null)
-                throw new Exception("No such table " + name);
-            if (cols==null || cols.Length == 0)
-                return tb;
-            SDict<Long, SSelector> co = null;
-            SList<SSelector> cp = null;
-            SDict<String, SSelector> cn = null;
-            for (var c = cpos;c!=null && c.Length!=0;c=c.next)
-            {
-                var tc = tb.names.Lookup(((SColumn)c.element).name);
-                co = (co==null)?new SDict<Long,SSelector>(tc.uid,tc)
-                        :co.Add(tc.uid, tc);
-                cp = (cp==null)?new SList<SSelector>(tc)
-                        :cp.InsertAt(tc, cp.Length);
-                cn = (cn==null)?new SDict<String,SSelector>(tc.name,tc)
-                        :cn.Add(tc.name, tc);
-            }
-            return new STable(tb, co, cp, cn);
+             return (nms instanceof RowBookmark)?((RowBookmark)nms)._ob:this;
         }
+        @Override
         public boolean Conflicts(Serialisable that)
         {
             switch (that.type)
@@ -142,9 +174,22 @@ public class STable extends SQuery {
             }
             return false;
         }
-        public RowSet RowSet(SDatabase db)
+        @Override
+        public RowSet RowSet(STransaction tr,Context cx)
         {
-            return new TableRowSet(db, this);
+            if (indexes!=null)
+                for (var b = indexes.First(); b != null; b = b.Next())
+                {
+                    var x = (SIndex)tr.objects.Lookup(b.getValue().key);
+                    if (x.references < 0)
+                        return new IndexRowSet(tr, this, x, null, null);
+                }
+            return new TableRowSet(tr, this);
+        }
+        @Override
+        public String getAlias()
+        {
+            return name;
         }
         public String toString()
         {

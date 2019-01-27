@@ -68,30 +68,47 @@ public class SDbObject extends Serialisable {
 
     protected SDbObject(int t, Reader f) {
         super(t);
-        uid = (f instanceof SocketReader)?-1:f.getPosition()-1;
+        uid = (f instanceof SocketReader)?f.GetLong():f.getPosition()-1;
     }
 
-    protected SDbObject(SDbObject s, AStream f) throws Exception {
+    protected SDbObject(SDbObject s, AStream f) {
         super(s.type);
         if (s.uid < STransaction._uid) {
-            throw new Exception("Internal error - misplaced database object");
+            throw new Error("Internal error - misplaced database object");
         }
         uid = f.pos();
         f.uids = f.uids.Add(s.uid, uid);
         f.WriteByte((byte) s.type);
     }
-
-    void Check(Boolean committed) throws Exception {
+    @Override
+    public boolean isValue() { return false;}
+    @Override
+    public void Put(StreamBase f)
+    {
+        super.Put(f);
+        f.PutLong(uid);
+    }
+    void Check(Boolean committed) {
         if (committed != uid < STransaction._uid) {
-            throw new Exception("Internal error - Commited check fails");
+            throw new Error("Internal error - Commited check fails");
         }
     }
 
     String Uid() {
-        return STransaction.Uid(uid);
+        return _Uid(uid);
+    }
+    static String _Uid(long uid)
+    {
+        if (uid > STransaction._uid)
+            return "'" + (uid - STransaction._uid);
+        if (uid < 0 && uid > -0x70000000)
+            return "#" + (-uid);
+        if (uid <= -0x70000000)
+            return "@" + (0x70000000 + uid);
+        return "" + uid;
     }
 
     public String toString() {
-        return Types.ToString(type) + "[" + Uid() + "] ";
+        return Types.toString(type) + "[" + Uid() + "] ";
     }
 }

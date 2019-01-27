@@ -51,7 +51,7 @@ package org.shareabledata;
                         if (pmk==null)
                             return null;
                         return new MTreeBookmark(outer, mt._info, false, null, pmk, 0,null);
-                    case Single:
+                    default:
                         return new MTreeBookmark(outer, mt._info, false, null, null, 0,null);
                 }
             }
@@ -65,7 +65,7 @@ package org.shareabledata;
         /// <returns></returns>
         public static MTreeBookmark New(SMTree mt,SCList<Variant> key)
         {
-            if (key == null || key.Length == 0)
+            if (key == null)
                 return New(mt);
             if (mt._impl==null)
                 return null;
@@ -85,7 +85,7 @@ package org.shareabledata;
                     if (pmk==null)
                         return null;
                     return new MTreeBookmark(outer, mt._info, true, null, pmk, 0, key);
-                case Single:
+                default:
                     if (key.next==null)
                         return new MTreeBookmark(outer, mt._info, true, null, null, 0, key);
                     break;
@@ -157,7 +157,7 @@ package org.shareabledata;
                         if (pmk != null)
                             done = true;
                         break;
-                    case Single:
+                    default:
                         done = true;
                 }
             }

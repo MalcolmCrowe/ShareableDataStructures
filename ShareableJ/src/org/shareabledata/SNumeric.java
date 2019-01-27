@@ -9,37 +9,44 @@ import java.io.*;
  *
  * @author Malcolm
  */
-public class SNumeric extends Serialisable {
-        public final long mantissa;
-        public final int precision;
-        public final int scale;
-        public SNumeric(long m,int p,int s)
+public class SNumeric extends Serialisable implements Comparable {
+        public final Numeric num;
+        public SNumeric(Numeric n)
         {
             super(Types.SNumeric);
-            mantissa = m;
-            precision = p;
-            scale = s;
+            num = n;
         }
-        SNumeric(Reader f) throws Exception
+        SNumeric(Reader f)
         {
-            super(Types.SNumeric, f);
-            mantissa = f.GetLong();
-            precision = f.GetInt();
-            scale = f.GetInt();
+            super(Types.SNumeric);
+            var mantissa = f.GetInteger();
+            var precision = f.GetInt();
+            var scale = f.GetInt();
+            num = new Numeric(mantissa, scale, precision);
         }
-        public void Put(AStream f) throws Exception
+        public void Put(AStream f) 
         {
             super.Put(f);
-            f.PutLong(mantissa);
-            f.PutInt(precision);
-            f.PutInt(scale);
+            f.PutInt(num.mantissa);
+            f.PutInt(num.precision);
+            f.PutInt(num.scale);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(Reader f)
         {
             return new SNumeric(f);
         }
+        @Override
+        public int compareTo(Object o) {
+            return num.compareTo(((SNumeric)o).num);
+        }
+        @Override
+        public void Append(SDatabase db,StringBuilder sb)
+        {
+            sb.append('"');sb.append(num);sb.append('"');
+        }
+        @Override
         public String toString()
         {
-            return "Numeric " + ((mantissa * Math.pow(10.0,-scale)));
+            return "Numeric " + num.toString();
         }
 }

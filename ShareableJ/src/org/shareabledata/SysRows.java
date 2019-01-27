@@ -26,12 +26,15 @@ public class SysRows extends RowSet {
             var rdr = new Reader(fs, 0);
             switch (tb.name) {
                 case "_Log": {
-                    var s = rdr._Get(_db);
+                    SDbObject s = (SDbObject)rdr._Get(_tr);
                     return (s == null) ? null
-                            : new LogBookmark(this, 0, s, rdr.getPosition(), 0);
+                            : new LogBookmark(this, 0, 
+                                    _Row(new SString(SDbObject._Uid(s.uid)),
+                    new SInteger((int)s.type), 
+                    new SString(s.toString())), rdr.getPosition(), 0);
                 }
                 case "_Table": {
-                for (var b = _db.objects.First(); b != null; b = b.Next())
+                for (var b = _tr.objects.First(); b != null; b = b.Next())
                 {
                     var tb = b.getValue().val;
                     if (tb instanceof STable)
@@ -43,5 +46,16 @@ public class SysRows extends RowSet {
         } catch (Exception e) {
         }
         return null;
+    }
+    public SRow _Row(Serialisable... vals)
+    {
+        var r = new SRow();
+        int j = 0;
+        for (var b = tb.cpos.First(); b != null; b = b.Next())
+        {
+            var s = (SSelector)b.getValue().val;
+            r = r.Add(s.name, vals[j++]);
+        }
+        return r;
     }
 }

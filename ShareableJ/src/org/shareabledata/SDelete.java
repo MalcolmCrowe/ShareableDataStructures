@@ -47,12 +47,12 @@ public class SDelete extends SDbObject {
             }
             return false;
         }
-        public String ToString()
+        public String toString()
         {
             StringBuilder sb = new StringBuilder("Delete ");
             sb.append(Uid());
-            sb.append(" of "); sb.append(STransaction.Uid(delpos));
-            sb.append("["); sb.append(STransaction.Uid(table)); sb.append("]");
+            sb.append(" of "); sb.append(SDbObject._Uid(delpos));
+            sb.append("["); sb.append(SDbObject._Uid(table)); sb.append("]");
             return sb.toString();
         }
 }

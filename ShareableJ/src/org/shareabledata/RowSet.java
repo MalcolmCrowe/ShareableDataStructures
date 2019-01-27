@@ -9,12 +9,12 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public abstract class RowSet  extends Shareable<Serialisable> {
+public abstract class RowSet  extends Collection<Serialisable> {
         public final SQuery _qry;
-        public final SDatabase _db;
+        public final SDatabase _tr;
         public RowSet(SDatabase d, SQuery q)
         {
             super(0);
-            _db = d; _qry = q;
+            _tr = d; _qry = q;
         }
 }

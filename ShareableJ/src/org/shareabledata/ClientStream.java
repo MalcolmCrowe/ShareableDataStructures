@@ -18,14 +18,14 @@ public class ClientStream extends StreamBase {
         {
             client = c;
             wbuf = new Buffer(this);
-            rbuf = new Reader(this);
+            rbuf = new SocketReader(this);
             rbuf.pos = 2;
             rbuf.buf.len = 0;
             wbuf.wpos = 2;
             connect = pc;
         }
         @Override
-        protected boolean GetBuf(Buffer b) throws Exception
+        protected boolean GetBuf(Buffer b)
         {
             var rcount = 0;
             rx = 0;
@@ -43,7 +43,7 @@ public class ClientStream extends StreamBase {
                     GetException();
                 return rcount> 0;
             }
-            catch (SocketException e)
+            catch (Exception e)
             {
                 return false;
             }
@@ -101,14 +101,14 @@ public class ClientStream extends StreamBase {
         }
         int GetException() throws Exception
         {
-            return GetException(Responses.Exception);
+            return GetException((byte)Types.Exception);
         }
         // v2.0 exception handling during server comms
         // an illegal nonzero rcount value indicates an exception
         int GetException(byte proto) throws Exception
         {
             Buffer bf = rbuf.buf;
-            if (proto == Responses.Exception)
+            if (proto == (byte)Types.Exception)
             {
                 var rcount = (((int)bf.buf[rbuf.pos++]) << 7) + (((int)bf.buf[rbuf.pos++]) & 0x7f);
                 bf.len = rcount + 2;

@@ -4,20 +4,20 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.io.*;
 /**
  *
  * @author Malcolm
  */
 public class SUpdate extends SRecord {
         public final long defpos;
+        @Override
         public long Defpos() { return defpos; }
-        public SUpdate(STransaction tr,SRecord r,SDict<Long,Serialisable> u)
+        public SUpdate(STransaction tr,SRecord r,SDict<String,Serialisable> u)
         {
-            super(tr,r.table,r.fields.Merge(u));
+            super(Types.SUpdate,tr,r.table,_Merge(tr,r,u));
             defpos = r.Defpos();
         }
-        public SUpdate(SDatabase db,SUpdate r, AStream f) throws Exception
+        public SUpdate(SDatabase db,SUpdate r, AStream f)
         {
             super(db,r,f);
             defpos = f.Fix(r.Defpos());
@@ -28,7 +28,21 @@ public class SUpdate extends SRecord {
             super(d,f);
             defpos = f.GetLong();
         }
-        public Serialisable Commit(STransaction tr,AStream f) throws Exception
+        static SDict<Long,Serialisable> _Merge(STransaction tr,SRecord r,
+            SDict<String,Serialisable> us)
+        {
+            var tb = (STable)tr.objects.Lookup(r.table);
+            SDict<Long, Serialisable> u = null;
+            if (us!=null)
+            for (var b=us.First();b!=null;b=b.Next())
+            {
+                var k = ((SColumn)(tb.names.get(b.getValue().key))).uid;
+                var v = b.getValue().val;
+                u =(u==null)?new SDict(k,v):u.Add(k,v);
+            }
+            return r.fields.Merge(u);
+        }
+        public Serialisable Commit(STransaction tr,AStream f) 
         {
             return new SUpdate(tr,this, f);
         }
@@ -45,12 +59,12 @@ public class SUpdate extends SRecord {
             }
             return super.Conflicts(that);
         }
-        public String ToString()
+        public String toString()
         {
             StringBuilder sb = new StringBuilder("Update ");
             sb.append(Uid());
-            sb.append(" of "); sb.append(STransaction.Uid(defpos));
-            Append(sb);
+            sb.append(" of "); sb.append(SDbObject._Uid(defpos));
+            Append(null,sb);
             return sb.toString();
         }
 }

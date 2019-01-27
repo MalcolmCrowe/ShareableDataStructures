@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 #nullable enable
-namespace Collection
+namespace Shareable
 {
     public enum Types
     {
@@ -51,12 +51,28 @@ namespace Collection
         SInPredicate = 41,
         DescribedGet = 42,
         SGroupQuery = 43,
-        STableExp = 44
+        STableExp = 44,
+        SAliasedTable = 45
     }
     public interface ILookup<K,V> where K:IComparable
     {
         bool defines(K s);
         V this[K s] { get; }
+    }
+    public class Context : SList<ILookup<string,Serialisable>>,ILookup<string,Serialisable>
+    {
+        Context() : base() { }
+        public Context(ILookup<string, Serialisable> n, Context c) : base(n, c) { }
+        public new static readonly Context Empty = new Context();
+
+        public Serialisable this[string s] => (Length.Value==0)?Serialisable.Null:
+            element.defines(s)?element[s]:((ILookup<string,Serialisable>)next)[s];
+
+        public bool defines(string s)
+        {
+            return (Length.Value == 0) ? false : element.defines(s)
+                 || ((ILookup<string, Serialisable>)next).defines(s);
+        }
     }
     public class Serialisable:IComparable
     {
@@ -179,7 +195,7 @@ namespace Collection
                     if (ls.CompareTo(rb._rs._qry.Alias) == 0)
                         return nms.defines(rs)?nms[rs]:this;
                     var rw = (SRow)rb._ob[ls];
-                    return rw.defines(rs)?rw.vals[rs]:Null;
+                    return rw.defines(rs)?rw.vals[rs].Lookup(nms):Null;
                 }
                 return this;
             }
@@ -549,10 +565,10 @@ namespace Collection
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = ai + xi; break;
+                                    ai += xi; break;
                                 case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
-                                    ai = ai + xb; break;
+                                    var xb = ((SInteger)a).big??throw new Exception("!");
+                                    ai += xb; break;
                                 case Types.SNumeric:
                                     var xn = ((SNumeric)a).num;
                                     an = an + xn; break;
@@ -563,11 +579,11 @@ namespace Collection
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = (empty || xi > ai) ? xi : ai;
+                                    ai = ((empty || xi > ai) ? xi : ai);
                                     break;
                                 case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
-                                    ai = (empty || xb > ai) ? xb : ai;
+                                    var xb = ((SInteger)a).big??throw new Exception("!");
+                                    ai = ((empty || xb > ai) ? xb : ai);
                                     break;
                                 case Types.SNumeric:
                                     var xn = ((SNumeric)a).num;
@@ -575,7 +591,7 @@ namespace Collection
                                     break;
                                 case Types.SString:
                                     var xc = ((SString)a).str;
-                                    ac = (empty || xc.CompareTo(ac) > 1)? xc : ac;
+                                    ac = (empty || xc.CompareTo(ac) > 0)? xc : ac;
                                     break;
                             }
                             empty = false;
@@ -585,10 +601,10 @@ namespace Collection
                             {
                                 case Types.SInteger:
                                     var xi = new Integer(((SInteger)a).value);
-                                    ai = (empty || xi < ai) ? xi : ai;
+                                    ai = ((empty || xi < ai) ? xi : ai);
                                     break;
                                 case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
+                                    var xb = ((SInteger)a).big??throw new Exception("!");
                                     ai = (empty || xb < ai) ? xb : ai;
                                     break;
                                 case Types.SNumeric:
@@ -597,7 +613,7 @@ namespace Collection
                                     break;
                                 case Types.SString:
                                     var xc = ((SString)a).str;
-                                    ac = (empty || xc.CompareTo(ac) < 1) ? xc : ac;
+                                    ac = (empty || xc.CompareTo(ac) < 0) ? xc : ac;
                                     break;
                             }
                             empty = false;
@@ -707,7 +723,7 @@ namespace Collection
         }
         public override void Append(SDatabase? db,StringBuilder sb)
         {
-            sb.Append(value);
+             sb.Append(big??value);
         }
         public override void Put(StreamBase f)
         {
@@ -961,10 +977,14 @@ namespace Collection
             rec = null;
         }
         public override bool isValue => true;
-        public SRow Add(string n, Serialisable v)
+        protected SRow Add(string n, Serialisable v)
         {
             return new SRow(names+(names.Length.Value,n),cols+(cols.Length.Value,v),
                 vals+(n,v),rec);
+        }
+        public static SRow operator+(SRow s,ValueTuple<string,Serialisable>v)
+        {
+            return s.Add(v.Item1, v.Item2);
         }
         SRow(SDict<int,string> n,SDict<int,Serialisable> c,SDict<string,Serialisable> v,SRecord? r) 
             :base(Types.SRow)
@@ -985,9 +1005,9 @@ namespace Collection
             for (;s.Length.Value!=0;s=s.next,a=a.next) // not null
             {
                 var n = a.element;
-                cn = cn+(k, n);
-                r = r+(k++, s.element);
-                vs = vs+(n, s.element);
+                cn += (k, n);
+                r += (k++, s.element);
+                vs += (n, s.element);
                 if (s.element != Null)
                     isn = false;
             }
@@ -1003,16 +1023,13 @@ namespace Collection
             var cn = SDict<int, string>.Empty;
             var r = SDict<int, Serialisable>.Empty;
             var vs = SDict<string, Serialisable>.Empty;
-            var isn = true;
             for(var i=0;i<n;i++)
             {
                 var k = f.GetString();
-                cn = cn+(i, k);
+                cn += (i, k);
                 var v = f._Get(d);
-                r = r+(i, v);
-                vs = vs+(k, v);
-                if (v != Null)
-                    isn = false;
+                r += (i, v);
+                vs += (k, v);
             }
             names = cn;
             cols = r;
@@ -1028,12 +1045,12 @@ namespace Collection
             var vs = SDict<string, Serialisable>.Empty;
             var k = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
-                if (b.Value.val is SColumn sc)
+                if (b.Value.Item2 is SColumn sc)
                 {
                     var v = r.fields.Lookup(sc.uid)??Null;
-                    co = co+(k, v);
-                    cn = cn+(k++, sc.name);
-                    vs = vs + (sc.name, v);
+                    co += (k, v);
+                    cn += (k++, sc.name);
+                    vs += (sc.name, v);
                 }
                 else
                     throw new Exception("Unimplemented selector");
@@ -1051,13 +1068,13 @@ namespace Collection
             var cb = ss.cpos.First();
             for (var b = ss.display.First(); cb != null && b != null; b = b.Next(), cb = cb.Next())
             {
-                var v = cb.Value.val.Lookup(bm) ?? Null;
+                var v = cb.Value.Item2.Lookup(bm) ?? Null;
                 if (v is SRow sr && sr.cols.Length == 1)
                     v = sr.cols.Lookup(0) ?? Null;
                 if (v != null)
                 {
-                    r = r + (b.Value.key, v);
-                    vs = vs + (b.Value.val, v);
+                    r += (b.Value.Item1, v);
+                    vs += (b.Value.Item2, v);
                 }
                 if (v != Null)
                     isn = false;
@@ -1079,8 +1096,8 @@ namespace Collection
             var cb = cols.First();
             for (var b = names.First(); cb!=null && b != null; b = b.Next(),cb=cb.Next())
             {
-                f.PutString(b.Value.val);
-                if (cb.Value.val is Serialisable s)
+                f.PutString(b.Value.Item2);
+                if (cb.Value.Item2 is Serialisable s)
                     s.Put(f);
                 else
                     Null.Put(f);
@@ -1094,10 +1111,10 @@ namespace Collection
             var cm = "";
             var nb = names.First();
             for (var b = cols.First(); nb!=null && b != null; b = b.Next(),nb=nb.Next())
-                if (b.Value.val is Serialisable s && s!=Null)
+                if (b.Value.Item2 is Serialisable s && s!=Null)
                 {
                     sb.Append(cm); cm = ",";
-                    sb.Append(nb.Value.val);
+                    sb.Append(nb.Value.Item2);
                     sb.Append(":");
                     s.Append(db, sb);
                 }
@@ -1110,9 +1127,9 @@ namespace Collection
             var nb = names.First();
             for (var b = cols.First(); nb != null && b != null; nb = nb.Next(), b = b.Next())
             {
-                var e = b.Value.val.Lookup(rs);
-                v = v + (b.Value.key, e);
-                r = r + (nb.Value.val, e);
+                var e = b.Value.Item2.Lookup(rs);
+                v += (b.Value.Item1, e);
+                r += (nb.Value.Item2, e);
             }
             return new SRow(names, v, r, (rs as RowBookmark)?._ob.rec);
         }
@@ -1145,8 +1162,6 @@ namespace Collection
         /// Client session-local objects are given negative uids with default -1
         /// </summary>
         public readonly long uid;
-        static long _dbg = 0;
-        long dbg = ++_dbg;
         /// <summary>
         /// For system tables and columns, with negative uids
         /// </summary>
@@ -1226,12 +1241,7 @@ namespace Collection
             return "SDbObject";
         }
     }
-    public interface INamedObject
-    {
-        string name { get; }
-        SDbObject ob { get; }
-    }
-    public class STable : SQuery , INamedObject
+    public class STable : SQuery
     {
         public readonly string name;
         public readonly SDict<long, SSelector> cols;
@@ -1286,10 +1296,10 @@ namespace Collection
                 var sc = cols.Lookup(n);
                 var db = display.First();
                 for (var b = cpos.First();db!=null && b != null; db=db.Next(), b = b.Next())
-                    if (b.Value.val is SColumn c && c.uid != n)
+                    if (b.Value.Item2 is SColumn c && c.uid != n)
                     {
-                        di = di + (k, db.Value.val);
-                        cp = cp + (k++, c);
+                        di += (k, db.Value.Item2);
+                        cp += (k++, c);
                     }
                 return new STable(this,cols-n,di,cp,names-sc.name);
             }
@@ -1308,6 +1318,13 @@ namespace Collection
             cols = SDict<long, SSelector>.Empty;
             rows = SDict<long, long>.Empty;
             indexes = SDict<long, bool>.Empty;
+        }
+        public STable(Types t,STable tb)  : base(t,tb)
+        {
+            name = tb.name;
+            cols = tb.cols;
+            rows = tb.rows;
+            indexes = tb.indexes;
         }
         public STable(STable t,string n) :base(t)
         {
@@ -1345,9 +1362,16 @@ namespace Collection
             f.PutString(name);
             cols = SDict<long, SSelector>.Empty;
             rows = SDict<long,long>.Empty;
-            indexes = t.indexes;
+            indexes = SDict<long, bool>.Empty;
         }
         STable(Reader f) :base(Types.STable,f)
+        {
+            name = f.GetString();
+            cols = SDict<long, SSelector>.Empty;
+            rows = SDict<long, long>.Empty;
+            indexes = SDict<long, bool>.Empty;
+        }
+        protected STable(Types t,Reader f) : base(t, f)
         {
             name = f.GetString();
             cols = SDict<long, SSelector>.Empty;
@@ -1371,11 +1395,11 @@ namespace Collection
                 db.GetTable(n) ??
                 throw new Exception("No such table " + n);
         }
-        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable>nms)
+        public override RowSet RowSet(STransaction tr,Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)tr.objects[b.Value.key];
+                var x = (SIndex)tr.objects[b.Value.Item1];
                 if (x.references < 0)
                     return new IndexRowSet(tr, this, x, SCList<Variant>.Empty, SList<Serialisable>.Empty);
             }
@@ -1413,8 +1437,6 @@ namespace Collection
         }
         public override string Alias => name;
 
-        string INamedObject.name => name;
-
         public SDbObject ob => this;
 
         public override string ToString()
@@ -1436,7 +1458,7 @@ namespace Collection
             for (var i = 0; i < n; i++)
             {
                 var co = SColumn.Get(f);
-                c = c + (new SColumn(co,co.name,(Types)f.ReadByte()), i);
+                c += (new SColumn(co,co.name,(Types)f.ReadByte()), i);
             }
             coldefs = c;
         }
@@ -1521,23 +1543,23 @@ namespace Collection
             : base(t, c, d, p, n)
         {
         }
-        static void Add(string name,params SSlot<string,Types>[] ss)
+        static void Add(string name,params ValueTuple<string,Types>[] ss)
         {
             var st = new SysTable(name);
             for (var i = 0; i < ss.Length; i++)
-                st = (SysTable)st.Add(new SColumn(ss[i].key, ss[i].val));
+                st = (SysTable)st.Add(new SColumn(ss[i].Item1, ss[i].Item2));
             system = system + (st.name, st);
         }
         static SysTable()
         {
             Add("_Log",
-            new SSlot<string,Types>("Uid", Types.SString),
-            new SSlot<string,Types>("Type", Types.SInteger),
-            new SSlot<string,Types>("Desc", Types.SString));
+            new ValueTuple<string,Types>("Uid", Types.SString),
+            new ValueTuple<string,Types>("Type", Types.SInteger),
+            new ValueTuple<string,Types>("Desc", Types.SString));
             Add("_Tables",
-            new SSlot<string, Types>("Name", Types.SString),
-            new SSlot<string, Types>("Cols", Types.SInteger),
-            new SSlot<string, Types>("Rows", Types.SInteger));
+            new ValueTuple<string, Types>("Name", Types.SString),
+            new ValueTuple<string, Types>("Cols", Types.SInteger),
+            new ValueTuple<string, Types>("Rows", Types.SInteger));
         }
         protected override STable Add(SColumn c)
         {
@@ -1549,7 +1571,7 @@ namespace Collection
         {
             return (SysTable)Add(new SysColumn(n, t));
         }
-        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
+        public override RowSet RowSet(STransaction tr,Context cx)
         {
             return new SysRows(tr,this);
         }
@@ -1683,7 +1705,7 @@ namespace Collection
         {
             id = i; col = c; name = n; dataType = d;
         }
-        public static void Obey(STransaction tr,Reader rdr)
+        public static STransaction Obey(STransaction tr,Reader rdr)
         {
             var tn = rdr.GetString(); // table name
             var tb = (STable)tr.names.Lookup(tn) ??
@@ -1692,13 +1714,13 @@ namespace Collection
             var nm = rdr.GetString(); // new name
             var dt = (Types)rdr.ReadByte();
             if (cn.Length == 0)
-                tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.STable, tb.uid, 0), tr.curpos);
+                return (STransaction)tr.Install(new SAlter(tr, nm, Types.STable, tb.uid, 0), tr.curpos);
             else if (dt == Types.Serialisable)
-                tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.SColumn, tb.uid,
+                return (STransaction)tr.Install(new SAlter(tr, nm, Types.SColumn, tb.uid,
                         (tb.names.Lookup(cn) as SSelector)?.uid ??
                         throw new Exception("Column " + cn + " not found")), tr.curpos);
             else 
-                tr = (STransaction)tr.Install(new SColumn(tr, nm, dt, tb.uid),tr.curpos);
+             return (STransaction)tr.Install(new SColumn(tr, nm, dt, tb.uid),tr.curpos);
         }
         public override void Put(StreamBase f)
         {
@@ -1781,13 +1803,13 @@ namespace Collection
         public readonly string table;
         public SDropStatement(string d,string t) :base(Types.SDropStatement)
         { drop = d; table = t; }
-        public static void Obey(STransaction tr, Reader rdr)
+        public static STransaction Obey(STransaction tr, Reader rdr)
         {
             var nm = rdr.GetString(); // object name
             var pt = tr.names.Lookup(nm) ??
                 throw new Exception("Object " + nm + " not found");
             var cn = rdr.GetString();
-            tr = (STransaction)tr.Install(
+            return (STransaction)tr.Install(
                 (cn.Length == 0) ?
                     new SDrop(tr, pt.uid, -1) :
                     new SDrop(tr,
@@ -1935,7 +1957,7 @@ namespace Collection
             for (var b=cols.First();b!=null;b=b.Next())
             {
                 if (tb.names.Lookup(b.Value.name) is SColumn sc)
-                    cs = cs+(sc.uid, i++);
+                    cs += (sc.uid, i++);
                 else
                     ex = new Exception("Column " + b.Value.name + " not found");
             }
@@ -1948,10 +1970,10 @@ namespace Collection
                 var c = svs.vals;
                 if (n == 0)
                     for (var b = tb.cpos.First(); c.Length!=0 && b!=null; b = b.Next(), c = c.next) // not null
-                        f = f + (((SSelector)b.Value.val).uid, c.element.Lookup(SDict<string,Serialisable>.Empty));
+                        f += (((SSelector)b.Value.Item2).uid, c.element.Lookup(SDict<string,Serialisable>.Empty));
                 else
                     for (var b = cs; c.Length!=0 && b.Length != 0; b = b.next, c = c.next) // not null
-                        f = f + (b.element, c.element);
+                        f += (b.element, c.element);
                 tr = (STransaction)tr.Install(new SRecord(tr, tb.uid, f),tr.curpos);
             }
             if (ex != null)
@@ -1964,7 +1986,7 @@ namespace Collection
             var n = f.GetInt();
             var c = SList<SSelector>.Empty;
             for (var i = 0; i < n; i++)
-                c = c+((SSelector)f._Get(db), i);
+                c += ((SSelector)f._Get(db), i);
             return new SInsertStatement(t, c, f._Get(db));
         }
         public override void Put(StreamBase f)
@@ -1990,7 +2012,7 @@ namespace Collection
             var nr = f.GetInt();
             vals = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
-                vals = vals+(f._Get(db), i);
+                vals += (f._Get(db), i);
         }
         public override bool isValue => true;
         public static SValues Get(SDatabase db,Reader f)
@@ -1999,7 +2021,7 @@ namespace Collection
             var nr = f.GetInt();
             var v = SList<Serialisable>.Empty;
             for (var i = 0; i < n; i++)
-                v = v+(f._Get(db), i);
+                v += (f._Get(db), i);
             return new SValues(v);
         }
         public override void Put(StreamBase f)
@@ -2031,8 +2053,8 @@ namespace Collection
             f.PutInt(r.fields.Length);
             for (var b=fs.First();b!=null;b=b.Next())
             {
-                var oc = b.Value.key;
-                var v = b.Value.val;
+                var oc = b.Value.Item1;
+                var v = b.Value.Item2;
                 var c = oc;
                 if (f.uids.Contains(c))
                 {
@@ -2053,7 +2075,7 @@ namespace Collection
             for(var i = 0;i< n;i++)
             {
                 var k = f.GetLong();
-                a = a + (k, f._Get(d));
+                a += (k, f._Get(d));
             }
             fields = a;
         }
@@ -2074,9 +2096,9 @@ namespace Collection
             for (var b = fields.First(); b != null; b = b.Next())
             {
                 sb.Append(",");
-                var c = tb?.cols.Lookup(b.Value.key);
-                sb.Append(c?.name ?? _Uid(b.Value.key)); sb.Append(":");
-                b.Value.val.Append(db,sb);
+                var c = tb?.cols.Lookup(b.Value.Item1);
+                sb.Append(c?.name ?? _Uid(b.Value.Item1)); sb.Append(":");
+                b.Value.Item2.Append(db,sb);
             }
             sb.Append("}");
         }
@@ -2115,13 +2137,13 @@ namespace Collection
         {
             qry = q; assigs = a;
         }
-        public STransaction Obey(STransaction tr,ILookup<string,Serialisable> nms)
+        public STransaction Obey(STransaction tr,Context cx)
         {
-            for (var b = qry.RowSet(tr,nms).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = qry.RowSet(tr,cx).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
                 var u = SDict<string, Serialisable>.Empty;
                 for (var c = assigs.First(); c != null; c = c.Next())
-                    u = u + (c.Value.key, c.Value.val.Lookup(b));
+                    u += (c.Value.Item1, c.Value.Item2.Lookup(b));
                 tr = b.Update(tr,u);
             }
             return tr;
@@ -2135,7 +2157,7 @@ namespace Collection
             {
                 var s = f.GetString();
                 if (q.Lookup(s) is SColumn sc)
-                    a = a + (sc.name, f._Get(db));
+                    a += (sc.name, f._Get(db));
                 else
                     throw new Exception("Column " + s + " not found");
             }
@@ -2148,7 +2170,7 @@ namespace Collection
             f.PutInt(assigs.Length);
             for (var b = assigs.First(); b != null; b = b.Next())
             {
-                f.PutString(b.Value.key); b.Value.val.Put(f);
+                f.PutString(b.Value.Item1); b.Value.Item2.Put(f);
             }
         }
         public override string ToString()
@@ -2160,7 +2182,7 @@ namespace Collection
             for (var b = assigs.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.Value.key);sb.Append('=');sb.Append(b.Value.val);
+                sb.Append(b.Value.Item1);sb.Append('=');sb.Append(b.Value.Item2);
             }
             return sb.ToString();
         }
@@ -2189,9 +2211,9 @@ namespace Collection
             var tb = (STable)tr.objects[r.table];
             var u = SDict<long, Serialisable>.Empty;
             for (var b=us.First();b!=null;b=b.Next())
-                u = u + (((SColumn)(tb.names[b.Value.key] ??
-                    throw new Exception("No column " + b.Value.key))).uid,
-                    b.Value.val);
+                u += (((SColumn)(tb.names[b.Value.Item1] ??
+                    throw new Exception("No column " + b.Value.Item1))).uid,
+                    b.Value.Item2);
             return r.fields.Merge(u);
         }
         public new static SRecord Get(SDatabase d, Reader f)
@@ -2221,9 +2243,9 @@ namespace Collection
     {
         public readonly SQuery qry;
         public SDeleteSearch(SQuery q) :base(Types.SDeleteSearch) { qry = q; }
-        public STransaction Obey(STransaction tr,ILookup<string,Serialisable>nms)
+        public STransaction Obey(STransaction tr,Context cx)
         {
-            for (var b = qry.RowSet(tr,nms).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = qry.RowSet(tr,cx).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
                 var rc = b._ob.rec ?? throw new System.Exception("??");// not null
                 tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),tr.curpos); 
@@ -2422,7 +2444,7 @@ namespace Collection
     public abstract class StreamBase : Stream
     {
         /// <summary>
-        /// This class is not Collection
+        /// This class is not shareable
         /// </summary>
         public class Buffer
         {
@@ -2494,7 +2516,7 @@ namespace Collection
         }
     }
     /// <summary>
-    /// This class is not Collection
+    /// This class is not shareable
     /// </summary>
     public class Reader
     {
@@ -2575,6 +2597,7 @@ namespace Collection
                 case Types.SFunction: s = SFunction.Get(d, this); break;
                 case Types.SOrder: s = SOrder.Get(d, this); break;
                 case Types.SInPredicate: s = SInPredicate.Get(d, this); break;
+                case Types.SAliasedTable: s = SAliasedTable.Get(d, this); break;
                 default: s = Serialisable.Null; break;
             }
             return s;
@@ -2599,7 +2622,7 @@ namespace Collection
         }
     }
     /// <summary>
-    /// this class is not Collection
+    /// this class is not shareable
     /// </summary>
     public class SocketReader : Reader
     {
@@ -2619,7 +2642,7 @@ namespace Collection
         }
     }
     /// <summary>
-    /// This class is not Collection
+    /// This class is not shareable
     /// </summary>
     public class AStream : StreamBase
     {
@@ -2628,93 +2651,107 @@ namespace Collection
         long wposition = 0;
         public long length = 0;
         internal SDict<long, long> uids = SDict<long,long>.Empty; // used for movement of SDbObjects
+        SDict<long, Serialisable> commits = SDict<long, Serialisable>.Empty;
         public AStream(string fn)
         {
             filename = fn;
             file = new FileStream(fn,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
             length = file.Seek(0, SeekOrigin.End);
+            wposition = length;
             file.Seek(0, SeekOrigin.Begin);
         }
         public SDatabase Commit(SDatabase db,STransaction tr)
         {
+            commits = SDict<long, Serialisable>.Empty;
             wbuf = new Buffer(this);
             uids = SDict<long, long>.Empty;
             for (var b=tr.objects.PositionAt(STransaction._uid);b!=null; b=b.Next())
             {
-                switch (b.Value.val.type)
+                switch (b.Value.Item2.type)
                 {
                     case Types.STable:
                         {
-                            var st = (STable)b.Value.val;
+                            var st = (STable)b.Value.Item2;
                             var nt = new STable(st, this);
-                            db = db + (nt,Length);
+                            db += (nt,Length);
+                            commits += (nt.uid, nt);
                             break;
                         }
                     case Types.SColumn:
                         {
-                            var sc = (SColumn)b.Value.val;
-                            var st = (STable)Lookup(db,Fix(sc.table));
+                            var sc = (SColumn)b.Value.Item2;
                             var nc = new SColumn(sc, this);
-                            db = db + (nc,Length);
+                            db += (nc,Length);
+                            commits += (nc.uid, nc);
                             break;
                         }
                     case Types.SRecord:
                         {
-                            var sr = (SRecord)b.Value.val;
-                            var st = (STable)Lookup(db,Fix(sr.table));
+                            var sr = (SRecord)b.Value.Item2;
                             var nr = new SRecord(db, sr, this);
-                            db = db + (nr,Length);
+                            if (sr.uid>STransaction._uid)
+                                db += (nr,Length);
+                            commits += (nr.uid, nr);
                             break;
                         }
                     case Types.SDelete:
                         {
-                            var sd = (SDelete)b.Value.val;
-                            var st = (STable)Lookup(db,Fix(sd.table));
+                            var sd = (SDelete)b.Value.Item2;
                             var nd = new SDelete(sd, this);
-                            db = db + (nd,Length);
+                            if (sd.uid > STransaction._uid)
+                                db += (nd, Length);
+                            commits += (nd.uid, nd);
                             break;
                         }
                     case Types.SUpdate:
                         {
-                            var sr = (SUpdate)b.Value.val;
-                            var st = (STable)Lookup(db, Fix(sr.table));
+                            var sr = (SUpdate)b.Value.Item2;
                             var nr = new SUpdate(db, sr, this);
-                            db = db + (nr, Length);
+                            if (sr.uid > STransaction._uid)
+                                db += (nr, Length);
+                            commits += (nr.uid, nr);
                             break;
                         }
                     case Types.SAlter:
                         {
-                            var sa = new SAlter((SAlter)b.Value.val,this);
-                            db = db + (sa,Length);
+                            var sa = new SAlter((SAlter)b.Value.Item2, this);
+                            db += (sa,Length);
+                            commits += (sa.uid, sa);
                             break;
                         }
                     case Types.SDrop:
                         {
-                            var sd = new SDrop((SDrop)b.Value.val, this);
-                            db = db + (sd, Length);
+                            var sd = new SDrop((SDrop)b.Value.Item2, this);
+                            db += (sd, Length);
+                            commits += (sd.uid, sd);
                             break;
                         }
                     case Types.SIndex:
                         {
-                            var si = new SIndex((SIndex)b.Value.val, this);
-                            db = db + (si, Length);
+                            var si = new SIndex((SIndex)b.Value.Item2, this);
+                            db += (si, Length);
+                            commits += (si.uid, si);
                             break;
                         }
                 }
             }
+            var len = Length;
             Flush();
             SDatabase.Install(db);
             return db;
         }
         internal Serialisable Lookup(SDatabase db, long pos)
         {
-            if (pos >= length)
+            pos = Fix(pos);
+            if (pos >= STransaction._uid)
                 return db.objects[pos];
+            if (pos >= wposition)
+                return commits[pos];
             return new Reader(this, pos)._Get(db);
         }
         internal long Fix(long pos)
         {
-            return (uids.Contains(pos))?uids.Lookup(pos):pos;
+            return (uids.Contains(pos))?uids[pos]:pos;
         }
         public override bool CanRead => throw new System.NotImplementedException();
 
@@ -2724,7 +2761,7 @@ namespace Collection
 
         public override long Length => length + (wbuf?.wpos)??0;
 
-        public override long Position { get => wposition; set => throw new System.NotImplementedException(); }
+        public override long Position { get => file.Position; set => throw new System.NotImplementedException(); }
         public override void Close()
         {
             file.Close();
@@ -2761,8 +2798,9 @@ namespace Collection
         {
             lock (file)
             {
-                if (b.start > length)
-                    return false;
+                if (b.start > wposition)
+                    throw new Exception("File overrun attempt");
+                  //  return false;
                 file.Seek(b.start, SeekOrigin.Begin);
                 var n = length - b.start;
                 if (n > Buffer.Size)
@@ -2774,11 +2812,15 @@ namespace Collection
 
         protected override void PutBuf(Buffer b)
         {
-            var p = file.Seek(0, SeekOrigin.End);
-            file.Write(b.buf, 0, b.wpos);
-            file.Flush();
-            length = p+b.wpos;
-            b.wpos = 0;
+            lock (file)
+            {
+                var p = file.Seek(0, SeekOrigin.End);
+                file.Write(b.buf, 0, b.wpos);
+                file.Flush();
+                length = p + b.wpos;
+                wposition = length;
+                b.wpos = 0;
+            }
         }
     }
 }

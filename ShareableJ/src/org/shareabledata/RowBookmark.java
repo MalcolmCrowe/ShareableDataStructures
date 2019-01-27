@@ -10,19 +10,41 @@ package org.shareabledata;
  * @author Malcolm
  */
     public abstract class RowBookmark extends Bookmark<Serialisable>
+            implements ILookup<String,Serialisable>
     {
         public final RowSet _rs;
-        public final Serialisable _ob;
-        protected RowBookmark(RowSet rs, Serialisable ob, int p)
+        public final SRow _ob;
+        protected RowBookmark(RowSet rs, SRow ob, int p)
         {
             super(p);
             _rs = rs; _ob = ob;
         }
         @Override
         public Serialisable getValue() { return  _ob; }
-        @Override
-        public void Append(StringBuilder sb)
+        public void Append(SDatabase db,StringBuilder sb) throws Exception
         {
-            _ob.Append(sb);
+            _ob.Append(db,sb);
+        }
+        @Override
+        public boolean defines(String s)
+        {
+            return s.compareTo(_rs._qry.getAlias())==0||_ob.vals.Contains(s);
+        }
+        public Serialisable get(String s)
+        {
+            return s.compareTo(_rs._qry.getAlias())==0?_ob:_ob.get(s);
+        }
+        public boolean SameGroupAs(RowBookmark r)
+        {
+            return true;
+        }
+        public STransaction Update(STransaction tr,
+                SDict<String,Serialisable> assigs) throws Exception
+        {
+            return tr; // no changes here
+        }
+        public STransaction Delete(STransaction tr) throws Exception
+        {
+            return tr; // no changes here
         }
     }

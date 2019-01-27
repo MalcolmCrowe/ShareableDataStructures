@@ -38,13 +38,13 @@ public class SColumn extends SSelector {
             super(c,n);
             dataType = d; table = c.table;
         }
-        SColumn(Reader f) throws Exception
+        SColumn(Reader f) 
         {
             super(Types.SColumn,f);
             dataType = f.ReadByte();
             table = f.GetLong();
         }
-        public SColumn(SColumn c,AStream f) throws Exception
+        public SColumn(SColumn c,AStream f) 
         {
             super(c,f);
             dataType = c.dataType;
@@ -52,10 +52,18 @@ public class SColumn extends SSelector {
             f.WriteByte((byte)dataType);
             f.PutLong(table);
         }
-        public static SColumn Get(Reader f) throws Exception
+        public static SColumn Get(Reader f) 
         {
             return new SColumn(f);
         }
+        @Override
+        public void Put(StreamBase f)
+        {
+            super.Put(f);
+            f.WriteByte((byte)dataType);
+            f.PutLong(table);
+        }
+        @Override
         public boolean Conflicts(Serialisable that)
         {
             switch (that.type)
@@ -73,12 +81,10 @@ public class SColumn extends SSelector {
             }
             return false;
         }
-        public SSelector Lookup(SQuery qry)
-        {
-            return qry.names.Lookup(name);
-        }
+        @Override
         public String toString()
         {
-            return super.toString() +"(" +STransaction.Uid(table)+ ")"+ name + " (" + Types.ToString(dataType)+")";
+            return super.toString() +"(" +SDbObject._Uid(table)+ ")"+ 
+                    name + " (" + Types.toString(dataType)+")";
         }
 }

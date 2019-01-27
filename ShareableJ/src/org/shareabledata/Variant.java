@@ -17,16 +17,17 @@ public class Variant implements Comparable {
         variant = t;
         ob = v;
     }
-    public Variant(Object v) throws Exception
+    public Variant(Object v,boolean asc)
     {
         if (v instanceof Variant)
-            throw new Exception("Internal error");
-        variant = Variants.Single;
+            throw new Error("Internal error");
+        variant = asc?Variants.Ascending:Variants.Descending;
         ob = v;
     }
     @Override
     public int compareTo(Object obj)
     {
-        return ((Comparable)ob).compareTo(((Variant)obj).ob);
+        var c = ((Comparable)ob).compareTo(((Variant)obj).ob);
+        return (variant == Variants.Descending) ? -c : c;
     }
 }

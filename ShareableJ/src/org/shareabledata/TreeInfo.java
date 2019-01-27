@@ -12,6 +12,7 @@ package org.shareabledata;
 public class TreeInfo<K extends Comparable> {
     public final K headName;
     public final TreeBehaviour onDuplicate, onNullKey;
+    public final boolean asc;
     TreeBehaviour For(char c) {
         switch (c) {
             case 'I':
@@ -23,9 +24,10 @@ public class TreeInfo<K extends Comparable> {
                 return TreeBehaviour.Disallow;
         }
     }
-    public TreeInfo(K h, char d, char n) {
+    public TreeInfo(K h, char d, char n, boolean a) {
         headName = h;
         onDuplicate = For(d);
         onNullKey = For(n);
+        asc = a;
     }
 }

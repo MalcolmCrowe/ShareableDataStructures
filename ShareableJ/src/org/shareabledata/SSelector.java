@@ -27,21 +27,31 @@ package org.shareabledata;
             super(s);
             name = n;
         }
-        protected SSelector(int t, Reader f) throws Exception
+        protected SSelector(int t, Reader f)
         {
             super(t,f);
             name = f.GetString();
         }
-        protected SSelector(SSelector s,AStream f) throws Exception
+        protected SSelector(SSelector s,AStream f) 
         {
             super(s,f);
             name = s.name;
             f.PutString(name);
         }
-        public void Put(StreamBase f) throws Exception
+        @Override
+        public void Put(StreamBase f)
         {
             super.Put(f);
             f.PutString(name);
         }
-        public abstract SSelector Lookup(SQuery qry);
+        @Override
+        public Serialisable Lookup(ILookup<String,Serialisable>nms)
+        {
+            return (nms!=null && nms.defines(name))?nms.get(name):this;
+        }
+        @Override
+        public String Alias(int n)
+        {
+            return name;
+        }
     }

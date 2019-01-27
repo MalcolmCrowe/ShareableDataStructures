@@ -13,7 +13,7 @@ public class LogBookmark extends RowBookmark {
             public final SysRows _sr;
             public final long _log;
             public final long _next;
-            LogBookmark(SysRows rs,long lg,Serialisable ob,long nx,int p)
+            LogBookmark(SysRows rs,long lg,SRow ob,long nx,int p)
             {
                 super(rs,ob,p);
                 _sr = rs; _log = lg; _next = nx;
@@ -23,8 +23,11 @@ public class LogBookmark extends RowBookmark {
             {
                 try{
                 var rdr = new Reader(_sr.fs,_next);
-                var s = rdr._Get(_rs._db);
-                return (s==null)?null:new LogBookmark(_sr,_next, s, rdr.getPosition(),
+                SDbObject s = (SDbObject)rdr._Get(_rs._tr);
+                return (s==null)?null:new LogBookmark(_sr,_next,
+                        _sr._Row(new SString(SDbObject._Uid(s.uid)),
+                    new SInteger((int)s.type), 
+                    new SString(s.toString())),rdr.getPosition(),
                   Position + 1);
                 } catch(Exception e) { return null; }
             }

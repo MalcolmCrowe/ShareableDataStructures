@@ -1,5 +1,6 @@
-﻿#nullable enable
-namespace Collection
+﻿using System;
+#nullable enable
+namespace Shareable
 {
     /// <summary>
     /// In the server, a rowSet is a Collection(Serialisable),
@@ -59,7 +60,7 @@ namespace Collection
             _sce = sce;
             var r = SDict<SRow, bool>.Empty;
             for (var b = sce.First(); b != null; b = b.Next())
-                r = r + (((RowBookmark)b)._ob, true);
+                r += (((RowBookmark)b)._ob, true);
             rows = r;
         }
         public override Bookmark<Serialisable>? First()
@@ -69,18 +70,18 @@ namespace Collection
         internal class DistinctRowBookmark : RowBookmark
         {
             public readonly DistinctRowSet _drs;
-            public readonly Bookmark<SSlot<SRow,bool>> _bmk;
-            DistinctRowBookmark(DistinctRowSet drs,Bookmark<SSlot<SRow,bool>> bmk,int pos) 
-                : base(drs,bmk.Value.key,pos)
+            public readonly Bookmark<ValueTuple<SRow,bool>> _bmk;
+            DistinctRowBookmark(DistinctRowSet drs,Bookmark<ValueTuple<SRow,bool>> bmk,int pos) 
+                : base(drs,bmk.Value.Item1,pos)
             { _drs = drs; _bmk = bmk; }
             internal static DistinctRowBookmark? New(DistinctRowSet drs)
             {
-                return (drs.rows.First() is Bookmark<SSlot<SRow, bool>> rb) ?
+                return (drs.rows.First() is Bookmark<ValueTuple<SRow, bool>> rb) ?
                     new DistinctRowBookmark(drs, rb, 0) : null;
             }
             public override Bookmark<Serialisable>? Next()
             {
-                return (_bmk.Next() is Bookmark<SSlot<SRow,bool>> rb)?
+                return (_bmk.Next() is Bookmark<ValueTuple<SRow,bool>> rb)?
                     new DistinctRowBookmark(_drs,rb,Position+1):null;
             }
             public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
@@ -90,14 +91,6 @@ namespace Collection
             public override STransaction Delete(STransaction tr)
             {
                 throw new System.NotImplementedException();
-            }
-        }
-        internal class Play
-        {
-            public static void X()
-            {
-                var x = (5, 6);
-
             }
         }
     }
@@ -123,7 +116,7 @@ namespace Collection
                 for (var c = sel.order.First(); c != null; c = c.Next())
                     k[i] = new Variant(c.Value.col.Lookup(b),!c.Value.desc);
                 t = t.Add(m,k);
-                r = r+(m++, b._ob);
+                r += (m++, b._ob);
             }
             _tree = t;
             _rows = r;
@@ -137,7 +130,7 @@ namespace Collection
             public readonly OrderedRowSet _ors;
             public readonly MTreeBookmark<Serialisable> _bmk;
             OrderedBookmark(OrderedRowSet ors,MTreeBookmark<Serialisable> bmk,int pos)
-                :base(ors,ors._rows[(int)bmk.Value.val],pos)
+                :base(ors,ors._rows[(int)bmk.Value.Item2],pos)
             {
                 _ors = ors; _bmk = bmk;
             }
@@ -175,20 +168,20 @@ namespace Collection
         internal class TableRowBookmark : RowBookmark
         {
             public readonly TableRowSet _trs;
-            public Bookmark<SSlot<long, long>> _bmk;
-            protected TableRowBookmark(TableRowSet trs,Bookmark<SSlot<long,long>>bm,int p) 
-                :base(trs,new SRow(trs._tr,trs._tr.Get(bm.Value.val)),p)
+            public Bookmark<ValueTuple<long, long>> _bmk;
+            protected TableRowBookmark(TableRowSet trs,Bookmark<ValueTuple<long,long>>bm,int p) 
+                :base(trs,new SRow(trs._tr,trs._tr.Get(bm.Value.Item2)),p)
             {
                 _trs = trs; _bmk = bm;
             }
             internal static TableRowBookmark? New(TableRowSet trs)
             {
-                return (trs._tb.rows.First() is Bookmark<SSlot<long, long>> b) ?
+                return (trs._tb.rows.First() is Bookmark<ValueTuple<long, long>> b) ?
                     new TableRowBookmark(trs, b, 0) : null;
             }
             public override Bookmark<Serialisable>? Next()
             {
-                return (_bmk.Next() is Bookmark<SSlot<long,long>> b)?
+                return (_bmk.Next() is Bookmark<ValueTuple<long,long>> b)?
                     new TableRowBookmark(_trs,b,Position+1):null;
             }
             public override STransaction Update(STransaction tr, SDict<string, Serialisable> assigs)
@@ -232,7 +225,7 @@ namespace Collection
                     : irs._ix.rows.First());
                 for (;b != null; b = b.Next() as MTreeBookmark<long>)
                 {
-                    var rc = irs._tr.Get(b.Value.val);
+                    var rc = irs._tr.Get(b.Value.Item2);
                     var rb = new IndexRowBookmark(irs, new SRow(irs._tr, rc), b, 0);
                     if (rc.Matches(rb, irs._wh))
                         return rb;
@@ -245,7 +238,7 @@ namespace Collection
                     return null;
                 for (var b = _mbm.Next(); b != null; b = b.Next())
                 {
-                    var rc = _irs._tr.Get(b.Value.val);
+                    var rc = _irs._tr.Get(b.Value.Item2);
                     var rb = new IndexRowBookmark(_irs, new SRow(_irs._tr,rc), 
                         (MTreeBookmark<long>)b, Position + 1);
                     if (rc.Matches(rb, _irs._wh))
@@ -268,7 +261,7 @@ namespace Collection
     {
         public readonly SSearch _sch;
         public readonly RowSet _sce;
-        public SearchRowSet(STransaction tr,SSearch sc,ILookup<string,Serialisable> nms) :base (tr,sc, null)
+        public SearchRowSet(STransaction tr,SSearch sc,Context cx) :base (tr,sc, null)
         {
             _sch = sc;
             RowSet? s = null;
@@ -276,7 +269,7 @@ namespace Collection
             if (_sch.sce is STable tb)
             {
                 for (var wb = _sch.where.First(); wb != null; wb = wb.Next())
-                    if (wb.Value.Lookup(nms) is SExpression x && x.op == SExpression.Op.Eql)
+                    if (wb.Value.Lookup(cx) is SExpression x && x.op == SExpression.Op.Eql)
                     {
                         if (x.left is SColumn c && tb.names.Contains(c.name) &&
                             x.right != null && x.right.isValue)
@@ -286,11 +279,12 @@ namespace Collection
                             matches = matches+(cr.uid,x.left);
                     }
                 var best = SCList<Variant>.Empty;
+                if (matches.Length.Value>0)
                 for (var b = tb.indexes.First(); matches.Length.Value > best.Length.Value && b != null; 
                     b = b.Next())
                 {
                     var ma = SCList<Variant>.Empty;
-                    var ix = (SIndex)tr.objects[b.Value.key];
+                    var ix = (SIndex)tr.objects[b.Value.Item1];
                     for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
                     {
                         if (!matches.Contains(wb.Value))
@@ -305,7 +299,7 @@ namespace Collection
                     }
                 }
             }
-            _sce = s?? _sch.sce?.RowSet(tr,nms) ?? throw new System.Exception("??");
+            _sce = s?? _sch.sce?.RowSet(tr,cx) ?? throw new System.Exception("??");
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -354,10 +348,10 @@ namespace Collection
     {
         public readonly SGroupQuery _gqry;
         public readonly RowSet _sce;
-        public GroupRowSet(STransaction tr,SGroupQuery gqry,ILookup<string,Serialisable> nms) :base(tr,gqry,null)
+        public GroupRowSet(STransaction tr,SGroupQuery gqry,Context cx) :base(tr,gqry,null)
         {
             _gqry = gqry;
-            _sce = gqry.source.RowSet(tr, nms);
+            _sce = gqry.source.RowSet(tr, cx);
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -390,11 +384,11 @@ namespace Collection
     {
         public readonly SSelectStatement _sel;
         public readonly RowSet _source;
-        public SelectRowSet(STransaction tr,SSelectStatement sel,ILookup<string,Serialisable> nms)
+        public SelectRowSet(STransaction tr,SSelectStatement sel,Context cx)
             :base(tr,sel,null)
         {
             _sel = sel;
-            _source = sel.qry.RowSet(tr,nms);
+            _source = sel.qry.RowSet(tr,cx);
         }
 
         public override Bookmark<Serialisable>? First()
@@ -418,7 +412,7 @@ namespace Collection
                     if (rw.isNull)
                         continue;
                     var rb = new SelectRowBookmark(rs, b, rw, 0);
-                    if (((SRow)rb._ob).cols.Length.Value!=0)
+                    if (rb._ob.cols.Length.Value!=0)
                         return rb;
                     if (rs._sel.aggregates) // aggregates collapse the rowset
                         break;
@@ -434,7 +428,7 @@ namespace Collection
                         if (rw.isNull)
                             continue;
                         var rb = new SelectRowBookmark(_srs, b, rw, Position + 1);
-                        if (((SRow)rb._ob).cols.Length.Value != 0)
+                        if (rb._ob.cols.Length.Value != 0)
                             return rb;
                     }
                 return null;
@@ -453,12 +447,12 @@ namespace Collection
     {
         public readonly SJoin _join;
         public readonly RowSet _left, _right;
-        internal JoinRowSet(STransaction tr,SJoin j,ILookup<string,Serialisable> nms)
+        internal JoinRowSet(STransaction tr,SJoin j,Context cx)
             : base(tr,j,null)
         {
             _join = j;
-            _left = j.left.RowSet(tr, nms);
-            _right = j.right.RowSet(tr, nms);
+            _left = j.left.RowSet(tr, cx);
+            _right = j.right.RowSet(tr, cx);
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -510,8 +504,8 @@ namespace Collection
             var r = new SRow();
             int j = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
-                if (b.Value.val is SSelector s)
-                    r = r.Add(s.name, vals[j++]);
+                if (b.Value.Item2 is SSelector s)
+                    r += (s.name, vals[j++]);
                         // Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
             return r;
         }

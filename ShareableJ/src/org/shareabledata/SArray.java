@@ -9,7 +9,7 @@ import java.util.*;
  *
  * @author 66668214
  */
-public class SArray<T> extends Shareable<T> {
+public class SArray<T> extends Collection<T> {
         public final T[] elements;
         public SArray(T ... els)
         { 

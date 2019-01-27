@@ -21,7 +21,7 @@ public class Buffer {
     public boolean busy = false;
     StreamBase fs;
 
-    public Buffer(StreamBase f) throws IOException {
+    public Buffer(StreamBase f) {
         buf = new byte[Size];
         wpos = 0;
         len = Size;
@@ -29,7 +29,7 @@ public class Buffer {
         fs = f;
     }
 
-    Buffer(StreamBase f, long s) throws Exception {
+    Buffer(StreamBase f, long s)  {
         buf = new byte[Size];
         start = s;
         wpos = 0;
@@ -37,7 +37,7 @@ public class Buffer {
         fs = f;
     }
 
-    int GetByte() throws Exception {
+    int GetByte() {
         if (wpos >= len) {
             start += len;
             wpos = 0;
@@ -47,7 +47,7 @@ public class Buffer {
         return buf[wpos++];
     }
 
-    void PutByte(byte b) throws Exception {
+    void PutByte(byte b)  {
         if (wpos >= len) {
             fs.PutBuf(this);
             start += len;

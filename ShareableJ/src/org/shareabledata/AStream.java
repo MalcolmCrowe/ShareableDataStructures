@@ -20,7 +20,7 @@ public class AStream extends StreamBase {
     public String filename;
     long length = 0;
     SDict<Long, Long> uids = null; // used for movement of SDbObjects
-
+    SDict<Long,Serialisable> commits = null;
     @Override
     protected long getLength() {
         return length;
@@ -34,11 +34,19 @@ public class AStream extends StreamBase {
         file.seek(0);
     }
 
-
-
-    Serialisable Lookup(SDatabase db, long pos) 
+    Serialisable Lookup(SDatabase db, long pos)
     {
-        return db.Lookup(Fix(pos));
+        pos = Fix(pos);
+        if (pos>=STransaction._uid)
+            return db.objects.Lookup(pos);
+        if (pos>=wposition)
+            return commits.Lookup(pos);
+        try {
+            return new Reader(this,pos)._Get(db);
+        } catch(Exception e)
+        {
+            throw new Error("invalid log at "+pos);
+        }
     }
 
     long Fix(long pos) 
@@ -53,16 +61,21 @@ public class AStream extends StreamBase {
         return length + wbuf.wpos;
     }
 
-    public SDatabase Commit(SDatabase db, SDict<Integer, SDbObject> steps) throws Exception {
+    public SDatabase Commit(SDatabase db, STransaction tr) throws Exception {
+        commits = null;
         wbuf = new Buffer(this);
         uids = new SDict<Long, Long>(-1L, -1L);
-        for (var b = steps.First(); b != null; b = b.Next()) {
+        for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next()) {
             var bs = b.getValue();
             switch (bs.val.type) {
                 case Types.STable: {
                     var st = (STable) b.getValue().val;
                     var nt = new STable(st, this);
                     db = db._Add(nt, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(nt.uid,nt);
+                    else
+                        commits = commits.Add(nt.uid, nt);
                     break;
                 }
                 case Types.SColumn: {
@@ -70,6 +83,10 @@ public class AStream extends StreamBase {
                     var st = (STable) Lookup(db, Fix(sc.table));
                     var nc = new SColumn(sc, this);
                     db = db._Add(nc, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(nc.uid,nc);
+                    else
+                        commits = commits.Add(nc.uid, nc);
                     break;
                 }
                 case Types.SRecord: {
@@ -77,6 +94,10 @@ public class AStream extends StreamBase {
                     var st = (STable) Lookup(db, Fix(sr.table));
                     var nr = new SRecord(db, sr, this);
                     db = db._Add(nr, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(nr.uid,nr);
+                    else
+                        commits = commits.Add(nr.uid, nr);
                     break;
                 }
                 case Types.SDelete: {
@@ -84,6 +105,10 @@ public class AStream extends StreamBase {
                     var st = (STable) Lookup(db, Fix(sd.table));
                     var nd = new SDelete(sd, this);
                     db = db._Add(nd, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(nd.uid,nd);
+                    else
+                        commits = commits.Add(nd.uid, nd);
                     break;
                 }
                 case Types.SUpdate: {
@@ -91,21 +116,37 @@ public class AStream extends StreamBase {
                     var st = (STable) Lookup(db, Fix(sr.table));
                     var nr = new SUpdate(db, sr, this);
                     db = db._Add(nr, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(nr.uid,nr);
+                    else
+                        commits = commits.Add(nr.uid, nr);
                     break;
                 }
                 case Types.SAlter: {
                     var sa = new SAlter((SAlter) b.getValue().val, this);
                     db = db._Add(sa, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(sa.uid,sa);
+                    else
+                        commits = commits.Add(sa.uid, sa);
                     break;
                 }
                 case Types.SDrop: {
                     var sd = new SDrop((SDrop) b.getValue().val, this);
                     db = db._Add(sd, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(sd.uid,sd);
+                    else
+                        commits = commits.Add(sd.uid, sd);
                     break;
                 }
                 case Types.SIndex: {
                     var si = new SIndex((SIndex) b.getValue().val, this);
                     db = db._Add(si, pos());
+                    if (commits==null)
+                        commits = new SDict<Long,Serialisable>(si.uid,si);
+                    else
+                        commits = commits.Add(si.uid, si);
                     break;
                 }
             }
@@ -119,25 +160,36 @@ public class AStream extends StreamBase {
         file.close();
     }
 
-    protected boolean GetBuf(Buffer b) throws Exception {
+    protected boolean GetBuf(Buffer b) {
         if (b.start > length) {
             return false;
         }
-        file.seek(b.start);
-        var n = length - b.start;
-        if (n > Buffer.Size) {
-            n = Buffer.Size;
+        try
+        {
+            file.seek(b.start);
+            var n = length - b.start;
+            if (n > Buffer.Size) {
+                n = Buffer.Size;
+            }
+            b.len = file.read(b.buf, 0, (int) n);
+                return b.len > 0;
+        } catch(Exception e)
+        {
+            throw new Error("In Get");
         }
-        b.len = file.read(b.buf, 0, (int) n);
-        return b.len > 0;
     }
 
-    protected void PutBuf(Buffer b) throws Exception {
-        var p = file.length();
-        file.seek(p);
-        file.write(b.buf, 0, b.wpos);
-        length = p + b.wpos;
-        b.wpos = 0;
+    protected void PutBuf(Buffer b){
+        try {
+            var p = file.length();
+            file.seek(p);
+            file.write(b.buf, 0, b.wpos);
+            length = p + b.wpos;
+            b.wpos = 0;
+        } catch(Exception e)
+        {
+            throw new Error("In Put");
+        }
     }
 
     public void Flush() throws Exception {

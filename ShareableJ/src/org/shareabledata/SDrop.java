@@ -17,13 +17,13 @@ public class SDrop extends SDbObject {
             super(Types.SDrop,tr);
             drpos = d; parent = p;
         }
-        SDrop(Reader f) throws Exception
+        SDrop(Reader f)
         {
             super(Types.SDrop,f);
             drpos = f.GetLong();
             parent = f.GetLong();
         }
-        public SDrop(SDrop d,AStream f) throws Exception
+        public SDrop(SDrop d,AStream f)
         {
             super(d,f);
             drpos = f.Fix(d.drpos);
@@ -31,7 +31,7 @@ public class SDrop extends SDbObject {
             f.PutLong(drpos);
             f.PutLong(parent);
         }
-        public static SDrop Get(Reader f) throws Exception
+        public static SDrop Get(Reader f)
         {
             return new SDrop(f);
         }

@@ -1,6 +1,6 @@
 ﻿using System;
 #nullable enable
-namespace Collection
+namespace Shareable
 {
     public class SDatabase
     {
@@ -28,7 +28,7 @@ namespace Collection
                 return databases[fname]
                     ?? throw new System.Exception("Database is loading");
             var db = new SDatabase(fname);
-            dbfiles = dbfiles+(fname, new AStream(path + fname));
+            dbfiles += (fname, new AStream(path + fname));
             db = db.Load();
             Install(db);
             return db;
@@ -73,22 +73,25 @@ namespace Collection
             var rd = new Reader(dbfiles[name], 0);
             var db = this;
             for (var s = rd._Get(this) as SDbObject; s != null; s = rd._Get(db) as SDbObject)
-                db = db + (s, s.uid);
+                db += (s, s.uid);
             return db;
         }
         protected virtual Serialisable _Get(long pos)
         {
-            return new Reader(dbfiles[name], pos)._Get(this);
+            return dbfiles[name].Lookup(this, pos);
         }
         public SRecord Get(long pos)
         {
             var rc = _Get(pos) as SRecord ??
-                throw new System.Exception("Record " + SDbObject._Uid(pos) + " never defined");
+                throw new Exception("Record " + SDbObject._Uid(pos) + " never defined");
             var tb = objects[rc.table] as STable ??
-                throw new System.Exception("Table " + rc.table + " has been dropped");
+                throw new Exception("Table " + rc.table + " has been dropped");
             if (!tb.rows.Contains(rc.Defpos))
-                throw new System.Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
-            return (SRecord)_Get(tb.rows[rc.Defpos]);
+                throw new Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
+            var dp = tb.rows[rc.Defpos];
+            if (dp == pos)
+                return rc;
+            return (SRecord)_Get(dp);
         }
         protected SDatabase _Add(SDbObject s, long p)
         {
@@ -134,67 +137,73 @@ namespace Collection
         public SDatabase Install(SColumn c, long p)
         {
             var obs = objects;
-            if (c.uid > STransaction._uid)
-                obs = obs + (c.uid, c);
+            if (c.uid >= STransaction._uid)
+                obs += (c.uid, c);
             var tb = ((STable)obs[c.table])+c;
             return New(obs+(c.table,tb), names+(tb.name,tb), p);
         }
         public SDatabase Install(SRecord r, long c)
         {
             var obs = objects;
-            var st = ((STable)objects[r.table])+r;
-            if (r.uid > STransaction._uid)
-                obs = obs+(r.uid, r);
-            obs = obs+(r.table, st);
+            var st = ((STable)obs[r.table])+r;
+            if (r.uid >= STransaction._uid)
+                obs += (r.uid, r);
+            obs += (r.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects[b.Value.key];
-                obs = obs + (x.uid, x + (r, r.uid));
+                var x = (SIndex)objects[b.Value.Item1];
+                obs += (x.uid, x + (r, r.uid));
+                if (x.references == r.table && !x.Contains(r))
+                    throw new Exception("Referential constraint");
             }
             return New(obs, nms, c);
         }
         public SDatabase Install(SUpdate u, long c)
         {
             var obs = objects;
-            var st = ((STable)objects[u.table])+u;
+            var st = ((STable)obs[u.table])+u;
             SRecord? sr = null;
-            if (u.uid > STransaction._uid)
-                obs = obs + (u.uid, u);
-            obs = obs+(u.table, st);
+            if (u.uid >= STransaction._uid)
+                obs += (u.uid, u);
+            obs += (u.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects[b.Value.key];
+                var x = (SIndex)obs[b.Value.Item1];
                 if (sr == null)
                     sr = Get(u.defpos);
-                obs = obs+(x.uid, x.Update(sr, u, c));
+                obs += (x.uid, x.Update(sr, u, c));
+                if (x.references == u.table && !x.Contains(u))
+                    throw new Exception("Referential constraint");
             }
             return New(obs, nms, c);
         }
         public SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
-            if (d.uid > STransaction._uid)
-                obs = obs + (d.uid, d);
-            var st = ((STable)objects[d.table]).Remove(d.delpos);
+            if (d.uid >= STransaction._uid)
+                obs += (d.uid, d);
+            var st = ((STable)obs[d.table]).Remove(d.delpos);
             SRecord? sr = null;
-            obs = obs+(d.table, st);
+            obs += (d.table, st);
             var nms = names+(st.name, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
-                var x = (SIndex)objects[b.Value.key];
+                var x = (SIndex)objects[b.Value.Item1];
                 if (sr == null)
                     sr = Get(d.delpos);
-                obs = obs+(x.uid, x-(sr, c));
+                obs += (x.uid, x-(sr, c));
+                if (x.references == d.table && x.Contains(sr))
+                    throw new Exception("Referential constraint");
             }
             return New(obs, nms, c);
         }
         public SDatabase Install(SAlter a, long c)
         {
             var obs = objects;
-            if (a.uid > STransaction._uid)
-                obs = obs + (a.uid, a);
+            if (a.uid >= STransaction._uid)
+                obs += (a.uid, a);
             if (a.parent == 0)
             {
                 var ot = (STable)obs[a.defpos];
@@ -213,7 +222,7 @@ namespace Collection
         public SDatabase Install(SDrop d, long c)
         {
             var obs = objects;
-            if (d.uid > STransaction._uid)
+            if (d.uid >= STransaction._uid)
                 obs = obs + (d.uid, d);
             if (d.parent == 0)
             {
@@ -252,7 +261,7 @@ namespace Collection
         {
             var tb = (STable)objects[x.table];
             for (var b = tb.rows.First(); b != null; b = b.Next())
-                x = x + (Get(b.Value.val), b.Value.val);
+                x += (Get(b.Value.Item2), b.Value.Item2);
             tb = new STable(tb, tb.indexes + (x.uid, true));
             return New(objects + (x.uid, x) + (tb.uid, tb),names,c);
         }
@@ -275,7 +284,7 @@ namespace Collection
         public virtual SIndex? GetPrimaryIndex(long t)
         {
             for (var b = objects.First(); b != null; b = b.Next())
-                if (b.Value.val is SIndex x && x.table == t)
+                if (b.Value.Item2 is SIndex x && x.table == t)
                     return x;
             return null;
         }

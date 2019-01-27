@@ -10,63 +10,93 @@ package org.shareabledata;
  * @author Malcolm
  */
 public abstract class SQuery extends SDbObject {
-        public final SList<SSelector> cpos;
-        public final SDict<String, SSelector> names;
-        public final SDict<Long, SSelector> cols;
+        public final SDict<Integer,Serialisable> cpos;
+        public final SDict<String, Serialisable> names;
+        public final SDict<Integer, String> display;
         public SQuery(int t, long u)
         {
             super(t,u);
-            cols = null;
+            display = null;
             cpos = null;
             names = null;
         }
         public SQuery(int t, STransaction tr)
         {
             super(t,tr);
-            cols = null;
+            display = null;
             cpos = null;
             names = null;
         }
         public SQuery(SQuery q)
         {
             super(q);
-            cols = q.cols;
+            display = q.display;
             cpos = q.cpos;
             names = q.names;
         }
-        protected SQuery(SQuery q, SDict<Long, SSelector> c, SList<SSelector> p, 
-                SDict<String, SSelector> n)
+        protected SQuery(int t, SDict<Integer, String> a, SDict<Integer,Serialisable> c, 
+                SDict<String, Serialisable> source)
+        {
+            super(t,-1);
+            SDict<Integer, Serialisable> cp = null;
+            SDict<String, Serialisable> cn = null;
+            if (a!=null && c!=null)
+            {
+                var ab = a.First();
+                for (var cb = c.First();ab!=null && cb!=null;ab=ab.Next(),cb=cb.Next())
+                {
+                    var s = cb.getValue().val;
+                    if (source!=null)
+                        s = cb.getValue().val.Lookup(source);
+                    cp=(cp==null)?new SDict(cb.getValue().key, s)
+                            :cp.Add(cb.getValue().key, s);
+                    cn=(cn==null)?new SDict(ab.getValue().val, s)
+                            :cn.Add(ab.getValue().val, s);
+                }
+            }
+            display = a;
+            cpos = cp;
+            names = cn;
+        }
+        protected SQuery(SQuery q, SDict<Integer, String> c, SDict<Integer,Serialisable> p, 
+                SDict<String, Serialisable> n)
         {
             super(q);
             cpos = p;
-            cols = c;
+            display = c;
             names = n;
         }
         protected SQuery(int t, Reader f)
         {
             super(t,f);
-            cols = null;
+            display = null;
             cpos = null;
             names = null;
         }
         protected SQuery(SQuery q, AStream f) throws Exception
         {
             super(q,f);
-            cols = q.cols;
+            display = q.display;
             cpos = q.cpos;
             names = q.names;
         }
-        /// <summary>
-        /// Queries come to us with client-local SDbObjects instead of STransaction SDbObjects. 
-        /// We need to look them up
-        /// </summary>
-        /// <param name="db">A database or transaction</param>
-        /// <returns>A version of this with correct references for db</returns>
-        public abstract SQuery Lookup(SDatabase db) throws Exception;
+        public Serialisable Lookup(String a)
+        {
+            var r = names.Lookup(a);
+            return (r==null)?Null:r;
+        }
         /// <summary>
         /// Construct the Rowset for the given SDatabase (may have changed since SQuery was built)
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public abstract RowSet RowSet(SDatabase db) throws Exception;
+        public abstract RowSet RowSet(STransaction db,Context cx) throws Exception;
+        SDict<Integer,String> getDisplay()
+        {
+            return display; 
+        }
+        public String getAlias()
+        {
+            return "";
+        }
 }

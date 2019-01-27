@@ -10,64 +10,69 @@ package org.shareabledata;
  * @author Malcolm
  */
 public class SSearch extends SQuery {
-        public final SQuery sce;
-        public final SDict<SSelector,Serialisable> where;
-        public SSearch(Reader f) throws Exception
-        {
-            super(Types.SSearch,f);
-            sce = (SQuery)f._Get(null);
-            if (sce==null)
-                    throw new Exception("Query expected");
-            SDict<SSelector, Serialisable> w = null;
-            var n = f.GetInt();
-            for (var i=0;i<n;i++)
-            {
-                var k = (SSelector)f._Get(null);
-                if (k==null)
-                        throw new Exception("Selector expected");
-                w = (w==null)?new SDict<>(k,f._Get(null))
-                        :w.Add(k, f._Get(null));
-            }
-            where = w;
+
+    public final SQuery sce;
+    public final SList<Serialisable> where;
+
+    public SSearch(SDatabase db,Reader f) throws Exception {
+        super(Types.SSearch, f);
+        sce = (SQuery) f._Get(db);
+        if (sce == null) {
+            throw new Exception("Query expected");
         }
-        public SSearch(SQuery s,SDict<SSelector,Serialisable> w)
-        {
-            super(Types.SSearch,-1);
-            sce = s;
-            where = w;
+        SList<Serialisable> w = null;
+        var n = f.GetInt();
+        for (var i = 0; i < n; i++) {
+            var x = f._Get(db).Lookup(sce.names);
+            w = (w == null) ? new SList(x): w.InsertAt(x,i);
         }
-        public void Put(StreamBase f) throws Exception
-        {
-            super.Put(f);
-            sce.Put(f);
-            f.PutInt(where.Length);
-            for (var b=where.First();b!=null;b=b.Next())
-            {
-                b.getValue().key.Put(f);
-                b.getValue().val.Put(f);
-            }
-        }
-        public static SSearch Get(Reader f) throws Exception
-        {
-            return new SSearch(f);
-        }
-        @Override
-        public SQuery Lookup(SDatabase db) throws Exception
-        {
-            var s = sce.Lookup(db);
-            SDict<SSelector, Serialisable> w = null;
-            for (var b = where.First(); b != null; b = b.Next())
-            {
-                var x = b.getValue().key.Lookup(s);
-                var v = b.getValue().val;
-                w = (w==null)?new SDict<SSelector,Serialisable>(x,v):
-                        w.Add(x, v);
-            }
-            return new SSearch(s,w);
-        }
-        @Override
-        public RowSet RowSet(SDatabase db) throws Exception
-        {
-            return new SearchRowSet(db, this);
+        where = w;
+    }
+
+    public SSearch(SQuery s, SList<Serialisable> w) {
+        super(Types.SSearch, -1);
+        sce = s;
+        where = w;
+    }
+
+    @Override
+    public void Put(StreamBase f) {
+        super.Put(f);
+        sce.Put(f);
+        f.PutInt(where.Length);
+        for (var b = where.First(); b != null; b = b.Next()) {
+            b.getValue().Put(f);
         }
     }
+
+    public static SSearch Get(SDatabase db, Reader f) throws Exception {
+        return new SSearch(db,f);
+    }
+    
+    @Override
+    public Serialisable Lookup(String a)
+    {
+        return sce.Lookup(a);
+    }
+
+    @Override
+    public Serialisable Lookup(ILookup<String,Serialisable> nms) 
+    {
+        return(nms instanceof SearchRowSet.SearchRowBookmark)? 
+                sce.Lookup(((SearchRowSet.SearchRowBookmark)nms)._bmk):this;
+    }
+
+    @Override
+    public RowSet RowSet(STransaction db, Context cx) throws Exception {
+        return new SearchRowSet(db, this, cx);
+    }
+    
+    @Override
+    public String getAlias() {return sce.getAlias(); }
+    
+    @Override
+    public SDict<Integer,String> getDisplay() 
+    {
+        return (display!=null)? display:sce.getDisplay();
+    }
+}

@@ -11,49 +11,40 @@ package org.shareabledata;
  */
 public class IndexRowSet extends RowSet {
        public final SIndex _ix;
-        public final SDict<SSelector, Serialisable> _wh;
+        public final SList<Serialisable> _wh;
         public final SCList<Variant> _key;
         public final boolean _unique;
-        public IndexRowSet(SDatabase db,STable t,SIndex ix,SDict<SSelector,Serialisable> wh) throws Exception
+        public IndexRowSet(SDatabase db,STable t,SIndex ix,SCList<Variant> key,
+                SList<Serialisable> wh)
         {
             super(db,t);
             _ix = ix; _wh = wh;
-            SCList<Variant> key = null;
-            for (var c = _ix.cols; c != null && c.Length != 0; c = c.next)
-            {
-                var found=false;
-                for (var b = _wh.First(); b != null && !found; b = b.Next())
-                    if (b.getValue().key.uid == c.element)
-                    {
-                        var v =new Variant(Variants.Single,b.getValue().val);
-                        key = (key==null)? new SCList<>(v):
-                                (SCList<Variant>)key.InsertAt(v, key.Length);
-                        found = true;
-                    }
-                 if (!found)
-                     break;
-            }
             _key = key;
-            _unique = key.Length == _ix.cols.Length;
+            _unique = key!=null && key.Length == _ix.cols.Length;
         }
         public Bookmark<Serialisable> First()
         {
             try {
-                for (var b = _ix.rows.PositionAt(_key);b!=null;b=(MTreeBookmark<Long>)b.Next())
+                var b = (MTreeBookmark<Long>)((_key==null)?_ix.rows.First()
+                        :_ix.rows.PositionAt(_key));
+                for (;b!=null;b=(MTreeBookmark<Long>)b.Next())
                 {
-                    var r = _db.Get((long)b.getValue().val);
-                    if (r.Matches(_wh))
-                        return new IndexRowBookmark(this, r, b, 0);
+                    var r = _tr.Get(b.getValue().val);
+                    var rb = new IndexRowBookmark(this, new SRow(_tr,r), b, 0);
+                    if (r.Matches(rb,_wh))
+                        return rb;
                 }
             } catch(Exception e)
-            { }
-                return null;
+            { 
+                throw new Error("MTree");
+            }
+            return null;
         }
         class IndexRowBookmark extends RowBookmark
         {
             public final IndexRowSet _irs;
             public final MTreeBookmark<Long> _mbm;
-            protected IndexRowBookmark(IndexRowSet irs,Serialisable ob,MTreeBookmark<Long> mbm,int p)
+            protected IndexRowBookmark(IndexRowSet irs,SRow ob,MTreeBookmark<Long> mbm,int p)
             {
                 super(irs,ob,p);
                 _irs = irs; _mbm = mbm;
@@ -65,12 +56,27 @@ public class IndexRowSet extends RowSet {
                     return null;
                 for (var b = _mbm.Next(); b != null; b = b.Next())
                 {
-                    var r = _irs._db.Get(b.getValue().val);
-                    if (r.Matches(_irs._wh))
-                        return new IndexRowBookmark(_irs, r, (MTreeBookmark<Long>)b , Position+1);
+                    var r = _irs._tr.Get(b.getValue().val);
+                    var rb = new IndexRowBookmark(_irs,
+                                new SRow(_irs._tr, r), (MTreeBookmark<Long>)b , Position+1);
+                    if (r.Matches(rb,_irs._wh))
+                        return rb;
                 }
                 } catch(Exception e){}
                 return null;
+            }
+            @Override
+            public STransaction Update(STransaction tr, 
+                    SDict<String, Serialisable> assigs) throws Exception
+            {
+                return (STransaction)tr.Install(new SUpdate(tr, _ob.rec, assigs),
+                    tr.curpos); // ok
+            }
+            public STransaction Delete(STransaction tr) throws Exception
+            {
+                var rc = _ob.rec;
+                return (STransaction)tr.Install(new SDelete(tr, rc.table, 
+                        rc.Defpos()), tr.curpos); // ok
             }
         }
     }

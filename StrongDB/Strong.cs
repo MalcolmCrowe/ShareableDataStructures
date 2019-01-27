@@ -24,9 +24,7 @@ namespace StrongDB
         SDatabase db;
         static int _cid = 0;
         int cid = _cid++;
-        static Random testlock = new Random();
         public DateTime lastop = DateTime.Now;
-        public Thread myThread = null;
         public static string path= "";
         /// <summary>
         /// Constructor: called on Accept
@@ -45,7 +43,6 @@ namespace StrongDB
             // process the connection string
             asy = new ServerStream(client);
             var rdr = asy.rbuf;
-            myThread = Thread.CurrentThread;
             int p = -1;
             try
             {
@@ -94,7 +91,7 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var qy = rdr._Get(tr) as SQuery ??
                                     throw new Exception("Bad query");
-                                RowSet rs = qy.RowSet(tr,SDict<string,Serialisable>.Empty);
+                                RowSet rs = qy.RowSet(tr,Context.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
                                 for (var b = rs?.First();b!=null;b=b.Next())
@@ -258,7 +255,7 @@ namespace StrongDB
                         case Types.SUpdateSearch:
                             {
                                 var tr = db.Transact();
-                                tr = SUpdateSearch.Get(db, rdr).Obey(tr,SDict<string,Serialisable>.Empty);
+                                tr = SUpdateSearch.Get(db, rdr).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -286,7 +283,7 @@ namespace StrongDB
                         case Types.SDeleteSearch:
                             {
                                 var tr = db.Transact();
-                                tr = SDeleteSearch.Get(db, rdr).Obey(tr,SDict<string,Serialisable>.Empty);
+                                tr = SDeleteSearch.Get(db, rdr).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();

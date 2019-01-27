@@ -25,7 +25,7 @@ public class SysTable extends STable {
                 System.out.println(e.getMessage());
             }
         }
-        public static long _uid = 0;
+        public static long _uid = -0x70000000;
         public static SDict<String, SysTable> system;
         /// <summary>
         /// System tables are like templates: need to be virtually specialised for a db
@@ -35,17 +35,19 @@ public class SysTable extends STable {
         {
             super(n,--_uid);
         }
-        SysTable(SysTable t, SDict<Long, SSelector> c, SList<SSelector> p, 
-                SDict<String, SSelector> n)
+        SysTable(SysTable t, SDict<Long, SSelector> c, SDict<Integer,String>d,
+                SDict<Integer,Serialisable> p,SDict<String, Serialisable> n)
         {
-            super(t, c, p, n);
+            super(t, c, d, p, n);
         }
         @Override
-        public STable Add(SColumn c) throws Exception
+        public STable Add(SColumn c) 
         {
             return new SysTable(this,
                     (cols==null)?new SDict<>(c.uid,c):cols.Add(c.uid,c),
-                    (cpos==null)?new SList<>(c):cpos.InsertAt(c, cpos.Length),
+                    (display==null)?new SDict<>(0,c.name):
+                            display.Add((int)display.Length, c.name),
+                    (cpos==null)?new SDict<>(0,c):cpos.Add(cpos.Length,c),
                     (names==null)?new SDict<>(c.name,c):names.Add(c.name, c));
         }
         SysTable Add(String n,int t) throws Exception
@@ -53,7 +55,7 @@ public class SysTable extends STable {
             return (SysTable)Add(new SysColumn(n, t));
         }
         @Override
-        public RowSet RowSet(SDatabase db)
+        public RowSet RowSet(STransaction db,Context cx)
         {
             return new SysRows(db,this);
         }

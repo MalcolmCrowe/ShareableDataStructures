@@ -91,7 +91,7 @@ public class StrongStart {
                 StrongServer.path += "/";
             else if (!StrongServer.path.endsWith("\\"))
                 StrongServer.path += "\\";
-            AccessController.checkPermission(new FilePermission(StrongServer.path,"read,write"));
+    //        AccessController.checkPermission(new FilePermission(StrongServer.path,"read,write"));
         }
         /// <summary>
         /// Provide help about the command line options

@@ -29,7 +29,7 @@ public class SIndex extends SDbObject {
         primary = p;
         cols = c;
         references = -1;
-        rows = new SMTree<Long>(Info((STable) tr.Lookup(table), cols));
+        rows = new SMTree<Long>(Info((STable) tr.objects.Lookup(table), cols));
     }
 
     SIndex(SDatabase d, Reader f) throws Exception {
@@ -43,7 +43,7 @@ public class SIndex extends SDbObject {
         }
         references = f.GetLong();
         cols = new SList<Long>(c);
-        rows = new SMTree<Long>(Info((STable) d.Lookup(table), cols));
+        rows = new SMTree<Long>(Info((STable) d.objects.Lookup(table), cols));
     }
 
     public SIndex(SIndex x, AStream f) throws Exception {
@@ -77,7 +77,7 @@ public class SIndex extends SDbObject {
         rows = mt.t;
     }
     
-        public SIndex(SIndex x, SMTree<Long> mt) throws Exception {
+        public SIndex(SIndex x, SMTree<Long> mt)  {
         super(x);
         table = x.table;
         primary = x.primary;
@@ -99,7 +99,8 @@ public class SIndex extends SDbObject {
     }
 
     public SIndex Update(SRecord o, SUpdate u, long c) throws Exception {
-        return new SIndex(this, rows.Remove(Key(o, cols), c).Add(Key(u, cols), c));
+        return new SIndex(this, 
+                rows.Remove(Key(o, cols), o.uid).Add(Key(u, cols), u.uid));
     }
 
     public SIndex Remove(SRecord sr, long c) throws Exception {
@@ -111,7 +112,7 @@ public class SIndex extends SDbObject {
             return null;
         }
         var n = Info(tb, cols.next);
-        var ti = new TreeInfo<Long>(cols.element, 'D', 'D');
+        var ti = new TreeInfo<Long>(cols.element, 'D', 'D', true);
         if (n == null) {
             return new SList<TreeInfo>(ti);
         }
@@ -122,17 +123,17 @@ public class SIndex extends SDbObject {
         if (cols==null || cols.Length == 0) {
             return null;
         }
-        return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next));
+        return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element),true), Key(sr, cols.next));
     }
 
     @Override
     public String toString() {
-        var sb = new StringBuilder(super.toString() + " [" + STransaction.Uid(table) + "] (");
+        var sb = new StringBuilder(super.toString() + " [" + SDbObject._Uid(table) + "] (");
         var cm = "";
         for (var b = cols.First(); b != null; b = b.Next()) {
             sb.append(cm);
             cm = ",";
-            sb.append(STransaction.Uid(b.getValue()));
+            sb.append(SDbObject._Uid(b.getValue()));
         }
         sb.append(")");
         return sb.toString();

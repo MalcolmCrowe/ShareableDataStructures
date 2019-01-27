@@ -12,23 +12,32 @@ package org.shareabledata;
 public class Numeric {
     Bigint mantissa;
     int scale;
-    int precision = 0;
+    int precision;
 
     Numeric(Bigint m, int s) {
         mantissa = m;
         scale = s;
+        precision = 0;
+    }
+    
+    Numeric(Bigint m, int s, int p) {
+        mantissa = m;
+        scale = s;
+        precision = p;
     }
 
     Numeric(long n)
     {
         mantissa = new Bigint(n);
         scale = 0;
+        precision = 0;
     }
     Numeric(Double d)
     {
         Numeric a = Parse(d.toString());
         mantissa = a.mantissa;
         scale = a.scale;
+        precision = 0;
     }
     static Numeric Zero = new Numeric(0L);
 		Numeric Normalise()
@@ -137,6 +146,14 @@ public class Numeric {
         }
         a = a.Denormalise(b.mantissa.bytes.length - a.mantissa.bytes.length + prec + 1);
         return new Numeric(a.mantissa.Divide(b.mantissa), a.scale - b.scale).Normalise();
+    }
+    Numeric Times(Numeric b)
+    {
+        return new Numeric(mantissa.Times(b.mantissa),scale+b.scale).Normalise();
+    }
+    Numeric Divide(Numeric b)
+    {
+        return Divide(this,b,4);
     }
     public int compareTo(Object obj)
     {

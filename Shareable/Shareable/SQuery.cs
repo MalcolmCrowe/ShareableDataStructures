@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text;
 #nullable enable
-namespace Collection
+namespace Shareable
 {
     public class SQuery : SDbObject
     {
@@ -54,11 +54,11 @@ namespace Collection
             var ab = a.First();
             for (var cb = c.First();ab!=null && cb!=null;ab=ab.Next(),cb=cb.Next())
             {
-                var s = cb.Value.val;
+                var s = cb.Value.Item2;
                 if (source.Length!=0)
-                    s = cb.Value.val.Lookup(source);
-                cp = cp+(cb.Value.key, s);
-                cn = cn+(ab.Value.val, s);
+                    s = cb.Value.Item2.Lookup(source);
+                cp += (cb.Value.Item1, s);
+                cn += (ab.Value.Item2, s);
             }
             display = a;
             cpos = cp;
@@ -91,7 +91,7 @@ namespace Collection
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public virtual RowSet RowSet(STransaction tr,ILookup<string,Serialisable>nms)
+        public virtual RowSet RowSet(STransaction tr,Context cx)
         {
             throw new NotImplementedException();
         }
@@ -118,7 +118,7 @@ namespace Collection
             var n = f.GetInt();
             var on = SList<SExpression>.Empty;
             for (var i = 0; i < n; i++)
-                on = on + (f._Get(db) as SExpression ?? throw new Exception("ON exp expected"), i);
+                on += (f._Get(db) as SExpression ?? throw new Exception("ON exp expected"), i);
             ons = on;
         }
         public SJoin(SQuery lf,bool ou,JoinType jt,SQuery rg,SList<SExpression> on,
@@ -142,11 +142,11 @@ namespace Collection
         {
             return new SJoin(d, f);
         }
-        public override RowSet RowSet(STransaction tr, ILookup<string, Serialisable> nms)
+        public override RowSet RowSet(STransaction tr, Context cx)
         {
-            return new JoinRowSet(tr, this, nms);
+            return new JoinRowSet(tr, this, cx);
         }
-        public override void Append(SDatabase db, StringBuilder sb)
+        public override void Append(SDatabase? db, StringBuilder sb)
         {
             left.Append(db, sb);
             if (outer)
@@ -166,50 +166,79 @@ namespace Collection
             }
         }
     }
+    public class SAliasedTable : STable
+    {
+        public readonly STable table;
+        public readonly string alias;
+        public SAliasedTable(STable tb,string a) :
+            base(Types.SAliasedTable, tb)
+        {
+            table = tb;
+            alias = a;
+        }
+        public override void Put(StreamBase f)
+        {
+            base.Put(f);
+            f.PutString(alias);
+        }
+        public override Serialisable Lookup(string a)
+        {
+            return (a.CompareTo(alias)==0)?table:base.Lookup(a);
+        }
+        public new static SAliasedTable Get(SDatabase d,Reader f)
+        {
+            return new SAliasedTable(STable.Get(d, f),f.GetString());
+        }
+        public override RowSet RowSet(STransaction tr, Context cx)
+        {
+            return new TableRowSet(tr, this);
+        }
+        public override void Append(SDatabase? db,StringBuilder sb)
+        {
+            table.Append(db,sb);
+            sb.Append(" "); sb.Append(alias);
+        }
+        public override string Alias => alias;
+        public override SDict<int, string> Display => (display == SDict<int, string>.Empty) ? table.Display:display;
+    }
     public class SSearch : SQuery
     {
         public readonly SQuery sce;
-        public readonly string alias;
         public readonly SList<Serialisable> where;
         public SSearch(SDatabase db, Reader f):base(Types.SSearch,f)
         {
             sce = f._Get(db) as SQuery ?? throw new Exception("Query expected");
-            alias = f.GetString();
             var w = SList<Serialisable>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
-                w = w+(f._Get(db).Lookup(sce.names),i);
+                w += (f._Get(db).Lookup(sce.names),i);
             where = w;
         }
-        public SSearch(SQuery s,string a, SList<Serialisable> w)
+        public SSearch(SQuery s,SList<Serialisable> w)
             :base(Types.SSearch, s.display, s.cpos, s.names)
         {
             sce = s;
-            alias = a;
             where = w;
         }
         public override void Put(StreamBase f)
         {
             base.Put(f);
             sce.Put(f);
-            f.PutString(alias);
             f.PutInt(where.Length);
             for (var b=where.First();b!=null;b=b.Next())
                 b.Value.Put(f);
         }
         public override Serialisable Lookup(string a)
         {
-            if (alias.CompareTo(a) == 0)
-                return sce;
             return sce.Lookup(a);
         }
         public static SSearch Get(SDatabase d,Reader f)
         {
             return new SSearch(d,f);
         }
-        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
+        public override RowSet RowSet(STransaction tr,Context cx)
         {
-            return new SearchRowSet(tr, this,nms);
+            return new SearchRowSet(tr, this,cx);
         }
         public override Serialisable Lookup(ILookup<string,Serialisable> nms)
         {
@@ -226,7 +255,6 @@ namespace Collection
                 b.Value.Append(db,sb); 
             }
         }
-        public override string Alias => (alias.Length!=0)?alias:base.Alias;
         public override SDict<int, string> Display => (display==SDict<int,string>.Empty)?sce.Display:display;
     }
     public class SGroupQuery : SQuery
@@ -241,10 +269,10 @@ namespace Collection
             var h = SList<Serialisable>.Empty;
             var n = f.GetInt();
             for (var i = 0; i < n; i++)
-                g = g + (i, f.GetString());
+                g += (i, f.GetString());
             n = f.GetInt();
             for (var i = 0; i < n; i++)
-                h = h+(f._Get(db).Lookup(source.names), i);
+                h += (f._Get(db).Lookup(source.names), i);
             groupby = g;
             having = h;
         }
@@ -262,7 +290,7 @@ namespace Collection
             source.Put(f);
             f.PutInt(groupby.Length);
             for (var b = groupby.First(); b != null; b = b.Next())
-                f.PutString(b.Value.val);
+                f.PutString(b.Value.Item2);
             f.PutInt(having.Length);
             for (var b = having.First(); b != null; b = b.Next())
                 b.Value.Put(f);
@@ -271,9 +299,9 @@ namespace Collection
         {
             return new SGroupQuery(d, f);
         }
-        public override RowSet RowSet(STransaction tr, ILookup<string, Serialisable> nms)
+        public override RowSet RowSet(STransaction tr, Context cx)
         {
-            return new GroupRowSet(tr, this, nms);
+            return new GroupRowSet(tr, this, cx);
         }
         public override Serialisable Lookup(ILookup<string, Serialisable> nms)
         {
@@ -287,7 +315,7 @@ namespace Collection
             for (var b =groupby.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.Value.val);
+                sb.Append(b.Value.Item2);
             }
             if (having.Length>0)
             {
@@ -323,7 +351,7 @@ namespace Collection
             distinct = d;  qry = q; order = or;
             var ag = false;
             for (var b = cpos.First(); b != null; b = b.Next())
-                if (b.Value.val.type == Types.SFunction)
+                if (b.Value.Item2.type == Types.SFunction)
                     ag = true;
             aggregates = ag;
         }
@@ -336,14 +364,14 @@ namespace Collection
             SDict<int,Serialisable>? c = (n>0)?SDict<int,Serialisable>.Empty:null;
             for (var i = 0; i < n; i++)
             {
-                a = a+(i, f.GetString());
-                c = c+(i,f._Get(db));
+                a += (i, f.GetString());
+                c += (i,f._Get(db));
             }
             var q = (SQuery)f._Get(db);
             var o = SList<SOrder>.Empty;
             n = f.GetInt();
             for (var i = 0; i < n; i++)
-                o = o+((SOrder)f._Get(db), i);
+                o += ((SOrder)f._Get(db), i);
             return new SSelectStatement(d,a,c,q,o);
         }
         public override void Put(StreamBase f)
@@ -354,8 +382,8 @@ namespace Collection
             var ab = display.First();
             for (var b = cpos.First(); ab!=null && b != null; b = b.Next(), ab=ab.Next())
             {
-                f.PutString(ab.Value.val);
-                b.Value.val.Put(f);
+                f.PutString(ab.Value.Item2);
+                b.Value.Item2.Put(f);
             }
             qry.Put(f);
             f.PutInt(order.Length.Value);
@@ -376,18 +404,19 @@ namespace Collection
             for (var b = cpos.First(); ab!=null && b != null; b = b.Next(),ab=ab.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.Value.val);
-                if (b.Value.val is SSelector sc && ab.Value.val.CompareTo(sc.name) == 0)
+                sb.Append(b.Value.Item2);
+                if (b.Value.Item2 is SSelector sc && ab.Value.Item2.CompareTo(sc.name) == 0)
                     continue;
-                sb.Append(" as "); sb.Append(ab.Value.val);
+                sb.Append(" as "); sb.Append(ab.Value.Item2);
             }
             sb.Append(' ');
+            sb.Append(qry);
             return sb.ToString();
         }
 
-        public override RowSet RowSet(STransaction tr,ILookup<string,Serialisable> nms)
+        public override RowSet RowSet(STransaction tr,Context cx)
         {
-            RowSet r = new SelectRowSet(tr,this,nms);
+            RowSet r = new SelectRowSet(tr,this,cx);
             if (distinct)
                 r = new DistinctRowSet(r);
             if (order.Length != 0)
