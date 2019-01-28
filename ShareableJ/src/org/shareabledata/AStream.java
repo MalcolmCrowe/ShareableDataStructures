@@ -18,6 +18,7 @@ public class AStream extends StreamBase {
 
     public RandomAccessFile file;
     public String filename;
+    long wposition = 0;
     long length = 0;
     SDict<Long, Long> uids = null; // used for movement of SDbObjects
     SDict<Long,Serialisable> commits = null;
@@ -31,6 +32,7 @@ public class AStream extends StreamBase {
         filename = fn;
         wbuf = new Buffer(this);
         length = file.length();
+        wposition = length;
         file.seek(0);
     }
 
@@ -161,34 +163,42 @@ public class AStream extends StreamBase {
     }
 
     protected boolean GetBuf(Buffer b) {
-        if (b.start > length) {
-            return false;
-        }
-        try
+        synchronized(file)
         {
-            file.seek(b.start);
-            var n = length - b.start;
-            if (n > Buffer.Size) {
-                n = Buffer.Size;
+            if (b.start > wposition) {
+                throw new Error("File overrun");
+     //           return false;
             }
-            b.len = file.read(b.buf, 0, (int) n);
-                return b.len > 0;
-        } catch(Exception e)
-        {
-            throw new Error("In Get");
+            try
+            {
+                file.seek(b.start);
+                var n = length - b.start;
+                if (n > Buffer.Size) {
+                    n = Buffer.Size;
+                }
+                b.len = file.read(b.buf, 0, (int) n);
+                    return b.len > 0;
+            } catch(Exception e)
+            {
+                throw new Error("In Get");
+            }
         }
     }
 
     protected void PutBuf(Buffer b){
-        try {
-            var p = file.length();
-            file.seek(p);
-            file.write(b.buf, 0, b.wpos);
-            length = p + b.wpos;
-            b.wpos = 0;
-        } catch(Exception e)
+        synchronized(file)
         {
-            throw new Error("In Put");
+            try {
+                var p = file.length();
+                file.seek(p);
+                file.write(b.buf, 0, b.wpos);
+                length = p + b.wpos;
+                wposition = length;
+                b.wpos = 0;
+            } catch(Exception e)
+            {
+                throw new Error("In Put");
+            }
         }
     }
 

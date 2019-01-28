@@ -12,7 +12,6 @@ package org.shareabledata;
  */
 public abstract class StreamBase {
     protected Buffer wbuf;
-    protected long wposition = 0;
     protected StreamBase() {}
     protected abstract long getLength();
     protected abstract boolean GetBuf(Buffer b);

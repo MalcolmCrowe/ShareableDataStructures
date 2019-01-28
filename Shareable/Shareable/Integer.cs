@@ -509,7 +509,7 @@ namespace Shareable
             }
             int d = 0;
             // first work out the most significant digit
-            while (b < a)
+            while (b <= a)
             {
                 a = a - b; // b is ds[ds.Count-1]
                 d++;
@@ -523,7 +523,7 @@ namespace Shareable
             {
                 var dv = ds[i];
                 d = 0;
-                while (dv < a)
+                while (dv <= a)
                 {
                     a = a - dv;
                     d++;

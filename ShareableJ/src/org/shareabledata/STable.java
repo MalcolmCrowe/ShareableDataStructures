@@ -56,7 +56,7 @@ public class STable extends SQuery {
         }
         STable(int ty,STable tb)
         {
-            super(ty,tb.uid);
+            super(ty,tb);
             name = tb.name;
             cols = tb.cols;
             rows = tb.rows;

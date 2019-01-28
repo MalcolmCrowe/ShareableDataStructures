@@ -412,7 +412,7 @@ public class Bigint implements Comparable {
             }
             int d = 0;
             // first work out the most significant digit
-            while (b.compareTo(a)<0)
+            while (b.compareTo(a)<=0)
             {
                 a = a.Minus(b); // b is ds[ds.Count-1]
                 d++;
@@ -426,7 +426,7 @@ public class Bigint implements Comparable {
             {
                 var dv = ds.get(i);
                 d = 0;
-                while (dv.compareTo(a)<0)
+                while (dv.compareTo(a)<=0)
                 {
                     a = a.Minus(dv);
                     d++;

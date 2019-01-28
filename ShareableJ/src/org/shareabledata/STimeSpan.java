@@ -31,12 +31,13 @@ public class STimeSpan extends Serialisable implements Comparable {
             var twentyfour = new Bigint(24);
             var s = t.Divide(new Bigint(10000000));
             frac = t.Remainder(new Bigint(10000000)).toInt();
-            var mi = s.Divide(sixty);
-            sec = s.Remainder(sixty).toInt();
-            var h = mi.Divide(sixty);
-            min = mi.Remainder(sixty).toInt();
-            day = h.Divide(twentyfour).toInt();
-            hour = h.Remainder(twentyfour).toInt();
+            var si = s.toInt();
+            var mi = si/60;
+            sec = si%60;
+            var h = mi/60;
+            min = mi%60;
+            day = h/24;
+            hour = h%24;
             ticks = ot;
         }
         public STimeSpan(boolean sg,int d,int h,int m,int s,int f)
@@ -65,13 +66,14 @@ public class STimeSpan extends Serialisable implements Comparable {
             var sixty = new Bigint(60);
             var twentyfour = new Bigint(24);
             var s = t.Divide(new Bigint(10000000));
-            frac = s.Remainder(new Bigint(10000000)).toInt();
-            var mi = s.Divide(sixty);
-            sec = s.Remainder(sixty).toInt();
-            var h = mi.Divide(sixty);
-            min = mi.Remainder(sixty).toInt();
-            day = h.Divide(twentyfour).toInt();
-            hour = h.Remainder(twentyfour).toInt();
+            frac = t.Remainder(new Bigint(10000000)).toInt();
+            var si = s.toInt();
+            var mi = si/60;
+            sec = si%60;
+            var h = mi/60;
+            min = mi%60;
+            day = h/24;
+            hour = h%24;
             sign = sg;
             ticks = ot;
         }
@@ -95,9 +97,19 @@ public class STimeSpan extends Serialisable implements Comparable {
             if (sign)
                 sb.append('-');
             if (day==0)
+            {
+                if (frac==0)
+                   sb.append(String.format("%02d:%02d:%02d", 
+                        hour,min,sec));
+                else
                 sb.append(String.format("%02d:%02d:%02d.%07d", 
                     hour,min,sec,frac));
-            sb.append(String.format("d.%02d:%02d:%02d.%07d", 
+            } 
+            else if (frac==0)
+                 sb.append(String.format("d.%02d:%02d:%02d", 
+                    day,hour,min,sec));
+            else
+                sb.append(String.format("d.%02d:%02d:%02d.%07d", 
                     day,hour,min,sec,frac));            
         }
         @Override

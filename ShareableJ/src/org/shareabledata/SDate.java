@@ -70,6 +70,9 @@ public class SDate extends Serialisable implements Comparable {
             var hour = h.Remainder(twentyfour).toInt();
             if (hour==0&&min==0&&sec==0&&f==0)
                 return String.format("%d-%02d-%02d",year,month,day);
+            if (f==0)
+                return String.format("%d-%02d-%02dT%02d:%02d:%02d",
+                    year,month,day,hour,min,sec);
             return String.format("%d-%02d-%02dT%02d:%02d:%02d.%07d",
                     year,month,day,hour,min,sec,f);
         }

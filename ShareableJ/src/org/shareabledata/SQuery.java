@@ -34,6 +34,13 @@ public abstract class SQuery extends SDbObject {
             cpos = q.cpos;
             names = q.names;
         }
+        public SQuery(int t,SQuery q)
+        {
+            super(t);
+            display = q.display;
+            cpos = q.cpos;
+            names = q.names;
+        }
         protected SQuery(int t, SDict<Integer, String> a, SDict<Integer,Serialisable> c, 
                 SDict<String, Serialisable> source)
         {
@@ -73,12 +80,14 @@ public abstract class SQuery extends SDbObject {
             cpos = null;
             names = null;
         }
+        /// This constructor is only called when committing am STable.
+        /// Ignore the columns defined in the transaction.
         protected SQuery(SQuery q, AStream f) throws Exception
         {
             super(q,f);
-            display = q.display;
-            cpos = q.cpos;
-            names = q.names;
+            display = null;
+            cpos = null;
+            names = null;
         }
         public Serialisable Lookup(String a)
         {

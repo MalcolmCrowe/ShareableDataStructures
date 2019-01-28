@@ -375,7 +375,10 @@ public class StrongServer implements Runnable {
                     //       db.result = null;
                     asy.StartException();
                     asy.WriteByte((byte)Types.Exception);
-                    asy.PutString(e.getMessage());
+                    var m = e.getMessage();
+                    if (m==null)
+                        m = e.toString();
+                    asy.PutString(m);
                     asy.Flush();
                 } catch (Exception ee) {
                 }
