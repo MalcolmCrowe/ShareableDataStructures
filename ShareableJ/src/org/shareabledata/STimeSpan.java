@@ -13,56 +13,67 @@ import java.text.SimpleDateFormat;
  * @author Malcolm
  */
 public class STimeSpan extends Serialisable implements Comparable {
+        public final boolean sign;
         public final long day;
         public final long hour;
         public final long min;
         public final long sec;
-        public final long milli;
+        public final long frac;
         public final Bigint ticks;
         public STimeSpan(Bigint t)
         {
             super(Types.STimeSpan);
-            var thou = new Bigint(1000);
+            var ot = t;
+            sign = t.compareTo(Bigint.Zero)<0;
+            if (sign)
+                t = t.Negate();
             var sixty = new Bigint(60);
             var twentyfour = new Bigint(24);
-            var m = t.Divide(new Bigint(10000));
-            var s = m.Divide(thou);
-            milli = m.Remainder(thou).toInt();
+            var s = t.Divide(new Bigint(10000000));
+            frac = t.Remainder(new Bigint(10000000)).toInt();
             var mi = s.Divide(sixty);
             sec = s.Remainder(sixty).toInt();
             var h = mi.Divide(sixty);
             min = mi.Remainder(sixty).toInt();
             day = h.Divide(twentyfour).toInt();
             hour = h.Remainder(twentyfour).toInt();
-            ticks = t;
+            ticks = ot;
         }
-        public STimeSpan(int h,int m,int s)
+        public STimeSpan(boolean sg,int d,int h,int m,int s,int f)
         {
             super(Types.STimeSpan);
-            day = 0;
+            var t = new Bigint(((d*24+h)*60+m)*60+s).Times(new Bigint(10000000))
+                    .Plus(new Bigint(f));
+            if (sg)
+                t = t.Negate();
+            ticks = t;
+            day = d;
             hour = h;
             min = m;
             sec = s;
-            milli = 0;
-            ticks = new Bigint((h*60+m)*60+s).Times(new Bigint(10000000));
+            frac = f;
+            sign = sg;
         }
         STimeSpan(Reader f) 
         {
             super(Types.STimeSpan, f);
             Bigint t = f.GetInteger();
-            var thou = new Bigint(1000);
+            var ot = t;
+            var sg = t.compareTo(Bigint.Zero)<0;
+            if (sg)
+                t = t.Negate();
             var sixty = new Bigint(60);
             var twentyfour = new Bigint(24);
-            var m = t.Divide(new Bigint(10000));
-            var s = m.Divide(thou);
-            milli = m.Remainder(thou).toInt();
+            var s = t.Divide(new Bigint(10000000));
+            frac = s.Remainder(new Bigint(10000000)).toInt();
             var mi = s.Divide(sixty);
             sec = s.Remainder(sixty).toInt();
             var h = mi.Divide(sixty);
             min = mi.Remainder(sixty).toInt();
             day = h.Divide(twentyfour).toInt();
             hour = h.Remainder(twentyfour).toInt();
-            ticks = t;
+            sign = sg;
+            ticks = ot;
         }
         @Override
         public void Put(StreamBase f) 
@@ -79,18 +90,28 @@ public class STimeSpan extends Serialisable implements Comparable {
             var that = (STimeSpan)o;
             return ticks.compareTo(that.ticks);
         }
+        void Str(StringBuilder sb)
+        {
+            if (sign)
+                sb.append('-');
+            if (day==0)
+                sb.append(String.format("%02d:%02d:%02d.%07d", 
+                    hour,min,sec,frac));
+            sb.append(String.format("d.%02d:%02d:%02d.%07d", 
+                    day,hour,min,sec,frac));            
+        }
         @Override
         public void Append(SDatabase db,StringBuilder sb)
         {
             sb.append('"');
-            sb.append(String.format("%02d:%02d:%02d:%02d.%03d", 
-                    day,hour,min,sec,milli));
+            Str(sb);
             sb.append('"');
         }
         @Override
         public String toString()
         {
-            return "Date "+String.format("%02d:%02d:%02d:%02d.%03d", 
-                    day,hour,min,sec,milli);
+            var sb = new StringBuilder();
+            Str(sb);
+            return sb.toString();
         }
 }

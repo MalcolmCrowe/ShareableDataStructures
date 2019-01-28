@@ -12,7 +12,7 @@ package org.shareabledata;
 public class Types {
 
     public static final int Serialisable = 0,
-            STimestamp = 1,
+            STimestamp = 1, // not used
             SInteger = 2,
             SNumeric = 3,
             SString = 4,
@@ -58,7 +58,7 @@ public class Types {
             STableExp = 44,
             SAliasedTable = 45;
     static String[] types = new String[]{
-        "", "Timestamp", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
+        "", "?", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
         "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",//7-13
         "Alter", "Drop", "View", "Index", "Search", "Begin", "Rollback", "Commit",//14-21
         "CreateTable", "CreateIndex", "UpdateSearch", "DeleteSearch",//22-25

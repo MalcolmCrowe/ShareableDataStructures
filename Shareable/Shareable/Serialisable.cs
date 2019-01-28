@@ -8,7 +8,7 @@ namespace Shareable
     public enum Types
     {
         Serialisable = 0,
-        STimestamp = 1,
+        STimestamp = 1, // unused
         SInteger = 2,
         SNumeric = 3,
         SString = 4,
@@ -121,7 +121,7 @@ namespace Shareable
                 case Types.SBoolean: return "boolean";
                 case Types.SDate: return "date";
                 case Types.STimeSpan: return "timespan";
-                case Types.STimestamp: return "timestamp";
+      //          case Types.STimestamp: return "timestamp";
             }
             throw new Exception("Unknown data type");
         }
@@ -659,7 +659,7 @@ namespace Shareable
             return new SInPredicate(arg.Lookup(nms), list.Lookup(nms));
         }
     }
-    public class STimestamp : Serialisable,IComparable
+/*    public class STimestamp : Serialisable,IComparable
     {
         public readonly long ticks;
         public STimestamp(DateTime t) : base(Types.STimestamp)
@@ -692,7 +692,7 @@ namespace Shareable
             var that = (STimestamp)obj;
             return ticks.CompareTo(that.ticks);
         }
-    }
+    } */
     public class SInteger : Serialisable, IComparable
     {
         public readonly int value;
@@ -850,6 +850,10 @@ namespace Shareable
             month = s.Month;
             rest = (s - new DateTime(year, month, 1)).Ticks;
         }
+        public SDate(int y,int m,long r) : base(Types.SDate)
+        {
+            year = y; month = m; rest = r;
+        }
         SDate(Reader f) : base(Types.SDate, f)
         {
             year = f.GetInt();
@@ -874,25 +878,41 @@ namespace Shareable
             if (obj == Null)
                 return 1;
             var that = (SDate)obj;
-            var c = year.CompareTo(that.year);
-            if (c == 0)
-                c = month.CompareTo(that.month);
-            if (c == 0)
-                c = rest.CompareTo(that.rest);
-            return c;
+            var dt = new DateTime(year, month, 1) + new TimeSpan(rest);
+            var tdt = new DateTime(that.year, that.month, 1) + new TimeSpan(that.rest);
+            return dt.Ticks.CompareTo(tdt.Ticks);
         }
         public override string ToString()
         {
             var dt = new DateTime(year, month, 1) + new TimeSpan(rest);
-            return "'"+dt.ToString()+"'";
+            var sb = new StringBuilder();
+            sb.Append('\''); sb.Append(dt.Year);
+            sb.Append('-'); sb.Append(dt.Month.ToString("D2"));
+            sb.Append('-'); sb.Append(dt.Day.ToString("D2"));
+            if (dt.TimeOfDay.Ticks!=0)
+            {
+                sb.Append('T'); sb.Append(dt.TimeOfDay);
+            }
+            sb.Append('\'');
+            return sb.ToString();
         }
     }
     public class STimeSpan : Serialisable,IComparable
     {
+        public readonly int years;
+        public readonly int months;
         public readonly TimeSpan ts;
         public STimeSpan(TimeSpan s) : base(Types.STimeSpan)
         {
             ts = s;
+            years = 0;
+            months = 0;
+        }
+        public STimeSpan(int y,int m) :base(Types.STimeSpan)
+        {
+            years = y;
+            months = m;
+            ts = new TimeSpan(0);
         }
         STimeSpan(Reader f) : base(Types.STimeSpan, f)
         {
@@ -914,10 +934,18 @@ namespace Shareable
             if (obj == Null)
                 return 1;
             var that = (STimeSpan)obj;
+            var c = years.CompareTo(that.years);
+            if (c != 0)
+                return c;
+            c = months.CompareTo(that.months);
+            if (c != 0)
+                return c;
             return ts.CompareTo(that.ts);
         }
         public override string ToString()
         {
+            if (years != 0 || months!=0)
+                return "'" + years + "Y" + months + "M'";
             return "'"+ ts.ToString() + "'";
         }
     }
@@ -2571,7 +2599,7 @@ namespace Shareable
             switch (tp)
             {
                 case Types.Serialisable: s = Serialisable.Get(this); break;
-                case Types.STimestamp: s = STimestamp.Get(this); break;
+ //               case Types.STimestamp: s = STimestamp.Get(this); break;
                 case Types.SBigInt:
                 case Types.SInteger: s = SInteger.Get(this); break;
                 case Types.SNumeric: s = SNumeric.Get(this); break;

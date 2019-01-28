@@ -198,10 +198,11 @@ public class Bigint implements Comparable {
         return new Bigint(c);
     }
     
-    Bigint Times(byte m)
+    Bigint Times(byte b)
     {
         if (bytes.length==0)
             return this;
+        var m = ((int)b)&0xff;
         boolean s = getSign();
         var th = s? Negate():this;
         var c = new byte[th.bytes.length];
@@ -375,18 +376,18 @@ public class Bigint implements Comparable {
         }
         return new Bigint(nb);
     }
-    Bigint Plus(Bigint b) { return Add(b,0); }
-    Bigint Minus(Bigint b) { return Plus(b.Negate()); }
-    Bigint Times(Bigint b)
+    public Bigint Plus(Bigint b) { return Add(b,0); }
+    public Bigint Minus(Bigint b) { return Plus(b.Negate()); }
+    public Bigint Times(Bigint b)
     {
         Bigint r = Zero;
         int s = 0;
         for (int j=b.bytes.length-1;j>=0;j--,s++)
-            r = r.Add(Bigint.this.Times(b.bytes[j]),s);
+            r = r.Add(Times(b.bytes[j]),s);
         return r;
     }
-    Bigint Divide(Bigint b) { return Divide(this,b); }  
-    Bigint Remainder(Bigint b) { return Minus(Divide(b).Times(b)); }
+    public Bigint Divide(Bigint b) { return Divide(this,b); }  
+    public Bigint Remainder(Bigint b) { return Minus(Divide(b).Times(b)); }
     static Bigint Divide(Bigint a,Bigint b)
     {
             boolean sa = a.getSign();

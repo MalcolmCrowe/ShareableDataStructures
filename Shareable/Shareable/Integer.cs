@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 #nullable enable
-namespace Collection
+namespace Shareable
 {
     /// <summary>
     /// This namespace has its own concept of Integer
@@ -475,8 +475,8 @@ namespace Collection
 		{
 			Integer r = new Integer(0);
 			int s=0;
-			for (int j=b.bytes.Length-1;j>=0;j--,s++)
-				r = r.Add(a.Times(b.bytes[j]),s);
+            for (int j = b.bytes.Length - 1; j >= 0; j--, s++)
+                r = r.Add(a.Times(b.bytes[j]), s);
 			return r;
 		}
         /// <summary>

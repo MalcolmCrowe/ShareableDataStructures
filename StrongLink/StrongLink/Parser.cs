@@ -75,12 +75,11 @@ namespace StrongLink
             SUM = 64,
             TABLE = 65,
             TIMESPAN = 66,
-            TIMESTAMP = 67,
-            TO = 68,
-            TRUE = 69,
-            UPDATE = 70,
-            VALUES = 71,
-            WHERE = 72
+            TO = 67,
+            TRUE = 68,
+            UPDATE = 69,
+            VALUES = 70,
+            WHERE = 71
         }
         internal class Lexer
         {
@@ -164,24 +163,14 @@ namespace StrongLink
                     Advance();
                     return new SDate(new DateTime(y, mo, d));
                 }
-                Mustbe(' ');
-                var h = Unsigned(2, 0, 23);
-                Mustbe(':');
-                var mi = Unsigned(2, 0, 59);
-                Mustbe(':');
-                var s = Unsigned(2, 0, 59);
-                Mustbe('\'');
-                var dt = new DateTime(y, mo, d, h, mi, s);
-                return new STimestamp(dt);
-            }
-            Sym For(Types t)
-            {
-                switch (t)
-                {
-                    case Types.SDate: return Sym.DATE;
-                    case Types.STimestamp: return Sym.TIMESTAMP;
-                }
-                throw new Exception("Unexpected type " + t);
+                Mustbe('T');
+                var p = pos;
+                while (ch != '\'')
+                    Advance();
+                Advance();
+                return new SDate(y, mo, 
+                    TimeSpan.Parse(new string(input,p,pos-p-1)).Ticks+
+                    (d-1)*TimeSpan.TicksPerDay);
             }
             internal Sym Next()
             {
@@ -252,10 +241,11 @@ namespace StrongLink
                                     if (ch == '\'')
                                     {
                                         Advance();
-                                        val = new STimeSpan(new TimeSpan(Unsigned()));
-                                        if (ch != '\'')
-                                            throw new Exception("non-terminated string literal");
+                                        var p = pos;
+                                        while (ch != '\'')
+                                            Advance();
                                         Advance();
+                                        val = new STimeSpan(TimeSpan.Parse(new string(input, p, pos - p - 1)));
                                         return tok = Sym.LITERAL;
                                     }
                                     return tok = t;
@@ -341,7 +331,7 @@ namespace StrongLink
         {
             switch (t)
             {
-                case Sym.TIMESTAMP: return Types.STimestamp;
+  //              case Sym.TIMESTAMP: return Types.STimestamp;
                 case Sym.INTEGER: return Types.SInteger;
                 case Sym.NUMERIC: return Types.SNumeric;
                 case Sym.STRING: return Types.SString;
@@ -425,7 +415,7 @@ namespace StrongLink
             Types dt = Types.Serialisable;
             switch (lxr.tok)
             {
-                case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
+   //             case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
                 case Sym.INTEGER: Next(); dt = Types.SInteger; break;
                 case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
                 case Sym.STRING: Next(); dt = Types.SString; break;

@@ -197,17 +197,17 @@ namespace Test
                 return;
             Begin();
             conn.ExecuteNonQuery("create table ta(b date,c timespan,d boolean)");
-            conn.ExecuteNonQuery("insert ta values(date'2018-01-06',timespan'72000000000',false)");
-            CheckResults(t, 1, "select from ta", "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
+            conn.ExecuteNonQuery("insert ta values(date'2019-01-06T12:30:00',timespan'02:00:00',false)");
+            CheckResults(t, 1, "select from ta", "[{b:\"2019-01-06T12:30:00\",c:\"02:00:00\",d:\"false\"}]");
             Rollback();
             if (!commit)
             {
                 Begin();
                 conn.CreateTable("a", new SColumn("b", Types.SDate), new SColumn("c", Types.STimeSpan),
                         new SColumn("d", Types.SBoolean));
-                conn.Insert("a", new string[0], new Serialisable[] { new SDate(new DateTime(2018,01,06)),
+                conn.Insert("a", new string[0], new Serialisable[] { new SDate(new DateTime(2019,01,06,12,30,0)),
             new STimeSpan(new TimeSpan(2,0,0)),SBoolean.False});
-                CheckResults(new STable("a"), "[{b:\"06/01/2018 00:00:00\",c:\"02:00:00\",d:\"false\"}]");
+                CheckResults(new STable("a"), "[{b:\"2019-01-06T12:30:00\",c:\"02:00:00\",d:\"false\"}]");
                 Rollback();
             }
         }

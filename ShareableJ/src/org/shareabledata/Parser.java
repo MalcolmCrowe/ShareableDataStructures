@@ -82,12 +82,11 @@ public class Parser {
         SUM = 64,
         TABLE = 65,
         TIMESPAN = 66,
-        TIMESTAMP = 67,
-        TO = 68,
-        TRUE = 69,
-        UPDATE = 70,
-        VALUES = 71,
-        WHERE = 72;
+        TO = 67,
+        TRUE = 68,
+        UPDATE = 69,
+        VALUES = 70,
+        WHERE = 71;
     static String[] syms= new String[]{ 
         "Null","ID","LITERAL","LPAREN","COMMA","RPAREN", //0-5
         "EQUAL","NEQ","LEQ","LSS","GEQ","GTR","DOT", // 6-12
@@ -100,7 +99,7 @@ public class Parser {
         "NATURAL","NOT","NULL","NUMERIC","ON","OR", // 49-54
         "ORDERBY","OUTER","PRIMARY","REFERENCES","RIGHT","ROLLBACK",//55-60
         "SELECT","SET","STRING","SUM","TABLE","TIMESPAN",//61-66
-        "TIMESTAMP","TO","TRUE","UPDATE","VALUES","WHERE"}; // 67-72
+        "TO","TRUE","UPDATE","VALUES","WHERE"}; // 67-71
     }
     class Lexer
     {
@@ -184,25 +183,75 @@ public class Parser {
                 if (ch == '\'')
                 {
                     Advance();
-                    return new SDate(y, mo, d);
+                    return new SDate(y, mo, 
+                            new Bigint(d-1).Times(new Bigint(24*60*60))
+                                    .Times(new Bigint(10000000)));
                 }
-                Mustbe(' ');
-                var h = Unsigned(2, 0, 23);
+                Mustbe('T');
+                var r = Unsigned(2, 0, 23)+(d-1)*24;
                 Mustbe(':');
-                var mi = Unsigned(2, 0, 59);
+                r = Unsigned(2, 0, 59)+r*60;
                 Mustbe(':');
-                var s = Unsigned(2, 0, 59);
-                Mustbe('\'');
-                return new STimestamp(y, mo, d, h, mi, s);
-            }
-            int For(int t) throws Exception
-            {
-                switch (t)
+                r = Unsigned(2, 0, 59)+r*60;
+                var re = new Bigint(r).Times(new Bigint(10000000));
+                if (ch=='.')
                 {
-                    case Types.SDate: return Sym.DATE;
-                    case Types.STimestamp: return Sym.TIMESTAMP;
+                    Advance();
+                    var n = 0;
+                    var v = 0;
+                    for (;Character.isDigit(ch);n++)
+                    {
+                        v = v*10+(ch-'0');
+                        Advance();
+                    }
+                    for (;n<7;n++)
+                        v = v*10;
+                    re = re.Plus(new Bigint(v));
                 }
-                throw new Exception("Unexpected type " + t);
+                Mustbe('\'');
+                return new SDate(y, mo,re);
+            }
+            Serialisable TimeSpanLiteral() throws Exception
+            {
+                boolean sg = false;
+                if (ch=='-')
+                {
+                    sg = true;
+                    Advance();
+                }
+                var d = Unsigned().toInt();
+                int h = 0, m = 0, s = 0, f = 0; 
+                if (ch=='\'')
+                    return new STimeSpan(sg,d,0,0,0,0);
+                if (ch=='.')
+                {
+                    Advance();
+                    h = Unsigned(2);
+                }
+                else {
+                    h = d;  
+                    d = 0;
+                }
+                Mustbe(':');
+                m = Unsigned(2);
+                if (ch==':')
+                {
+                    Advance();
+                    s = Unsigned(2);
+                    if(ch=='.')
+                    {
+                        Advance();
+                        var n = 0;
+                        for (;Character.isDigit(ch);n++)
+                        {
+                            f = (f*10)+(ch-'0');
+                            Advance();
+                        }
+                        for (;n<7;n++)
+                            f = f*10;
+                    }
+                }
+                return new STimeSpan(sg,d,h,m,s,f);
             }
             final int Next() throws Exception
             {
@@ -273,7 +322,7 @@ public class Parser {
                                     if (ch == '\'')
                                     {
                                         Advance();
-                                        val = new STimeSpan(Unsigned());
+                                        val = TimeSpanLiteral();
                                         if (ch != '\'')
                                             throw new Exception("non-terminated string literal");
                                         Advance();
@@ -362,7 +411,6 @@ public class Parser {
         {
             switch (t)
             {
-                case Sym.TIMESTAMP: return Types.STimestamp;
                 case Sym.INTEGER: return Types.SInteger;
                 case Sym.NUMERIC: return Types.SNumeric;
                 case Sym.STRING: return Types.SString;
@@ -446,7 +494,6 @@ public class Parser {
             int dt = Types.Serialisable;
             switch (lxr.tok)
             {
-                case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
                 case Sym.INTEGER: Next(); dt = Types.SInteger; break;
                 case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
                 case Sym.STRING: Next(); dt = Types.SString; break;

@@ -38,8 +38,10 @@ public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
                     var inr = (SInner<K,V>)cb;
                     cb = inr.gtr;
                 }
-                else
-                    cb = (SBucket<K,V>)cb.Slot(bpos.pos).val;
+                else {
+                    var ob = cb.Slot(bpos.pos).val;
+                    cb = (ob instanceof SBucket)?(SBucket<K,V>)ob:null;
+                }
             }
             return (bmk==null)?null:new SDictBookmark<K,V>(bmk);
     }

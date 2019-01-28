@@ -38,7 +38,6 @@ public class Reader {
         Serialisable s = null;
         switch (tp) {
             case Types.Serialisable: s = Serialisable.Get(this); break;
-            case Types.STimestamp:   s = STimestamp.Get(this);   break;
             case Types.SInteger:     s = SInteger.Get(this);     break;
             case Types.SNumeric:     s = SNumeric.Get(this);     break;
             case Types.SString:      s = SString.Get(this);      break;

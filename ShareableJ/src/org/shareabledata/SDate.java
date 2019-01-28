@@ -4,8 +4,6 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.util.Date;
-import java.util.Calendar;
 /**
  *
  * @author Malcolm
@@ -14,24 +12,19 @@ public class SDate extends Serialisable implements Comparable {
         public final int year;
         public final int month;
         public final Bigint rest;
-        public SDate(Date d)
+        public SDate(int y,int mo,int d,int h,int mi,int s,int frac)
         {
             super(Types.SDate);
-            var c = new Calendar.Builder().setInstant(d).build();
-            year = c.get(Calendar.YEAR);
-            month = c.get(Calendar.MONTH)+1;
-            var day = c.get(Calendar.DAY_OF_MONTH);
-            var hr = c.get(Calendar.HOUR);
-            var min = c.get(Calendar.MINUTE);
-            var sec = c.get(Calendar.SECOND);
-            rest = new Bigint(((day*24+hr)*60+min)*60+sec)
-                    .Times(new Bigint(10000000));
+            var r = new Bigint((((d-1)*24+h)*60+mi)*60+s);
+            r = r.Times(new Bigint(10000000)).Plus(new Bigint(frac));
+            year = y; month = mo; 
+            rest = r;            
         }
-        public SDate(int y,int m,long d)
+        public SDate(int y,int m,Bigint r)
         {
             super(Types.SDate);
             year = y; month = m; 
-            rest = new Bigint((d-1)*24*60*60).Times(new Bigint(10000000));
+            rest = r;
         }
         SDate(Reader f)
         {
@@ -65,24 +58,25 @@ public class SDate extends Serialisable implements Comparable {
         }
         String str()
         {
-            var thou = new Bigint(1000);
             var sixty = new Bigint(60);
             var twentyfour = new Bigint(24);
-            var m = rest.Divide(new Bigint(10000));
-            var s = m.Divide(thou);
-            var mil = m.Remainder(thou).toInt();
+            var s = rest.Divide(new Bigint(10000000));
+            var f = rest.Remainder(new Bigint(10000000)).toInt();
             var mi = s.Divide(sixty);
             var sec = s.Remainder(sixty).toInt();
             var h = mi.Divide(sixty);
             var min = mi.Remainder(sixty).toInt();
-            var day = h.Divide(twentyfour).toInt();
+            var day = h.Divide(twentyfour).toInt()+1;
             var hour = h.Remainder(twentyfour).toInt();
-            return String.format("%01d:%02d:%02d:%02d.%03d",
-                    day,hour,min,sec,mil);
+            if (hour==0&&min==0&&sec==0&&f==0)
+                return String.format("%d-%02d-%02d",year,month,day);
+            return String.format("%d-%02d-%02dT%02d:%02d:%02d.%07d",
+                    year,month,day,hour,min,sec,f);
         }
         @Override
         public void Append(SDatabase db,StringBuilder sb)
         {
+            
             sb.append('"');sb.append(str());sb.append('"');
         }
         @Override
