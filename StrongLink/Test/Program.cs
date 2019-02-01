@@ -48,7 +48,7 @@ namespace Test
             Test4(test);
             Test5(test);
             Test6(test);
-       //     Test7(test);
+            Test7(test);
        //     Test8(test);
         }
         void Test1(int t)

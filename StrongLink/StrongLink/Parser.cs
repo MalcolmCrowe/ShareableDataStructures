@@ -177,8 +177,8 @@ namespace StrongLink
                 if (pushBack!=Sym.Null)
                 {
                     tok = pushBack;
-                    pos = pushPos.Value;
-                    ch = pushCh.Value;
+                    pos = pushPos??0;
+                    ch = pushCh??'\0';
                     pushBack = Sym.Null;
                     return tok;
                 }
@@ -441,7 +441,7 @@ namespace StrongLink
             {
                 var c = MustBeID();
                 var t = For(lxr.tok);
-                cols = cols+(new SColumn(c.str, t), cols.Length.Value); // ok
+                cols = cols+(new SColumn(c.str, t), cols.Length??0); // ok
                 Next();
                 switch(lxr.tok)
                 {
@@ -458,7 +458,7 @@ namespace StrongLink
             for (; ;)
             {
                 var c = MustBeID();
-                cols = cols+(new SColumn(c.str), cols.Length.Value); // ok
+                cols = cols+(new SColumn(c.str), cols.Length??0); // ok
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return cols;
@@ -474,7 +474,7 @@ namespace StrongLink
             Mustbe(Sym.LPAREN);
             for (; ; )
             {
-                cols = cols+(Value(), cols.Length.Value);
+                cols = cols+(Value(), cols.Length??0);
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return new SValues(cols);
@@ -487,7 +487,7 @@ namespace StrongLink
         {
             var r = SList<ValueTuple<string, Serialisable>>.Empty;
             var k = 0;
-            for (; ;Next())
+            for (; ;Next(),k++)
             {
 
                 var c = Value();
@@ -499,7 +499,7 @@ namespace StrongLink
                     Next();
                     n = MustBeID().str;
                 }
-                r += (new ValueTuple<string, Serialisable>(n, c??Serialisable.Null), k++);
+                r += ((n, c??Serialisable.Null), k);
                 if (lxr.tok != Sym.COMMA)
                     return r;
             }
@@ -546,36 +546,36 @@ namespace StrongLink
             var tb = TableExp(als,cp);
             var wh = SList<Serialisable>.Empty;
             var tt = Sym.WHERE;
-            for (; lxr.tok==tt;)
+            var n = 0;
+            for (; lxr.tok==tt;n++)
             {
                 Next(); tt = Sym.AND;
-                wh += (Conjunct(),wh.Length.Value);
+                wh += (Conjunct(),n);
             }
-            if (wh.Length == 0) return tb;
-            var sqry = new SSearch(tb, wh);
+            SQuery sqry = (wh.Length==0)?tb:new SSearch(tb, wh);
             if (lxr.tok!=Sym.GROUPBY)
                 return sqry;
             Next();
             var gp = SDict<int, string>.Empty;
-            while (lxr.tok==Sym.ID)
+            for (n = 0; lxr.tok==Sym.ID; n++)
             {
-                gp += (gp.Length.Value, ((SString)lxr.val).str);
+                gp += (n, ((SString)lxr.val).str);
                 Next();
-                if (lxr.tok == Sym.COMMA)
-                    Next();
-                else
+                if (lxr.tok != Sym.COMMA)
                     break;
+                Next();
             }
             var h = SList<Serialisable>.Empty;
             if (lxr.tok == Sym.HAVING)
-                for (; ; )
+                for (n =0; ; n++)
                 {
                     Next();
-                    h += (Conjunct(), h.Length.Value);
+                    h += (Conjunct(), n);
                     if (lxr.tok != Sym.AND)
                         break;
                 }
-            return new SGroupQuery(sqry, sqry.display, sqry.cpos, sqry.names, gp, h);
+            return new SGroupQuery(sqry, sqry.display, sqry.cpos, 
+                new Context(sqry.names,null),gp, h);
         }
         SQuery TableExp(SDict<int, string> als, SDict<int, Serialisable> cp)
         {
@@ -605,7 +605,8 @@ namespace StrongLink
                 var da = SDict<int, string>.Empty;
                 var ca = SDict<int, Serialisable>.Empty;
                 var na = SDict<string, Serialisable>.Empty;
-                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, SList<SExpression>.Empty, da, ca, na); 
+                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, SList<SExpression>.Empty,
+                    da, ca, new Context(na, null)); 
             }
             return tb;
         }
@@ -830,7 +831,7 @@ namespace StrongLink
                         break;
                 }
             }
-            return new SSelectStatement(dct, als, cp, q, or);
+            return new SSelectStatement(dct, als, cp, q, or,Context.Empty);
         }
         Serialisable Delete()
         {
