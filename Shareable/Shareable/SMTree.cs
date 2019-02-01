@@ -165,7 +165,7 @@ namespace Shareable
                 st = (SITree)(_impl + (k.element, nv)); 
             }
             tb = TreeBehaviour.Allow;
-            return new SMTree<K>(_info, st, (Length??0) + 1);
+            return new SMTree<K>(_info, st, Length.Value + 1);
         }
         protected SMTree<K> Add(SCList<Variant> k, long v)
         {
@@ -217,7 +217,7 @@ namespace Shareable
                     st = st?.Remove(k0);
                     break;
             }
-            return new SMTree<K>(_info, st, nc??0);
+            return new SMTree<K>(_info, st, nc.Value);
         }
         protected SMTree<K> Remove(SCList<Variant> k)
         {
@@ -254,7 +254,7 @@ namespace Shareable
                     st = st?.Remove(k0);
                     break;
             }
-            return new SMTree<K>(_info, st, nc??0);
+            return new SMTree<K>(_info, st, nc.Value);
         }
         public static SMTree<K> operator-(SMTree<K>t,SCList<Variant>k)
         {

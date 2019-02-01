@@ -1,15 +1,17 @@
 ﻿using System.Text;
 #nullable enable
-namespace Shareable
+namespace Collection
 {
     public abstract class Collection<T>
     {
         public readonly int? Length;
         protected Collection(int? c = null) { Length = c; }
         public abstract Bookmark<T>? First();
-        public T[] ToArray()
+        public T[]? ToArray()
         {
-            var r = new T[Length??0];
+            if (Length == null)
+                return null;
+            var r = new T[Length.Value];
             for (var b = First(); b != null; b = b.Next())
                 r[b.Position] = b.Value;
             return r;
