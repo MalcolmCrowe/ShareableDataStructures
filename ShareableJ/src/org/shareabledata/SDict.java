@@ -46,9 +46,19 @@ public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
             return (bmk==null)?null:new SDictBookmark<K,V>(bmk);
     }
     @Override
-    public Bookmark<SSlot<K, V>> First() {
-        return (root == null || root.total == 0) ? null
-                : new SDictBookmark<K, V>(new SBookmark<K, V>(root, 0, null));
+    public SDictBookmark<K,V> First() {
+        if(root == null || root.total == 0)
+            return null;
+        var stk = new SBookmark<K,V>(root, 0, null);
+        var d = root.Slot(0);
+        var b = d.val;
+        while (b instanceof SBucket)
+        {
+            stk = new SBookmark<K,V>((SBucket)b,0,stk);
+            d = stk._bucket.Slot(0);
+            b = d.val;
+        }
+        return new SDictBookmark<K,V>(stk);
     }
 
     public SDict<K, V> Add(K k, V v) {

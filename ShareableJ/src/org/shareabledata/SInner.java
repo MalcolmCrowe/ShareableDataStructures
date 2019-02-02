@@ -246,7 +246,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         }
         protected SSlot<K, SBucket<K, V>>[] Replace(int j, SSlot<K, SBucket<K, V>> d)
         {
-            SSlot<K, SBucket<K, V>>[] s = (SSlot<K, SBucket<K, V>>[])new Object [count];
+            SSlot<K, SBucket<K, V>>[] s = (SSlot<K, SBucket<K, V>>[])new SSlot [count];
             int i = 0;
             while (i < count)
             {
@@ -278,7 +278,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
         }
         SSlot<K, SBucket<K, V>>[] Splice(int ix, SSlot<K, SBucket<K, V>> ns, SSlot<K, SBucket<K, V>> os) // insert ns at ppos ix, replace next by os
         {
-            SSlot<K, SBucket<K, V>>[] s = (SSlot<K, SBucket<K, V>>[])new Object[count + 1];
+            SSlot<K, SBucket<K, V>>[] s = (SSlot<K, SBucket<K, V>>[])new SSlot[count + 1];
             int j = 0, k = 0;
             while (j < ix)
                 s[k++] = slots[j++];

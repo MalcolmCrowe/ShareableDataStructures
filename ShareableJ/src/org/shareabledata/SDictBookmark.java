@@ -17,7 +17,7 @@ public class SDictBookmark<K extends Comparable,V> extends Bookmark<SSlot<K,V>> 
         _bmk = bmk; 
     }
     @Override
-    public Bookmark<SSlot<K, V>> Next(){
+    public SDictBookmark<K, V> Next(){
         SBookmark<K,V> b = _bmk.Next(_bmk,null);
         return (b==null)?null:new SDictBookmark<K,V>(b);
     }

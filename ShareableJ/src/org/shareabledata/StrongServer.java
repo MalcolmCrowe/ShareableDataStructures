@@ -73,7 +73,6 @@ public class StrongServer implements Runnable {
             if (p < 0) {
                 return;
             }
-            System.out.println("Protocol byte "+Types.types[p]);
             try {
                 switch ((byte) p) {
                     case Types.DescribedGet:

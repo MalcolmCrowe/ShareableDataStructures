@@ -46,7 +46,7 @@ public class SBookmark<K extends Comparable,V> {
         /// <returns></returns>
         public SBookmark<K,V> Next(SBookmark<K,V> stk,SDict<K,V> tree)
         {
-            SBucket<K, V> b;
+            Object b;
             SSlot<K,Object> d;
             if (stk == null) // following Create or Reset
             {
@@ -81,19 +81,19 @@ public class SBookmark<K extends Comparable,V> {
                 if (stk._bpos == stk._bucket.count)
                 { // will only happen for a non-leaf
                     b = ((SInner<K,V>)(stk._bucket)).gtr;
-                    d = new SSlot<K,Object>(null, null); // or compiler complains
+           //         d = new SSlot<>(null, null); // or compiler complains
                 }
                 else // might be leaf or not
                 {
                     d = stk._bucket.Slot(stkPos);
-                    b = (d.val instanceof SBucket)?(SBucket<K,V>)d.val:null;
+                    b = d.val;
                 }
             }
-            while (b != null) // now ensure we are at a leaf
+            while (b instanceof SBucket) // now ensure we are at a leaf
             {
-                stk = new SBookmark<K, V>(b, 0, stk);
+                stk = new SBookmark<>((SBucket<K,V>)b, 0, stk);
                 d = stk._bucket.Slot(0);
-                b = (SBucket<K,V>)d.val;
+                b = d.val;
             }
             return stk;
 
