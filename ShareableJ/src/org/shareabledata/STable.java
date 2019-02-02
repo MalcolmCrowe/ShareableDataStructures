@@ -160,9 +160,10 @@ public class STable extends SQuery {
             f.PutString(name);
         }
         @Override
-        public Serialisable Lookup(ILookup<String,Serialisable> nms) 
+        public Serialisable Lookup(Context nms) 
         {
-             return (nms instanceof RowBookmark)?((RowBookmark)nms)._ob:this;
+             return (nms.head instanceof RowBookmark)?
+                     ((RowBookmark)nms.head)._ob:this;
         }
         @Override
         public boolean Conflicts(Serialisable that)
@@ -175,7 +176,8 @@ public class STable extends SQuery {
             return false;
         }
         @Override
-        public RowSet RowSet(STransaction tr,Context cx)
+        public RowSet RowSet(STransaction tr,SQuery top, 
+                SDict<Long,SFunction> ags,Context cx)
         {
             if (indexes!=null)
                 for (var b = indexes.First(); b != null; b = b.Next())

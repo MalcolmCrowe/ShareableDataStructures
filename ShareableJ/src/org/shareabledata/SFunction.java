@@ -12,6 +12,8 @@ package org.shareabledata;
 public class SFunction extends Serialisable {
         public final Serialisable arg; // probably an SQuery
         public final byte func;
+        static long _fid = 0;
+        public final long fid = ++_fid;
         public SFunction(SDatabase db,byte fn,Reader f) throws Exception
         {
             super(Types.SFunction);
@@ -39,102 +41,101 @@ public class SFunction extends Serialisable {
             arg.Put(f);
         }
         @Override
-        public Serialisable Lookup(ILookup<String,Serialisable> nms)
+        public Serialisable Lookup(Context cx)
         {
-            var x = arg.Lookup(nms);
-            if (!x.isValue() || !(nms instanceof RowBookmark))
-                return new SFunction(func,x);
+            if (cx.ags==null)
+                return this;
+            var x = arg.Lookup(cx);
             if (func == Func.Null)
-                return SBoolean.For(x == Serialisable.Null);
-            var t = Types.Serialisable;
-            var empty = true;
-            var rb = (RowBookmark)nms;
-            Bigint ai = Bigint.Zero;
-            Numeric an = Numeric.Zero;
-            String ac = "";
-            int ic = 0;
-            for (var b = (RowBookmark)rb._rs.First(); b != null; 
-                    b = (RowBookmark)b.Next())
-                if (b.SameGroupAs(rb))
-                {
-                    var a = arg.Lookup(b);
-                    t = a.type;
-                    switch (func)
-                    {
-                        case Func.Count:
-                            if (a!=Serialisable.Null)
-                                ic++;
-                            break;
-                        case Func.Sum:
-                            switch (t)
-                            {
-                                case Types.SInteger:
-                                    var xi = new Bigint(((SInteger)a).value);
-                                    ai = ai.Add(xi,0); break;
-                                case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
-                                    ai = ai.Add(xb, 0); break;
-                                case Types.SNumeric:
-                                    var xn = ((SNumeric)a).num;
-                                    an = an.Add(xn); break;
-                            }
-                            break;
-                        case Func.Max:
-                            switch (t)
-                            {
-                                case Types.SInteger:
-                                    var xi = new Bigint(((SInteger)a).value);
-                                    ai = ((empty || xi.compareTo(ai)>0) ? xi : ai);
-                                    break;
-                                case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
-                                    ai = ((empty || xb.compareTo(ai)>0) ? xb : ai);
-                                    break;
-                                case Types.SNumeric:
-                                    var xn = ((SNumeric)a).num;
-                                    an = (empty || xn.compareTo(an)>0) ? xn : an;
-                                    break;
-                                case Types.SString:
-                                    var xc = ((SString)a).str;
-                                    ac = (empty || xc.compareTo(ac) > 0)? xc : ac;
-                                    break;
-                            }
-                            empty = false;
-                            break;
-                        case Func.Min:
-                            switch (t)
-                            {
-                                case Types.SInteger:
-                                    var xi = new Bigint(((SInteger)a).value);
-                                    ai = ((empty || xi.compareTo(ai)<0) ? xi : ai);
-                                    break;
-                                case Types.SBigInt:
-                                    var xb = ((SInteger)a).big;
-                                    ai = (empty || xb.compareTo(ai)<0) ? xb : ai;
-                                    break;
-                                case Types.SNumeric:
-                                    var xn = ((SNumeric)a).num;
-                                    an = (empty || xn.compareTo(an)<0) ? xn : an;
-                                    break;
-                                case Types.SString:
-                                    var xc = ((SString)a).str;
-                                    ac = (empty || xc.compareTo(ac) < 0) ? xc : ac;
-                                    break;
-                            }
-                            empty = false;
-                            break;
-                    }
-                }
-            if (func == Func.Count)
-                return new SInteger(ic);
-            switch(t)
+                return SBoolean.For(x == Null);
+            return cx.defines(fid) ? cx.get(fid) : Null;
+        }
+        @Override
+        public Serialisable StartCounter(Serialisable v)
+        {
+            switch (func)
             {
-                case Types.SInteger: 
-                case Types.SBigInt: return new SInteger(ai);
-                case Types.SNumeric: return new SNumeric(an);
-                case Types.SString: return new SString(ac);
-                default: return Serialisable.Null;
+                case Func.Count:
+                    return SInteger.One;
+                case Func.Max:
+                case Func.Min:
+                case Func.Sum:
+                    return v;
             }
+            return Null;
+        }
+        public Serialisable AddIn(Serialisable a,Serialisable v)
+        {
+            switch (func)
+            {
+                case Func.Count:
+                    if (v == Null)
+                        return a;
+                    return new SInteger(((SInteger)a).value + 1);
+                case Func.Max:
+                    return (a.compareTo(v) > 0) ? a : v;
+                case Func.Min:
+                    return (a.compareTo(v) < 0) ? a : v;
+                case Func.Sum:
+                    switch (a.type)
+                    {
+                        case Types.SInteger:
+                            {
+                                var lv = ((SInteger)a).value;
+                                switch (v.type)
+                                {
+                                    case Types.SInteger:
+                                        return new SInteger(lv + ((SInteger)v).value);
+                                    case Types.SBigInt:
+                                        return new SInteger(new Bigint(lv).Plus(getbig(v)));
+                                    case Types.SNumeric:
+                                        return new SNumeric(new Numeric(new Bigint(lv), 0).Add(((SNumeric)v).num));
+                                }
+                                break;
+                            }
+                        case Types.SBigInt:
+                            {
+                                var lv = getbig(a);
+                                switch (v.type)
+                                {
+                                    case Types.SInteger:
+                                        return new SInteger(lv.Plus(new Bigint(((SInteger)v).value)));
+                                    case Types.SBigInt:
+                                        return new SInteger(lv.Plus(getbig(v)));
+                                    case Types.SNumeric:
+                                        return new SNumeric(new Numeric(lv,0).Add(((SNumeric)v).num));
+                                }
+                                break;
+                            }
+                        case Types.SNumeric:
+                            {
+                                var lv = ((SNumeric)a).num;
+                                switch (v.type)
+                                {
+                                    case Types.SInteger:
+                                        return new SNumeric(lv.Add(new Numeric(((SInteger)v).value)));
+                                    case Types.SBigInt:
+                                        return new SNumeric(lv.Add(new Numeric(getbig(v), 0)));
+                                    case Types.SNumeric:
+                                        return new SNumeric(lv.Add(((SNumeric)v).num));
+                                }
+                                break;
+                            }
+
+                    }
+                    break;
+            }
+            return v;
+        }
+        Bigint getbig(Serialisable x)
+        {
+            return ((SInteger)x).big;
+        }
+        public boolean isAgg() { return func!=Func.Null; }
+        @Override
+        public SDict<Long, SFunction> Aggregates(SDict<Long, SFunction> a, Context cx)
+        {
+            return isAgg()? ((a==null)?new SDict(fid, this):a.Add(fid,this)) : a;
         }
     }
 

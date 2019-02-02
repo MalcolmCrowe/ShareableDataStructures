@@ -91,7 +91,7 @@ namespace StrongDB
                                 var tr = db.Transact();
                                 var qy = rdr._Get(tr) as SQuery ??
                                     throw new Exception("Bad query");
-                                RowSet rs = qy.RowSet(tr,Context.Empty);
+                                RowSet rs = qy.RowSet(tr,qy,SDict<long,SFunction>.Empty,Context.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
                                 for (var b = rs?.First();b!=null;b=b.Next())
@@ -103,7 +103,7 @@ namespace StrongDB
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    asy.PutInt(rs._qry.Display.Length.Value);
+                                    asy.PutInt(rs._qry.Display.Length??0);
                                     for (var b = rs._qry.Display.First(); b != null; b = b.Next())
                                          asy.PutString(b.Value.Item2);
                                 }
@@ -466,7 +466,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.0"," (28 January 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.0"," (2 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase
@@ -498,7 +498,7 @@ namespace StrongDB
 
         public override void Flush()
         {
-            if (wbuf.wpos == 2)
+            if (wbuf==null || wbuf.wpos == 2)
                 return;
             // now always send bSize bytes (not wcount)
             if (exception) // version 2.0
@@ -587,7 +587,8 @@ namespace StrongDB
         internal void StartException()
         {
             rbuf.pos = rbuf.buf.len;
-            wbuf.wpos = 4;
+            if (wbuf!=null)
+                wbuf.wpos = 4;
             exception = true;
         }
         public void Write(Types p)

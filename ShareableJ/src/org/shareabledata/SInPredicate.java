@@ -32,7 +32,7 @@ public class SInPredicate extends Serialisable {
             list.Put(f);
         }
         @Override
-        public Serialisable Lookup(ILookup<String, Serialisable> nms)
+        public Serialisable Lookup(Context nms)
         {
             return new SInPredicate(arg.Lookup(nms), list.Lookup(nms));
         }

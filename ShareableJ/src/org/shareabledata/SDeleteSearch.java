@@ -18,7 +18,7 @@ public class SDeleteSearch extends Serialisable {
         }
         public STransaction Obey(STransaction tr,Context cx) throws Exception
         {
-            for (var b = (RowBookmark)qry.RowSet(tr,cx).First(); b != null; 
+            for (var b = (RowBookmark)qry.RowSet(tr,qry,null,cx).First(); b != null; 
                     b = (RowBookmark)b.Next())
             {
                 var rc = b._ob.rec; // not null

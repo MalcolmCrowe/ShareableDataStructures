@@ -44,13 +44,13 @@ public class SExpression extends Serialisable {
             f.WriteByte((byte)op);
             right.Put(f);
         }
-        public Serialisable Lookup(ILookup<String, Serialisable> nms)
+        public Serialisable Lookup(Context nms)
         {
             if (op == Op.Dot)
             {
-                if (nms instanceof RowBookmark)
+                if (nms.head instanceof RowBookmark)
                 {
-                    var rb = (RowBookmark)nms;
+                    var rb = (RowBookmark)nms.head;
                     var ls = ((SString)left).str;
                     if (nms==null || !nms.defines(ls))
                         return this;
@@ -376,5 +376,12 @@ public class SExpression extends Serialisable {
         {
             return v ? SBoolean.True : SBoolean.False;
         }
-
+        public SDict<Long,SFunction> Aggregates(SDict<Long,SFunction> ags,Context cx)
+        {
+            if (left != null)
+                ags = left.Aggregates(ags, cx);
+            if (right != null)
+                ags = right.Aggregates(ags, cx);
+            return ags;
+        }
 }

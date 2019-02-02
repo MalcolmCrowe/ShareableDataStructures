@@ -13,11 +13,12 @@ public class OrderedRowSet extends RowSet {
         public final RowSet _sce;
         public final SMTree<Serialisable> _tree;
         public final SDict<Integer, SRow> _rows;
-        public OrderedRowSet(RowSet sce,SSelectStatement sel) throws Exception
+        public OrderedRowSet(RowSet sce,SSelectStatement sel, Context cx) 
+                throws Exception
         {
-            super(sce._tr,sel);
+            super(sce._tr,sel,sce._aggregates);
             _sce = sce;
-            SList<TreeInfo> ti = null;
+            SList<TreeInfo<Serialisable>> ti = null;
             int n = 0;
             for (var b = sel.order.First(); b != null; b = b.Next(),n++) 
             {
@@ -33,7 +34,8 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().col.Lookup(b),!c.getValue().desc);
+                    k[i] = new Variant(c.getValue().col.Lookup(new Context(b,cx)),
+                            !c.getValue().desc);
                 t = t.Add(m,k);
                 r=(r==null)?new SDict(0,b._ob):r.Add(m, b._ob);
             }

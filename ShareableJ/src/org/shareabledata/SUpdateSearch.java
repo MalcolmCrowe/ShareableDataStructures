@@ -20,14 +20,14 @@ public class SUpdateSearch extends Serialisable
         }
         public STransaction Obey(STransaction tr,Context cx) throws Exception
         {
-            for (var b = (RowBookmark)qry.RowSet(tr,cx).First(); b != null; 
-                    b = (RowBookmark)b.Next())
+            for (var b = (RowBookmark)qry.RowSet(tr,qry,null,cx).First(); 
+                    b != null; b = (RowBookmark)b.Next())
             {
                 SDict<String, Serialisable> u = null;
                 for (var c = assigs.First(); c != null; c = c.Next())
                 {
                     var v = c.getValue();
-                    var vl = v.val.Lookup(b);
+                    var vl = v.val.Lookup(new Context(b,null));
                     u=(u==null)?new SDict(v.key,vl):u.Add(v.key, vl);
                 }
                 tr = b.Update(tr,u);

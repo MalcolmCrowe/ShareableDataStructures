@@ -112,7 +112,7 @@ public class SRow extends Serialisable implements ILookup<String,Serialisable>
         rec = r;
         isNull = false;
     }
-    public SRow(SSelectStatement ss, RowBookmark bm)
+    public SRow(SSelectStatement ss, Context cx)
     { 
         super(Types.SRow);
         SDict<Integer, Serialisable> r = null;
@@ -122,7 +122,7 @@ public class SRow extends Serialisable implements ILookup<String,Serialisable>
         for (var b = ss.display.First(); cb != null && b != null; b = b.Next(), cb = cb.Next())
         {
             try {
-            var v = cb.getValue().val.Lookup(bm);
+            var v = cb.getValue().val.Lookup(cx);
             if (v instanceof SRow && ((SRow)v).cols.Length == 1)
                 v = ((SRow)v).cols.Lookup(0);
             if (v==null)
@@ -143,7 +143,7 @@ public class SRow extends Serialisable implements ILookup<String,Serialisable>
         names = ss.display;
         cols = r;
         vals = vs;
-        rec = bm._ob.rec;
+        rec = ((RowBookmark)cx.head)._ob.rec;
         isNull = isn;
     }
     public static SRow Get(SDatabase d,Reader f) throws Exception
@@ -167,7 +167,7 @@ public class SRow extends Serialisable implements ILookup<String,Serialisable>
         }
     }
     @Override
-    public Serialisable Lookup(ILookup<String,Serialisable> rs)
+    public Serialisable Lookup(Context cx)
     {
         SDict<Integer, Serialisable> v = null;
         SDict<String, Serialisable> r = null;
@@ -175,12 +175,12 @@ public class SRow extends Serialisable implements ILookup<String,Serialisable>
         for (var b = cols.First(); nb != null && b != null; 
                 nb = nb.Next(), b = b.Next())
         {
-            var e = b.getValue().val.Lookup(rs);
+            var e = b.getValue().val.Lookup(cx);
             v =(v==null)?new SDict(b.getValue().key,e):v.Add(b.getValue().key, e);
             r=(r==null)?new SDict(nb.getValue().val,e):r.Add(nb.getValue().val, e);
         }
         return new SRow(names, v, r, 
-                (rs instanceof RowBookmark)?((RowBookmark)rs)._ob.rec:null);
+                (cx.head instanceof RowBookmark)?((RowBookmark)cx.head)._ob.rec:null);
     }
     @Override
     public void Append(SDatabase db,StringBuilder sb)

@@ -14,7 +14,7 @@ public class TableRowSet extends RowSet {
     public final STable _tb;
 
     public TableRowSet(SDatabase db, STable t) {
-        super(db, t);
+        super(db, t,null);
         _tb = t;
     }
 

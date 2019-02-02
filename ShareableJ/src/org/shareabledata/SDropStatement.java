@@ -40,6 +40,11 @@ public class SDropStatement extends Serialisable {
         f.PutString(drop);
         f.PutString(table);
     }
+    public static SDropStatement Get(Reader f)
+    {
+        var d = f.GetString();
+        return new SDropStatement(d, f.GetString());
+    }
     @Override
     public String toString()
     {

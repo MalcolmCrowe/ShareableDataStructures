@@ -50,7 +50,7 @@ public class SInsertStatement extends Serialisable  {
                     for (var b = tb.cpos.First(); c!=null && b!=null; b = b.Next(), c = c.next) // not null
                     {
                         var ob = (SSelector)b.getValue().val;
-                        var v = c.element.Lookup(null);
+                        var v = c.element.Lookup(Context.Empty);
                         f = (f==null)?new SDict(ob.uid,v):f.Add(ob.uid, v);
                     }
                 else

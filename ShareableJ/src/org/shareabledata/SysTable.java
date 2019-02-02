@@ -55,7 +55,8 @@ public class SysTable extends STable {
             return (SysTable)Add(new SysColumn(n, t));
         }
         @Override
-        public RowSet RowSet(STransaction db,Context cx)
+        public RowSet RowSet(STransaction db,SQuery top, 
+                SDict<Long,SFunction> ags,Context cx)
         {
             return new SysRows(db,this);
         }

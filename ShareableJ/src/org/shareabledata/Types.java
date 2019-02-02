@@ -56,7 +56,8 @@ public class Types {
             DescribedGet = 42,
             SGroupQuery = 43,
             STableExp = 44,
-            SAliasedTable = 45;
+            SAliasedTable = 45,
+            SJoin = 46;
     static String[] types = new String[]{
         "", "?", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
         "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",//7-13

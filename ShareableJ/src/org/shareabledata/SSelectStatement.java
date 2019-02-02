@@ -24,9 +24,11 @@ public class SSelectStatement extends SQuery {
         /// <param name="q">The source query, assumed analysed</param>
         /// <param name="or">The ordering</param>
         public SSelectStatement(boolean d, SDict<Integer,String> a, 
-                SDict<Integer,Serialisable> c, SQuery q, SList<SOrder> or) 
+                SDict<Integer,Serialisable> c, SQuery q, SList<SOrder> or,
+                Context cx) 
         {
-            super(Types.SSelect,(a!=null)?a:q.display,(c!=null)?c:q.cpos,q.names);
+            super(Types.SSelect,(a!=null)?a:q.display,(c!=null)?c:q.cpos,
+                    new Context(q.names,cx));
             distinct = d;  qry = q; order = or;
             var ag = false;
             if (cpos!=null)
@@ -52,7 +54,7 @@ public class SSelectStatement extends SQuery {
             n = f.GetInt();
             for (var i = 0; i < n; i++)
                 o =(o==null)?new SList((SOrder)f._Get(db)):o.InsertAt((SOrder)f._Get(db), i);
-            return new SSelectStatement(d,a,c,q,o);
+            return new SSelectStatement(d,(n==0)?a:null,(n==0)?c:null,q,o,Context.Empty);
         }
         @Override
         public void Put(StreamBase f)
@@ -106,21 +108,32 @@ public class SSelectStatement extends SQuery {
             return sb.toString();
         }
 
-        public RowSet RowSet(STransaction tr,Context cx) throws Exception
+        public RowSet RowSet(STransaction tr,SQuery top,
+                SDict<Long,SFunction> ags, Context cx) throws Exception
         {
-            RowSet r = new SelectRowSet(tr,this,cx);
+            if (order!=null)
+            for (var b = order.First(); b != null; b = b.Next())
+                ags = b.getValue().col.Aggregates(ags, cx);
+            RowSet r = new SelectRowSet(tr,this,ags, cx);
+            if (cpos!=null && !(qry instanceof SGroupQuery))
+            {
+                for (var b = cpos.First(); b != null; b = b.Next())
+                    ags = b.getValue().val.Aggregates(ags, cx);
+                if (ags!=null && ags.Length != 0)
+                    r = new EvalRowSet(((SelectRowSet)r)._source, this, ags, cx);
+            }
             if (distinct)
                 r = new DistinctRowSet(r);
             if (order!=null)
-                r = new OrderedRowSet(r, this);
+                r = new OrderedRowSet(r, this, cx);
             return r;
         }
-        public Serialisable Lookup(ILookup<String,Serialisable> nms) 
+        public Serialisable Lookup(Context nms) 
         {
-            var r = (RowBookmark)nms;
+            var r = (RowBookmark)nms.head;
             if (display==null)
                 return r._ob;
-            return new SRow(this,r);
+            return new SRow(this,nms);
         }
         @Override
         public String getAlias() { return qry.getAlias(); }

@@ -14,6 +14,7 @@ public class SIndex extends SDbObject {
     public final long table;
     public final boolean primary;
     public final long references;
+    public final long refindex;
     public final SList<Long> cols;
     public final SMTree<Long> rows;
     /// <summary>
@@ -22,14 +23,23 @@ public class SIndex extends SDbObject {
     /// <param name="t"></param>
     /// <param name="c"></param>
 
-    public SIndex(STransaction tr, long t, boolean p, SList<Long> c)
+    public SIndex(STransaction tr, long t, boolean p, long r, SList<Long> c)
             throws Exception {
         super(Types.SIndex, tr);
         table = t;
         primary = p;
         cols = c;
-        references = -1;
-        rows = new SMTree<Long>(Info((STable) tr.objects.Lookup(table), cols));
+        references = r;
+        if (r>=0)
+        {
+            var rx = tr.GetPrimaryIndex(r);
+            if (rx==null)
+                throw new Exception("referenced table has no primary index");
+            refindex = rx.uid;
+        } else
+            refindex = -1;
+        rows = new SMTree<Long>(Info((STable) tr.objects.Lookup(table), cols,
+                refindex>=0));
     }
 
     SIndex(SDatabase d, Reader f) throws Exception {
@@ -42,8 +52,18 @@ public class SIndex extends SDbObject {
             c[i] = f.GetLong();
         }
         references = f.GetLong();
+        if (references>=0)
+        {
+            var rx = d.GetPrimaryIndex(references);
+            if (rx==null)
+                throw new Exception("internal error");
+            refindex = rx.uid;
+        }
+        else
+            refindex = -1;
         cols = new SList<Long>(c);
-        rows = new SMTree<Long>(Info((STable) d.objects.Lookup(table), cols));
+        rows = new SMTree<Long>(Info((STable) d.objects.Lookup(table), cols,
+        references>=0));
     }
 
     public SIndex(SIndex x, AStream f) throws Exception {
@@ -60,12 +80,14 @@ public class SIndex extends SDbObject {
             f.PutLong(c[i++]);
         }
         references = f.Fix(x.references);
+        refindex = f.Fix(x.refindex);
         f.PutLong(references);
         cols = new SList<Long>(c);
         rows = x.rows;
     }
 
-    public SIndex(SIndex x, SMTree<Long>.MTResult mt) throws Exception {
+    public SIndex(SIndex x, SMTree<Long>.MTResult mt) throws Exception 
+    {
         super(x);
         if (mt.tb != TreeBehaviour.Allow) {
             throw new Exception("Index constraint violation");
@@ -73,15 +95,18 @@ public class SIndex extends SDbObject {
         table = x.table;
         primary = x.primary;
         references = x.references;
+        refindex = x.refindex;
         cols = x.cols;
         rows = mt.t;
     }
     
-        public SIndex(SIndex x, SMTree<Long> mt)  {
+    public SIndex(SIndex x, SMTree<Long> mt) throws Exception 
+    {
         super(x);
         table = x.table;
         primary = x.primary;
         references = x.references;
+        refindex = x.refindex;
         cols = x.cols;
         rows = mt;
     }
@@ -107,14 +132,17 @@ public class SIndex extends SDbObject {
         return new SIndex(this, rows.Remove(Key(sr, cols), c));
     }
 
-    SList<TreeInfo> Info(STable tb, SList<Long> cols) throws Exception {
+    SList<TreeInfo<Long>> Info(STable tb, SList<Long> cols, boolean fkey) 
+            throws Exception 
+    {
         if (cols==null || cols.Length == 0) {
             return null;
         }
-        var n = Info(tb, cols.next);
-        var ti = new TreeInfo<Long>(cols.element, 'D', 'D', true);
+        var n = Info(tb, cols.next,fkey);
+        var ti = new TreeInfo<Long>(cols.element, 
+                (cols.Length!=1 || fkey)?'A':'D', 'D', true);
         if (n == null) {
-            return new SList<TreeInfo>(ti);
+            return new SList<TreeInfo<Long>>(ti);
         }
         return n.InsertAt(ti, 0);
     }

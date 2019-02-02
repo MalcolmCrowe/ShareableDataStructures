@@ -42,6 +42,7 @@ public class SAlterStatement extends Serialisable {
             else 
                 return (STransaction)tr.Install(new SColumn(tr, nm, dt, tb.uid),tr.curpos);
         }
+        @Override
         public void Put(StreamBase f)
         {
             super.Put(f);
@@ -50,6 +51,14 @@ public class SAlterStatement extends Serialisable {
             f.PutString(name);
             f.WriteByte((byte)dataType);
         }
+        public static SAlterStatement Get(Reader f)
+        {
+            var id = f.GetString();
+            var col = f.GetString();
+            var name = f.GetString();
+            return new SAlterStatement(id, col, name, f.ReadByte());
+        }
+        @Override
         public String toString()
         {
             var sb = new StringBuilder("Alter table ");

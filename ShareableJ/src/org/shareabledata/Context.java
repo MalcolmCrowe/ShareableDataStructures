@@ -9,35 +9,75 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class Context implements ILookup<String,Serialisable>
+public class Context
 {
-    public final ILookup<String,Serialisable> here;
+    public final ILookup<String,Serialisable> head;
+    public final ILookup<Long,Serialisable> ags;
     public final Context next;
     public static Context Empty = new Context();
     Context()
     {
-        here = null;
+        head = null;
+        ags = null;
         next = null;
+    }
+    public Context(ILookup<String,Serialisable> h,
+            ILookup<Long,Serialisable> a, Context n)
+    {
+        head = h;
+        ags = a;
+        next = n;
+    }
+    public Context(RowBookmark b,Context c)
+    {
+        head = b;
+        ags = b._ags;
+        next = c;
     }
     public Context(ILookup<String,Serialisable> h,Context n)
     {
-        here = h;
+        head = h;
+        ags = null;
         next = n;
     }
-    @Override
+    public Context(Context n,ILookup<Long,Serialisable> a)
+    {
+        head = null;
+        ags = a;
+        next = n;
+    }    
     public boolean defines(String s) {
-        return (here!=null) && (here.defines(s) || 
-                (next!=null && next.defines(s)));
+        if (head==null && ags == null && next==null)
+            return false;
+        return (head!=null && head.defines(s)) || 
+                (next!=null && next.defines(s));
     }
-
-    @Override
     public Serialisable get(String s) {
-        if (here==null)
+        if (head==null && ags==null && next==null)
             return Serialisable.Null;
-        var r = here.get(s);
-        if (r!=null)
-            return r;
+        if (head!=null)
+        {
+            var r = head.get(s);
+            if (r!=null)
+                return r;
+        }
         return next.get(s);
     }
-    
+    public boolean defines(long s) {
+        if (head==null && ags == null && next==null)
+            return false;
+        return (ags!=null && ags.defines(s)) || 
+                (next!=null && next.defines(s));
+    }
+    public Serialisable get(long s) {
+        if (head==null && ags==null && next==null)
+            return Serialisable.Null;
+        if (ags!=null)
+        {
+            var r = ags.get(s);
+            if (r!=null)
+                return r;
+        }
+        return next.get(s);
+    }    
 }

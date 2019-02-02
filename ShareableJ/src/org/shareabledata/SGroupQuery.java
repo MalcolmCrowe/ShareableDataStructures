@@ -27,16 +27,16 @@ public class SGroupQuery extends SQuery {
         n = f.GetInt();
         for (var i = 0; i < n; i++)
         {
-            var hh = f._Get(db).Lookup(source.names);
+            var hh = f._Get(db).Lookup(new Context(source.names,null));
             h=(h==null)?new SList(hh):h.InsertAt(hh, i);
         }
         groupby = g;
         having = h;
     }
     public SGroupQuery(SQuery s,SDict<Integer,String> d,SDict<Integer,Serialisable> c,
-        SDict<String,Serialisable> n,SDict<Integer,String> g,SList<Serialisable> h) 
+        Context cx,SDict<Integer,String> g,SList<Serialisable> h) 
     {
-        super(Types.SGroupQuery, d,c,n); 
+        super(Types.SGroupQuery, d,c,cx); 
         source = s;
         groupby = g;
         having = h;
@@ -56,15 +56,16 @@ public class SGroupQuery extends SQuery {
     {
         return new SGroupQuery(d, f);
     }
-    public RowSet RowSet(STransaction tr, Context cx) throws Exception
+    public RowSet RowSet(STransaction tr, SQuery top, SDict<Long,SFunction> ags,
+            Context cx) throws Exception
     {
-        return new GroupRowSet(tr, this, cx);
+        return new GroupRowSet(tr,top, this, ags, cx);
     }
-    public Serialisable Lookup(ILookup<String, Serialisable> nms)
+    public Serialisable Lookup(Context nms)
     {
-        if (!(nms instanceof SearchRowSet.SearchRowBookmark))
+        if (!(nms.head instanceof SearchRowSet.SearchRowBookmark))
             return this;
-        return source.Lookup(((SearchRowSet.SearchRowBookmark)nms)._bmk);
+        return source.Lookup(nms);
     }
     public void Append(SDatabase db, StringBuilder sb)
     {

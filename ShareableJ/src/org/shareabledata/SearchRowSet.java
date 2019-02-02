@@ -14,9 +14,10 @@ public class SearchRowSet extends RowSet {
     public final SSearch _sch;
     public final RowSet _sce;
 
-    public SearchRowSet(STransaction tr, SSearch sc,Context cx) throws Exception 
+    public SearchRowSet(STransaction tr, SQuery top, SSearch sc,
+            SDict<Long,SFunction> ags, Context cx) throws Exception 
     {
-        super(tr,sc);
+        super(tr,sc,ags);
         _sch = sc;
         RowSet s = null;
         SDict<Long,Serialisable> matches = null;
@@ -63,7 +64,7 @@ public class SearchRowSet extends RowSet {
             }
         }
         if (s==null && _sch.sce!=null)
-            s = _sch.sce.RowSet(tr,cx);
+            s = _sch.sce.RowSet(tr,top,ags,cx);
         if (s==null)
             throw new Exception("??");
         _sce = s;

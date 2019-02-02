@@ -83,7 +83,7 @@ public class StrongServer implements Runnable {
                         if (!(q instanceof SQuery))
                             throw new Exception("Bad query");
                         var qy = (SQuery) q;
-                        RowSet rs = qy.RowSet(tr,null);
+                        RowSet rs = qy.RowSet(tr,qy,null,null);
                         var sb = new StringBuilder("[");
                         var cm = "";
                         for (var b = rs.First();b!=null;b=b.Next())
@@ -261,6 +261,14 @@ public class StrongServer implements Runnable {
                         var tb = (STable) t;
                         var xt = rdr.ReadByte();
                         var rn = rdr.GetString();
+                        long ru = -1;
+                        if (rn.length()>0)
+                        {
+                            var rt = tr.names.Lookup(rn);
+                            if (rt==null)
+                                throw new Exception("Table " + tn + " not found");
+                            ru = rt.uid;
+                        }
                         var nc = rdr.GetInt();
                         SList<Long> cs = null;
                         for (var i = 0; i < nc; i++) {
@@ -275,7 +283,7 @@ public class StrongServer implements Runnable {
                             cs = (cs == null) ? new SList<Long>(sc.uid)
                                     : cs.InsertAt(sc.uid, cs.Length);
                         }
-                        var x = new SIndex(tr, tb.uid, xt < 2, cs);
+                        var x = new SIndex(tr, tb.uid, xt < 2, ru, cs);
                         tr = (STransaction)tr.Install(x,tr.curpos);
                         db = db.MaybeAutoCommit(tr);
                         asy.WriteByte((byte)Types.Done);

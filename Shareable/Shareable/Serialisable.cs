@@ -1805,6 +1805,13 @@ namespace Shareable
             f.PutString(name);
             f.WriteByte((byte)dataType);
         }
+        public new static SAlterStatement Get(Reader f)
+        {
+            var id = f.GetString();
+            var col = f.GetString();
+            var name = f.GetString();
+            return new SAlterStatement(id, col, name, (Types)f.ReadByte());
+        }
         public override string ToString()
         {
             var sb = new StringBuilder("Alter table ");
@@ -1898,6 +1905,11 @@ namespace Shareable
             base.Put(f);
             f.PutString(drop);
             f.PutString(table);
+        }
+        public new static SDropStatement Get(Reader f)
+        {
+            var d = f.GetString();
+            return new SDropStatement(d, f.GetString());
         }
         public override string ToString()
         {
@@ -2688,6 +2700,8 @@ namespace Shareable
                 case Types.SOrder: s = SOrder.Get(d, this); break;
                 case Types.SInPredicate: s = SInPredicate.Get(d, this); break;
                 case Types.SAliasedTable: s = SAliasedTable.Get(d, this); break;
+                case Types.SDropStatement: s = SDropStatement.Get(this); break;
+                case Types.SAlterStatement: s = SAlterStatement.Get(this); break;
                 case Types.SGroupQuery: s = SGroupQuery.Get(d, this); break;
                 case Types.SJoin: s = SJoin.Get(d, this); break;
                 default: s = Serialisable.Null; break;

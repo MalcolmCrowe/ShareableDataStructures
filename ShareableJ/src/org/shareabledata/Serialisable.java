@@ -68,8 +68,20 @@ public class Serialisable implements Comparable {
     public int compareTo(Object o) {
         return (o==Null)?0:-1;
     }
-    public Serialisable Lookup(ILookup<String,Serialisable> nms)
+    public Serialisable Lookup(Context cx)
     {
         return this;
+    }
+    public Serialisable StartCounter(Serialisable v)
+    {
+        return v;
+    }
+    public Serialisable AddIn(Serialisable a,Serialisable v)
+    {
+        return a;
+    }
+    public SDict<Long,SFunction> Aggregates(SDict<Long,SFunction> a,Context cx)
+    {
+        return a;
     }
 }

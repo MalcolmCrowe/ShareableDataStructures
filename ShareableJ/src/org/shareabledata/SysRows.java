@@ -15,7 +15,7 @@ public class SysRows extends RowSet {
     public final AStream fs;
 
     SysRows(SDatabase d, SysTable t) {
-        super(d, t);
+        super(d, t,null);
         fs = d.File();
         tb = t;
     }

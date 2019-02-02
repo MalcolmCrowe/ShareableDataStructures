@@ -17,7 +17,7 @@ public class IndexRowSet extends RowSet {
         public IndexRowSet(SDatabase db,STable t,SIndex ix,SCList<Variant> key,
                 SList<Serialisable> wh)
         {
-            super(db,t);
+            super(db,t,null);
             _ix = ix; _wh = wh;
             _key = key;
             _unique = key!=null && key.Length == _ix.cols.Length;

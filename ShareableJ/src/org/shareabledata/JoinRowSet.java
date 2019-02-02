@@ -12,12 +12,13 @@ package org.shareabledata;
 public class JoinRowSet extends RowSet {
     public final SJoin _join;
     public final RowSet _left, _right;
-    JoinRowSet(STransaction tr,SJoin j,Context cx) throws Exception
+    JoinRowSet(STransaction tr,SQuery top, SJoin j,
+            SDict<Long,SFunction> ags, Context cx) throws Exception
     {
-        super(tr,j);
+        super(tr,j,ags);
         _join = j;
-        _left = j.left.RowSet(tr, cx);
-        _right = j.right.RowSet(tr, cx);
+        _left = j.left.RowSet(tr, top, ags, cx);
+        _right = j.right.RowSet(tr, top, ags, cx);
     }
     SRow _Row(RowBookmark lbm,RowBookmark rbm)
     {

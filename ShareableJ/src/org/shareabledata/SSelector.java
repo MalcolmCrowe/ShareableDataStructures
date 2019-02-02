@@ -45,9 +45,11 @@ package org.shareabledata;
             f.PutString(name);
         }
         @Override
-        public Serialisable Lookup(ILookup<String,Serialisable>nms)
+        public Serialisable Lookup(Context nms)
         {
-            return (nms!=null && nms.defines(name))?nms.get(name):this;
+            if (nms!=null && nms.defines(name))
+                return nms.get(name);
+            return this;
         }
         @Override
         public String Alias(int n)

@@ -30,22 +30,22 @@ public class SMTree<K extends Comparable> extends Collection<SSlot<SCList<Varian
 
     class SITree extends SDict<Variant, Variant> {
 
-        public final TreeInfo info;
+        public final TreeInfo<K> info;
         public final Variants variant;
 
-        SITree(TreeInfo ti, Variants vt) {
+        SITree(TreeInfo<K> ti, Variants vt) {
             super(null);
             info = ti;
             variant = vt;
         }
 
-        SITree(TreeInfo ti, Variants vt, SBucket<Variant, Variant> r) {
+        SITree(TreeInfo<K> ti, Variants vt, SBucket<Variant, Variant> r) {
             super(r);
             info = ti;
             variant = vt;
         }
 
-        SITree(TreeInfo ti, Variants vt, Variant k, Variant v) {
+        SITree(TreeInfo<K> ti, Variants vt, Variant k, Variant v) {
             this(ti, vt, new SLeaf<Variant, Variant>(new SSlot<Variant, Variant>(k, v)));
         }
 
@@ -108,19 +108,19 @@ public class SMTree<K extends Comparable> extends Collection<SSlot<SCList<Varian
         }
     }
     public final SITree _impl;
-    public final SList<TreeInfo> _info;
+    public final SList<TreeInfo<K>> _info;
 
-    SMTree(SList<TreeInfo> ti, SITree impl, int c)  {
+    SMTree(SList<TreeInfo<K>> ti, SITree impl, int c)  {
         super(c);
         _info = ti;
         _impl = impl;
     }
 
-    public SMTree(SList<TreeInfo> ti)  {
+    public SMTree(SList<TreeInfo<K>> ti)  {
         this(ti, (SITree) null, 0);
     }
 
-    public SMTree(SList<TreeInfo> ti, SList<Variant> k, long v) {
+    public SMTree(SList<TreeInfo<K>> ti, SList<Variant> k, long v) {
         super(1);
         _info = ti;
         var e = ti.element;

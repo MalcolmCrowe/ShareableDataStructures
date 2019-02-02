@@ -36,13 +36,7 @@ namespace Shareable
             _rs = rs; _ob = ob; _ags = a;
         }
         public override Serialisable Value => _ob; // should always be an SRow
-
         public Serialisable this[string s] => (s.CompareTo(_rs._qry.Alias) == 0)?_ob:_ob.vals[s];
-
-        public virtual bool SameGroupAs(RowBookmark r)
-        {
-            return true;
-        }
         public virtual STransaction Update(STransaction tr,SDict<string,Serialisable> assigs)
         {
             return tr; // no changes here
@@ -399,7 +393,8 @@ namespace Shareable
         public readonly SDict<long, SDict<long,Serialisable>> _grouprows; // accumulators for the aggregates
         public readonly SQuery _top;
         public readonly RowSet _sce;
-        public GroupRowSet(STransaction tr,SQuery top, SGroupQuery gqry,SDict<long,SFunction> ags,Context cx) :base(tr,gqry,ags,null)
+        public GroupRowSet(STransaction tr,SQuery top, SGroupQuery gqry,
+            SDict<long,SFunction> ags,Context cx) :base(tr,gqry,ags,null)
         {
             _gqry = gqry;
             var inf = SList<TreeInfo<string>>.Empty;
@@ -420,7 +415,6 @@ namespace Shareable
                     n++;
                 }
                 var m = t.PositionAt(k)?.Value.Item2??0;
-                var a = r[m];
                 r += (m, AddIn(ags, r[m], new Context(b,cx)));
             }
             _tree = t;
@@ -441,10 +435,10 @@ namespace Shareable
             var gb = b.Value.Item1.First();
             for (var kb = _info.First(); gb != null && kb != null; gb = gb.Next(), kb = kb.Next())
                 kc += (kb.Value.headName, (Serialisable)gb.Value.ob);
+            var cx = new Context(kc, _grouprows[b.Value.Item2], null);
             var ab = _top.Display.First();
             for (var cb = _top.cpos.First(); ab != null && cb != null; ab = ab.Next(), cb = cb.Next())
-                r += (ab.Value.Item2,
-                    cb.Value.Item2.Lookup(new Context(kc,_grouprows[b.Value.Item2],null)));
+                r += (ab.Value.Item2,cb.Value.Item2.Lookup(cx));
             return r;
         }
         static SDict<long,Serialisable> AddIn(SDict<long,SFunction> ags, SDict<long,Serialisable> cur, Context cx)
@@ -501,10 +495,9 @@ namespace Shareable
             :base(tr,sel,ags,null)
         {
             _sel = sel;
-            var a = SDict<long, SFunction>.Empty;
             for (var b = sel.cpos.First(); b != null; b = b.Next())
-                a = b.Value.Item2.Aggregates(a, cx);
-            _source = sel.qry.RowSet(tr,sel,a,cx);
+                ags = b.Value.Item2.Aggregates(ags, cx);
+            _source = sel.qry.RowSet(tr,sel,ags,cx);
         }
 
         public override Bookmark<Serialisable>? First()

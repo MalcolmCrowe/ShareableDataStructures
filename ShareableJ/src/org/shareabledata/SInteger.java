@@ -13,6 +13,7 @@ public class SInteger extends Serialisable implements Comparable {
         public final int value;
         public final Bigint big;
         public static final SInteger Zero = new SInteger(0);
+        public static final SInteger One = new SInteger(1);
         public SInteger(int v)
         {
             super(Types.SInteger);

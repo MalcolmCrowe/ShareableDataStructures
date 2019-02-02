@@ -663,7 +663,8 @@ public class Parser {
                     if (lxr.tok != Sym.AND)
                         break;
                 }
-            return new SGroupQuery(sqry, sqry.display, sqry.cpos, sqry.names, gp, h);
+            return new SGroupQuery(sqry, sqry.display, sqry.cpos, 
+                    new Context(sqry.names,null), gp, h);
         }
         SQuery TableExp(SDict<Integer, String> als, SDict<Integer, Serialisable> cp)
                 throws Exception
@@ -694,7 +695,8 @@ public class Parser {
                 SDict<Integer, String> da = null;
                 SDict<Integer, Serialisable> ca = null;
                 SDict<String, Serialisable> na = null;
-                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, null, da, ca, na); 
+                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, null, da, 
+                        ca, new Context(na,null)); 
             }
             return tb;
         }
@@ -925,7 +927,7 @@ public class Parser {
                         break;
                 }
             }
-            return new SSelectStatement(dct, als, cp, q, or);
+            return new SSelectStatement(dct, als, cp, q, or,Context.Empty);
         }
         Serialisable Delete() throws Exception
         {

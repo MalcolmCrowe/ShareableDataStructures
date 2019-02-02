@@ -84,7 +84,7 @@ public class SRecord extends SDbObject {
                     var v = b.getValue();
                     if (v instanceof SExpression)
                      try {
-                        var e = ((SExpression)v).Lookup(rb);
+                        var e = ((SExpression)v).Lookup(new Context(rb,null));
                         if (e!=SBoolean.True)
                             return false;
                         } catch(Exception e)

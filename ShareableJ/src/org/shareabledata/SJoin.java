@@ -38,10 +38,10 @@ public class SJoin extends SQuery {
             ons = on;
         }
         public SJoin(SQuery lf,boolean ou,int jt,SQuery rg,SList<SExpression> on,
-            SDict<Integer,String> d,SDict<Integer,Serialisable> c,SDict<String,Serialisable> n) 
-            
+            SDict<Integer,String> d,SDict<Integer,Serialisable> c,
+            Context cx) 
         {
-            super(Types.STableExp,d,c,n);
+            super(Types.STableExp,d,c,cx);
             left = lf; right = rg; outer = ou; joinType = jt; ons = on;
         }
         public void Put(StreamBase f)
@@ -59,9 +59,10 @@ public class SJoin extends SQuery {
         {
             return new SJoin(d, f);
         }
-        public RowSet RowSet(STransaction tr, Context cx) throws Exception
+        public RowSet RowSet(STransaction tr,SQuery top,
+                SDict<Long,SFunction> ags,Context cx) throws Exception
         {
-            return new JoinRowSet(tr, this, cx);
+            return new JoinRowSet(tr, top, this, ags, cx);
         }
         public void Append(SDatabase db, StringBuilder sb)
         {

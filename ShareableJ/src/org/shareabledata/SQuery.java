@@ -42,7 +42,7 @@ public abstract class SQuery extends SDbObject {
             names = q.names;
         }
         protected SQuery(int t, SDict<Integer, String> a, SDict<Integer,Serialisable> c, 
-                SDict<String, Serialisable> source)
+                Context cx)
         {
             super(t,-1);
             SDict<Integer, Serialisable> cp = null;
@@ -53,8 +53,8 @@ public abstract class SQuery extends SDbObject {
                 for (var cb = c.First();ab!=null && cb!=null;ab=ab.Next(),cb=cb.Next())
                 {
                     var s = cb.getValue().val;
-                    if (source!=null)
-                        s = cb.getValue().val.Lookup(source);
+                    if (cx!=Context.Empty)
+                        s = cb.getValue().val.Lookup(cx);
                     cp=(cp==null)?new SDict(cb.getValue().key, s)
                             :cp.Add(cb.getValue().key, s);
                     cn=(cn==null)?new SDict(ab.getValue().val, s)
@@ -99,7 +99,9 @@ public abstract class SQuery extends SDbObject {
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public abstract RowSet RowSet(STransaction db,Context cx) throws Exception;
+        public abstract RowSet RowSet(STransaction db,SQuery top,
+                SDict<Long,SFunction> ags, Context cx) throws Exception;
+        
         SDict<Integer,String> getDisplay()
         {
             return display; 

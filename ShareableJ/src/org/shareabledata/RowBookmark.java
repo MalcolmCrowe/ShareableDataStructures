@@ -14,10 +14,17 @@ package org.shareabledata;
     {
         public final RowSet _rs;
         public final SRow _ob;
+        public final SDict<Long,Serialisable> _ags;
         protected RowBookmark(RowSet rs, SRow ob, int p)
         {
             super(p);
-            _rs = rs; _ob = ob;
+            _rs = rs; _ob = ob; _ags = null;
+        }
+        protected RowBookmark(RowSet rs, SRow ob, 
+                SDict<Long,Serialisable> a,int p)
+        {
+            super(p);
+            _rs = rs; _ob = ob; _ags = a;
         }
         @Override
         public Serialisable getValue() { return  _ob; }

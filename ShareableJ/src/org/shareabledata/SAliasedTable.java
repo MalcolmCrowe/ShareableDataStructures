@@ -34,7 +34,8 @@ public class SAliasedTable extends STable {
             return new SAliasedTable(STable.Get(d, f),f.GetString());
         }
         @Override
-        public RowSet RowSet(STransaction tr, Context cx)
+        public RowSet RowSet(STransaction tr, SQuery top,
+                SDict<Long,SFunction> ags, Context cx)
         {
             return new TableRowSet(tr, this);
         }

@@ -23,7 +23,7 @@ public class SSearch extends SQuery {
         SList<Serialisable> w = null;
         var n = f.GetInt();
         for (var i = 0; i < n; i++) {
-            var x = f._Get(db).Lookup(sce.names);
+            var x = f._Get(db).Lookup(new Context(sce.names,null));
             w = (w == null) ? new SList(x): w.InsertAt(x,i);
         }
         where = w;
@@ -56,15 +56,16 @@ public class SSearch extends SQuery {
     }
 
     @Override
-    public Serialisable Lookup(ILookup<String,Serialisable> nms) 
+    public Serialisable Lookup(Context nms) 
     {
-        return(nms instanceof SearchRowSet.SearchRowBookmark)? 
-                sce.Lookup(((SearchRowSet.SearchRowBookmark)nms)._bmk):this;
+        return(nms.head instanceof SearchRowSet.SearchRowBookmark)? 
+                sce.Lookup(nms):this;
     }
 
     @Override
-    public RowSet RowSet(STransaction db, Context cx) throws Exception {
-        return new SearchRowSet(db, this, cx);
+    public RowSet RowSet(STransaction db, SQuery top, 
+            SDict<Long,SFunction> ags,Context cx) throws Exception {
+        return new SearchRowSet(db, top, this, ags, cx);
     }
     
     @Override

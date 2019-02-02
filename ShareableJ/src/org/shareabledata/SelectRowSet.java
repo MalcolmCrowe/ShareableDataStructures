@@ -12,12 +12,14 @@ package org.shareabledata;
 public class SelectRowSet extends RowSet {
         public final SSelectStatement _sel;
         public final RowSet _source;
-        public SelectRowSet(STransaction tr,SSelectStatement sel,Context cx) 
-                throws Exception
-            
-        {   super(tr,sel);
+        public SelectRowSet(STransaction tr,SSelectStatement sel,
+                SDict<Long,SFunction> ags,Context cx) throws Exception
+        {   super(tr,sel,ags);
             _sel = sel;
-            _source = sel.qry.RowSet(tr,cx);
+            if (sel.cpos!=null)
+            for (var b = sel.cpos.First(); b != null; b = b.Next())
+                ags = b.getValue().val.Aggregates(ags, cx);
+            _source = sel.qry.RowSet(tr,sel,ags,cx);
         }
 
         public Bookmark<Serialisable> First()
@@ -26,7 +28,7 @@ public class SelectRowSet extends RowSet {
                 for (var b = (RowBookmark)_source.First();b!=null;
                         b=(RowBookmark)b.Next())
                 {
-                    var rw = (SRow)_qry.Lookup(b);
+                    var rw = (SRow)_qry.Lookup(new Context(b,null));
                     if (rw.isNull)
                         continue;
                     var rb = new SelectRowBookmark(this,b, rw, 0);
@@ -54,10 +56,9 @@ public class SelectRowSet extends RowSet {
             public Bookmark<Serialisable> Next()
             {
                 try {
-                if (!_srs._sel.aggregates) // aggregates collapse the rowset
                     for (var b = (RowBookmark)_bmk.Next(); b != null; b = (RowBookmark)b.Next())
                     {
-                        var rw = (SRow)_srs._qry.Lookup(b);
+                        var rw = (SRow)_srs._qry.Lookup(new Context(b,null));
                         if (rw.isNull)
                             continue;
                         var rb = new SelectRowBookmark(_srs, b, rw, Position + 1);

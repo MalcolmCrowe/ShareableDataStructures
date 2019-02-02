@@ -14,7 +14,7 @@ public class DistinctRowSet extends RowSet {
         public final SDict<SRow, Boolean> rows;
         public DistinctRowSet(RowSet sce) throws Exception
         {
-            super(sce._tr, sce._qry);
+            super(sce._tr, sce._qry, sce._aggregates);
             _sce = sce;
             SDict<SRow, Boolean> r = null;
             for (var b = (RowBookmark)sce.First(); b != null; b = (RowBookmark)b.Next())
