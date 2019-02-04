@@ -14,7 +14,6 @@ public class ServerStream extends StreamBase {
         int rx = 0;
         Reader rbuf;
         boolean exception = false;
-
         ServerStream(Socket c) throws Exception
         {
             super();
@@ -70,7 +69,7 @@ public class ServerStream extends StreamBase {
                     rcount = 0;
                     return false;
                 }
-                rcount = ((b.buf[0]&0xff) << 8) + (b.buf[1]& 0xff);
+                rcount = ((b.buf[0]&0xff) << 7) + (b.buf[1]& 0xff);
                 b.len = rcount + 2;
                 return rcount > 0;
             }
