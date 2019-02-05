@@ -246,123 +246,31 @@ public class Bigint implements Comparable {
            x = (Bigint)o;
        else //if (o instanceof Long)
            x = new Bigint((Long)o);
- //      else
- //          return new Numeric(this).compareTo(o);
-        int n = bytes.length;
-        int xn = x.bytes.length;
-        if (bytes.length==0)
-        {
-            if (x.bytes.length==0)
-               return 0;
-            return x.getSign()?1:-1;
-        } else if (bytes[0]<0)
-        {
-            if (x.bytes.length == 0) {
-                return -1;
-            }
-            if (x.bytes[0] >=0) {
-                return -1;
-            }
-            if (n < xn) {
-                return 1;
-            }
-            if (n > xn) {
-                return -1;
-            }
-            for (int j = 0; j < n; j++) {
-                byte b = (j < xn) ? x.bytes[j] : (byte) 0;
-                if (bytes[j] < b) {
-                    return -1;
-                }
-                if (bytes[j] > b) {
-                    return 1;
-                }
-            }          
-        } else
-        {
-            if (x.bytes.length == 0) {
-                return 1;
-            }
-            if (x.bytes[0] < 0) {
-                return 1;
-            }
-            if (n < xn) {
-                return -1;
-            }
-            if (n > xn) {
-                return 1;
-            }
-            for (int j = 0; j < n; j++) {
-                byte b = (j < xn) ? x.bytes[j] : (byte) 0;
-                if (bytes[j] < b) {
-                    return -1;
-                }
-                if (bytes[j] > b) {
-                    return 1;
-                }
-            }          
-        }
-        return 0;
-    }
-    int compareTo(Bigint x,int shift)
-    {
-        int n = bytes.length;
-        int xn = x.bytes.length;
-        int j;
-        if (bytes.length == 0) {
-            if (x.bytes.length == 0) {
-                return 0;
-            }
-            if (x.bytes[0] >= 0) {
-                return -1;
-            }
-            return 1;
-        } else if (bytes[0] < 0) {
-            if (x.bytes.length == 0) {
-                return -1;
-            }
-            if (x.bytes[0] >= 0) {
-                return -1;
-            }
-            if (n < xn + shift) {
-                return 1;
-            }
-            if (n > xn + shift) {
-                return -1;
-            }
-            for (j = 0; j < n; j++) {
-                byte b = (j < xn) ? x.bytes[j] : (byte) 0;
-                if (bytes[j] < b) {
-                    return 1;
-                }
-                if (bytes[j] > b) {
-                    return -1;
-                }
-            }
-        } else {
-            if (x.bytes.length == 0) {
-                return 1;
-            }
-            if (x.bytes[0] < 0) {
-                return 1;
-            }
-            if (n < xn + shift) {
-                return -1;
-            }
-            if (n > xn + shift) {
-                return 1;
-            }
-            for (j = 0; j < n; j++) {
-                byte b = (j < xn) ? x.bytes[j] : (byte) 0;
-                if (bytes[j] < b) {
-                    return -1;
-                }
-                if (bytes[j] > b) {
-                    return 1;
-                }
-            }
-        }
-        return 0;      
+       Bigint m = this;
+       var ms = getSign();
+       var xs = x.getSign();
+       if (ms && xs)
+       {
+           m = m.Negate();
+           x = x.Negate();
+       } else if (ms)
+           return -1;
+       else if (xs)
+           return 1;
+       if (m.bytes.length<x.bytes.length)
+           return ms?1:-1;
+       if (m.bytes.length>x.bytes.length)
+           return ms?-1:1;
+       for (var i=0;i<m.bytes.length;i++)
+       {
+           var mb = ((int)m.bytes[i]) & 0xff;
+           var xb = ((int)x.bytes[i]) & 0xff;
+           if (mb<xb)
+               return ms?1:-1;
+           if (mb>xb)
+               return ms?-1:1;
+       }
+       return 0;
     }
     static Bigint Pow10(int n)
     {
@@ -492,7 +400,7 @@ public class Bigint implements Comparable {
             r += d;
             n--;
         }
-        r += a.bytes[0];
+        r += (int)a.bytes[0]&0xff;
         return r;
     }
 }

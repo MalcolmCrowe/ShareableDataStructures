@@ -23,9 +23,9 @@ public abstract class StreamBase {
     }
         public void PutInt(int n)
         {
-            PutInt(new Bigint(n));
+            PutInteger(new Bigint(n));
         }
-        public void PutInt(Bigint b) 
+        public void PutInteger(Bigint b) 
         {
             var m = b.bytes.length;
             WriteByte((byte)m);
@@ -34,7 +34,7 @@ public abstract class StreamBase {
         }
         public void PutLong(long n) 
         {
-            PutInt(new Bigint(n));
+            PutInteger(new Bigint(n));
         }
 
     public void PutString(String s) {

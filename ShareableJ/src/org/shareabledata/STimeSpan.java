@@ -81,7 +81,7 @@ public class STimeSpan extends Serialisable implements Comparable {
         public void Put(StreamBase f) 
         {
             super.Put(f);
-            f.PutInt(ticks);
+            f.PutInteger(ticks);
         }
         public static Serialisable Get(Reader f)
         {

@@ -34,13 +34,21 @@ public class SInteger extends Serialisable implements Comparable {
         }
         SInteger(Reader f)
         {
-            this(f.GetInt());
+            this(f.GetInteger());
         }
         @Override
         public void Put(StreamBase f)
         {
             super.Put(f);
-            f.PutInt(value);
+            switch (type)
+            {
+                case Types.SInteger:
+                    f.PutInt(value);
+                    break;
+                case Types.SBigInt:
+                    f.PutInteger(big);
+                    break;
+            }
         }
         public static Serialisable Get(Reader f)
         {
@@ -70,6 +78,13 @@ public class SInteger extends Serialisable implements Comparable {
         @Override
         public String toString()
         {
-            return "Integer " + value;
+            switch (type)
+            {
+                case Types.SInteger:
+                    return "Integer " + value;
+                case Types.SBigInt:
+                    return "Iteger "+big;
+            }
+            return "";
         }
 }

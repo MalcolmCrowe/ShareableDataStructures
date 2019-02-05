@@ -39,7 +39,7 @@ public class SDate extends Serialisable implements Comparable {
             super.Put(f);
             f.PutInt(year);
             f.PutInt(month);
-            f.PutInt(rest);
+            f.PutInteger(rest);
         }
         public static Serialisable Get(Reader f) 
         {

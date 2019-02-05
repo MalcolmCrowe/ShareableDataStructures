@@ -24,10 +24,10 @@ public class SNumeric extends Serialisable implements Comparable {
             var scale = f.GetInt();
             num = new Numeric(mantissa, scale, precision);
         }
-        public void Put(AStream f) 
+        public void Put(StreamBase f) 
         {
             super.Put(f);
-            f.PutInt(num.mantissa);
+            f.PutInteger(num.mantissa);
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }

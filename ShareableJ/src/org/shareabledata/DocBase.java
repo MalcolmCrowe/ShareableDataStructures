@@ -48,19 +48,20 @@ public class DocBase {
                 var sg = c == '-';
                 if (sg && i < n)
                     c = s.charAt(i++);
-                var whole = 0L;
+                var whole = Bigint.Zero;
+                var Ten = new Bigint(10);
                 if (Character.isDigit(c))
                 {
                     i--;
-                    whole = GetHex(s, n, i++);
+                    whole = new Bigint(GetHex(s, n, i++));
                     while (i < n && Character.isDigit(s.charAt(i)))
-                        whole = whole * 10 + GetHex(s, n, i++);
+                        whole = whole.Times(Ten).Plus(new Bigint(GetHex(s, n, i++)));
                 }
                 else
                     throw new Error("bad format");
                 c = s.charAt(i);
                 if (i >= n || (c != '.' && c != 'e' && c != 'E'))
-                    return new ObjPos(sg ? -whole : whole,i);
+                    return new ObjPos(sg ? whole.Negate() : whole,i);
                 int scale = 0;
                 if (c == '.')
                 {
@@ -68,16 +69,14 @@ public class DocBase {
                         throw new Error("decimal part expected");
                     while (i < n && Character.isDigit(s.charAt(i)))
                     {
-                        whole = whole * 10 + GetHex(s, n,i++);
+                        whole = whole.Times(Ten).Plus(new Bigint(GetHex(s, n, i++)));
                         scale++;
                     }
                 }
                 c = s.charAt(i);
                 if (i >= n || (c != 'e' && c != 'E'))
                 {
-                    var m = new Numeric(whole);
-                    while (scale-- > 0)
-                        m = m.Divide(new Numeric(10));
+                    var m = new Numeric(whole,scale);
                     return new ObjPos(sg ? m.Negate() : m,i);
                 }
                 if (++i >= n)
@@ -91,7 +90,7 @@ public class DocBase {
                     exp = exp * 10 + GetHex(s, n, i++);
                 if (esg)
                     exp = -exp;
-                var dr = new Numeric(whole * Math.pow(10.0, exp - scale));
+                var dr = new Numeric(whole.toDouble() * Math.pow(10.0, exp - scale));
                 return new ObjPos(sg ? dr.Negate() : dr,i);
             }
             throw new Error("Value expected at " + (i - 1));
