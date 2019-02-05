@@ -30,7 +30,7 @@ public class AStream extends StreamBase {
     public AStream(String path, String fn) throws IOException {
         file = new RandomAccessFile(new File(path, fn), "rws");
         filename = fn;
-        wbuf = new Buffer(this);
+        wbuf = null;
         length = file.length();
         wposition = length;
         file.seek(0);

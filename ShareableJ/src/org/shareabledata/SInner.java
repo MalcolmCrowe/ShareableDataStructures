@@ -164,7 +164,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
             b.Add(ab);
             if (b instanceof SInner)
                 g = ((SInner<K, V>)b).gtr;
-            var s = (SSlot<K,V>[])ab.toArray();
+            var s = (SSlot<K,V>[])ab.toArray(new SSlot[ab.size()]);
             if (g == null) // we use Size entries from s for each new Bucket (all Leaves)
             {
                 var a = new ArrayList<SSlot<K, V>>();

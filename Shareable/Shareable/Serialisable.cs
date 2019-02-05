@@ -749,15 +749,15 @@ namespace Shareable
         {
             value = v; big = null;
         }
-        public SInteger(Integer b) : base((b<int.MaxValue&&b>int.MinValue)?Types.SInteger:Types.SBigInt)
+        public SInteger(Integer b) : base(b<new Integer(int.MaxValue)&&
+            b>new Integer(int.MinValue)?Types.SInteger:Types.SBigInt)
         {
-            if (b < int.MaxValue && b > int.MinValue)
+            switch (type)
             {
-                value = b; big = null;
-            }
-            else
-            {
-                value = 0; big = b;
+                case Types.SInteger:
+                    value = b; big = null; break;
+                case Types.SBigInt:
+                    value = 0; big = b; break;
             }
         }
         SInteger(Reader f) : this(f.GetInt())
@@ -779,7 +779,7 @@ namespace Shareable
         }
         public override string ToString()
         {
-            return "Integer " + value.ToString();
+            return "Integer " + ((type==Types.SInteger)?value.ToString():big.ToString());
         }
         public override int CompareTo(object obj)
         {
@@ -2703,7 +2703,7 @@ namespace Shareable
                 case Types.SDropStatement: s = SDropStatement.Get(this); break;
                 case Types.SAlterStatement: s = SAlterStatement.Get(this); break;
                 case Types.SGroupQuery: s = SGroupQuery.Get(d, this); break;
-                case Types.SJoin: s = SJoin.Get(d, this); break;
+                case Types.STableExp: s = SJoin.Get(d, this); break;
                 default: s = Serialisable.Null; break;
             }
             return s;

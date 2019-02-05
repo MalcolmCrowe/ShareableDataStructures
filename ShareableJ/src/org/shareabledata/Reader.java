@@ -59,6 +59,7 @@ public class Reader {
             case Types.SValues:      s = SValues.Get(d,this);    break;
             case Types.SSelect:      s = SSelectStatement.Get(d,this); break;
             case Types.SOrder:       s = SOrder.Get(d,this);     break;
+            case Types.SBigInt:      s = SInteger.Get(this);      break;
             case Types.SUpdateSearch: s= SUpdateSearch.Get(d,this);break;
             case Types.SDeleteSearch:s = SDeleteSearch.Get(d,this);break;
             case Types.SSearch:      s = SSearch.Get(d,this);     break;

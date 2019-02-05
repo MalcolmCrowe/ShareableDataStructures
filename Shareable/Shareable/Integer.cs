@@ -835,7 +835,7 @@ namespace Shareable
         /// Constructor: given a double
         /// </summary>
         /// <param name="q">The double value</param>
-		internal Numeric(double d)
+		public Numeric(double d)
 		{
 			Numeric a = Parse(d.ToString());
 			mantissa = a.mantissa;

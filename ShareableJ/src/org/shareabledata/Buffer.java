@@ -20,7 +20,6 @@ public class Buffer {
     public int wpos;
     public boolean busy = false;
     StreamBase fs;
-
     public Buffer(StreamBase f) {
         buf = new byte[Size];
         wpos = 0;

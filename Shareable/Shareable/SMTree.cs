@@ -165,7 +165,7 @@ namespace Shareable
                 st = (SITree)(_impl + (k.element, nv)); 
             }
             tb = TreeBehaviour.Allow;
-            return new SMTree<K>(_info, st, Length.Value + 1);
+            return new SMTree<K>(_info, st, (Length??0) + 1);
         }
         protected SMTree<K> Add(SCList<Variant> k, long v)
         {
@@ -217,7 +217,7 @@ namespace Shareable
                     st = st?.Remove(k0);
                     break;
             }
-            return new SMTree<K>(_info, st, nc.Value);
+            return new SMTree<K>(_info, st, nc??0);
         }
         protected SMTree<K> Remove(SCList<Variant> k)
         {
@@ -254,7 +254,7 @@ namespace Shareable
                     st = st?.Remove(k0);
                     break;
             }
-            return new SMTree<K>(_info, st, nc.Value);
+            return new SMTree<K>(_info, st, nc??0);
         }
         public static SMTree<K> operator-(SMTree<K>t,SCList<Variant>k)
         {
@@ -282,13 +282,13 @@ namespace Shareable
         internal readonly SList<TreeInfo<K>> _info;
         internal readonly MTreeBookmark<K>? _inner;
         readonly Bookmark<ValueTuple<long, bool>>? _pmk;
-        internal SCList<Variant> _filter;
-
+        internal readonly SCList<Variant> _filter;
+        internal readonly bool _changed;
         MTreeBookmark(SDictBookmark<Variant, Variant> outer, SList<TreeInfo<K>> info,
-            MTreeBookmark<K>? inner, Bookmark<ValueTuple<long, bool>>? pmk,
+            bool changed, MTreeBookmark<K>? inner, Bookmark<ValueTuple<long, bool>>? pmk,
             int pos, SCList<Variant>? key = null) : base(pos)
         {
-            _outer = outer; _info = info;
+            _outer = outer; _info = info; _changed = changed;
             _inner = inner; _pmk = pmk; _filter = key??SCList<Variant>.Empty;
         }
         /// <summary>
@@ -305,15 +305,15 @@ namespace Shareable
                 {
                     case Variants.Compound:
                         if ((ov.ob as SMTree<K>)?.First() is MTreeBookmark<K> inner)
-                            return new MTreeBookmark<K>(outer, mt._info, inner, null, 0);
+                            return new MTreeBookmark<K>(outer, mt._info, false, inner, null, 0);
                         break;
                     case Variants.Partial:
                         if ((ov.ob as SDict<long, bool>)?.First() is Bookmark<ValueTuple<long, bool>> pmk)
-                            return new MTreeBookmark<K>(outer, mt._info, null, pmk, 0);
+                            return new MTreeBookmark<K>(outer, mt._info, false, null, pmk, 0);
                         break;
                     case Variants.Ascending:
                     case Variants.Descending:
-                        return new MTreeBookmark<K>(outer, mt._info, null, null, 0);
+                        return new MTreeBookmark<K>(outer, mt._info, false, null, null, 0);
                 }
             }
             return null;
@@ -336,16 +336,16 @@ namespace Shareable
             {
                 case Variants.Compound:
                     if ((ov.ob as SMTree<K>)?.PositionAt((SCList<Variant>)key.next) is MTreeBookmark<K> inner) // next not null
-                        return new MTreeBookmark<K>(outer, mt._info, inner, null, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, true, inner, null, 0, key);
                     break;
                 case Variants.Partial:
                     if ((ov.ob as SDict<long, bool>)?.First() is Bookmark<ValueTuple<long, bool>> pmk)
-                        return new MTreeBookmark<K>(outer, mt._info, null, pmk, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, true, null, pmk, 0, key);
                     break;
                 case Variants.Ascending:
                 case Variants.Descending:
                     if (key.next.Length == 0)
-                        return new MTreeBookmark<K>(outer, mt._info, null, null, 0, key);
+                        return new MTreeBookmark<K>(outer, mt._info, true, null, null, 0, key);
                     break;
             }
             return null;
@@ -369,6 +369,7 @@ namespace Shareable
             var outer = _outer;
             var pmk = _pmk;
             var pos = Position;
+            var changed = false;
             for (; ; )
             {
                 if (inner != null)
@@ -391,6 +392,7 @@ namespace Shareable
                     return null;
                 else
                     outer = (SDictBookmark<Variant,Variant>)ou;
+                changed = true;
                 var oval = outer.val;
                 switch (oval.variant)
                 {
@@ -412,8 +414,64 @@ namespace Shareable
                 }
             }
             done:
-            return new MTreeBookmark<K>(outer, _info, inner, pmk, pos + 1, _filter);
+            return new MTreeBookmark<K>(outer, _info, changed, inner, pmk, pos + 1, _filter);
 
+        }
+        /// <summary>
+        /// In join processing if there are ties in both first and second we
+        /// often need to repeat groups of tied rows.
+        /// </summary>
+        /// <param name="depth"></param>
+        /// <returns>an earlier bookmark or null</returns>
+        internal MTreeBookmark<K> ResetToTiesStart(STransaction tr, int depth)
+        {
+            var m = (depth > 1) ? _inner?.ResetToTiesStart(tr, depth - 1) : null;
+            var ov = (depth == 1) ? _outer.Value.Item2.ob as SDict<long, bool> : null;
+            return new MTreeBookmark<K>(_outer, _info, false,
+                    m, ov?.First(), _inner?.Position ?? 0);
+        }
+        /// <summary>
+        /// Find out if there are more matches for a partial ordering
+        /// </summary>
+        /// <param name="depth">The depth in the key</param>
+        /// <returns>whether there are more matches</returns>
+        internal bool hasMore(STransaction tr, int depth)
+        {
+            if (depth > 1)
+                return _pmk?.Next() != null || (_inner != null && _inner.hasMore(tr, depth - 1));
+            var ov = _outer.Value;
+            switch (ov.Item1.variant)
+            {
+                case Variants.Compound:
+                    {
+                        var m = ov.Item2.ob as SMTree<K>;
+                        if (_inner==null||m==null)
+                            throw new Exception("!!");
+                        return _inner.Position < m.Length - 1;
+                    }
+                case Variants.Partial:
+                    {
+                        var t = ov.Item2.ob as SDict<long, bool>;
+                        if (_pmk == null || t == null)
+                            throw new Exception("!!");
+                        return _pmk.Position < t.Length - 1;
+                    }
+                default:
+                    return false;
+            }
+        }
+        /// <summary>
+        /// Whether there has been a change at the given depth
+        /// </summary>
+        /// <param name="depth">the depth in the key</param>
+        /// <returns>whether there has been a change</returns>
+        internal bool changed(int depth)
+        {
+            if (_changed)
+                return true;
+            if (depth > 1 && _inner!=null)
+                return _inner.changed(depth - 1);
+            return false;
         }
         public override ValueTuple<SCList<Variant>, long> Value
             => new ValueTuple<SCList<Variant>, long>(key(),value());

@@ -84,7 +84,7 @@ namespace StrongLink
         internal class Lexer
         {
             public readonly char[] input;
-            int pos = -1;
+            internal int pos = -1;
             int? pushPos = null;
             internal Sym tok;
             internal Sym pushBack = Sym.Null;
@@ -194,10 +194,21 @@ namespace StrongLink
                     {
                         var p = pos;
                         var m = Unsigned(n);
-                        val = new SNumeric(m, pos - p, pos - p);
-                        return tok = Sym.LITERAL;
-                    }
-                    val = new SInteger(n);
+                        var q = pos;
+                        var e = 0;
+                        if (ch == 'e' || ch == 'E')
+                        {
+                            Advance();
+                            var esg = 1;
+                            if (ch == '-')
+                                esg = -1;
+                            if (ch == '-' || ch == '+')
+                                Advance();
+                            e = Unsigned() * esg;
+                        }
+                        val = new SNumeric(m, q - p, q - p-1-e);
+                    } else
+                        val = new SInteger(n);
                     return tok = Sym.LITERAL;
                 }
                 else if (ch == '\'')
@@ -316,14 +327,14 @@ namespace StrongLink
         void Mustbe(Sym t)
         {
             if (lxr.tok != t)
-                throw new Exception("Syntax error: " + lxr.tok.ToString());
+                throw new Exception(CheckEOF());
             Next();
         }
         SString MustBeID()
         {
             var s = lxr.val;
             if (lxr.tok != Sym.ID || s==null)
-                throw new Exception("Syntax error: " + lxr.tok.ToString());
+                throw new Exception(CheckEOF());
             Next();
             return (SString)s;
         }
@@ -380,7 +391,7 @@ namespace StrongLink
                 case Sym.COMMIT:
                     return new Serialisable(Types.SCommit);
             }
-            throw new Exception("Syntax Error: " + lxr.tok);
+            throw new Exception(CheckEOF());
         }
         /// <summary>
         /// Alter: ALTER table_id ADD id Type
@@ -448,7 +459,7 @@ namespace StrongLink
                     case Sym.RPAREN: Next(); return new SCreateTable(tb, cols);
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + lxr.tok);
+                throw new Exception(CheckEOF());
             }
         }
         SList<SSelector> Cols()
@@ -464,7 +475,7 @@ namespace StrongLink
                     case Sym.RPAREN: Next(); return cols;
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + lxr.tok);
+                throw new Exception(CheckEOF());
             }
         }
         SValues Vals()
@@ -480,7 +491,20 @@ namespace StrongLink
                     case Sym.RPAREN: Next(); return new SValues(cols);
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception("Syntax error: " + lxr.tok);
+                throw new Exception(CheckEOF());
+            }
+        }
+        string CheckEOF()
+        {
+            switch (lxr.tok)
+            {
+                case Sym.Null:
+                    return "Premature eof at column " + lxr.pos;
+                case Sym.ID:
+                case Sym.LITERAL:
+                    return "Syntax error at " + lxr.val;
+                default:
+                    return "Syntax error at " + lxr.tok;
             }
         }
         SList<ValueTuple<string,Serialisable>> Selects()

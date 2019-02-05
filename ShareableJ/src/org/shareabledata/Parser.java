@@ -275,10 +275,21 @@ public class Parser {
                     {
                         var p = pos;
                         var m = Unsigned(n);
-                        val = new SNumeric(new Numeric(m, pos - p, pos - p));
-                        return tok = Sym.LITERAL;
-                    }
-                    val = new SInteger(n);
+                        var q = pos;
+                        var e = 0;
+                        if (ch == 'e' || ch == 'E')
+                        {
+                            Advance();
+                            var esg = 1;
+                            if (ch == '-')
+                                esg = -1;
+                            if (ch == '-' || ch == '+')
+                                Advance();
+                            e = Unsigned().toInt()*esg;
+                        }
+                        val = new SNumeric(new Numeric(m, q - p, q - p-1-e));
+                    } else
+                        val = new SInteger(n);
                     return tok = Sym.LITERAL;
                 }
                 else if (ch == '\'')

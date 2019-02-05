@@ -475,7 +475,6 @@ namespace StrongDB
         internal int rx = 0;
         internal Reader rbuf;
         bool exception = false;
-
         public override bool CanRead => throw new NotImplementedException();
 
         public override bool CanSeek => throw new NotImplementedException();

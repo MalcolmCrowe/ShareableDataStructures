@@ -180,6 +180,10 @@ public class Numeric {
         b = b.Denormalise(na - nb);
         return a.mantissa.compareTo(b.mantissa);
     }
+    public double toDouble()
+    {
+        return mantissa.toDouble()*Math.pow(10.0,-(double)scale);
+    }
     @Override
     public String toString() {
         if (mantissa == null) {

@@ -254,6 +254,7 @@ public class SDatabase {
         SRecord sr = null;
         obs = obs.Add(u.table, st);
         var nms = names.Add(st.name, st);
+        if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
             if (sr == null)

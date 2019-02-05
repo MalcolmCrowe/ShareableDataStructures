@@ -37,6 +37,22 @@ namespace Shareable
         }
         public override Serialisable Value => _ob; // should always be an SRow
         public Serialisable this[string s] => (s.CompareTo(_rs._qry.Alias) == 0)?_ob:_ob.vals[s];
+        public bool Matches(SList<Serialisable> wh,Context cx)
+        {
+            cx = new Context(this, cx);
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (b.Value.Lookup(cx) != SBoolean.True)
+                    return false;
+            return true;
+        }
+        public bool Matches(SList<SExpression> wh, Context cx)
+        {
+            cx = new Context(this, cx);
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (b.Value.Lookup(cx) != SBoolean.True)
+                    return false;
+            return true;
+        }
         public virtual STransaction Update(STransaction tr,SDict<string,Serialisable> assigs)
         {
             return tr; // no changes here
@@ -116,6 +132,25 @@ namespace Shareable
                 for (var c = sel.order.First(); c != null; c = c.Next())
                     k[i] = new Variant(c.Value.col.Lookup(new Context(b,cx)),!c.Value.desc);
                 t = t.Add(m,k);
+                r += (m++, b._ob);
+            }
+            _tree = t;
+            _rows = r;
+        }
+        public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti,Context cx)
+            : base(sce._tr,sce._qry,sce._aggregates,null)
+        {
+            _sce = sce;
+            var t = new SMTree<Serialisable>(ti);
+            var r = SDict<int, SRow>.Empty;
+            int m = 0;
+            for (var b = sce.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            {
+                var k = new Variant[ti.Length.Value];
+                var i = 0;
+                for (var c = ti.First(); c != null; c = c.Next())
+                    k[i] = new Variant(c.Value.headName.Lookup(new Context(b, cx)));
+                t = t.Add(m, k);
                 r += (m++, b._ob);
             }
             _tree = t;
@@ -323,7 +358,7 @@ namespace Shareable
                 for (var b = rs._sce.First(); b != null; b = b.Next())
                 {
                     var rb = new SearchRowBookmark(rs, (RowBookmark)b, 0);
-                    if (((RowBookmark)b)._ob.rec?.Matches(rb, rs._sch.where)==true)
+                    if (rb.Matches(rs._sch.where,Context.Empty)==true)
                         return rb;
                 }
                 return null;
@@ -333,7 +368,7 @@ namespace Shareable
                 for (var b = _bmk.Next(); b != null; b = b.Next())
                 {
                     var rb = new SearchRowBookmark(_sch, (RowBookmark)b, Position + 1);
-                    if (((RowBookmark)b)._ob.rec?.Matches(rb, _sch._sch.where)==true)
+                    if (rb.Matches(_sch._sch.where,Context.Empty)==true)
                         return rb;
                 }
                 return null;
@@ -553,12 +588,31 @@ namespace Shareable
     {
         public readonly SJoin _join;
         public readonly RowSet _left, _right;
-        internal JoinRowSet(STransaction tr,SQuery top,SJoin j,SDict<long,SFunction> a,Context cx)
-            : base(tr,j,a,null)
+        public readonly int _klen;
+        internal JoinRowSet(STransaction tr, SQuery top, SJoin j, SDict<long, SFunction> a, Context cx)
+            : base(tr, j, a, null)
         {
             _join = j;
-            _left = j.left.RowSet(tr,top,a, cx);
-            _right = j.right.RowSet(tr, top, a, cx);
+            var lti = SList<TreeInfo<Serialisable>>.Empty;
+            var rti = SList<TreeInfo<Serialisable>>.Empty;
+            for (var b = j.ons.First();b!=null;b=b.Next())
+            {
+                var e = b.Value;
+                if (e.op != SExpression.Op.Eql)
+                    continue;
+                lti += new TreeInfo<Serialisable>((SColumn)e.left, 'A', 'D');
+                rti += new TreeInfo<Serialisable>((SColumn)e.right, 'A', 'D');
+            }
+            var lf = j.left.RowSet(tr, j.left, a, cx);
+            var rg = j.right.RowSet(tr, j.right, a, cx);
+            _klen = lti.Length.Value;
+            if (lti.Length!=0)
+            {
+                lf = new OrderedRowSet(lf, lti, cx);
+                rg = new OrderedRowSet(rg, rti, cx);
+            }
+            _left = lf;
+            _right = rg;
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -567,24 +621,96 @@ namespace Shareable
         public class JoinRowBookmark : RowBookmark
         {
             public readonly JoinRowSet _jrs;
-            public readonly RowBookmark _lbm, _rbm;
-            protected JoinRowBookmark(JoinRowSet jrs,RowBookmark lbm,RowBookmark rbm,int pos)
-                : base(jrs,_Row(jrs,lbm,rbm),pos)
+            public readonly RowBookmark? _lbm, _rbm;
+            internal JoinRowBookmark(JoinRowSet jrs,RowBookmark? left,RowBookmark? right,int pos)
+                :base(jrs,_Row(jrs,left,right),pos)
             {
-                _jrs = jrs; _lbm = lbm; _rbm = rbm;
+                _jrs = jrs; _lbm = left; _rbm = right;
             }
-            static SRow _Row(JoinRowSet jrs,RowBookmark lbm,RowBookmark rbm)
+            static SRow _Row(JoinRowSet jrs,RowBookmark? lbm,RowBookmark? rbm)
             {
-                throw new System.NotImplementedException();
+                var r = new SRow();
+                switch (jrs._join.joinType)
+                {
+                    default:
+                        {
+                            var ab = lbm?._ob.names.First();
+                            for (var b = lbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                            {
+                                var n = ab.Value.Item2;
+                                if (rbm?._ob.vals.Contains(n)==true)
+                                    n = jrs._left._qry.Alias + "." + n;
+                                r += (n, b.Value.Item2);
+                            }
+                            ab = rbm?._ob.names.First();
+                            for (var b = rbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                            {
+                                var n = ab.Value.Item2;
+                                if (lbm?._ob.vals.Contains(n)==true)
+                                    n = jrs._right._qry.Alias + "." + n;
+                                r += (n, b.Value.Item2);
+                            }
+                            break;
+                        }
+                    case SJoin.JoinType.Natural:
+                        {
+                            if (lbm == null || rbm == null)
+                                throw new Exception("!!");
+                            var ab = lbm._ob.names.First();
+                            for (var b = lbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                                r += (ab.Value.Item2, b.Value.Item2);
+                            ab = rbm._ob.names.First();
+                            for (var b = rbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                                if (!lbm._ob.names.Contains(b.Value.Item1))
+                                    r += (ab.Value.Item2, b.Value.Item2);
+                            break;
+                        }
+                }
+                return r;
             }
             public static RowBookmark? New(JoinRowSet jrs)
             {
-                return (jrs._left.First() is RowBookmark lb && jrs._right.First() is RowBookmark rb) ?
-                    new JoinRowBookmark(jrs, lb, rb, 0) : null;
+                RowBookmark? lf, rg;
+                for (lf= jrs._left.First() as RowBookmark?,rg = jrs._right.First() as RowBookmark?;
+                    lf!=null || rg!=null; )
+                {
+                    var r = new JoinRowBookmark(jrs, lf, rg, 0);
+                    switch (jrs._join.joinType)
+                    {
+                        case SJoin.JoinType.Cross:
+                            return (lf != null && rg != null) ? r : null;
+                        default:
+                            if (r.Matches(jrs._join.ons, Context.Empty))
+                                return r;
+                            break;
+                    }
+                    return null;
+                }
+                return null;
             }
             public override Bookmark<Serialisable>? Next()
             {
-                throw new System.NotImplementedException();
+                var lbm = _lbm;
+                var rbm = _rbm;
+                switch (_jrs._join.joinType)
+                {
+                    case SJoin.JoinType.Cross:
+                        {
+                            if (rbm?.Next() is RowBookmark rb)
+                                return new JoinRowBookmark(_jrs, lbm, rb, Position + 1);
+                            if (lbm?.Next() is RowBookmark lb && _jrs._right.First() is RowBookmark rbf)
+                                return new JoinRowBookmark(_jrs, lb, rbf, Position + 1);
+                            return null;
+                        }
+                    default:
+                        {
+                            if (rbm?.Next() is RowBookmark rb)
+                                return new JoinRowBookmark(_jrs, lbm, rb, Position + 1);
+                            if (lbm?.Next() is RowBookmark lb)
+                                return new JoinRowBookmark(_jrs, lb, null, Position + 1);
+                            return null;
+                        }
+                }
             }
         }
     }

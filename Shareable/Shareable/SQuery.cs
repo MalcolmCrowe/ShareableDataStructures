@@ -104,12 +104,12 @@ namespace Shareable
     }
     public class SJoin : SQuery
     {
-        public enum JoinType { None=0, Natural=1, Cross=2, Left=3, Right=4, Full=5 };
+        public enum JoinType { Inner=0, Natural=1, Cross=2, Left=3, Right=4, Full=5 };
         public readonly JoinType joinType;
         public readonly bool outer;
         public readonly SQuery left,right;
         public readonly SList<SExpression> ons;
-        public SJoin(SDatabase db,Reader f): base(Types.STableExp,f)
+        public SJoin(SDatabase db, Reader f) : base(Types.STableExp, f)
         {
             left = f._Get(db) as SQuery ?? throw new Exception("Query expected");
             outer = f.GetInt() == 1;
@@ -117,8 +117,25 @@ namespace Shareable
             right = f._Get(db) as SQuery ?? throw new Exception("Query expected");
             var n = f.GetInt();
             var on = SList<SExpression>.Empty;
-            for (var i = 0; i < n; i++)
-                on += (f._Get(db) as SExpression ?? throw new Exception("ON exp expected"), i);
+            switch (joinType)
+            {
+                case JoinType.Cross:
+                    break;
+                case JoinType.Natural:
+                    for (var lb = left.names.First(); lb != null; lb = lb.Next())
+                        if (right.names.Contains(lb.Value.Item1))
+                            on += new SExpression(lb.Value.Item2, SExpression.Op.Eql,
+                                right.names[lb.Value.Item1]);
+                    break;
+                default:
+                    for (var i = 0; i < n; i++)
+                    {
+                        var e = f._Get(db) as SExpression
+                            ?? throw new Exception("ON exp expected");
+                        on += (e, i);
+                    }
+                    break;
+            }
             ons = on;
         }
         public SJoin(SQuery lf,bool ou,JoinType jt,SQuery rg,SList<SExpression> on,
@@ -151,7 +168,7 @@ namespace Shareable
             left.Append(db, sb);
             if (outer)
                 sb.Append(" outer ");
-            if (joinType != JoinType.None)
+            if (joinType != JoinType.Inner)
             { sb.Append(" "); sb.Append(joinType); sb.Append(" "); }
             right.Append(db, sb);
             if (ons.Length!=0)
@@ -307,7 +324,8 @@ namespace Shareable
         }
         public override Serialisable Lookup(Context cx)
         {
-            return (cx.head is SearchRowSet.SearchRowBookmark srb) ? source.Lookup(new Context(srb._bmk,cx)) : this;
+            return (cx.head is SearchRowSet.SearchRowBookmark srb) ? 
+                source.Lookup(cx) : this;
         }
         public override void Append(SDatabase? db, StringBuilder sb)
         {
@@ -436,7 +454,7 @@ namespace Shareable
             var r = (RowBookmark)cx.head;
             if (display.Length == 0)
                 return r._ob;
-            return new SRow(this,new Context(r,cx));
+            return new SRow(this,cx);
         }
         public override string Alias => qry.Alias;
         public override SDict<int, string> Display => (display == SDict<int, string>.Empty) ? qry.Display : display;

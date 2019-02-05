@@ -120,6 +120,14 @@ public class Bigint implements Comparable {
                 Val = (Val<<8)|((int)bytes[j]&0xff);
         return Val;
     }
+    double toDouble()
+    {
+        int n = bytes.length;
+        double dVal = (n>0 && bytes[0]>127)?-1.0:0.0;
+        for (int j=0;j<bytes.length;j++)
+                dVal = (dVal*256.0)+(double)((int)bytes[j]&0xff);
+        return dVal;        
+    }
     
     public boolean getSign()
     {

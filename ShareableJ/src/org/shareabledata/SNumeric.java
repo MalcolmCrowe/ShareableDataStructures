@@ -42,7 +42,7 @@ public class SNumeric extends Serialisable implements Comparable {
         @Override
         public void Append(SDatabase db,StringBuilder sb)
         {
-            sb.append('"');sb.append(num);sb.append('"');
+           sb.append(num.toDouble());
         }
         @Override
         public String toString()
