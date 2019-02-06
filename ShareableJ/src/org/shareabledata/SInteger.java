@@ -57,10 +57,15 @@ public class SInteger extends Serialisable implements Comparable {
         @Override
         public void Append(SDatabase db,StringBuilder sb)
         {
-            if (big!=null)
-                sb.append(big);
-            else
-                sb.append(value);
+            switch (type)
+            {
+                case Types.SInteger:
+                    sb.append(value);
+                    break;
+                case Types.SBigInt:
+                    sb.append(big);
+                    break;
+            }
         }
         @Override
         public int compareTo(Object o) {
@@ -83,7 +88,7 @@ public class SInteger extends Serialisable implements Comparable {
                 case Types.SInteger:
                     return "Integer " + value;
                 case Types.SBigInt:
-                    return "Iteger "+big;
+                    return "Integer "+big;
             }
             return "";
         }

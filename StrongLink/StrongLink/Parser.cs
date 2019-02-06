@@ -135,14 +135,14 @@ namespace StrongLink
                 var r = Unsigned();
                 if (pos != st + n)
                     throw new Exception("Expected " + n + " digits");
-                return r;
+                return (int)r;
             }
             int Unsigned(int n, int low, int high)
             {
                 var r = Unsigned(n);
                 if (r < low || r > high)
                     throw new Exception("Expected " + low + "<=" + r + "<=" + high);
-                return r;
+                return (int)r;
             }
             void Mustbe(char c)
             {
@@ -204,7 +204,7 @@ namespace StrongLink
                                 esg = -1;
                             if (ch == '-' || ch == '+')
                                 Advance();
-                            e = Unsigned() * esg;
+                            e = (int)Unsigned() * esg;
                         }
                         val = new SNumeric(m, q - p, q - p-1-e);
                     } else

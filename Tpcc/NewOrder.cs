@@ -114,7 +114,7 @@ namespace Tpcc
                 return true;
             }
             d_tax = util.GetDecimal(s[0][0]);
-            o_id = (int)(long)s[0][1];
+            o_id = (int)s[0][1];
             Set(6, o_id);
             Set(132, DateTime.Now.ToString());
             s = db.ExecuteQuery("select W_TAX from WAREHOUSE where W_ID=" + wid);
@@ -181,7 +181,10 @@ namespace Tpcc
             }
             Set(k + 2, i_name);
             object o = s[0][0];
-            s_quantity = (int)(long)o;
+            if (o is long)
+                s_quantity = (int)o;
+            else
+                s_quantity = (int)util.GetDecimal(o);
             Set(k + 4, s_quantity);
             a.s_quantity = s_quantity;
             sdata = (string)s[0][2];

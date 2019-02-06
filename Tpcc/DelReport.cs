@@ -27,8 +27,8 @@ namespace Tpcc
             var s = db.ExecuteQuery("select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc");
             if (s.items.Count == 0)
                 return true;
-            Set(3, (int)(long)s.items[0].fields[0].Value);
-            Set(4, (int)(long)s.items[0].fields[1].Value);
+            Set(3, (int)s.items[0].fields[0].Value);
+            Set(4, (int)s.items[0].fields[1].Value);
             return false;
         }
 

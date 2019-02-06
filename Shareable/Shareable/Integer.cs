@@ -75,6 +75,11 @@ namespace Shareable
 				new byte[] { 1,11,70,198,205,214,227,224,130,143,77,180,86,255,12,142,160,0,0,0,0,0,0},
 				new byte[] { 10,112,195,196,10,100,230,197,25,153,9,11,101,246,125,146,64,0,0,0,0,0,0},
 		};
+        public static readonly Integer intMax = new Integer(int.MaxValue);
+        public static readonly Integer intMin = new Integer(int.MinValue);
+        public static readonly Integer longMax = new Integer(long.MaxValue);
+        public static readonly Integer longMin = new Integer(int.MinValue);
+
         /// <summary>
         /// Constructor: An Integer from an array of radix-256 digits
         /// </summary>
@@ -180,7 +185,7 @@ namespace Shareable
         /// </summary>
         /// <param name="x">The Integer to cast</param>
         /// <returns>The corresponding int value</returns>
-        static public implicit operator int(Integer x)
+        static public explicit operator int(Integer x)
 		{
 			int n = x.bytes.Length;
 			if (n>4)
@@ -196,7 +201,7 @@ namespace Shareable
         /// </summary>
         /// <param name="x">The Integer to cast</param>
         /// <returns>The corresponding long value</returns>
-		static public implicit operator long(Integer x)
+		static public explicit operator long(Integer x)
 		{
 			int n = x.bytes.Length;
 			if (n>8)
@@ -211,7 +216,7 @@ namespace Shareable
         /// </summary>
         /// <param name="x">The Integer to cast</param>
         /// <returns>The corresponding double value</returns>
-		static public implicit operator double(Integer x)
+		static public explicit operator double(Integer x)
 		{
 			int n = x.bytes.Length;
 			double dVal = (n>0 && x.bytes[0]>127)?-1.0:0.0;
@@ -631,7 +636,7 @@ namespace Shareable
 			else if (obj is long)
 				x = new Integer((long)obj);
 			else
-				return new Numeric(this).CompareTo(obj);
+				return new Numeric((int)this).CompareTo(obj);
 			int n = bytes.Length; // code copied from next routine (shift = 0) following profiling
 			int xn = x.bytes.Length;
 			int j;
@@ -822,6 +827,12 @@ namespace Shareable
 			scale = s;
             precision = p;
 		}
+        public Numeric(long m, int s, int p = 0)
+        {
+            mantissa = new Integer(m);
+            scale = s;
+            precision = p;
+        }
         /// <summary>
         /// Constructor: given a long
         /// </summary>

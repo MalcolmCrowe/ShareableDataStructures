@@ -28,9 +28,9 @@ namespace Tpcc
             int nextoid = 0;
             db.BeginTransaction();
             var s = db.ExecuteQuery("select D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did);
-            nextoid = (int)(long)s[0][0];
+            nextoid = (int)s[0][0];
             s = db.ExecuteQuery("select count(S_I_ID) from STOCK where S_W_ID=" + wid + " and S_I_ID in (select distinct OL_I_ID from ORDER_LINE where OL_W_ID=" + wid + " and OL_D_ID=" + did + " and OL_O_ID>=" + (nextoid - 20) + ") and S_QUANTITY<" + thresh);
-            int n = (int)(long)s[0][0];
+            int n = (int)s[0][0];
             Set(4, n);
             db.Rollback();
             return false;

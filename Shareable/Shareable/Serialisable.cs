@@ -264,7 +264,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv + ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv + getbig(rg));
+                                            return new SInteger(new Integer(lv) + getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)rg).num);
                                     }
@@ -276,11 +276,11 @@ namespace Shareable
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
-                                            return new SInteger(lv + ((SInteger)rg).value);
+                                            return new SInteger(lv + new Integer(((SInteger)rg).value));
                                         case Types.SBigInt:
                                             return new SInteger(lv + getbig(rg));
                                         case Types.SNumeric:
-                                            return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)rg).num);
+                                            return new SNumeric(new Numeric(lv, 0) + ((SNumeric)rg).num);
                                     }
                                     break;
                                 }
@@ -313,7 +313,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv - ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv - getbig(rg));
+                                            return new SInteger(new Integer(lv) - getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) - ((SNumeric)rg).num);
                                     }
@@ -325,11 +325,11 @@ namespace Shareable
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
-                                            return new SInteger(lv - ((SInteger)rg).value);
+                                            return new SInteger(lv - new Integer(((SInteger)rg).value));
                                         case Types.SBigInt:
                                             return new SInteger(lv - getbig(rg));
                                         case Types.SNumeric:
-                                            return new SNumeric(new Numeric(new Integer(lv), 0) - ((SNumeric)rg).num);
+                                            return new SNumeric(new Numeric(lv, 0) - ((SNumeric)rg).num);
                                     }
                                     break;
                                 }
@@ -362,7 +362,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv * ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv * getbig(rg));
+                                            return new SInteger(new Integer(lv) * getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Integer(lv), 0) * ((SNumeric)rg).num);
                                     }
@@ -374,11 +374,11 @@ namespace Shareable
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
-                                            return new SInteger(lv * ((SInteger)rg).value);
+                                            return new SInteger(lv * new Integer(((SInteger)rg).value));
                                         case Types.SBigInt:
                                             return new SInteger(lv * getbig(rg));
                                         case Types.SNumeric:
-                                            return new SNumeric(new Numeric(new Integer(lv), 0) * ((SNumeric)rg).num);
+                                            return new SNumeric(new Numeric(lv, 0) * ((SNumeric)rg).num);
                                     }
                                     break;
                                 }
@@ -411,7 +411,7 @@ namespace Shareable
                                         case Types.SInteger:
                                             return new SInteger(lv / ((SInteger)rg).value);
                                         case Types.SBigInt:
-                                            return new SInteger(lv / getbig(rg));
+                                            return new SInteger(new Integer(lv) / getbig(rg));
                                         case Types.SNumeric:
                                             return new SNumeric(new Numeric(new Numeric(new Integer(lv), 0) / ((SNumeric)rg).num));
                                     }
@@ -423,11 +423,11 @@ namespace Shareable
                                     switch (rg.type)
                                     {
                                         case Types.SInteger:
-                                            return new SInteger(lv / ((SInteger)rg).value);
+                                            return new SInteger(lv / new Integer(((SInteger)rg).value));
                                         case Types.SBigInt:
                                             return new SInteger(lv / getbig(rg));
                                         case Types.SNumeric:
-                                            return new SNumeric(new Numeric(new Numeric(new Integer(lv), 0) / ((SNumeric)rg).num));
+                                            return new SNumeric(new Numeric(new Numeric(lv, 0) / ((SNumeric)rg).num));
                                     }
                                     break;
                                 }
@@ -482,7 +482,7 @@ namespace Shareable
                                         case Types.SBigInt:
                                             c = lv.CompareTo(getbig(rg)); break;
                                         case Types.SNumeric:
-                                            c = new Numeric(new Integer(lv), 0).CompareTo(((SNumeric)rg).num); break;
+                                            c = new Numeric(lv, 0).CompareTo(((SNumeric)rg).num); break;
                                     }
                                     break;
                                 }
@@ -634,7 +634,7 @@ namespace Shareable
                                     case Types.SInteger:
                                         return new SInteger(lv + ((SInteger)v).value);
                                     case Types.SBigInt:
-                                        return new SInteger(lv + getbig(v));
+                                        return new SInteger(new Integer(lv) + getbig(v));
                                     case Types.SNumeric:
                                         return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)v).num);
                                 }
@@ -646,11 +646,11 @@ namespace Shareable
                                 switch (v.type)
                                 {
                                     case Types.SInteger:
-                                        return new SInteger(lv + ((SInteger)v).value);
+                                        return new SInteger(lv + new Integer(((SInteger)v).value));
                                     case Types.SBigInt:
                                         return new SInteger(lv + getbig(v));
                                     case Types.SNumeric:
-                                        return new SNumeric(new Numeric(new Integer(lv), 0) + ((SNumeric)v).num);
+                                        return new SNumeric(new Numeric(lv, 0) + ((SNumeric)v).num);
                                 }
                                 break;
                             }
@@ -755,12 +755,12 @@ namespace Shareable
             switch (type)
             {
                 case Types.SInteger:
-                    value = b; big = null; break;
+                    value = (int)b; big = null; break;
                 case Types.SBigInt:
                     value = 0; big = b; break;
             }
         }
-        SInteger(Reader f) : this(f.GetInt())
+        SInteger(Reader f) : this(f.GetInteger())
         {
         }
         public override bool isValue => true;
@@ -770,12 +770,28 @@ namespace Shareable
         }
         public override void Append(SDatabase? db,StringBuilder sb)
         {
-             sb.Append(big??value);
+            switch (type)
+            {
+                case Types.SInteger:
+                    sb.Append(value);
+                    break;
+                case Types.SBigInt:
+                    sb.Append(big?.ToString() ?? "");
+                    break;
+            }
         }
         public override void Put(StreamBase f)
         {
             base.Put(f);
-            f.PutInt(value);
+            switch(type)
+            {
+                case Types.SInteger:
+                    f.PutInt(value);
+                    break;
+                case Types.SBigInt:
+                    f.PutInteger(big ?? Integer.Zero);
+                    break;
+            }
         }
         public override string ToString()
         {
@@ -796,9 +812,13 @@ namespace Shareable
         {
             num = n;
         }
-        public SNumeric(long m,int p,int s) : base(Types.SNumeric)
+        public SNumeric(Integer m,int p,int s) : base(Types.SNumeric)
         {
-            num = new Numeric(new Integer(m), s, p);
+            num = new Numeric(m, s, p);
+        }
+        public SNumeric(long m, int p, int s) : base(Types.SNumeric)
+        {
+            num = new Numeric(m, s, p);
         }
         SNumeric(Reader f) : base(Types.SNumeric, f)
         {
@@ -811,7 +831,7 @@ namespace Shareable
         public override void Put(StreamBase f)
         {
             base.Put(f);
-            f.PutInt(num.mantissa);
+            f.PutInteger(num.mantissa);
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }
@@ -821,11 +841,11 @@ namespace Shareable
         }
         public override void Append(SDatabase? db,StringBuilder sb)
         {
-            sb.Append(num.mantissa * Math.Pow(10.0, -num.scale));
+            sb.Append((double)num.mantissa * Math.Pow(10.0, -num.scale));
         }
         public double ToDouble()
         {
-            return 1.0 * num.mantissa * Math.Pow(10.0, num.scale);
+            return (double)num.mantissa * Math.Pow(10.0, num.scale);
         }
         public override int CompareTo(object obj)
         {
@@ -963,7 +983,7 @@ namespace Shareable
         }
         STimeSpan(Reader f) : base(Types.STimeSpan, f)
         {
-            ts = new TimeSpan(f.GetInteger());
+            ts = new TimeSpan((long)f.GetInteger());
         }
         public override void Put(StreamBase f)
         {
@@ -2582,9 +2602,9 @@ namespace Shareable
         {
             if (n == null)
                 throw new Exception("Null PutInt");
-            PutInt(new Integer(n.Value));
+            PutInteger(new Integer(n.Value));
         }
-        public void PutInt(Integer b)
+        public void PutInteger(Integer b)
         {
             var m = b.bytes.Length;
             WriteByte((byte)m);
@@ -2593,7 +2613,7 @@ namespace Shareable
         }
         public void PutLong(long n)
         {
-            PutInt(new Integer(n));
+            PutInteger(new Integer(n));
         }
         public void PutString(string s)
         {
@@ -2644,11 +2664,11 @@ namespace Shareable
         }
         public int GetInt()
         {
-            return GetInteger();
+            return (int)GetInteger();
         }
         public long GetLong()
         {
-            return GetInteger();
+            return (long)GetInteger();
         }
         public string GetString()
         {

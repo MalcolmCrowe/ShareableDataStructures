@@ -61,7 +61,7 @@ namespace Tpcc
             var s = db.ExecuteQuery("select CID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST");
             for (var i = 0; i < s.items.Count; i++)
                 cids.Add((long)s[i][0]);
-            cid = (int)(long)cids[(cids.Count + 1) / 2];
+            cid = (int)cids[(cids.Count + 1) / 2];
             s = db.ExecuteQuery("select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
             if (s.IsEmpty)
                 return true;
@@ -81,22 +81,22 @@ namespace Tpcc
             var s = db.ExecuteQuery("select max(O_ID) from ORDER where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid);
             if (s.IsEmpty)
                 return true;
-            oid = (int)(long)s[0][0];
+            oid = (int)s[0][0];
             s = db.ExecuteQuery("select O_ENTRY_D,O_CARRIER_ID from ORDER where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_ID=" + oid);
             if (s.IsEmpty)
                 return true;
             Set(7, oid);
             Set(8, "" + (DateTime)s[0][0]);
             if (!(s[0][1] == Serialisable.Null))
-                Set(9, (int)(long)s[0][1]);
+                Set(9, (int)s[0][1]);
             int k = 10;
             s = db.ExecuteQuery("select OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT,OL_DELIVERY_D from ORDER_LINE where OL_W_ID="
                 + wid + " and OL_D_ID=" + did + " and OL_O_ID=" + oid);
             for (var i = 0; i < s.Length; i++)
             {
-                Set(k++, (int)(long)s[i][1]);
-                Set(k++, (int)(long)s[i][0]);
-                Set(k++, (int)(long)s[i][2]);
+                Set(k++, (int)s[i][1]);
+                Set(k++, (int)s[i][0]);
+                Set(k++, (int)s[i][2]);
                 Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[i][3])));
                 if (s[i][4] != Serialisable.Null)
                     Set(k++, ((DateTime)s[i][4]).ToShortDateString());

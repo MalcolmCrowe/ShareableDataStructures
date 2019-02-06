@@ -65,7 +65,7 @@ namespace Tpcc
                 custs.Add((long)s[i][0]);
             if (custs.Count == 0)
                 return true;
-            cid = (int)(long)custs[(custs.Count + 1) / 2];
+            cid = (int)custs[(custs.Count + 1) / 2];
             Set(14, cid);
             Set(15, cwid);
             Set(16, cdid);
@@ -88,7 +88,7 @@ namespace Tpcc
             Set(31, (string)rdr[8]); // c_phone
             c_balance = (decimal)rdr[13];
             c_ytd_payment = (decimal)rdr[14];
-            c_payment_cnt = (int)(long)rdr[15];
+            c_payment_cnt = (int)rdr[15];
             return false;
         }
         bool FetchCustFromId(ref string mess)
@@ -117,7 +117,7 @@ namespace Tpcc
             Set(31, (string)rdr[8]); // c_phone
             c_balance = util.GetDecimal(rdr[13]);
             c_ytd_payment = util.GetDecimal(rdr[14]);
-            c_payment_cnt = (int)(long)rdr[15];
+            c_payment_cnt = (int)rdr[15];
             return false;
         }
         bool DoPayment(ref string mess)

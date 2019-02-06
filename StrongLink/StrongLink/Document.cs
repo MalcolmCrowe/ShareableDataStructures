@@ -494,7 +494,7 @@ namespace StrongLink
                             if (v is string)
                                 v = int.Parse((string)v);
                             else if (v is long)
-                                v = (int)(long)e.Value;
+                                v = (int)e.Value;
                         }
                         else if (f.FieldType == typeof(long))
                         {
@@ -765,18 +765,25 @@ namespace StrongLink
                 var sg = c == '-';
                 if (sg && i < n)
                     c = s[i++];
-                var whole = 0L;
+                var whole = Shareable.Integer.Zero;
+                var Ten = new Shareable.Integer(10);
                 if (Char.IsDigit(c))
                 {
                     i--;
-                    whole = GetHex(s, n, ref i);
+                    whole = new Shareable.Integer(GetHex(s, n, ref i));
                     while (i < n && Char.IsDigit(s[i]))
-                        whole = whole * 10 + GetHex(s, n, ref i);
+                        whole = whole * Ten + new Shareable.Integer(GetHex(s, n, ref i));
                 }
                 else
                     goto bad;
                 if (i >= n || (s[i] != '.' && s[i] != 'e' && s[i] != 'E'))
+                {
+                    if (whole.CompareTo(Shareable.Integer.intMax) < 0)
+                        return sg ? (int)-whole : (int)whole;
+                    if (whole.CompareTo(Shareable.Integer.longMax) < 0)
+                        return sg ? (long)-whole : (long)whole;
                     return sg ? -whole : whole;
+                }
                 int scale = 0;
                 if (s[i] == '.')
                 {
@@ -784,7 +791,7 @@ namespace StrongLink
                         throw new DocumentException("decimal part expected");
                     while (i < n && Char.IsDigit(s[i]))
                     {
-                        whole = whole * 10 + GetHex(s, n, ref i);
+                        whole = whole * Ten + new Shareable.Integer(GetHex(s, n, ref i));
                         scale++;
                     }
                 }
@@ -805,7 +812,7 @@ namespace StrongLink
                     exp = exp * 10 + GetHex(s, n, ref i);
                 if (esg)
                     exp = -exp;
-                var dr = whole * Math.Pow(10.0, exp - scale);
+                var dr = (double)whole * Math.Pow(10.0, exp - scale);
                 return sg ? -dr : dr;
             }
         bad:

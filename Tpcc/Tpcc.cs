@@ -467,7 +467,7 @@ namespace Tpcc
             try
             {
                 var s = conn.ExecuteQuery("select count(W_ID) from WAREHOUSE");
-                activewh = (int)(long)s.items[0].fields[0].Value;
+                activewh = (int)s.items[0].fields[0].Value;
                 textBox1.Text = "" + activewh;
                 wid = 1;
                 //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));

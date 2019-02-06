@@ -232,7 +232,7 @@ namespace Tpcc
             var r = new Serialisable[17];
             r[0] = new SInteger(siid);
             r[1] = new SInteger(wid);
-            r[2] = new SNumeric(util.random(10, 100), 4, 0);
+            r[2] = new SInteger(util.random(10, 100));
             for (var i = 3; i < 13; i++)
                 r[i] = GetString(util.randchar(24));
             r[13] = SInteger.Zero;
@@ -421,7 +421,7 @@ namespace Tpcc
             nameBits[7] = new ByteArray("CALLY");
             nameBits[8] = new ByteArray("ATION");
             nameBits[9] = new ByteArray("EING");
-            rnd = new Random();
+            rnd = new Random(0);
             c_c_last = random(0, a_c_last);
             c_c_id = random(0, a_c_id);
             c_ol_i_id = random(0, a_ol_i_id);
@@ -564,6 +564,8 @@ namespace Tpcc
                 return (decimal)(double)ob;
             if (ob is decimal)
                 return (decimal)ob;
+            if (ob is string)
+                return decimal.Parse((string)ob);
             throw new Exception("unknown type " + ob.GetType().Name);
         }
         public static int NURand(int a, int c, int x, int y)
