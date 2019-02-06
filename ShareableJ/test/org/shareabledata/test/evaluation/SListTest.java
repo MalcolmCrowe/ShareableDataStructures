@@ -15,8 +15,10 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import org.shareabledata.SList;
-import org.shareabledata.test.common.PayLoad;
-import org.shareabledata.test.common.TimeAndMemoryLogger;
+
+
+import org.shareabledata.test.common.*;
+
 
 /**
  *
@@ -107,18 +109,55 @@ public class SListTest {
 		SList<PayLoad> list = this.creatASListWithNelement(100);
                 PayLoad toBeFound_25 = new PayLoad("Load 25");
                 PayLoad toBeFound_50 = new PayLoad("Load 50");
+                PayLoad toBeFound_75 = new PayLoad("Load 75");
+                
                 PayLoad toBeFound_100 = new PayLoad("Load 100");
                 Assert.assertEquals(100, list.Length);
                 tml.setInitialTimeAndMemory();
-                list.RemoveAt(24);
-                tml.logTimeAndMemoryUsage(25);
+                list = list.RemoveAt(24);
                 Assert.assertEquals(99, list.Length);
-                list.RemoveAt(48);
+                tml.logTimeAndMemoryUsage(25);
+                list = list.RemoveAt(48);
                 Assert.assertEquals(98, list.Length);
                 tml.logTimeAndMemoryUsage(50);
-                list.RemoveAt(97);
+                list = list.RemoveAt(73);
+                Assert.assertEquals(97, list.Length);
+                tml.logTimeAndMemoryUsage(75);
+                list = list.RemoveAt(96);
                 Assert.assertEquals(96, list.Length);
                 tml.logTimeAndMemoryUsage(100);
+    }
+    
+    
+    public void DeepCopyAndAddIn100() throws Exception {
+                tml.setTestCaseName("DeepCopyAndAddIn100 100");
+				
+		SList<PayLoad> list = this.creatASListWithNelement(100);
+               
+                
+                tml.setInitialTimeAndMemory();
+                SList<PayLoad>listCpy = list;
+                listCpy.InsertAt(new PayLoad("Load 25*"), 25);
+                tml.logTimeAndMemoryUsage(25);
+                ///////////
+                tml.setInitialTimeAndMemory();
+                listCpy = list;
+                listCpy.InsertAt(new PayLoad("Load 50*"), 50);
+                tml.logTimeAndMemoryUsage(50);
+                ///////////////
+                tml.setInitialTimeAndMemory();
+                listCpy = list;
+                listCpy.InsertAt(new PayLoad("Load 75*"), 75);
+                tml.logTimeAndMemoryUsage(75);
+                //////////////
+                tml.setInitialTimeAndMemory();
+                listCpy = list;
+                listCpy.InsertAt(new PayLoad("Load 99*"), 99);
+                tml.logTimeAndMemoryUsage(100);
+                
+                
+                
+                
     }
     
     private SList<PayLoad> creatASListWithNelement(int numberOfElements) throws Exception {
@@ -128,7 +167,7 @@ public class SListTest {
 
             for (int i = 1; i < numberOfElements; i++)
             {
-                list.InsertAt(new PayLoad("Load "+i), 0);
+                list = list.InsertAt(new PayLoad("Load "+i), 0);
             }
             return list;
         }
