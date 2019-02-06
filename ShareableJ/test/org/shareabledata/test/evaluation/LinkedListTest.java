@@ -1,7 +1,5 @@
 package org.shareabledata.test.evaluation;
 
-import org.shareabledata.test.common.TimeAndMemoryLogger;
-import org.shareabledata.test.common.PayLoad;
 import java.io.IOException;
 import java.util.LinkedList;
 import org.junit.After;
@@ -91,12 +89,15 @@ public class LinkedListTest {
 		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
                 PayLoad toBeFound_25 = new PayLoad("Load 25");
                 PayLoad toBeFound_50 = new PayLoad("Load 50");
+                PayLoad toBeFound_75 = new PayLoad("Load 75");
                 PayLoad toBeFound_100 = new PayLoad("Load 100");
                 tml.setInitialTimeAndMemory();
                 list.contains(toBeFound_25);
                 tml.logTimeAndMemoryUsage(25);
                 list.contains(toBeFound_50);
                 tml.logTimeAndMemoryUsage(50);
+                list.contains(toBeFound_75);
+                tml.logTimeAndMemoryUsage(75);
                 list.contains(toBeFound_100);
                 tml.logTimeAndMemoryUsage(100);
                 
@@ -109,6 +110,7 @@ public class LinkedListTest {
 		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
                 PayLoad toBeFound_25 = new PayLoad("Load 25");
                 PayLoad toBeFound_50 = new PayLoad("Load 50");
+                PayLoad toBeFound_75 = new PayLoad("Load 75");
                 PayLoad toBeFound_100 = new PayLoad("Load 100");
                 tml.setInitialTimeAndMemory();
                 list.remove(24);
@@ -117,11 +119,45 @@ public class LinkedListTest {
                 list.remove(48);
                 Assert.assertEquals(98, list.size());
                 tml.logTimeAndMemoryUsage(50);
-                list.remove(97);
+                list.remove(73);
                 Assert.assertEquals(97, list.size());
+                tml.logTimeAndMemoryUsage(75);
+                list.remove(96);
+                Assert.assertEquals(96, list.size());
                 tml.logTimeAndMemoryUsage(100);
                 
         }
+        
+        public void DeepCopyAndAddIn100() throws Exception {
+                tml.setTestCaseName("DeepCopyAndAddIn100 100");
+				
+		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
+               
+                
+                tml.setInitialTimeAndMemory();
+                LinkedList<PayLoad> listCpy = this.deepCopy(list);
+                listCpy.add(25, new PayLoad("Load 25*"));
+                tml.logTimeAndMemoryUsage(25);
+                ///////////
+                tml.setInitialTimeAndMemory();
+                listCpy = this.deepCopy(list);
+                listCpy.add(50, new PayLoad("Load 50*"));
+                tml.logTimeAndMemoryUsage(50);
+                ///////////////
+                tml.setInitialTimeAndMemory();
+                listCpy = this.deepCopy(list);
+                listCpy.add(75, new PayLoad("Load 75*"));
+                tml.logTimeAndMemoryUsage(75);
+                //////////////
+                tml.setInitialTimeAndMemory();
+                listCpy = this.deepCopy(list);
+                listCpy.add(99, new PayLoad("Load 99*"));
+                tml.logTimeAndMemoryUsage(100);
+                
+                
+                
+                
+    }
         
         private LinkedList<PayLoad> creatAlistWithNelement(int numberOfElements){
             LinkedList<PayLoad> list = new LinkedList<PayLoad>();
@@ -131,5 +167,9 @@ public class LinkedListTest {
 		}
             return list;
         }
+
+    private LinkedList<PayLoad> deepCopy(LinkedList<PayLoad> list) {
+        return list;//Todo
+    }
 
 }
