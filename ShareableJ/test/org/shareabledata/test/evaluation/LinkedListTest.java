@@ -169,7 +169,7 @@ public class LinkedListTest {
         }
 
     private LinkedList<PayLoad> deepCopy(LinkedList<PayLoad> list) {
-        return list;//Todo
+        return LinkedListCopy.deepCopy(list);//Todo
     }
 
 }
