@@ -128,8 +128,9 @@ public class LinkedListTest {
                 
         }
         
+        @Test
         public void DeepCopyAndAddIn100() throws Exception {
-                tml.setTestCaseName("DeepCopyAndAddIn100 100");
+                tml.setTestCaseName("DeepCopyAndAddIn100");
 				
 		LinkedList<PayLoad> list = this.creatAlistWithNelement(100);
                
@@ -139,16 +140,22 @@ public class LinkedListTest {
                 listCpy.add(25, new PayLoad("Load 25*"));
                 tml.logTimeAndMemoryUsage(25);
                 ///////////
+                list = this.creatAlistWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = this.deepCopy(list);
                 listCpy.add(50, new PayLoad("Load 50*"));
                 tml.logTimeAndMemoryUsage(50);
                 ///////////////
+                list = this.creatAlistWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = this.deepCopy(list);
                 listCpy.add(75, new PayLoad("Load 75*"));
                 tml.logTimeAndMemoryUsage(75);
                 //////////////
+                list = this.creatAlistWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = this.deepCopy(list);
                 listCpy.add(99, new PayLoad("Load 99*"));
