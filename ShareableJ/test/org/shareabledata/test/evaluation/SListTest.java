@@ -36,9 +36,9 @@ public class SListTest {
     @AfterClass
     public static void tearDownClass() {
         try {
-            tml.writeToCSV("SListTestOutput.csv");
+            tml.writeToCSV("SListTestOutput_Java.csv");
 	} catch (IOException e) {
-	e.printStackTrace();
+            e.printStackTrace();
 	}
     }
     
