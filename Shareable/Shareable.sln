@@ -5,7 +5,7 @@ VisualStudioVersion = 15.0.28010.2016
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shareable", "Shareable\Shareable.csproj", "{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShareableDATests", "ShareableDATests\ShareableDATests.csproj", "{8EDF4429-251A-416D-BB68-93F227191BCF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StrongDB", "..\StrongDB\StrongDB.csproj", "{E63ACE38-3A7E-4CFC-81BA-BB2CCC79AE95}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,10 +17,10 @@ Global
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8EDF4429-251A-416D-BB68-93F227191BCF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8EDF4429-251A-416D-BB68-93F227191BCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8EDF4429-251A-416D-BB68-93F227191BCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8EDF4429-251A-416D-BB68-93F227191BCF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E63ACE38-3A7E-4CFC-81BA-BB2CCC79AE95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E63ACE38-3A7E-4CFC-81BA-BB2CCC79AE95}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E63ACE38-3A7E-4CFC-81BA-BB2CCC79AE95}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E63ACE38-3A7E-4CFC-81BA-BB2CCC79AE95}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

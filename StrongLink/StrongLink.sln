@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StrongLink", "StrongLink\St
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shareable", "..\Shareable\Shareable\Shareable.csproj", "{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{FC39EEB5-45D3-4D00-AB7F-F2AC981F931D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EF9C322B-5745-4B78-BA6A-FFB35F1B4F1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC39EEB5-45D3-4D00-AB7F-F2AC981F931D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC39EEB5-45D3-4D00-AB7F-F2AC981F931D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC39EEB5-45D3-4D00-AB7F-F2AC981F931D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC39EEB5-45D3-4D00-AB7F-F2AC981F931D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
