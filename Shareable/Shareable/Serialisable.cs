@@ -236,9 +236,12 @@ namespace Shareable
                 if (cx.head is RowBookmark rb)
                 {
                     var ls = ((SString)left).str;
+                    var rs = ((SString)right).str;
+                    var n = ls + "." + rs;
+                    if (rb._ob.vals.Contains(n))
+                        return rb._ob.vals[n];
                     if (!cx.defines(ls))
                         return this;
-                    var rs = ((SString)right).str;
                     if (ls.CompareTo(rb._rs._qry.Alias) == 0)
                         return cx.defines(rs)?cx[rs]:this;
                     var rw = (SRow)rb._ob[ls];
@@ -2428,7 +2431,7 @@ namespace Shareable
         public readonly long references;
         public readonly long refindex;
         public readonly SList<long> cols;
-        public readonly SMTree<long> rows;
+        public readonly SMTree<Serialisable> rows;
         /// <summary>
         /// A primary or unique index
         /// </summary>
@@ -2448,7 +2451,7 @@ namespace Shareable
             }
             else
                 refindex = -1;
-            rows = new SMTree<long>(Info((STable)tr.objects[table], cols,refindex>=0));
+            rows = new SMTree<Serialisable>(Info((STable)tr.objects[table], cols,refindex>=0));
         }
         SIndex(SDatabase d, Reader f) : base(Types.SIndex, f)
         {
@@ -2462,7 +2465,7 @@ namespace Shareable
             refindex =  (references<0)?-1:d.GetPrimaryIndex(references)?.uid ??
                 throw new Exception("internal error");
             cols = SList<long>.New(c);
-            rows = new SMTree<long>(Info((STable)d.objects[table], cols,references>=0));
+            rows = new SMTree<Serialisable>(Info((STable)d.objects[table], cols,references>=0));
         }
         public SIndex(SIndex x, AStream f) : base(x, f)
         {
@@ -2484,7 +2487,7 @@ namespace Shareable
             cols = SList<long>.New(c);
             rows = x.rows;
         }
-        public SIndex(SIndex x,SMTree<long> nt) :base(x)
+        public SIndex(SIndex x,SMTree<Serialisable> nt) :base(x)
         {
             table = x.table;
             primary = x.primary;
@@ -2521,12 +2524,12 @@ namespace Shareable
         {
             return x.Remove(a.Item1, a.Item2);
         }
-        SList<TreeInfo<long>> Info(STable tb, SList<long> cols,bool fkey)
+        SList<TreeInfo<Serialisable>> Info(STable tb, SList<long> cols,bool fkey)
         {
             if (cols.Length==0)
-                return SList<TreeInfo<long>>.Empty;
-            return Info(tb, cols.next,fkey)+(new TreeInfo<long>( // not null
-                tb.cols.Lookup(cols.element).uid, (cols.Length!=1 || fkey)?'A':'D', 'D'), 0);
+                return SList<TreeInfo<Serialisable>>.Empty;
+            return Info(tb, cols.next,fkey)+(new TreeInfo<Serialisable>( // not null
+                tb.cols.Lookup(cols.element), (cols.Length!=1 || fkey)?'A':'D', 'D'), 0);
         }
         SCList<Variant> Key(SRecord sr,SList<long> cols)
         {
@@ -2642,14 +2645,14 @@ namespace Shareable
         }
         internal Reader(StreamBase f, long s)
         {
-            buf = new StreamBase.Buffer(f, s);
+            buf = new StreamBase.Buffer(f,s);
         }
         internal long Position => buf.start + pos;
         public virtual int ReadByte()
         {
             if (pos >= buf.len)
             {
-                buf = new StreamBase.Buffer(buf.fs, buf.start + buf.len);
+                buf = new StreamBase.Buffer(buf.fs,buf.start + buf.len);
                 pos = 0;
             }
             return (buf.len == 0) ? -1 : buf.buf[pos++];
@@ -2871,7 +2874,7 @@ namespace Shareable
             pos = Fix(pos);
             if (pos >= STransaction._uid)
                 return db.objects[pos];
-            if (pos >= wposition)
+            if (commits.Contains(pos))
                 return commits[pos];
             return new Reader(this, pos)._Get(db);
         }

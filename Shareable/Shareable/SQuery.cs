@@ -104,12 +104,14 @@ namespace Shareable
     }
     public class SJoin : SQuery
     {
-        public enum JoinType { Inner=0, Natural=1, Cross=2, Left=3, Right=4, Full=5 };
+        [Flags]
+        public enum JoinType { None=0, Inner=1, Natural=2, Cross=4, Left=8, Right=16, Named=32 };
         public readonly JoinType joinType;
         public readonly bool outer;
         public readonly SQuery left,right;
-        public readonly SList<SExpression> ons;
-        public SJoin(SDatabase db, Reader f) : base(Types.STableExp, f)
+        public readonly SList<SExpression> ons; // constrained by Parser to lcol=rcol
+        public readonly SList<string> uses;
+        public SJoin(SDatabase db, Reader f) : base(Types.STableExp, _Join(db,f))
         {
             left = f._Get(db) as SQuery ?? throw new Exception("Query expected");
             outer = f.GetInt() == 1;
@@ -117,33 +119,82 @@ namespace Shareable
             right = f._Get(db) as SQuery ?? throw new Exception("Query expected");
             var n = f.GetInt();
             var on = SList<SExpression>.Empty;
-            switch (joinType)
-            {
-                case JoinType.Cross:
-                    break;
-                case JoinType.Natural:
-                    for (var lb = left.names.First(); lb != null; lb = lb.Next())
-                        if (right.names.Contains(lb.Value.Item1))
-                            on += new SExpression(lb.Value.Item2, SExpression.Op.Eql,
-                                right.names[lb.Value.Item1]);
-                    break;
-                default:
-                    for (var i = 0; i < n; i++)
-                    {
-                        var e = f._Get(db) as SExpression
-                            ?? throw new Exception("ON exp expected");
-                        on += (e, i);
-                    }
-                    break;
-            }
+            var us = SList<string>.Empty;
+            if (joinType.HasFlag(JoinType.Natural))
+                for (var lb = left.names.First(); lb != null; lb = lb.Next())
+                {
+                    if (right.names.Contains(lb.Value.Item1))
+                        us += lb.Value.Item1;
+                }
+            else if (joinType.HasFlag(JoinType.Named))
+                for (var i = 0; i < n; i++)
+                    us += f.GetString();
+            else if (!joinType.HasFlag(JoinType.Cross))
+                for (var i = 0; i < n; i++)
+                {
+                    var e = f._Get(db) as SExpression
+                        ?? throw new Exception("ON exp expected");
+                    on += e;
+                }
             ons = on;
+            uses = us;
         }
-        public SJoin(SQuery lf,bool ou,JoinType jt,SQuery rg,SList<SExpression> on,
-            SDict<int,string> d,SDict<int,Serialisable> c,Context cx) 
-            :base(Types.STableExp,d,c,cx)
+        // We peek at the table expression to compute the sat of columns of the join
+        static SQuery _Join(SDatabase db, Reader f)
         {
-            left = lf; right = rg; outer = ou; joinType = jt; ons = on;
-        } 
+            f.GetInt();
+            var st = f.pos;
+            var d = SDict<int, string>.Empty;
+            var c = SDict<int, Serialisable>.Empty;
+            var left = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            var outer = f.GetInt() == 1;
+            var joinType = (JoinType)f.GetInt();
+            var right = f._Get(db) as SQuery ?? throw new Exception("Query expected");
+            var ab = left.Display.First();
+            var uses = SDict<string,bool>.Empty;
+            if (joinType.HasFlag(JoinType.Named))
+            {
+                var n = f.GetInt();
+                for (var i = 0; i < n; i++)
+                    uses += (f.GetString(),true);
+            }
+            var k = 0;
+            for (var lb = left.cpos.First(); ab!=null && lb != null; ab=ab.Next(), lb = lb.Next())
+            {
+                var col = lb.Value;
+                var n = ab.Value.Item2;
+                if (right.names.Contains(n) 
+                    && ((!joinType.HasFlag(JoinType.Natural))|| uses.Contains(n)))
+                    n = left.Alias + "." + n;
+                d += (k, n);
+                c += (k, col.Item2);
+                k++;
+            }
+            ab = right.Display.First();
+            for (var rb = right.cpos.First(); ab != null && rb != null; ab = ab.Next(), rb = rb.Next())
+            {
+                if (joinType == JoinType.Natural && left.names.Contains(ab.Value.Item2))
+                    continue;
+                if (uses.Contains(ab.Value.Item2))
+                    continue;
+                var col = rb.Value;
+                var n = ab.Value.Item2;
+                if (left.names.Contains(n)
+                     && ((!joinType.HasFlag(JoinType.Natural)) || uses.Contains(n)))
+                    n = right.Alias + "." + n;
+                d += (k, n);
+                c += (k, col.Item2);
+                k++;
+            }
+            f.pos = st;
+            return new SQuery(Types.STableExp, d, c,Context.Empty);
+        }
+        public SJoin(SQuery lf, bool ou, JoinType jt, SQuery rg, SList<SExpression> on,
+            SList<string> us,SDict<int, string> d, SDict<int, Serialisable> c, Context cx)
+            : base(Types.STableExp, d, c, cx)
+        {
+            left = lf; right = rg; outer = ou; joinType = jt; ons = on; uses = us;
+        }
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -151,13 +202,34 @@ namespace Shareable
             f.PutInt(outer ? 1 : 0);
             f.PutInt((int)joinType);
             right.Put(f);
-            f.PutInt(ons.Length??0);
+            f.PutInt((ons.Length+uses.Length)??0); // at most one of these is nonzero
             for (var b = ons.First(); b != null; b = b.Next())
                 b.Value.Put(f);
+            for (var b = uses.First(); b != null; b = b.Next())
+                f.PutString(b.Value);
         }
         public static SJoin Get(SDatabase d,Reader f)
         {
             return new SJoin(d, f);
+        }
+        public int Compare(RowBookmark lb,RowBookmark rb)
+        {
+            var lc = new Context(lb,Context.Empty);
+            var rc = new Context(rb, Context.Empty);
+            for (var b = ons.First(); b != null; b = b.Next())
+            {
+                var ex = b.Value as SExpression;
+                var c = ex.left.Lookup(lc).CompareTo(ex.right.Lookup(rc));
+                if (c!=0)
+                    return c;
+            }
+            for (var b = uses.First(); b != null; b = b.Next())
+            {
+                var c = lc[b.Value].CompareTo(rc[b.Value]);
+                if (c != 0)
+                    return c;
+            }
+            return 0;
         }
         public override RowSet RowSet(STransaction tr, SQuery top, SDict<long,SFunction> ags,Context cx)
         {

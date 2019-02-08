@@ -41,7 +41,7 @@ public class AStream extends StreamBase {
         pos = Fix(pos);
         if (pos>=STransaction._uid)
             return db.objects.Lookup(pos);
-        if (pos>=wposition)
+        if (commits.Contains(pos))
             return commits.Lookup(pos);
         try {
             return new Reader(this,pos)._Get(db);

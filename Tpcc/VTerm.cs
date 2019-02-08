@@ -76,8 +76,9 @@ namespace Tpcc
 			}
 			public void Put(string s)
 			{
-				if (s.Length>len)
-					Console.WriteLine("Field size error: ("+hp+","+vp+","+len+")<"+s+">");
+                if (s.Length > len)
+                    s = s.Substring(0, len);
+		//			Console.WriteLine("Field size error: ("+hp+","+vp+","+len+")<"+s+">");
 				vt.Put(hp,vp,s);
 			}
 			public void Put(int k)

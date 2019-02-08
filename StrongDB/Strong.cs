@@ -466,7 +466,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.0"," (2 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.0"," (8 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase
