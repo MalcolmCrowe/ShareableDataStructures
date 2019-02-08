@@ -36,9 +36,9 @@ public class SListTest {
     @AfterClass
     public static void tearDownClass() {
         try {
-            tml.writeToCSV("SListTestOutput.csv");
+            tml.writeToCSV("SListTestOutput_Java.csv");
 	} catch (IOException e) {
-	e.printStackTrace();
+            e.printStackTrace();
 	}
     }
     
@@ -128,9 +128,9 @@ public class SListTest {
                 tml.logTimeAndMemoryUsage(100);
     }
     
-    
+    @Test
     public void DeepCopyAndAddIn100() throws Exception {
-                tml.setTestCaseName("DeepCopyAndAddIn100 100");
+                tml.setTestCaseName("DeepCopyAndAddIn100");
 				
 		SList<PayLoad> list = this.creatASListWithNelement(100);
                
@@ -140,16 +140,22 @@ public class SListTest {
                 listCpy.InsertAt(new PayLoad("Load 25*"), 25);
                 tml.logTimeAndMemoryUsage(25);
                 ///////////
+                list = this.creatASListWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = list;
                 listCpy.InsertAt(new PayLoad("Load 50*"), 50);
                 tml.logTimeAndMemoryUsage(50);
                 ///////////////
+                list = this.creatASListWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = list;
                 listCpy.InsertAt(new PayLoad("Load 75*"), 75);
                 tml.logTimeAndMemoryUsage(75);
                 //////////////
+                list = this.creatASListWithNelement(100);
+                Runtime.getRuntime().gc();
                 tml.setInitialTimeAndMemory();
                 listCpy = list;
                 listCpy.InsertAt(new PayLoad("Load 99*"), 99);

@@ -1,6 +1,6 @@
 package org.shareabledata.test.common;
 
-public class PayLoad  implements Comparable<PayLoad> {
+public class PayLoad  implements Comparable<PayLoad>, Cloneable {
 	private String payload;
 	
 	public PayLoad(String payload){
@@ -50,6 +50,11 @@ public class PayLoad  implements Comparable<PayLoad> {
 		// TODO Auto-generated method stub
 		return this.payload.compareTo(arg0.getPayload());
 	}
+        
+        @Override
+        public Object clone(){
+            return new PayLoad(this.getPayload());
+        }
 	
 	
 }	
