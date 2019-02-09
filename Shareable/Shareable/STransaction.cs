@@ -1,7 +1,7 @@
 ﻿using System;
 #nullable enable
 
-namespace Collection
+namespace Shareable
 {
     public class STransaction :SDatabase 
     {
@@ -50,14 +50,14 @@ namespace Collection
             var since = rdr.GetAll(db,db.curpos);
             for (var i = 0; i < since.Length; i++)
                 for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
-                    if (since[i].Conflicts(b.Value.val))
+                    if (since[i].Conflicts(b.Value.Item2))
                         throw new Exception("Transaction Conflict on " + b.Value);
             lock (f)
             {
                 since = rdr.GetAll(this, f.length);
                 for (var i = 0; i < since.Length; i++)
                     for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
-                        if (since[i].Conflicts(b.Value.val))
+                        if (since[i].Conflicts(b.Value.Item2))
                             throw new Exception("Transaction Conflict on " + b.Value);
                 db = f.Commit(db,this);
             }

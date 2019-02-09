@@ -3,12 +3,12 @@ using System.Collections;
 using System.Text;
 #nullable enable
 
-namespace Collection
+namespace Shareable
 {
     /// <summary>
     /// B-star Tree implementation.
-    /// All trees contain SSlots (Collection key-value pairs) in key order.
-    /// Each node in the tree is an SBucket containing at most Size SSlots.
+    /// All trees contain ValueTuples (shareable key-value pairs) in key order.
+    /// Each node in the tree is an SBucket containing at most Size ValueTuples.
     /// The algorithm ensures that all branches of the tree have the same length.
     /// All nodes except the root have at least Size/2 slots
     /// There are two kinds of SBucket: SLeaf and SInner. 
@@ -16,7 +16,7 @@ namespace Collection
     /// </summary>
     /// <typeparam name="K">The key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    public class SDict<K,V> : Collection<SSlot<K,V>>,ILookup<K,V> where K: IComparable
+    public class SDict<K,V> : Collection<ValueTuple<K,V>>,ILookup<K,V> where K: IComparable
     {
         /// <summary>
         /// Size is a system configuration parameter: the maximum number of entries in a Bucket.
@@ -27,12 +27,12 @@ namespace Collection
         public const int Size = 8;
         public readonly SBucket<K, V>? root;
         protected SDict(SBucket<K,V>? r):base(r?.total??0) { root = r; }
-        public SDict(K k, V v) : this(new SSlot<K, V>(k, v)) { }
-        public SDict(params SSlot<K, V>[] pairs):base(pairs.Length)
+        public SDict(K k, V v) : this(new ValueTuple<K, V>(k, v)) { }
+        public SDict(params ValueTuple<K, V>[] pairs):base(pairs.Length)
         {
             SBucket<K, V>? r = null;
-            foreach (var p in pairs)
-                r = (r==null)?new SLeaf<K,V>(new SSlot<K,V>(p.key,p.val)): r + (p.key, p.val);
+            foreach (ValueTuple<K,V> p in pairs)
+                r = (r==null)?new SLeaf<K,V>(p): r+p;
             root = r;
         }
         public static SDict<K,V> operator+(SDict<K,V> d,ValueTuple<K,V> x)
@@ -46,7 +46,7 @@ namespace Collection
         /// <summary>
         /// Avoid unnecessary constructor calls by using this constant empty tree
         /// </summary>
-        public readonly static SDict<K, V> Empty = new SDict<K, V>(new SSlot<K,V>[0]);
+        public readonly static SDict<K, V> Empty = new SDict<K, V>(new ValueTuple<K,V>[0]);
 
         public V this[K s] => Lookup(s);
 
@@ -88,12 +88,12 @@ namespace Collection
         /// Start a traversal of the tree
         /// </summary>
         /// <returns>A bookmark for the first entry or null</returns>
-        public override Bookmark<SSlot<K, V>>? First()
+        public override Bookmark<ValueTuple<K, V>>? First()
         {
             return (SBookmark<K, V>.Next(null, this) is SBookmark<K,V> b)?
                 new SDictBookmark<K, V>(b):null;
         }
-        public virtual Bookmark<SSlot<K,V>>? PositionAt(K k)
+        public virtual Bookmark<ValueTuple<K,V>>? PositionAt(K k)
         {
             SBookmark<K, V>? bmk = null;
             var cb = root;
@@ -109,7 +109,7 @@ namespace Collection
                     cb = inr.gtr;
                 }
                 else
-                    cb = (cb.Slot(bpos).val ?? throw new System.Exception("??")) as SBucket<K,V>;
+                    cb = (cb.Slot(bpos).Item2 ?? throw new Exception("??")) as SBucket<K,V>;
             }
             return (bmk==null)?null:new SDictBookmark<K,V>(bmk);
         }
@@ -120,26 +120,26 @@ namespace Collection
             var ub = ud.First();
             while (ob != null && ub != null)
             {
-                var c = ob.Value.key.CompareTo(ub.Value.key);
+                var c = ob.Value.Item1.CompareTo(ub.Value.Item1);
                 if (c == 0)
                 {
-                    r = r.Add(ub.Value.key, ub.Value.val);
+                    r += (ub.Value.Item1, ub.Value.Item2);
                     ob = ob.Next();
                     ub = ub.Next();
                 } else if (c < 0)
                 {
-                    r = r.Add(ob.Value.key, ob.Value.val);
+                    r += ob.Value;
                     ob = ob.Next();
                 } else
                 {
-                    r = r.Add(ub.Value.key, ub.Value.val);
+                    r += ub.Value;
                     ub = ub.Next();
                 }
             }
             for (; ob != null; ob = ob.Next())
-                r = r.Add(ob.Value.key, ob.Value.val);
+                r += ob.Value;
             for (; ub != null; ub = ub.Next())
-                r = r.Add(ub.Value.key, ub.Value.val);
+                r += ub.Value;
             return r;
         }
         public override string ToString()
@@ -149,8 +149,8 @@ namespace Collection
             for (var b=First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append('('); sb.Append(b.Value.key);
-                sb.Append('='); sb.Append(b.Value.val); sb.Append(')');
+                sb.Append('('); sb.Append(b.Value.Item1);
+                sb.Append('='); sb.Append(b.Value.Item2); sb.Append(')');
             }
             sb.Append(']');
             return sb.ToString();
@@ -161,27 +161,17 @@ namespace Collection
             return Contains(s);
         }
     }
-    public class SDictBookmark<K, V> : Bookmark<SSlot<K, V>> where K : IComparable
+    public class SDictBookmark<K, V> : Bookmark<ValueTuple<K, V>> where K : IComparable
     {
         public readonly SBookmark<K, V> _bmk;
-        public override SSlot<K, V> Value => ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos]; // ok
+        public override ValueTuple<K, V> Value => ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos]; // ok
         internal SDictBookmark(SBookmark<K,V> bmk) :base(bmk.position()) { _bmk = bmk; }
-        public K key => Value.key;
-        public V val => Value.val;
-        public override Bookmark<SSlot<K, V>>? Next() // ok
+        public K key => Value.Item1;
+        public V val => Value.Item2;
+        public override Bookmark<ValueTuple<K, V>>? Next() // ok
         {
             var b = _bmk.Next();
-            return (b==null)? null:(Bookmark<SSlot<K,V>>)new SDictBookmark<K,V>(b);
-        }
-    }
-    public class SSlot<K, V> where K : IComparable
-    {
-        public readonly K key;
-        public readonly V val;
-        public SSlot(K k, V v) { key = k; val = v; }
-        public override string ToString()
-        {
-            return "("+key.ToString()+":"+(val?.ToString()??"null")+")";
+            return (b==null)? null:(Bookmark<ValueTuple<K,V>>)new SDictBookmark<K,V>(b);
         }
     }
     /// <summary>
@@ -212,15 +202,11 @@ namespace Collection
         // API for internal housekeeping
         internal SBucket<K,V> Split() { return new SInner<K, V>(TopHalf(), total, LowHalf()); }
         internal abstract SBucket<K, V> TopHalf();
-        internal abstract SSlot<K, SBucket<K, V>> LowHalf();
-        internal abstract SSlot<K, object?> Slot(int i);
+        internal abstract ValueTuple<K, SBucket<K, V>> LowHalf();
+        internal abstract ValueTuple<K, object?> Slot(int i);
         public static SBucket<K,V> operator+(SBucket<K,V>b,ValueTuple<K,V> x)
         {
             return b.Add(x.Item1, x.Item2);
-        }
-        public static SBucket<K, V> operator +(SBucket<K, V> b, SSlot<K, V> x)
-        {
-            return b.Add(x.key,x.val);
         }
         internal virtual void Add(ArrayList ab)
         {
@@ -232,7 +218,7 @@ namespace Collection
     }
     /// <summary>
     /// SBookmarks are used to traverse an SDict. 
-    /// The current position is the SSlot in  _bucket[_bpos]. 
+    /// The current position is the ValueTuple in  _bucket[_bpos]. 
     /// They naturally form a stack, where _parent is closer to the root.
     /// </summary>
     /// <typeparam name="K">The key type</typeparam>
@@ -247,8 +233,8 @@ namespace Collection
             _bucket = b; _bpos = bp; _parent = n;
         }
         public SBookmark<K,V>? Next() { return Next(this); }
-        public K Key { get { return _bucket.Slot(_bpos).key; } }
-        public V Value { get { return (_bucket.Slot(_bpos).val is V v) ? v : default(V); } }
+        public K Key { get { return _bucket.Slot(_bpos).Item1; } }
+        public V Value { get { return (_bucket.Slot(_bpos).Item2 is V v) ? v : default(V); } }
         /// <summary>
         /// The position in the tree
         /// </summary>
@@ -257,7 +243,7 @@ namespace Collection
         {
             var r = _parent?.position()??0;
             for (var i = 0; i < _bpos; i++)
-                r += (_bucket.Slot(i).val is IBucket b)?b.Total() : 1;
+                r += (_bucket.Slot(i).Item2 is IBucket b)?b.Total() : 1;
             return r;
         }
         /// <summary>
@@ -269,7 +255,7 @@ namespace Collection
         public static SBookmark<K,V>? Next(SBookmark<K,V>? stk,SDict<K,V>? tree=null)
         {
             SBucket<K, V>? b;
-            SSlot<K,object?> d;
+            ValueTuple<K,object?> d;
             if (stk == null) // following Create or Reset
             {
                 // if Tree is empty return null
@@ -278,7 +264,7 @@ namespace Collection
                 // The first entry is root.slots[0] or below
                 stk = new SBookmark<K, V>(tree.root, 0, null);
                 d = tree.root.Slot(0);
-                b = d.val as SBucket<K, V>;
+                b = d.Item2 as SBucket<K, V>;
             }
             else // guaranteed to be at a LEAF
             {
@@ -303,19 +289,19 @@ namespace Collection
                 if (stk._bpos == stk._bucket.count)
                 { // will only happen for a non-leaf
                     b = ((SInner<K, V>)stk._bucket).gtr;
-                    d = new SSlot<K,object?>(default(K), null); // or compiler complains
+                    d = new ValueTuple<K,object?>(default(K), null); // or compiler complains
                 }
                 else // might be leaf or not
                 {
                     d = stk._bucket.Slot(stkPos);
-                    b = d.val as SBucket<K, V>;
+                    b = d.Item2 as SBucket<K, V>;
                 }
             }
             while (b != null) // now ensure we are at a leaf
             {
                 stk = new SBookmark<K, V>(b, 0, stk);
                 d = stk._bucket.Slot(0);
-                b = d.val as SBucket<K, V>;
+                b = d.Item2 as SBucket<K, V>;
             }
             return stk;
 
@@ -328,16 +314,16 @@ namespace Collection
     /// <typeparam name="V">the value type</typeparam>
     public class SLeaf<K,V> :SBucket<K,V> where K: IComparable
     {
-        public readonly SSlot<K,V>[] slots;
-        public SLeaf(params SSlot<K,V>[] s) :base(s.Length,s.Length) { slots = s; }
-        public SLeaf(SSlot<K,V>[] s,int low,int high) :base(high+1-low,high+1-low)
+        public readonly ValueTuple<K,V>[] slots;
+        public SLeaf(params ValueTuple<K,V>[] s) :base(s.Length,s.Length) { slots = s; }
+        public SLeaf(ValueTuple<K,V>[] s,int low,int high) :base(high+1-low,high+1-low)
         {
-            slots = new SSlot<K,V>[count];
+            slots = new ValueTuple<K,V>[count];
             for (var i = 0; i < count; i++)
                 slots[i] = s[i + low];
         }
-        internal override SSlot<K,object?> Slot(int i)
-        {   return new SSlot<K,object?>(slots[i].key,slots[i].val);  }
+        internal override ValueTuple<K,object?> Slot(int i)
+        {   return slots[i];  }
         public override bool Contains(K k)
         {
             PositionFor(k, out bool b);
@@ -346,15 +332,15 @@ namespace Collection
         public override V Lookup(K k)
         {
             var j = PositionFor(k, out bool b);
-            return b ? slots[j].val : default(V);
+            return b ? slots[j].Item2 : default(V);
         }
-        internal override SBucket<K, V> Update(K k, V v)
+        internal override SBucket<K, V> Update(K k,V v)
         {
-            return new SLeaf<K, V>(Replace(PositionFor(k, out bool _), new SSlot<K, V>(k, v)));
+            return new SLeaf<K, V>(Replace(PositionFor(k, out bool _), new ValueTuple<K, V>(k, v)));
         }
         internal override SBucket<K, V> Add(K k, V v)
         {
-            return new SLeaf<K, V>(Add(PositionFor(k, out bool _), new SSlot<K, V>(k, v)));
+            return new SLeaf<K, V>(Add(PositionFor(k, out bool _), new ValueTuple<K, V>(k, v)));
         }
         internal override SBucket<K, V> Remove(K k)
         {
@@ -364,7 +350,7 @@ namespace Collection
         {
             if (k==null)
             {
-                match = slots[0].key == null;
+                match = slots[0].Item1 == null;
                 return 0;
             }
             // binary search
@@ -372,7 +358,7 @@ namespace Collection
             while (low < high)
             {
                 mid = (low + high) >> 1;
-                K midk = slots[mid].key;
+                K midk = slots[mid].Item1;
                 int c = k.CompareTo(midk);
                 if (c == 0)
                 {
@@ -392,18 +378,18 @@ namespace Collection
             for (var i = 0; i < count; i++)
                 ab.Add(slots[i]);
         }
-        internal override SSlot<K,SBucket<K,V>> LowHalf()
+        internal override ValueTuple<K,SBucket<K,V>> LowHalf()
         {
             int m = SDict<K, V>.Size >> 1;
-            return new SSlot<K,SBucket<K,V>>(slots[m - 1].key, new SLeaf<K, V>(slots, 0, m - 1));
+            return new ValueTuple<K,SBucket<K,V>>(slots[m - 1].Item1, new SLeaf<K, V>(slots, 0, m - 1));
         }
         internal override SBucket<K, V> TopHalf()
         {
             return new SLeaf<K, V>(slots, SDict<K, V>.Size >> 1, SDict<K, V>.Size - 1);
         }
-        SSlot<K,V>[] Splice(int ix,SSlot<K,V> ns,SSlot<K,V> os)
+        ValueTuple<K,V>[] Splice(int ix,ValueTuple<K,V> ns,ValueTuple<K,V> os)
         {
-            var s = new SSlot<K,V>[count + 1];
+            var s = new ValueTuple<K,V>[count + 1];
             int j = 0, k = 0;
             while (j < ix)
                 s[k++] = slots[j++];
@@ -414,9 +400,9 @@ namespace Collection
                 s[k++] = slots[j++];
             return s;
         }
-        SSlot<K,V>[] Replace(int j,SSlot<K,V> d)
+        ValueTuple<K,V>[] Replace(int j,ValueTuple<K,V> d)
         {
-            var s = new SSlot<K,V>[count];
+            var s = new ValueTuple<K,V>[count];
             int i = 0;
             while (i < count)
             {
@@ -426,9 +412,9 @@ namespace Collection
             s[j] = d;
             return s;
         }
-        SSlot<K,V>[] Add(int ix, SSlot<K,V> s)
+        ValueTuple<K,V>[] Add(int ix, ValueTuple<K,V> s)
         {
-            var t = new SSlot<K,V>[count + 1];
+            var t = new ValueTuple<K,V>[count + 1];
             int j = 0, k = 0;
             while (j < ix)
                 t[k++] = slots[j++];
@@ -437,9 +423,9 @@ namespace Collection
                 t[k++] = slots[j++];
             return t;
         }
-        SSlot<K,V>[] Remove(int ix)
+        ValueTuple<K,V>[] Remove(int ix)
         {
-            var s = new SSlot<K,V>[count - 1];
+            var s = new ValueTuple<K,V>[count - 1];
             int j = 0;
             while (j < ix && j < count - 1)
             {
@@ -462,22 +448,22 @@ namespace Collection
     /// <typeparam name="V">the value type</typeparam>
     public class SInner<K, V> : SBucket<K, V> where K : IComparable
     {
-        public readonly SSlot<K, SBucket<K, V>>[] slots;
+        public readonly ValueTuple<K, SBucket<K, V>>[] slots;
         public readonly SBucket<K, V> gtr;
-        public SInner(SBucket<K,V> v, int t,params SSlot<K,SBucket<K,V>>[] s) :base(s.Length,t)
+        public SInner(SBucket<K,V> v, int t,params ValueTuple<K,SBucket<K,V>>[] s) :base(s.Length,t)
         { slots = s; gtr = v; }
-        public SInner(SBucket<K,V> v,int t, SSlot<K,SBucket<K,V>>[] s, int low, int high)
+        public SInner(SBucket<K,V> v,int t, ValueTuple<K,SBucket<K,V>>[] s, int low, int high)
             :base(high+1-low,t)
         {
-            slots = new SSlot<K, SBucket<K, V>>[count];
+            slots = new ValueTuple<K, SBucket<K, V>>[count];
             for (var i = 0; i < count; i++)
                 slots[i] = s[i + low];
             gtr = v;
         }
-        public SInner(SBucket<K,V> v,int t,SSlot<K,SBucket<K,V>>[] s1,int low1, int high1,
-            SSlot<K, SBucket<K, V>>[] s2, int low2, int high2) : base(high1+high2+2-low1-low2,t)
+        public SInner(SBucket<K,V> v,int t,ValueTuple<K,SBucket<K,V>>[] s1,int low1, int high1,
+            ValueTuple<K, SBucket<K, V>>[] s2, int low2, int high2) : base(high1+high2+2-low1-low2,t)
         {
-            slots = new SSlot<K, SBucket<K, V>>[count];
+            slots = new ValueTuple<K, SBucket<K, V>>[count];
             int j, k = 0;
             for (j = low1; j <= high1; j++)
                 slots[k++] = s1[j];
@@ -490,20 +476,20 @@ namespace Collection
             int j = PositionFor(k, out bool m);
             if (j == count)
                 return gtr.Contains(k);
-            return slots[j].val.Contains(k);
+            return slots[j].Item2.Contains(k);
         }
         public override V Lookup(K k)
         {
             int j = PositionFor(k, out bool m);
             if (j == count)
                 return gtr.Lookup(k);
-            return slots[j].val.Lookup(k);
+            return slots[j].Item2.Lookup(k);
         }
         public override int PositionFor(K k, out bool match)
         {
             if (k==null)
             {
-                match = slots[0].key == null;
+                match = slots[0].Item1 == null;
                 return 0;
             }
             // binary search
@@ -511,7 +497,7 @@ namespace Collection
             while (low < high)
             {
                 mid = (low + high) >> 1;
-                K midk = slots[mid].key;
+                K midk = slots[mid].Item1;
                 int c = k.CompareTo(midk);
                 if (c == 0)
                 {
@@ -534,8 +520,8 @@ namespace Collection
             else
             {
                 var d = slots[j];
-                var b = d.val.Update(k, v);
-                return new SInner<K, V>(gtr, total, Replace(j, new SSlot<K, SBucket<K, V>>(d.key, b)));
+                var b = d.Item2.Update(k, v);
+                return new SInner<K, V>(gtr, total, Replace(j, new ValueTuple<K, SBucket<K, V>>(d.Item1, b)));
             }
         }
         internal override SBucket<K, V> Add(K k, V v)
@@ -547,10 +533,10 @@ namespace Collection
             if (j < count)
             {
                 var d = slots[j];
-                b = d.val;
+                b = d.Item2;
                 if (b.count == SDict<K, V>.Size)
                     return Split(j)+(k, v); // try again
-                return new SInner<K, V>(gtr, total + 1, Replace(j, new SSlot<K, SBucket<K, V>>(d.key, b.Add(k, v))));
+                return new SInner<K, V>(gtr, total + 1, Replace(j, new ValueTuple<K, SBucket<K, V>>(d.Item1, b.Add(k, v))));
             }
             else
             {
@@ -561,20 +547,20 @@ namespace Collection
         }
         protected virtual SInner<K, V> SplitGtr()
         {
-            return new SInner<K, V>(gtr.TopHalf(), total, slots, 0, count - 1, new SSlot<K, SBucket<K, V>>[] { gtr.LowHalf() }, 0, 0);
+            return new SInner<K, V>(gtr.TopHalf(), total, slots, 0, count - 1, new ValueTuple<K, SBucket<K, V>>[] { gtr.LowHalf() }, 0, 0);
         }
         internal override void Add(ArrayList ab)
         {
             for (var i = 0; i < count; i++)
                 ab.Add(slots[i]);
         }
-        internal override SSlot<K,SBucket<K,V>> LowHalf()
+        internal override ValueTuple<K,SBucket<K,V>> LowHalf()
         {
             int m = SDict<K, V>.Size >> 1;
             int h = 0;
             for (int i = 0; i < m; i++)
-                h += slots[i].val.total;
-            return new SSlot<K, SBucket<K, V>>(slots[m - 1].key, new SInner<K, V>(slots[m - 1].val, h, slots, 0, m - 2));
+                h += slots[i].Item2.total;
+            return new ValueTuple<K, SBucket<K, V>>(slots[m - 1].Item1, new SInner<K, V>(slots[m - 1].Item2, h, slots, 0, m - 2));
         }
 
         internal override SBucket<K, V> Remove(K k)
@@ -585,10 +571,10 @@ namespace Collection
             if (nj < count)
             {
                 var e = slots[nj];
-                nb = e.val;
+                nb = e.Item2;
                 nb = nb.Remove(k);
                 if (nb.count >= m)
-                    return new SInner<K, V>(gtr, total - 1, Replace(nj, new SSlot<K, SBucket<K, V>>(e.key, nb)));
+                    return new SInner<K, V>(gtr, total - 1, Replace(nj, new ValueTuple<K, SBucket<K, V>>(e.Item1, nb)));
             }
             else
             {
@@ -604,10 +590,10 @@ namespace Collection
             int i, j;
             for (j = 0; j < count; j++)
             {
-                b = (j == nj) ? nb : slots[j].val;
+                b = (j == nj) ? nb : slots[j].Item2;
                 b.Add(ab);
                 if (b is SInner<K, V>)
-                    ab.Add(new SSlot<K, SBucket<K, V>>(slots[j].key, ((SInner<K, V>)b).gtr));
+                    ab.Add(new ValueTuple<K, SBucket<K, V>>(slots[j].Item1, ((SInner<K, V>)b).gtr));
             }
             b = (count == nj) ? nb : gtr;
             b.Add(ab);
@@ -616,25 +602,25 @@ namespace Collection
             var s = ab.ToArray();
             if (g == null) // we use Size entries from s for each new Bucket (all Leaves)
             {
-                var ss = new SSlot<K, V>[s.Length];
+                var ss = new ValueTuple<K, V>[s.Length];
                 for (j = 0; j < s.Length; j++)
-                    ss[j] = (SSlot<K, V>)s[j];
+                    ss[j] = (ValueTuple<K, V>)s[j];
                 if (s.Length <= S) // can happen at root: reduce height of tree
                     return new SLeaf<K, V>(ss);
                 // suppose s.Length = Size*A+B
                 int A = s.Length / S;
                 int B = s.Length - A * S;
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                SSlot<K, SBucket<K, V>>[] ts = new SSlot<K, SBucket<K, V>>[(B == 0) ? (A - 1) : A]; // new list of children
+                ValueTuple<K, SBucket<K, V>>[] ts = new ValueTuple<K, SBucket<K, V>>[(B == 0) ? (A - 1) : A]; // new list of children
                 int sce = 0, dst = 0;
-                SSlot<K, V> d;
+                ValueTuple<K, V> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
                 // if 1<=B<(Size>>1) we need to keep one in hand for later
                 int C = (1 <= B && B < (S >> 1)) ? 1 : 0;
                 for (i = 0; i < ts.Length - C; i++)
                 {
                     d = ss[sce + S - 1]; // last entry in new bucket
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + S - 1));
+                    ts[dst++] = new ValueTuple<K, SBucket<K, V>>(d.Item1, new SLeaf<K, V>(ss, sce, sce + S - 1));
                     sce += S;
                 }
                 if (C == 1)
@@ -642,24 +628,24 @@ namespace Collection
                     // be careful for the last entry: the new gtr still needs at least Size>>1 entries
                     m = S >> 1;
                     d = ss[sce + m - 1];
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SLeaf<K, V>(ss, sce, sce + m - 1));
+                    ts[dst++] = new ValueTuple<K, SBucket<K, V>>(d.Item1, new SLeaf<K, V>(ss, sce, sce + m - 1));
                     sce += m;
                 }
                 return new SInner<K, V>(new SLeaf<K, V>(ss, sce, s.Length - 1), total - 1, ts);
             }
             else // we use Size+1 entries from s for each new Bucket: g is an extra one
             {
-                var ss = new SSlot<K, SBucket<K, V>>[s.Length];
+                var ss = new ValueTuple<K, SBucket<K, V>>[s.Length];
                 for (j = 0; j < s.Length; j++)
-                    ss[j] = (SSlot<K, SBucket<K, V>>)s[j];
+                    ss[j] = (ValueTuple<K, SBucket<K, V>>)s[j];
                 if (s.Length <= S) // can happen at root: reduce height of tree
                     return new SInner<K, V>(g, total - 1, ss);
                 int A = (s.Length + 1) / (S + 1); // not forgetting g
                 int B = s.Length + 1 - A * (S + 1);
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                SSlot<K, SBucket<K, V>>[] ts = new SSlot<K, SBucket<K, V>>[(B == 0) ? (A - 1) : A]; // new list of children
+                ValueTuple<K, SBucket<K, V>>[] ts = new ValueTuple<K, SBucket<K, V>>[(B == 0) ? (A - 1) : A]; // new list of children
                 int sce = 0, dst = 0;
-                SSlot<K, SBucket<K, V>> d;
+                ValueTuple<K, SBucket<K, V>> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
                 // if 1<=B<(Size>>1) we need to keep one in hand for later
                 int C = (1 <= B && B < (S >> 1)) ? 1 : 0;
@@ -668,8 +654,8 @@ namespace Collection
                     d = ss[sce + S]; // last entry in new bucket
                     int dt = 0;
                     for (int di = sce; di < sce + S; di++)
-                        dt += ss[di].val.total;
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + S - 1));
+                        dt += ss[di].Item2.total;
+                    ts[dst++] = new ValueTuple<K, SBucket<K, V>>(d.Item1, new SInner<K, V>(d.Item2, dt, ss, sce, sce + S - 1));
                     sce += S + 1;
                 }
                 if (C == 1)
@@ -678,20 +664,20 @@ namespace Collection
                     d = ss[sce + m];
                     int dt = 0;
                     for (int di = sce; di < sce + m; di++)
-                        dt += ss[di].val.total;
-                    ts[dst++] = new SSlot<K, SBucket<K, V>>(d.key, new SInner<K, V>(d.val, dt, ss, sce, sce + m - 1));
+                        dt += ss[di].Item2.total;
+                    ts[dst++] = new ValueTuple<K, SBucket<K, V>>(d.Item1, new SInner<K, V>(d.Item2, dt, ss, sce, sce + m - 1));
                     sce += m + 1;
                 }
                 int gt = 0;
                 for (int di = sce; di < s.Length; di++)
-                    gt += ss[di].val.total;
+                    gt += ss[di].Item2.total;
                 return new SInner<K, V>(new SInner<K, V>(g, gt, ss, sce, s.Length - 1), total - 1, ts);
             }
 
         }
-        protected SSlot<K, SBucket<K, V>>[] Replace(int j, SSlot<K, SBucket<K, V>> d)
+        protected ValueTuple<K, SBucket<K, V>>[] Replace(int j, ValueTuple<K, SBucket<K, V>> d)
         {
-            var s = new SSlot<K, SBucket<K, V>>[count];
+            var s = new ValueTuple<K, SBucket<K, V>>[count];
             int i = 0;
             while (i < count)
             {
@@ -702,9 +688,9 @@ namespace Collection
             return s;
         }
 
-        internal override SSlot<K,object?> Slot(int i)
+        internal override ValueTuple<K,object?> Slot(int i)
         {
-            return new SSlot<K,object?>(slots[i].key,slots[i].val);
+            return slots[i];
         }
 
         internal override SBucket<K, V> TopHalf()
@@ -712,18 +698,18 @@ namespace Collection
             int m = SDict<K, V>.Size >> 1;
             int h = total;
             for (int i = 0; i < m; i++)
-                h -= slots[i].val.total;
+                h -= slots[i].Item2.total;
             return new SInner<K, V>(gtr, h, slots, m, SDict<K, V>.Size - 1);
         }
         SBucket<K,V> Split(int j)
         {
             var d = slots[j];
-            var b = d.val;
-            return new SInner<K, V>(gtr, total, Splice(j, b.LowHalf(), new SSlot<K, SBucket<K, V>>(d.key, b.TopHalf())));
+            var b = d.Item2;
+            return new SInner<K, V>(gtr, total, Splice(j, b.LowHalf(), new ValueTuple<K, SBucket<K, V>>(d.Item1, b.TopHalf())));
         }
-        SSlot<K, SBucket<K, V>>[] Splice(int ix, SSlot<K, SBucket<K, V>> ns, SSlot<K, SBucket<K, V>> os) // insert ns at ppos ix, replace next by os
+        ValueTuple<K, SBucket<K, V>>[] Splice(int ix, ValueTuple<K, SBucket<K, V>> ns, ValueTuple<K, SBucket<K, V>> os) // insert ns at ppos ix, replace next by os
         {
-            var s = new SSlot<K, SBucket<K, V>>[count + 1];
+            var s = new ValueTuple<K, SBucket<K, V>>[count + 1];
             int j = 0, k = 0;
             while (j < ix)
                 s[k++] = slots[j++];
