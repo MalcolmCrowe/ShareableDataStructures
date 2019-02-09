@@ -78,7 +78,7 @@ public class SDatabase {
 
     public Serialisable _Get(long pos) {
         try {
-            return new Reader(dbfiles.Lookup(name), pos)._Get(this);
+            return dbfiles.Lookup(name).Lookup(this,pos);
         } catch(Exception e)
         {
             throw new Error("bad log at "+pos);
