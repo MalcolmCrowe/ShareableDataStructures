@@ -150,7 +150,7 @@ public class STable extends SQuery {
                     tb = db.GetTable(n);
             }
             if (tb==null)
-                    throw new Exception("No such table "+tb.name);
+                    throw new Exception("No such table "+n);
             return tb;
         }
         @Override

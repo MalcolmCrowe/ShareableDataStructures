@@ -157,7 +157,11 @@ public class AStream extends StreamBase {
         SDatabase.Install(db);
         return db;
     }
-
+    void CommitDone()
+    {
+        uids = null;
+        commits = null;
+    }
     public void Close() throws IOException {
         file.close();
     }
@@ -186,19 +190,16 @@ public class AStream extends StreamBase {
     }
 
     protected void PutBuf(Buffer b){
-        synchronized(file)
+        try {
+            var p = file.length();
+            file.seek(p);
+            file.write(b.buf, 0, b.wpos);
+            length = p + b.wpos;
+            wposition = length;
+            b.wpos = 0;
+        } catch(Exception e)
         {
-            try {
-                var p = file.length();
-                file.seek(p);
-                file.write(b.buf, 0, b.wpos);
-                length = p + b.wpos;
-                wposition = length;
-                b.wpos = 0;
-            } catch(Exception e)
-            {
-                throw new Error("In Put");
-            }
+            throw new Error("In Put");
         }
     }
 

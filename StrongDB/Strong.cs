@@ -89,7 +89,16 @@ namespace StrongDB
                         case Types.Get:
                             {
                                 var tr = db.Transact();
-                                var qy = rdr._Get(tr) as SQuery ??
+                                SQuery? qy = null;
+                                try
+                                {
+                                    qy = rdr._Get(tr) as SQuery;
+                                } catch(Exception e)
+                                {
+                                    rdr.buf.len = 0;
+                                    throw e;
+                                }
+                                if (qy==null)
                                     throw new Exception("Bad query");
                                 RowSet rs = qy.RowSet(tr,qy,SDict<long,SFunction>.Empty,Context.Empty);
                                 var sb = new StringBuilder("[");
@@ -466,7 +475,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.0"," (8 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.0"," (10 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase

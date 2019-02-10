@@ -42,6 +42,7 @@ public class StrongServer implements Runnable {
 
     public void run() {
         int p = -1;
+        int lastgood = -1;
         try {
             asy = new ServerStream(client);
             rdr = asy.rbuf;
@@ -77,8 +78,16 @@ public class StrongServer implements Runnable {
                 switch ((byte) p) {
                     case Types.DescribedGet:
                     case Types.Get: {
+                        lastgood = p;
                         var tr = db.Transact(true);
-                        var q = rdr._Get(db);
+                        Serialisable q = Serialisable.Null;
+                        try {
+                            q = rdr._Get(db);
+                        } catch(Exception e)
+                        {
+                            rdr.buf.len = 0;
+                            throw e;
+                        }
                         if (!(q instanceof SQuery))
                             throw new Exception("Bad query");
                         var qy = (SQuery) q;
@@ -104,6 +113,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SCreateTable: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var tn = rdr.GetString();// table name
                         if (tr.names != null && tr.names.Contains(tn)) {
@@ -124,6 +134,7 @@ public class StrongServer implements Runnable {
                     }
                     case Types.SInsert:
                     {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         tr = SInsertStatement.Get(db,rdr).Obey(tr);
                         db = db.MaybeAutoCommit(tr);
@@ -132,6 +143,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.Insert: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var tn = rdr.GetString();
                         SDbObject t = null;
@@ -189,6 +201,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SAlter: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var tn = rdr.GetString(); // table name
                         SDbObject t = null;
@@ -221,6 +234,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SDrop: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var nm = rdr.GetString(); // object name
                         var pt = (tr.names == null) ? null : tr.names.Lookup(nm);
@@ -251,6 +265,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SCreateIndex: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var tn = rdr.GetString(); // table name
                         var t = (tr.names == null) ? null : tr.names.Lookup(tn);
@@ -290,6 +305,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.Read: {
+                        lastgood = p;
                         var id = rdr.GetLong();
                         var sb = new StringBuilder();
                         db.Get(id).Append(db,sb);
@@ -299,6 +315,7 @@ public class StrongServer implements Runnable {
                     }
                     case Types.SUpdateSearch:
                     {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         tr = SUpdateSearch.Get(db, rdr).Obey(tr,Context.Empty);
                         db = db.MaybeAutoCommit(tr);
@@ -307,6 +324,7 @@ public class StrongServer implements Runnable {
                         break;
                     }                    
                     case Types.SUpdate: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var id = rdr.GetLong();
                         var rc = db.Get(id);
@@ -332,6 +350,7 @@ public class StrongServer implements Runnable {
                     }
                     case Types.SDeleteSearch:
                     {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         tr = SDeleteSearch.Get(db, rdr).Obey(tr,Context.Empty);
                         db = db.MaybeAutoCommit(tr);
@@ -340,6 +359,7 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SDelete: {
+                        lastgood = p;
                         var tr = db.Transact(true);
                         var id = rdr.GetLong();
                         var rc = db.Get(id);
@@ -354,17 +374,20 @@ public class StrongServer implements Runnable {
                         break;
                     }
                     case Types.SBegin:
+                        lastgood = p;
                         db = new STransaction(db, false);
                         asy.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     case Types.SRollback:
+                        lastgood = p;
                         db = db.Rollback();
                         asy.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     case Types.SCommit:
                         {
+                            lastgood = p;
                             if (!(db instanceof STransaction))
                                 throw new Exception("No transaction to commit");
                             var tr = (STransaction)db; 
@@ -374,7 +397,8 @@ public class StrongServer implements Runnable {
                             break;
                         }
                     default:
-                        System.out.println("Unknown protocol byte "+p);
+                        System.out.println("Unknown protocol byte "+p+
+                                " lostgood="+lastgood);
                 }
             } catch (Exception e) {
                 try {

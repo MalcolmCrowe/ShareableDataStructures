@@ -298,7 +298,7 @@ public class SDatabase {
     }
 
     STable GetTable(String tn) {
-        var ob = names.Lookup(tn);
+        var ob = (names==null)?null:names.Lookup(tn);
         return (ob != null && ob.type == Types.STable)
                 ? (STable) ob : null;
     }

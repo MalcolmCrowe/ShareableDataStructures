@@ -798,7 +798,7 @@ namespace Shareable
         }
         public override string ToString()
         {
-            return "Integer " + ((type==Types.SInteger)?value.ToString():big.ToString());
+            return "Integer " + ((type==Types.SInteger)?value.ToString():big?.ToString()??"");
         }
         public override int CompareTo(object obj)
         {
@@ -2882,6 +2882,11 @@ namespace Shareable
         {
             return (uids.Contains(pos))?uids[pos]:pos;
         }
+        internal void CommitDone()
+        {
+            uids = SDict<long, long>.Empty;
+            commits = SDict<long, Serialisable>.Empty;
+        }
         public override bool CanRead => throw new System.NotImplementedException();
 
         public override bool CanSeek => throw new System.NotImplementedException();
@@ -2941,15 +2946,12 @@ namespace Shareable
 
         protected override void PutBuf(Buffer b)
         {
-            lock (file)
-            {
-                var p = file.Seek(0, SeekOrigin.End);
-                file.Write(b.buf, 0, b.wpos);
-                file.Flush();
-                length = p + b.wpos;
-                wposition = length;
-                b.wpos = 0;
-            }
+            var p = file.Seek(0, SeekOrigin.End);
+            file.Write(b.buf, 0, b.wpos);
+            file.Flush();
+            length = p + b.wpos;
+            wposition = length;
+            b.wpos = 0;
         }
     }
 }

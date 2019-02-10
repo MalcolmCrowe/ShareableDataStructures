@@ -60,6 +60,7 @@ namespace Shareable
                         if (since[i].Conflicts(b.Value.Item2))
                             throw new Exception("Transaction Conflict on " + b.Value);
                 db = f.Commit(db,this);
+                f.CommitDone();
             }
             Install(db);
             return db;

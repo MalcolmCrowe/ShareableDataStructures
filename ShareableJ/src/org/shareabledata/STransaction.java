@@ -78,6 +78,7 @@ public class STransaction extends SDatabase {
                     }
                 }
                 db = dbfile.Commit(db,this);
+                dbfile.CommitDone();
             }
             Install(db);
             return db;
