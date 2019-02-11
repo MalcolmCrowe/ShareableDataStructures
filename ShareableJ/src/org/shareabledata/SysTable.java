@@ -19,6 +19,11 @@ public class SysTable extends STable {
             t = t.Add("Type", Types.SInteger);
             t = t.Add("Desc", Types.SString);
             s = (s==null)?new SDict<>(t.name,t):s.Add(t.name, t);
+            t = new SysTable("_Tables");
+            t = t.Add("Name",Types.SString);
+            t = t.Add("Cols",Types.SInteger);
+            t = t.Add("Rows", Types.SInteger);
+            s = s.Add(t.name,t);
             system = s;
             } catch(Exception e) 
             {

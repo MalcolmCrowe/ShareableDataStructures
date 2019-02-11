@@ -33,12 +33,12 @@ public class SysRows extends RowSet {
                     new SInteger((int)s.type), 
                     new SString(s.toString())), rdr.getPosition(), 0);
                 }
-                case "_Table": {
+                case "_Tables": {
                 for (var b = _tr.objects.First(); b != null; b = b.Next())
                 {
                     var tb = b.getValue().val;
                     if (tb instanceof STable)
-                        return new TablesBookmark(this, b, 0);
+                        return new TablesBookmark(this, b, (STable)tb, 0);
                 }
                 return null;                    
                 }

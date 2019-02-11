@@ -868,10 +868,12 @@ namespace Shareable
             internal static TablesBookmark? New(SysRows rs, long lg, int pos)
             {
                 var rdr = new Reader(rs.fs, lg);
-                for (var ob = rdr._Get(rs._tr);ob!=null;ob = rdr._Get(rs._tr))
+                for (var ob = rdr._Get(rs._tr); ob != null; ob = rdr._Get(rs._tr))
                 {
-                    if (ob is STable tb)
-                        return new TablesBookmark(rs, lg, tb, rdr.Position, pos);
+                    if (ob is STable tb && rs._tr.objects[tb.uid] is STable t)
+                        return new TablesBookmark(rs, lg, t, rdr.Position, pos);
+                    if (rdr.Position >= rs.fs.Position)
+                        break;
                 }
                 return null;
             }
