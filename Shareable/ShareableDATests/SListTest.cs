@@ -31,11 +31,17 @@ namespace ShareableDATests
             {
                 // TODO Auto-generated catch block
                 Console.Write(e.StackTrace);
+                throw e;
             }
         }
 
         [TearDown]
         public void tearDown()
+        {
+            callTheGC();
+        }
+
+        private void callTheGC()
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -48,19 +54,21 @@ namespace ShareableDATests
             SList<Payload> list;
             Payload firstElement = new Payload("Load 0");
             tml.setInitialTimeAndMemory();
-            //list = SList.New();
+            list = SList<Payload>.New(firstElement);
 
 
-            /*tml.logTimeAndMemoryUsage(1);
+            tml.logTimeAndMemoryUsage(1);
         
             for (int i = 1; i<numberOfElements; i++)
             {
-            
-                list.UpdateAt(new Payload("Load " + i), 0);
+                (SList<Payload> operand, int pos) prevList = (SList<Payload>.New(new Payload("Load " + i)), i);
+
+                //list = list + prevList;
+                //list = list + (SList<Payload>.New(new Payload("Load " + i)), i);
                 //list.InsertAt(new Payload("Load "+i), 0);
 
                 tml.logTimeAndMemoryUsage(i+1);
-            }*/
+            }
 
         }
 
@@ -70,6 +78,129 @@ namespace ShareableDATests
             String caseID = "SList 100 insert";
             reusableSlistTestCase(caseID, 100);
 
+        }
+
+        [Test]
+        public void testInsert1000Slist()
+        {
+            String caseID = "SList 1000 insert";
+            reusableSlistTestCase(caseID, 1000);
+
+        }
+
+        [Test]
+        public void testInsert10000Slist()
+        {
+            String caseID = "SList 10000 insert";
+            reusableSlistTestCase(caseID, 10000);
+
+        }
+
+
+        /*[Test]
+        public void find25thElementIn100()
+        {
+            tml.setTestCaseName("Find elements in 100");
+
+            SList<Payload> list = this.creatAlistWithNelement(100);
+            Payload toBeFound_25 = new Payload("Load 25");
+            Payload toBeFound_50 = new Payload("Load 50");
+            Payload toBeFound_75 = new Payload("Load 75");
+            Payload toBeFound_100 = new Payload("Load 100");
+            tml.setInitialTimeAndMemory();
+            list.
+            list.contains(toBeFound_25);
+            tml.logTimeAndMemoryUsage(25);
+            list.contains(toBeFound_50);
+            tml.logTimeAndMemoryUsage(50);
+            list.contains(toBeFound_75);
+            tml.logTimeAndMemoryUsage(75);
+            list.contains(toBeFound_100);
+            tml.logTimeAndMemoryUsage(100);
+
+        }*/
+
+        private SList<Payload> creatASListWithNelement(int numberOfElements) 
+        {
+            /*SList<Payload> list;
+            Payload firstElement = new PayLoad("Load 0");
+            list = new SList<PayLoad>(firstElement);
+
+            for (int i = 1; i<numberOfElements; i++)
+            {
+                list = list.InsertAt(new PayLoad("Load "+i), 0);
+            }*/
+
+            SList<Payload> list;
+            Payload firstElement = new Payload("Load 0");
+            list = SList<Payload>.New(firstElement);
+            return list;
+        }
+
+
+        [Test]
+        public void RemoveElementIn100() 
+        {
+            tml.setTestCaseName("Remove elements in 100");
+				
+		    SList<Payload> list = this.creatASListWithNelement(100);
+            Payload toBeFound_25 = new Payload("Load 25");
+            Payload toBeFound_50 = new Payload("Load 50");
+            Payload toBeFound_75 = new Payload("Load 75");
+
+                Payload toBeFound_100 = new Payload("Load 100");
+                Assert.AreEqual(100, list.Length);
+                tml.setInitialTimeAndMemory();
+                //list = listRemoveAt(24);
+                Assert.AreEqual(99, list.Length);
+                tml.logTimeAndMemoryUsage(25);
+                //list = list.RemoveAt(48);
+                Assert.AreEqual(98, list.Length);
+                tml.logTimeAndMemoryUsage(50);
+                //list = list.RemoveAt(73);
+                Assert.AreEqual(97, list.Length);
+                tml.logTimeAndMemoryUsage(75);
+                //list = list.RemoveAt(96);
+                Assert.AreEqual(96, list.Length);
+                tml.logTimeAndMemoryUsage(100);
+         }
+
+        public void DeepCopyAndAddIn100() 
+        {
+            tml.setTestCaseName("DeepCopyAndAddIn100");
+				
+		    SList<Payload> list = this.creatASListWithNelement(100);
+
+
+            tml.setInitialTimeAndMemory();
+            SList<Payload> listCpy = list;
+               //listCpy.InsertAt(new Payload("Load 25*"), 25);
+            tml.logTimeAndMemoryUsage(25);
+                ///////////
+            list = this.creatASListWithNelement(100);
+                
+            tml.setInitialTimeAndMemory();
+            listCpy = list;
+            //listCpy.InsertAt(new Payload("Load 50*"), 50);
+            tml.logTimeAndMemoryUsage(50);
+            ///////////////
+            list = this.creatASListWithNelement(100);
+            this.callTheGC();
+            tml.setInitialTimeAndMemory();
+            listCpy = list;
+            //listCpy.InsertAt(new Payload("Load 75*"), 75);
+            tml.logTimeAndMemoryUsage(75);
+            //////////////
+            list = this.creatASListWithNelement(100);
+            this.callTheGC();
+            tml.setInitialTimeAndMemory();
+            listCpy = list;
+            //listCpy.InsertAt(new Payload("Load 99*"), 99);
+            tml.logTimeAndMemoryUsage(100);
+                
+                
+                
+                
         }
 
     }

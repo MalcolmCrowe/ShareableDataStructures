@@ -22,7 +22,7 @@ namespace ShareableDATests
         private const char delimiter = ',';
         public TimeAndMemoryLogger() {
             contents = new StringBuilder();
-            contents.Append("Test Case ID" + delimiter + "CaseCounter" + delimiter + "TimeDifference" + delimiter + "TotalMemory" + delimiter + "FreeMemory" );
+            contents.AppendLine("Test Case ID" + delimiter + "CaseCounter" + delimiter + "TimeDifference" + delimiter + "TotalMemory" + delimiter + "FreeMemory" );
         }
 
         public void resetCounters()
@@ -77,16 +77,19 @@ namespace ShareableDATests
 
         public void writeToCSV(String FileName) 
         {
-            string path = Directory.GetCurrentDirectory();
-            path += "\\execution\\";
+            string path = AppDomain.CurrentDomain.BaseDirectory;
+            //Directory.GetCurrentDirectory(); points to VS execution
+            path = Path.Combine(path, "execution", FileName);
+
+            
             Console.WriteLine(path);
 
             StreamWriter Writer = new StreamWriter(path);
 
 
 
-            Writer.WriteAsync(contents.ToString());
-
+            Writer.Write(contents.ToString());
+            Writer.Close();
         }
 
         private static long nanoTime()
