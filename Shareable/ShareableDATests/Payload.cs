@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace ShareableDATests
 {
-    public class Payload : ICloneable, IComparable<Payload>
+    public class Payload : ICloneable, IComparable
     {
         private String _payload;
 
@@ -24,9 +24,13 @@ namespace ShareableDATests
             return new Payload(this.PayloadContent);
         }
 
-        public int CompareTo(Payload other)
+        public int CompareTo(Object other)
         {
-            return this.PayloadContent.CompareTo(other.PayloadContent);
+            var otherPayload = other as Payload;
+                
+            return this.PayloadContent.CompareTo(otherPayload.PayloadContent);
+            
+            
         }
 
         public override bool Equals(object obj)

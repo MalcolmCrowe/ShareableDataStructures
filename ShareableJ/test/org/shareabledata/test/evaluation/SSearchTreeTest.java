@@ -65,21 +65,21 @@ public class SSearchTreeTest {
     }
     
     @Test
-    public void testInsert100LinkedList() throws Exception {
+    public void testInsert100Nodes() throws Exception {
 	String caseID = "SSearchTreeTest 100 insert";
 	reusabeTreeTestCase(caseID, 100);
 		
     }
     
     @Test
-    public void testInsert1000LinkedList() throws Exception {
+    public void testInsert1000Nodes() throws Exception {
 	String caseID = "SSearchTreeTest 1000 insert";
 	reusabeTreeTestCase(caseID, 1000);
 		
     }
     
      @Test
-    public void testInsert10000LinkedList() throws Exception {
+    public void testInsert10000Nodes() throws Exception {
 	String caseID = "SSearchTreeTest 10000 insert";
 	reusabeTreeTestCase(caseID, 10000);
 		

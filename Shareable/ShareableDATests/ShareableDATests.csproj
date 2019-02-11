@@ -48,6 +48,7 @@
     <Compile Include="Payload.cs" />
     <Compile Include="SListTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SSearchTreeTest.cs" />
     <Compile Include="TimeAndMemoryLogger.cs" />
   </ItemGroup>
   <ItemGroup>

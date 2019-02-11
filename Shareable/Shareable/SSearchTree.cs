@@ -10,7 +10,7 @@ namespace Shareable
     /// Implementation of an UNBALANCED binary search tree
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class SSearchTree<T> :Collection<T> where T : System.IComparable
+    public class SSearchTree<T> : Collection<T> where T : System.IComparable
     {
         public readonly T node;
         public readonly SSearchTree<T>? left, right;
