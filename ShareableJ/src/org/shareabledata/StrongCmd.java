@@ -186,7 +186,7 @@ public class StrongCmd {
                                 db.Commit();
                                 continue;
                         }
-                        if (str.startsWith("select"))
+                        if (strlow.startsWith("select"))
                             Show(db, db.ExecuteQuery(str));
                         else
                             db.ExecuteNonQuery(str);

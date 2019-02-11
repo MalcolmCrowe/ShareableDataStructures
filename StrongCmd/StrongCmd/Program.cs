@@ -194,7 +194,7 @@ namespace StrongCmd
                                 db.Commit();
                                 continue;
                         }
-                        if (str.StartsWith("select"))
+                        if (strlow.StartsWith("select"))
                             Show(db, db.ExecuteQuery(str));
                         else
                             db.ExecuteNonQuery(str);
