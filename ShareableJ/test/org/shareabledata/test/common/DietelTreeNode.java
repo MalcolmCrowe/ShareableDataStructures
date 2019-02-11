@@ -11,9 +11,9 @@ package org.shareabledata.test.common;
  */
 public class DietelTreeNode<T extends Comparable<T>> {
     // package access members
-   DietelTreeNode leftNode; // left node  
+   DietelTreeNode<T> leftNode; // left node  
    T data; // node value
-   DietelTreeNode rightNode; // right node
+   DietelTreeNode<T> rightNode; // right node
 
    // constructor initializes data and makes this a leaf node
    public DietelTreeNode( T nodeData )
@@ -22,6 +22,18 @@ public class DietelTreeNode<T extends Comparable<T>> {
       leftNode = rightNode = null; // node has no children
    } // end TreeNode no-argument constructor
 
+   public T getData(){
+        return data;
+   }
+   
+   public DietelTreeNode<T> getLeftNode(){
+       return leftNode;
+   }
+   
+   public DietelTreeNode<T> getRightNode(){
+       return rightNode;
+   }
+   
    // locate insertion point and insert new node; ignore duplicate values
    public void insert( T insertValue )
    {

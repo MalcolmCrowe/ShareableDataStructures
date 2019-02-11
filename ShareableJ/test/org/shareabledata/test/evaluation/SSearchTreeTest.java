@@ -87,7 +87,7 @@ public class SSearchTreeTest {
     
     @Test
     public void FindElementIn100() throws Exception {
-        tml.setTestCaseName("Remove elements in 100");
+        tml.setTestCaseName("Find elements in 100");
         
         SSearchTree<PayLoad> tree = createTreeOfSize(100);
 
@@ -99,7 +99,7 @@ public class SSearchTreeTest {
         tree.Contains(toBeFound_25);
         tml.logTimeAndMemoryUsage(25);
         tree.Contains(toBeFound_50);
-        tml.logTimeAndMemoryUsage(75);
+        tml.logTimeAndMemoryUsage(50);
         tree.Contains(toBeFound_75);
         tml.logTimeAndMemoryUsage(75);
         tree.Contains(toBeFound_100);
@@ -117,5 +117,41 @@ public class SSearchTreeTest {
         }
         
         return tree;
+    }
+    
+    @Test
+    public void deepCopyAndFindTest() throws Exception{
+        tml.setTestCaseName("DeepCopyAndFindIn100");
+        SSearchTree<PayLoad> tree = createTreeOfSize(100);
+        
+        tml.setInitialTimeAndMemory();
+        SSearchTree<PayLoad> treeCpy = tree;
+        treeCpy.Contains(new PayLoad("Load 25"));
+        tml.logTimeAndMemoryUsage(25);
+        ///////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.Contains(new PayLoad("Load 50"));
+        tml.logTimeAndMemoryUsage(50);
+        ///////////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.Contains(new PayLoad("Load 75"));
+        tml.logTimeAndMemoryUsage(75);
+        //////////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.Contains(new PayLoad("Load 99"));
+        tml.logTimeAndMemoryUsage(100);
+
+
+        
+        
     }
 }

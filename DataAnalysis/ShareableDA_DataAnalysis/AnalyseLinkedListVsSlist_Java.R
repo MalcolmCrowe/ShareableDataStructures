@@ -17,8 +17,8 @@ LoadDataSet <- function(filename){
 }
 
 SetUpDataSet <- function(){
-  LinkedListDataSet <- LoadDataSet("LinkedListTestOutput.csv")
-  SListDataSet <- LoadDataSet("SListTestOutput.csv")
+  LinkedListDataSet <- LoadDataSet("LinkedListTestOutput_Java.csv")
+  SListDataSet <- LoadDataSet("SListTestOutput_Java.csv")
   
   LinkedListDataSet$DA <- rep("LinkedList",nrow(LinkedListDataSet))
   SListDataSet$DA <- rep("SList",nrow(SListDataSet))

@@ -87,7 +87,7 @@ public class TestTreeTest {
     
      @Test
     public void FindElementIn100() throws Exception {
-        tml.setTestCaseName("Remove elements in 100");
+        tml.setTestCaseName("Find elements in 100");
         
         DietelJavaTree<PayLoad> tree = createTreeOfSize(100);
 
@@ -105,7 +105,7 @@ public class TestTreeTest {
         Assert.assertTrue(testOutput);
         testOutput = false;
         
-        tml.logTimeAndMemoryUsage(75);
+        tml.logTimeAndMemoryUsage(50);
         testOutput = tree.contains(toBeFound_75);
         Assert.assertTrue(testOutput);
         testOutput = false;
@@ -128,5 +128,40 @@ public class TestTreeTest {
         }
         
         return tree;
+    }
+    
+    @Test
+    public void deepCopyAndFindTest() throws Exception{
+        tml.setTestCaseName("DeepCopyAndFindIn100");
+        DietelJavaTree<PayLoad> tree = createTreeOfSize(100);
+        
+        
+        
+        tml.setInitialTimeAndMemory();
+        DietelJavaTree<PayLoad> treeCpy = TreeDeepCopy.deepCopy(tree);
+        treeCpy.contains(new PayLoad("Load 25"));
+        tml.logTimeAndMemoryUsage(25);
+        ///////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.contains(new PayLoad("Load 50"));
+        tml.logTimeAndMemoryUsage(50);
+        ///////////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.contains(new PayLoad("Load 75"));
+        tml.logTimeAndMemoryUsage(75);
+        //////////////
+        tree = createTreeOfSize(100);
+        Runtime.getRuntime().gc();
+        tml.setInitialTimeAndMemory();
+        treeCpy = tree;
+        treeCpy.contains(new PayLoad("Load 99"));
+        tml.logTimeAndMemoryUsage(100);
+                
     }
 }

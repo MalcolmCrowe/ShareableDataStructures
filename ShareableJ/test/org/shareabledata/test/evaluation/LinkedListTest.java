@@ -26,7 +26,7 @@ public class LinkedListTest {
 	public static void tearDownClass() {
                 
 		try {
-			tml.writeToCSV("LinkedListTestOutput.csv");
+			tml.writeToCSV("LinkedListTestOutput_Java.csv");
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

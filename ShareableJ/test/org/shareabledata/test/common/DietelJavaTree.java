@@ -12,7 +12,7 @@ package org.shareabledata.test.common;
  * @author 77800577
  */
 public class DietelJavaTree<T extends Comparable<T> > {
-    private DietelTreeNode root;
+    private DietelTreeNode<T> root;
 
    // constructor initializes an empty Tree of integers
    public DietelJavaTree() 
@@ -20,6 +20,9 @@ public class DietelJavaTree<T extends Comparable<T> > {
       root = null; 
    } // end Tree no-argument constructor
 
+   public DietelTreeNode<T> getRoot(){
+       return root;
+   }
    // insert a new node in the binary search tree
    public void insertNode( T insertValue )
    {
@@ -85,5 +88,7 @@ public class DietelJavaTree<T extends Comparable<T> > {
       postorderHelper( node.rightNode );     // traverse right subtree
       System.out.printf( "%d ", node.data ); // output node data
    } // end method postorderHelper
+   
+   
 }
   

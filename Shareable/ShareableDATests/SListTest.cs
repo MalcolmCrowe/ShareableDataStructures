@@ -122,18 +122,16 @@ namespace ShareableDATests
 
         private SList<Payload> creatASListWithNelement(int numberOfElements) 
         {
-            /*SList<Payload> list;
-            Payload firstElement = new PayLoad("Load 0");
-            list = new SList<PayLoad>(firstElement);
-
-            for (int i = 1; i<numberOfElements; i++)
-            {
-                list = list.InsertAt(new PayLoad("Load "+i), 0);
-            }*/
-
             SList<Payload> list;
             Payload firstElement = new Payload("Load 0");
             list = SList<Payload>.New(firstElement);
+
+            for (int i = 1; i<numberOfElements; i++)
+            {
+                list += new Payload("Load "+i);
+            }
+
+            
             return list;
         }
 
@@ -148,21 +146,21 @@ namespace ShareableDATests
             Payload toBeFound_50 = new Payload("Load 50");
             Payload toBeFound_75 = new Payload("Load 75");
 
-                Payload toBeFound_100 = new Payload("Load 100");
-                Assert.AreEqual(100, list.Length);
-                tml.setInitialTimeAndMemory();
-                //list = listRemoveAt(24);
-                Assert.AreEqual(99, list.Length);
-                tml.logTimeAndMemoryUsage(25);
-                //list = list.RemoveAt(48);
-                Assert.AreEqual(98, list.Length);
-                tml.logTimeAndMemoryUsage(50);
-                //list = list.RemoveAt(73);
-                Assert.AreEqual(97, list.Length);
-                tml.logTimeAndMemoryUsage(75);
-                //list = list.RemoveAt(96);
-                Assert.AreEqual(96, list.Length);
-                tml.logTimeAndMemoryUsage(100);
+            Payload toBeFound_100 = new Payload("Load 100");
+            Assert.AreEqual(100, list.Length);
+            tml.setInitialTimeAndMemory();
+            list -= 25;//removes element at 25
+            Assert.AreEqual(99, list.Length);
+            tml.logTimeAndMemoryUsage(25);
+            list -= 48;
+            Assert.AreEqual(98, list.Length);
+            tml.logTimeAndMemoryUsage(50);
+            list -= 73;
+            Assert.AreEqual(97, list.Length);
+            tml.logTimeAndMemoryUsage(75);
+            list -= 96;
+            Assert.AreEqual(96, list.Length);
+            tml.logTimeAndMemoryUsage(100);
          }
 
         public void DeepCopyAndAddIn100() 
@@ -174,28 +172,30 @@ namespace ShareableDATests
 
             tml.setInitialTimeAndMemory();
             SList<Payload> listCpy = list;
-               //listCpy.InsertAt(new Payload("Load 25*"), 25);
+            list += (new Payload("Load 25*"), 24);
+            
             tml.logTimeAndMemoryUsage(25);
                 ///////////
             list = this.creatASListWithNelement(100);
                 
             tml.setInitialTimeAndMemory();
             listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 50*"), 50);
+            list += (new Payload("Load 50*"), 50);
             tml.logTimeAndMemoryUsage(50);
             ///////////////
             list = this.creatASListWithNelement(100);
             this.callTheGC();
             tml.setInitialTimeAndMemory();
             listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 75*"), 75);
+            list += (new Payload("Load 75*"), 75);
             tml.logTimeAndMemoryUsage(75);
             //////////////
             list = this.creatASListWithNelement(100);
             this.callTheGC();
             tml.setInitialTimeAndMemory();
             listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 99*"), 99);
+            list += (new Payload("Load 99*"), 99);
+            
             tml.logTimeAndMemoryUsage(100);
                 
                 
