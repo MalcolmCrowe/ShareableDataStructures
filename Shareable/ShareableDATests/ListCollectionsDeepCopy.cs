@@ -15,12 +15,13 @@ namespace ShareableDATests
             Payload lastItem = null;
             foreach (Payload payloadObject in list)
             {
-                Payload copied = (Payload ) payloadObject.Clone();
+                Payload copied = (Payload) payloadObject.Clone();
                 if (lastItem == null) {
                     copiedList.AddFirst(copied);
                 }
                 else {
-                    copiedList.AddAfter(new LinkedListNode<Payload>(lastItem), copied);
+                    LinkedListNode<Payload> lastItmesNode = copiedList.Find(lastItem);
+                    copiedList.AddAfter(lastItmesNode, copied);
                 }
                 lastItem = copied;
 

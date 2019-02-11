@@ -163,6 +163,7 @@ namespace ShareableDATests
             tml.logTimeAndMemoryUsage(100);
          }
 
+        [Test]
         public void DeepCopyAndAddIn100() 
         {
             tml.setTestCaseName("DeepCopyAndAddIn100");
@@ -203,5 +204,6 @@ namespace ShareableDATests
                 
         }
 
+        
     }
 }

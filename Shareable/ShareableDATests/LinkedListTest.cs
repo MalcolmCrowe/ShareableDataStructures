@@ -102,8 +102,8 @@ namespace ShareableDATests
             for (int i = 1; i<numberOfElements; i++)
             {
                 Payload toAdd = new Payload("Load " + i);
-                list.AddAfter(new LinkedListNode<Payload>(firstElement), toAdd);
-                firstElement = toAdd;
+                list.AddLast(toAdd);
+                
             }
 
            
@@ -119,7 +119,7 @@ namespace ShareableDATests
             Payload toBeFound_25 = new Payload("Load 25");
             Payload toBeFound_50 = new Payload("Load 50");
             Payload toBeFound_75 = new Payload("Load 75");
-            Payload toBeFound_100 = new Payload("Load 100");
+            Payload toBeFound_100 = new Payload("Load 99");
 
             Assert.AreEqual(100, list.Count);
             tml.setInitialTimeAndMemory();
@@ -138,45 +138,54 @@ namespace ShareableDATests
             tml.logTimeAndMemoryUsage(100);
         }
 
-
+        [Test]
         public void DeepCopyAndAddIn100()
         {
             tml.setTestCaseName("DeepCopyAndAddIn100");
 
             LinkedList<Payload> list = this.creatASListWithNelement(100);
-
+            Payload toBeFound_25 = new Payload("Load 25");
+            Payload toBeFound_50 = new Payload("Load 50");
+            Payload toBeFound_75 = new Payload("Load 75");
+            Payload toBeFound_100 = new Payload("Load 99");
 
             tml.setInitialTimeAndMemory();
-            LinkedList<Payload> listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 25*"), 25);
+            LinkedList<Payload> listCpy = ListCollectionsDeepCopy.deepCopy(list);
+            findAndInsertElementInList(list, toBeFound_25, "Load 25*");
+
             tml.logTimeAndMemoryUsage(25);
             ///////////
             list = this.creatASListWithNelement(100);
 
             tml.setInitialTimeAndMemory();
-            listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 50*"), 50);
+            listCpy = ListCollectionsDeepCopy.deepCopy(list); 
+            findAndInsertElementInList(list, toBeFound_50, "Load 50*");
             tml.logTimeAndMemoryUsage(50);
             ///////////////
             list = this.creatASListWithNelement(100);
             this.callTheGC();
             tml.setInitialTimeAndMemory();
-            listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 75*"), 75);
+            listCpy = ListCollectionsDeepCopy.deepCopy(list);
+            findAndInsertElementInList(list, toBeFound_75, "Load 75*");
             tml.logTimeAndMemoryUsage(75);
             //////////////
             list = this.creatASListWithNelement(100);
             this.callTheGC();
             tml.setInitialTimeAndMemory();
-            listCpy = list;
-            //listCpy.InsertAt(new Payload("Load 99*"), 99);
+            listCpy = ListCollectionsDeepCopy.deepCopy(list);
+            findAndInsertElementInList(list, toBeFound_100, "Load 99*");
             tml.logTimeAndMemoryUsage(100);
 
-
-
-
+            
         }
 
+        private static void findAndInsertElementInList(LinkedList<Payload> list, Payload toBeFound, String name)
+        {
+            LinkedListNode<Payload> placeHolder = list.Find(toBeFound);
+
+            list.AddAfter(placeHolder,
+                          new Payload(name));
+        }
 
 
 
