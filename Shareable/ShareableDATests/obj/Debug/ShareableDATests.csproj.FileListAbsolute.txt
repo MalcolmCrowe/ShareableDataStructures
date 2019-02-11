@@ -1,0 +1,12 @@
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\obj\Debug\ShareableDATests.csprojAssemblyReference.cache
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\obj\Debug\ShareableDATests.csproj.CoreCompileInputs.cache
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\ShareableDATests.dll
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\ShareableDATests.pdb
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\nunit.framework.dll
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\Shareable.dll
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\Shareable.pdb
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\Shareable.dll.config
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\bin\Debug\nunit.framework.xml
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\obj\Debug\ShareableDATests.csproj.CopyComplete
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\obj\Debug\ShareableDATests.dll
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\Shareable\ShareableDATests\obj\Debug\ShareableDATests.pdb

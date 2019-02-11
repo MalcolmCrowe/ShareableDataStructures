@@ -4,3 +4,8 @@
 .Ruserdata
 ShareableJ/nbproject/private/private.xml
 Shareable/.vs/Shareable/v16/.suo
+/Shareable/.vs/Shareable/v16/Server/sqlite3
+/Shareable/Shareable/bin/Debug
+/Shareable/Shareable/obj/Debug
+/Shareable/ShareableDATests/bin/Debug
+/StrongDB/bin/Debug
