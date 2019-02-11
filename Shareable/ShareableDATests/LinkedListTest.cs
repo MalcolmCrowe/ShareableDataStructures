@@ -39,9 +39,11 @@ namespace ShareableDATests
         public void tearDown()
         {
             CallTheGC();
+            callTheGC();
         }
 
         private void CallTheGC()
+        private void callTheGC()
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
