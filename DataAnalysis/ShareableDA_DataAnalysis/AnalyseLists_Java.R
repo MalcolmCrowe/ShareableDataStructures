@@ -145,7 +145,7 @@ plotRemoveExecutionTime <- function(fullDataSet){
   print(p)
 }
 
-plotplotInsertMemoryConsumptionForRemove <- function(fullDataSet){
+plotplotMemoryConsumptionForRemove <- function(fullDataSet){
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="Remove elements in 100") |
                                    (fullDataSet$TestCaseID=="Remove elements in 100")
   ), ]
@@ -227,6 +227,6 @@ fullDataSet <- SetUpDataSet()
 plotInsertExecutionTime(fullDataSet)
 plotInsertMemoryConsumptionForInsert(fullDataSet)
 plotRemoveExecutionTime(fullDataSet)
-plotplotInsertMemoryConsumptionForRemove(fullDataSet)
+plotplotMemoryConsumptionForRemove(fullDataSet)
 plotDeepCopyAndFind(fullDataSet)
 plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
