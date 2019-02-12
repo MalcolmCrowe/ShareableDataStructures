@@ -9,7 +9,7 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public abstract class SQuery extends SDbObject {
+public class SQuery extends SDbObject {
         public final SDict<Integer,Serialisable> cpos;
         public final SDict<String, Serialisable> names;
         public final SDict<Integer, String> display;
@@ -99,8 +99,10 @@ public abstract class SQuery extends SDbObject {
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public abstract RowSet RowSet(STransaction db,SQuery top,
-                SDict<Long,SFunction> ags, Context cx) throws Exception;
+        public RowSet RowSet(STransaction db,SQuery top,
+                SDict<Long,SFunction> ags, Context cx) throws Exception{
+            throw new Exception("Not implemented");
+        }
         
         SDict<Integer,String> getDisplay()
         {

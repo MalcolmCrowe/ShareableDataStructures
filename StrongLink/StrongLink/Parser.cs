@@ -78,8 +78,9 @@ namespace StrongLink
             TO = 67,
             TRUE = 68,
             UPDATE = 69,
-            VALUES = 70,
-            WHERE = 71
+            USING = 70,
+            VALUES = 71,
+            WHERE = 72
         }
         internal class Lexer
         {
@@ -621,17 +622,109 @@ namespace StrongLink
                 Next();
                 tb = new SAliasedTable(tb,alias);
             }
-            if (lxr.tok==Sym.COMMA)
+            var jt = SJoin.JoinType.None;
+            if (lxr.tok == Sym.COMMA)
             {
                 Next();
+                jt = SJoin.JoinType.Cross;
+            }
+            else if (lxr.tok == Sym.CROSS)
+            {
+                Next();
+                Mustbe(Sym.JOIN);
+                jt = SJoin.JoinType.Cross;
+            }
+            else
+            {
+                if (lxr.tok == Sym.NATURAL)
+                {
+                    Next();
+                    jt |= SJoin.JoinType.Natural;
+                    Mustbe(Sym.JOIN);
+                }
+                else
+                {
+                    if (lxr.tok == Sym.INNER)
+                    {
+                        Next();
+                        jt |= SJoin.JoinType.Inner;
+                    }
+                    else
+                    {
+                        if (lxr.tok == Sym.LEFT)
+                        {
+                            Next();
+                            jt |= SJoin.JoinType.Left;
+                        }
+                        else if (lxr.tok == Sym.RIGHT)
+                        {
+                            Next();
+                            jt |= SJoin.JoinType.Right;
+                        }
+                        else if (lxr.tok == Sym.FULL)
+                        {
+                            Next();
+                            jt |= (SJoin.JoinType.Left | SJoin.JoinType.Right);
+                        }
+                        if (jt != SJoin.JoinType.None && lxr.tok == Sym.OUTER)
+                            Next();
+                    }
+                    if (jt!= SJoin.JoinType.None)
+                        Mustbe(Sym.JOIN);
+                }
+            }
+            if (jt!=SJoin.JoinType.None)
+            {
+                var on = SList<SExpression>.Empty;
                 var ra = TableExp(SDict<int, string>.Empty, SDict<int, Serialisable>.Empty);
                 var da = SDict<int, string>.Empty;
                 var ca = SDict<int, Serialisable>.Empty;
                 var na = SDict<string, Serialisable>.Empty;
-                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, SList<SExpression>.Empty,
+                var us = SList<string>.Empty;
+                if ((jt&(SJoin.JoinType.Cross|SJoin.JoinType.Natural))==0)
+                {
+                    if (lxr.tok == Sym.USING)
+                    {
+                        Next();
+                        jt |= SJoin.JoinType.Named;
+                        for (; ; )
+                        {
+                            var v = lxr.val;
+                            Mustbe(Sym.ID);
+                            us += ((SString)v).str;
+                            if (lxr.tok == Sym.COMMA)
+                                Next();
+                            else
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        Mustbe(Sym.ON);
+                        for (; ; )
+                        {
+                            var ex = Conjunct();
+                            if (!(ex is SExpression e) || e.op != SExpression.Op.Eql
+                                || e.left.type!=Types.SColumn || 
+                                e.right.type!=Types.SColumn)
+                                throw new Exception("Column matching expression expected");
+                            on += (SExpression)ex;
+                            if (lxr.tok == Sym.AND)
+                                Next();
+                            else
+                                break;
+                        }
+                    }
+                }
+                return new SJoin(tb, false, jt, ra, on, us,
                     da, ca, new Context(na, null)); 
             }
             return tb;
+        }
+        bool Relation(Serialisable s)
+        {
+            return (s is SExpression e) && e.op >= SExpression.Op.Eql &&
+                e.op <= SExpression.Op.Geq;
         }
         Serialisable Value()
         {

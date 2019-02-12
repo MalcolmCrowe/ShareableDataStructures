@@ -14,7 +14,7 @@ public class IndexRowSet extends RowSet {
         public final SList<Serialisable> _wh;
         public final SCList<Variant> _key;
         public final boolean _unique;
-        public IndexRowSet(SDatabase db,STable t,SIndex ix,SCList<Variant> key,
+        public IndexRowSet(STransaction db,STable t,SIndex ix,SCList<Variant> key,
                 SList<Serialisable> wh)
         {
             super(db,t,null);

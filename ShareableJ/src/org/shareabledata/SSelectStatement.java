@@ -27,14 +27,13 @@ public class SSelectStatement extends SQuery {
                 SDict<Integer,Serialisable> c, SQuery q, SList<SOrder> or,
                 Context cx) 
         {
-            super(Types.SSelect,(a!=null)?a:q.display,(c!=null)?c:q.cpos,
-                    new Context(q.names,cx));
+            super(Types.SSelect,a,c,new Context(q.names,cx));
             distinct = d;  qry = q; order = or;
             var ag = false;
             if (cpos!=null)
-            for (var b = cpos.First(); b != null; b = b.Next())
-                if (b.getValue().val.type == Types.SFunction)
-                    ag = true;
+                for (var b = cpos.First(); b != null; b = b.Next())
+                    if (b.getValue().val.type == Types.SFunction)
+                        ag = true;
             aggregates = ag;
         }
         public static SSelectStatement Get(SDatabase db,Reader f) throws Exception
@@ -54,7 +53,7 @@ public class SSelectStatement extends SQuery {
             n = f.GetInt();
             for (var i = 0; i < n; i++)
                 o =(o==null)?new SList((SOrder)f._Get(db)):o.InsertAt((SOrder)f._Get(db), i);
-            return new SSelectStatement(d,(n==0)?a:null,(n==0)?c:null,q,o,Context.Empty);
+            return new SSelectStatement(d,a,c,q,o,Context.Empty);
         }
         @Override
         public void Put(StreamBase f)
@@ -85,6 +84,7 @@ public class SSelectStatement extends SQuery {
                 sb.append("distinct ");
             super.Append(db,sb);
         }
+        @Override
         public String toString() 
         {
             var sb = new StringBuilder("Select ");
@@ -108,12 +108,13 @@ public class SSelectStatement extends SQuery {
             return sb.toString();
         }
 
+        @Override
         public RowSet RowSet(STransaction tr,SQuery top,
                 SDict<Long,SFunction> ags, Context cx) throws Exception
         {
             if (order!=null)
-            for (var b = order.First(); b != null; b = b.Next())
-                ags = b.getValue().col.Aggregates(ags, cx);
+                for (var b = order.First(); b != null; b = b.Next())
+                    ags = b.getValue().col.Aggregates(ags, cx);
             RowSet r = new SelectRowSet(tr,this,ags, cx);
             if (cpos!=null && !(qry instanceof SGroupQuery))
             {
@@ -128,6 +129,7 @@ public class SSelectStatement extends SQuery {
                 r = new OrderedRowSet(r, this, cx);
             return r;
         }
+        @Override
         public Serialisable Lookup(Context nms) 
         {
             var r = (RowBookmark)nms.head;
@@ -137,6 +139,7 @@ public class SSelectStatement extends SQuery {
         }
         @Override
         public String getAlias() { return qry.getAlias(); }
+        @Override
         public SDict<Integer, String> getDisplay() 
         { 
             return (display == null) ? qry.getDisplay() : display; 

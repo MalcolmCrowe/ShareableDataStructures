@@ -11,9 +11,9 @@ package org.shareabledata;
  */
 public abstract class RowSet  extends Collection<Serialisable> {
         public final SQuery _qry;
-        public final SDatabase _tr;
+        public final STransaction _tr;
         public final SDict<Long,SFunction> _aggregates;
-        public RowSet(SDatabase d, SQuery q, SDict<Long,SFunction>ags)
+        public RowSet(STransaction d, SQuery q, SDict<Long,SFunction>ags)
         {
             super(0);
             _tr = d; _qry = q; _aggregates = ags;

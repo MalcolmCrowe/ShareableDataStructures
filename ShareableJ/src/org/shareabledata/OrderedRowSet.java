@@ -42,6 +42,27 @@ public class OrderedRowSet extends RowSet {
             _tree = t;
             _rows = r;
         }
+        public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti,Context cx)
+                throws Exception
+        {
+            super(sce._tr,sce._qry,sce._aggregates);
+            _sce = sce;
+            var t = new SMTree<Serialisable>(ti);
+            SDict<Integer, SRow> r = null;
+            int m = 0;
+            for (var b = (RowBookmark)sce.First(); b != null; b = (RowBookmark)b.Next())
+            {
+                var k = new Variant[ti.Length];
+                var i = 0;
+                for (var c = ti.First(); c != null; c = c.Next())
+                    k[i] = new Variant(c.getValue().headName.Lookup(new Context(b, cx)),true);
+                t = t.Add(m, k);
+                r=(r==null)?new SDict(m, b._ob):r.Add(m,b._ob);
+                m++;
+            }
+            _tree = t;
+            _rows = r;
+        }
         @Override
         public Bookmark<Serialisable> First()
         {

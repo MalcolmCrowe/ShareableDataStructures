@@ -45,6 +45,22 @@ package org.shareabledata;
         {
             return true;
         }
+        public boolean Matches(SList<Serialisable> wh,Context cx)
+        {
+            cx = new Context(this, cx);
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (b.getValue().Lookup(cx) != SBoolean.True)
+                    return false;
+            return true;
+        }
+        public MTreeBookmark<Serialisable> Mb()
+        {
+            return null;
+        }
+        public RowBookmark ResetToTiesStart(MTreeBookmark<Serialisable> mb)
+        {
+            return null;
+        }
         public STransaction Update(STransaction tr,
                 SDict<String,Serialisable> assigs) throws Exception
         {

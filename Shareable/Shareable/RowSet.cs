@@ -45,14 +45,6 @@ namespace Shareable
                     return false;
             return true;
         }
-        public bool Matches(SList<SExpression> wh, Context cx)
-        {
-            cx = new Context(this, cx);
-            for (var b = wh.First(); b != null; b = b.Next())
-                if (b.Value.Lookup(cx) != SBoolean.True)
-                    return false;
-            return true;
-        }
         public virtual MTreeBookmark<Serialisable>? Mb()
         {
             return null;
@@ -154,7 +146,7 @@ namespace Shareable
             int m = 0;
             for (var b = sce.First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
-                var k = new Variant[ti.Length.Value];
+                var k = new Variant[ti.Length??0];
                 var i = 0;
                 for (var c = ti.First(); c != null; c = c.Next())
                     k[i] = new Variant(c.Value.headName.Lookup(new Context(b, cx)));
@@ -678,7 +670,7 @@ namespace Shareable
                                     for (var b = lbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                     {
                                         var n = ab.Value.Item2;
-                                        if (rbm?._ob.vals.Contains(n) == true)
+                                        if (jrs._join.right.names.Contains(n))
                                             n = jrs._left._qry.Alias + "." + n;
                                         r += (n, b.Value.Item2);
                                     }
@@ -689,7 +681,7 @@ namespace Shareable
                                 for (var b = rbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                 {
                                     var n = ab.Value.Item2;
-                                    if (lbm?._ob.vals.Contains(n) == true)
+                                    if (jrs._join.left.names.Contains(n))
                                         n = jrs._right._qry.Alias + "." + n;
                                     r += (n, b.Value.Item2);
                                 }
@@ -753,30 +745,51 @@ namespace Shareable
                 var depth = (_jrs._join.ons.Length + _jrs._join.uses.Length)??0;
                 while (lbm != null && rbm != null)
                 {
-                    if (_jrs._join.joinType==SJoin.JoinType.Cross)
+                    if (_jrs._join.joinType == SJoin.JoinType.Cross)
                     {
                         rbm = rbm.Next() as RowBookmark;
                         if (rbm != null)
                             return new JoinRowBookmark(_jrs, lbm, true, rbm, true, Position + 1);
                         lbm = lbm.Next() as RowBookmark;
                         rbm = _jrs._right.First() as RowBookmark;
-                        if (lbm!=null && rbm!=null)
+                        if (lbm != null && rbm != null)
                             return new JoinRowBookmark(_jrs, lbm, true, rbm, true, Position + 1);
                         return null;
                     }
-                    if (rbm.Mb() is MTreeBookmark<Serialisable> mb0 &&
-                        mb0.hasMore(_jrs._tr, depth))
+                    if (_useR && _useL)
                     {
-                        rbm = rbm.Next() as RowBookmark;
-                        return new JoinRowBookmark(_jrs, lbm, true, rbm, true, Position + 1);
+                        if (rbm.Mb() is MTreeBookmark<Serialisable> mb0 &&
+                            mb0.hasMore(_jrs._tr, depth))
+                        {
+                            rbm = rbm.Next() as RowBookmark;
+                            return new JoinRowBookmark(_jrs, lbm, true, rbm, true, Position + 1);
+                        }
+                        lbm = lbm.Next() as RowBookmark;
+                        if (lbm == null)
+                            break;
+                        var mb = (lbm.Mb() is MTreeBookmark<Serialisable> ml && ml.changed(depth)) ? null :
+                            rbm.Mb()?.ResetToTiesStart(_jrs._tr, depth);
+                        rbm = (mb != null) ? rbm = rbm.ResetToTiesStart(mb) : rbm.Next() as RowBookmark;
+                        if (rbm == null)
+                            break;
                     }
-                    lbm = lbm.Next() as RowBookmark;
-                    if (lbm == null)
-                        break;
-                    var mb = (lbm.Mb() is MTreeBookmark<Serialisable> ml && ml.changed(depth)) ? null :
-                        rbm.Mb()?.ResetToTiesStart(_jrs._tr, depth);
-                    rbm = (mb != null) ? rbm = rbm.ResetToTiesStart(mb) : rbm.Next() as RowBookmark;
-                    if (rbm == null)
+                    else if (_useL)
+                    {
+                        lbm = lbm.Next() as RowBookmark;
+                        if (lbm == null)
+                            break;
+                    }
+                    else
+                    {
+                        rbm = lbm.Next() as RowBookmark;
+                        if (rbm == null)
+                        {
+                            lbm = lbm.Next() as RowBookmark;
+                            if (lbm == null)
+                                break;
+                        }
+                    }
+                    if (lbm == null || rbm == null)
                         break;
                     var c = _jrs._join.Compare(lbm, rbm);
                     if (c == 0)
@@ -795,9 +808,19 @@ namespace Shareable
                     }
                 }
                 if (lbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Left))
-                    return new JoinRowBookmark(_jrs, lbm, true, null, false, Position+1);
+                {
+                    if (lbm==_lbm && _useL)
+                        lbm = lbm.Next() as RowBookmark;
+                    if (lbm != null)
+                        return new JoinRowBookmark(_jrs, lbm, true, null, false, Position + 1);
+                }
                 if (rbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Right))
-                    return new JoinRowBookmark(_jrs, null, false, rbm, true, Position+1);
+                {
+                    if (rbm==_rbm && _useR)
+                        rbm = rbm.Next() as RowBookmark;
+                    if (rbm != null)
+                        return new JoinRowBookmark(_jrs, null, false, rbm, true, Position + 1);
+                }
                 return null;
             }
         }
@@ -816,7 +839,7 @@ namespace Shareable
             switch (tb.name)
             {
                 case "_Log": return LogBookmark.New(this, 0, 0);
-                case "_Tables": return TablesBookmark.New(this, 0, 0);
+                case "_Tables": return TablesBookmark.New(this, 0);
             }
             return null;
         }
@@ -856,31 +879,28 @@ namespace Shareable
         internal class TablesBookmark : RowBookmark
         {
             public readonly SysRows _srs;
-            public readonly long _log;
-            public readonly long _next;
-            internal TablesBookmark(SysRows rs, long lg, STable tb, long nx, int p)
+            public readonly Bookmark<(long,SDbObject)> _u;
+            internal TablesBookmark(SysRows rs, Bookmark<(long,SDbObject)> u, STable tb, int p)
                 : base(rs, rs._Row(new SString(tb.name), // Name
                     new SInteger(tb.cpos.Length??0), // Cols
                     new SInteger(tb.rows.Length??0)), p)  //Rows
             {
-                _srs = rs; _log = lg; _next = nx;
+                _srs = rs; _u = u; 
             }
-            internal static TablesBookmark? New(SysRows rs, long lg, int pos)
+            internal static TablesBookmark? New(SysRows rs, int pos)
             {
-                var rdr = new Reader(rs.fs, lg);
-                for (var ob = rdr._Get(rs._tr); ob != null; ob = rdr._Get(rs._tr))
-                {
-                    if (ob is STable tb && rs._tr.objects[tb.uid] is STable t)
-                        return new TablesBookmark(rs, lg, t, rdr.Position, pos);
-                    if (rdr.Position >= rs.fs.Position)
-                        break;
-                }
+                for (var b = rs._tr.objects.First(); b != null; b = b.Next())
+                    if (b.Value.Item2 is STable tb)
+                        return new TablesBookmark(rs, b, tb, 0);
                 return null;
             }
 
             public override Bookmark<Serialisable>? Next()
             {
-                return New((SysRows)_rs, _next, Position + 1);
+                for (var b = _u.Next(); b != null; b = b.Next())
+                    if (b.Value.Item2 is STable tb)
+                        return new TablesBookmark(_srs, b, tb, Position+1);
+                return null;
             }
         }
     }

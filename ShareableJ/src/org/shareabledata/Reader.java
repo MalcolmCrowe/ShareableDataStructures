@@ -67,7 +67,7 @@ public class Reader {
             case Types.SDropStatement:s= SDropStatement.Get(this);break;
             case Types.SAlterStatement:s=SAlterStatement.Get(this);break;
             case Types.SGroupQuery: s = SGroupQuery.Get(d, this); break;
-            case Types.SJoin: s = SJoin.Get(d, this); break;
+            case Types.STableExp: s = SJoin.Get(d, this); break;
         }
         return s;
     }

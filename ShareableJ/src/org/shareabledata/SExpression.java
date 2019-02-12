@@ -52,9 +52,12 @@ public class SExpression extends Serialisable {
                 {
                     var rb = (RowBookmark)nms.head;
                     var ls = ((SString)left).str;
+                    var rs = ((SString)right).str;
+                    var n = ls + "." +rs;
+                    if (rb._ob.vals.Contains(n))
+                        return rb._ob.vals.Lookup(n);
                     if (nms==null || !nms.defines(ls))
                         return this;
-                    var rs = ((SString)right).str;
                     if (ls.compareTo(rb._rs._qry.getAlias()) == 0)
                         return (nms!=null && nms.defines(rs))?nms.get(rs):this;
                     var rw = (SRow)rb._ob.get(ls);

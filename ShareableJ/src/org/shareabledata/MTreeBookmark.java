@@ -164,4 +164,62 @@ package org.shareabledata;
             return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _filter);
 
         }
+                /// <summary>
+        /// In join processing if there are ties in both first and second we
+        /// often need to repeat groups of tied rows.
+        /// </summary>
+        /// <param name="depth"></param>
+        /// <returns>an earlier bookmark or null</returns>
+        MTreeBookmark<K> ResetToTiesStart(STransaction tr, int depth)
+        {
+            var m = (_inner!=null && depth > 1) ? _inner.ResetToTiesStart(tr, depth - 1) : null;
+            var ov = (depth == 1) ? (SDict)_outer.getValue().val.ob : null;
+            return new MTreeBookmark<K>(_outer, _info, false,
+                    m, (ov!=null)?ov.First():null, (_inner!=null)?_inner.Position:0,_filter);
+        }
+        /// <summary>
+        /// Find out if there are more matches for a partial ordering
+        /// </summary>
+        /// <param name="depth">The depth in the key</param>
+        /// <returns>whether there are more matches</returns>
+        boolean hasMore(STransaction tr, int depth) 
+        {
+            if (depth > 1)
+                return (_pmk!=null && _pmk.Next() != null) || 
+                        (_inner != null && _inner.hasMore(tr, depth - 1));
+            var ov = _outer.getValue();
+            switch (ov.key.variant)
+            {
+                case Compound:
+                    {
+                        var m = (SMTree)ov.val.ob;
+                        if (_inner==null||m==null)
+                            return false;
+                        return _inner.Position < m.Length - 1;
+                    }
+                case Partial:
+                    {
+                        var t = (SDict)ov.val.ob;
+                        if (_pmk == null || t == null)
+                            return false;
+                        return _pmk.Position < t.Length - 1;
+                    }
+                default:
+                    return false;
+            }
+        }
+        /// <summary>
+        /// Whether there has been a change at the given depth
+        /// </summary>
+        /// <param name="depth">the depth in the key</param>
+        /// <returns>whether there has been a change</returns>
+        boolean changed(int depth)
+        {
+            if (_changed)
+                return true;
+            if (depth > 1 && _inner!=null)
+                return _inner.changed(depth - 1);
+            return false;
+        }
+
     }

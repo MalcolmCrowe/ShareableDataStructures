@@ -49,7 +49,8 @@ namespace Test
             Test5(test);
             Test6(test);
             Test7(test);
-       //     Test8(test);
+            Test8(test);
+            Test9(test);
         }
         void Test1(int t)
         {
@@ -226,7 +227,7 @@ namespace Test
         }
         void Test8(int t)
         {
-            if (t > 0 && t != 7)
+            if (t > 0 && t != 8)
                 return;
             Begin();
             conn.ExecuteNonQuery("create table A(B integer,C integer,D integer)");
@@ -245,13 +246,44 @@ namespace Test
                 "[{B:4,D:43,G:22},{B:7,D:29,G:31}]");
             CheckResults(t, 4, "select B,D,G from A H, E where H.C=E.C",
                 "[{B:4,D:43,G:31},{B:8,D:82,G:22},{B:7,D:29,G:10}]");
-            CheckResults(t, 5, "select from A inner join E on B<F",
-                "[{B:4,\"A.C\":2,D:43,F:7,\"E.C\":2,G:31},{B:4,\"A.C\":2,D:43,F:11,\"E.C\":4,G:10},"+
-                "{B:7,\"A.C\":4,D:29,F:11,\"E.C\":4,G:10},{B:8,\"A.C\":3:,D:82,F:11,\"E.C\":4,G:10}]");
-       //     CheckResults(t, 6, "select from A full join E on B=F",
-       //         "[TBD]");
-       //     CheckResults(t, 7, "select from A right join E on B=F",
-       //          "[TBD]");
+            CheckResults(t, 5, "select from A inner join E on B=F",
+                "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},"+
+                "{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}]");
+            CheckResults(t, 6, "select from A left join E on B=F",
+    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
+    "{B:8,\"A.C\":3,D:82}]");
+            CheckResults(t, 7, "select from A right join E on B=F",
+    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
+    "{F:11,\"E.C\":4,G:10}]");
+            CheckResults(t, 8, "select from A full join E on B=F",
+    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
+    "{B:8,\"A.C\":3,D:82},{F: 11,\"E.C\":4,G:10}]");
+            Rollback();
+        }
+        void Test9(int t)
+        {
+            if (t > 0 && t != 9)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table a(b integer,c numeric)");
+            conn.ExecuteNonQuery("insert a values(12345678901234567890123456789,123.4567)");
+            conn.ExecuteNonQuery("insert a values(0,123.4567e-15)");
+            conn.ExecuteNonQuery("insert a values(12,1234)");
+            conn.ExecuteNonQuery("insert a values(34,0.5678e9)");
+            CheckResults(t, 1, "select from a", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
+            Rollback();
+            Begin();
+            conn.CreateTable("a", new SColumn("b", Types.SInteger), new SColumn("c", Types.SNumeric));
+            conn.Insert("a", new string[0], new Serialisable[] {
+                new SInteger(Integer.Parse("12345678901234567890123456789")),
+                new SNumeric(Numeric.Parse("123.4567"))});
+            conn.Insert("a", new string[0], new Serialisable[] {
+                new SInteger(0),new SNumeric(Numeric.Parse("123.4567e-15"))});
+            conn.Insert("a", new string[0], new Serialisable[] {
+                new SInteger(12),new SNumeric(1234,4,0)});
+            conn.Insert("a", new string[0], new Serialisable[] {
+                new SInteger(34),new SNumeric(new Numeric(0.5678e9))});
+            CheckResults(t, 2, "select from a", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
             Rollback();
         }
         void CheckResults(int t,int q,string c,string d)
@@ -286,7 +318,20 @@ namespace Test
                     if (!c.Contains(sp.Key))
                         throw new Exception("Unexpected field " + sp.Key);
                     var cf = c[sp.Key];
-                    if (cf == sp.Value || cf?.ToString() == sp.Value?.ToString())
+                    if (sp.Value is decimal && cf is decimal)
+                    {
+                        var ss = sp.Value?.ToString()??"";
+                        var cs = cf.ToString();
+                        for (var i=0;i<ss.Length && i<cs.Length;i++)
+                            if (ss[i]!=cs[i])
+                            {
+                                Console.WriteLine("Decimal values " +
+                                    cf + " and " + ss + " differ at position " + i);
+                                break;
+                            }
+                        nc++;
+                    }
+                    else if (cf == sp.Value || cf?.ToString() == sp.Value?.ToString())
                         nc++;
                     else
                         throw new Exception("Values do not match");

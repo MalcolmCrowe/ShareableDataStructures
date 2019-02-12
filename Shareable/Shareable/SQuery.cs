@@ -105,7 +105,8 @@ namespace Shareable
     public class SJoin : SQuery
     {
         [Flags]
-        public enum JoinType { None=0, Inner=1, Natural=2, Cross=4, Left=8, Right=16, Named=32 };
+        public enum JoinType { None=0, Inner=1, Natural=2, Cross=4,
+            Left =8, Right=16, Named=32 };
         public readonly JoinType joinType;
         public readonly bool outer;
         public readonly SQuery left,right;
@@ -437,9 +438,9 @@ namespace Shareable
         /// <param name="c">The column expressions or null</param>
         /// <param name="q">The source query, assumed analysed</param>
         /// <param name="or">The ordering</param>
-        public SSelectStatement(bool d, SDict<int,string>? a, SDict<int,Serialisable>? c, 
+        public SSelectStatement(bool d, SDict<int,string> a, SDict<int,Serialisable> c, 
             SQuery q, SList<SOrder> or,Context cx) 
-            : base(Types.SSelect,a??q.display,c??q.cpos,new Context(q.names,cx))
+            : base(Types.SSelect,a,c,new Context(q.names,cx))
         {
             distinct = d;  qry = q; order = or;
         } 
@@ -457,10 +458,10 @@ namespace Shareable
             }
             var q = (SQuery)f._Get(db);
             var o = SList<SOrder>.Empty;
-            n = f.GetInt();
-            for (var i = 0; i < n; i++)
+            var m = f.GetInt();
+            for (var i = 0; i < m; i++)
                 o += ((SOrder)f._Get(db), i);
-            return new SSelectStatement(d,(n==0)?a:null,(n==0)?c:null,q,o,Context.Empty);
+            return new SSelectStatement(d,a,c,q,o,Context.Empty);
         }
         public override void Put(StreamBase f)
         {

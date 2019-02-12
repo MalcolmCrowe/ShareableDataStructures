@@ -84,7 +84,7 @@ public class SearchRowSet extends RowSet {
     public Bookmark<Serialisable> First() {
         for (var b = (RowBookmark)_sce.First(); b != null; b = (RowBookmark)b.Next()) {
             var rb = new SearchRowBookmark(this,(RowBookmark)b,0);
-            if (b._ob.rec!=null && b._ob.rec.Matches(rb,_sch.where)) 
+            if (rb.Matches(_sch.where,Context.Empty)==true) 
                 return rb;
         }
         return null;
@@ -104,7 +104,7 @@ public class SearchRowSet extends RowSet {
         public Bookmark<Serialisable> Next() {
             for (var b = (RowBookmark)_bmk.Next(); b != null; b = (RowBookmark)b.Next()) {
                 var rb = new SearchRowBookmark(_sch,(RowBookmark)b,Position+1);
-                if (b._ob.rec!=null && b._ob.rec.Matches(rb,_sch._sch.where))
+                if (rb.Matches(_sch._sch.where,Context.Empty))
                     return rb;
             }
             return null;

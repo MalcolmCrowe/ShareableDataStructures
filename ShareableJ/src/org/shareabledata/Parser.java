@@ -85,8 +85,9 @@ public class Parser {
         TO = 67,
         TRUE = 68,
         UPDATE = 69,
-        VALUES = 70,
-        WHERE = 71;
+        USING = 70,
+        VALUES = 71,
+        WHERE = 72;
     static String[] syms= new String[]{ 
         "Null","ID","LITERAL","LPAREN","COMMA","RPAREN", //0-5
         "EQUAL","NEQ","LEQ","LSS","GEQ","GTR","DOT", // 6-12
@@ -99,7 +100,7 @@ public class Parser {
         "NATURAL","NOT","NULL","NUMERIC","ON","OR", // 49-54
         "ORDERBY","OUTER","PRIMARY","REFERENCES","RIGHT","ROLLBACK",//55-60
         "SELECT","SET","STRING","SUM","TABLE","TIMESPAN",//61-66
-        "TO","TRUE","UPDATE","VALUES","WHERE"}; // 67-71
+        "TO","TRUE","UPDATE","USING","VALUES","WHERE"}; // 67-72
     }
     class Lexer
     {
@@ -699,14 +700,90 @@ public class Parser {
                 Next();
                 tb = new SAliasedTable(tb,alias);
             }
+            var jt = SJoin.JoinType.None;
             if (lxr.tok==Sym.COMMA)
             {
                 Next();
+                jt = SJoin.JoinType.Cross;
+            }
+            else if (lxr.tok==Sym.CROSS)
+            {
+                Next();
+                Mustbe(Sym.JOIN);
+                jt = SJoin.JoinType.Cross;
+            } else
+            {
+                if (lxr.tok==Sym.NATURAL)
+                {
+                    Next();
+                    jt += SJoin.JoinType.Natural;
+                    Mustbe(Sym.JOIN);
+                }
+                else {
+                    if (lxr.tok==Sym.LEFT)
+                    {
+                        Next();
+                        jt += SJoin.JoinType.Left;
+                    }
+                    else if (lxr.tok==Sym.RIGHT)
+                    {
+                        Next();
+                        jt += SJoin.JoinType.Right;
+                    }
+                    else if (lxr.tok==Sym.FULL)
+                    {
+                        Next();
+                        jt += SJoin.JoinType.Left+SJoin.JoinType.Right;
+                    }
+                    if (jt!=SJoin.JoinType.None && lxr.tok==Sym.OUTER)
+                        Next();
+                }
+                if (jt!=SJoin.JoinType.None)
+                    Mustbe(Sym.JOIN);
+            }
+            if (jt!=SJoin.JoinType.None)
+            {
+                SList<SExpression> on = null;
                 var ra = TableExp(null, null);
                 SDict<Integer, String> da = null;
                 SDict<Integer, Serialisable> ca = null;
                 SDict<String, Serialisable> na = null;
-                return new SJoin(tb, false, SJoin.JoinType.Cross, ra, null, da, 
+                SList<String> us = null;
+                if ((jt&(SJoin.JoinType.Cross|SJoin.JoinType.Natural))==0)
+                {
+                    if (lxr.tok==Sym.USING)
+                    {
+                        Next();
+                        jt += SJoin.JoinType.Named;
+                        for (var n=0;;n++)
+                        {
+                            var v = lxr.val;
+                            Mustbe(Sym.ID);
+                            var s = ((SString)v).str;
+                            us=(us==null)?new SList<String>(s):us.InsertAt(s,n);
+                            if (lxr.tok==Sym.COMMA)
+                                Next();
+                            else
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        Mustbe(Sym.ON);
+                        for (var n=0;;n++)
+                        {
+                            var ex = Conjunct();
+                            if (!(ex instanceof SExpression) ||
+                                    ((SExpression)ex).op!=SExpression.Op.Eql
+                                    || ((SExpression)ex).left.type!=Types.SColumn
+                                || ((SExpression)ex).right.type!=Types.SColumn)
+                                throw new Exception("Column matching expression expected");
+                            on = (on==null)?new SList<SExpression>((SExpression)ex):
+                                    on.InsertAt((SExpression)ex,n);
+                        }
+                    }
+                }
+                return new SJoin(tb, false, jt, ra, on, us, da, 
                         ca, new Context(na,null)); 
             }
             return tb;
