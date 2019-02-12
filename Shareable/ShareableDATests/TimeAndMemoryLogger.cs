@@ -71,7 +71,7 @@ namespace ShareableDATests
                             caseIdNumber+delimiter+
                             (endTime-this.initialTime)+delimiter+
                             endTotalMemory+delimiter+
-                            endFreeMemory+delimiter);
+                            endFreeMemory);
 
         }
 
