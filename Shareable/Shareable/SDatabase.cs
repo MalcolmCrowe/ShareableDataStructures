@@ -17,7 +17,7 @@ namespace Shareable
         public readonly SDict<long, SDbObject> objects;
         public readonly SDict<string, SDbObject> names;
         public readonly long curpos;
-        protected static object files = new object(); // a lock (not normally ever used)
+        protected static object files = new object(); // a lock
         protected static SDict<string, AStream> dbfiles = SDict<string, AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string, SDatabase>.Empty;
         internal virtual SDatabase _Rollback => this;
@@ -35,7 +35,7 @@ namespace Shareable
         }
         public static void Install(SDatabase db)
         {
-            databases = databases+(db.name, db);
+            lock(files) databases += (db.name, db);
         }
         public AStream File()
         {

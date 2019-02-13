@@ -17,7 +17,7 @@ public class SDatabase {
     public final SDict<Long, SDbObject> objects;
     public final SDict<String, SDbObject> names;
     public final long curpos;
-    static Object files = new Object(); // a lock (not normally ever used)
+    static Object files = new Object(); // a lock 
     protected static SDict<String, AStream> dbfiles = null;
     protected static SDict<String, SDatabase> databases = null;
 
@@ -49,7 +49,7 @@ public class SDatabase {
         return db;
     }
 
-    public static void Install(SDatabase db) {
+    synchronized public static void Install(SDatabase db) {
         if (databases == null) {
             databases = new SDict<>(db.name, db);
         } else {

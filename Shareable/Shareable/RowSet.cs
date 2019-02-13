@@ -711,7 +711,7 @@ namespace Shareable
             public static RowBookmark? New(JoinRowSet jrs)
             {
                 RowBookmark? lf, rg;
-                for (lf= jrs._left.First() as RowBookmark?,rg = jrs._right.First() as RowBookmark?;
+                for (lf= jrs._left.First() as RowBookmark,rg = jrs._right.First() as RowBookmark;
                     lf!=null && rg!=null; )
                 {
                     if (jrs._join.joinType == SJoin.JoinType.Cross)
