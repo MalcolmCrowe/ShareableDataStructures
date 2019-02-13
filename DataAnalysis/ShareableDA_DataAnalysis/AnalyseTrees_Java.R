@@ -21,7 +21,7 @@ SetUpDataSet <- function(){
   SSTreeDataSet <- LoadDataSet("SSearchTreeTestOutput_Java.csv")
   
   JavaTreeDataSet$DA <- rep("JavaTreeList",nrow(JavaTreeDataSet))
-  SSTreeDataSet$DA <- rep("STree",nrow(SSTreeDataSet))
+  SSTreeDataSet$DA <- rep("SSearchTree",nrow(SSTreeDataSet))
   
   fullDataSet<- rbind(JavaTreeDataSet, SSTreeDataSet)
   #print(fullDataSet)
