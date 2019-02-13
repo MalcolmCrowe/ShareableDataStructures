@@ -89,9 +89,9 @@ namespace ShareableDATests
         }
 
         [Test]
-        public void RemoveElementIn100()
+        public void FindElementIn100()
         {
-            tml.setTestCaseName("Remove elements in 100");
+            tml.setTestCaseName("Find elements in 100");
 
             ImmutableSortedDictionary<Payload, Payload> tree = this.creatASListWithNelement(100);
             Payload toBeFound_25 = new Payload("Load 25");
@@ -138,45 +138,61 @@ namespace ShareableDATests
         }
 
         [Test]
-        public void DeepCopyAndAddIn100()
+        public void DeepCopyAndFindIn100()
         {
-            tml.setTestCaseName("DeepCopyAndAddIn100");
+            tml.setTestCaseName("DeepCopyAndFindIn100");
 
-            ImmutableSortedDictionary<Payload, Payload> tree = this.creatASListWithNelement(100);
-            ImmutableSortedDictionary<Payload, Payload> modifiedtree = null;
+
+            ImmutableSortedDictionary<Payload, Payload> tree = null;
+            ImmutableSortedDictionary<Payload, Payload> treeCopy = null;
 
             tml.setInitialTimeAndMemory();
-            ImmutableSortedDictionary<Payload, Payload> treeCopy = tree;
-            Payload payloadtoAdd = new Payload("Load 25*");
-            modifiedtree = treeCopy.Add(payloadtoAdd, payloadtoAdd);
+            tree = this.creatASListWithNelement(100);
+            treeCopy = tree;
+            Payload payloadtoFind = new Payload("Load 25");
+            bool ans = treeCopy.ContainsValue(payloadtoFind);
                 
 
             tml.logTimeAndMemoryUsage(25);
+            tree = null;
+            treeCopy = null;
+            this.callTheGC();
             ///////////
+            tml.setInitialTimeAndMemory();
             tree = this.creatASListWithNelement(100);
 
-            tml.setInitialTimeAndMemory();
+            
             treeCopy = tree;
-            payloadtoAdd = new Payload("Load 50*");
-            modifiedtree = treeCopy.Add(payloadtoAdd, payloadtoAdd);
+            payloadtoFind = new Payload("Load 50");
+            ans = treeCopy.ContainsValue(payloadtoFind);
             tml.logTimeAndMemoryUsage(50);
+            tree = null;
+            treeCopy = null;
+            this.callTheGC();
             ///////////////
-            tree = this.creatASListWithNelement(100);
-            this.callTheGC();
             tml.setInitialTimeAndMemory();
+            tree = this.creatASListWithNelement(100);
+            
+            
             treeCopy = tree;
-            payloadtoAdd = new Payload("Load 50*");
-            modifiedtree = treeCopy.Add(payloadtoAdd, payloadtoAdd);
+            payloadtoFind = new Payload("Load 75");
+            ans = treeCopy.ContainsValue(payloadtoFind);
             tml.logTimeAndMemoryUsage(75);
-            //////////////
-            tree = this.creatASListWithNelement(100);
+            tree = null;
+            treeCopy = null;
             this.callTheGC();
+            //////////////
             tml.setInitialTimeAndMemory();
+            tree = this.creatASListWithNelement(100);
+            
             treeCopy = tree;
-            payloadtoAdd = new Payload("Load 50*");
-            modifiedtree = treeCopy.Add(payloadtoAdd, payloadtoAdd);
+            payloadtoFind = new Payload("Load 99");
+            ans = treeCopy.ContainsValue(payloadtoFind);
 
             tml.logTimeAndMemoryUsage(100);
+
+
+            
 
 
 
