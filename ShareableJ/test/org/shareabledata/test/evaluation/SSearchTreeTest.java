@@ -52,7 +52,7 @@ public class SSearchTreeTest {
 
     public void reusabeTreeTestCase(String caseName, int numberOfElements) throws Exception {
         tml.setTestCaseName(caseName);
-        
+        tml.setInitialTimeAndMemory();
         SSearchTree<PayLoad> tree = new SSearchTree(new PayLoad("Load 0"));
         
         for (int i = 1; i < numberOfElements; i++)
@@ -131,6 +131,8 @@ public class SSearchTreeTest {
         ///////////
         tree = createTreeOfSize(100);
         Runtime.getRuntime().gc();
+        
+        
         tml.setInitialTimeAndMemory();
         treeCpy = tree;
         treeCpy.Contains(new PayLoad("Load 50"));

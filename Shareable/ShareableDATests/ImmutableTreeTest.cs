@@ -85,7 +85,7 @@ namespace ShareableDATests
         public void testInsert10000()
         {
             String caseID = "ImmutableTree 10000 insert";
-            reusableSTreeTestCase(caseID, 1000);
+            reusableSTreeTestCase(caseID, 10000);
         }
 
         [Test]

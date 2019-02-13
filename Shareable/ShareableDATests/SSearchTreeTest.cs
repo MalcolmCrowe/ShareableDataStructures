@@ -51,6 +51,7 @@ namespace ShareableDATests
         {
             tml.setTestCaseName(caseName);
 
+            tml.setInitialTimeAndMemory();
             SSearchTree<Payload> tree = SSearchTree<Payload>.New(new Payload("Load 0"));
 
 
@@ -72,14 +73,14 @@ namespace ShareableDATests
         public void testInsert1000()
         {
             String caseID = "SSearchTreeTest 1000 insert";
-            reusableSTreeTestCase(caseID, 100);
+            reusableSTreeTestCase(caseID, 1000);
         }
 
         [Test]
         public void testInsert10000()
         {
             String caseID = "SSearchTreeTest 10000 insert";
-            reusableSTreeTestCase(caseID, 100);
+            reusableSTreeTestCase(caseID, 10000);
         }
 
         [Test]
