@@ -77,7 +77,7 @@ plotInsertExecutionTime <- function(fullDataSet){
 plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
                                    (fullDataSet$TestCaseID=="SList 1000 insert") |
-                                   (fullDataSet$TestCaseID=="Immutable List 1000 insert")
+                                   (fullDataSet$TestCaseID=="Immutable List 100 insert")
   ), ]
   
   
@@ -229,5 +229,6 @@ fullDataSet <- SetUpDataSet()
 plotInsertExecutionTime(fullDataSet)
 plotInsertMemoryConsumptionForInsert(fullDataSet)
 plotRemoveExecutionTime(fullDataSet)
+plotplotMemoryConsumptionForRemove(fullDataSet)
 plotDeepCopyAndFind(fullDataSet)
 plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)

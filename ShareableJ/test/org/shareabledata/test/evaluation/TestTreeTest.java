@@ -53,6 +53,7 @@ public class TestTreeTest {
     public void reusabeTreeTestCase(String caseName, int numberOfElements){
         tml.setTestCaseName(caseName);
         
+        tml.setInitialTimeAndMemory();
         DietelJavaTree<PayLoad> tree = new DietelJavaTree<PayLoad>();
         
         for (int i = 0; i < numberOfElements; i++){
@@ -98,22 +99,18 @@ public class TestTreeTest {
         boolean testOutput = false;
         tml.setInitialTimeAndMemory();
         testOutput = tree.contains(toBeFound_25);
-        Assert.assertTrue(testOutput);
-        testOutput = false;
+        
         tml.logTimeAndMemoryUsage(25);
         testOutput = tree.contains(toBeFound_50);
-        Assert.assertTrue(testOutput);
-        testOutput = false;
+        
         
         tml.logTimeAndMemoryUsage(50);
         testOutput = tree.contains(toBeFound_75);
-        Assert.assertTrue(testOutput);
-        testOutput = false;
+        
         tml.logTimeAndMemoryUsage(75);
         
         testOutput = tree.contains(toBeFound_100);
-        Assert.assertTrue(testOutput);
-        testOutput = false;
+        
         tml.logTimeAndMemoryUsage(100);
         
     }
@@ -144,6 +141,7 @@ public class TestTreeTest {
         ///////////
         tree = createTreeOfSize(100);
         Runtime.getRuntime().gc();
+        
         tml.setInitialTimeAndMemory();
         treeCpy = tree;
         treeCpy.contains(new PayLoad("Load 50"));

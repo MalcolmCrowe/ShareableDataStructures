@@ -25,7 +25,7 @@ namespace ShareableDATests
 
             try
             {
-                tml.writeToCSV("STreeTestOutput_CSharp.csv");
+                tml.writeToCSV("ShearableTreeTestOutput_CSharp.csv");
             }
             catch (Exception e)
             {
@@ -51,6 +51,7 @@ namespace ShareableDATests
         {
             tml.setTestCaseName(caseName);
 
+            tml.setInitialTimeAndMemory();
             SSearchTree<Payload> tree = SSearchTree<Payload>.New(new Payload("Load 0"));
 
 
@@ -72,14 +73,14 @@ namespace ShareableDATests
         public void testInsert1000()
         {
             String caseID = "SSearchTreeTest 1000 insert";
-            reusableSTreeTestCase(caseID, 100);
+            reusableSTreeTestCase(caseID, 1000);
         }
 
         [Test]
         public void testInsert10000()
         {
             String caseID = "SSearchTreeTest 10000 insert";
-            reusableSTreeTestCase(caseID, 100);
+            reusableSTreeTestCase(caseID, 10000);
         }
 
         [Test]
@@ -120,35 +121,55 @@ namespace ShareableDATests
             return tree;
         }
 
-        public void deepCopyAndFindTest() {
+        [Test]
+        public void deepCopyAndAddTest() {
             tml.setTestCaseName("DeepCopyAndFindIn100");
-            SSearchTree<Payload> tree = createTreeOfSize(100);
+            
 
             tml.setInitialTimeAndMemory();
+            SSearchTree<Payload> tree = createTreeOfSize(100);
             SSearchTree<Payload> treeCpy = tree;
             treeCpy.Contains(new Payload("Load 25"));
             tml.logTimeAndMemoryUsage(25);
-            ///////////
-            tree = createTreeOfSize(100);
+            tree = null;
+            treeCpy = null;
             this.callTheGC();
+            ///////////
             tml.setInitialTimeAndMemory();
+            tree = createTreeOfSize(100);
+            
+            
             treeCpy = tree;
+            
             treeCpy.Contains(new Payload("Load 50"));
             tml.logTimeAndMemoryUsage(50);
-            ///////////////
-            tree = createTreeOfSize(100);
+            tree = null;
+            treeCpy = null;
             this.callTheGC();
+            
+            ///////////////
             tml.setInitialTimeAndMemory();
+            tree = createTreeOfSize(100);
+                      
             treeCpy = tree;
             treeCpy.Contains(new Payload("Load 75"));
             tml.logTimeAndMemoryUsage(75);
-            //////////////
-            tree = createTreeOfSize(100);
+            tree = null;
+            treeCpy = null;
             this.callTheGC();
+            //////////////
+            ///////////////
             tml.setInitialTimeAndMemory();
+            tree = createTreeOfSize(100);
+            
+            
             treeCpy = tree;
-            treeCpy.Contains(new Payload("Load 99"));
+            treeCpy.Contains(new Payload("Load 100"));
             tml.logTimeAndMemoryUsage(100);
+            tree = null;
+            treeCpy = null;
+            this.callTheGC();
+            //////////////
 
 
         }

@@ -49,6 +49,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ImmutableTreeTest.cs" />
     <Compile Include="LinkedListTest.cs" />
     <Compile Include="ListCollectionsDeepCopy.cs" />
     <Compile Include="Payload.cs" />

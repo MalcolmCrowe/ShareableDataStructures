@@ -60,7 +60,7 @@ public class SListTest {
         for (int i = 1; i < numberOfElements; i++)
         {
             
-            list.InsertAt(new PayLoad("Load "+i), 0);
+            list = list.InsertAt(new PayLoad("Load "+i), 0);
 
             tml.logTimeAndMemoryUsage(i+1);
         }
@@ -94,6 +94,7 @@ public class SListTest {
                 PayLoad toBeFound_50 = new PayLoad("Load 50");
                 PayLoad toBeFound_100 = new PayLoad("Load 100");
                 tml.setInitialTimeAndMemory();
+                
                 //list.contains(toBeFound_25);
                 tml.logTimeAndMemoryUsage(25);
                 //list.contains(toBeFound_50);

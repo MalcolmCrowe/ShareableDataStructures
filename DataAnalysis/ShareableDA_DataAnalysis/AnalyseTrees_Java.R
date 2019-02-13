@@ -20,8 +20,8 @@ SetUpDataSet <- function(){
   JavaTreeDataSet <- LoadDataSet("TestTreeTestOutput_Java.csv")
   SSTreeDataSet <- LoadDataSet("SSearchTreeTestOutput_Java.csv")
   
-  JavaTreeDataSet$DA <- rep("JavaTreeList",nrow(JavaTreeDataSet))
-  SSTreeDataSet$DA <- rep("STree",nrow(SSTreeDataSet))
+  JavaTreeDataSet$DA <- rep("JavaTree",nrow(JavaTreeDataSet))
+  SSTreeDataSet$DA <- rep("SSearchTree",nrow(SSTreeDataSet))
   
   fullDataSet<- rbind(JavaTreeDataSet, SSTreeDataSet)
   #print(fullDataSet)
@@ -38,6 +38,35 @@ plotInsertExecutionTime <- function(fullDataSet){
   
   print(p)
   ###########
+  
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="SSearchTreeTest 1000 insert") |
+                                   (fullDataSet$TestCaseID=="TestTreeTest 1000 insert")
+  ), ]
+  
+  p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("1000 Inserts") + xlab("number of elements")
+  
+  print(p)
+  
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="SSearchTreeTest 10000 insert") |
+                                   (fullDataSet$TestCaseID=="TestTreeTest 10000 insert")
+  ), ]
+  
+  p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("10000 Inserts") + xlab("number of elements")
+  
+  print(p)
+  
+  
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="SSearchTreeTest 100 insert") |
+                                   (fullDataSet$TestCaseID=="TestTreeTest 100 insert")
+  ), ]
+  
+  p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
+    ggtitle("100 Inserts") + xlab("number of elements")
+  
+  print(p)
+ 
   
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="SSearchTreeTest 1000 insert") |
                                    (fullDataSet$TestCaseID=="TestTreeTest 1000 insert")
@@ -139,7 +168,10 @@ plotDeepCopyAndFind <- function(fullDataSet){
                                    (fullDataSet$TestCaseID=="DeepCopyAndFindIn100")
   ), ]
   
+  newData <-newData[ !(newData$CaseCounter==0),]
+  
   dfm = melt(newData, id.vars=list("CaseCounter", "DA"), measure.vars="TimeDifference")
+  
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
