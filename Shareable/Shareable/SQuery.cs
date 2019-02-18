@@ -234,7 +234,9 @@ namespace Shareable
         }
         public override RowSet RowSet(STransaction tr, SQuery top, SDict<long,SFunction> ags,Context cx)
         {
-            return new JoinRowSet(tr, top, this, ags, cx);
+            var lf = left.RowSet(tr, left, ags, cx);
+            var rg = right.RowSet(lf._tr, right, ags, cx);
+            return new JoinRowSet(top, this, lf, rg, ags, cx);
         }
         public override void Append(SDatabase? db, StringBuilder sb)
         {
@@ -507,7 +509,10 @@ namespace Shareable
         {
             for (var b = order.First(); b != null; b = b.Next())
                 ags = b.Value.col.Aggregates(ags, cx);
-            RowSet r = new SelectRowSet(tr,this,ags, cx);
+            var ags1 = ags;
+            for (var b = cpos.First(); b != null; b = b.Next())
+                ags = b.Value.Item2.Aggregates(ags, cx);
+            RowSet r = new SelectRowSet(qry.RowSet(tr, this, ags1, cx), this,ags, cx);
             // perform another pass on the selectlist just in case
             if (!(qry is SGroupQuery))
             {

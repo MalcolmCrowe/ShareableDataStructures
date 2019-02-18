@@ -19,8 +19,14 @@ public class GroupRowSet extends RowSet {
     public GroupRowSet(STransaction tr,SQuery top,SGroupQuery gqry,
             SDict<Long,SFunction>ags,Context cx) throws Exception
     {
-        super(tr,gqry,ags);
+        this(gqry.source.RowSet(tr,top,ags,cx), top, gqry, ags, cx);
+    }
+    GroupRowSet(RowSet sce,SQuery top,SGroupQuery gqry,SDict<Long,SFunction> ags,
+            Context cx) throws Exception
+    {
+        super(sce._tr,gqry,ags);
         _gqry = gqry;
+        _sce = sce;
         SList<TreeInfo<String>> inf = null;
         for (var b=gqry.groupby.First();b!=null;b=b.Next())
         {
@@ -28,7 +34,6 @@ public class GroupRowSet extends RowSet {
             inf =(inf==null)?new SList(t):inf.InsertAt(t,b.getValue().key);
         }
         _info = inf;
-        _sce = gqry.source.RowSet(tr, top, ags, cx);
         var t = new SMTree<String>(inf);
         SDict<Long, SDict<Long,Serialisable>> r = null;
         long n = 0;

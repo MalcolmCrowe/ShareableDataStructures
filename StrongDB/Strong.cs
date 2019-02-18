@@ -109,6 +109,7 @@ namespace StrongDB
                                     ((RowBookmark)b)._ob.Append(db,sb);
                                 }
                                 sb.Append(']');
+                                db = db.MaybeAutoCommit(rs._tr);
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {

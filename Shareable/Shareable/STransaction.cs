@@ -11,6 +11,7 @@ namespace Shareable
         public readonly long uid;
         public readonly bool autoCommit;
         public readonly SDatabase rollback;
+        public readonly SDict<long, bool> readConstraints;
         internal override SDatabase _Rollback => rollback;
         protected override bool Committed => false;
         public STransaction(SDatabase d,bool auto) :base(d)
@@ -18,6 +19,7 @@ namespace Shareable
             autoCommit = auto;
             rollback = d._Rollback;
             uid = _uid;
+            readConstraints = SDict<long, bool>.Empty;
         }
         /// <summary>
         /// Some other set of updates to existing (and maybe named) objects 
@@ -31,6 +33,18 @@ namespace Shareable
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
             uid = tr.uid + 1;
+            readConstraints = tr.readConstraints;
+        }
+        protected STransaction(STransaction tr,long u) :base(tr)
+        {
+            autoCommit = tr.autoCommit;
+            rollback = tr.rollback;
+            uid = tr.uid;
+            readConstraints = tr.readConstraints + (u, true);
+        }
+        public static STransaction operator+(STransaction tr,long uid)
+        {
+            return new STransaction(tr, uid);
         }
         protected override SDatabase New(SDict<long, SDbObject> o, SDict<string, SDbObject> ns, long c)
         {
@@ -49,16 +63,24 @@ namespace Shareable
             var rdr = new Reader(f, curpos);
             var since = rdr.GetAll(db,db.curpos);
             for (var i = 0; i < since.Length; i++)
+            {
+                if (since[i].Check(readConstraints))
+                    throw new Exception("Transaction conflict with read");
                 for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
                     if (since[i].Conflicts(b.Value.Item2))
-                        throw new Exception("Transaction Conflict on " + b.Value);
+                        throw new Exception("Transaction conflict on " + b.Value);
+            }
             lock (f)
             {
                 since = rdr.GetAll(this, f.length);
                 for (var i = 0; i < since.Length; i++)
+                {
+                    if (since[i].Check(readConstraints))
+                        throw new Exception("Transaction conflict with read");
                     for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
                         if (since[i].Conflicts(b.Value.Item2))
-                            throw new Exception("Transaction Conflict on " + b.Value);
+                            throw new Exception("Transaction conflict on " + b.Value);
+                }
                 db = f.Commit(db,this);
                 f.CommitDone();
             }

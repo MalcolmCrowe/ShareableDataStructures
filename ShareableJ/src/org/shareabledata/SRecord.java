@@ -95,6 +95,12 @@ public class SRecord extends SDbObject {
                 }
             return true;
         }
+        @Override
+        public boolean Check(SDict<Long, Boolean> rdC)
+        {
+            return (rdC!=null) && (rdC.Contains(Defpos()) || rdC.Contains(table));
+        }
+        @Override
         public boolean Conflicts(Serialisable that)
         {
             switch(that.type)
@@ -104,6 +110,7 @@ public class SRecord extends SDbObject {
             }
             return false;
         }
+        @Override
         public String toString()
         {
             StringBuilder sb = new StringBuilder(super.toString());

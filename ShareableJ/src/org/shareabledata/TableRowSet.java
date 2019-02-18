@@ -14,7 +14,7 @@ public class TableRowSet extends RowSet {
     public final STable _tb;
 
     public TableRowSet(STransaction db, STable t) {
-        super(db, t,null);
+        super(db.Add(t.uid), t,null);
         _tb = t;
     }
 

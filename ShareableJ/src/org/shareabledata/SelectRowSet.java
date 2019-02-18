@@ -12,14 +12,11 @@ package org.shareabledata;
 public class SelectRowSet extends RowSet {
         public final SSelectStatement _sel;
         public final RowSet _source;
-        public SelectRowSet(STransaction tr,SSelectStatement sel,
+        public SelectRowSet(RowSet sce,SSelectStatement sel,
                 SDict<Long,SFunction> ags,Context cx) throws Exception
-        {   super(tr,sel,ags);
+        {   super(sce._tr,sel,ags);
             _sel = sel;
-            if (sel.cpos!=null)
-            for (var b = sel.cpos.First(); b != null; b = b.Next())
-                ags = b.getValue().val.Aggregates(ags, cx);
-            _source = sel.qry.RowSet(tr,sel,ags,cx);
+            _source = sce;
         }
 
         public Bookmark<Serialisable> First()

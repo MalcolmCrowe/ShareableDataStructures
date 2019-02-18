@@ -100,6 +100,7 @@ public class StrongServer implements Runnable {
                             ((RowBookmark)b)._ob.Append(db,sb);
                         }
                         sb.append(']');
+                        db = db.MaybeAutoCommit(rs._tr);
                         asy.WriteByte((byte)Types.Done);
                         if (p==Types.DescribedGet)
                         {

@@ -13,18 +13,26 @@ public class SearchRowSet extends RowSet {
 
     public final SSearch _sch;
     public final RowSet _sce;
-
     public SearchRowSet(STransaction tr, SQuery top, SSearch sc,
             SDict<Long,SFunction> ags, Context cx) throws Exception 
     {
-        super(tr,sc,ags);
+        this(Source(tr,top,sc,ags,cx),sc,ags);
+    }
+    SearchRowSet(RowSet sce,SSearch sc,SDict<Long,SFunction>ags)
+    {
+        super(sce._tr,sc,ags);
         _sch = sc;
+        _sce = sce;
+    }
+    static RowSet Source(STransaction tr,SQuery top,SSearch sc,SDict<Long,SFunction> ags,
+            Context cx) throws Exception
+    {
         RowSet s = null;
         SDict<Long,Serialisable> matches = null;
-        if (_sch.sce instanceof STable)
+        if (sc.sce instanceof STable)
         {
-            var tb = (STable)_sch.sce;
-            for (var wb = _sch.where.First(); wb != null; wb = wb.Next())
+            var tb = (STable)sc.sce;
+            for (var wb = sc.where.First(); wb != null; wb = wb.Next())
                 try {
                     var v = wb.getValue().Lookup(cx);
                     if (v instanceof SExpression)
@@ -32,7 +40,7 @@ public class SearchRowSet extends RowSet {
                         var x = (SExpression)v;
                         if (x.op == SExpression.Op.Eql)
                         {
-                            matches=Build(matches,tb,x.left,x.right);
+                            matches = Build(matches,tb,x.left,x.right);
                             matches = Build(matches,tb,x.right,x.left);
                         }
                     }
@@ -63,13 +71,13 @@ public class SearchRowSet extends RowSet {
                 }
             }
         }
-        if (s==null && _sch.sce!=null)
-            s = _sch.sce.RowSet(tr,top,ags,cx);
+        if (s==null && sc.sce!=null)
+            s = sc.sce.RowSet(tr,top,ags,cx);
         if (s==null)
             throw new Exception("??");
-        _sce = s;
+        return s;
     }
-    private SDict<Long,Serialisable> Build(SDict<Long,Serialisable> m,
+    static SDict<Long,Serialisable> Build(SDict<Long,Serialisable> m,
             STable tb,Serialisable a,Serialisable v)
     {
         if (!(a instanceof SColumn))

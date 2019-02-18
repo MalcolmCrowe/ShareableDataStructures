@@ -36,6 +36,12 @@ public class SDelete extends SDbObject {
         {
             return new SDelete(f);
         }
+        @Override
+        public boolean Check(SDict<Long, Boolean> rdC)
+        {
+            return (rdC!=null) && (rdC.Contains(delpos) || rdC.Contains(table));
+        }
+        @Override
         public boolean Conflicts(Serialisable that)
         { 
             switch(that.type)
@@ -47,6 +53,7 @@ public class SDelete extends SDbObject {
             }
             return false;
         }
+        @Override
         public String toString()
         {
             StringBuilder sb = new StringBuilder("Delete ");

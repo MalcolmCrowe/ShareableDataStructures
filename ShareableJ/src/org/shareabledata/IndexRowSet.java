@@ -17,11 +17,23 @@ public class IndexRowSet extends RowSet {
         public IndexRowSet(STransaction db,STable t,SIndex ix,SCList<Variant> key,
                 SList<Serialisable> wh)
         {
-            super(db,t,null);
+            super(Rdc(db,ix,key),t,null);
             _ix = ix; _wh = wh;
             _key = key;
             _unique = key!=null && key.Length == _ix.cols.Length;
         }
+        static STransaction Rdc(STransaction tr,SIndex ix,SCList<Variant> _key)
+        {
+            if (_key==null)
+                return tr.Add(ix.table);
+            var mb = ix.rows.PositionAt(_key);
+            if (mb == null)
+                return tr;
+            if (mb.hasMore(tr, ix.cols.Length))
+                return tr.Add(ix.table);
+            return tr.Add((long)mb.getValue().val);            
+        }
+       @Override
         public Bookmark<Serialisable> First()
         {
             try {

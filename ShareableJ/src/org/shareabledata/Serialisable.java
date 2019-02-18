@@ -72,6 +72,10 @@ public class Serialisable implements Comparable {
     {
         return this;
     }
+    public boolean Check(SDict<Long,Boolean> rdC)
+    {
+        return false;
+    }
     public Serialisable StartCounter(Serialisable v)
     {
         return v;

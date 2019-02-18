@@ -15,6 +15,7 @@ public class STransaction extends SDatabase {
         public final long uid;
         public final boolean autoCommit;
         public final SDatabase rollback;
+        public final SDict<Long,Boolean> readConstraints;
         @Override
         protected boolean getCommitted(){
                 return false;
@@ -29,6 +30,7 @@ public class STransaction extends SDatabase {
             uid = _uid;
             autoCommit = auto;
             rollback = d.getRollback();
+            readConstraints = null;
         }
         private STransaction(STransaction tr,SDict<Long,SDbObject>obs,SDict<String,SDbObject> nms,long c) throws Exception
         {
@@ -36,6 +38,21 @@ public class STransaction extends SDatabase {
             uid =  tr.uid+1;
             autoCommit = tr.autoCommit;
             rollback = tr.rollback;
+            readConstraints = tr.readConstraints;
+        }
+        protected STransaction(STransaction tr,long u)
+        {
+            super(tr);
+            autoCommit = tr.autoCommit;
+            rollback = tr.rollback;
+            uid = tr.uid;
+            readConstraints = (tr.readConstraints==null)?new SDict<>(u,true):
+                    tr.readConstraints.Add(u, true);
+        }
+        // Add a readConstraint : NB creates a new STransaction
+        public STransaction Add(long u)
+        {
+            return new STransaction(this,u);
         }
         public Serialisable _Get(long pos) {
             var ob = objects.Lookup(pos);
@@ -61,9 +78,11 @@ public class STransaction extends SDatabase {
             var rdr = new Reader(dbfile,curpos);
             var since = rdr.GetAll(this, rollback.curpos, db.curpos);
             for (SDbObject since1 : since) {
+                if (since1.Check(readConstraints))
+                    throw new Exception("Transaction conflict with read");
                 for (org.shareabledata.Bookmark<org.shareabledata.SSlot<java.lang.Long, org.shareabledata.SDbObject>> b = objects.PositionAt(_uid); b != null; b = b.Next()) {
                     if (since1.Conflicts(b.getValue().val)) {
-                        throw new Exception("Transaction Conflict on " + b.getValue());
+                        throw new Exception("Transaction conflict on " + b.getValue());
                     }
                 }
             }
@@ -71,9 +90,11 @@ public class STransaction extends SDatabase {
             {
                 since = rdr.GetAll(this, db.curpos,dbfile.length);
                 for (SDbObject since1 : since) {
+                    if (since1.Check(readConstraints))
+                        throw new Exception("Transaction conflict with read");
                     for (org.shareabledata.Bookmark<org.shareabledata.SSlot<java.lang.Long, org.shareabledata.SDbObject>> b = objects.PositionAt(_uid); b != null; b= b.Next()) {
                         if (since1.Conflicts(b.getValue().val)) {
-                            throw new Exception("Transaction Conflict on " + b.getValue());
+                            throw new Exception("Transaction conflict on " + b.getValue());
                         }
                     }
                 }

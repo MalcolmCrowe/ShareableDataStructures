@@ -186,6 +186,15 @@ namespace Shareable
         {
             return this;
         }
+        /// <summary>
+        /// For readConstraint checking
+        /// </summary>
+        /// <param name=""></param>
+        /// <returns></returns>
+        public virtual bool Check(SDict<long,bool> rdC)
+        {
+            return false;
+        }
         public virtual Serialisable this[string col]
         { get { throw new NotImplementedException(); } }
         public override string ToString()
@@ -2220,6 +2229,10 @@ namespace Shareable
                     return false;
             return true;
         }
+        public override bool Check(SDict<long, bool> rdC)
+        {
+            return rdC.Contains(Defpos) || rdC.Contains(table);
+        }
         public override bool Conflicts(Serialisable that)
         {
             switch(that.type)
@@ -2403,6 +2416,10 @@ namespace Shareable
         public new static SDelete Get(Reader f)
         {
             return new SDelete(f);
+        }
+        public override bool Check(SDict<long, bool> rdC)
+        {
+            return rdC.Contains(delpos) || rdC.Contains(table);
         }
         public override bool Conflicts(Serialisable that)
         { 
