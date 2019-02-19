@@ -159,6 +159,20 @@ public class JoinRowSet extends RowSet {
                     depth =_jrs._join.ons.Length;
                 if (_jrs._join.uses!=null)
                     depth = _jrs._join.uses.Length;
+                if (rbm==null && lbm != null && (_jrs._join.joinType&SJoin.JoinType.Left)!=0)
+                {
+                    lbm = (RowBookmark)lbm.Next();
+                    if (lbm == null)
+                        return null;
+                    return new JoinRowBookmark(_jrs, lbm, true, null, false, Position + 1);
+                }
+                if (lbm==null && rbm != null && (_jrs._join.joinType&SJoin.JoinType.Right)!=0)
+                {
+                    rbm = (RowBookmark)rbm.Next();
+                    if (rbm == null)
+                        return null;
+                    return new JoinRowBookmark(_jrs, null, false, rbm, true, Position + 1);
+                }
                 while (lbm != null && rbm != null)
                 {
                     if (_jrs._join.joinType == SJoin.JoinType.Cross)

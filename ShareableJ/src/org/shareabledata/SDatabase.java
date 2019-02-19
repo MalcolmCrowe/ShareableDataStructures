@@ -107,6 +107,13 @@ public class SDatabase {
         names = nms;
         curpos = c;
     }
+    protected SDatabase(SDatabase db,long pos)
+    {
+        name = db.name;
+        objects = db.objects;
+        names = db.names;
+        curpos = pos;
+    }
     SDatabase New(SDict<Long, SDbObject> obs, 
             SDict<String,SDbObject> nms,long c)
     {
@@ -183,10 +190,10 @@ public class SDatabase {
     SDatabase Load() throws Exception {
         var rd = new Reader(dbfiles.Lookup(name), 0);
         var db = this;
-        for (var s = (SDbObject) rd._Get(this); s != null; s = (SDbObject) rd._Get(db)) {
-            db = db._Add(s, s.uid);
+        for (var s = rd._Get(this); s != null; s = rd._Get(db)) {
+            db = db._Add((SDbObject)s, ((SDbObject)s).uid);
         }
-        return db;
+        return new SDatabase(db,rd.getPosition());
     }
 
     public SDatabase _Add(SDbObject s, long p) throws Exception {
@@ -270,10 +277,8 @@ public class SDatabase {
         var obs = objects;
         if (d.uid >= STransaction._uid)
             obs = obs.Add(d.uid, d);
-        var st = ((STable)obs.Lookup(d.table)).Remove(d.delpos);
+        var st = ((STable)obs.Lookup(d.table));
         SRecord sr = null;
-        obs = obs.Add(d.table, st);
-        var nms = names.Add(st.name,st);
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
             if (sr == null)
@@ -281,6 +286,13 @@ public class SDatabase {
             obs = obs.Add(x.uid, x.Remove(sr, p));
             if (x.references == d.table && x.Contains(sr))
                 throw new Exception("Referential constraint");
+        }
+        var nms = names;
+        if (sr!=null)
+        {
+            st = st.Remove(sr.Defpos());
+            obs = obs.Add(d.table, st);
+            nms = names.Add(st.name,st);
         }
         return New(obs, nms, p);
     }

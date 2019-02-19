@@ -23,7 +23,8 @@ public class LogBookmark extends RowBookmark {
             {
                 try{
                 var rdr = new Reader(_sr.fs,_next);
-                SDbObject s = (SDbObject)rdr._Get(_rs._tr);
+                var ob = rdr._Get(_rs._tr);
+                SDbObject s = (SDbObject)ob;
                 return (s==null)?null:new LogBookmark(_sr,_next,
                         _sr._Row(new SString(SDbObject._Uid(s.uid)),
                     new SInteger((int)s.type), 

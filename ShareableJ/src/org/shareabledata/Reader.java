@@ -49,7 +49,7 @@ public class Reader {
             case Types.SColumn:      s = SColumn.Get(this);      break;
             case Types.SRecord:      s = SRecord.Get(d, this);   break;
             case Types.SUpdate:      s = SUpdate.Get(d, this);   break;
-            case Types.SDelete:      s = SDelete.Get(this);      break;
+            case Types.SDelete:      s = SDelete.Get(d, this);   break;
             case Types.SAlter:       s = SAlter.Get(this);       break;
             case Types.SDrop:        s = SDrop.Get(this);        break;
             case Types.SIndex:       s = SIndex.Get(d, this);    break;

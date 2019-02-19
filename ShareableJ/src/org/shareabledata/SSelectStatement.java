@@ -118,7 +118,7 @@ public class SSelectStatement extends SQuery {
             var ags1 = ags;
             if (cpos!=null)
                 for (var b = cpos.First(); b != null; b = b.Next())
-                    ags = b.getValue().val.Aggregates(ags, cx);
+                    ags1 = b.getValue().val.Aggregates(ags1, cx);
             var a = this;
             RowSet r = new SelectRowSet(qry.RowSet(tr,a,ags1,cx), a, ags, cx);
             if (cpos!=null && !(qry instanceof SGroupQuery))

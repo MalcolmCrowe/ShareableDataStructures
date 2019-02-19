@@ -68,13 +68,17 @@ namespace Shareable
             names = nms;
             curpos = c;
         }
+        protected SDatabase(SDatabase db,long pos) :this(db)
+        {
+            curpos = pos;
+        }
         SDatabase Load()
         {
             var rd = new Reader(dbfiles[name], 0);
             var db = this;
             for (var s = rd._Get(this) as SDbObject; s != null; s = rd._Get(db) as SDbObject)
                 db += (s, s.uid);
-            return db;
+            return new SDatabase(db,rd.Position);
         }
         protected virtual Serialisable _Get(long pos)
         {
@@ -184,10 +188,8 @@ namespace Shareable
             var obs = objects;
             if (d.uid >= STransaction._uid)
                 obs += (d.uid, d);
-            var st = ((STable)obs[d.table]).Remove(d.delpos);
             SRecord? sr = null;
-            obs += (d.table, st);
-            var nms = names+(st.name, st);
+            var st = (STable)obs[d.table];
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var x = (SIndex)objects[b.Value.Item1];
@@ -196,6 +198,13 @@ namespace Shareable
                 obs += (x.uid, x-(sr, c));
                 if (x.references == d.table && x.Contains(sr))
                     throw new Exception("Referential constraint");
+            }
+            var nms = names;
+            if (sr != null)
+            {
+                st = st.Remove(sr.Defpos);
+                obs += (d.table, st);
+                nms = names + (st.name, st);
             }
             return New(obs, nms, c);
         }

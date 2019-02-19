@@ -712,7 +712,7 @@ namespace Shareable
                                     for (var b = lbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                     {
                                         var n = ab.Value.Item2;
-                                        if (rbm?._ob.vals.Contains(n) == true)
+                                        if (jrs._join.right.names.Contains(n) == true)
                                             n = jrs._left._qry.Alias + "." + n;
                                         r += (n, b.Value.Item2);
                                     }
@@ -723,7 +723,7 @@ namespace Shareable
                                 for (var b = rbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                 {
                                     var n = ab.Value.Item2;
-                                    if (lbm?._ob.vals.Contains(n) == true)
+                                    if (jrs._join.left.names.Contains(n) == true)
                                         n = jrs._right._qry.Alias + "." + n;
                                     r += (n, b.Value.Item2);
                                 }
@@ -785,6 +785,20 @@ namespace Shareable
                 var lbm = _lbm;
                 var rbm = _rbm;
                 var depth = (_jrs._join.ons.Length + _jrs._join.uses.Length)??0;
+                if (rbm==null && lbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Left))
+                {
+                    lbm = lbm.Next() as RowBookmark;
+                    if (lbm == null)
+                        return null;
+                    return new JoinRowBookmark(_jrs, lbm, true, null, false, Position + 1);
+                }
+                if (lbm==null && rbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Right))
+                {
+                    rbm = rbm.Next() as RowBookmark;
+                    if (rbm == null)
+                        return null;
+                    return new JoinRowBookmark(_jrs, null, false, rbm, true, Position + 1);
+                }
                 while (lbm != null && rbm != null)
                 {
                     if (_jrs._join.joinType==SJoin.JoinType.Cross)
@@ -829,9 +843,9 @@ namespace Shareable
                     }
                 }
                 if (lbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Left))
-                    return new JoinRowBookmark(_jrs, lbm, true, null, false, Position+1);
+                    return new JoinRowBookmark(_jrs, lbm, true, null, false, Position + 1);
                 if (rbm != null && _jrs._join.joinType.HasFlag(SJoin.JoinType.Right))
-                    return new JoinRowBookmark(_jrs, null, false, rbm, true, Position+1);
+                    return new JoinRowBookmark(_jrs, null, false, rbm, true, Position + 1);
                 return null;
             }
         }

@@ -25,7 +25,7 @@ public class SUpdate extends SRecord {
         }
         SUpdate(SDatabase d,Reader f) throws Exception
         {
-            super(d,f);
+            super(Types.SUpdate,d,f);
             defpos = f.GetLong();
         }
         static SDict<Long,Serialisable> _Merge(STransaction tr,SRecord r,

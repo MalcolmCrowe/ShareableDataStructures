@@ -511,7 +511,7 @@ namespace Shareable
                 ags = b.Value.col.Aggregates(ags, cx);
             var ags1 = ags;
             for (var b = cpos.First(); b != null; b = b.Next())
-                ags = b.Value.Item2.Aggregates(ags, cx);
+                ags1 = b.Value.Item2.Aggregates(ags1, cx);
             RowSet r = new SelectRowSet(qry.RowSet(tr, this, ags1, cx), this,ags, cx);
             // perform another pass on the selectlist just in case
             if (!(qry is SGroupQuery))

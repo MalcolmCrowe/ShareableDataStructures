@@ -42,9 +42,9 @@ public class SRecord extends SDbObject {
                 b.getValue().val.Put(f);
             }
         }
-        protected SRecord(SDatabase d,Reader f) throws Exception
+        protected SRecord(int t,SDatabase d,Reader f) throws Exception
         {
-            super(Types.SRecord,f);
+            super(t,f);
             table = f.GetLong();
             int n = f.GetInt();
             var tb = (STable)d.objects.Lookup(table);
@@ -61,7 +61,7 @@ public class SRecord extends SDbObject {
         }
         public static SRecord Get(SDatabase d,Reader f) throws Exception
         {
-            return new SRecord(d,f);
+            return new SRecord(Types.SRecord,d,f);
         }
         @Override
         public void Append(SDatabase db,StringBuilder sb)
