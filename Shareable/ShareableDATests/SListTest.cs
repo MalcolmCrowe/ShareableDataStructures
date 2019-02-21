@@ -204,6 +204,47 @@ namespace ShareableDATests
                 
         }
 
-        
+
+        [Test]
+        public void FindElementIn100()
+        {
+            tml.setTestCaseName("Find elements in 100");
+
+            SList<Payload> list = this.creatASListWithNelement(100);
+            Payload toBeFound_25 = new Payload("Load 25");
+            Payload toBeFound_50 = new Payload("Load 50");
+            Payload toBeFound_75 = new Payload("Load 75");
+
+            Payload toBeFound_100 = new Payload("Load 99");
+            Assert.AreEqual(100, list.Length,"Compare length of list");
+            tml.setInitialTimeAndMemory();
+            bool results = this.FindElementIn100Helper(list, toBeFound_25);
+            Assert.IsTrue(results, toBeFound_25 + " not found");
+
+            tml.logTimeAndMemoryUsage(25);
+            results = this.FindElementIn100Helper(list, toBeFound_50);
+            Assert.IsTrue(results, toBeFound_50 + " not found");
+            
+            tml.logTimeAndMemoryUsage(50);
+            results = this.FindElementIn100Helper(list, toBeFound_75);
+            Assert.IsTrue(results, toBeFound_75 + " not found");
+            tml.logTimeAndMemoryUsage(75);
+
+            results = this.FindElementIn100Helper(list, toBeFound_100);
+            Assert.IsTrue(results, toBeFound_100 + " not found");
+            tml.logTimeAndMemoryUsage(100);
+        }
+
+        private bool FindElementIn100Helper(SList<Payload> list, Payload toBeFound)
+        {
+            bool output = false;
+            for (Bookmark<Payload> current = list.First(); current != null; current = current.Next()) {
+                if (current.Value.Equals(toBeFound)) {
+                    output = true;
+                    break;
+                }
+            }
+            return output;
+        }
     }
 }

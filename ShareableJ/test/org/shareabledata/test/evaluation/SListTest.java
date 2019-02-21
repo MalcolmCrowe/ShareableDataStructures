@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import org.shareabledata.Bookmark;
 import org.shareabledata.SList;
 
 
@@ -95,12 +96,28 @@ public class SListTest {
                 PayLoad toBeFound_100 = new PayLoad("Load 100");
                 tml.setInitialTimeAndMemory();
                 
-                //list.contains(toBeFound_25);
+                boolean result = this.findElementInList(list, toBeFound_25);
+                assertTrue(toBeFound_25 + "Not Found", result);
                 tml.logTimeAndMemoryUsage(25);
-                //list.contains(toBeFound_50);
+                result = this.findElementInList(list, toBeFound_25);
+                assertTrue(toBeFound_25 + "Not Found", result);
+                
                 tml.logTimeAndMemoryUsage(50);
-                //list.contains(toBeFound_100);
+                result = this.findElementInList(list, toBeFound_25);
+                assertTrue(toBeFound_25 + "Not Found", result);
+                
                 tml.logTimeAndMemoryUsage(100);
+    }
+    
+    private boolean findElementInList(SList<PayLoad> list, PayLoad toBeFound){
+        boolean outcome = false;
+        for (Bookmark<PayLoad> current = list.First(); current != null; current = current.Next()){
+            if (current.getValue().equals(toBeFound)){
+                outcome = true;
+                break;
+            }
+        }
+        return outcome;
     }
     
     @Test

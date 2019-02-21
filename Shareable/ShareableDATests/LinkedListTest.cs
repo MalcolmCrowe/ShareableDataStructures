@@ -139,6 +139,36 @@ namespace ShareableDATests
         }
 
         [Test]
+        public void FindElementIn100()
+        {
+            tml.setTestCaseName("Find elements in 100");
+
+            LinkedList<Payload> list = this.creatASListWithNelement(100);
+            Payload toBeFound_25 = new Payload("Load 25");
+            Payload toBeFound_50 = new Payload("Load 50");
+            Payload toBeFound_75 = new Payload("Load 75");
+            Payload toBeFound_100 = new Payload("Load 99");
+
+            Assert.AreEqual(100, list.Count);
+            tml.setInitialTimeAndMemory();
+            bool outcome = list.Contains(toBeFound_25);
+            Assert.IsTrue(outcome, toBeFound_25 + " not found");
+            
+            
+            tml.logTimeAndMemoryUsage(25);
+
+            outcome = list.Contains(toBeFound_50);
+            Assert.IsTrue(outcome, toBeFound_50 + " not found");
+            tml.logTimeAndMemoryUsage(50);
+            outcome = list.Contains(toBeFound_75);
+            Assert.IsTrue(outcome, toBeFound_75 + " not found");
+            tml.logTimeAndMemoryUsage(75);
+            outcome = list.Contains(toBeFound_100);
+            Assert.IsTrue(outcome, toBeFound_100 + " not found");
+            tml.logTimeAndMemoryUsage(100);
+        }
+
+        [Test]
         public void DeepCopyAndAddIn100()
         {
             tml.setTestCaseName("DeepCopyAndAddIn100");
