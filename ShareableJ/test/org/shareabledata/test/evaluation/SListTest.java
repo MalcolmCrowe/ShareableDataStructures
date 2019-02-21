@@ -93,7 +93,8 @@ public class SListTest {
 		SList<PayLoad> list = this.creatASListWithNelement(100);
                 PayLoad toBeFound_25 = new PayLoad("Load 25");
                 PayLoad toBeFound_50 = new PayLoad("Load 50");
-                PayLoad toBeFound_100 = new PayLoad("Load 100");
+                PayLoad toBeFound_75 = new PayLoad("Load 75");
+                PayLoad toBeFound_100 = new PayLoad("Load 99");
                 tml.setInitialTimeAndMemory();
                 
                 boolean result = this.findElementInList(list, toBeFound_25);
@@ -103,8 +104,13 @@ public class SListTest {
                 assertTrue(toBeFound_25 + "Not Found", result);
                 
                 tml.logTimeAndMemoryUsage(50);
-                result = this.findElementInList(list, toBeFound_25);
-                assertTrue(toBeFound_25 + "Not Found", result);
+                result = this.findElementInList(list, toBeFound_75);
+                assertTrue(toBeFound_75 + "Not Found", result);
+                
+                tml.logTimeAndMemoryUsage(75);
+                
+                result = this.findElementInList(list, toBeFound_100);
+                assertTrue(toBeFound_100 + "Not Found", result);
                 
                 tml.logTimeAndMemoryUsage(100);
     }
