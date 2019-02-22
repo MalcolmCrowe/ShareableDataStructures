@@ -42,7 +42,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
     ggtitle("100 Inserts List in CSharp") + xlab("number of elements")
 
-  print(p)
+  #print(p)
   
   #subsetting to first experiment
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
@@ -55,7 +55,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
     ggtitle("10000 Inserts List in CSharp") + xlab("number of elements")
   
-  print(p)
+  #print(p)
   
   
   #subsetting to first experiment
@@ -67,7 +67,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   
   #meltdf <- melt(newData,id="DA")
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
-    ggtitle("10000 Inserts List in CSharp") + xlab("number of elements")
+    ggtitle("10000 Inserts List in CSharp") + xlab("number of elements") + ylab("Elapsed time (1*10^-9")
   
   print(p)
   
@@ -93,7 +93,7 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   
   
   
-  print(p)
+  #print(p)
   
   ########################
   
@@ -115,7 +115,7 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   
   
   
-  print(p)
+  #print(p)
   
   ###################
   
@@ -132,12 +132,55 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   
   
   p <- ggplot(newData,aes(x=CaseCounter,y=UsedMem,colour=DA, group=DA)) + geom_line() +
-    ggtitle("10000 Inserts / Used Memory") + xlab("number of elements") + ylab("Used Memory Bytes")
+    ggtitle("10000 Inserts / Used Memory") + xlab("number of elements") + ylab("Used Memory (Bytes)")
   
   
   
   
   print(p)
+}
+
+plotFindElementExecutionTime <- function(fullDataSet){
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="Find elements in 100") |
+                                   (fullDataSet$TestCaseID=="Find elements in 100") |
+                                   (fullDataSet$TestCaseID=="Find elements in 100")
+  ), ]
+  
+  
+  
+  dfm = melt(newData, id.vars=list("CaseCounter", "DA"), measure.vars="TimeDifference")
+  
+  
+  p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
+    geom_bar(stat="identity", position = "dodge") +
+    ggtitle("Find times") + xlab("number of elements") + ylab("Elapsed time (10^-9 seconds)")
+    # scale_x_discrete(limits = c(0,25, 50, 100))
+    scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
+  
+  print(p)
+}
+
+plotplotMemoryConsumptionForRemove <- function(fullDataSet){
+  newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="Find elements in 100") |
+                                   (fullDataSet$TestCaseID=="Find elements in 100") |
+                                   (fullDataSet$TestCaseID=="Find elements in 100")
+  ), ]
+  
+  
+  newData$UsedMem <- (newData$TotalMemory - newData$FreeMemory )
+  
+  newData <-newData[ !(newData$CaseCounter==0),]
+  
+  dfm = melt(newData, id.vars=list("CaseCounter", "DA"), measure.vars="UsedMem")
+  
+  p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
+    geom_bar(stat="identity", position = "dodge") +
+    ggtitle("MemoryUsage for Find times") + xlab("number of elements") + ylab("Used Memory Bytes") +
+    # scale_x_discrete(limits = c(0,25, 50, 100))
+    scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
+  
+  print(p)
+  
 }
 
 plotRemoveExecutionTime <- function(fullDataSet){
@@ -226,9 +269,10 @@ plotMemoryConsumptionForDeepCopyAndFind <- function(fullDataSet){
 }
 
 fullDataSet <- SetUpDataSet()
-plotInsertExecutionTime(fullDataSet)
-plotInsertMemoryConsumptionForInsert(fullDataSet)
+#plotInsertExecutionTime(fullDataSet)
+#plotInsertMemoryConsumptionForInsert(fullDataSet)
+plotFindElementExecutionTime(fullDataSet)
 plotRemoveExecutionTime(fullDataSet)
 plotplotMemoryConsumptionForRemove(fullDataSet)
-plotDeepCopyAndFind(fullDataSet)
-plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
+#plotDeepCopyAndFind(fullDataSet)
+#plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)

@@ -39,7 +39,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
     ggtitle("100 Inserts") + xlab("number of elements")
   
-  print(p)
+  ##print(p)
   
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
                                    (fullDataSet$TestCaseID=="SList 1000 insert")
@@ -49,7 +49,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA, group=DA)) + geom_line() +
     ggtitle("1.000 Inserts") + xlab("number of elements")
   
-  print(p)
+  ##print(p)
   
   # #Zoom in to First 100 inserts
   # newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
@@ -68,7 +68,7 @@ plotInsertExecutionTime <- function(fullDataSet){
   
   
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + geom_line() +
-    ggtitle("10.000 insert") + xlab("number of elements")
+    ggtitle("10.000 insert") + xlab("number of elements") + ylab("Elapsed time (1*10^-9 seconds)")
   
   print(p)
   
@@ -94,7 +94,7 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   
   
   
-  print(p)
+  #print(p)
   
   
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 1000 insert") |
@@ -107,7 +107,7 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   p <- ggplot(newData,aes(x=CaseCounter,y=UsedMem,colour=DA, group=DA)) + geom_line() +
     ggtitle("1.000 Inserts / Used Memory") + xlab("number of elements") + ylab("Used Memory")
   
-  print(p)
+  #print(p)
   
   
   newData <- fullDataSet[ which( (fullDataSet$TestCaseID=="LinkedList 10000 insert") |
@@ -118,7 +118,7 @@ plotInsertMemoryConsumptionForInsert <- function(fullDataSet){
   newData$UsedMem <- (newData$TotalMemory - newData$FreeMemory ) 
   
   p <- ggplot(newData,aes(x=CaseCounter,y=UsedMem,colour=DA,group=DA)) + geom_line() +
-    ggtitle("10.000 insert/ Used Memory") + xlab("number of elements") + ylab("Used Memory")
+    ggtitle("10.000 insert/ Used Memory") + xlab("number of elements") + ylab("Used Memory (Bytes)")
   
   print(p)
   
@@ -138,7 +138,7 @@ plotRemoveExecutionTime <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("Remove times") + xlab("number of elements") +
+    ggtitle("Remove times") + xlab("number of elements") + ylab("Elapsed time (10^-9 seconds)")
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -159,7 +159,7 @@ plotplotMemoryConsumptionForRemove <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("MemoryUsage for Remove times") + xlab("number of elements") +
+    ggtitle("MemoryUsage for Remove times") + xlab("number of elements") + ylab("Used Memory Bytes") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -175,10 +175,10 @@ plotFindElementsIn100 <- function(fulldataSet){
   
   p <- ggplot(newData,aes(x=CaseCounter,y=TimeDifference,colour=DA,group=DA)) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("Find times") + xlab("number of elements") +
+    ggtitle("Find times") + xlab("number of elements") + ylab("Elapsed time (10^-9 seconds)") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,125), breaks = c(25,50,75,100))+
-    ylab("Elapsed time 10^-9 seconds")
+    
   
   
   print(p)
@@ -199,7 +199,7 @@ plotplotMemoryConsumptionForFind <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("MemoryUsage for Remove times") + xlab("number of elements") +
+    ggtitle("MemoryUsage for Find times") + xlab("number of elements") + ylab("Used Memory Bytes") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -239,7 +239,7 @@ plotMemoryConsumptionForDeepCopyAndFind <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("MemoryUsage for Deep Copy and Find element at") + xlab("number of elements") +
+    ggtitle("MemoryUsage for Deep Copy and Find element at") + xlab("number of elements") + + ylab("Used Memory Bytes") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -248,14 +248,16 @@ plotMemoryConsumptionForDeepCopyAndFind <- function(fullDataSet){
 }
 
 fullDataSet <- SetUpDataSet()
-plotInsertExecutionTime(fullDataSet)
-plotInsertMemoryConsumptionForInsert(fullDataSet)
+#plotInsertExecutionTime(fullDataSet)
+#plotInsertMemoryConsumptionForInsert(fullDataSet)
+
+#plotFindElementExecutionTime(fullDataSet)
+#plotplotMemoryConsumptionForFind(fullDataSet)
 
 plotRemoveExecutionTime(fullDataSet)
 plotplotMemoryConsumptionForRemove(fullDataSet)
 
-plotFindElementExecutionTime(fullDataSet)
-plotplotMemoryConsumptionForFind(fullDataSet)
 
-plotDeepCopyAndFind(fullDataSet)
-plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
+
+#plotDeepCopyAndFind(fullDataSet)
+#plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
