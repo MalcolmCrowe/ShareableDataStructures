@@ -138,7 +138,7 @@ plotRemoveExecutionTime <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("Remove times") + xlab("number of elements") + ylab("Elapsed time (10^-9 seconds)")
+    ggtitle("Remove times") + xlab("number of elements") + ylab("Elapsed time (10^-9 seconds)") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -219,6 +219,7 @@ plotDeepCopyAndFind <- function(fullDataSet){
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
     ggtitle("Execution time for Deep Copy and Find element at") + xlab("number of elements") +
+    ylab("Elapsed time (10^-9 seconds)") 
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -239,7 +240,7 @@ plotMemoryConsumptionForDeepCopyAndFind <- function(fullDataSet){
   
   p <- ggplot(dfm,aes(x=CaseCounter,y=value,colour=DA,fill=DA, group=DA)) + scale_fill_hue(l=40, c=35) + 
     geom_bar(stat="identity", position = "dodge") +
-    ggtitle("MemoryUsage for Deep Copy and Find element at") + xlab("number of elements") + + ylab("Used Memory Bytes") +
+    ggtitle("MemoryUsage for Deep Copy and Find element at") + xlab("number of elements") +  ylab("Used Memory Bytes") +
     # scale_x_discrete(limits = c(0,25, 50, 100))
     scale_x_continuous(limits = c(0,115), breaks = c(25,50,75,100))
   
@@ -254,10 +255,10 @@ fullDataSet <- SetUpDataSet()
 #plotFindElementExecutionTime(fullDataSet)
 #plotplotMemoryConsumptionForFind(fullDataSet)
 
-plotRemoveExecutionTime(fullDataSet)
-plotplotMemoryConsumptionForRemove(fullDataSet)
+#plotRemoveExecutionTime(fullDataSet)
+#plotplotMemoryConsumptionForRemove(fullDataSet)
 
 
 
-#plotDeepCopyAndFind(fullDataSet)
-#plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
+plotDeepCopyAndFind(fullDataSet)
+plotMemoryConsumptionForDeepCopyAndFind(fullDataSet)
