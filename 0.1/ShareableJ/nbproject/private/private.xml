@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project-private xmlns="http://www.netbeans.org/ns/project-private/1">
+    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
+    <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
+        <group>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SelectRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/DocArray.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/TableRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SDatabase.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SIndex.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/STransaction.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/StrongServer.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SearchRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/Reader.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/DistinctRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SUpdate.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/StrongCmd.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/JoinRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/GroupRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SGroupQuery.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SDelete.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/RowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SRecord.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SSearch.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/OrderedRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/Serialisable.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/LogBookmark.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/IndexRowSet.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/Types.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/StrongStart.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/SSelectStatement.java</file>
+            <file>file:/E:/ShareableDataStructures/ShareableJ/src/org/shareabledata/Document.java</file>
+        </group>
+    </open-files>
+</project-private>

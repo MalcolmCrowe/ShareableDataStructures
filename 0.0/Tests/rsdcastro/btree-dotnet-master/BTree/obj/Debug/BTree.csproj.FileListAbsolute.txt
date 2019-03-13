@@ -1,0 +1,5 @@
+C:\mkc\Shareable\rsdcastro\btree-dotnet-master\BTree\bin\Debug\BTree.dll
+C:\mkc\Shareable\rsdcastro\btree-dotnet-master\BTree\bin\Debug\BTree.pdb
+C:\mkc\Shareable\rsdcastro\btree-dotnet-master\BTree\obj\Debug\BTree.csproj.CoreCompileInputs.cache
+C:\mkc\Shareable\rsdcastro\btree-dotnet-master\BTree\obj\Debug\BTree.dll
+C:\mkc\Shareable\rsdcastro\btree-dotnet-master\BTree\obj\Debug\BTree.pdb

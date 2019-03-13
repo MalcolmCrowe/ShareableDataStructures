@@ -1,0 +1,2 @@
+copy "LinkedListTestOutput.csv" "C:\Users\77800577\Documents\GitHub\ShareableDataStructures\DataAnalysis\ShareableDA_DataAnalysis"
+copy "SListTestOutput.csv" "C:\Users\77800577\Documents\GitHub\ShareableDataStructures\DataAnalysis\ShareableDA_DataAnalysis"

@@ -1,0 +1,11 @@
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\StrongDB.exe.config
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\StrongDB.exe
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\StrongDB.pdb
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\Shareable.dll
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\Shareable.pdb
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\bin\Debug\Shareable.dll.config
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\obj\Debug\StrongDB.csprojAssemblyReference.cache
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\obj\Debug\StrongDB.csproj.CoreCompileInputs.cache
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\obj\Debug\StrongDB.csproj.CopyComplete
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\obj\Debug\StrongDB.exe
+C:\Users\77800577\Documents\GitHub\ShareableDataStructures\StrongDB\obj\Debug\StrongDB.pdb

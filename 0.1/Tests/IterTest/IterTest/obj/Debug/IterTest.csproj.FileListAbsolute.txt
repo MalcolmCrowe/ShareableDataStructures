@@ -1,0 +1,12 @@
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\IterTest.exe.config
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\IterTest.exe
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\IterTest.pdb
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\BTree.dll
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\Shareable.exe
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\BTree.pdb
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\Shareable.pdb
+C:\mkc\Shareable\IterTest\IterTest\bin\Debug\Shareable.exe.config
+C:\mkc\Shareable\IterTest\IterTest\obj\Debug\IterTest.csprojResolveAssemblyReference.cache
+C:\mkc\Shareable\IterTest\IterTest\obj\Debug\IterTest.csproj.CoreCompileInputs.cache
+C:\mkc\Shareable\IterTest\IterTest\obj\Debug\IterTest.exe
+C:\mkc\Shareable\IterTest\IterTest\obj\Debug\IterTest.pdb

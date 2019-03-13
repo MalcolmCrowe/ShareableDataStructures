@@ -1,0 +1,14 @@
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongCmd.exe.config
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongCmd.exe
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongCmd.pdb
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\Shareable.dll
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongLink.dll
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\Shareable.pdb
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\Shareable.dll.config
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongLink.pdb
+E:\ShareableDataStructures\StrongCmd\StrongCmd\bin\Debug\StrongLink.dll.config
+E:\ShareableDataStructures\StrongCmd\StrongCmd\obj\Debug\StrongCmd.csprojAssemblyReference.cache
+E:\ShareableDataStructures\StrongCmd\StrongCmd\obj\Debug\StrongCmd.csproj.CoreCompileInputs.cache
+E:\ShareableDataStructures\StrongCmd\StrongCmd\obj\Debug\StrongCmd.csproj.CopyComplete
+E:\ShareableDataStructures\StrongCmd\StrongCmd\obj\Debug\StrongCmd.exe
+E:\ShareableDataStructures\StrongCmd\StrongCmd\obj\Debug\StrongCmd.pdb

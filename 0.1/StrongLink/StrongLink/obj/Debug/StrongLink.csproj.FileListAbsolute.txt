@@ -1,0 +1,11 @@
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\StrongLink.dll.config
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\StrongLink.dll
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\StrongLink.pdb
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\Shareable.dll
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\Shareable.pdb
+E:\ShareableDataStructures\StrongLink\StrongLink\bin\Debug\Shareable.dll.config
+E:\ShareableDataStructures\StrongLink\StrongLink\obj\Debug\StrongLink.csproj.CoreCompileInputs.cache
+E:\ShareableDataStructures\StrongLink\StrongLink\obj\Debug\StrongLink.csproj.CopyComplete
+E:\ShareableDataStructures\StrongLink\StrongLink\obj\Debug\StrongLink.dll
+E:\ShareableDataStructures\StrongLink\StrongLink\obj\Debug\StrongLink.pdb
+E:\ShareableDataStructures\StrongLink\StrongLink\obj\Debug\StrongLink.csprojAssemblyReference.cache
