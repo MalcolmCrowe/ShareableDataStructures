@@ -1058,11 +1058,11 @@ namespace StrongLink
             {
                 case Sym.LITERAL:
                     Next();
-                    return v ?? throw new Exception("??");
+                    return v ?? throw new Exception("PE26");
                 case Sym.ID:
                     {
                         if (v == null)
-                            throw new Exception("??");
+                            throw new Exception("PE27");
                         var s = ((SDbObject)v).uid;
                         Next();
                         if (lxr.tok == Sym.DOT)

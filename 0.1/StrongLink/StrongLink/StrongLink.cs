@@ -19,7 +19,7 @@ namespace StrongLink
         public bool inTransaction = false;
         SDict<long, string> preps = SDict<long, string>.Empty;
         public SDict<int, string>? description = null; // see ExecuteQuery
-        public StrongConnect(string host,int port,string fn)
+        public StrongConnect(string host, int port, string fn)
         {
             Socket? socket = null;
             try
@@ -60,7 +60,7 @@ namespace StrongLink
             asy.PutString(fn);
             asy.Flush();
             asy.rbuf.ReadByte();
-            preps = SDict<long,string>.Empty;
+            preps = SDict<long, string>.Empty;
         }
         public long Prepare(string n)
         {
@@ -176,7 +176,7 @@ namespace StrongLink
                     description += (i, asy.rbuf.GetString());
                 return new DocArray(asy.rbuf.GetString());
             }
-            throw new Exception("??");
+            throw new Exception("PE28");
         }
         public void BeginTransaction()
         {
@@ -228,6 +228,9 @@ namespace StrongLink
     class ClientStream : StreamBase
     {
         internal Socket client;
+        static long _cid = 0;
+        long cid = ++_cid;
+        public bool getting = false;
         internal int rx = 0;
         internal Reader rbuf;
         internal ClientStream(StrongConnect pc, Socket c)
@@ -241,7 +244,8 @@ namespace StrongLink
         }
         public override bool GetBuf(Buffer b)
         {
-            var rcount = 0;
+            getting = true;
+            int rcount;
             rx = 0;
             try
             {
@@ -249,15 +253,21 @@ namespace StrongLink
                 if (rc == 0)
                 {
                     rcount = 0;
+                    getting = false;
                     return false;
                 }
                 rcount = (b.buf[0] << 7) + b.buf[1];
                 b.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
-                return rcount> 0;
+                getting = false;
+                return rcount > 0;
             }
             catch (SocketException)
+            {
+                return false;
+            }
+            catch (ObjectDisposedException)
             {
                 return false;
             }
@@ -353,7 +363,7 @@ namespace StrongLink
                 proto = (Types)bf.buf[rbuf.pos++];
             }
             var em = rbuf.GetString();
-    //        Console.WriteLine("Received exception: " + em);
+            Console.WriteLine("Received exception: " + em);
             throw new ServerException(em);
         }
         public override bool CanRead

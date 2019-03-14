@@ -9,33 +9,37 @@ namespace Test
     class Program
     {
         static int test = 0, qry = 0;
-        static bool commit = false;
-        static StrongConnect conn;
+        bool commit = false;
+        StrongConnect conn;
+        Program(string[] args)
+        {
+
+            conn = new StrongConnect("127.0.0.1", 50433, "testdb");
+            if (args.Length >= 2)
+            {
+                test = int.Parse(args[0]);
+                qry = int.Parse(args[1]);
+            }
+            if (args.Length == 3)
+                commit = true;
+        }
         static void Main(string[] args)
         {
-            Console.WriteLine("13 March 2019 Respeatable tests");
-            Console.WriteLine("Ensure testdb not present in database folder for any of");
-            Console.WriteLine("Test"); // skips test 10
-            Console.WriteLine("Test 10 0"); 
-            Console.WriteLine("Test commit");
             try
             {
-                conn = new StrongConnect("127.0.0.1", 50433, "testdb");
-                if (args.Length >= 2)
-                {
-                    test = int.Parse(args[0]);
-                    qry = int.Parse(args[1]);
-                }
-                if (args.Length == 3)
-                    commit = true;
-                new Program().Tests();
+                Console.WriteLine("13 March 2019 Respeatable tests");
+                Console.WriteLine("Ensure testdb not present in database folder for any of");
+                Console.WriteLine("Test"); // skips test 10
+                Console.WriteLine("Test 10 0");
+                Console.WriteLine("Test commit");
+                new Program(args).Tests();
+                Console.WriteLine("Testing complete");
+                Console.ReadLine();
             }
             catch (Exception e)
             {
                 Console.WriteLine("Exception: " + e.Message);
             }
-            Console.WriteLine("Testing complete");
-            Console.ReadLine();
         }
         void Begin()
         {
@@ -57,9 +61,8 @@ namespace Test
             Test6(test);
             Test7(test);
             Test8(test);
-            Test9(test);
-            if (test==10)
-                Test10(test);
+            Test9(test); 
+            Test10(test);
             Test11(test);
         }
         void Test1(int t)
@@ -307,38 +310,38 @@ namespace Test
             {
                 conn.ExecuteNonQuery("create table RDC(A integer primary key,B string)");
             }
-            catch (Exception) { }
+            catch (Exception) {
+            }
             conn.ExecuteNonQuery("delete RDC");
             conn.ExecuteNonQuery("insert RDC values(42,'Life, the Universe')");
             conn.ExecuteNonQuery("insert RDC values(52,'Weeks in the year')");
             Begin();
             conn.ExecuteQuery("select from RDC where A=42");
-            var task1 = new Task(() => Test10A());
-            task1.Start();
-            await Task.WhenAll(task1);
+            var task1 = Task.Factory.StartNew(() => Test10A());
+            task1.Wait();
             CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict with read");
             Begin();
             conn.ExecuteQuery("select from RDC where A=52");
-            var task2 = new Task(() => Test10B());
-            task2.Start();
-            await Task.WhenAll(task2);
+            var task2 = Task.Factory.StartNew(() => Test10B());
+            task2.Wait();
             conn.Commit();
             Begin();
             CheckResults(10,2,"select from RDC","[{A:42,B:'the product of 6 and 7'},{A:52,B:'Weeks in the year'}]");
-            task1 = new Task(() => Test10A());
-            task1.Start();
-            await Task.WhenAll(task1);
-            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict with read"); ;
+            task1 = Task.Factory.StartNew(() => Test10A());
+            task1.Wait();
+            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict with read");
         }
         void Test10A()
         {
-            var conn1 = new StrongConnect("127.0.0.1", 50433, "testdb");
-            conn1.ExecuteNonQuery("update RDC where A=42 set B='the product of 6 and 9'");
+            var p = new Program(new string[0]);
+            p.conn.ExecuteNonQuery("update RDC where A=42 set B='the product of 6 and 9'");
+            p.conn.Close();
         }
         void Test10B()
         {
-            var conn1 = new StrongConnect("127.0.0.1", 50433, "testdb");
-            conn1.ExecuteNonQuery("update RDC where A=42 set B='the product of 6 and 7'");
+            var p = new Program(new string[0]);
+            p.conn.ExecuteNonQuery("update RDC where A=42 set B='the product of 6 and 7'");
+            p.conn.Close();
         }
         void Test11(int t)
         {
