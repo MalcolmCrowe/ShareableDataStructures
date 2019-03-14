@@ -24,7 +24,7 @@ namespace Tpcc
 
         public bool FetchCarrier(ref string mess)
         {
-            var s = db.ExecuteQuery("select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc");
+            var s = db.ExecuteQuery("select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " orderby DL_ID desc");
             if (s.items.Count == 0)
                 return true;
             Set(3, (int)s.items[0].fields[0].Value);

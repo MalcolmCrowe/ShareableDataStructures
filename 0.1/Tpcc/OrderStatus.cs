@@ -58,7 +58,7 @@ namespace Tpcc
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList cids = new ArrayList();
-            var s = db.ExecuteQuery("select CID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST");
+            var s = db.ExecuteQuery("select CID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' orderby C_FIRST");
             for (var i = 0; i < s.items.Count; i++)
                 cids.Add((long)s[i][0]);
             cid = (int)cids[(cids.Count + 1) / 2];

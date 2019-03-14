@@ -60,7 +60,7 @@ namespace Tpcc
         {
             ArrayList custs = new ArrayList();
             //				cmd.CommandText="select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
-            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' order by C_FIRST");
+            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' orderby C_FIRST");
             for (var i = 0; i < s.Length; i++)
                 custs.Add((long)s[i][0]);
             if (custs.Count == 0)
@@ -69,7 +69,7 @@ namespace Tpcc
             Set(14, cid);
             Set(15, cwid);
             Set(16, cdid);
-            s = db.ExecuteQuery("select C_ID,C_FIRST,C_MIDDLE,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and  C_LAST='" + clast + "' order by C_FIRST");
+            s = db.ExecuteQuery("select C_ID,C_FIRST,C_MIDDLE,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and  C_LAST='" + clast + "' orderby C_FIRST");
             if (s.IsEmpty)
                 return true;
             var rdr = s[0];
