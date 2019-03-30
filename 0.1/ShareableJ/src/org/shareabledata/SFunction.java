@@ -13,12 +13,12 @@ public class SFunction extends Serialisable {
         public final Serialisable arg; // probably an SQuery
         public final byte func;
         static long _fid = 0;
-        public final long fid = ++_fid;
-        public SFunction(SDatabase db,byte fn,Reader f) throws Exception
+        public final long fid = --SysTable._uid;
+        public SFunction(byte fn,Reader f) throws Exception
         {
             super(Types.SFunction);
             func = fn;
-            arg = f._Get(db);
+            arg = f._Get();
         }
         public SFunction(byte fn, Serialisable a)
         { 
@@ -26,24 +26,45 @@ public class SFunction extends Serialisable {
             func = fn;
             arg = a;
         }
+        @Override
         public boolean isValue() { return false;}
-        class Func {
-            static final byte Sum =0, Count =1, Max=2, Min=3, Null=4;
+        public static class Func {
+            public static final byte Sum =0, Count =1, Max=2, Min=3, Null=4,
+                    NotNull=5,Constraint=6,Default=7,Generated=8;
+            public static String names[] = { "Sum","Count","Max","Min","Null",
+            "NotNull","Constraint","Default","Generated"};
         }
-        static SFunction Get(SDatabase db,Reader f) throws Exception
+        @Override
+        public Serialisable Fix(AStream f)
         {
-            return new SFunction(db, (byte)f.ReadByte(), f);
+            return new SFunction(func,arg.Fix(f));
         }
+        public static SFunction Get(Reader f) throws Exception
+        {
+            return new SFunction((byte)f.ReadByte(), f);
+        }
+        @Override
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            return new SFunction(func,arg.UseAliases(db, ta));
+        }
+        @Override
+        public Serialisable Prepare(STransaction tr,SDict<Long,Long> pt) throws Exception
+        {
+            return new SFunction(func,arg.Prepare(tr,pt));
+        }
+        @Override
         public void Put(StreamBase f)
         {
             super.Put(f);
             f.WriteByte(func);
             arg.Put(f);
         }
+        public boolean isAgg() { return (func!=Func.Null);}
         @Override
         public Serialisable Lookup(Context cx)
         {
-            if (cx.ags==null)
+            if (cx.refs==null)
                 return this;
             var x = arg.Lookup(cx);
             if (func == Func.Null)
@@ -131,11 +152,15 @@ public class SFunction extends Serialisable {
         {
             return ((SInteger)x).big;
         }
-        public boolean isAgg() { return func!=Func.Null; }
         @Override
-        public SDict<Long, SFunction> Aggregates(SDict<Long, SFunction> a, Context cx)
+        public SDict<Long, Serialisable> Aggregates(SDict<Long, Serialisable> a)
         {
             return isAgg()? ((a==null)?new SDict(fid, this):a.Add(fid,this)) : a;
+        }
+        @Override
+        public String toString()
+        {
+            return new Func().names[func] + "(" + arg + ")";
         }
     }
 

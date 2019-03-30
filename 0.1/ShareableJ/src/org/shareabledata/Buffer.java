@@ -28,7 +28,7 @@ public class Buffer {
         fs = f;
     }
 
-    Buffer(StreamBase f, long s)  {
+    Buffer(StreamBase f, long s) throws Exception {
         buf = new byte[Size];
         start = s;
         wpos = 0;
@@ -36,7 +36,7 @@ public class Buffer {
         fs = f;
     }
 
-    int GetByte() {
+    int GetByte() throws Exception {
         if (wpos >= len) {
             start += len;
             wpos = 0;

@@ -297,9 +297,9 @@ namespace StrongLink
             Write(Types.SNames);
             PutInt(u.Length);
             for (var b = u.First(); b != null; b = b.Next())
-            { 
-                PutString(b.Value.Item2);
+            {
                 PutLong(b.Value.Item1);
+                PutString(b.Value.Item2);
             }
         }
         public void SendUids(params (string, long)[] u)
@@ -363,7 +363,7 @@ namespace StrongLink
                 proto = (Types)bf.buf[rbuf.pos++];
             }
             var em = rbuf.GetString();
-            Console.WriteLine("Received exception: " + em);
+    //        Console.WriteLine("Received exception: " + em);
             throw new ServerException(em);
         }
         public override bool CanRead

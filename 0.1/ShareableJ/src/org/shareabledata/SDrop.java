@@ -12,26 +12,37 @@ package org.shareabledata;
 public class SDrop extends SDbObject {
         public final long drpos;
         public final long parent;
-        public SDrop(STransaction tr,long d,long p)
+        public final String detail;
+        public SDrop(STransaction tr,long d,long p,String s)
         {
             super(Types.SDrop,tr);
             drpos = d; parent = p;
+            detail = s;
         }
-        SDrop(Reader f)
+        public SDrop(long d,long p,String s)
+        {
+            super(Types.SDrop);
+            drpos = d; parent = p;
+            detail = s;
+        }
+        SDrop(Reader f) throws Exception
         {
             super(Types.SDrop,f);
             drpos = f.GetLong();
             parent = f.GetLong();
+            detail = f.GetString();
         }
         public SDrop(SDrop d,AStream f)
         {
             super(d,f);
             drpos = f.Fix(d.drpos);
             parent = f.Fix(d.parent);
+            detail = d.detail;
             f.PutLong(drpos);
             f.PutLong(parent);
+            f.PutString(detail);
         }
-        public static SDrop Get(Reader f)
+        public static SDrop Get(Reader f) throws Exception
         {
             return new SDrop(f);
         }
@@ -52,13 +63,21 @@ public class SDrop extends SDbObject {
                 case Types.SAlter:
                     {
                         var a = (SAlter)that;
-                        return a.defpos == drpos || a.parent == drpos;
+                        return a.defpos == drpos || a.col == drpos;
                     }
             }
             return false;
         }
+        @Override
         public String toString()
         {
-            return "Drop " + drpos + ((parent!=0)?"":(" of "+parent));
+            var sb = new StringBuilder();
+            sb.append("Drop ");
+            sb.append("" + drpos);
+            sb.append((parent!=0)?"":(" of "+parent));
+            sb.append(detail);
+            return sb.toString();
         }
+        @Override
+        public long getAffects() { return drpos; }
 }

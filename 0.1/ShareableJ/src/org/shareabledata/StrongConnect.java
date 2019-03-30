@@ -13,6 +13,7 @@ import java.net.*;
 public class StrongConnect {
         ClientStream asy;
         public boolean inTransaction = false;
+        SDict<Long,String> preps = null;
         public SDict<Integer,String> description = null;
         public StrongConnect(String host,int port,String fn) throws Exception
         {
@@ -30,46 +31,73 @@ public class StrongConnect {
             asy = new ClientStream(this, socket);
             asy.PutString(fn);
             asy.Receive();
+            preps = null;
         }
-        public void CreateTable(String n,SColumn... cols) throws Exception
+        public long Prepare(String n)
         {
+            var u = -2L-((preps!=null)?(preps.Length):0);
+            preps = (preps==null)?new SDict(u,n):preps.Add(u, n);
+            return u;
+        }
+        public void CreateTable(String n) throws Exception
+        {
+            var un = Prepare(n);
+            asy.SendUids(preps);
             asy.Write((byte)Types.SCreateTable);
-            asy.PutString(n);
-            asy.PutInt(cols.length);
-            for (SColumn col : cols) {
-                asy.PutString(col.name);
-                asy.WriteByte((byte) col.dataType);
-            }
+            asy.PutLong(un);
+            asy.PutInt(0);
+            asy.PutInt(0);
             var b = asy.Receive();
+            preps = null;
+        }
+        public void CreateColumn(String c,int t,String tn,SSlot<String,SFunction>...cs)
+                throws Exception
+        {
+            var uc = Prepare(c);
+            var ut = Prepare(tn);
+            asy.SendUids(preps);
+            asy.WriteByte((byte)Types.SCreateColumn);
+            new SColumn(uc, t, ut, new SDict(cs)).PutColDef(asy);
+            var b = asy.Receive();
+            preps = null;
         }
         public void CreateIndex(String tn,byte t,String rt,String... key)
                 throws Exception
         {
-            asy.Write((byte)Types.SCreateIndex);
-            asy.PutString(tn);
-            asy.WriteByte(t);
-            if (rt == null)
-                asy.PutInt(0);
-            else
-                asy.PutString(rt);
-            asy.PutInt(key.length);
-            for (String key1 : key) {
-                asy.PutString(key1);
+            var ut = Prepare(tn);
+            long u = -1;
+            if (rt!=null)
+                u = Prepare(rt);
+            SList<Long> keys = null;
+            int i = 0;
+            for (String key1 : key) 
+            {
+                keys =(keys==null)?new SList(Prepare(key1)):
+                        keys.InsertAt(Prepare(key1),i);
+                i++;
             }
+            asy.SendUids(preps);
+            new SIndex(ut,t==IndexType.Primary,u,keys).Put(asy);
             var b = asy.Receive();
+            preps = null;
         }
         public void Insert(String tn,String[] cols,Serialisable[]... rows)
                 throws Exception
         {
-            asy.Write((byte)Types.Insert);
-            asy.PutString(tn);
+            var ut = Prepare(tn);
+            var u = new long[cols.length];
+            for (var i = 0; i < cols.length; i++)
+                u[i] = Prepare(cols[i]);
+            asy.SendUids(preps);
+            asy.WriteByte((byte)Types.Insert);
+            asy.PutLong(ut);
             if (cols == null)
                 asy.PutInt(0);
             else
             {
                 asy.PutInt(cols.length);
-                for (String col : cols) {
-                    asy.PutString(col);
+                for (long ui : u) {
+                    asy.PutLong(ui);
                 }
             }
             asy.PutInt(rows[0].length); // cols
@@ -83,15 +111,19 @@ public class StrongConnect {
         }
         public DocArray ExecuteQuery(String sql) throws Exception
         {
-            var qry = (SQuery)Parser.Parse(sql);
-            return Get(qry);
+            var pair = Parser.Parse(sql);
+            if (pair.ob.type!=Types.SSelect)
+                throw new Exception("Bad query " + sql);
+            var qry = (SQuery)pair.ob;
+            return Get(pair.ns,qry);
         }
         public int ExecuteNonQuery(String sql) throws Exception
         {
             var s = Parser.Parse(sql);
             if (s == null)
                 return Types.Exception;
-            s.Put(asy);
+            asy.SendUids(s.ns);
+            s.ob.Put(asy);
             var b = asy.Receive();
             if (b == Types.Exception)
                 inTransaction = false;
@@ -107,8 +139,9 @@ public class StrongConnect {
             }
             return b;
         }
-        public DocArray Get(Serialisable tn) throws Exception
+        public DocArray Get(SDict<Long,String> d,Serialisable tn) throws Exception
         {
+            asy.SendUids(d);
             asy.Write((byte)Types.DescribedGet);
             tn.Put(asy);
             var b = asy.Receive();
@@ -127,7 +160,7 @@ public class StrongConnect {
                             description.Add(i, asy.rbuf.GetString());
                 return new DocArray(asy.rbuf.GetString());
             }
-            throw new Exception("??");
+            throw new Exception("PE28");
         }
         public void BeginTransaction() throws Exception
         {

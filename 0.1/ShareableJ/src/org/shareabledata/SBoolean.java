@@ -27,7 +27,7 @@ public class SBoolean extends Serialisable implements Comparable {
             f.PutInt(sbool?1:0);
             return this;
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(Reader f) throws Exception
         {
             return For(f.ReadByte()==1);
         }

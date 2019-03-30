@@ -87,9 +87,8 @@ namespace StrongLink
             UNIQUE = 76,
             UPDATE = 77,
             USING = 78,
-            VALUE = 79,
-            VALUES = 80,
-            WHERE = 81
+            VALUES = 79,
+            WHERE = 80
         }
         internal class Lexer
         {
@@ -791,7 +790,7 @@ namespace StrongLink
                 cs += (b.Value, cs.Length ?? 0);
             return new SInsert(id, cs, vals);
         }
-        SQuery Query(SDict<int,long>als,SDict<int,Serialisable>cp)
+        SQuery Query(SDict<int,(long,string)>als,SDict<int,Serialisable>cp)
         {
             var tb = TableExp(als,cp);
             var wh = SList<Serialisable>.Empty;
@@ -824,10 +823,9 @@ namespace StrongLink
                     if (lxr.tok != Sym.AND)
                         break;
                 }
-            return new SGroupQuery(sqry, sqry.display, sqry.cpos, 
-                new Context(sqry.refs,null),gp, h);
+            return new SGroupQuery(sqry, sqry.display, sqry.cpos,gp, h);
         }
-        SQuery TableExp(SDict<int, long> als, SDict<int, Serialisable> cp)
+        SQuery TableExp(SDict<int, (long,string)> als, SDict<int, Serialisable> cp)
         {
             if (lxr.tok==Sym.LPAREN)
             {
@@ -836,7 +834,7 @@ namespace StrongLink
                 if (lxr.tok == Sym.SELECT)
                     r= (SQuery)Select();
                 else
-                    r =TableExp(SDict<int,long>.Empty,SDict<int,Serialisable>.Empty);
+                    r =TableExp(als,cp);
                 Mustbe(Sym.RPAREN);
                 return r;
             }
@@ -846,7 +844,7 @@ namespace StrongLink
             {
                 var alias = Alias(((SDbObject)lxr.val).uid);
                 Next();
-                tb = new SAlias(tb,alias);
+                tb = new SAlias(tb,alias,id);
             }
             var jt = SJoin.JoinType.None;
             if (lxr.tok == Sym.COMMA)
@@ -902,10 +900,7 @@ namespace StrongLink
             if (jt!=SJoin.JoinType.None)
             {
                 var on = SList<SExpression>.Empty;
-                var ra = TableExp(SDict<int, long>.Empty, SDict<int, Serialisable>.Empty);
-                var da = SDict<int, long>.Empty;
-                var ca = SDict<int, Serialisable>.Empty;
-                var na = SDict<long, Serialisable>.Empty;
+                var ra = TableExp(als, cp);
                 var us = SDict<long,long>.Empty;
                 if ((jt&(SJoin.JoinType.Cross|SJoin.JoinType.Natural))==0)
                 {
@@ -941,8 +936,7 @@ namespace StrongLink
                         }
                     }
                 }
-                return new SJoin(tb, false, jt, ra, on, us,
-                    da, ca, new Context(na, null),tb.tbs+ra.tbs); 
+                return new SJoin(tb, false, jt, ra, on, us, als, cp); 
             }
             return tb;
         }
@@ -1087,20 +1081,20 @@ namespace StrongLink
                 case Sym.LPAREN:
                     {
                         Next();
-                        var a = SList<long>.Empty;
+                        var a = SList<(long,string)>.Empty;
                         var c = SList<Serialisable>.Empty;
                         int n = 0;
                         for (; ; n++)
                         {
                             var p = SelectItem(n);
                             c += (p.Item2, n);
-                            a += (p.Item1, n);
+                            a += ((p.Item1,uids[p.Item1]), n);
                             if (lxr.tok != Sym.COMMA)
                                 break;
                             Next();
                         }
                         Mustbe(Sym.RPAREN);
-                        if (n+1 == 1 && a.element<1000000)
+                        if (n+1 == 1 && a.element.Item1<-1000000)
                             return c.element;
                         return new SRow(a, c);
                     }
@@ -1132,12 +1126,12 @@ namespace StrongLink
             var sels = SList<(long, Serialisable)>.Empty;
             if (lxr.tok!=Sym.FROM)
                 sels = Selects();
-            var als = SDict<int, long>.Empty;
+            var als = SDict<int, (long,string)>.Empty;
             var cp = SDict<int, Serialisable>.Empty;
             var k = 0;
             for (var b = sels.First();b!=null;b=b.Next())
             {
-                als += (k, b.Value.Item1);
+                als += (k, (b.Value.Item1,uids[b.Value.Item1]));
                 cp += (k++, b.Value.Item2);
             }
             Mustbe(Sym.FROM);
@@ -1164,17 +1158,17 @@ namespace StrongLink
                         break;
                 }
             }
-            return new SSelectStatement(dct, als, cp, q, or,Context.Empty);
+            return new SSelectStatement(dct, als, cp, q, or);
         }
         Serialisable Delete()
         {
             Next();
-            return new SDeleteSearch(Query(SDict<int,long>.Empty,SDict<int,Serialisable>.Empty));
+            return new SDeleteSearch(Query(SDict<int,(long,string)>.Empty,SDict<int,Serialisable>.Empty));
         }
         Serialisable Update()
         {
             Next();
-            var q = Query(SDict<int, long>.Empty, SDict<int, Serialisable>.Empty);
+            var q = Query(SDict<int, (long,string)>.Empty, SDict<int, Serialisable>.Empty);
             var sa = SDict<long, Serialisable>.Empty;
             if (lxr.tok != Sym.SET)
                 throw new Exception("Expected SET");

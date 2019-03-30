@@ -14,7 +14,7 @@ public abstract class StreamBase {
     protected Buffer wbuf;
     protected StreamBase() {}
     protected abstract long getLength();
-    protected abstract boolean GetBuf(Buffer b);
+    protected abstract boolean GetBuf(Buffer b) throws Exception;
     protected abstract void PutBuf(Buffer b);
     public void WriteByte(byte value)  {
         if (wbuf==null)

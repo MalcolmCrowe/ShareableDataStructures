@@ -59,7 +59,15 @@ public class SList<T> extends Collection<T>
             return new SList<>(x, next);
         return new SList<>(element, next.UpdateAt(x, n - 1));
     }
-
+    public SList<T> Append(SList<T> x)
+    {
+        var n = 0;
+        if (x==null)
+            return this;
+        for (var b = First(); b != null; b = b.Next(), n++)
+            x.InsertAt(b.getValue(), n);
+        return x;
+    }
     @Override
     public Bookmark<T> First()
     {

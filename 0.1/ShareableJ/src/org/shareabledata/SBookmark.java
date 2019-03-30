@@ -34,7 +34,7 @@ public class SBookmark<K extends Comparable,V> {
                 int k = 1;
                 if (ob instanceof SBucket)
                     k = ((SBucket<K,V>)ob).total;
-                r += i;
+                r += k;
             }
             return r;
         }

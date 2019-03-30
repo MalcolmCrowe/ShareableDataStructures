@@ -20,7 +20,7 @@ public class Numeric {
         precision = 0;
     }
     
-    Numeric(Bigint m, int s, int p) {
+    public Numeric(Bigint m, int s, int p) {
         mantissa = m;
         scale = s;
         precision = p;
@@ -32,7 +32,7 @@ public class Numeric {
         scale = 0;
         precision = 0;
     }
-    Numeric(Double d)
+    public Numeric(Double d)
     {
         Numeric a = Parse(d.toString());
         mantissa = a.mantissa;

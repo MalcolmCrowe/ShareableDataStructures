@@ -11,73 +11,62 @@ package org.shareabledata;
  */
 public class Context
 {
-    public final ILookup<String,Serialisable> head;
-    public final ILookup<Long,Serialisable> ags;
+    public final ILookup<Long,Serialisable> refs;
     public final Context next;
     public static Context Empty = new Context();
-    Context()
+    private Context()
     {
-        head = null;
-        ags = null;
+        refs = null;
         next = null;
     }
-    public Context(ILookup<String,Serialisable> h,
-            ILookup<Long,Serialisable> a, Context n)
+    private Context(ILookup<Long,Serialisable> a, Context n)
     {
-        head = h;
-        ags = a;
+        refs = a;
         next = n;
     }
-    public Context(RowBookmark b,Context c)
+    public static Context New(ILookup<Long,Serialisable> a, Context n)
     {
-        head = b;
-        ags = b._ags;
-        next = c;
+        return (a==null)?((n==null)?Empty:n):new Context(a,n);
     }
-    public Context(ILookup<String,Serialisable> h,Context n)
+    public static Context Append(Context a,Context b)
     {
-        head = h;
-        ags = null;
-        next = n;
+        if (a.refs==null)
+            return b;
+        if (b.refs==null)
+            return a;
+        if (a.next == null)
+            return new Context(a.refs, b);
+        return new Context(a.refs, Append(a.next, b));        
     }
-    public Context(Context n,ILookup<Long,Serialisable> a)
+    public SRow Row() throws Exception
     {
-        head = null;
-        ags = a;
-        next = n;
-    }    
-    public boolean defines(String s) {
-        if (head==null && ags == null && next==null)
+        if (refs instanceof SRow)
+            return (SRow)refs;
+        if (next==null)
+            throw new Exception("PE05");
+        return next.Row();
+    }
+    public STransaction Transaction() throws Exception
+    {
+        if (refs instanceof RowBookmark)
+            return ((RowBookmark)refs)._rs._tr;
+        if (next!=null)
+            return next.Transaction();
+        throw new Exception("PE26");
+    }
+    public boolean defines(Long u) {
+        if (refs==null)
             return false;
-        return (head!=null && head.defines(s)) || 
-                (next!=null && next.defines(s));
+        return (refs.defines(u)) || 
+                (next!=null && next.defines(u));
     }
-    public Serialisable get(String s) {
-        if (head==null && ags==null && next==null)
+    public Serialisable get(Long u) {
+        if (refs==null)
             return Serialisable.Null;
-        if (head!=null)
-        {
-            var r = head.get(s);
-            if (r!=null)
-                return r;
-        }
-        return next.get(s);
-    }
-    public boolean defines(long s) {
-        if (head==null && ags == null && next==null)
-            return false;
-        return (ags!=null && ags.defines(s)) || 
-                (next!=null && next.defines(s));
-    }
-    public Serialisable get(long s) {
-        if (head==null && ags==null && next==null)
-            return Serialisable.Null;
-        if (ags!=null)
-        {
-            var r = ags.get(s);
-            if (r!=null)
-                return r;
-        }
-        return next.get(s);
+        if (refs.defines(u))
+            return refs.get(u);
+        if (next!=null)
+            return next.get(u);
+        return Serialisable.Null;
     }    
 }

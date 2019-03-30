@@ -32,7 +32,7 @@ public class SInteger extends Serialisable implements Comparable {
                 value = 0; big = b;
             }
         }
-        SInteger(Reader f)
+        SInteger(Reader f) throws Exception
         {
             this(f.GetInteger());
         }
@@ -50,12 +50,12 @@ public class SInteger extends Serialisable implements Comparable {
                     break;
             }
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SInteger(f);
         }
         @Override
-        public void Append(SDatabase db,StringBuilder sb)
+        public void Append(StringBuilder sb)
         {
             switch (type)
             {

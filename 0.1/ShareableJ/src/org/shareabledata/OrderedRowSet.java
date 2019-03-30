@@ -13,7 +13,7 @@ public class OrderedRowSet extends RowSet {
         public final RowSet _sce;
         public final SMTree<Serialisable> _tree;
         public final SDict<Integer, SRow> _rows;
-        public OrderedRowSet(RowSet sce,SSelectStatement sel, Context cx) 
+        public OrderedRowSet(RowSet sce,SSelectStatement sel) 
                 throws Exception
         {
             super(sce._tr,sel,sce._aggregates);
@@ -34,15 +34,15 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().col.Lookup(new Context(b,cx)),
+                    k[i] = new Variant(c.getValue().col.Lookup(Context.New(b,null)),
                             !c.getValue().desc);
                 t = t.Add(m,k);
-                r=(r==null)?new SDict(0,b._ob):r.Add(m, b._ob);
+                r=(r==null)?new SDict(0,b.Ob()):r.Add(m, b.Ob());
             }
             _tree = t;
             _rows = r;
         }
-        public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti,Context cx)
+        public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti)
                 throws Exception
         {
             super(sce._tr,sce._qry,sce._aggregates);
@@ -55,9 +55,9 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[ti.Length];
                 var i = 0;
                 for (var c = ti.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().headName.Lookup(new Context(b, cx)),true);
+                    k[i] = new Variant(c.getValue().headName.Lookup(b._cx),true);
                 t = t.Add(m, k);
-                r=(r==null)?new SDict(m, b._ob):r.Add(m,b._ob);
+                r=(r==null)?new SDict(m, b.Ob()):r.Add(m,b.Ob());
                 m++;
             }
             _tree = t;
@@ -76,7 +76,7 @@ public class OrderedRowSet extends RowSet {
             public final MTreeBookmark<Serialisable> _bmk;
             OrderedBookmark(OrderedRowSet ors,MTreeBookmark<Serialisable> bmk,int pos)
             {
-                super(ors,ors._rows.Lookup((int)(long)bmk.getValue().val),pos);
+                super(ors,_Cx(ors,ors._rows.Lookup((int)(long)bmk.getValue().val),null),pos);
                 _ors = ors; _bmk = bmk;
             }
             public Bookmark<Serialisable> Next()

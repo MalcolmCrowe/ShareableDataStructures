@@ -25,7 +25,7 @@ public class ClientStream extends StreamBase {
             connect = pc;
         }
         @Override
-        protected boolean GetBuf(Buffer b)
+        protected boolean GetBuf(Buffer b) throws Exception
         {
             var rcount = 0;
             rx = 0;
@@ -43,7 +43,7 @@ public class ClientStream extends StreamBase {
                     GetException();
                 return rcount> 0;
             }
-            catch (Exception e)
+            catch (SocketException e)
             {
                 return false;
             }
@@ -65,6 +65,26 @@ public class ClientStream extends StreamBase {
             if (wbuf.wpos > 2)
                 Flush();
             return (byte)rbuf.ReadByte();
+        }
+        public void SendUids(SDict<Long,String> u)
+        {
+            WriteByte((byte)Types.SNames);
+            PutInt(u.Length);
+            for (var b = u.First(); b != null; b = b.Next())
+            { 
+                PutLong(b.getValue().key);
+                PutString(b.getValue().val);
+            }
+        }
+        public void SendUids(SSlot<String, Long>...u)
+        {
+            WriteByte((byte)Types.SNames);
+            PutInt(u.length);
+            for (var i=0;i<u.length;i++)
+            {
+                PutString(u[i].key);
+                PutLong(u[i].val);
+            }
         }
         protected void PutBuf(Buffer b)
         {
@@ -111,7 +131,7 @@ public class ClientStream extends StreamBase {
             if (proto == (byte)Types.Exception)
             {
                 var rcount = (((int)bf.buf[rbuf.pos++]) << 7) + (((int)bf.buf[rbuf.pos++]) & 0x7f);
-                bf.len = rcount + 2;
+                bf.len = rcount + 4;
                 proto = bf.buf[rbuf.pos++];
             }
             throw new Exception(rbuf.GetString());

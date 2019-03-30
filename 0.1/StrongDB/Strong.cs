@@ -88,12 +88,16 @@ namespace StrongDB
                         case Types.SNames:
                             {
                                 var tr = db.Transact(rdr);
-                                var us = tr.role.uids;
+                                var us = db.uids;
+                                for (var b = us.PositionAt(SysTable._SysUid); b != null && b.Value.Item1 < 0; b = b.Next())
+                                    us -= b.Value.Item1;
                                 var n = rdr.GetInt();
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var s = rdr.GetString();
                                     var u = rdr.GetLong();
+                                    var s = rdr.GetString();
+                                    if (u < rdr.lastAlias)
+                                        rdr.lastAlias = u;
                                     us += (u, s);
                                 }
                                 db = new STransaction(tr,new SRole(tr.role,us));
@@ -115,7 +119,7 @@ namespace StrongDB
                                 }
                                 if (qy == null)
                                     throw new Exception("Bad query");
-                                qy = (SQuery)qy.Prepare(tr, qy);
+                                qy = (SQuery)qy.Prepare(tr, qy.Names(tr,SDict<long,long>.Empty));
                                 RowSet rs = qy.RowSet(tr, qy, SDict<long, Serialisable>.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
@@ -130,9 +134,10 @@ namespace StrongDB
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    asy.PutInt(rs._qry.Display.Length ?? 0);
-                                    for (var b = rs._qry.Display.First(); b != null; b = b.Next())
-                                        asy.PutString(tr.role.uids[b.Value.Item2]);
+                                    var dp = rs._qry.Display();
+                                    asy.PutInt(dp.Length ?? 0);
+                                    for (var b = dp.First(); b != null; b = b.Next())
+                                        asy.PutString(b.Value.Item2.Item2);
                                 }
                                 asy.PutString(sb.ToString());
                                 asy.Flush();
@@ -173,12 +178,17 @@ namespace StrongDB
                         case Types.SInsert:
                             {
                                 var tr = db.Transact(rdr);
-                                var t = rdr.GetLong();
+                                var tn = tr.role[rdr.GetLong()];
+                                if (!db.role.globalNames.Contains(tn))
+                                    throw new Exception("Table " + tn + " not found");
+                                var tb = (STable)db.objects[db.role.globalNames[tn]];
+                                rdr.context = tb;
                                 var n = rdr.GetInt();
                                 var c = SList<long>.Empty;
                                 for (var i = 0; i < n; i++)
                                     c += (rdr.GetLong(), i);
-                                tr = new SInsert(t,c,rdr._Get()).Prepare(tr,null).Obey(tr,Context.Empty);
+                                var ins = new SInsert(tb.uid, c, rdr);
+                                tr = ins.Prepare(tr,tb.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -187,7 +197,7 @@ namespace StrongDB
                         case Types.Insert:
                             {
                                 var tr = db.Transact(rdr);
-                                var tn = db.role[rdr.GetLong()];
+                                var tn = tr.role[rdr.GetLong()];
                                 if (!db.role.globalNames.Contains(tn))
                                     throw new Exception("Table " + tn + " not found");
                                 var tb = (STable)db.objects[db.role.globalNames[tn]];
@@ -206,7 +216,7 @@ namespace StrongDB
                                 }
                                 var nc = rdr.GetInt(); // #cols
                                 if ((n == 0 && nc != tb.cpos.Length) || (n != 0 && n != nc))
-                                    throw new Exception("Wrong number of columns");
+                                    ex = new Exception("Wrong number of columns");
                                 var nr = rdr.GetInt(); // #records
                                 for (var i = 0; i < nr; i++)
                                 {
@@ -243,7 +253,7 @@ namespace StrongDB
                                 {
                                     var a = new SAlter(tr, nm, Types.STable, tb.uid, 0,
                                         SDict<string, SFunction>.Empty);
-                                    a = (SAlter)a.Prepare(tr, tb);
+                                    a = (SAlter)a.Prepare(tr, tb.Names(tr,SDict<long,long>.Empty));
                                     tr = (STransaction)tr.Install(a, tr.curpos);
                                 }
                                 else
@@ -252,7 +262,7 @@ namespace StrongDB
                                             (cn is SColumn sc) ? sc.uid :
                                             throw new Exception("Column " + cn + " not found"),
                                             SDict<string, SFunction>.Empty);
-                                    a = (SAlter)a.Prepare(tr, tb);
+                                    a = (SAlter)a.Prepare(tr, tb.Names(tr,SDict<long,long>.Empty));
                                     tr = (STransaction)tr.Install(a, tr.curpos);
                                 }
                                 db = db.MaybeAutoCommit(tr);
@@ -307,7 +317,7 @@ namespace StrongDB
                             {
                                 var tr = db.Transact(asy.rdr);
                                 var u = SUpdateSearch.Get(rdr);
-                                tr = u.Prepare(tr,u.qry).Obey(tr,Context.Empty);
+                                tr = u.Prepare(tr,u.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -335,7 +345,7 @@ namespace StrongDB
                         case Types.SDeleteSearch:
                             {
                                 var tr = db.Transact(asy.rdr);
-                                tr = SDeleteSearch.Get(rdr).Prepare(tr,null).Obey(tr,Context.Empty);
+                                tr = SDeleteSearch.Get(rdr).Prepare(tr,SDict<long,long>.Empty).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -387,7 +397,7 @@ namespace StrongDB
                         db = db.Rollback();
            //             db.result = null;
                         asy.StartException();
-           //             Console.WriteLine("Reporting Exception: " + e.Message);
+           //             Console.WriteLine(""+cid+" Reporting Exception: " + e.Message);
                         asy.Write(Types.Exception);
                         asy.PutString(e.Message);
                          asy.Flush();
@@ -401,7 +411,7 @@ namespace StrongDB
         {
             var sc = (SColumn)rdr._Get();
             var db = (STransaction)rdr.db;
-            sc = (SColumn)sc.Prepare(db, (STable)db.objects[sc.table]);
+            sc = (SColumn)sc.Prepare(db, ((STable)db.objects[sc.table]).Names(db,SDict<long,long>.Empty));
             var cn = db.role[sc.uid];
             rdr.db = db.Install(new SColumn(db,sc.table,sc.dataType,sc.constraints), cn, db.curpos);
         }
@@ -532,7 +542,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (13 March 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (22 March 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase

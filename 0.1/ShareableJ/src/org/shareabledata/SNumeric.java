@@ -4,7 +4,6 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.io.*;
 /**
  *
  * @author Malcolm
@@ -16,7 +15,7 @@ public class SNumeric extends Serialisable implements Comparable {
             super(Types.SNumeric);
             num = n;
         }
-        SNumeric(Reader f)
+        SNumeric(Reader f) throws Exception
         {
             super(Types.SNumeric);
             var mantissa = f.GetInteger();
@@ -31,7 +30,7 @@ public class SNumeric extends Serialisable implements Comparable {
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SNumeric(f);
         }

@@ -15,16 +15,27 @@ import java.util.List;
 public class Reader {
         public Buffer buf;
         public int pos = 0;
+        public Context ctx = null;
+        public SDbObject context = SRole.Public;
+        public long lastAlias = SDbObject.maxAlias;
+        public SDatabase db;
+        Reader(SDatabase d)
+        {
+            db = d;
+            buf = new Buffer(d.File());
+        }
         Reader(StreamBase f)
         {
+            db = SDatabase._system;
             buf = new Buffer(f);
         }
-        Reader(StreamBase f, long s) 
+        Reader(SDatabase d, long s) throws Exception
         {
-            buf = new Buffer(f, s);
+            db = d;
+            buf = new Buffer(d.File(), s);
         }
         long getPosition(){ return buf.start + pos; }
-        public int ReadByte()
+        public int ReadByte() throws Exception
         {
             if (pos >= buf.len)
             {
@@ -33,7 +44,7 @@ public class Reader {
             }
             return (buf.len == 0) ? -1 : (buf.buf[pos++]&0xff);
         }
-        public Serialisable _Get(SDatabase d) throws Exception {
+        public Serialisable _Get() throws Exception {
         int tp = ReadByte();
         Serialisable s = null;
         switch (tp) {
@@ -44,35 +55,42 @@ public class Reader {
             case Types.SDate:        s = SDate.Get(this);        break;
             case Types.STimeSpan:    s = STimeSpan.Get(this);    break;
             case Types.SBoolean:     s = SBoolean.Get(this);     break;
-            case Types.STable:       s = STable.Get(d,this);     break;
-            case Types.SRow:         s = SRow.Get(d, this);      break;
+            case Types.STable:       s = STable.Get(this);     break;
+            case Types.SRow:         s = SRow.Get(this);      break;
             case Types.SColumn:      s = SColumn.Get(this);      break;
-            case Types.SRecord:      s = SRecord.Get(d, this);   break;
-            case Types.SUpdate:      s = SUpdate.Get(d, this);   break;
-            case Types.SDelete:      s = SDelete.Get(d, this);   break;
+            case Types.SRecord:      s = SRecord.Get(this);   break;
+            case Types.SUpdate:      s = SUpdate.Get(this);   break;
+            case Types.SDelete:      s = SDelete.Get(this);   break;
             case Types.SAlter:       s = SAlter.Get(this);       break;
             case Types.SDrop:        s = SDrop.Get(this);        break;
-            case Types.SIndex:       s = SIndex.Get(d, this);    break;
-            case Types.SExpression:  s = SExpression.Get(d,this);break;
-            case Types.SFunction:    s = SFunction.Get(d,this);  break;
-            case Types.SInPredicate: s = SInPredicate.Get(d,this);break;
-            case Types.SValues:      s = SValues.Get(d,this);    break;
-            case Types.SSelect:      s = SSelectStatement.Get(d,this); break;
-            case Types.SOrder:       s = SOrder.Get(d,this);     break;
+            case Types.SIndex:       s = SIndex.Get(this);    break;
+            case Types.SExpression:  s = SExpression.Get(this);break;
+            case Types.SFunction:    s = SFunction.Get(this);  break;
+            case Types.SInPredicate: s = SInPredicate.Get(this);break;
+            case Types.SValues:      s = SValues.Get(this);    break;
+            case Types.SSelect:      s = SSelectStatement.Get(this); break;
+            case Types.SOrder:       s = SOrder.Get(this);     break;
             case Types.SBigInt:      s = SInteger.Get(this);      break;
-            case Types.SUpdateSearch: s= SUpdateSearch.Get(d,this);break;
-            case Types.SDeleteSearch:s = SDeleteSearch.Get(d,this);break;
-            case Types.SSearch:      s = SSearch.Get(d,this);     break;
-            case Types.SAliasedTable:s = SAliasedTable.Get(d,this);break;
-            case Types.SDropStatement:s= SDropStatement.Get(this);break;
-            case Types.SAlterStatement:s=SAlterStatement.Get(this);break;
-            case Types.SGroupQuery: s = SGroupQuery.Get(d, this); break;
-            case Types.STableExp: s = SJoin.Get(d, this); break;
+            case Types.SUpdateSearch: s= SUpdateSearch.Get(this);break;
+            case Types.SDeleteSearch:s = SDeleteSearch.Get(this);break;
+            case Types.SSearch:      s = SSearch.Get(this);     break;
+            case Types.SAlias:      s = SAlias.Get(this);break;
+            case Types.SGroupQuery: s = SGroupQuery.Get(this); break;
+            case Types.STableExp: s = SJoin.Get(this); break;
+            case Types.SName:       s = SDbObject.Get(this); break;
+            case Types.SArg:        s = new SArg(this); break;
         }
         return s;
     }
+    public STable GetTable() throws Exception
+    {
+        var tb = new STable(getPosition() -1);
+        var nm = GetString();
+        db = db.Install(tb,nm,getPosition());
+        return tb;
+    }
         
-    public Bigint GetInteger() {
+    public Bigint GetInteger() throws Exception {
         var n = ReadByte();
         var cs = new byte[n];
         for (int j = 0; j < n; j++)
@@ -80,17 +98,17 @@ public class Reader {
         return new Bigint(cs);
     }
     
-    public int GetInt() 
+    public int GetInt() throws Exception
     {
         return GetInteger().toInt();
     }
     
-    public long GetLong() 
+    public long GetLong() throws Exception
     {
         return GetInteger().toLong();
     }
 
-    public String GetString() {
+    public String GetString() throws Exception {
         int n = GetInt();
         byte[] cs = new byte[n];
         for (int j = 0; j < n; j++) {
@@ -113,7 +131,7 @@ public class Reader {
     public SDbObject[] GetAll(SDatabase d, long pos, long max) throws Exception {
         List<SDbObject> r = new ArrayList<SDbObject>();
         while (getPosition() < max) {
-            r.add((SDbObject) _Get(d));
+            r.add((SDbObject) _Get());
         }
         return (SDbObject[]) r.toArray(new SDbObject[0]);
     }

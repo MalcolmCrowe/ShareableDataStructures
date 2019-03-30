@@ -9,22 +9,23 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SExpression extends Serialisable {
+public class SExpression extends SDbObject {
         public final Serialisable left, right;
         public final int op; // see Op
-        public SExpression(SDatabase db,Serialisable lf,int o,Reader f)
+        public SExpression(Serialisable lf,int o,Reader f)
                 throws Exception
         {
             super(Types.SExpression);
             left = lf;
             op = o;
-            right = f._Get(db);
+            right = f._Get();
         }
         public SExpression(Serialisable lf,int o,Serialisable rt)
         {
             super(Types.SExpression);
             left = lf; right = rt; op = o;
         }
+        @Override
         public  boolean isValue() {return false; }
         public class Op 
         { 
@@ -32,11 +33,40 @@ public class SExpression extends Serialisable {
             Plus =0,Minus =1,Times=2,Divide=3,Eql=4,NotEql=5,Lss=6, 
             Leq=7, Gtr=8, Geq=9, Dot=10, And=11, Or=12, UMinus=13, Not=14;
         }
-        static SExpression Get(SDatabase db,Reader f) throws Exception
+        public static SExpression Get(Reader f) throws Exception
         {
-            var lf = f._Get(db);
-            return new SExpression(db, lf, f.ReadByte(), f);
+            var u = f.GetLong();
+            var lf = f._Get();
+            return new SExpression(lf, f.ReadByte(), f);
         }
+        @Override
+        public Serialisable Prepare(STransaction db,SDict<Long,Long> pt)throws Exception
+        {
+            var lf = left.Prepare(db, pt);
+            if (op == Op.Dot && lf instanceof SDbObject)
+            {
+                var qq = db.objects.get(((SDbObject)lf).uid);
+                if (qq instanceof SQuery)
+                pt = ((SQuery)qq).Names(db,pt);
+            }
+            return new SExpression(lf, op, right.Prepare(db, pt));          
+        }
+        @Override
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            if (op == Op.Dot)
+                return new SExpression(left.UseAliases(db,ta), op, right);
+            return new SExpression(left.UseAliases(db, ta),op,right.UseAliases(db,ta));
+        }
+        @Override
+        public Serialisable UpdateAliases(SDict<Long,String> uids)
+        {
+            var lf = left.UpdateAliases(uids);
+            var rg = right.UpdateAliases(uids);
+            return (lf == left && rg == right) ?
+                this : new SExpression(lf, op, rg);            
+        }
+        @Override
         public void Put(StreamBase f)
         {
             super.Put(f);
@@ -44,29 +74,37 @@ public class SExpression extends Serialisable {
             f.WriteByte((byte)op);
             right.Put(f);
         }
-        public Serialisable Lookup(Context nms)
+        @Override
+        public Serialisable Fix(AStream f)
+        {
+            return new SExpression(left.Fix(f),op,right.Fix(f));            
+        }
+        @Override
+        public Serialisable Lookup(Context cx) 
         {
             if (op == Op.Dot)
             {
-                if (nms.head instanceof RowBookmark)
+                if (cx.refs instanceof SRow)
                 {
-                    var rb = (RowBookmark)nms.head;
-                    var ls = ((SString)left).str;
-                    var rs = ((SString)right).str;
-                    var n = ls + "." +rs;
-                    if (rb._ob.vals.Contains(n))
-                        return rb._ob.vals.Lookup(n);
-                    if (nms==null || !nms.defines(ls))
-                        return this;
-                    if (ls.compareTo(rb._rs._qry.getAlias()) == 0)
-                        return (nms!=null && nms.defines(rs))?nms.get(rs):this;
-                    var rw = (SRow)rb._ob.get(ls);
-                    return (rw!=null && rw.defines(rs))?rw.get(rs).Lookup(nms):Null;
+                    SDbObject ln = null;
+                    SDbObject rn = null;
+                    SRow sr = null;
+                    if (left instanceof SDbObject)
+                        ln = (SDbObject)left;
+                    if (right instanceof SDbObject)
+                        rn = (SDbObject)right;
+                    if (ln!=null && cx.defines(ln.uid) &&
+                            cx.get(ln.uid) instanceof SRow)
+                        sr = (SRow)cx.get(ln.uid);
+                    try {
+                        if (sr!=null && sr.defines(rn.uid))
+                            return sr.get(rn.uid); // no exception
+                    } catch(Exception e){}
                 }
                 return this;
             }
-            var lf = left.Lookup(nms);
-            var rg = right.Lookup(nms);
+            var lf = left.Lookup(cx);
+            var rg = right.Lookup(cx);
             if (!(lf.isValue() && rg.isValue()))
                 return new SExpression(lf, op, rg);
             switch (op)
@@ -360,9 +398,10 @@ public class SExpression extends Serialisable {
                     }
                 case Op.Dot:
                     {
-                        var ls = ((SString)left).str;
-                        var a = (nms!=null && nms.defines(ls)) ? nms.get(ls)  : left;
-                        return a.Lookup(nms);
+                        var ls = (ILookup<Long,Serialisable>)left.Lookup(cx);
+                        if (ls!=null)
+                            return ls.get(((SDbObject)right).uid);
+                        break;
                     }
             }
             return Null;
@@ -379,12 +418,12 @@ public class SExpression extends Serialisable {
         {
             return v ? SBoolean.True : SBoolean.False;
         }
-        public SDict<Long,SFunction> Aggregates(SDict<Long,SFunction> ags,Context cx)
+        public SDict<Long,Serialisable> Aggregates(SDict<Long,Serialisable> ags)
         {
             if (left != null)
-                ags = left.Aggregates(ags, cx);
+                ags = left.Aggregates(ags);
             if (right != null)
-                ags = right.Aggregates(ags, cx);
+                ags = right.Aggregates(ags);
             return ags;
         }
 }

@@ -26,7 +26,7 @@ public class SDate extends Serialisable implements Comparable {
             year = y; month = m; 
             rest = r;
         }
-        SDate(Reader f)
+        SDate(Reader f) throws Exception
         {
             super(Types.SDate, f);
             year = f.GetInt();
@@ -41,7 +41,7 @@ public class SDate extends Serialisable implements Comparable {
             f.PutInt(month);
             f.PutInteger(rest);
         }
-        public static Serialisable Get(Reader f) 
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SDate(f);
         }
@@ -77,7 +77,7 @@ public class SDate extends Serialisable implements Comparable {
                     year,month,day,hour,min,sec,f);
         }
         @Override
-        public void Append(SDatabase db,StringBuilder sb)
+        public void Append(StringBuilder sb)
         {
             
             sb.append('"');sb.append(str());sb.append('"');

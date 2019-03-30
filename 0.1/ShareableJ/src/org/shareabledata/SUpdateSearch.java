@@ -12,44 +12,61 @@ package org.shareabledata;
 public class SUpdateSearch extends Serialisable 
 {
         public final SQuery qry;
-        public final SDict<String, Serialisable> assigs;
-        public SUpdateSearch(SQuery q,SDict<String,Serialisable> a)
+        public final SDict<Long, Serialisable> assigs;
+        public SUpdateSearch(SQuery q,SDict<Long,Serialisable> a)
         {
             super(Types.SUpdateSearch);
             qry = q; assigs = a;
         }
+        @Override
         public STransaction Obey(STransaction tr,Context cx) throws Exception
         {
-            for (var b = (RowBookmark)qry.RowSet(tr,qry,null,cx).First(); 
+            for (var b = (RowBookmark)qry.RowSet(tr,qry,null).First(); 
                     b != null; b = (RowBookmark)b.Next())
             {
-                SDict<String, Serialisable> u = null;
+                SDict<Long, Serialisable> u = null;
                 for (var c = assigs.First(); c != null; c = c.Next())
                 {
                     var v = c.getValue();
-                    var vl = v.val.Lookup(new Context(b,null));
+                    var vl = v.val.Lookup(b._cx);
                     u=(u==null)?new SDict(v.key,vl):u.Add(v.key, vl);
                 }
                 tr = b.Update(tr,u);
             }
             return tr;
         }
-        public static SUpdateSearch Get(SDatabase db,Reader f) throws Exception
+        public static SUpdateSearch Get(Reader f) throws Exception
         {
-            var q = (SQuery)f._Get(db);
+            var q = (SQuery)f._Get();
             var n = f.GetInt();
-            SDict<String, Serialisable> a = null;
+            SDict<Long, Serialisable> a = null;
             for (var i=0;i<n;i++)
             {
-                var s = f.GetString();
-                var qv = q.Lookup(s);
-                if (qv ==null || !(qv instanceof SColumn))
+                var s = f._Get();
+                if (s ==null || !(s instanceof SDbObject))
                     throw new Exception("Column " + s + " not found");
-                a =(a==null)?new SDict(((SColumn)qv).name,f._Get(db)):
-                        a.Add(((SColumn)qv).name, f._Get(db));    
+                var ob = (SDbObject)s;
+                var v = f._Get();
+                a =(a==null)?new SDict(ob.uid,v):
+                        a.Add(ob.uid, v);    
             }
             return new SUpdateSearch(q, a);
         }
+        @Override
+        public Serialisable Prepare(STransaction db, SDict<Long, Long> pt)
+                throws Exception
+        {
+            SDict<Long, Serialisable> a = null;
+            for (var b = assigs.First(); b != null; b = b.Next())
+            {
+                var k = SDbObject.Prepare(b.getValue().key, pt);
+                var v = b.getValue().val.Prepare(db, pt);
+                a = (a==null)?new SDict(k,v):a.Add(k,v);
+            }
+            var q = (SQuery)qry.Prepare(db,pt);
+            return new SUpdateSearch(q,a);
+        }
+        @Override
         public void Put(StreamBase f) 
         {
             super.Put(f);
@@ -57,7 +74,9 @@ public class SUpdateSearch extends Serialisable
             f.PutInt(assigs.Length);
             for (var b = assigs.First(); b != null; b = b.Next())
             {
-                f.PutString(b.getValue().key); b.getValue().val.Put(f);
+                f.WriteByte((byte)Types.SName); 
+                f.PutLong(b.getValue().key); 
+                b.getValue().val.Put(f);
             }
         }
         public String toString()

@@ -16,7 +16,7 @@ public class SString extends Serialisable implements Comparable {
             super(Types.SString);
             str = s;
         }
-        SString(Reader f) 
+        SString(Reader f) throws Exception
         {
             super(Types.SString, f);
             str = f.GetString();
@@ -27,7 +27,7 @@ public class SString extends Serialisable implements Comparable {
             super.Put(f);
             f.PutString(str);
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(Reader f) throws Exception
         {
             return new SString(f);
         }
@@ -37,7 +37,7 @@ public class SString extends Serialisable implements Comparable {
             return str.compareTo(that.str);
         }
         @Override
-        public void Append(SDatabase db,StringBuilder sb)
+        public void Append(StringBuilder sb)
         {
             sb.append('"');sb.append(str);sb.append('"');
         }

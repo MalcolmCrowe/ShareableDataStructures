@@ -9,17 +9,17 @@ package org.shareabledata;
  * @author Malcolm
  */
 public class STable extends SQuery {
-        public final String name;
-        public final SDict<Long,SSelector> cols;
+        public final SDict<Long,SColumn> cols;
         public final SDict<Long, Long> rows; // defpos->uid of latest update
         public final SDict<Long,Boolean> indexes;
-        public STable Add(SColumn c) 
+        public STable Add(SColumn c,String s) 
         {
             return new STable(this,
                     (cols==null)?new SDict<>(c.uid,c):cols.Add(c.uid,c),
-                    (display==null)?new SDict<>(0,c.name):display.Add(display.Length,c.name),
+                    (display==null)?new SDict<>(0,new Ident(c.uid,s)):
+                            display.Add(display.Length,new Ident(c.uid,s)),
                     (cpos==null)?new SDict<>(0,c):cpos.Add(cpos.Length,c),
-                    (names==null)?new SDict<>(c.name,c):names.Add(c.name, c)
+                    (refs==null)?new SDict<>(c.uid,c):refs.Add(c.uid, c)
            );
         }
         public STable Add(SRecord r)
@@ -36,7 +36,7 @@ public class STable extends SQuery {
                 var k = 0;
                 var sc = cols.Lookup(n);
                 SDict<Integer,Serialisable> cp = null;
-                SDict<Integer,String> di = null;
+                SDict<Integer,Ident> di = null;
                 var db = display.First();
                 for(var b=cpos.First();db!=null && b!=null;b=b.Next(),
                         db=db.Next(),k++)
@@ -45,11 +45,12 @@ public class STable extends SQuery {
                     if (v instanceof SColumn && ((SColumn)v).uid!=n)
                     {
                         var c = (SColumn)v;
-                        di = (di==null)?new SDict<>(k,c.name):di.Add(k,c.name);
+                        var id = db.getValue().val;
+                        di = (di==null)?new SDict<>(k,id):di.Add(k,id);
                         cp = (cp==null)?new SDict<>(k,c):cp.Add(k,c);   
                     }
                 }
-                return new STable(this, cols.Remove(n),di,cp,names.Remove(sc.name));
+                return new STable(this, cols.Remove(n),di,cp,refs.Remove(sc.uid));
             }
             else
                 return new STable(this,rows.Remove(n));
@@ -57,31 +58,27 @@ public class STable extends SQuery {
         STable(int ty,STable tb)
         {
             super(ty,tb);
-            name = tb.name;
             cols = tb.cols;
             rows = tb.rows;
             indexes = tb.indexes;
         }
-        STable(String n, long u)
+        STable(long u)
         {
             super(Types.STable,u);
-            name = n;
             cols = null;
             rows = null;
             indexes = null;
         }
-        public STable(String n)
+        STable(int t,long u)
         {
-            super(Types.STable,-1);
-            name = n;
+            super(t,u);
             cols = null;
             rows = null;
             indexes = null;
         }
-        public STable(STransaction tr,String n)
+        public STable(STransaction tr)
         {
             super(Types.STable,tr);
-            name = n;
             cols = null;
             rows = null;
             indexes = null;
@@ -89,16 +86,14 @@ public class STable extends SQuery {
         public STable(STable t,String n)
         {
             super(t);
-            name = n;
             cols = t.cols;
             rows = t.rows;
             indexes = t.indexes;
         }
-        STable(STable t,SDict<Long,SSelector> c,SDict<Integer,String>a,
-                SDict<Integer,Serialisable> p,SDict<String,Serialisable> n) 
+        STable(STable t,SDict<Long,SColumn> c,SDict<Integer,Ident>a,
+                SDict<Integer,Serialisable> p,SDict<Long,Serialisable> n) 
         {
             super(t,a,p,n);
-            name = t.name;
             cols = c;
             rows = t.rows;
             indexes = t.indexes;
@@ -106,7 +101,6 @@ public class STable extends SQuery {
         STable(STable t,SDict<Long,Long> r)
         {
             super(t);
-            name = t.name;
             cols = t.cols;
             rows = r;
             indexes = t.indexes;
@@ -114,70 +108,58 @@ public class STable extends SQuery {
         STable(SDict<Long,Boolean> x,STable t)
         {
             super(t);
-            name = t.name;
             cols = t.cols;
             rows = t.rows;
             indexes = x;
         }
-        STable(Reader f)
-        {
-            super(Types.STable,f);
-            name = f.GetString();
-            cols = null;
-            rows = null;
-            indexes = null;
-        }
         // When an STable is committed is should be empty.
         // If the transactions has cols/rows for it they will committed later.
-        public STable(STable t,AStream f) throws Exception
+        public STable(STable t,String nm,AStream f) throws Exception
         {
             super(t,f);
-            name = t.name;
-            f.PutString(name);
+            f.PutString(nm);
             cols = null;
             rows = null;
             indexes = null;
         }
-        public static STable Get(SDatabase db,Reader f)throws Exception
+        public static STable Get(Reader f)throws Exception
         {
-            var tb = new STable(f);
-            var n = tb.name;
-            if (tb.uid<0)
+            var db = f.db;
+            if (f instanceof SocketReader)
             {
-                if (n.charAt(0) == '_')
-                    tb = (STable)SysTable.system.Lookup(n);
-                else
-                    tb = db.GetTable(n);
+                var u = f.GetLong();
+                var nm = db.role.uids.get(u);
+                if (!db.role.globalNames.Contains(nm))
+                    throw new Exception("No table " + nm);
+                return (STable)db.objects.get(db.role.globalNames.get(nm));
             }
-            if (tb==null)
-                    throw new Exception("No such table "+n);
+            var c = f.getPosition() - 1;
+            var tb = new STable(c);
+            var tn = f.GetString();
+            f.db = db.Install(tb,tn,c);
             return tb;
         }
         @Override
-        public void Put(StreamBase f) 
+        public Serialisable Prepare(STransaction db, SDict<Long,Long> pt)
         {
-            super.Put(f);
-            f.PutString(name);
+            return this;
         }
         @Override
-        public Serialisable Lookup(Context nms) 
+        public Serialisable UseAliases(SDatabase db,SDict<Long, Long> ta)
         {
-             return (nms.head instanceof RowBookmark)?
-                     ((RowBookmark)nms.head)._ob:this;
+            if (ta.Contains(uid))
+                return new SAlias(this, ta.get(uid), uid);
+            return super.UseAliases(db,ta);
         }
         @Override
-        public boolean Conflicts(Serialisable that)
+        public Serialisable Lookup(Context nms)
         {
-            switch (that.type)
-            {
-                case Types.STable:
-                    return ((STable)that).name.compareTo(name) == 0;
-            }
-            return false;
+             return (nms.refs instanceof RowBookmark)?
+                     (SRow)((RowBookmark)nms.refs)._cx.refs: this;
         }
         @Override
         public RowSet RowSet(STransaction tr,SQuery top, 
-                SDict<Long,SFunction> ags,Context cx)
+                SDict<Long,Serialisable> ags)
         {
             if (indexes!=null)
                 for (var b = indexes.First(); b != null; b = b.Next())
@@ -189,12 +171,12 @@ public class STable extends SQuery {
             return new TableRowSet(tr, this);
         }
         @Override
-        public String getAlias()
+        public long getAlias()
         {
-            return name;
+            return uid;
         }
         public String toString()
         {
-            return super.toString()+name;
+            return "Table "+Uid();
         }
 }

@@ -29,9 +29,10 @@ namespace Test
             {
                 Console.WriteLine("13 March 2019 Respeatable tests");
                 Console.WriteLine("Ensure testdb not present in database folder for any of");
-                Console.WriteLine("Test"); // skips test 10
+                Console.WriteLine("Test"); 
                 Console.WriteLine("Test 10 0");
-                Console.WriteLine("Test commit");
+                Console.WriteLine("Test 0 0 commit");
+                Console.WriteLine("The next message should be 'Testing complete'");
                 new Program(args).Tests();
                 Console.WriteLine("Testing complete");
                 Console.ReadLine();
@@ -39,6 +40,7 @@ namespace Test
             catch (Exception e)
             {
                 Console.WriteLine("Exception: " + e.Message);
+                Console.ReadLine();
             }
         }
         void Begin()
@@ -64,6 +66,7 @@ namespace Test
             Test9(test); 
             Test10(test);
             Test11(test);
+    //        Test12(test);
         }
         void Test1(int t)
         {
@@ -178,7 +181,7 @@ namespace Test
             conn.ExecuteNonQuery("insert a values(23,6)");
             CheckResults(5, 1,"select from a", "[{b:17,c:15},{b:23,c:6}]");
             CheckResults(5, 2,"select b-3 as f,22 as g from a", "[{f:14,g:22},{f:20,g:22}]");
-            CheckResults(5, 3,"select (a.b) as f,(c) from a", "[{f:17,c:15},{f:23,c:6}]");
+            CheckResults(5, 3,"select (a.b) as f,(c) from a", "[{f:17,col2:15},{f:23,col2:6}]");
             CheckResults(5, 4,"select b+3,d.c from a d", "[{col1:20,c:15},{col1:26,c:6}]");
             CheckResults(5, 5,"select (b as d,c) from a", "[{col1:{d:17,c:15}},{col1:{d:23,c:6}}]");
             CheckResults(5, 6,"select from a orderby c", "[{b:23,c:6},{b:17,c:15}]");
@@ -212,13 +215,13 @@ namespace Test
             if (!commit)
             {
                 Begin();
-                conn.CreateTable("a");
-                conn.CreateColumn("a", Types.SDate, "b");
-                conn.CreateColumn("a", Types.STimeSpan, "c");
-                conn.CreateColumn("a", Types.SBoolean, "d"); 
-                conn.Insert("a", new string[0], new Serialisable[] { new SDate(new DateTime(2019,01,06,12,30,0)),
+                conn.CreateTable("ta");
+                conn.CreateColumn("ta", Types.SDate, "b");
+                conn.CreateColumn("ta", Types.STimeSpan, "c");
+                conn.CreateColumn("ta", Types.SBoolean, "d"); 
+                conn.Insert("ta", new string[0], new Serialisable[] { new SDate(new DateTime(2019,01,06,12,30,0)),
             new STimeSpan(new TimeSpan(2,0,0)),SBoolean.False});
-                CheckResults(6,2,"select from a", "[{b:\"2019-01-06T12:30:00\",c:\"02:00:00\",d:\"false\"}]");
+                CheckResults(6,2,"select from ta", "[{b:\"2019-01-06T12:30:00\",c:\"02:00:00\",d:\"false\"}]");
                 Rollback();
             }
         }
@@ -240,34 +243,34 @@ namespace Test
             if (t > 0 && t != 8)
                 return;
             Begin();
-            conn.ExecuteNonQuery("create table A(B integer,C integer,D integer)");
-            conn.ExecuteNonQuery("insert A values(4,2,43)");
-            conn.ExecuteNonQuery("insert A values(8,3,82)");
-            conn.ExecuteNonQuery("insert A values(7,4,29)");
-            conn.ExecuteNonQuery("create table E(F integer,C integer,G integer)");
-            conn.ExecuteNonQuery("insert E values(4,3,22)");
-            conn.ExecuteNonQuery("insert E values(11,4,10)");
-            conn.ExecuteNonQuery("insert E values(7,2,31)");
-            CheckResults(8, 1, "select from A natural join E" ,
+            conn.ExecuteNonQuery("create table JA(B integer,C integer,D integer)");
+            conn.ExecuteNonQuery("insert JA values(4,2,43)");
+            conn.ExecuteNonQuery("insert JA values(8,3,82)");
+            conn.ExecuteNonQuery("insert JA values(7,4,29)");
+            conn.ExecuteNonQuery("create table JE(F integer,C integer,G integer)");
+            conn.ExecuteNonQuery("insert JE values(4,3,22)");
+            conn.ExecuteNonQuery("insert JE values(11,4,10)");
+            conn.ExecuteNonQuery("insert JE values(7,2,31)");
+            CheckResults(8, 1, "select from JA natural join JE" ,
                 "[{B:4,C:2,D:43,F:7,G:31},{B:8,C:3,D:82,F:4,G:22},{B:7,C:4,D:29,F:11,G:10}]");
-            CheckResults(8, 2, "select D,G from A cross join E where D<G",
+            CheckResults(8, 2, "select D,G from JA cross join JE where D<G",
                 "[{D:29,G:31}]");
-            CheckResults(8, 3, "select B,D,G from A, E where B=F",
+            CheckResults(8, 3, "select B,D,G from JA, JE where B=F",
                 "[{B:4,D:43,G:22},{B:7,D:29,G:31}]");
-            CheckResults(8, 4, "select B,D,G from A H, E where H.C=E.C",
+            CheckResults(8, 4, "select B,D,G from JA H, JE where H.C=JE.C",
                 "[{B:4,D:43,G:31},{B:8,D:82,G:22},{B:7,D:29,G:10}]");
-            CheckResults(8, 5, "select from A inner join E on B=F",
-                "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},"+
-                "{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}]");
-            CheckResults(8, 6, "select from A left join E on B=F",
-    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
-    "{B:8,\"A.C\":3,D:82}]");
-            CheckResults(8, 7, "select from A right join E on B=F",
-    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
-    "{F:11,\"E.C\":4,G:10}]");
-            CheckResults(8, 8, "select from A full join E on B=F",
-    "[{B:4,\"A.C\":2,D:43,F:4,\"E.C\":3,G:22},{B:7,\"A.C\":4,D:29,F:7,\"E.C\":2,G:31}," +
-    "{B:8,\"A.C\":3,D:82},{F: 11,\"E.C\":4,G:10}]");
+            CheckResults(8, 5, "select from JA inner join JE on B=F",
+                "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},"+
+                "{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}]");
+            CheckResults(8, 6, "select from JA left join JE on B=F",
+    "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}," +
+    "{B:8,\"JA.C\":3,D:82}]");
+            CheckResults(8, 7, "select from JA right join JE on B=F",
+    "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}," +
+    "{F:11,\"JE.C\":4,G:10}]");
+            CheckResults(8, 8, "select from JA full join JE on B=F",
+    "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}," +
+    "{B:8,\"JA.C\":3,D:82},{F: 11,\"JE.C\":4,G:10}]");
             Rollback();
         }
         void Test9(int t)
@@ -275,36 +278,37 @@ namespace Test
             if (t > 0 && t != 9)
                 return;
             Begin();
-            conn.ExecuteNonQuery("create table a(b integer,c numeric)");
-            conn.ExecuteNonQuery("insert a values(12345678901234567890123456789,123.4567)");
-            conn.ExecuteNonQuery("insert a values(0,123.4567e-15)");
-            conn.ExecuteNonQuery("insert a values(12,1234)");
-            conn.ExecuteNonQuery("insert a values(34,0.5678e9)");
-            CheckResults(9, 1, "select from a", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
+            conn.ExecuteNonQuery("create table ba(b integer,c numeric)");
+            conn.ExecuteNonQuery("insert ba values(12345678901234567890123456789,123.4567)");
+            conn.ExecuteNonQuery("insert ba values(0,123.4567e-15)");
+            conn.ExecuteNonQuery("insert ba values(12,1234)");
+            conn.ExecuteNonQuery("insert ba values(34,0.5678e9)");
+            CheckResults(9, 1, "select from ba", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
             Rollback();
             Begin();
-            conn.CreateTable("a");
-            conn.CreateColumn("a", Types.SInteger, "b");
-            conn.CreateColumn("a", Types.SNumeric, "c"); 
-            conn.Insert("a", new string[0], new Serialisable[] {
+            conn.CreateTable("Ba");
+            conn.CreateColumn("Ba", Types.SInteger, "b");
+            conn.CreateColumn("Ba", Types.SNumeric, "c"); 
+            conn.Insert("Ba", new string[0], new Serialisable[] {
                 new SInteger(Integer.Parse("12345678901234567890123456789")),
                 new SNumeric(Numeric.Parse("123.4567"))});
-            conn.Insert("a", new string[0], new Serialisable[] {
+            conn.Insert("Ba", new string[0], new Serialisable[] {
                 new SInteger(0),new SNumeric(Numeric.Parse("123.4567e-15"))});
-            conn.Insert("a", new string[0], new Serialisable[] {
+            conn.Insert("Ba", new string[0], new Serialisable[] {
                 new SInteger(12),new SNumeric(1234,4,0)});
-            conn.Insert("a", new string[0], new Serialisable[] {
+            conn.Insert("Ba", new string[0], new Serialisable[] {
                 new SInteger(34),new SNumeric(new Numeric(0.5678e9))});
-            CheckResults(9, 2, "select from a", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
+            CheckResults(9, 2, "select from Ba", "[{\"b\": 12345678901234567890123456789, \"c\": 123.4567},{\"b\": 0, \"c\": 1.234567E-13},{\"b\": 12, \"c\": 1234},{\"b\": 34, \"c\": 567800000}]");
             Rollback();
         }
+
         /// <summary>
-        /// Check transaction clficts for read transactions
+        /// Check transaction conflicts for read transactions
         /// </summary>
         /// <param name="t"></param>
-        async void Test10(int t)
+        void Test10(int t)
         {
-            if (t > 0 && t != 10)
+            if (commit || (t > 0 && t != 10)) //This test runs if commit is false
                 return;
             try
             {
@@ -345,7 +349,7 @@ namespace Test
         }
         void Test11(int t)
         {
-            if (t > 0 && t != 11)
+            if (commit || (t > 0 && t != 11)) // this test only runs if commit is false
                 return;
             if (qry == 0 || qry == 1)
             {
@@ -379,6 +383,24 @@ namespace Test
             conn.CreateColumn("cs", Types.SInteger, "d",
                     ("GENERATED", new SFunction(SFunction.Func.Generated,
                         new SExpression(new SDbObject(Types.SName,b), SExpression.Op.Plus, new SDbObject(Types.SName,c)))));
+            Rollback();
+        }
+        void Test12(int t)
+        {
+            if (t > 0 && t != 12)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table sce(a integer,b string)");
+            conn.ExecuteNonQuery("insert sce values(12,'Zodiac')");
+            conn.ExecuteNonQuery("insert sce values(13,'Bakers')");
+            conn.ExecuteNonQuery("insert sce values(14,'Fortnight')");
+            conn.ExecuteNonQuery("create table dst(c integer)");
+            conn.ExecuteNonQuery("insert dst select a from sce where b<'H'");
+            CheckResults(12, 1, "select from dst", "[{c:13},{c:14}]");
+            CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
+                "[{a:12},{a:14}]");
+            CheckResults(12, 3, "select from dst where c in select a from sce where b='Bakers'",
+                "[{c:13)}]");
             Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)

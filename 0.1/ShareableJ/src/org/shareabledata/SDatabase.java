@@ -15,11 +15,12 @@ public class SDatabase {
 
     public final String name;
     public final SDict<Long, SDbObject> objects;
-    public final SDict<String, SDbObject> names;
     public final long curpos;
+    public final SRole role;
     static Object files = new Object(); // a lock 
     protected static SDict<String, AStream> dbfiles = null;
     protected static SDict<String, SDatabase> databases = null;
+    public static final SDatabase _system = System();
 
     SDatabase getRollback() {
         return this;
@@ -48,6 +49,10 @@ public class SDatabase {
         Install(db);
         return db;
     }
+    protected static SDatabase System()
+    {
+        return SysTable.SysTables(new SDatabase());
+    }
 
     synchronized public static void Install(SDatabase db) {
         if (databases == null) {
@@ -57,7 +62,7 @@ public class SDatabase {
         }
     }
 
-    public SRecord Get(long pos) {
+    public SRecord Get(Long pos) {
         var s = _Get(pos);
         SRecord rc = null;
         if (s != null && s.type == Types.SRecord || s.type == Types.SUpdate) {
@@ -84,90 +89,148 @@ public class SDatabase {
             throw new Error("bad log at "+pos);
         }
     }
-
+    public String Name(long uid) throws Exception
+    {
+        if (uid == -1)
+            return "PUBLIC";
+        if (!role.defines(uid))
+            throw new Exception("Bad long " + SDbObject._Uid(uid));
+        return role.uids.get(uid);
+    }
+    SDatabase(){
+        name = "SYSTEM";
+        objects = null;
+        role = SRole.Public;
+        curpos = 0;
+    }
     SDatabase(String fname) {
         name = fname;
-        objects = null;
-        names = null;
+        objects = _system.objects;
+        role = _system.role;
         curpos = 0;
     }
 
     protected SDatabase(SDatabase db) {
         name = db.name;
         objects = db.objects;
-        names = db.names;
+        role = db.role;
         curpos = db.curpos;
     }
 
     // CRUD on Records changes indexes as well as table, so we need this
     protected SDatabase(SDatabase db, SDict<Long, SDbObject> obs, 
-            SDict<String,SDbObject> nms,long c) {
+            SRole r,long c) {
         name = db.name;
         objects = obs;
-        names = nms;
+        role = r;
         curpos = c;
     }
     protected SDatabase(SDatabase db,long pos)
     {
         name = db.name;
         objects = db.objects;
-        names = db.names;
+        role = db.role;
         curpos = pos;
     }
     SDatabase New(SDict<Long, SDbObject> obs, 
-            SDict<String,SDbObject> nms,long c)
+            SRole r,long c)
     {
-        return new SDatabase(this,obs,nms,c);
+        return new SDatabase(this,obs,r,c);
+    }
+    public SDatabase _Add(SDbObject s, String nm, long p) throws Exception
+    {
+        switch (s.type)
+        {
+            case Types.STable: return Install((STable)s, nm, p);
+            case Types.SColumn: return Install((SColumn)s, nm, p);
+//             case Types.SAlter: return Install((SAlter)s, nm, p);
+        }
+        return this;
+    }
+    public SDatabase Add(long u,String n)
+    {
+        return New(objects, role.Add(u,n),curpos);
+    }
+    public SDatabase Add(long t, long c, String n)
+    {
+        return New(objects, role.Add(t,c,n), curpos);
+    }
+    public SDatabase Add(SDbObject ob,long u) throws Exception
+    {
+        return _Add(ob, u);
+    }
+    public SDatabase Add(SDbObject ob,String nm,long u) throws Exception
+    {
+        return _Add(ob, nm, u);
     }
 
-    protected SDatabase Install(STable t, long c) {
-        if (names == null) 
-            return New(new SDict<>(t.uid, t),
-            new SDict<>(t.name, t),c);
-        else
-            return New(objects.Add(t.uid, t),
-            names.Add(t.name, t),c);
+    protected SDatabase Install(STable t, String n,long c) {
+        return New((objects==null)?new SDict(t.uid,t):objects.Add(t.uid, t),
+                new SRole(role,n,t.uid),c);
     }
-    public SDatabase Install(SColumn c, long p)
+    public SDatabase Install(SColumn c, String n, long p) throws Exception
     {
         var obs = objects;
         if (c.uid >= STransaction._uid)
             obs = obs.Add(c.uid, c);
-        var tb = ((STable)obs.Lookup(c.table)).Add(c);
-        return New(obs.Add(c.table,tb), names.Add(tb.name,tb), p);
+        var tb = ((STable)obs.get(c.table)).Add(c,n);
+        if (role.defs!=null && role.defs.Contains(c.table) && 
+                role.defs.get(c.table).Contains(n))
+            throw new Exception("Table "+role.uids.get(tb.uid)+ 
+                    " already has column "+n);
+        return New(obs.Add(c.table,tb).Add(c.uid, c), 
+                role.Add(c.table,c.uid,n).Add(c.uid,n), p);
     }
 
-    protected SDatabase Install(SAlter a, long c) {
+    protected SDatabase Install(SAlter a, long c) throws Exception
+    {
         var obs = objects;
         if (a.uid>STransaction._uid)
             obs = obs.Add(a.uid, a);
-        if (a.parent == 0) {
+        if (a.col == -1) {
             var ot = (STable)obs.Lookup(a.defpos);
-            var nt = new STable(ot, a.name);
-            return New(obs.Add(a.defpos, nt),
-                    names.Remove(ot.name).Add(a.name, nt),c);
+            return New(obs,
+                    role.Remove(Name(ot.uid)).Add(Name(a.uid), ot.uid),c);
         } else {
-            var ot = (STable) obs.Lookup(a.parent);
-            var oc = (ot.cols == null) ? null : ot.cols.Lookup(a.defpos);
-            var nc = new SColumn((SColumn)oc, a.name, a.dataType);
-            var nt = ot.Add(nc);
-            return New(obs.Add(a.defpos, nt),names.Add(a.name, nt),c);
+            var ot = (STable) obs.Lookup(a.defpos);
+            var nc = new SColumn(a.col, ot.uid, a.dataType);
+            var nt = ot.Add(nc,Name(nc.uid));
+            return New(obs.Add(a.defpos, nt),role,c);
         }
     }
 
-    protected SDatabase Install(SDrop d, long c) {
-        if (d.parent == 0) {
-            var ot = (STable)objects.Lookup(d.drpos);
-            return New(objects.Remove(d.drpos),names.Remove(ot.name),c);
+    protected SDatabase Install(SDrop d, long c) throws Exception
+    {
+        var obs = objects;
+        if (d.uid>=STransaction._uid)
+            obs = obs.Add(d.uid, d);
+        if (d.parent == -1) {
+            var ro = role;
+            var ot = objects.Lookup(d.drpos);
+            switch(ot.type)
+            {
+                case Types.STable:
+                    ro = ro.Remove(Name(((STable)ot).uid));
+                    break;
+                case Types.SIndex:
+                {
+                    var x = (SIndex)ot;
+                    var tb = (STable)objects.get(x.table);
+                    tb = new STable(tb.indexes.Remove(x.uid),tb);
+                    obs = obs.Add(tb.uid,tb);
+                    break;
+                }
+            }
+            return New(objects.Remove(d.drpos),ro,c);
         } else {
             var ot = (STable)objects.Lookup(d.parent);
-            STable nt = ot.Remove(d.drpos);
-            return New(objects.Add(d.parent, nt),names,c);
+            var nt = ot.Remove(d.drpos);
+            return New(objects.Add(d.parent, nt),role,c);
         }
     }
 
-    protected SDatabase Install(SView v, long c) {
-        return New(objects.Add(v.uid, v),names.Add(v.name, v),c);
+    protected SDatabase Install(SView v, String n, long c) {
+        return New(objects.Add(v.uid, v),role.Add(n, v.uid),c);
     }
 
     protected SDatabase Install(SIndex x, long c) throws Exception
@@ -180,7 +243,7 @@ public class SDatabase {
             } catch(Exception e){}
         }
         tb = new STable((tb.indexes==null)?new SDict(x.uid,true):tb.indexes.Add(x.uid,true),tb);
-        return New(objects.Add(x.uid, x).Add(tb.uid,tb),names.Add(tb.name, tb),c);
+        return New(objects.Add(x.uid, x).Add(tb.uid,tb),role,c);
     }
 
     public AStream File() {
@@ -188,20 +251,14 @@ public class SDatabase {
     }
 
     SDatabase Load() throws Exception {
-        var rd = new Reader(dbfiles.Lookup(name), 0);
+        var rd = new Reader(this,curpos);
         var db = this;
-        for (var s = rd._Get(this); s != null; s = rd._Get(db)) {
-            db = db._Add((SDbObject)s, ((SDbObject)s).uid);
-        }
-        return new SDatabase(db,rd.getPosition());
+        for (var s = (SDbObject)rd._Get(); s != null; s = (SDbObject)rd._Get())
+            rd.db = rd.db._Add(s, s.uid);
+        return new SDatabase(rd.db,rd.getPosition());
     }
-
     public SDatabase _Add(SDbObject s, long p) throws Exception {
         switch (s.type) {
-            case Types.STable:
-                return Install((STable) s, p);
-            case Types.SColumn:
-                return Install((SColumn) s, p);
             case Types.SUpdate:
                 return Install((SUpdate) s, p);
             case Types.SRecord:
@@ -233,44 +290,41 @@ public class SDatabase {
 
     protected SDatabase Install(SRecord r, long p) throws Exception {
         var obs = objects;
-
+        var ro = role;
         if (r.uid>=STransaction._uid)
             obs = obs.Add(r.uid,r);
         var st = ((STable)obs.Lookup(r.table)).Add(r);
         obs = obs.Add(r.table, st);
-        var nms = names.Add(st.name,st);
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
                 var x = (SIndex)obs.Lookup(b.getValue().key);
-                if (x.table == r.table) {
-                    var k = x.uid;
-                    var v = x.Add(r, r.uid);
-                    obs = obs.Add(k, v);
-                }
-                if (x.references == r.table && !x.Contains(r))
-                    throw new Exception("Referential constraint");
+                x.Check(this,r,false);
+                obs = obs.Add(x.uid,x.Add(r,r.uid));
             }
-        return New(obs, nms, p);
+        return New(obs, ro, p);
     }
 
     protected SDatabase Install(SUpdate u, long c) throws Exception {
         var obs = objects;
+        var ro = role;
         if (u.uid >= STransaction._uid)
             obs = obs.Add(u.uid, u);
         var st = ((STable)obs.Lookup(u.table)).Add(u);
         SRecord sr = null;
         obs = obs.Add(u.table, st);
-        var nms = names.Add(st.name, st);
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
             if (sr == null)
                 sr = Get(u.defpos);
-            obs = obs.Add(x.uid, x.Update(sr, u, c));
+            var ok = x.Key(sr,x.cols);
+            var uk = x.Key(u, x.cols);
+            x.Check(this,u,ok.compareTo(uk)==0);
+            obs = obs.Add(x.uid, x.Update(sr, ok,u,uk, c));
             if (x.references == u.table && !x.Contains(u))
                 throw new Exception("Referential constraint");
         }
-        return New(obs, nms, c);
+        return New(obs, ro, c);
     }
 
     protected SDatabase Install(SDelete d, long p) throws Exception {
@@ -279,26 +333,38 @@ public class SDatabase {
             obs = obs.Add(d.uid, d);
         var st = ((STable)obs.Lookup(d.table));
         SRecord sr = null;
+        if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
             if (sr == null)
                 sr = Get(d.delpos);
             obs = obs.Add(x.uid, x.Remove(sr, p));
-            if (x.references == d.table && x.Contains(sr))
-                throw new Exception("Referential constraint");
+            if (!x.primary)
+                continue;
+            var k = x.Key(sr,x.cols);
+            for (var ob = obs.PositionAt(0L); ob != null; ob = ob.Next()) // don't bother with system tables
+                if (ob.getValue().val instanceof STable)
+                {
+                    var ot = (STable)ob.getValue().val;
+                    for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
+                    {
+                        var nx = (SIndex)obs.get(ox.getValue().key);
+                        if (nx.references == d.table && nx.rows.Contains(k))
+                            throw new Exception("Referential constraint: illegal delete");
+                    }
+                }
         }
-        var nms = names;
+        var ro = role;
         if (sr!=null)
         {
             st = st.Remove(sr.Defpos());
             obs = obs.Add(d.table, st);
-            nms = names.Add(st.name,st);
         }
-        return New(obs, nms, p);
+        return New(obs, ro, p);
     }
 
-    public STransaction Transact(boolean auto) {
-        return new STransaction(this, auto);
+    public STransaction Transact(Reader rdr,boolean auto) {
+        return new STransaction(this, rdr, auto);
     }
 
     public SDatabase MaybeAutoCommit(STransaction tr) throws Exception {
@@ -310,9 +376,8 @@ public class SDatabase {
     }
 
     STable GetTable(String tn) {
-        var ob = (names==null)?null:names.Lookup(tn);
-        return (ob != null && ob.type == Types.STable)
-                ? (STable) ob : null;
+        return role.globalNames.Contains(tn)?
+                (STable)objects.get(role.globalNames.get(tn)):null;
     }
 
     SIndex GetPrimaryIndex(long t) throws Exception {

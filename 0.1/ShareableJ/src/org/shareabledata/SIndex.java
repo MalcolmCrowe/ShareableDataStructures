@@ -16,54 +16,62 @@ public class SIndex extends SDbObject {
     public final long references;
     public final long refindex;
     public final SList<Long> cols;
-    public final SMTree<Long> rows;
+    public final SMTree<Serialisable> rows;
     /// <summary>
     /// A primary or unique index
     /// </summary>
     /// <param name="t"></param>
     /// <param name="c"></param>
 
-    public SIndex(STransaction tr, long t, boolean p, long r, SList<Long> c)
+    public SIndex(long t, boolean p, long r, SList<Long> c)
             throws Exception {
-        super(Types.SIndex, tr);
+        super(Types.SIndex);
         table = t;
         primary = p;
         cols = c;
         references = r;
-        if (r>=0)
-        {
-            var rx = tr.GetPrimaryIndex(r);
-            if (rx==null)
-                throw new Exception("referenced table has no primary index");
-            refindex = rx.uid;
-        } else
-            refindex = -1;
-        rows = new SMTree<Long>(Info((STable) tr.objects.Lookup(table), cols,
-                refindex>=0));
+        rows = new SMTree<Serialisable>(null);
+        refindex = -1L;
     }
 
-    SIndex(SDatabase d, Reader f) throws Exception {
-        super(Types.SIndex, f);
-        table = f.GetLong();
-        primary = f.ReadByte() != 0;
+    SIndex(Reader f) throws Exception 
+    {
+        super(Types.SIndex,f);
+        var ro = f.db.role;
+        var tn = ro.uids.get(f.GetLong());
+        if (!ro.globalNames.Contains(tn))
+            throw new Exception("Table " + tn + " not found");
+        table = ro.globalNames.get(tn);
+        primary = f.ReadByte()!=0;
         var n = f.GetInt();
+        var rt = ro.defs.get(table);
         var c = new Long[n];
-        for (var i = 0; i < n; i++) {
-            c[i] = f.GetLong();
-        }
-        references = f.GetLong();
-        if (references>=0)
+        for (var i = 0; i < n; i++)
         {
-            var rx = d.GetPrimaryIndex(references);
-            if (rx==null)
-                throw new Exception("internal error");
-            refindex = rx.uid;
+            var cn = ro.uids.get(f.GetLong());
+            if (!rt.Contains(cn))
+                throw new Exception("Column " + cn + " not found");
+            c[i] = rt.get(cn);
         }
-        else
-            refindex = -1;
+        var ru = f.GetLong();
+        var rn = (ru == -1L) ? "" : ro.uids.get(ru);
+        var rx = -1L;
+        if (ru != -1)
+        {
+            if (!ro.globalNames.Contains(rn))
+                throw new Exception("Ref table " + rn + " not found");
+            ru = ro.globalNames.get(rn);
+            var qx = f.db.GetPrimaryIndex(ru);
+            if (qx!=null)
+                rx = ((SIndex)qx).uid;
+            else
+                throw new Exception("Ref table " + rn + " has no primary index");
+        }
+        references = ru;
+        refindex = rx;
         cols = new SList<Long>(c);
-        rows = new SMTree<Long>(Info((STable) d.objects.Lookup(table), cols,
-        references>=0));
+        rows = new SMTree<Serialisable>(Info((STable)f.db.objects.get(table), cols,references>=0));
+
     }
 
     public SIndex(SIndex x, AStream f) throws Exception {
@@ -86,7 +94,7 @@ public class SIndex extends SDbObject {
         rows = x.rows;
     }
 
-    public SIndex(SIndex x, SMTree<Long>.MTResult mt) throws Exception 
+    public SIndex(SIndex x, SMTree<Serialisable>.MTResult mt) throws Exception 
     {
         super(x);
         if (mt.tb != TreeBehaviour.Allow) {
@@ -100,7 +108,7 @@ public class SIndex extends SDbObject {
         rows = mt.t;
     }
     
-    public SIndex(SIndex x, SMTree<Long> mt) throws Exception 
+    public SIndex(SIndex x, SMTree<Serialisable> mt) throws Exception 
     {
         super(x);
         table = x.table;
@@ -110,11 +118,33 @@ public class SIndex extends SDbObject {
         cols = x.cols;
         rows = mt;
     }
-
-    public static SIndex Get(SDatabase d, Reader f) throws Exception {
-        return new SIndex(d, f);
+    @Override
+    public void Put(StreamBase f)
+    {
+        super.Put(f);
+        f.PutLong(table);
+        f.WriteByte((byte)(primary ? 1 : 0));
+        f.PutInt(cols.Length);
+        for (var b = cols.First(); b != null; b = b.Next())
+            f.PutLong(b.getValue());
+        f.PutLong(references);
     }
-
+    public static SIndex Get(Reader f) throws Exception {
+        return new SIndex(f);
+    }
+    public void Check(SDatabase db,SRecord r,boolean updating)
+            throws Exception
+    {
+        var k = Key(r, cols);
+        if ((!updating) && refindex == -1 && rows.Contains(k))
+            throw new Exception("Duplicate Key constraint violation");
+        if (refindex != -1)
+        {
+            var rx = (SIndex)db.objects.get(refindex);
+            if (!rx.rows.Contains(k))
+                throw new Exception("Referential constraint violation");
+        }
+    }
     public boolean Contains(SRecord sr) throws Exception {
         return rows.Contains(Key(sr, cols));
     }
@@ -123,32 +153,33 @@ public class SIndex extends SDbObject {
         return new SIndex(this, rows.Add(Key(r, cols), c));
     }
 
-    public SIndex Update(SRecord o, SUpdate u, long c) throws Exception {
+    public SIndex Update(SRecord o, SCList<Variant> ok, SUpdate u, 
+            SCList<Variant> uk, long c) throws Exception {
         return new SIndex(this, 
-                rows.Remove(Key(o, cols), o.uid).Add(Key(u, cols), u.uid));
+                rows.Remove(ok, o.uid).Add(uk, u.uid));
     }
 
     public SIndex Remove(SRecord sr, long c) throws Exception {
         return new SIndex(this, rows.Remove(Key(sr, cols), c));
     }
 
-    SList<TreeInfo<Long>> Info(STable tb, SList<Long> cols, boolean fkey) 
+    SList<TreeInfo<Serialisable>> Info(STable tb, SList<Long> cols, boolean fkey) 
             throws Exception 
     {
-        if (cols==null || cols.Length == 0) {
+        if (cols==null) {
             return null;
         }
         var n = Info(tb, cols.next,fkey);
-        var ti = new TreeInfo<Long>(cols.element, 
+        var ti = new TreeInfo<Serialisable>(tb.cols.Lookup(cols.element), 
                 (cols.Length!=1 || fkey)?'A':'D', 'D', true);
         if (n == null) {
-            return new SList<TreeInfo<Long>>(ti);
+            return new SList<TreeInfo<Serialisable>>(ti);
         }
         return n.InsertAt(ti, 0);
     }
 
     SCList<Variant> Key(SRecord sr, SList<Long> cols) throws Exception {
-        if (cols==null || cols.Length == 0) {
+        if (cols==null) {
             return null;
         }
         return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element),true), Key(sr, cols.next));
@@ -158,6 +189,7 @@ public class SIndex extends SDbObject {
     public String toString() {
         var sb = new StringBuilder(super.toString() + " [" + SDbObject._Uid(table) + "] (");
         var cm = "";
+        if (cols!=null)
         for (var b = cols.First(); b != null; b = b.Next()) {
             sb.append(cm);
             cm = ",";

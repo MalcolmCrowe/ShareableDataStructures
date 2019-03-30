@@ -44,7 +44,7 @@ public class AStream extends StreamBase {
         if (commits!=null && commits.Contains(pos))
             return commits.Lookup(pos);
         try {
-            return new Reader(this,pos)._Get(db);
+            return new Reader(db,pos)._Get();
         } catch(Exception e)
         {
             throw new Error("invalid log at "+pos);
@@ -62,18 +62,20 @@ public class AStream extends StreamBase {
     long pos() {
         return length + wbuf.wpos;
     }
-
+    
     public SDatabase Commit(SDatabase db, STransaction tr) throws Exception {
         commits = null;
         wbuf = new Buffer(this);
         uids = new SDict<Long, Long>(-1L, -1L);
+        if (tr.objects!=null)
         for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next()) {
             var bs = b.getValue();
             switch (bs.val.type) {
                 case Types.STable: {
                     var st = (STable) b.getValue().val;
-                    var nt = new STable(st, this);
-                    db = db._Add(nt, pos());
+                    var nm = tr.Name(st.uid);
+                    var nt = new STable(st, nm, this);
+                    db = db._Add(nt, nm, pos());
                     if (commits==null)
                         commits = new SDict<Long,Serialisable>(nt.uid,nt);
                     else
@@ -82,9 +84,13 @@ public class AStream extends StreamBase {
                 }
                 case Types.SColumn: {
                     var sc = (SColumn) bs.val;
-                    var st = (STable) Lookup(db, Fix(sc.table));
-                    var nc = new SColumn(sc, this);
-                    db = db._Add(nc, pos());
+                    var nm = tr.Name(sc.uid);
+                    var nc = new SColumn(sc, nm, this);
+                    var tb = (STable)db.objects.get(nc.table);
+                    tb = tb.Add(nc,nm);
+                    db = db._Add(nc, nm, pos())
+                            ._Add(tb,db.Name(tb.uid),pos())
+                            .Add(tb.uid,nc.uid,nm);
                     if (commits==null)
                         commits = new SDict<Long,Serialisable>(nc.uid,nc);
                     else

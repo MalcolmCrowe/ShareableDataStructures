@@ -55,7 +55,6 @@ public class StrongStart {
         /// The main entry point for the application. Process arguments and create the main service loop
         public static void main(String[] args) throws Exception
         {
-            SysTable.Init();
             for (String arg : args) {
                 System.out.print(arg + " ");
             }
@@ -111,7 +110,7 @@ public class StrongStart {
  	static String[] Version = new String[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.0"," (13 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (23 March 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
 
 }

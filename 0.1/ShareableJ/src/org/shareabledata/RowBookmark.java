@@ -10,46 +10,48 @@ package org.shareabledata;
  * @author Malcolm
  */
     public abstract class RowBookmark extends Bookmark<Serialisable>
-            implements ILookup<String,Serialisable>
+            implements ILookup<Long,Serialisable>
     {
         public final RowSet _rs;
-        public final SRow _ob;
-        public final SDict<Long,Serialisable> _ags;
-        protected RowBookmark(RowSet rs, SRow ob, int p)
+        public final Context _cx; // first entry is an SRow
+        protected RowBookmark(RowSet rs, Context cx, int p)
         {
             super(p);
-            _rs = rs; _ob = ob; _ags = null;
+            _rs = rs; _cx=cx;
         }
-        protected RowBookmark(RowSet rs, SRow ob, 
-                SDict<Long,Serialisable> a,int p)
+        public SRow Ob() throws Exception
+        { return _cx.Row(); }
+        public static Context _Cx(RowSet rs, SRow r, Context n)
         {
-            super(p);
-            _rs = rs; _ob = ob; _ags = a;
+            if (rs instanceof TableRowSet)
+            {
+                var trs = (TableRowSet)rs;
+                n = Context.New(new SDict(trs._tb.uid, r), n);
+            }
+            return Context.New(r, n);
         }
         @Override
-        public Serialisable getValue() { return  _ob; }
-        public void Append(SDatabase db,StringBuilder sb) throws Exception
-        {
-            _ob.Append(db,sb);
-        }
+        public Serialisable getValue() { return  (SRow)_cx.refs; }
         @Override
-        public boolean defines(String s)
+        public boolean defines(Long s) 
         {
-            return s.compareTo(_rs._qry.getAlias())==0||_ob.vals.Contains(s);
+            return s==_rs._qry.getAlias()||((SRow)_cx.refs).vals.Contains(s);
         }
-        public Serialisable get(String s)
+        public Serialisable get(Long s)
         {
-            return s.compareTo(_rs._qry.getAlias())==0?_ob:_ob.get(s);
+            if (s==_rs._qry.getAlias())
+                return (SRow)_cx.refs;
+            return ((SRow)_cx.refs).vals.get(s);
         }
         public boolean SameGroupAs(RowBookmark r)
         {
             return true;
         }
-        public boolean Matches(SList<Serialisable> wh,Context cx)
+        public boolean Matches(SList<Serialisable> wh)
         {
-            cx = new Context(this, cx);
+            if (wh!=null)
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.getValue().Lookup(cx) != SBoolean.True)
+                if (b.getValue().Lookup(_cx) != SBoolean.True)
                     return false;
             return true;
         }
@@ -62,7 +64,7 @@ package org.shareabledata;
             return null;
         }
         public STransaction Update(STransaction tr,
-                SDict<String,Serialisable> assigs) throws Exception
+                SDict<Long,Serialisable> assigs) throws Exception
         {
             return tr; // no changes here
         }

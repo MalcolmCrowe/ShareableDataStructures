@@ -14,19 +14,17 @@ public class SSearch extends SQuery {
     public final SQuery sce;
     public final SList<Serialisable> where;
 
-    public SSearch(SDatabase db,Reader f) throws Exception {
-        super(Types.SSearch, f);
-        sce = (SQuery) f._Get(db);
-        if (sce == null) {
-            throw new Exception("Query expected");
-        }
+    public SSearch(SQuery sc,Reader f,long u) throws Exception {
+        super(Types.SSearch, u);
         SList<Serialisable> w = null;
         var n = f.GetInt();
         for (var i = 0; i < n; i++) {
-            var x = f._Get(db).Lookup(new Context(sce.names,null));
+            var x = f._Get();
             w = (w == null) ? new SList(x): w.InsertAt(x,i);
         }
+        sce = sc;
         where = w;
+        f.context = this;
     }
 
     public SSearch(SQuery s, SList<Serialisable> w) {
@@ -34,7 +32,12 @@ public class SSearch extends SQuery {
         sce = s;
         where = w;
     }
-
+    @Override
+    public SDict<Long, Long> Names(SDatabase tr, SDict<Long, Long> pt)
+            throws Exception
+    {
+        return sce.Names(tr, pt);
+    }
     @Override
     public void Put(StreamBase f) {
         super.Put(f);
@@ -44,35 +47,71 @@ public class SSearch extends SQuery {
             b.getValue().Put(f);
         }
     }
-
-    public static SSearch Get(SDatabase db, Reader f) throws Exception {
-        return new SSearch(db,f);
+    @Override
+    public Serialisable Prepare(STransaction db, SDict<Long, Long> pt)
+            throws Exception
+    {
+        SList<Serialisable> w = null;
+        var n = 0;
+        for (var b = where.First(); b != null; b = b.Next(),n++)
+        {
+            var v = b.getValue().Prepare(db, pt);
+            w =(w==null)?new SList(v):w.InsertAt(v, n);
+        }
+        return new SSearch((SQuery)sce.Prepare(db, pt),w);
+    }
+    @Override
+    public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+    {
+        SList<Serialisable> w = null;
+        var n = 0;
+        for (var b = where.First(); b != null; b = b.Next(),n++)
+        {
+            var v = b.getValue().UseAliases(db, ta);
+            w =(w==null)?new SList(v):w.InsertAt(v,n);
+        }
+        return new SSearch((SQuery)sce.UseAliases(db, ta), w);
+    }
+    public Serialisable UpdateAliases(SDict<Long, String> uids)
+    {
+        var uu = uids.First();
+        if (uu == null || uu.getValue().key > -1000000)
+            return this;
+        SList<Serialisable> w = null;
+        var n = 0;
+        for (var b = where.First(); b != null; b = b.Next(),n++)
+        {
+            var v = b.getValue().UpdateAliases(uids);
+            w =(w==null)?new SList(v):w.InsertAt(v,n);
+        }
+        return new SSearch((SQuery)sce.UpdateAliases(uids), w);
+    }
+    public static SSearch Get(Reader f) throws Exception {
+        var u = f.GetLong();
+        var sc = f._Get();
+        if (sc==null || !(sc instanceof SQuery))
+            throw new Exception("Query expected");
+        return new SSearch((SQuery)sc,f,u);
     }
     
     @Override
-    public Serialisable Lookup(String a)
+    public Serialisable Lookup(Context cx) 
     {
-        return sce.Lookup(a);
-    }
-
-    @Override
-    public Serialisable Lookup(Context nms) 
-    {
-        return(nms.head instanceof SearchRowSet.SearchRowBookmark)? 
-                sce.Lookup(nms):this;
+        return(cx.refs instanceof SearchRowSet.SearchRowBookmark)? 
+                sce.Lookup(cx):this;
     }
 
     @Override
     public RowSet RowSet(STransaction db, SQuery top, 
-            SDict<Long,SFunction> ags,Context cx) throws Exception {
-        return new SearchRowSet(db, top, this, ags, cx);
+            SDict<Long,Serialisable> ags) throws Exception {
+        return new SearchRowSet(db, top, this, ags);
     }
     
     @Override
-    public String getAlias() {return sce.getAlias(); }
+    public long getAlias() {return sce.getAlias(); }
     
     @Override
-    public SDict<Integer,String> getDisplay() 
+    public SDict<Integer,Ident> getDisplay() 
     {
         return (display!=null)? display:sce.getDisplay();
     }
