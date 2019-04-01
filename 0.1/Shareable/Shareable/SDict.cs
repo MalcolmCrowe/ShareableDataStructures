@@ -109,7 +109,7 @@ namespace Shareable
                     cb = inr.gtr;
                 }
                 else
-                    cb = (cb.Slot(bpos).Item2 ?? throw new Exception("PE04")) as SBucket<K,V>;
+                    cb = (cb.Slot(bpos).Item2 ?? throw new Exception("??")) as SBucket<K,V>;
             }
             return bmk;
         }

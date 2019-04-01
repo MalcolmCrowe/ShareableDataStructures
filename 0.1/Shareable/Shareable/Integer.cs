@@ -188,14 +188,8 @@ namespace Shareable
         static public explicit operator int(Integer x)
 		{
 			int n = x.bytes.Length;
-            if (n > 4)
-            {
-                Console.WriteLine("PE13");
-                for (var i = 0; i < n; i++)
-                    Console.Write(" " + x.bytes[i]);
-                Console.WriteLine();
-                throw (new Exception("PE13 " + Reader.pe13));
-            }
+			if (n>4)
+				throw(new Exception("PE13"));
 			int j=0;
 			int iVal = (n>0 && x.bytes[0]>127)?-1:0;
 			for (;j<n;j++)

@@ -193,7 +193,7 @@ namespace Shareable
             var tb = ((STable)obs[c.table]);
             if (role.defs.Contains(c.table) && role.defs[c.table].Contains(n))
                 throw new Exception("Table " + uids[tb.uid] + " already has column " + n);
-            return New(obs + (c.table, tb+(c,n))+(c.uid,c), role+(c.table,c.uid,n)+(c.uid,n), p);
+            return New(obs + (c.table, tb+c)+(c.uid,c), role+(c.table,c.uid,n)+(c.uid,n), p);
         }
         public SDatabase Install(SRecord r, long c)
         {
@@ -277,9 +277,9 @@ namespace Shareable
             }
             else
             {
-                var ot = (STable)objects[a.defpos];
+                var ot = (STable)objects[a.col];
                 var nc = new SColumn(ot.uid, a.dataType, a.col);
-                var nt = ot + (nc,Name(nc.uid));
+                var nt = ot + nc;
                 return New(obs + (a.defpos, nt),role,c);
             }
         }
@@ -288,7 +288,7 @@ namespace Shareable
             var obs = objects;
             if (d.uid >= STransaction._uid)
                 obs = obs + (d.uid, d);
-            if (d.parent == -1)
+            if (d.parent == 0)
             {
                 var ro = role;
                 var ot = objects[d.drpos];
