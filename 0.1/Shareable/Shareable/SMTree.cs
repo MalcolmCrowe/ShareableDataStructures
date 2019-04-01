@@ -271,8 +271,8 @@ namespace Shareable
                 return (Length == 0) ? 0 : 1;
             if (Length == 0)
                 return -1;
-            var a = First() ?? throw new System.Exception("??");
-            var b = that.First() ?? throw new System.Exception("??");
+            var a = First() ?? throw new System.Exception("PE15");
+            var b = that.First() ?? throw new System.Exception("PE16");
             return a.Value.Item1.CompareTo(b.Value.Item1); // not null
         }
     }

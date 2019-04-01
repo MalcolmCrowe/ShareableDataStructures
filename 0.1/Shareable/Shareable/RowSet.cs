@@ -23,7 +23,7 @@ namespace Shareable
     /// A RowBookmark evaluates its Serialisable _ob (usually an SRow).
     /// This matters especially for SSelectStatements
     /// </summary>
-    public abstract class RowBookmark : Bookmark<Serialisable>,ILookup<long,Serialisable>
+    public abstract class RowBookmark : Bookmark<Serialisable>, ILookup<long, Serialisable>
     {
         public readonly RowSet _rs;
         public readonly Context _cx; // first entry will be an SRow
@@ -33,8 +33,6 @@ namespace Shareable
         }
         public SRow _ob => _cx.Row();
         public override Serialisable Value => (SRow)_cx.refs; // should always be an SRow
-        public Serialisable this[long s] => 
-            (s.CompareTo(_rs._qry.Alias) == 0)?_ob:_ob[s];
         public bool Matches(SList<Serialisable> wh)
         {
             for (var b = wh.First(); b != null; b = b.Next())
@@ -42,9 +40,9 @@ namespace Shareable
                     return false;
             return true;
         }
-        protected static Context _Cx(RowSet rs,SRow r,Context? n = null)
+        protected static Context _Cx(RowSet rs, SRow r, Context? n = null)
         {
-            if (rs is TableRowSet trs) 
+            if (rs is TableRowSet trs)
                 n = new Context(new SDict<long, Serialisable>(trs._tb.uid, r), n);
             return new Context(r, n);
         }
@@ -56,7 +54,7 @@ namespace Shareable
         {
             return null;
         }
-        public virtual STransaction Update(STransaction tr,SDict<long,Serialisable> assigs)
+        public virtual STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
         {
             return tr; // no changes here
         }
@@ -67,8 +65,9 @@ namespace Shareable
 
         public bool defines(long s)
         {
-            return s.CompareTo(_rs._qry.Alias)==0 || _ob.vals.Contains(s);
+            return s == _rs._qry.Alias || _ob.vals.Contains(s);
         }
+        public Serialisable this[long s] => s == _rs._qry.Alias ? _ob : _ob[s];
     }
     public class DistinctRowSet : RowSet
     {
@@ -242,11 +241,11 @@ namespace Shareable
             public override STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
             {
                 return (STransaction)tr.Install(new SUpdate(tr, 
-                    _ob.rec??throw new Exception("??"), assigs),tr.curpos); 
+                    _ob.rec??throw new Exception("PE01"), assigs),tr.curpos); 
             }
             public override STransaction Delete(STransaction tr)
             {
-                var rc = _ob.rec ?? throw new Exception("??");
+                var rc = _ob.rec ?? throw new Exception("PE02");
                 return (STransaction)tr.Install(new SDelete(tr,rc.table, rc.Defpos),tr.curpos); // ok
             }
         }
@@ -364,10 +363,17 @@ namespace Shareable
             public readonly AliasRowSet _ars;
             public readonly RowBookmark _bmk;
             AliasRowBookmark(AliasRowSet ars,RowBookmark bmk,int p)
-                :base(ars,bmk._cx,p)
+                :base(ars,_Context(ars,bmk._cx),p)
             {
                 _ars = ars;
                 _bmk = bmk;
+            }
+            static Context _Context(AliasRowSet ars,Context cx)
+            {
+                var a = ars._alias.alias;
+                var u = ars._tr.objects[a].uid;
+                return new Context(cx.refs,
+                    new Context(new SDict<long, Serialisable>(a, cx[u]),cx.next));
             }
             internal static AliasRowBookmark? New(AliasRowSet ars)
             {
@@ -419,7 +425,7 @@ namespace Shareable
                     {
                         var ma = SCList<Variant>.Empty;
                         var ix = (SIndex)tr.objects[b.Value.Item1];
-                        for (var wb = ix.cols.First(); ma.Length != null && wb != null; wb = wb.Next())
+                        for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
                         {
                             if (!matches.Contains(wb.Value))
                                 break;
@@ -434,7 +440,7 @@ namespace Shareable
                         }
                     }
             }
-            return s?? sc.sce?.RowSet(tr,top,ags) ?? throw new System.Exception("??");
+            return s?? sc.sce?.RowSet(tr,top,ags) ?? throw new System.Exception("PE03");
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -688,27 +694,29 @@ namespace Shareable
         public readonly SJoin _join;
         public readonly RowSet _left, _right;
         public readonly int _klen;
-        public readonly SDict<long, long> _overlaps;
         internal JoinRowSet(STransaction tr,SQuery top, SJoin j, RowSet lf, RowSet rg, 
-            SDict<long, Serialisable> a, SDict<long, long> ov)
+            SDict<long, Serialisable> a)
             : base(tr, j, a, null)
         {
             _join = j;
             var lti = SList<TreeInfo<Serialisable>>.Empty;
             var rti = SList<TreeInfo<Serialisable>>.Empty;
+            var n = 0;
             for (var b = j.ons.First();b!=null;b=b.Next())
             {
                 var e = b.Value;
                 if (e.op != SExpression.Op.Eql)
                     continue;
-                lti += new TreeInfo<Serialisable>((SColumn)e.left, 'A', 'D');
-                rti += new TreeInfo<Serialisable>((SColumn)e.right, 'A', 'D');
+                lti += (new TreeInfo<Serialisable>((SColumn)e.left, 'A', 'D'),n);
+                rti += (new TreeInfo<Serialisable>((SColumn)e.right, 'A', 'D'),n);
+                n++;
             }
             for (var b = j.uses.First(); b != null; b = b.Next())
             {
                 var e = b.Value;
-                lti += new TreeInfo<Serialisable>(j.left.refs[e.Item2], 'A', 'D'); //NB Item2
-                rti += new TreeInfo<Serialisable>(j.right.refs[e.Item1], 'A', 'D');// NB Item1
+                lti += (new TreeInfo<Serialisable>(j.left.refs[e.Item2], 'A', 'D'),n); //NB Item2
+                rti += (new TreeInfo<Serialisable>(j.right.refs[e.Item1], 'A', 'D'),n);// NB Item1
+                n++;
             }
             _klen = lti.Length??0;
             if (lti.Length!=0)
@@ -718,7 +726,6 @@ namespace Shareable
             }
             _left = lf;
             _right = rg;
-            _overlaps = ov;
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -744,7 +751,13 @@ namespace Shareable
             static SRow _Row(JoinRowSet jrs,RowBookmark? lbm,bool ul,RowBookmark? rbm,bool ur)
             {
                 var r = new SRow();
-                Bookmark<(int, long)>? ab;
+                Bookmark<(int, (long,string))>? ab;
+                var ds = SDict<long, (long, string)>.Empty;
+                for (var b = jrs._qry.display.First(); b != null; b = b.Next())
+                {
+                    var id = b.Value.Item2;
+                    ds += (id.Item1, id);
+                }
                 switch (jrs._join.joinType)
                 {
                     default:
@@ -756,9 +769,8 @@ namespace Shareable
                                     for (var b = lbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                     {
                                         var n = ab.Value.Item2;
-                                        if (jrs._overlaps.Contains(n))
-                                            n = jrs._overlaps[n];
-                                        r += (n, b.Value.Item2);
+                                        var k = ds[n.Item1];
+                                        r += (k, b.Value.Item2);
                                     }
                             }
                             if (rbm != null && ur)
@@ -767,11 +779,8 @@ namespace Shareable
                                 for (var b = rbm?._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                                 {
                                     var n = ab.Value.Item2;
-                                    if (((SJoin)jrs._qry).uses.Contains(n))
-                                        continue;
-                                    if (jrs._overlaps.Contains(n))
-                                        n = jrs._overlaps[n];
-                                    r += (n, b.Value.Item2);
+                                    var k = ds[n.Item1];
+                                    r += (k, b.Value.Item2);
                                 }
                             }
                             break;
@@ -788,7 +797,7 @@ namespace Shareable
                             {
                                 ab = rbm._ob.names.First();
                                 for (var b = rbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                                    if (!((SJoin)jrs._qry).uses.Contains(ab.Value.Item2))
+                                    if (!((SJoin)jrs._qry).uses.Contains(ab.Value.Item2.Item1))
                                         r += (ab.Value.Item2, b.Value.Item2);
                             }
                             break;
@@ -922,7 +931,7 @@ namespace Shareable
             int j = 0;
             for (var b = tb.cpos.First(); b != null; b = b.Next())
                 if (b.Value.Item2 is SColumn s)
-                    r += (s.uid, vals[j++]);
+                    r += ((s.uid,SDatabase._system.Name(s.uid)), vals[j++]);
                         // Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
             return r;
         }

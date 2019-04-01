@@ -7,53 +7,40 @@ namespace Shareable
     ///All other instances are of subclasses.
     public class SQuery : SDbObject
     {
-        public readonly SDict<int, long> display;
+        public readonly SDict<int, (long,string)> display;
         public readonly SDict<int,Serialisable> cpos;
         public readonly SDict<long, Serialisable> refs;
-        public readonly SDict<long,STable> tbs;
         public static readonly SQuery Static = new SQuery(Types.SQuery,SysTable._uid--);
         public SQuery(Types t, long u) : base(t, u)
         {
-            display = SDict<int, long>.Empty;
+            display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             refs = SDict<long, Serialisable>.Empty;
-            tbs = SDict<long,STable>.Empty;
-        }
-        public SQuery(Types t, SDict<long,STable> ts, long u) : base(t, u)
-        {
-            display = SDict<int, long>.Empty;
-            cpos = SDict<int, Serialisable>.Empty;
-            refs = SDict<long, Serialisable>.Empty;
-            tbs = ts;
         }
         public SQuery(Types t, STransaction tr) : base(t, tr)
         {
-            display = SDict<int, long>.Empty;
+            display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             refs = SDict<long, Serialisable>.Empty;
-            tbs = SDict<long,STable>.Empty;
         }
         public SQuery(SQuery q) : base(q)
         {
             display = q.display;
             cpos = q.cpos;
             refs = q.refs;
-            tbs = q.tbs;
         }
         public SQuery(Types t,SQuery q) : base(t)
         {
             display = q.display;
             cpos = q.cpos;
             refs = q.refs;
-            tbs = q.tbs;
         }
-        public SQuery(SQuery q,SDict<int,long> a,SDict<int,Serialisable>cp,
-            SDict<long,Serialisable>cn,SDict<long,STable> ts) :base(q)
+        public SQuery(SQuery q,SDict<int,(long,string)> a,SDict<int,Serialisable>cp,
+            SDict<long,Serialisable>cn) :base(q)
         {
             display = a;
             cpos = cp;
             refs = cn;
-            tbs = ts + q.tbs;
         }
         /// <summary>
         /// a and c must have same length: c might have complex values
@@ -61,26 +48,21 @@ namespace Shareable
         /// <param name="t"></param>
         /// <param name="a">aliases</param>
         /// <param name="c">column expressions</param>
-        /// <param name="source">symbol table for Lookup</param>
-        public SQuery(Types t,SDict<int,long> a,SDict<int,Serialisable>c,
-            Context cx,SDict<long,STable> ts) : base(t)
+        public SQuery(Types t,SDict<int,(long,string)> a,SDict<int,Serialisable> c) : base(t)
         {
-            var cp = SDict<int, Serialisable>.Empty;
             var cn = SDict<long, Serialisable>.Empty;
             var ab = a.First();
             for (var cb = c.First();ab!=null && cb!=null;ab=ab.Next(),cb=cb.Next())
-                cn += (ab.Value.Item2, cb.Value.Item2);
+                cn += (ab.Value.Item2.Item1, cb.Value.Item2);
             display = a;
             cpos = c;
             refs = cn;
-            tbs = ts;
         }
-        protected SQuery(Types t, Reader f,SDict<long,STable> ts) : base(t, f)
+        protected SQuery(Types t, Reader f) : base(t, f)
         {
-            display = SDict<int, long>.Empty;
+            display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
             refs = SDict<long, Serialisable>.Empty;
-            tbs = ts;
         }
         /// <summary>
         /// This constructor is only called when committing am STable.
@@ -90,30 +72,55 @@ namespace Shareable
         /// <param name="f"></param>
         protected SQuery(SQuery q, AStream f) : base(q, f)
         {
-            display = SDict<int, long>.Empty;
+            display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int, Serialisable>.Empty;
             refs = SDict<long, Serialisable>.Empty;
-            tbs = q.tbs;
+        }
+        /// <summary>
+        /// Add the names defined by this query to the given parsing symbol table. 
+        /// </summary>
+        /// <param name="db">Can be SDatabase when storing viewdefinitions</param>
+        /// <param name="pt"></param>
+        /// <returns></returns>
+        public virtual SDict<long, long> Names(SDatabase db, SDict<long, long> pt)
+        {
+            // prepare a list of names this query defines
+            var ns = SDict<string, long>.Empty;
+            if (uid!=-1)
+                ns+=(db.uids[uid],uid);
+            for (var b = display.First(); b != null; b = b.Next())
+                ns += (b.Value.Item2.Item2, b.Value.Item2.Item1);
+            // scan the list of client-side uids if any to add entries to the parsing table
+            for (var b = db.uids.PositionAt(maxAlias); b != null && b.Value.Item1<0; b = b.Next())
+                if (ns.Contains(b.Value.Item2))
+                    pt += (b.Value.Item1, ns[b.Value.Item2]);
+            return pt;
+        }
+        protected long Use(long u, SDict<long, long> ta)
+        {
+            return ta.Contains(u) ? ta[u] : u;
+        }
+        protected (long, string) Use((long, string) n, SDict<long, long> ta)
+        {
+            return ta.Contains(n.Item1)?(ta[n.Item1],n.Item2):n;
+        }
+        protected (long,long) Use((long,long) u, SDict<long, long> ta)
+        {
+            return (Use(u.Item1,ta),Use(u.Item2,ta));
         }
         public new static SQuery Get(Reader f)
         {
             return Static;
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            if (q == null)
-                throw new Exception("??");
-            var ds = SDict<int, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cp = SDict<int, Serialisable>.Empty;
             for (var b = display.First(); b != null; b = b.Next())
-                ds += (b.Value.Item1, Prepare(b.Value.Item2, db, q));
+                ds += (b.Value.Item1, Prepare(b.Value.Item2, pt));
             for (var b = cpos.First(); b != null; b = b.Next())
-                cp += (b.Value.Item1, b.Value.Item2.Prepare(db, q));
-            return new SQuery(type,ds,cp,Context.Empty,tbs);
-        }
-        public override void Put(StreamBase f)
-        {
-            base.Put(f);
+                cp += (b.Value.Item1, b.Value.Item2.Prepare(db, pt));
+            return new SQuery(type,ds,cp);
         }
         /// <summary>
         /// Construct the Rowset for the given SDatabase (may have changed since SQuery was built)
@@ -127,11 +134,16 @@ namespace Shareable
             throw new NotImplementedException();
         }
         public virtual long Alias => -1;
-        public virtual SDict<int, long> Display => display;
+        public virtual SDict<int, (long,string)> Display => display;
         internal static long CheckAlias(SDict<long,string>uids,long u)
         {
             var r = u - 1000000;
             return uids.Contains(r) ? r : u;
+        }
+        internal static (long,string) CheckAlias(SDict<long,string>uids,(long,string)n)
+        {
+            var r = n.Item1 - 1000000;
+            return uids.Contains(r) ? (r, n.Item2) : n;
         }
         internal static (long,long) CheckAlias(SDict<long, string> uids, (long,long) p)
         {
@@ -164,14 +176,14 @@ namespace Shareable
             var tr = (STransaction)f.db;
             var lns = SDict<string, long>.Empty;
             for (var b = left.Display.First(); b != null; b = b.Next())
-                lns += (tr.uids[b.Value.Item2],b.Value.Item2);
+                lns += (b.Value.Item2.Item2,b.Value.Item2.Item1);
             var rns = SDict<string, long>.Empty;
             for (var b = right.Display.First(); b != null; b = b.Next())
             {
-                var nm = tr.uids[b.Value.Item2];
+                var nm = b.Value.Item2.Item2;
                 if (joinType == JoinType.Natural && lns.Contains(nm))
-                    us += (b.Value.Item2, lns[nm]);
-                rns += (nm, b.Value.Item2);
+                    us += (b.Value.Item2.Item1, lns[nm]);
+                rns += (nm, b.Value.Item2.Item1);
             }
             if (joinType.HasFlag(JoinType.Named))
                 for (var i = 0; i < n; i++)
@@ -197,7 +209,7 @@ namespace Shareable
         {
             f.GetInt();
             var st = f.pos;
-            var d = SDict<int, long>.Empty;
+            var d = SDict<int, (long,string)>.Empty;
             var c = SDict<int, Serialisable>.Empty;
             var nms = SDict<string, long>.Empty;
             var left = f._Get() as SQuery ?? throw new Exception("Query expected");
@@ -210,7 +222,7 @@ namespace Shareable
             {
                 var n = f.GetInt();
                 for (var i = 0; i < n; i++)
-                    uses += (f.GetInt(),f.GetInt());
+                    uses += (f.GetLong(),f.GetLong());
             }
             var k = 0;
             for (var lb = left.cpos.First(); ab!=null && lb != null; ab=ab.Next(), lb = lb.Next())
@@ -219,17 +231,17 @@ namespace Shareable
                 var u = ab.Value.Item2;
                 d += (k, u);
                 c += (k, col.Item2);
-                nms += (f.db.uids[u], u);
+                nms += (u.Item2,u.Item1);
                 k++;
             }
             ab = right.Display.First();
             for (var rb = right.cpos.First(); ab != null && rb != null; ab = ab.Next(), rb = rb.Next())
             {
                 var u = ab.Value.Item2;
-                var n = f.db.role.uids[u];
+                var n = u.Item2;
                 if (joinType == JoinType.Natural && nms.Contains(n))
                     continue;
-                if (uses.Contains(u))
+                if (uses.Contains(u.Item1))
                     continue;
                 var col = rb.Value;
                 d += (k, u);
@@ -237,14 +249,17 @@ namespace Shareable
                 k++;
             }
             f.pos = st;
-            return new SQuery(Types.STableExp, d, c, Context.Empty, left.tbs + right.tbs);
+            return new SQuery(Types.STableExp, d, c);
         }
         public SJoin(SQuery lf, bool ou, JoinType jt, SQuery rg, SList<SExpression> on,
-            SDict<long,long> us,SDict<int, long> d, SDict<int, Serialisable> c, Context cx,
-            SDict<long,STable> ts)
-            : base(Types.STableExp, d, c, cx, ts)
+            SDict<long,long> us,SDict<int, (long,string)> d, SDict<int, Serialisable> c)
+            : base(Types.STableExp, d, c)
         {
             left = lf; right = rg; outer = ou; joinType = jt; ons = on; uses = us;
+        }
+        public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
+        {
+            return right.Names(tr, left.Names(tr,pt));
         }
         public override void Put(StreamBase f)
         {
@@ -259,26 +274,78 @@ namespace Shareable
             for (var b = uses.First(); b != null; b = b.Next())
                 f.PutLong(b.Value.Item1);
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
         {
-            if (q == null)
-                throw new Exception("??");
             var os = SList<SExpression>.Empty;
-            var us = SDict<long,long>.Empty;
-            var ds = SDict<int, long>.Empty;
+            var us = SDict<long, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             var n = 0;
             for (var b = ons.First(); b != null; b = b.Next())
-                os += ((SExpression)b.Value.Prepare(db, q), n++);
+                os += ((SExpression)b.Value.UseAliases(db, ta), n++);
             n = 0;
             for (var b = uses.First(); b != null; b = b.Next())
-                us += Prepare(b.Value, db, q);
-            for (var b=display.First();b!=null;b=b.Next())
-                ds += (b.Value.Item1, Prepare(b.Value.Item2, db, q));
+                us += Use(b.Value, ta);
+            for (var b = display.First(); b != null; b = b.Next())
+                ds += (b.Value.Item1, Use(b.Value.Item2, ta));
             for (var b = cpos.First(); b != null; b = b.Next())
-                cs += (b.Value.Item1, b.Value.Item2.Prepare(db, q));
-            return new SJoin((SQuery)left.Prepare(db, q), outer, joinType,
-                (SQuery)right.Prepare(db, q), os, us, ds, cs, Context.Empty, tbs);
+                cs += (b.Value.Item1, b.Value.Item2.UseAliases(db, ta));
+            return new SJoin((SQuery)left.UseAliases(db, ta), outer, joinType,
+                (SQuery)right.UseAliases(db, ta), os, us, ds, cs);
+        }
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
+        {
+            var os = SList<SExpression>.Empty;
+            var us = SDict<long,long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
+            var cs = SDict<int, Serialisable>.Empty;
+            var n = 0;
+            for (var b = ons.First(); b != null; b = b.Next())
+                os += ((SExpression)b.Value.Prepare(db, pt), n++);
+            n = 0;
+            for (var b = uses.First(); b != null; b = b.Next())
+                us += Prepare(b.Value, pt);
+            var lf = (SQuery)left.Prepare(db, pt);
+            var rg = (SQuery)right.Prepare(db, pt);
+            var lns = SDict<string, long>.Empty;
+            for (var b = lf.Display.First(); b != null; b = b.Next())
+            {
+                var u = b.Value.Item2;
+                lns += (u.Item2, u.Item1);
+            }
+            var rns = SDict<string,long>.Empty;
+            for (var b = rg.Display.First(); b != null; b = b.Next())
+            {
+                var u = b.Value.Item2;
+                rns += (u.Item2, u.Item1);
+            }
+            for (var b = lf.Display.First(); b != null; b = b.Next())
+            {
+                var ou = b.Value.Item2.Item1;
+                var dn = b.Value.Item2.Item2;
+                if (rns.Contains(dn) && joinType != JoinType.Natural)
+                    dn = db.Name(lf.Alias) + "." + dn;
+                ds += (n, (ou, dn));
+                n++;
+            }
+            for (var b = rg.Display.First(); b != null; b = b.Next())
+            {
+                var ou = b.Value.Item2.Item1;
+                var dn = b.Value.Item2.Item2;
+                if (lns.Contains(dn) && joinType != JoinType.Natural)
+                    dn = db.Name(rg.Alias) + "." + dn;
+                ds += (n, (ou, dn));
+                n++;
+            }
+            if (cpos != null)
+                for (var b = cpos.First(); b != null; b = b.Next())
+                {
+                    var k = b.Value.Item1;
+                    var v = b.Value.Item2.Prepare(db, pt);
+                    cs += (k, v);
+                }
+            return new SJoin((SQuery)left.Prepare(db, pt), outer, joinType,
+                (SQuery)right.Prepare(db, pt), os, us, ds, cs);
         }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
@@ -287,7 +354,7 @@ namespace Shareable
                 return this;
             var os = SList<SExpression>.Empty;
             var us = SDict<long,long>.Empty;
-            var ds = SDict<int, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             var n = 0;
             for (var b = ons.First(); b != null; b = b.Next())
@@ -300,7 +367,7 @@ namespace Shareable
             for (var b = cpos.First(); b != null; b = b.Next())
                 cs += (b.Value.Item1, b.Value.Item2.UpdateAliases(uids));
             return new SJoin((SQuery)left.UpdateAliases(uids), outer, joinType,
-                (SQuery)right.UpdateAliases(uids), os, us, ds, cs, Context.Empty, tbs);
+                (SQuery)right.UpdateAliases(uids), os, us, ds, cs);
         }
         public new static SJoin Get(Reader f)
         {
@@ -327,37 +394,7 @@ namespace Shareable
         {
             var lf = left.RowSet(tr, left, ags);
             var rg = right.RowSet(lf._tr, right, ags);
-            var ov = SDict<long, long>.Empty;
-            tr = rg._tr;
-            var lns = SDict<string, long>.Empty;
-            for (var b = left.Display.First(); b != null; b = b.Next())
-                lns += (tr.Name(b.Value.Item2), b.Value.Item2);
-            var rns = SDict<string, long>.Empty;
-            for (var b = right.Display.First(); b != null; b = b.Next())
-                rns += (tr.Name(b.Value.Item2), b.Value.Item2);
-            for (var b = left.Display.First(); b != null; b = b.Next())
-            {
-                var ou = b.Value.Item2;
-                var os = tr.Name(ou);
-                if (rns.Contains(os))
-                {
-                    var s = tr.Name(left.Alias) + "." + os;
-                    ov += (ou, tr.uid);
-                    tr += s; // add the long and string to the role definitions
-                }
-            }
-            for (var b = right.Display.First(); b != null; b = b.Next())
-            {
-                var ou = b.Value.Item2;
-                var os = tr.Name(ou);
-                if (lns.Contains(os))
-                {
-                    var s = tr.Name(right.Alias) + "." + os;
-                    ov += (ou, tr.uid);
-                    tr += s; // add the long and string to the role definitions
-                }
-            }
-            return new JoinRowSet(tr, top, this, lf, rg, ags, ov);
+            return new JoinRowSet(tr, top, this, lf, rg, ags);
         }
         public override void Append(SDatabase db, StringBuilder sb)
         {
@@ -384,17 +421,21 @@ namespace Shareable
         public readonly SQuery qry;
         public readonly long alias;
         public SAlias(SQuery q,long a,Reader f,long u) :
-            base(Types.SAlias,q.tbs,u)
+            base(Types.SAlias,u)
         {
             var tr = (STransaction)f.db;
-            qry = (SQuery)q.Prepare(tr,null);
+            qry = (SQuery)q.Prepare(tr,SDict<long,long>.Empty);
             alias = a;
-            f.db = tr + (a, q);
+            f.db = tr + (a, qry);
         }
-        public SAlias(SQuery q,long a,long u = -1) :base(Types.SAlias,q.tbs,u)
+        public SAlias(SQuery q,long a,long u = -1) :base(Types.SAlias,u)
         {
             qry = q;
             alias = a;
+        }
+        public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
+        {
+            return qry.Names(tr, pt);
         }
         public override void Put(StreamBase f)
         {
@@ -402,16 +443,18 @@ namespace Shareable
             qry.Put(f);
             f.PutLong(alias);
         }
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
+        {
+            return new SAlias((SQuery)qry.UseAliases(db,ta),alias,uid);
+        }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
             var q = (SQuery)qry.UpdateAliases(uids);
             return (q==qry)?this:new SAlias(q,alias,uid);
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            if (q == null)
-                throw new Exception("??");
-            return new SAlias((SQuery)qry.Prepare(db,q),alias,uid);
+            return new SAlias((SQuery)qry.Prepare(db,pt),alias,uid);
         }
         public new static SAlias Get(Reader f)
         {
@@ -438,7 +481,7 @@ namespace Shareable
     {
         public readonly SQuery sce;
         public readonly SList<Serialisable> where;
-        public SSearch(SQuery sc,Reader f,long u):base(Types.SSearch,sc.tbs,u)
+        public SSearch(SQuery sc,Reader f,long u):base(Types.SSearch,u)
         {
             sce = sc;
             var w = SList<Serialisable>.Empty;
@@ -449,10 +492,14 @@ namespace Shareable
             f.context = this;
         }
         public SSearch(SQuery s,SList<Serialisable> w)
-            :base(Types.SSearch, s.display, s.cpos, new Context(s.refs,null),s.tbs)
+            :base(Types.SSearch, s.display, s.cpos)
         {
             sce = s;
             where = w;
+        }
+        public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
+        {
+            return sce.Names(tr, pt);
         }
         public override void Put(StreamBase f)
         {
@@ -462,13 +509,21 @@ namespace Shareable
             for (var b=where.First();b!=null;b=b.Next())
                 b.Value.Put(f);
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
         {
             var w = SList<Serialisable>.Empty;
             var n = 0;
             for (var b = where.First(); b != null; b = b.Next())
-                w += (b.Value.Prepare(db, q), n++);
-            return new SSearch((SQuery)sce.Prepare(db, q),w);
+                w += (b.Value.UseAliases(db, ta), n++);
+            return new SSearch((SQuery)sce.UseAliases(db, ta), w);
+        }
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
+        {
+            var w = SList<Serialisable>.Empty;
+            var n = 0;
+            for (var b = where.First(); b != null; b = b.Next())
+                w += (b.Value.Prepare(db, pt), n++);
+            return new SSearch((SQuery)sce.Prepare(db, pt),w);
         }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
@@ -508,14 +563,14 @@ namespace Shareable
                 b.Value.Append(db,sb); 
             }
         }
-        public override SDict<int, long> Display => (display==SDict<int,long>.Empty)?sce.Display:display;
+        public override SDict<int, (long,string)> Display => (display==SDict<int,(long,string)>.Empty)?sce.Display:display;
     }
     public class SGroupQuery : SQuery
     {
         public readonly SQuery source;
         public readonly SDict<int, long> groupby;
         public readonly SList<Serialisable> having;
-        public SGroupQuery(SQuery sc, Reader f,long u):base(Types.SGroupQuery,sc.tbs,u)
+        public SGroupQuery(SQuery sc, Reader f,long u):base(Types.SGroupQuery,u)
         {
             source = sc;
             var g = SDict<int, long>.Empty;
@@ -530,14 +585,35 @@ namespace Shareable
             having = h;
             f.context = this;
         }
-        public SGroupQuery(SQuery s,SDict<int,long> d,SDict<int,Serialisable> c,
-            Context cx,SDict<int,long> g,SList<Serialisable> h) 
-            : base(Types.SGroupQuery, d,c,cx,s.tbs) 
+        public SGroupQuery(SQuery s,SDict<int,(long,string)> d,SDict<int,Serialisable> c,
+            SDict<int,long> g,SList<Serialisable> h) 
+            : base(Types.SGroupQuery, d,c) 
         {
             source = s;
             groupby = g;
             having = h;
-        } 
+        }
+        public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
+        {
+            return source.Names(tr, pt);
+        }
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
+        {
+            var ds = SDict<int, (long,string)>.Empty;
+            var cs = SDict<int, Serialisable>.Empty;
+            var g = SDict<int, long>.Empty;
+            var h = SList<Serialisable>.Empty;
+            var n = 0;
+            for (var b = display.First(); b != null; b = b.Next())
+                ds += (b.Value.Item1, Use(b.Value.Item2, ta));
+            for (var b = cpos.First(); b != null; b = b.Next())
+                cs += (b.Value.Item1, b.Value.Item2.UseAliases(db, ta));
+            for (var b = groupby.First(); b != null; b = b.Next())
+                g += (b.Value.Item1, Use(b.Value.Item2, ta));
+            for (var b = having.First(); b != null; b = b.Next())
+                h += (b.Value.UseAliases(db, ta), n++);
+            return new SGroupQuery((SQuery)source.UseAliases(db, ta), ds, cs, g, h);
+        }
         public override void Put(StreamBase f)
         {
             base.Put(f);
@@ -549,42 +625,40 @@ namespace Shareable
             for (var b = having.First(); b != null; b = b.Next())
                 b.Value.Put(f);
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            if (q == null)
-                throw new Exception("??");
-            var ds = SDict<int, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             var g = SDict<int, long>.Empty;
             var h = SList<Serialisable>.Empty;
             var n = 0;
             for (var b = display.First(); b != null; b = b.Next())
-                ds += (b.Value.Item1, Prepare(b.Value.Item2, db, q));
+                ds += (b.Value.Item1, Prepare(b.Value.Item2, pt));
             for (var b = cpos.First(); b != null; b = b.Next())
-                cs += (b.Value.Item1, b.Value.Item2.Prepare(db, q));
+                cs += (b.Value.Item1, b.Value.Item2.Prepare(db, pt));
             for (var b = groupby.First(); b != null; b = b.Next())
-                g += (b.Value.Item1, Prepare(b.Value.Item2, db, q));
+                g += (b.Value.Item1, Prepare(b.Value.Item2, pt));
             for (var b = having.First(); b != null; b = b.Next())
-                h += (b.Value.Prepare(db, q), n++);
-            return new SGroupQuery((SQuery)source.Prepare(db,q),ds,cs,
-                Context.Empty,g,h);
+                h += (b.Value.Prepare(db, pt), n++);
+            return new SGroupQuery((SQuery)source.Prepare(db,pt),ds,cs,g,h);
         }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
             var w = uids.First();
             if (w == null || w.Value.Item1 > -1000000)
                 return this;
-            var ds = SDict<int, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             var g = SDict<int, long>.Empty;
             var h = SList<Serialisable>.Empty;
             var n = 0;
             for (var b = display.First(); b != null; b = b.Next())
             {
-                var u = b.Value.Item2;
+                var nm = b.Value.Item2;
+                var u = nm.Item1;
                 if (uids.Contains(u - 1000000))
                     u -= 1000000;
-                ds += (b.Value.Item1, u);
+                ds += (b.Value.Item1, (u,nm.Item2));
             }
             for (var b = cpos.First(); b != null; b = b.Next())
                 cs += (b.Value.Item1, b.Value.Item2.UpdateAliases(uids));
@@ -598,7 +672,7 @@ namespace Shareable
             for (var b = having.First(); b != null; b = b.Next())
                 h += (b.Value.UpdateAliases(uids), n++);
             return new SGroupQuery((SQuery)source.UpdateAliases(uids), ds, cs,
-                Context.Empty, g, h);
+                g, h);
         }
         public new static SGroupQuery Get(Reader f)
         {
@@ -670,23 +744,28 @@ namespace Shareable
         /// <param name="c">The column expressions or null</param>
         /// <param name="q">The source query, assumed analysed</param>
         /// <param name="or">The ordering</param>
-        public SSelectStatement(bool d, SDict<int,long> a, SDict<int,Serialisable> c, 
-            SQuery q, SList<SOrder> or,Context cx) 
-            : base(Types.SSelect,a,c,cx,q.tbs)
+        public SSelectStatement(bool d, SDict<int,(long,string)> a, SDict<int,Serialisable> c, 
+            SQuery q, SList<SOrder> or) 
+            : base(Types.SSelect,a,c)
         {
             distinct = d;  qry = q; order = or;
-        } 
+        }
+        public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
+        {
+            return qry.Names(tr, pt);
+        }
         public new static SSelectStatement Get(Reader f)
         {
             var db = f.db;
             f.GetInt(); // uid for the SSelectStatement probably -1
             var d = f.ReadByte() == 1;
             var n = f.GetInt();
-            SDict<int,long> a = SDict<int,long>.Empty;
-            SDict<int,Serialisable> c = SDict<int,Serialisable>.Empty;
+            var a = SDict<int,(long,string)>.Empty;
+            var c = SDict<int,Serialisable>.Empty;
             for (var i = 0; i < n; i++)
             {
-                a += (i, f.GetLong());
+                var al = f.GetLong();
+                a += (i, (al,f.db.Name(al)));
                 c += (i,f._Get());
             }
             var q = (SQuery)f._Get();
@@ -694,26 +773,39 @@ namespace Shareable
             var m = f.GetInt();
             for (var i = 0; i < m; i++)
                 o += ((SOrder)f._Get(), i);
-            var ss = new SSelectStatement(d,a,c,q,o,Context.Empty);
+            var ss = new SSelectStatement(d,a,c,q,o);
             f.context = ss;
             return ss;
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
         {
-            if (q == null)
-                throw new Exception("??");
             var os = SList<SOrder>.Empty;
             var n = 0;
             for (var b = order.First(); b != null; b = b.Next())
-                os += ((SOrder)b.Value.Prepare(db, q), n++);
-            var ds = SDict<int, long>.Empty;
+                os += ((SOrder)b.Value.UseAliases(db, ta), n++);
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             for (var b = display.First(); b != null; b = b.Next())
-                ds += (b.Value.Item1, Prepare(b.Value.Item2, db, q));
+                ds += (b.Value.Item1, Use(b.Value.Item2, ta));
             for (var b = cpos.First(); b != null; b = b.Next())
-                cs += (b.Value.Item1, b.Value.Item2.Prepare(db, q));
-            var qy = (SQuery)qry.Prepare(db, q);
-            return new SSelectStatement(distinct, ds, cs, qy, os, Context.Empty);
+                cs += (b.Value.Item1, b.Value.Item2.UseAliases(db, ta));
+            var qy = (SQuery)qry.UseAliases(db, ta);
+            return new SSelectStatement(distinct, ds, cs, qy, os);
+        }
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
+        {
+            var os = SList<SOrder>.Empty;
+            var n = 0;
+            for (var b = order.First(); b != null; b = b.Next())
+                os += ((SOrder)b.Value.Prepare(db, pt), n++);
+            var ds = SDict<int, (long,string)>.Empty;
+            var cs = SDict<int, Serialisable>.Empty;
+            for (var b = display.First(); b != null; b = b.Next())
+                ds += (b.Value.Item1, Prepare(b.Value.Item2, pt));
+            for (var b = cpos.First(); b != null; b = b.Next())
+                cs += (b.Value.Item1, b.Value.Item2.Prepare(db, pt));
+            var qy = (SQuery)qry.Prepare(db, pt);
+            return new SSelectStatement(distinct, ds, cs, qy, os);
         }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
@@ -724,19 +816,20 @@ namespace Shareable
             var n = 0;
             for (var b = order.First(); b != null; b = b.Next())
                 os += ((SOrder)b.Value.UpdateAliases(uids), n++);
-            var ds = SDict<int, long>.Empty;
+            var ds = SDict<int, (long,string)>.Empty;
             var cs = SDict<int, Serialisable>.Empty;
             for (var b = display.First(); b != null; b = b.Next())
             {
-                var u = b.Value.Item2;
+                var nm = b.Value.Item2;
+                var u = nm.Item1;
                 if (uids.Contains(u - 1000000))
                     u -= 1000000;
-                ds += (b.Value.Item1, u);
+                ds += (b.Value.Item1, (u,nm.Item2));
             }
             for (var b = cpos.First(); b != null; b = b.Next())
                 cs += (b.Value.Item1, b.Value.Item2.UpdateAliases(uids));
             var qy = (SQuery)qry.UpdateAliases(uids);
-            return new SSelectStatement(distinct, ds, cs, qy, os, Context.Empty);
+            return new SSelectStatement(distinct, ds, cs, qy, os);
         }
         public override void Put(StreamBase f)
         {
@@ -746,7 +839,7 @@ namespace Shareable
             var ab = display.First();
             for (var b = cpos.First(); ab!=null && b != null; b = b.Next(), ab=ab.Next())
             {
-                f.PutLong(ab.Value.Item2);
+                f.PutLong(ab.Value.Item2.Item1);
                 b.Value.Item2.Put(f);
             }
             qry.Put(f);
@@ -764,9 +857,9 @@ namespace Shareable
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(b.Value.Item2);
-                if (b.Value.Item2 is SSelector sc && ab.Value.Item2 == sc.uid)
+                if (b.Value.Item2 is SSelector sc && ab.Value.Item2.Item1 == sc.uid)
                     continue;
-                sb.Append(" as "); sb.Append(db.uids[ab.Value.Item2]);
+                sb.Append(" as "); sb.Append(ab.Value.Item2.Item2);
             }
             sb.Append(' ');
             sb.Append(qry);
@@ -780,9 +873,9 @@ namespace Shareable
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(b.Value.Item2);
-                if (b.Value.Item2 is SSelector sc && ab.Value.Item2==sc.uid)
+                if (b.Value.Item2 is SSelector sc && ab.Value.Item2.Item1==sc.uid)
                     continue;
-                sb.Append(" as "); sb.Append(_Uid(ab.Value.Item2));
+                sb.Append(" as "); sb.Append(ab.Value.Item2.Item2);
             }
             sb.Append(' ');
             sb.Append(qry);
@@ -818,7 +911,7 @@ namespace Shareable
             return new SRow(this,cx);
         }
         public override long Alias => qry.Alias;
-        public override SDict<int, long> Display => (display == SDict<int, long>.Empty) ? qry.Display : display;
+        public override SDict<int, (long,string)> Display => (display == SDict<int, (long,string)>.Empty) ? qry.Display : display;
     }
     public class SOrder : Serialisable
     {
@@ -838,14 +931,18 @@ namespace Shareable
         {
             return new SOrder(f);
         }
+        public override Serialisable UseAliases(SDatabase db, SDict<long, long> ta)
+        {
+            return new SOrder(col.UseAliases(db, ta),desc);
+        }
         public override Serialisable UpdateAliases(SDict<long, string> uids)
         {
             var c = col.UpdateAliases(uids);
             return (c == col) ? this : new SOrder(c, desc);
         }
-        public override Serialisable Prepare(STransaction db, SQuery? q)
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            return new SOrder(col.Prepare(db, q),desc);
+            return new SOrder(col.Prepare(db, pt),desc);
         }
         public override void Put(StreamBase f)
         {
