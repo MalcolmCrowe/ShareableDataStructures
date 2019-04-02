@@ -34,7 +34,7 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().col.Lookup(Context.New(b,null)),
+                    k[i] = new Variant(c.getValue().col.Lookup(b._cx),
                             !c.getValue().desc);
                 t = t.Add(m,k);
                 r=(r==null)?new SDict(0,b.Ob()):r.Add(m, b.Ob());

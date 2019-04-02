@@ -76,7 +76,7 @@ public class GroupRowSet extends RowSet {
             kc =(kc==null)?
                 new SDict(kb.getValue().headName,(Serialisable)gb.getValue().ob):
                 kc.Add(kb.getValue().headName,(Serialisable)gb.getValue().ob);
-        var cx = Context.New(kc,Context.New(_grouprows.get(b.getValue().val),null));
+        var cx = Context.New(kc,Context.New(_grouprows.get(b.getValue().val),null,_tr),_tr);
         var ab = _top.getDisplay().First();
         for (var cb = _top.cpos.First(); ab != null && cb != null; 
                 ab = ab.Next(), cb = cb.Next())
@@ -89,7 +89,7 @@ public class GroupRowSet extends RowSet {
         for (var b=ags.First(); b!=null;b=b.Next())
         {
             var f = (SFunction)b.getValue().val;
-            var v = f.arg.Lookup(Context.New(cur,cx));
+            var v = f.arg.Lookup(Context.New(cur,cx,null));
             if (v != Serialisable.Null)
             {
                 var w = (cur!=null && cur.Contains(f.fid))?f.AddIn(cur.get(f.fid),v)
@@ -112,7 +112,7 @@ public class GroupRowSet extends RowSet {
         protected GroupRowBookmark(GroupRowSet grs,MTreeBookmark<Long> bm,
                 SRow r,SDict<Long,Serialisable> a,int p)
         { 
-            super(grs,_Cx(grs,r,Context.New(a,null)),p);
+            super(grs,_Cx(grs,r,Context.New(a,null,_tr)),p);
             _grs = grs; _bmk = bm;
         }
 

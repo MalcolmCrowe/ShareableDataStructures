@@ -9,7 +9,8 @@ import java.io.*;
  *
  * @author Malcolm
  */
-public class SRow extends Serialisable implements ILookup<Long,Serialisable>
+public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
+        Comparable
 {
     public final SDict<Integer,Ident> names;
     public final SDict<Integer,Serialisable> cols;
@@ -227,6 +228,27 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>
         }
         return new SRow(names, v, r, 
                 (cx.refs instanceof SRow)?((SRow)cx.refs).rec:null);
+    }
+    public int compareTo(Object ob)
+    {
+        if (ob instanceof SRow)
+        {
+            SRow sr = (SRow)ob;
+            var c = cols.Length - sr.cols.Length;
+            if (c!=0)
+                return c;
+            var ab = sr.vals.First();
+            for (var b = vals.First(); ab != null && b != null; ab = ab.Next(), b=b.Next())
+            {
+                c = b.getValue().val.compareTo(ab.getValue().val);
+                if (c != 0)
+                    return c;
+            }
+            return 0;
+        }
+        if (cols.Length == 1)
+            return (vals.First().getValue().val).compareTo(ob);
+        return 1;
     }
     @Override
     public void Append(SDatabase db,StringBuilder sb)

@@ -43,8 +43,8 @@ namespace Shareable
         protected static Context _Cx(RowSet rs, SRow r, Context? n = null)
         {
             if (rs is TableRowSet trs)
-                n = new Context(new SDict<long, Serialisable>(trs._tb.uid, r), n);
-            return new Context(r, n);
+                n = new Context(new SDict<long, Serialisable>(trs._tb.uid, r), n, rs._tr);
+            return new Context(r, n, rs._tr);
         }
         public virtual MTreeBookmark<Serialisable>? Mb()
         {
@@ -373,7 +373,7 @@ namespace Shareable
                 var a = ars._alias.alias;
                 var u = ars._tr.objects[a].uid;
                 return new Context(cx.refs,
-                    new Context(new SDict<long, Serialisable>(a, cx[u]),cx.next));
+                    new Context(new SDict<long, Serialisable>(a, cx[u]),cx.next),ars._tr);
             }
             internal static AliasRowBookmark? New(AliasRowSet ars)
             {
@@ -509,13 +509,13 @@ namespace Shareable
             var r = new SRow();
             var ab = _qry.display.First();
             for (var b = _qry.cpos.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                r += (ab.Value.Item2, b.Value.Item2.Lookup(new Context(_vals, null)));
+                r += (ab.Value.Item2, b.Value.Item2.Lookup(new Context(_vals, null,_tr)));
             return new EvalRowBookmark(this,r, _vals);
         }
         public class EvalRowBookmark : RowBookmark
         {
             internal EvalRowBookmark(EvalRowSet ers, SRow r,SDict<long,Serialisable> a) 
-                : base(ers, _Cx(ers,r, new Context(a,null)), 0) { }
+                : base(ers, _Cx(ers,r, new Context(a,null,ers._tr)), 0) { }
             public override Bookmark<Serialisable>? Next()
             {
                 return null;
@@ -609,7 +609,7 @@ namespace Shareable
             public readonly MTreeBookmark<long> _bmk;
             protected GroupRowBookmark(GroupRowSet grs, MTreeBookmark<long> b,
                 SRow r, SDict<long,Serialisable> a, int p)
-                : base(grs,_Cx(grs,r,new Context(a,null)),p)
+                : base(grs,_Cx(grs,r,new Context(a,null,grs._tr)),p)
             {
                 _grs = grs; _bmk = b;
             }
@@ -745,7 +745,7 @@ namespace Shareable
             {
                 var cx = rbm?._cx;
                 if (lbm != null)
-                    cx = Context.Append(lbm?._cx, cx);
+                    cx = Context.Append(lbm._cx, cx, jrs._tr);
                 return _Cx(jrs,_Row(jrs, lbm, ul, rbm, ur), cx);
             }
             static SRow _Row(JoinRowSet jrs,RowBookmark? lbm,bool ul,RowBookmark? rbm,bool ur)

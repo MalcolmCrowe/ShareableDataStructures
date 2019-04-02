@@ -23,7 +23,7 @@ public class AliasRowSet extends RowSet {
             var a = ars._alias.alias;
             var u = ars._tr.objects.get(a).uid;
             return Context.New(cx.refs,
-                Context.New(new SDict(a, cx.get(u)),cx.next));
+                Context.New(new SDict(a, cx.get(u)),cx.next,ars._tr),ars._tr);
         }
         @Override
         public Bookmark<Serialisable> First()

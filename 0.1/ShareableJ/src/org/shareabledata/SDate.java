@@ -47,6 +47,14 @@ public class SDate extends Serialisable implements Comparable {
         }
         @Override
         public int compareTo(Object o) {
+            if (o==Null)
+                return 1;
+            if (o instanceof SRow)
+            {
+                var sr = (SRow)o;
+                if (sr.cols.Length==1)
+                    return compareTo(sr.vals.First().getValue().val);
+            }
             var that = (SDate)o;
             var c = (year==that.year)?0:(year<that.year)?-1:1;
             if (c!=0)

@@ -65,7 +65,7 @@ public class Program {
             Test9(test); 
     //        Test10(test);
             Test11(test);
-    //        Test12(test);
+            Test12(test);
         }
         void Test1(int t) throws Exception
         {
@@ -399,7 +399,7 @@ public class Program {
             CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
                 "[{a:12},{a:14}]");
             CheckResults(12, 3, "select from dst where c in select a from sce where b='Bakers'",
-                "[{c:13)}]");
+                "[{c:13}]");
             Rollback();
         }
         void CheckExceptionQuery(int t, int q, String c, String m)

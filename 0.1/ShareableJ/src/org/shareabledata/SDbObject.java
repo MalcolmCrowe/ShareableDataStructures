@@ -117,7 +117,7 @@ public class SDbObject extends Serialisable {
     {
         if (n.uid>=1 || n.uid < maxAlias)
             return n;
-        if (pt!=null && !pt.Contains(n.uid))
+        if (pt==null || !pt.Contains(n.uid))
             throw new Exception("Could not find " + n.id);
         return new Ident(pt.get(n.uid),n.id);
     }

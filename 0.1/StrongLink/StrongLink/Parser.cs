@@ -780,11 +780,10 @@ namespace StrongLink
             Serialisable vals;
             if (lxr.tok == Sym.VALUES)
                 vals = Vals();
-            else
-            {
-                Mustbe(Sym.SELECT);
+            else if (lxr.tok == Sym.SELECT)
                 vals = Select();
-            }
+            else
+                throw new Exception("Unknown kind of INSERT");
             var cs = SList<long>.Empty;
             for (var b = cols.First(); b != null; b = b.Next())
                 cs += (b.Value, cs.Length ?? 0);

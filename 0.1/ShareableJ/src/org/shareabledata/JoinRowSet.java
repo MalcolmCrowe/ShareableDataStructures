@@ -152,7 +152,7 @@ public class JoinRowSet extends RowSet {
     {
         var cx = (rbm==null)?null:rbm._cx;
         if (lbm != null)
-            cx = Context.Append(lbm._cx, cx);
+            cx = Context.Append(lbm._cx, cx,_tr);
         return RowBookmark._Cx(this,_Row(this,lbm, ul, rbm, ur), cx);
     }
     public class JoinRowBookmark extends RowBookmark

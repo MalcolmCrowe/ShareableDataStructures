@@ -168,6 +168,7 @@ public class SColumn extends SSelector {
                     new SColumn(f.uids.get(uid), f.uids.get(table), dataType) : 
                     this;
         }
+        @Override
         public Serialisable Lookup(Context cx)
         {
             var r = cx.defines(uid) ? cx.get(uid) : Null;
@@ -196,7 +197,7 @@ public class SColumn extends SSelector {
                             return b.getValue().val.arg;
                         break;
                     default:
-                        cx = Context.New(new SDict(SArg.Value.target.uid, v), cx);
+                        cx = Context.New(new SDict(SArg.Value.target.uid, v), cx,null);
                         if (b.getValue().val.arg.Lookup(cx) != SBoolean.True)
                             throw new Exception("Column constraint " + 
                                     b.getValue().key + " fails");

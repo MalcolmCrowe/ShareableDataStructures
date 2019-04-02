@@ -305,71 +305,12 @@ public class SExpression extends SDbObject {
                         }
                     }
                     break;
-                case Op.Eql:
-                case Op.NotEql:
-                case Op.Gtr:
-                case Op.Geq:
-                case Op.Leq:
-                case Op.Lss:
-                    {
-                        int c = 0;
-                        switch (lf.type)
-                        {
-                            case Types.SInteger:
-                                {
-                                    var lv = ((SInteger)lf).value;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = compare(lv,((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = new Bigint(lv).compareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(new Bigint(lv), 0).compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SBigInt:
-                                {
-                                    var lv = getbig(lf);
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.compareTo(((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = lv.compareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(lv, 0).compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SNumeric:
-                                {
-                                    var lv = ((SNumeric)lf).num;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.compareTo(new Numeric(((SInteger)rg).value)); break;
-                                        case Types.SBigInt:
-                                            c = lv.compareTo(new Numeric(getbig(rg), 0)); break;
-                                        case Types.SNumeric:
-                                            c = lv.compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                        }
-                        boolean r = true;
-                        switch (op)
-                        {
-                            case Op.Eql: r = c == 0; break;
-                            case Op.NotEql: r = c != 0; break;
-                            case Op.Leq: r = c <= 0; break;
-                            case Op.Lss: r = c < 0; break;
-                            case Op.Geq: r = c >= 0; break;
-                            case Op.Gtr: r = c > 0; break;
-                        }
-                        return SBoolean.For(r);
-                    }
+                case Op.Eql: return SBoolean.For(lf.compareTo(rg) == 0); 
+                case Op.NotEql: return SBoolean.For(lf.compareTo(rg) != 0);
+                case Op.Leq: return SBoolean.For(lf.compareTo(rg) <= 0);
+                case Op.Lss: return SBoolean.For(lf.compareTo(rg) < 0);
+                case Op.Geq: return SBoolean.For(lf.compareTo(rg) >= 0);
+                case Op.Gtr: return SBoolean.For(lf.compareTo(rg) > 0);
                 case Op.UMinus:
                     switch (left.type)
                     {

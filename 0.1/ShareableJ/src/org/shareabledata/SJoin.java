@@ -330,20 +330,18 @@ public class SJoin extends SQuery {
         }
         public int Compare(RowBookmark lb,RowBookmark rb)
         {
-            var lc = Context.New(lb,Context.Empty);
-            var rc = Context.New(rb, Context.Empty);
             if (ons!=null)
                 for (var b = ons.First(); b != null; b = b.Next())
                 {
                     var ex = (SExpression)b.getValue();
-                    var c = ex.left.Lookup(lc).compareTo(ex.right.Lookup(rc));
+                    var c = ex.left.Lookup(lb._cx).compareTo(ex.right.Lookup(rb._cx));
                     if (c!=0)
                         return c;
                 }
             if (uses!=null)
                 for (var b = uses.First(); b != null; b = b.Next())
                 {
-                    var c = lc.get(b.getValue().key).compareTo(rc.get(b.getValue().val));
+                    var c = lb._cx.get(b.getValue().key).compareTo(rb._cx.get(b.getValue().val));
                     if (c != 0)
                         return c;
                 }

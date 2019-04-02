@@ -23,7 +23,7 @@ public class EvalRowSet extends RowSet {
                     if (vf.type==Types.SFunction)
                     {
                         var f = (SFunction)vf;
-                        var v = f.arg.Lookup(Context.New(b,null));
+                        var v = f.arg.Lookup(b._cx);
                         if (v!=Serialisable.Null)
                         {
                             var w = (vs!=null && vs.Contains(f.fid)) ? 
@@ -40,14 +40,14 @@ public class EvalRowSet extends RowSet {
             var r = new SRow();
             var ab = _qry.display.First();
             for (var b = _qry.cpos.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                r=r.Add(ab.getValue().val, b.getValue().val.Lookup(Context.New(_vals,null)));
+                r=r.Add(ab.getValue().val, b.getValue().val.Lookup(Context.New(_vals,null,_tr)));
             return new EvalRowBookmark(this,r, _vals);
         }
         public class EvalRowBookmark extends RowBookmark
         {
             EvalRowBookmark(EvalRowSet ers, SRow r,SDict<Long,Serialisable> a) 
             {
-                super(ers, _Cx(ers,r,Context.New(a,null)), 0); 
+                super(ers, _Cx(ers,r,Context.New(a,null,_tr)), 0); 
             }
             public Bookmark<Serialisable> Next()
             {

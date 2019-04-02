@@ -854,11 +854,10 @@ public class Parser {
             Serialisable vals;
             if (lxr.tok == Sym.VALUES)
                 vals = Vals();
-            else
-            {
-                Mustbe(Sym.SELECT);
+            else if (lxr.tok==Sym.SELECT)
                 vals = Select();
-            }
+            else
+                throw new Exception("Unknown kind of Insert");
             return new SInsert(id, cols, vals);
         }
         SQuery Query(SDict<Integer,Ident>als,SDict<Integer,Serialisable>cp)

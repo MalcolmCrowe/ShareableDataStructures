@@ -26,9 +26,9 @@ package org.shareabledata;
             if (rs instanceof TableRowSet)
             {
                 var trs = (TableRowSet)rs;
-                n = Context.New(new SDict(trs._tb.uid, r), n);
+                n = Context.New(new SDict(trs._tb.uid, r), n,rs._tr);
             }
-            return Context.New(r, n);
+            return Context.New(r, n,rs._tr);
         }
         @Override
         public Serialisable getValue() { return  (SRow)_cx.refs; }

@@ -28,7 +28,7 @@ public class SGroupQuery extends SQuery {
         n = f.GetInt();
         for (var i = 0; i < n; i++)
         {
-            var hh = f._Get().Lookup(Context.New(source.refs,null));
+            var hh = f._Get().Lookup(Context.New(source.refs,null,null));
             h=(h==null)?new SList(hh):h.InsertAt(hh, i);
         }
         groupby = g;

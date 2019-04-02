@@ -89,6 +89,14 @@ public class STimeSpan extends Serialisable implements Comparable {
         }
         @Override
         public int compareTo(Object o) {
+            if (o==Null)
+                return 1;
+            if (o instanceof SRow)
+            {
+                var sr = (SRow)o;
+                if (sr.cols.Length==1)
+                    return compareTo(sr.vals.First().getValue().val);
+            }
             var that = (STimeSpan)o;
             return ticks.compareTo(that.ticks);
         }

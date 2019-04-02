@@ -22,7 +22,7 @@ public class SRecord extends SDbObject {
             super(ty,tr);
             var tb = (STable)tr.objects.get(t);
             var a = tb.Aggregates(null);
-            var cx = Context.New(a, null);
+            var cx = Context.New(a, null,tr);
             var rb = tb.getDisplay().First();
             for (var b = tb.cols.First(); b != null && rb!=null; b = b.Next(), rb=rb.Next())
             {
@@ -44,14 +44,14 @@ public class SRecord extends SDbObject {
                             break;
                         case SFunction.Func.Constraint:
                             {
-                                var cf = Context.New(f, cx);
+                                var cf = Context.New(f, cx,tr);
                                 if (fn.arg.Lookup(cf) == SBoolean.False)
                                     throw new Exception("Constraint violation");
                                 break;
                             }
                         case SFunction.Func.Generated:
                             {
-                                var cf = Context.New(f, cx);
+                                var cf = Context.New(f, cx,tr);
                                 if (f.Contains(cn) && f.get(cn) != Null)
                                     throw new Exception("Value cannot be supplied for column " + tr.Name(cn));
                                 var v = fn.arg.Lookup(cf);
@@ -124,7 +124,7 @@ public class SRecord extends SDbObject {
                     var v = b.getValue();
                     if (v instanceof SExpression)
                      try {
-                        var e = ((SExpression)v).Lookup(Context.New(rb,null));
+                        var e = ((SExpression)v).Lookup(rb._cx);
                         if (e!=SBoolean.True)
                             return false;
                         } catch(Exception e)

@@ -71,7 +71,7 @@ public class SInsert extends Serialisable  {
                 {
                     var ss = (SSelectStatement)vals;
                     var tb = (STable)tr.objects.get(t);
-                    ss = (SSelectStatement)ss.Prepare(tr, pt);
+                    ss = (SSelectStatement)ss.Prepare(tr, ss.Names(tr,pt));
                     var nc = ss.getDisplay().Length;
                     if ((i == 0 && nc != tb.cpos.Length) || (i != 0 && i != nc))
                         throw new Exception("Wrong number of columns");
@@ -118,7 +118,7 @@ public class SInsert extends Serialisable  {
                 {
                     SDict<Long, Serialisable> f = null;
                     var c = rb.Ob().vals.First();
-                    if (cols.Length == 0)
+                    if (cols==null)
                         for (var b = tb.cpos.First(); c!= null && b != null; b = b.Next(), c = c.Next())
                         {
                             var sc = (SColumn)b.getValue().val;

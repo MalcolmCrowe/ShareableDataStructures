@@ -70,26 +70,27 @@ namespace Shareable
     public class Context 
     {
         public readonly ILookup<long, Serialisable> refs;
+        public readonly STransaction? tr;
         public readonly Context? next;
         public static readonly Context Empty =
-             new Context(SDict<long, Serialisable>.Empty,null); 
-        public Context(ILookup<long, Serialisable> a,Context? n)
+             new Context(SDict<long, Serialisable>.Empty); 
+        public Context(ILookup<long, Serialisable> a,Context? n=null,STransaction? t=null)
         {
-            refs = a; next = n;
+            refs = a; next = n; tr = t;
         }
-        public static Context Append(Context a,Context b)
+        public static Context Append(Context a,Context b,STransaction tr)
         {
             if (a.next == null)
-                return new Context(a.refs, b);
-            return new Context(a.refs, Append(a.next, b));
+                return new Context(a.refs, b, tr);
+            return new Context(a.refs, Append(a.next, b, tr),tr);
         }
         public SRow Row()
         {
-            return (refs is SRow r) ? r : next?.Row() ?? throw new Exception("PE05"); 
+            return (refs is SRow r)? r: next?.Row() ?? throw new Exception("PE05"); 
         }
         public STransaction Transaction()
         {
-            return (refs is RowBookmark rb) ? rb._rs._tr : next?.Transaction() ?? throw new Exception("PE26");
+            return (tr!=null)?tr: next?.Transaction() ?? throw new Exception("PE26");
         }
         public Serialisable this[long f] => (this == Empty) ? Serialisable.Null :
         refs.defines(f) ? refs[f] : next?[f] ?? Serialisable.Null;
@@ -564,71 +565,12 @@ namespace Shareable
                         }
                     }
                     break;
-                case Op.Eql:
-                case Op.NotEql:
-                case Op.Gtr:
-                case Op.Geq:
-                case Op.Leq:
-                case Op.Lss:
-                    {
-                        int c = 0;
-                        switch (lf.type)
-                        {
-                            case Types.SInteger:
-                                {
-                                    var lv = ((SInteger)lf).value;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.CompareTo(((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = lv.CompareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(new Integer(lv), 0).CompareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SBigInt:
-                                {
-                                    var lv = getbig(lf);
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.CompareTo(((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = lv.CompareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(lv, 0).CompareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SNumeric:
-                                {
-                                    var lv = ((SNumeric)lf).num;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.CompareTo(new Numeric(((SInteger)rg).value)); break;
-                                        case Types.SBigInt:
-                                            c = lv.CompareTo(new Numeric(getbig(rg), 0)); break;
-                                        case Types.SNumeric:
-                                            c = lv.CompareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                        }
-                        bool r = true;
-                        switch (op)
-                        {
-                            case Op.Eql: r = c == 0; break;
-                            case Op.NotEql: r = c != 0; break;
-                            case Op.Leq: r = c <= 0; break;
-                            case Op.Lss: r = c < 0; break;
-                            case Op.Geq: r = c >= 0; break;
-                            case Op.Gtr: r = c > 0; break;
-                        }
-                        return SBoolean.For(r);
-                    }
+                case Op.Eql: return SBoolean.For(lf.CompareTo(rg) == 0); 
+                case Op.NotEql: return SBoolean.For(lf.CompareTo(rg) != 0);
+                case Op.Leq: return SBoolean.For(lf.CompareTo(rg) <= 0);
+                case Op.Lss: return SBoolean.For(lf.CompareTo(rg) < 0);
+                case Op.Geq: return SBoolean.For(lf.CompareTo(rg) >= 0);
+                case Op.Gtr: return SBoolean.For(lf.CompareTo(rg) > 0);
                 case Op.UMinus:
                     switch (left.type)
                     {
@@ -871,8 +813,15 @@ namespace Shareable
             switch(ls.type)
             {
                 case Types.SValues:
-                    for (var b = ((SValues)list).vals.First(); b != null; b = b.Next())
+                    for (var b = ((SValues)ls).vals.First(); b != null; b = b.Next())
                         if (b.Value.CompareTo(a) == 0)
+                            return SBoolean.True;
+                    break;
+                case Types.SRow:
+                    if (list.type == Types.SSelect)
+                        goto case Types.SSelect;
+                    for (var b = ((SRow)ls).cols.First(); b != null; b = b.Next())
+                        if (b.Value.Item2.CompareTo(a) == 0)
                             return SBoolean.True;
                     break;
                 case Types.SSelect:
@@ -984,8 +933,33 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
-            var that = (SInteger)obj;
-            return value.CompareTo(that.value);
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2 ?? Null);
+            var rg = (Serialisable)obj;
+            if (type == Types.SInteger)
+                switch (rg.type)
+                {
+                    case Types.SInteger:
+                        return value.CompareTo(((SInteger)rg).value);
+                    case Types.SBigInt:
+                        return value.CompareTo(((SInteger)rg).big);
+                    case Types.SNumeric:
+                        return new Numeric(new Integer(value), 0).CompareTo(((SNumeric)rg).num);
+                }
+            else
+            {
+                var bg = big ?? throw new Exception("PE09");
+                switch (rg.type)
+                {
+                    case Types.SInteger:
+                        return bg.CompareTo(((SInteger)rg).value);
+                    case Types.SBigInt:
+                        return bg.CompareTo(((SInteger)rg).big ?? throw new Exception("PE10"));
+                    case Types.SNumeric:
+                        return new Numeric(bg, 0).CompareTo(((SNumeric)rg).num);
+                }
+            }
+            throw new Exception("PE08");
         }
     }
     public class SNumeric : Serialisable,IComparable
@@ -1034,8 +1008,20 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
-            var that = (SNumeric)obj;
-            return ToDouble().CompareTo(that.ToDouble());
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2 ?? Null);
+            var rg = (Serialisable)obj;
+            switch (rg.type)
+            {
+                case Types.SInteger:
+                    return num.CompareTo(new Numeric(((SInteger)rg).value)); 
+                case Types.SBigInt:
+                    return num.CompareTo(new Numeric(
+                        ((SInteger)rg).big??throw new Exception("PE11"), 0));
+                case Types.SNumeric:
+                    return num.CompareTo(((SNumeric)rg).num);
+            }
+            throw new Exception("PE12");
         }
         public override string ToString()
         {
@@ -1081,6 +1067,8 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2 ?? Null);
             var that = (SString)obj;
             return str.CompareTo(that.str);
         }
@@ -1127,6 +1115,8 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2??Null);
             var that = (SDate)obj;
             var dt = new DateTime(year, month, 1) + new TimeSpan(rest);
             var tdt = new DateTime(that.year, that.month, 1) + new TimeSpan(that.rest);
@@ -1183,6 +1173,8 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2 ?? Null);
             var that = (STimeSpan)obj;
             var c = years.CompareTo(that.years);
             if (c != 0)
@@ -1231,6 +1223,8 @@ namespace Shareable
         {
             if (obj == Null)
                 return 1;
+            if (obj is SRow sr && sr.cols.Length == 1)
+                return CompareTo(sr.vals.First()?.Value.Item2 ?? Null);
             var that = (SBoolean)obj;
             return sbool.CompareTo(that.sbool);
         }
@@ -1239,7 +1233,7 @@ namespace Shareable
             return sbool ? "\"true\"" : "\"false\"";
         }
     }
-    public class SRow : Serialisable,ILookup<long,Serialisable>
+    public class SRow : Serialisable,ILookup<long,Serialisable>,IComparable
     {
         public readonly SDict<int, (long,string)> names;
         public readonly SDict<int, Serialisable> cols;
@@ -1422,6 +1416,23 @@ namespace Shareable
         }
         public override Serialisable this[long col] => vals[col];
         public Serialisable this[int j] => cols[j];
+        public override int CompareTo(object ob)
+        {
+            if (ob is SRow sr && sr.cols.Length==cols.Length)
+            {
+                var ab = sr.vals.First();
+                for (var b = vals.First(); ab != null && b != null; ab = ab.Next(), b=b.Next())
+                {
+                    var c = b.Value.Item2.CompareTo(ab.Value.Item2);
+                    if (c != 0)
+                        return c;
+                }
+                return 0;
+            }
+            if (cols.Length == 1)
+                return (vals?.First()?.Value.Item2 ?? Null).CompareTo(ob);
+            throw new Exception("PE19");
+        }
         public override void Append(SDatabase db,StringBuilder sb)
         {
             sb.Append('{');
@@ -2478,7 +2489,7 @@ namespace Shareable
                     {
                         var ss = (SSelectStatement)vals;
                         var tb = (STable)tr.objects[t];
-                        ss = (SSelectStatement)ss.Prepare(tr, pt);
+                        ss = (SSelectStatement)ss.Prepare(tr, ss.Names(tr,pt));
                         var nc = ss.Display.Length;
                         if ((i == 0 && nc != tb.cpos.Length) || (i != 0 && i != nc))
                             throw new Exception("Wrong number of columns");
@@ -2607,7 +2618,7 @@ namespace Shareable
         {
             var tb = (STable)tr.objects[t];
             var a = tb.Aggregates(SDict<long,Serialisable>.Empty);
-            var cx = new Context(a, null);
+            var cx = new Context(a,null,tr);
             var db = tb.Display.First();
             for (var b = tb.cols.First(); b != null && db!=null; b = b.Next(), db=db.Next())
             {
@@ -2628,14 +2639,14 @@ namespace Shareable
                             break;
                         case SFunction.Func.Constraint:
                             {
-                                var cf = new Context(f, cx);
+                                var cf = new Context(f, cx,tr);
                                 if (fn.arg.Lookup(cf) == SBoolean.False)
                                     throw new Exception("Constraint violation");
                                 break;
                             }
                         case SFunction.Func.Generated:
                             {
-                                var cf = new Context(f, cx);
+                                var cf = new Context(f, cx,tr);
                                 if (f.Contains(cn) && f[cn] != Null)
                                     throw new Exception("Value cannot be supplied for column " + tr.Name(cn));
                                 f += (cn, fn.arg.Lookup(cf));

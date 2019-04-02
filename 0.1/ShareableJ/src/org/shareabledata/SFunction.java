@@ -77,6 +77,8 @@ public class SFunction extends Serialisable {
             switch (func)
             {
                 case Func.Count:
+                    if ((!v.isValue()) || v==Null)
+                        return SInteger.Zero;
                     return SInteger.One;
                 case Func.Max:
                 case Func.Min:
@@ -90,7 +92,7 @@ public class SFunction extends Serialisable {
             switch (func)
             {
                 case Func.Count:
-                    if (v == Null)
+                    if ((!v.isValue()) || v == Null)
                         return a;
                     return new SInteger(((SInteger)a).value + 1);
                 case Func.Max:
