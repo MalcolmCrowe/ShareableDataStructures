@@ -158,10 +158,13 @@ namespace Shareable
             sb.Append(']');
             return sb.ToString();
         }
-
         public bool defines(K s)
         {
             return Contains(s);
+        }
+        public void Check()
+        {
+            root?.CheckBucket();
         }
     }
     /// <summary>
@@ -205,6 +208,9 @@ namespace Shareable
         // Implementation of the IBucket interface
         public byte Count() { return count; }
         public int Total() { return total; }
+        public abstract void CheckBucket();
+        public abstract void CheckBucket(K k);
+        public abstract K Top();
     }
     /// <summary>
     /// SBookmarks are used to traverse an SDict. 
@@ -430,6 +436,25 @@ namespace Shareable
             }
             return s;
         }
+        public override void CheckBucket()
+        {
+        }
+        public override void CheckBucket(K k)
+        {
+            bool found = false;
+            for (var i = 0; i < count; i++)
+            {
+                var s = slots[i];
+                if (s.Item1.CompareTo(k) == 0)
+                    found = true;
+            }
+            if (!found)
+                throw new Exception("Bad SDict");
+        }
+        public override K Top()
+        {
+            return slots[count - 1].Item1;
+        }
     }
     /// <summary>
     /// The slots in an inner node have (last key in child subtree, child SBucket node).
@@ -565,7 +590,7 @@ namespace Shareable
                 nb = e.Item2;
                 nb = nb.Remove(k);
                 if (nb.count >= m)
-                    return new SInner<K, V>(gtr, total - 1, Replace(nj, (e.Item1, nb)));
+                    return new SInner<K, V>(gtr, total - 1, Replace(nj, (nb.Top(), nb)));
             }
             else
             {
@@ -710,6 +735,32 @@ namespace Shareable
             while (j < count)
                 s[k++] = slots[j++];
             return s;
+        }
+        public override void CheckBucket()
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var s = slots[i];
+                s.Item2.CheckBucket(s.Item1);
+            }
+        }
+        public override void CheckBucket(K k)
+        {
+            bool found = false;
+            for (var i=0;i<count;i++)
+            {
+                var s = slots[i];
+                if ((!found) && s.Item1.CompareTo(k)==0)
+                    found = true;
+                s.Item2.CheckBucket(s.Item1);
+            }
+            if ((!found) && Top().CompareTo(k) == 0)
+                return;
+            throw new Exception("Bad SDict");
+        }
+        public override K Top()
+        {
+            return gtr.Top();
         }
     }
 }

@@ -139,7 +139,7 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                 nb = e.val;
                 nb = nb.Remove(k);
                 if (nb.count >= m)
-                    return new SInner<K, V>(gtr, total - 1, Replace(nj.pos, new SSlot<K, SBucket<K, V>>(e.key, nb)));
+                    return new SInner<K, V>(gtr, total - 1, Replace(nj.pos, new SSlot<K, SBucket<K, V>>(nb.Top(), nb)));
             }
             else
             {
@@ -289,5 +289,8 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                 s[k++] = slots[j++];
             return s;
         }
-
+        public K Top()
+        {
+            return gtr.Top();
+        }
 }
