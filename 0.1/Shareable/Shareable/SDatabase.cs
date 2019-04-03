@@ -1,5 +1,4 @@
 ﻿using System;
-#nullable enable
 namespace Shareable
 {
     public class SDatabase

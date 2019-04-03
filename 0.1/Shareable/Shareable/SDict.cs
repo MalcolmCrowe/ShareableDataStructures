@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Text;
-#nullable enable
 
 namespace Shareable
 {

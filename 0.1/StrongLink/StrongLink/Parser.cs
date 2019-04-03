@@ -1,6 +1,5 @@
 ﻿using System;
 using Shareable;
-#nullable enable
 namespace StrongLink
 {
     public class Parser

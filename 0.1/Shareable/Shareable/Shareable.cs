@@ -1,5 +1,4 @@
 ﻿using System.Text;
-#nullable enable
 namespace Shareable
 {
     public abstract class Collection<T>

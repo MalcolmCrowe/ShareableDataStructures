@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Text;
-#nullable enable
 /// <summary>
 /// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// See github.com/MalcolmCrowe/ShareableDataStructures

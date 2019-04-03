@@ -1,6 +1,0 @@
-E:\ShareableDataStructures\Shareable\Shareable\bin\Debug\Shareable.dll.config
-E:\ShareableDataStructures\Shareable\Shareable\bin\Debug\Shareable.dll
-E:\ShareableDataStructures\Shareable\Shareable\bin\Debug\Shareable.pdb
-E:\ShareableDataStructures\Shareable\Shareable\obj\Debug\Shareable.csproj.CoreCompileInputs.cache
-E:\ShareableDataStructures\Shareable\Shareable\obj\Debug\Shareable.dll
-E:\ShareableDataStructures\Shareable\Shareable\obj\Debug\Shareable.pdb

@@ -5,7 +5,6 @@ using System.Threading;
 using System.Net;
 using System.Net.Sockets;
 using Shareable;
-#nullable enable
 namespace StrongLink
 {
     public class ServerException : Exception

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-#nullable enable
 namespace Shareable
 {
     /// <summary>

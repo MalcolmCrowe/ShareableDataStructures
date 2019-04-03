@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Text;
-#nullable enable
 namespace Shareable
 {
     ///The only instance of this class is STATIC.

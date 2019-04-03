@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 #endif
 using System.Text;
-#nullable enable
 namespace StrongLink
 {
     /// <summary>

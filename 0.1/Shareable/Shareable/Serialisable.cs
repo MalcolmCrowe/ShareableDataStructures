@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-#nullable enable
 namespace Shareable
 {
     public enum Types
@@ -778,7 +777,6 @@ namespace Shareable
             return func.ToString() + "(" + arg + ")";
         }
     }
-#nullable enable
     public class SInPredicate : Serialisable
     {
         public readonly Serialisable arg;
