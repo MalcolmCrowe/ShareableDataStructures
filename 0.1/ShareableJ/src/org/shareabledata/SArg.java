@@ -23,7 +23,7 @@ public class SArg extends Serialisable {
             target = f.context;
         }
         @Override
-        public Serialisable Lookup(Context cx)
+        public Serialisable Lookup(STransaction tr,Context cx)
         {
             return cx.refs.get(target.uid);
         }

@@ -23,12 +23,14 @@ package org.shareabledata;
         { return _cx.Row(); }
         public static Context _Cx(RowSet rs, SRow r, Context n)
         {
+            if (n==null)
+                n = rs._cx;
             if (rs instanceof TableRowSet)
             {
                 var trs = (TableRowSet)rs;
-                n = Context.New(new SDict(trs._tb.uid, r), n,rs._tr);
+                n = Context.New(new SDict(trs._tb.uid, r), n);
             }
-            return Context.New(r, n,rs._tr);
+            return Context.New(r, n);
         }
         @Override
         public Serialisable getValue() { return  (SRow)_cx.refs; }
@@ -51,7 +53,7 @@ package org.shareabledata;
         {
             if (wh!=null)
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.getValue().Lookup(_cx) != SBoolean.True)
+                if (b.getValue().Lookup(_rs._tr,_cx) != SBoolean.True)
                     return false;
             return true;
         }

@@ -20,6 +20,7 @@ public class SGroupQuery extends SQuery {
         SDict<Integer, Long> g = null;
         SList<Serialisable> h = null;
         var n = f.GetInt();
+        var tr = (STransaction)f.db;
         for (var i = 0; i < n; i++)
         {
             var nm = f.GetLong();
@@ -28,7 +29,7 @@ public class SGroupQuery extends SQuery {
         n = f.GetInt();
         for (var i = 0; i < n; i++)
         {
-            var hh = f._Get().Lookup(Context.New(source.refs,null,null));
+            var hh = f._Get().Lookup(tr,Context.New(source.refs,null));
             h=(h==null)?new SList(hh):h.InsertAt(hh, i);
         }
         groupby = g;
@@ -190,17 +191,17 @@ public class SGroupQuery extends SQuery {
         return new SGroupQuery((SQuery)source, f,u);
     }
     @Override
-    public RowSet RowSet(STransaction tr, SQuery top, SDict<Long,Serialisable> ags)
+    public RowSet RowSet(STransaction tr, SQuery top, Context cx)
             throws Exception
     {
-        return new GroupRowSet(tr,top, this, ags);
+        return new GroupRowSet(tr,top, this, cx);
     }
     @Override
-    public Serialisable Lookup(Context cx)
+    public Serialisable Lookup(STransaction tr,Context cx)
     {
         if (!(cx.refs instanceof SearchRowSet.SearchRowBookmark))
             return this;
-        return source.Lookup(cx);
+        return source.Lookup(tr,cx);
     }
     @Override
     public void Append(SDatabase db, StringBuilder sb)

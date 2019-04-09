@@ -92,6 +92,37 @@ package org.shareabledata;
             }
             return null;
         }
+        public static MTreeBookmark Last(SMTree mt)
+        {
+            if (mt._impl==null)
+                return null;
+            for (var outer = mt._impl.First(); outer != null; outer = outer.Next())
+            {
+                var ov = (Variant)outer.getValue().val;
+                switch (ov.variant)
+                {
+                    case Compound:
+                    {
+                        var inner = (MTreeBookmark)((SMTree)ov.ob).First();
+                        if (inner!=null)
+                            return new MTreeBookmark(outer, mt._info, false, 
+                                    inner, null, 0, null);
+                        break;
+                    }
+                    case Partial:
+                    {
+                        var pmk = ((SDict)ov.ob).First();
+                        if (pmk!=null)
+                            return new MTreeBookmark(outer, mt._info, false, null, pmk, 0,null);
+                        break;
+                    }
+                    case Ascending:
+                    case Descending:
+                        return new MTreeBookmark(outer, mt._info, false, null, null, 0,null);
+                }
+            }
+            return null;            
+        }
         public SCList<Variant> key()
         {
             if (_outer == null)
@@ -162,7 +193,57 @@ package org.shareabledata;
                 }
             }
             return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _filter);
-
+        }
+        public Bookmark<SSlot<SCList<Variant>, Long>> Previous()
+        {
+            var inner = _inner;
+            var outer = _outer;
+            var pmk = _pmk;
+            var pos = Position;
+            var changed = false;
+            for (; ; )
+            {
+                if (inner != null)
+                {
+                    inner = (MTreeBookmark)inner.Previous();
+                    if (inner != null)
+                        break;
+                }
+                if (pmk != null)
+                {
+                    pmk = pmk.Next();
+                    if (pmk != null)
+                        break;
+                }
+                if (_filter!=null)
+                    return null;
+                var ou = outer.Previous();
+                if (ou == null)
+                    return null;
+                else
+                    outer = (SDictBookmark)ou;
+                changed = true;
+                var oval = (Variant)outer.getValue().val;
+                switch (oval.variant)
+                {
+                    case Compound:
+                        var t = (SMTree)oval.ob;
+                        inner = (_filter.Length != 0) ? t.PositionAt((SCList<Variant>)_filter.next) : // ok
+                            (MTreeBookmark)Last(t);
+                        if (inner != null)
+                            break;
+                        break;
+                    case Partial:
+                        pmk = ((SDict)oval.ob).First();
+                        if (pmk != null)
+                            break;
+                        break;
+                    case Ascending:
+                    case Descending:
+                        break;
+                }
+            }
+            return new MTreeBookmark<K>(outer, _info, changed, inner, pmk, pos + 1, _filter);
         }
                 /// <summary>
         /// In join processing if there are ties in both first and second we

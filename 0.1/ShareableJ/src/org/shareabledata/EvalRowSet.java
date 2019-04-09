@@ -11,9 +11,10 @@ package org.shareabledata;
  */
 public class EvalRowSet extends RowSet {
         public final SDict<Long, Serialisable> _vals;
-        public EvalRowSet(RowSet r,SQuery q,SDict<Long,Serialisable>ags)
+        public EvalRowSet(RowSet r,SQuery q,Context cx) throws Exception
         {
-            super(r._tr,q,ags);
+            super(r._tr,q,cx);
+            var ags = (cx==null)?null:cx.Ags();
             SDict<Long, Serialisable> vs = null;
             for (var b = (RowBookmark)r.First();b!=null;
                 b=(RowBookmark)b.Next())
@@ -23,7 +24,7 @@ public class EvalRowSet extends RowSet {
                     if (vf.type==Types.SFunction)
                     {
                         var f = (SFunction)vf;
-                        var v = f.arg.Lookup(b._cx);
+                        var v = f.arg.Lookup(_tr,b._cx);
                         if (v!=Serialisable.Null)
                         {
                             var w = (vs!=null && vs.Contains(f.fid)) ? 
@@ -39,15 +40,17 @@ public class EvalRowSet extends RowSet {
         {
             var r = new SRow();
             var ab = _qry.display.First();
-            for (var b = _qry.cpos.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                r=r.Add(ab.getValue().val, b.getValue().val.Lookup(Context.New(_vals,null,_tr)));
+            for (var b = _qry.cpos.First(); ab != null && b != null; 
+                    ab = ab.Next(), b = b.Next())
+                r=r.Add(ab.getValue().val, 
+                        b.getValue().val.Lookup(_tr,Context.New(_vals,null)));
             return new EvalRowBookmark(this,r, _vals);
         }
         public class EvalRowBookmark extends RowBookmark
         {
             EvalRowBookmark(EvalRowSet ers, SRow r,SDict<Long,Serialisable> a) 
             {
-                super(ers, _Cx(ers,r,Context.New(a,null,_tr)), 0); 
+                super(ers, _Cx(ers,r,Context.New(a,null)), 0); 
             }
             public Bookmark<Serialisable> Next()
             {

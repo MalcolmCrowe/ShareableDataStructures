@@ -62,11 +62,11 @@ public class SFunction extends Serialisable {
         }
         public boolean isAgg() { return (func!=Func.Null);}
         @Override
-        public Serialisable Lookup(Context cx)
+        public Serialisable Lookup(STransaction tr,Context cx)
         {
             if (cx.refs==null)
                 return this;
-            var x = arg.Lookup(cx);
+            var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
             return cx.defines(fid) ? cx.get(fid) : Null;

@@ -13,8 +13,8 @@ public class SelectRowSet extends RowSet {
         public final SSelectStatement _sel;
         public final RowSet _source;
         public SelectRowSet(RowSet sce,SSelectStatement sel,
-                SDict<Long,Serialisable> ags) throws Exception
-        {   super(sce._tr,sel,ags);
+                Context cx) throws Exception
+        {   super(sce._tr,sel,cx);
             _sel = sel;
             _source = sce;
         }
@@ -26,7 +26,7 @@ public class SelectRowSet extends RowSet {
                 for (var b = (RowBookmark)_source.First();b!=null;
                         b=(RowBookmark)b.Next())
                 {
-                    var rw = (SRow)_qry.Lookup(b._cx);
+                    var rw = (SRow)_qry.Lookup(_tr,b._cx);
                     if (rw.isNull)
                         continue;
                     var rb = new SelectRowBookmark(this,b, rw, 0);
@@ -54,7 +54,7 @@ public class SelectRowSet extends RowSet {
                 try {
                     for (var b = (RowBookmark)_bmk.Next(); b != null; b = (RowBookmark)b.Next())
                     {
-                        var rw = (SRow)_srs._qry.Lookup(b._cx);
+                        var rw = (SRow)_srs._qry.Lookup(_rs._tr,b._cx);
                         if (rw.isNull)
                             continue;
                         var rb = new SelectRowBookmark(_srs, b, rw, Position + 1);

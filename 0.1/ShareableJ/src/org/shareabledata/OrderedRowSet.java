@@ -16,7 +16,7 @@ public class OrderedRowSet extends RowSet {
         public OrderedRowSet(RowSet sce,SSelectStatement sel) 
                 throws Exception
         {
-            super(sce._tr,sel,sce._aggregates);
+            super(sce._tr,sel,sce._cx);
             _sce = sce;
             SList<TreeInfo<Serialisable>> ti = null;
             int n = 0;
@@ -34,7 +34,7 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().col.Lookup(b._cx),
+                    k[i] = new Variant(c.getValue().col.Lookup(_tr,b._cx),
                             !c.getValue().desc);
                 t = t.Add(m,k);
                 r=(r==null)?new SDict(0,b.Ob()):r.Add(m, b.Ob());
@@ -45,7 +45,7 @@ public class OrderedRowSet extends RowSet {
         public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti)
                 throws Exception
         {
-            super(sce._tr,sce._qry,sce._aggregates);
+            super(sce._tr,sce._qry,sce._cx);
             _sce = sce;
             var t = new SMTree<Serialisable>(ti);
             SDict<Integer, SRow> r = null;
@@ -55,7 +55,7 @@ public class OrderedRowSet extends RowSet {
                 var k = new Variant[ti.Length];
                 var i = 0;
                 for (var c = ti.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.getValue().headName.Lookup(b._cx),true);
+                    k[i] = new Variant(c.getValue().headName.Lookup(_tr,b._cx),true);
                 t = t.Add(m, k);
                 r=(r==null)?new SDict(m, b.Ob()):r.Add(m,b.Ob());
                 m++;

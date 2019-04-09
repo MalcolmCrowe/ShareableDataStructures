@@ -19,7 +19,8 @@ namespace Tpcc
 		/// </summary>
 		private System.ComponentModel.Container components = null;
 		public StrongConnect db;
-		public int wid,did;
+        int wid;
+        public int did;
 		decimal c_balance;
 		string c_first;
 		string c_middle;
@@ -27,7 +28,7 @@ namespace Tpcc
 		string clast = "";
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
-		bool Check(string c)
+        bool Check(string c)
 		{
 			if (c!="")
 			{
@@ -86,7 +87,9 @@ namespace Tpcc
             if (s.IsEmpty)
                 return true;
             Set(7, oid);
-            Set(8, "" + (DateTime)s[0][0]);
+
+            var str = (string)s[0][0];
+            Set(8, str);
             if (!(s[0][1] == Serialisable.Null))
                 Set(9, (int)s[0][1]);
             int k = 10;
@@ -99,7 +102,7 @@ namespace Tpcc
                 Set(k++, (int)s[i][2]);
                 Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[i][3])));
                 if (s[i][4] != Serialisable.Null)
-                    Set(k++, ((DateTime)s[i][4]).ToShortDateString());
+                    Set(k++, DateTime.Parse((string)s[i][4]).ToShortDateString());
                 else
                     k++;
             }
@@ -108,7 +111,6 @@ namespace Tpcc
 		public void Single()
 		{
 			PutBlanks();
-			wid = 1;
 			did = util.random(1,10);
 			int y=util.random(1,100);
 			if (y<=60)
@@ -138,12 +140,14 @@ namespace Tpcc
 			bad:;
 		}
 
-		public OrderStatus()
-		{
-			//
-			// Required for Windows Form Designer support
-			//
-			InitializeComponent();
+		public OrderStatus(StrongConnect c, int w)
+        {
+            db = c;
+            wid = w;
+            //
+            // Required for Windows Form Designer support
+            //
+            InitializeComponent();
 			VTerm vt1 = this;
 			Width = vt1.Width;
 			Height = vt1.Height+50;

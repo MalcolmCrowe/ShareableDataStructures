@@ -169,14 +169,14 @@ public class SColumn extends SSelector {
                     this;
         }
         @Override
-        public Serialisable Lookup(Context cx)
+        public Serialisable Lookup(STransaction tr,Context cx)
         {
             var r = cx.defines(uid) ? cx.get(uid) : Null;
             if (r == Null && !(cx.refs instanceof RowBookmark))
                 return this;
             return r;
         }
-        public Serialisable Check(Serialisable v,Context cx)
+        public Serialisable Check(STransaction tr,Serialisable v,Context cx)
                 throws Exception
         {
             v = v.Coerce(dataType);
@@ -191,14 +191,14 @@ public class SColumn extends SSelector {
                     case "GENERATED":
                         if (v.type!=Types.Serialisable)
                             throw new Exception("Illegal value for generated column");
-                        return b.getValue().val.arg.Lookup(cx);
+                        return b.getValue().val.arg.Lookup(tr,cx);
                     case "DEFAULT":
                         if (v.type == Types.Serialisable)
                             return b.getValue().val.arg;
                         break;
                     default:
-                        cx = Context.New(new SDict(SArg.Value.target.uid, v), cx,null);
-                        if (b.getValue().val.arg.Lookup(cx) != SBoolean.True)
+                        cx = Context.New(new SDict(SArg.Value.target.uid, v), cx);
+                        if (b.getValue().val.arg.Lookup(tr,cx) != SBoolean.True)
                             throw new Exception("Column constraint " + 
                                     b.getValue().key + " fails");
                         break;

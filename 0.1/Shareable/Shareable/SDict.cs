@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Text;
-
+#nullable enable
 namespace Shareable
 {
     /// <summary>
@@ -91,6 +91,11 @@ namespace Shareable
         {
             return (SBookmark<K, V>.Next(null, this) is SBookmark<K,V> b)?
                 new SBookmark<K, V>(b._bucket,b._bpos,b._parent):null;
+        }
+        public Bookmark<(K,V)>? Last()
+        {
+            return (SBookmark<K, V>.Previous(null, this) is SBookmark<K, V> b) ?
+                new SBookmark<K, V>(b._bucket, b._bpos, b._parent) : null;
         }
         public virtual Bookmark<(K,V)>? PositionAt(K k)
         {
@@ -210,7 +215,9 @@ namespace Shareable
         public int Total() { return total; }
         public abstract void CheckBucket();
         public abstract void CheckBucket(K k);
-        public abstract K Top();
+        public abstract K Last();
+        public virtual SBucket<K, V>? Gtr() { return null; }
+        public virtual int EndPos => count - 1; 
     }
     /// <summary>
     /// SBookmarks are used to traverse an SDict. 
@@ -229,6 +236,7 @@ namespace Shareable
             _bucket = b; _bpos = bp; _parent = n;
         }
         public override Bookmark<(K,V)>? Next() { return Next(this); }
+        public Bookmark<(K,V)>? Previous() { return Previous(this); }
         public K key => _bucket.Slot(_bpos).Item1;
         public V val => (V)_bucket.Slot(_bpos).Item2;
         public override (K, V) Value => ((K,V))((SLeaf<K,V>)_bucket).Slot(_bpos);
@@ -253,7 +261,7 @@ namespace Shareable
         {
             SBucket<K, V>? b;
             (K,object) d;
-            if (stk == null) // following Create or Reset
+            if (stk == null) // First()
             {
                 // if Tree is empty return null
                 if (tree == null || tree.root==null || tree.Length == 0)
@@ -301,7 +309,46 @@ namespace Shareable
                 b = d.Item2 as SBucket<K, V>;
             }
             return stk;
-
+        }
+        public static SBookmark<K, V>? Previous(SBookmark<K, V>? stk, SDict<K, V>? tree = null)
+        {
+            SBucket<K, V>? b;
+            (K, object) d;
+            if (stk == null) // Last()
+            {
+                // if Tree is empty return null
+                if (tree == null || tree.root == null || tree.Length == 0)
+                    return null;
+                // The last entry is root.slots[root.count-1] or below
+                stk = new SBookmark<K, V>(tree.root, tree.root.EndPos, null);
+                d = tree.root.Slot(tree.root.count - 1);
+                b = tree.root.Gtr();
+            }
+            else // guaranteed to be at a LEAF
+            {
+                var stkPos = stk._bpos-1;
+                if (stkPos < 0)
+                {
+                    while (stkPos < 0)
+                    {
+                        // before start of current bucket: pop till we aren't
+                        stk = stk._parent;
+                        if (stk == null)
+                            return null;
+                        stkPos = stk._bpos - 1;
+                    }
+                }
+                stk = new SBookmark<K, V>(stk._bucket, stkPos, stk._parent);
+                d = stk._bucket.Slot(stkPos);
+                b = (d.Item2 as SBucket<K,V>);
+            }
+            while (b != null) // now ensure we are at a leaf
+            {
+                stk = new SBookmark<K, V>(b, b.EndPos, stk);
+                d = b.Slot(b.count-1);
+                b = (d.Item2 as SBucket<K, V>)?.Gtr();
+            }
+            return stk;
         }
     }
     /// <summary>
@@ -451,7 +498,7 @@ namespace Shareable
             if (!found)
                 throw new Exception("Bad SDict");
         }
-        public override K Top()
+        public override K Last()
         {
             return slots[count - 1].Item1;
         }
@@ -589,8 +636,10 @@ namespace Shareable
                 var e = slots[nj];
                 nb = e.Item2;
                 nb = nb.Remove(k);
+                // If k=e.Item1 we will use nb.Last() instead of e.Item1
+                // But key comparison may well be more expensive than computing nb.Last()
                 if (nb.count >= m)
-                    return new SInner<K, V>(gtr, total - 1, Replace(nj, (nb.Top(), nb)));
+                    return new SInner<K, V>(gtr, total - 1, Replace(nj, (nb.Last(), nb)));
             }
             else
             {
@@ -754,13 +803,18 @@ namespace Shareable
                     found = true;
                 s.Item2.CheckBucket(s.Item1);
             }
-            if ((!found) && Top().CompareTo(k) == 0)
+            if ((!found) && Last().CompareTo(k) == 0)
                 return;
             throw new Exception("Bad SDict");
         }
-        public override K Top()
+        public override K Last()
         {
-            return gtr.Top();
+            return gtr.Last();
         }
+        public override SBucket<K,V>? Gtr()
+        {
+            return gtr;
+        }
+        public override int EndPos => count;
     }
 }

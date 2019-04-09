@@ -61,7 +61,7 @@ namespace Shareable
         SSysTable = 52,
         SCreateView = 53
     }
-    public interface ILookup<K,V> where K:IComparable
+    public interface ILookup<K, V> where K : IComparable
     {
         bool defines(K s);
         V this[K s] { get; }
@@ -69,27 +69,32 @@ namespace Shareable
     public class Context 
     {
         public readonly ILookup<long, Serialisable> refs;
-        public readonly STransaction? tr;
         public readonly Context? next;
         public static readonly Context Empty =
              new Context(SDict<long, Serialisable>.Empty); 
-        public Context(ILookup<long, Serialisable> a,Context? n=null,STransaction? t=null)
+        public Context(ILookup<long, Serialisable> a,Context? n=null)
         {
-            refs = a; next = n; tr = t;
+            refs = a; next = n; 
         }
-        public static Context Append(Context a,Context b,STransaction tr)
+        public static Context Append(Context a,Context b)
         {
             if (a.next == null)
-                return new Context(a.refs, b, tr);
-            return new Context(a.refs, Append(a.next, b, tr),tr);
+                return new Context(a.refs, b);
+            return new Context(a.refs, Append(a.next, b));
         }
         public SRow Row()
         {
-            return (refs is SRow r)? r: next?.Row() ?? throw new Exception("PE05"); 
+            return (refs is SRow r) ? r : next?.Row() ?? throw new Exception("PE05");
         }
-        public STransaction Transaction()
+        public SDict<long,Serialisable> Ags()
         {
-            return (tr!=null)?tr: next?.Transaction() ?? throw new Exception("PE26");
+            if (refs is SDict<long,Serialisable> r)
+            {
+                var f = r.First();
+                if (f == null || f.Value.Item2.type!=Types.SRow)
+                    return r;
+            }
+            return next?.Ags() ?? throw new Exception("PE25");
         }
         public Serialisable this[long f] => (this == Empty) ? Serialisable.Null :
         refs.defines(f) ? refs[f] : next?[f] ?? Serialisable.Null;
@@ -222,7 +227,7 @@ namespace Shareable
         }
         public Serialisable Coerce(Types t)
         {
-            if (type == t)
+            if (type == t || type==Types.Serialisable)
                 return this;
             switch (t)
             {
@@ -273,7 +278,7 @@ namespace Shareable
         {
             return a;
         }
-        public virtual Serialisable Lookup(Context cx)
+        public virtual Serialisable Lookup(STransaction tr,Context cx)
         {
             return this;
         }
@@ -290,7 +295,7 @@ namespace Shareable
         { get { throw new NotImplementedException(); } }
         public override string ToString()
         {
-            return "Serialisable " +type;
+            return "NULL";
         }
     }
     public class SExpression : SDbObject
@@ -354,16 +359,19 @@ namespace Shareable
                 ags = right.Aggregates(ags);
             return ags;
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
-            if (op == Op.Dot)
+            var lf = left.Lookup(tr, cx);
+            if (op == Op.Dot && right is SDbObject rn)
             {
-                return (cx.refs is SRow && left is SDbObject ln && right is SDbObject rn 
-                    && cx.defines(ln.uid) && cx[ln.uid] is SRow sr && sr.defines(rn.uid))?
-                sr[rn.uid]:this;
+                if (lf is SRow rw && rw.defines(rn.uid))
+                            return rw[rn.uid];
+                if (lf is SDbObject ln && cx.defines(ln.uid) && 
+                    cx[ln.uid] is SRow sr && sr.defines(rn.uid))
+                            return sr[rn.uid];
+                return this;
             }
-            var lf = left.Lookup(cx);
-            var rg = right.Lookup(cx);
+            var rg = right.Lookup(tr,cx);
             if (!(lf.isValue && rg.isValue))
                 return new SExpression(lf, op, rg);
             switch (op)
@@ -597,7 +605,7 @@ namespace Shareable
                     }
                 case Op.Dot:
                     {
-                        var ls = (ILookup<long,Serialisable>)left.Lookup(cx);
+                        var ls = (ILookup<long,Serialisable>)left.Lookup(tr,cx);
                         if (ls != null)
                             return ls[((SDbObject)right).uid];
                         break;
@@ -633,7 +641,7 @@ namespace Shareable
         {
             target = f.context;
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
             return cx.refs[target.uid];
         }
@@ -668,6 +676,10 @@ namespace Shareable
         {
             return new SFunction(func,arg.UseAliases(db, ta));
         }
+        public override Serialisable UpdateAliases(SDict<long, string> uids)
+        {
+            return new SFunction(func,arg.UpdateAliases(uids));
+        }
         public override Serialisable Prepare(STransaction db, SDict<long,long> pt)
         {
             return new SFunction(func, arg.Prepare(db, pt));
@@ -683,11 +695,11 @@ namespace Shareable
         {
             return (func == Func.Constraint || IsAgg) ? ags + (fid, this) : ags;
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
             if (cx.refs==SDict<long,Serialisable>.Empty)
                 return this;
-            var x = arg.Lookup(cx);
+            var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
             return cx.defines(fid) ? cx[fid] : Null;
@@ -804,10 +816,10 @@ namespace Shareable
             arg.Put(f);
             list.Put(f);
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
-            var a = arg.Lookup(cx);
-            var ls = list.Lookup(cx);
+            var a = arg.Lookup(tr,cx);
+            var ls = list.Lookup(tr,cx);
             switch(ls.type)
             {
                 case Types.SValues:
@@ -825,8 +837,7 @@ namespace Shareable
                 case Types.SSelect:
                     {
                         var ss = (SSelectStatement)list;
-                        var tr = cx.Transaction();
-                        for (var b = ss.RowSet(tr,ss,SDict<long,Serialisable>.Empty).First(); b != null; b = b.Next())
+                        for (var b = ss.RowSet(tr,ss,Context.Empty).First(); b != null; b = b.Next())
                             if (b.Value.CompareTo(a) == 0)
                                 return SBoolean.True;
                     }
@@ -1339,7 +1350,7 @@ namespace Shareable
             rec = r;
             isNull = false;
         }
-        public SRow(SSelectStatement ss, Context cx) : base(Types.SRow)
+        public SRow(STransaction tr,SSelectStatement ss, Context cx) : base(Types.SRow)
         {
             var r = SDict<int, Serialisable>.Empty;
             var vs = SDict<long, Serialisable>.Empty;
@@ -1347,7 +1358,7 @@ namespace Shareable
             var cb = ss.cpos.First();
             for (var b = ss.display.First(); cb != null && b != null; b = b.Next(), cb = cb.Next())
             {
-                var v = cb.Value.Item2.Lookup(cx) ?? Null;
+                var v = cb.Value.Item2.Lookup(tr,cx) ?? Null;
                 if (v is SRow sr && sr.cols.Length == 1)
                     v = sr.cols.Lookup(0) ?? Null;
                 if (v != null)
@@ -1461,14 +1472,14 @@ namespace Shareable
                 }
             sb.Append("}");
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
             var v = SDict<int, Serialisable>.Empty;
             var r = SDict<long, Serialisable>.Empty;
             var nb = names.First();
             for (var b = cols.First(); nb != null && b != null; nb = nb.Next(), b = b.Next())
             {
-                var e = b.Value.Item2.Lookup(cx);
+                var e = b.Value.Item2.Lookup(tr,cx);
                 v += (b.Value.Item1, e);
                 r += (nb.Value.Item2.Item1, e);
             }
@@ -1623,16 +1634,11 @@ namespace Shareable
             base.Put(f);
             f.PutLong(uid);
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
-            if (uid < -1000000)
-                for (Context? c = cx; c != null; c = c.next)
-                    if (c.refs is AliasRowSet.AliasRowBookmark ab &&
-                            ab._ars._alias.alias == uid)
-                        return ab._ob;
             if (cx.defines(uid))
                 return cx[uid];
-            return base.Lookup(cx);
+            return base.Lookup(tr,cx);
         }
         internal string Uid()
         {
@@ -1807,21 +1813,55 @@ namespace Shareable
                 return new SAlias(this, ta[uid], uid);
             return base.UseAliases(db,ta);
         }
-        public override RowSet RowSet(STransaction tr,SQuery top,SDict<long,Serialisable>ags)
+        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
             {
                 var x = (SIndex)tr.objects[b.Value.Item1];
                 if (x.references < 0)
-                    return new IndexRowSet(tr, this, x, SCList<Variant>.Empty, SList<Serialisable>.Empty);
+                    return new IndexRowSet(tr, this, x, SCList<Variant>.Empty,
+                        SExpression.Op.NotEql,SList<Serialisable>.Empty, cx);
             }
-            return new TableRowSet(tr, this);
+            return new TableRowSet(tr, this, cx);
         }
-        public override Serialisable Lookup(Context cx)
+        public SRecord Check(STransaction tr,SRecord rc)
         {
-            if (cx.refs is RowBookmark rb)
-                return rb._ob;
-            return this;
+            // check primary/unique key for nulls
+            for (var b=indexes.First();b!=null;b=b.Next())
+            {
+                var x = (SIndex)tr.objects[b.Value.Item1];
+                var k = x.Key(rc, x.cols);
+                var i = 0;
+                for (var kb=k.First();kb!=null;kb=kb.Next(),i++)
+                    if (kb.Value.ob==null)
+                    {
+                        if (x.primary && i == x.cols.Length - 1)
+                        { 
+                            long cu=0;
+                            var j = 0;
+                            var mb = x.rows.PositionAt(k);
+                            for (var cb = x.cols.First(); j <= i && cb != null; cb = cb.Next(), j++)
+                            {
+                                cu = cb.Value;
+                                if (j<i)
+                                    mb = mb._inner;
+                            }
+                            var sc = (SColumn)tr.objects[cu];
+                            if (sc.dataType == Types.SInteger)
+                            {
+                                var bu = mb._outer;
+                                while (bu._parent != null)
+                                    bu = bu._parent;
+                                var v = new SInteger(((SInteger)bu._bucket.Last().ob).value + 1);
+                                var f = rc.fields;
+                                f += (cu,v);
+                                return new SRecord(tr, rc.table, f);
+                            }
+                        }
+                        throw new Exception("Illegal null value in primary key");
+                    }
+            }
+            return rc;
         }
         public override bool Conflicts(SDatabase db, STransaction tr, Serialisable that)
         {
@@ -1930,7 +1970,7 @@ namespace Shareable
                 ("Rows", Types.SInteger),("Indexes",Types.SInteger), ("Uid", Types.SString));
             return d;
         }
-        public override RowSet RowSet(STransaction tr,SQuery top, SDict<long,Serialisable>ags)
+        public override RowSet RowSet(STransaction tr,SQuery top, Context cx)
         {
             return new SysRows(tr,this);
         }
@@ -2121,7 +2161,7 @@ namespace Shareable
             }
             return false;
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
             var r = cx.defines(uid) ? cx[uid] : Null;
             if (r == Null && !(cx.refs is RowBookmark))
@@ -2141,20 +2181,20 @@ namespace Shareable
                     case "GENERATED":
                         if (v.type!=Types.Serialisable)
                             throw new Exception("Illegal value for generated column");
-                        return b.Value.Item2.arg.Lookup(cx);
+                        return b.Value.Item2.arg.Lookup(tr,cx);
                     case "DEFAULT":
                         if (v.type == Types.Serialisable)
                             return b.Value.Item2.arg;
                         break;
                     default:
                         cx = new Context(new SDict<long, Serialisable>(SArg.Value.target.uid, v), cx);
-                        if (b.Value.Item2.arg.Lookup(cx) != SBoolean.True)
+                        if (b.Value.Item2.arg.Lookup(tr,cx) != SBoolean.True)
                             throw new Exception("Column constraint " + b.Value.Item1 + " fails");
                         break;
                 }
             return v;
         }
-        public override SDict<long, Serialisable> Aggregates(SDict<long, Serialisable> ags)
+        public override SDict<long,Serialisable> Aggregates(SDict<long,Serialisable> ags)
         {
             for (var b = constraints.First(); b != null; b = b.Next())
                 ags += ((b.Value.Item2).fid, b.Value.Item2);
@@ -2510,23 +2550,23 @@ namespace Shareable
                             for (var b = tb.cpos.First(); c.Length != 0 && b != null; b = b.Next(), c = c.next)
                             {
                                 var sc = (SColumn)b.Value.Item2;
-                                var v = sc.Check(tr,c.element.Lookup(cx), cx);
+                                var v = sc.Check(tr,c.element.Lookup(tr,cx), cx);
                                 f += (sc.uid, v);
                             }
                         else
                             for (var b = cols; c.Length != 0 && b.Length != 0; b = b.next, c = c.next)
                             {
                                 var sc = (SColumn)tr.objects[b.element];
-                                var v = sc.Check(tr,c.element.Lookup(cx), cx);
+                                var v = sc.Check(tr,c.element.Lookup(tr,cx), cx);
                                 f += (b.element, v);
                             }
-                        tr = (STransaction)tr.Install(new SRecord(tr, table, f), tr.curpos);
+                        tr = (STransaction)tr.Install(tb.Check(tr,new SRecord(tr, table, f)), tr.curpos);
                         break;
                     }
                 case Types.SSelect:
                     {
                         var ss = (SSelectStatement)vals;
-                        var rs = ss.RowSet(tr, ss, SDict<long, Serialisable>.Empty);
+                        var rs = ss.RowSet(tr, ss, Context.Empty);
                         for (var rb = (RowBookmark?)rs.First();rb!=null;rb=(RowBookmark?)rb.Next())
                         {
                             var f = SDict<long, Serialisable>.Empty;
@@ -2535,14 +2575,14 @@ namespace Shareable
                                 for (var b = tb.cpos.First(); c!= null && b != null; b = b.Next(), c = c.Next())
                                 {
                                     var sc = (SColumn)b.Value.Item2;
-                                    var v = sc.Check(tr,c.Value.Item2.Lookup(cx), cx);
+                                    var v = sc.Check(tr,c.Value.Item2.Lookup(tr,cx), cx);
                                     f += (sc.uid, v);
                                 }
                             else
                                 for (var b = cols; c != null && b.Length != 0; b = b.next, c = c.Next())
                                 {
                                     var sc = (SColumn)tr.objects[b.element];
-                                    var v = sc.Check(tr,c.Value.Item2.Lookup(cx), cx);
+                                    var v = sc.Check(tr,c.Value.Item2.Lookup(tr,cx), cx);
                                     f += (b.element, v);
                                 }
                             tr = (STransaction)tr.Install(new SRecord(tr, table, f), tr.curpos);
@@ -2551,6 +2591,10 @@ namespace Shareable
                     }
             }
             return tr;
+        }
+        public override Serialisable UpdateAliases(SDict<long, string> uids)
+        {
+            return new SInsert(table,cols,vals.UpdateAliases(uids));
         }
         public override void Put(StreamBase f)
         {
@@ -2616,7 +2660,7 @@ namespace Shareable
         {
             var tb = (STable)tr.objects[t];
             var a = tb.Aggregates(SDict<long,Serialisable>.Empty);
-            var cx = new Context(a,null,tr);
+            var cx = new Context(a,null);
             var db = tb.Display.First();
             for (var b = tb.cols.First(); b != null && db!=null; b = b.Next(), db=db.Next())
             {
@@ -2637,17 +2681,17 @@ namespace Shareable
                             break;
                         case SFunction.Func.Constraint:
                             {
-                                var cf = new Context(f, cx,tr);
-                                if (fn.arg.Lookup(cf) == SBoolean.False)
+                                var cf = new Context(f, cx);
+                                if (fn.arg.Lookup(tr,cf) == SBoolean.False)
                                     throw new Exception("Constraint violation");
                                 break;
                             }
                         case SFunction.Func.Generated:
                             {
-                                var cf = new Context(f, cx,tr);
+                                var cf = new Context(f, cx);
                                 if (f.Contains(cn) && f[cn] != Null)
                                     throw new Exception("Value cannot be supplied for column " + tr.Name(cn));
-                                f += (cn, fn.arg.Lookup(cf));
+                                f += (cn, fn.arg.Lookup(tr,cf));
                             }
                             break;
                     }
@@ -2741,8 +2785,16 @@ namespace Shareable
         public bool Matches(RowBookmark rb,SList<Serialisable> wh)
         {
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.Value is SExpression x && x.Lookup(rb._cx) is SBoolean e 
+                if (b.Value is SExpression x && x.Lookup(rb._rs._tr,rb._cx) is SBoolean e 
                     && !e.sbool)
+                    return false;
+            return true;
+        }
+        public bool EqualMatches(RowBookmark rb, SList<Serialisable> wh)
+        {
+            for (var b = wh.First(); b != null; b = b.Next())
+                if (b.Value is SExpression x && x.op==SExpression.Op.Eql 
+                    && x.Lookup(rb._rs._tr, rb._cx) is SBoolean e && !e.sbool)
                     return false;
             return true;
         }
@@ -2779,11 +2831,11 @@ namespace Shareable
         }
         public override STransaction Obey(STransaction tr,Context cx)
         {
-            for (var b = qry.RowSet(tr,qry,SDict<long,Serialisable>.Empty).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
+            for (var b = qry.RowSet(tr,qry,Context.Empty).First() as RowBookmark; b != null; b = b.Next() as RowBookmark)
             {
                 var u = SDict<long, Serialisable>.Empty;
                 for (var c = assigs.First(); c != null; c = c.Next())
-                    u += (c.Value.Item1, c.Value.Item2.Lookup(b._cx));
+                    u += (c.Value.Item1, c.Value.Item2.Lookup(tr,b._cx));
                 tr = b.Update(tr,u);
             }
             return tr;
@@ -2897,7 +2949,7 @@ namespace Shareable
         }
         public override STransaction Obey(STransaction tr,Context cx)
         {
-            for (var b = qry.RowSet(tr,qry,SDict<long,Serialisable>.Empty).First() as RowBookmark; 
+            for (var b = qry.RowSet(tr,qry,cx).First() as RowBookmark; 
                 b != null; b = b.Next() as RowBookmark)
             {
                 var rc = b._ob.rec ?? throw new System.Exception("PE14");// not null

@@ -95,19 +95,19 @@ public class SInsert extends Serialisable  {
                     for (var b = tb.cpos.First(); c!=null && b != null; b = b.Next(), c = c.next)
                     {
                         var sc = (SColumn)b.getValue().val;
-                        var v = sc.Check(c.element.Lookup(cx),cx);
+                        var v = sc.Check(tr,c.element.Lookup(tr,cx),cx);
                         f =(f==null)?new SDict(sc.uid, v):f.Add(sc.uid, v);
                     }
                 else if (cols!=null)
                     for (var b = cols; c!=null && b!=null; b = b.next, c = c.next)
                     {
                         var sc = (SColumn)tr.objects.get(b.element);
-                        var v = sc.Check(c.element.Lookup(cx),cx);
+                        var v = sc.Check(tr,c.element.Lookup(tr,cx),cx);
                         f =(f==null)?new SDict(sc.uid, v):f.Add(sc.uid, v);
                     }
                 else
                     throw new Exception("PE05");
-                tr = (STransaction)tr.Install(new SRecord(tr, table, f), tr.curpos);
+                tr = (STransaction)tr.Install(tb.Check(tr,new SRecord(tr, table, f)), tr.curpos);
                 break;
             }
             case Types.SSelect:
@@ -122,14 +122,14 @@ public class SInsert extends Serialisable  {
                         for (var b = tb.cpos.First(); c!= null && b != null; b = b.Next(), c = c.Next())
                         {
                             var sc = (SColumn)b.getValue().val;
-                            var v = sc.Check(c.getValue().val.Lookup(cx), cx);
+                            var v = sc.Check(tr,c.getValue().val.Lookup(tr,cx), cx);
                             f=(f==null)?new SDict(sc.uid, v):f.Add(sc.uid, v);
                         }
                     else
                         for (var b = cols; c != null && b.Length != 0; b = b.next, c = c.Next())
                         {
                             var sc = (SColumn)tr.objects.get(b.element);
-                            var v = sc.Check(c.getValue().val.Lookup(cx), cx);
+                            var v = sc.Check(tr,c.getValue().val.Lookup(tr,cx), cx);
                             f =(f==null)?new SDict(b.element, v):f.Add(b.element,v);
                         }
                     tr = (STransaction)tr.Install(new SRecord(tr, table, f), tr.curpos);

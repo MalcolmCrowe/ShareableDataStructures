@@ -219,8 +219,9 @@ public class SSelectStatement extends SQuery {
 
         @Override
         public RowSet RowSet(STransaction tr,SQuery top,
-                SDict<Long,Serialisable> ags) throws Exception
+                Context cx) throws Exception
         {
+            var ags = (cx==null)?null:cx.Ags();
             if (order!=null)
                 for (var b = order.First(); b != null; b = b.Next())
                     ags = b.getValue().col.Aggregates(ags);
@@ -228,14 +229,16 @@ public class SSelectStatement extends SQuery {
             if (cpos!=null)
                 for (var b = cpos.First(); b != null; b = b.Next())
                     ags1 = b.getValue().val.Aggregates(ags1);
-            var a = this;
-            RowSet r = new SelectRowSet(qry.RowSet(tr,a,ags1), a, ags);
+            cx = Context.Replace(ags,cx);
+            var cx1 = Context.Replace(ags1,cx);
+            RowSet r = new SelectRowSet(qry.RowSet(tr,this,cx1), this, cx);
             if (cpos!=null && !(qry instanceof SGroupQuery))
             {
                 for (var b = cpos.First(); b != null; b = b.Next())
                     ags = b.getValue().val.Aggregates(ags);
+                cx = Context.Replace(ags, cx);
                 if (ags!=null && ags.Length != 0)
-                    r = new EvalRowSet(((SelectRowSet)r)._source, this, ags);
+                    r = new EvalRowSet(((SelectRowSet)r)._source, this, cx);
             }
             if (distinct)
                 r = new DistinctRowSet(r);
@@ -244,11 +247,11 @@ public class SSelectStatement extends SQuery {
             return r;
         }
         @Override
-        public Serialisable Lookup(Context cx) 
+        public Serialisable Lookup(STransaction tr,Context cx) 
         {
             if (display==null)
                 return (SRow)cx.refs;
-            return new SRow(this,cx);
+            return new SRow(tr,this,cx);
         }
         @Override
         public long getAlias() { return qry.getAlias(); }

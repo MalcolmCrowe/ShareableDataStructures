@@ -95,16 +95,16 @@ public class SSearch extends SQuery {
     }
     
     @Override
-    public Serialisable Lookup(Context cx) 
+    public Serialisable Lookup(STransaction tr,Context cx) 
     {
         return(cx.refs instanceof SearchRowSet.SearchRowBookmark)? 
-                sce.Lookup(cx):this;
+                sce.Lookup(tr,cx):this;
     }
 
     @Override
     public RowSet RowSet(STransaction db, SQuery top, 
-            SDict<Long,Serialisable> ags) throws Exception {
-        return new SearchRowSet(db, top, this, ags);
+            Context cx) throws Exception {
+        return new SearchRowSet(db, top, this, cx);
     }
     
     @Override

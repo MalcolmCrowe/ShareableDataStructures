@@ -64,9 +64,9 @@ public class SAlias extends SQuery {
         }
         @Override
         public RowSet RowSet(STransaction tr, SQuery top,
-                SDict<Long,Serialisable> ags) throws Exception
+                Context cx) throws Exception
         {
-            return new AliasRowSet(this,qry.RowSet(tr, top, ags));
+            return new AliasRowSet(this,qry.RowSet(tr, top, cx));
         }
         @Override
         public void Append(SDatabase db,StringBuilder sb)

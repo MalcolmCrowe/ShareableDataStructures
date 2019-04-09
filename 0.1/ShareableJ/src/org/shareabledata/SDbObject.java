@@ -150,6 +150,13 @@ public class SDbObject extends Serialisable {
         super.Put(f);
         f.PutLong(uid);
     }
+    @Override
+    public Serialisable Lookup(STransaction tr,Context cx)
+    {
+        if (cx.defines(uid))
+            return cx.get(uid);
+        return super.Lookup(tr,cx);
+    }
     void Check(Boolean committed) {
         if (committed != uid < STransaction._uid) {
             throw new Error("Internal error - Commited check fails");

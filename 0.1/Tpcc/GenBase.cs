@@ -8,11 +8,14 @@ namespace Tpcc
 {
     public class GenBase
     {
-        static public StrongConnect conn;
+        public StrongConnect conn;
         static Encoding enc = new ASCIIEncoding();
+        public GenBase(StrongConnect c)
+        {
+            conn = c;
+        }
         public void BuildTpcc()
         {
-            conn = Form1.conn;
             CreationScript();
             FillItems();
         }

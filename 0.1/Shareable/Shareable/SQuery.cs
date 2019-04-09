@@ -128,7 +128,7 @@ namespace Shareable
         /// <param name="ags">The aggregates found so far</param>
         /// <param name="cx">A context for evaluation</param>
         /// <returns></returns>
-        public virtual RowSet RowSet(STransaction tr,SQuery top,SDict<long,Serialisable>ags)
+        public virtual RowSet RowSet(STransaction tr,SQuery top,Context cx)
         {
             throw new NotImplementedException();
         }
@@ -377,7 +377,8 @@ namespace Shareable
             for (var b = ons.First(); b != null; b = b.Next())
             {
                 var ex = b.Value as SExpression;
-                var c = ex.left.Lookup(lb._cx).CompareTo(ex.right.Lookup(rb._cx));
+                var c = ex.left.Lookup(rb._rs._tr,lb._cx).
+                    CompareTo(ex.right.Lookup(rb._rs._tr,rb._cx));
                 if (c!=0)
                     return c;
             }
@@ -389,11 +390,11 @@ namespace Shareable
             }
             return 0;
         }
-        public override RowSet RowSet(STransaction tr, SQuery top, SDict<long, Serialisable> ags)
+        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
         {
-            var lf = left.RowSet(tr, left, ags);
-            var rg = right.RowSet(lf._tr, right, ags);
-            return new JoinRowSet(tr, top, this, lf, rg, ags);
+            var lf = left.RowSet(tr, left, cx);
+            var rg = right.RowSet(lf._tr, right, cx);
+            return new JoinRowSet(tr, top, this, lf, rg, cx);
         }
         public override void Append(SDatabase db, StringBuilder sb)
         {
@@ -434,7 +435,7 @@ namespace Shareable
         }
         public override SDict<long, long> Names(SDatabase tr, SDict<long, long> pt)
         {
-            return qry.Names(tr, pt);
+            return qry.Names(tr, pt) + (alias,qry.uid);
         }
         public override void Put(StreamBase f)
         {
@@ -453,7 +454,7 @@ namespace Shareable
         }
         public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            return new SAlias((SQuery)qry.Prepare(db,pt),alias,uid);
+            return new SAlias((SQuery)qry.Prepare(db, pt),alias,uid);
         }
         public new static SAlias Get(Reader f)
         {
@@ -467,9 +468,9 @@ namespace Shareable
             sb.Append(" "); sb.Append(alias);
         }
         public override long Alias => alias;
-        public override RowSet RowSet(STransaction tr, SQuery top, SDict<long, Serialisable> ags)
+        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
         {
-            return new AliasRowSet(this,qry.RowSet(tr, top, ags));
+            return new AliasRowSet(this,qry.RowSet(tr, top, cx));
         }
         public override string ToString()
         {
@@ -541,15 +542,18 @@ namespace Shareable
             var sce = f._Get() as SQuery ?? throw new Exception("Query expected");
             return new SSearch(sce,f,u);
         }
-        public override RowSet RowSet(STransaction tr,SQuery top,SDict<long,Serialisable>ags)
+        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
         {
+            var ags = SDict<long, Serialisable>.Empty;
             for (var b = where.First(); b != null; b = b.Next())
                 ags = b.Value.Aggregates(ags);
-            return new SearchRowSet(tr, top, this, ags);
+            if (ags != SDict<long, Serialisable>.Empty)
+                cx = new Context(ags, cx);
+            return new SearchRowSet(tr, top, this, cx);
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
-            return (cx.refs is SearchRowSet.SearchRowBookmark srb)?sce.Lookup(srb._bmk._cx):this;
+            return (cx.refs is SearchRowSet.SearchRowBookmark srb) ? sce.Lookup(tr,srb._bmk._cx) : this;
         }
         public override void Append(SDatabase db,StringBuilder sb)
         {
@@ -575,11 +579,12 @@ namespace Shareable
             var g = SDict<int, long>.Empty;
             var h = SList<Serialisable>.Empty;
             var n = f.GetInt();
+            var tr = f.db as STransaction;
             for (var i = 0; i < n; i++)
                 g += (i, f.GetLong());
             n = f.GetInt();
             for (var i = 0; i < n; i++)
-                h += (f._Get().Lookup(new Context(source.refs,null)), i);
+                h += (f._Get().Lookup(tr,new Context(source.refs,null)), i);
             groupby = g;
             having = h;
             f.context = this;
@@ -679,14 +684,9 @@ namespace Shareable
             var source = f._Get() as SQuery ?? throw new Exception("Query expected");
             return new SGroupQuery(source,f,u);
         }
-        public override RowSet RowSet(STransaction tr, SQuery top, SDict<long,Serialisable>ags)
+        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
         {
-            return new GroupRowSet(tr, top, this, ags);
-        }
-        public override Serialisable Lookup(Context cx)
-        {
-            return (cx.refs is SearchRowSet.SearchRowBookmark srb) ? 
-                source.Lookup(cx) : this;
+            return new GroupRowSet(tr, top, this, cx);
         }
         public override void Append(SDatabase db, StringBuilder sb)
         {
@@ -881,21 +881,25 @@ namespace Shareable
             return sb.ToString();
         }
 
-        public override RowSet RowSet(STransaction tr,SQuery top,SDict<long,Serialisable>ags)
+        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
         {
+            var ags = cx.Ags();
             for (var b = order.First(); b != null; b = b.Next())
                 ags = b.Value.col.Aggregates(ags);
             var ags1 = ags;
             for (var b = cpos.First(); b != null; b = b.Next())
                 ags1 = b.Value.Item2.Aggregates(ags1);
-            RowSet r = new SelectRowSet(qry.RowSet(tr, this, ags1), this,ags);
+            cx = new Context(ags, cx.next);
+            var cx1 = new Context(ags1, cx.next);
+            RowSet r = new SelectRowSet(qry.RowSet(tr, this, cx1), this,cx);
             // perform another pass on the selectlist just in case
             if (!(qry is SGroupQuery))
             {
                 for (var b = cpos.First(); b != null; b = b.Next())
                     ags = b.Value.Item2.Aggregates(ags);
-                if (ags.Length != 0)
-                    r = new EvalRowSet(((SelectRowSet)r)._source, this, ags);
+                cx = new Context(ags, cx.next);
+                if (cx.refs != SDict<long,Serialisable>.Empty)
+                    r = new EvalRowSet(((SelectRowSet)r)._source, this, cx);
             }
             if (distinct)
                 r = new DistinctRowSet(r);
@@ -903,11 +907,11 @@ namespace Shareable
                 r = new OrderedRowSet(r, this);
             return r;
         }
-        public override Serialisable Lookup(Context cx)
+        public override Serialisable Lookup(STransaction tr,Context cx)
         {
             if (display.Length == 0)
                 return (SRow)cx.refs;
-            return new SRow(this,cx);
+            return new SRow(tr,this,cx);
         }
         public override long Alias => qry.Alias;
         public override SDict<int, (long,string)> Display => (display == SDict<int, (long,string)>.Empty) ? qry.Display : display;

@@ -1,5 +1,6 @@
 ﻿using System;
 using Shareable;
+#nullable enable
 namespace StrongLink
 {
     public class Parser
@@ -404,11 +405,11 @@ namespace StrongLink
                 case Sym.DROP:
                     return (Drop(), uids);
                 case Sym.INSERT:
-                    return (Insert(), uids);
+                    return (Insert().UpdateAliases(uids), uids);
                 case Sym.DELETE:
-                    return (Delete(), uids);
+                    return (Delete().UpdateAliases(uids), uids);
                 case Sym.UPDATE:
-                    return (Update(), uids);
+                    return (Update().UpdateAliases(uids), uids);
                 case Sym.SELECT:
                     return (Select().UpdateAliases(uids),uids);
                 case Sym.BEGIN:
@@ -530,7 +531,7 @@ namespace StrongLink
                 var cd = ColumnDef(tb);
                 cols += (cd.Item2,cols.Length??0); // tb updated with the new column
                 if (cd.Item3 != null) // tableconstraint?
-                    cons += cd.Item3;
+                    cons = cons.Append(cd.Item3);
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN:
@@ -1039,7 +1040,7 @@ namespace StrongLink
             if (lxr.tok==Sym.IN)
             {
                 Next();
-                return new SInPredicate(a, Value());
+                return new SInPredicate(a, Factor());
             }
             return a;
         }
@@ -1079,6 +1080,12 @@ namespace StrongLink
                 case Sym.LPAREN:
                     {
                         Next();
+                        if (lxr.tok==Sym.SELECT)
+                        {
+                            var sq = Select();
+                            Mustbe(Sym.RPAREN);
+                            return sq;
+                        }
                         var a = SList<(long,string)>.Empty;
                         var c = SList<Serialisable>.Empty;
                         int n = 0;
@@ -1096,8 +1103,9 @@ namespace StrongLink
                             return c.element;
                         return new SRow(a, c);
                     }
-                case Sym.SELECT:
-                    return Select();
+                case Sym.NULL:
+                    Next();
+                    return Serialisable.Null;
             }
             throw new Exception("Bad syntax");
         }

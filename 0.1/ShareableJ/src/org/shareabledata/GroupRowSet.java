@@ -17,14 +17,14 @@ public class GroupRowSet extends RowSet {
     public final SQuery _top;
     public final RowSet _sce;
     public GroupRowSet(STransaction tr,SQuery top,SGroupQuery gqry,
-            SDict<Long,Serialisable>ags) throws Exception
+            Context cx) throws Exception
     {
-        this(gqry.source.RowSet(tr,top,ags), top, gqry, ags);
+        this(gqry.source.RowSet(tr,top,cx), top, gqry, cx);
     }
-    GroupRowSet(RowSet sce,SQuery top,SGroupQuery gqry,SDict<Long,Serialisable> ags)
+    GroupRowSet(RowSet sce,SQuery top,SGroupQuery gqry,Context cx)
             throws Exception
     {
-        super(sce._tr,gqry,ags);
+        super(sce._tr,gqry,cx);
         _gqry = gqry;
         _sce = sce;
         SList<TreeInfo<Long>> inf = null;
@@ -48,7 +48,7 @@ public class GroupRowSet extends RowSet {
             }
             var mb = t.PositionAt(k);
             var m = (long)((mb!=null)?mb.getValue().val:0);
-            var ag = AddIn(ags, r.get(m), b._cx);
+            var ag = AddIn(sce._tr, r.get(m), b._cx);
             r =(r==null)?new SDict(m, ag):r.Add(m,ag);
         }
         _tree = t;
@@ -76,20 +76,21 @@ public class GroupRowSet extends RowSet {
             kc =(kc==null)?
                 new SDict(kb.getValue().headName,(Serialisable)gb.getValue().ob):
                 kc.Add(kb.getValue().headName,(Serialisable)gb.getValue().ob);
-        var cx = Context.New(kc,Context.New(_grouprows.get(b.getValue().val),null,_tr),_tr);
+        var cx = Context.New(kc,Context.New(_grouprows.get(b.getValue().val),_cx));
         var ab = _top.getDisplay().First();
         for (var cb = _top.cpos.First(); ab != null && cb != null; 
                 ab = ab.Next(), cb = cb.Next())
-            r = r.Add(ab.getValue().val,cb.getValue().val.Lookup(cx));
+            r = r.Add(ab.getValue().val,cb.getValue().val.Lookup(_tr,cx));
         return r;
     }
-    static SDict<Long,Serialisable> AddIn(SDict<Long,Serialisable> ags, 
-            SDict<Long,Serialisable> cur, Context cx)
+    static SDict<Long,Serialisable> AddIn(STransaction tr, 
+            SDict<Long,Serialisable> cur, Context cx) throws Exception
     {
+        var ags = (cx==null)?null:cx.Ags();
         for (var b=ags.First(); b!=null;b=b.Next())
         {
             var f = (SFunction)b.getValue().val;
-            var v = f.arg.Lookup(Context.New(cur,cx,null));
+            var v = f.arg.Lookup(tr,Context.New(cur,cx));
             if (v != Serialisable.Null)
             {
                 var w = (cur!=null && cur.Contains(f.fid))?f.AddIn(cur.get(f.fid),v)
@@ -112,7 +113,7 @@ public class GroupRowSet extends RowSet {
         protected GroupRowBookmark(GroupRowSet grs,MTreeBookmark<Long> bm,
                 SRow r,SDict<Long,Serialisable> a,int p)
         { 
-            super(grs,_Cx(grs,r,Context.New(a,null,_tr)),p);
+            super(grs,_Cx(grs,r,Context.New(a,null)),p);
             _grs = grs; _bmk = bm;
         }
 

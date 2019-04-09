@@ -1111,7 +1111,7 @@ public class Parser {
             if (lxr.tok==Sym.IN)
             {
                 Next();
-                return new SInPredicate(a, Value());
+                return new SInPredicate(a, Factor());
             }
             return a;
         }
@@ -1153,6 +1153,12 @@ public class Parser {
                 case Sym.LPAREN:
                     {
                         Next();
+                        if (lxr.tok==Sym.SELECT)
+                        {
+                            var sq = Select();
+                            Mustbe(Sym.RPAREN);
+                            return sq;
+                        }
                         SList<Ident> a = null;
                         SList<Serialisable> c = null;
                         int n = 0;
@@ -1172,8 +1178,9 @@ public class Parser {
                             return c.element;
                         return new SRow(a, c);
                     }
-                case Sym.SELECT:
-                    return Select();
+                case Sym.NULL:
+                    Next();
+                    return Serialisable.Null;
             }
             throw new Exception("Bad syntax");
         }

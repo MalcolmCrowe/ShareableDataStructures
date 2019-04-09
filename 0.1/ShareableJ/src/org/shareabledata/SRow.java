@@ -116,7 +116,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         rec = r;
         isNull = false;
     }
-    public SRow(SSelectStatement ss, Context cx)
+    public SRow(STransaction tr,SSelectStatement ss, Context cx)
     { 
         super(Types.SRow);
         SDict<Integer, Serialisable> r = null;
@@ -128,7 +128,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
             for (var b = ss.display.First(); cb != null && b != null; b = b.Next(), cb = cb.Next())
             {
                 try {
-                var v = cb.getValue().val.Lookup(cx);
+                var v = cb.getValue().val.Lookup(tr,cx);
                 if (v instanceof SRow && ((SRow)v).cols.Length == 1)
                     v = ((SRow)v).cols.Lookup(0);
                 if (v==null)
@@ -213,7 +213,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         }
     }
     @Override
-    public Serialisable Lookup(Context cx)
+    public Serialisable Lookup(STransaction tr,Context cx)
     {
         SDict<Integer, Serialisable> v = null;
         SDict<Long, Serialisable> r = null;
@@ -221,7 +221,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         for (var b = cols.First(); nb != null && b != null; 
                 nb = nb.Next(), b = b.Next())
         {
-            var e = b.getValue().val.Lookup(cx);
+            var e = b.getValue().val.Lookup(tr,cx);
             v =(v==null)?new SDict(b.getValue().key,e):v.Add(b.getValue().key, e);
             r=(r==null)?new SDict(nb.getValue().val.uid,e):
                     r.Add(nb.getValue().val.uid, e);

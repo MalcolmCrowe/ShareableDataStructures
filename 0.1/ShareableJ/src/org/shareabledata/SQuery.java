@@ -152,7 +152,7 @@ public class SQuery extends SDbObject {
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
         public RowSet RowSet(STransaction db,SQuery top,
-                SDict<Long,Serialisable> ags) throws Exception{
+                Context cx) throws Exception{
             throw new Exception("Not implemented");
         }
         

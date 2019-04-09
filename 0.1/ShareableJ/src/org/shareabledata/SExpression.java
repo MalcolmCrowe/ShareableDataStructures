@@ -80,31 +80,35 @@ public class SExpression extends SDbObject {
             return new SExpression(left.Fix(f),op,right.Fix(f));            
         }
         @Override
-        public Serialisable Lookup(Context cx) 
+        public Serialisable Lookup(STransaction tr,Context cx) 
         {
-            if (op == Op.Dot)
+            var lf = left.Lookup(tr,cx);
+            if (op == Op.Dot && right instanceof SDbObject)
             {
-                if (cx.refs instanceof SRow)
+                SDbObject rn = (SDbObject)right;
+                if (lf instanceof SRow)
                 {
-                    SDbObject ln = null;
-                    SDbObject rn = null;
-                    SRow sr = null;
-                    if (left instanceof SDbObject)
-                        ln = (SDbObject)left;
-                    if (right instanceof SDbObject)
-                        rn = (SDbObject)right;
-                    if (ln!=null && cx.defines(ln.uid) &&
-                            cx.get(ln.uid) instanceof SRow)
-                        sr = (SRow)cx.get(ln.uid);
-                    try {
-                        if (sr!=null && sr.defines(rn.uid))
-                            return sr.get(rn.uid); // no exception
-                    } catch(Exception e){}
+                    var rw = (SRow)lf;
+                    if (rw.defines(rn.uid))
+                        return rw.get(rn.uid);
+                }
+                if (lf instanceof SDbObject)
+                {
+                    var ln = (SDbObject)lf;
+                    if (cx.defines(ln.uid))
+                    {
+                        var t = cx.get(ln.uid);
+                        if (t instanceof SRow)
+                        {
+                            var sr = (SRow)t;
+                            if (sr.defines(rn.uid))
+                                return sr.get(rn.uid);
+                        }
+                    }
                 }
                 return this;
             }
-            var lf = left.Lookup(cx);
-            var rg = right.Lookup(cx);
+            var rg = right.Lookup(tr,cx);
             if (!(lf.isValue() && rg.isValue()))
                 return new SExpression(lf, op, rg);
             switch (op)
@@ -339,7 +343,7 @@ public class SExpression extends SDbObject {
                     }
                 case Op.Dot:
                     {
-                        var ls = (ILookup<Long,Serialisable>)left.Lookup(cx);
+                        var ls = (ILookup<Long,Serialisable>)left.Lookup(tr,cx);
                         if (ls!=null)
                             return ls.get(((SDbObject)right).uid);
                         break;

@@ -22,7 +22,6 @@ namespace Tpcc
 		public int wid;
 		public int did;
 		public int thresh;
-
         bool DoThresh(ref string mess)
         {
             int nextoid = 0;
@@ -44,12 +43,14 @@ namespace Tpcc
 			status.Text = mess;
 		}
 
-		public StockLevel()
-		{
-			//
-			// Required for Windows Form Designer support
-			//
-			InitializeComponent();
+		public StockLevel(StrongConnect c, int w)
+        {
+            db = c;
+            wid = w;
+            //
+            // Required for Windows Form Designer support
+            //
+            InitializeComponent();
 			Put(36,1,"Stock-Level");
 			Put(1,2,"Warehouse:        District:");
 			AddField(12,2,4);

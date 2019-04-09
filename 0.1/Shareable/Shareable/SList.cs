@@ -50,16 +50,12 @@ namespace Shareable
         {
             return s.InsertAt(x.Item1, x.Item2);
         }
-        protected SList<T> Append(SList<T> x)
+        public SList<T> Append(SList<T> x)
         {
             var n = 0;
             for (var b = First(); b != null; b = b.Next(), n++)
                 x += (b.Value, n);
             return x;
-        }
-        public static SList<T> operator+(SList<T> a,SList<T> b)
-        {
-            return a.Append(b);
         }
         protected SList<T> Pop()
         {

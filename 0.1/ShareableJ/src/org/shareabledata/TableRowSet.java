@@ -13,8 +13,8 @@ public class TableRowSet extends RowSet {
 
     public final STable _tb;
 
-    public TableRowSet(STransaction db, STable t) {
-        super(db.Add(t.uid), t,null);
+    public TableRowSet(STransaction db, STable t, Context cx) {
+        super(db.Add(t.uid), t,cx);
         _tb = t;
     }
 

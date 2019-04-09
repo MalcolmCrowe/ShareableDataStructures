@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+#nullable enable
 namespace Shareable
 {
     /// <summary>
@@ -277,7 +278,7 @@ namespace Shareable
     }
     public class MTreeBookmark<K> :Bookmark<(SCList<Variant>,long)> where K:IComparable
     {
-        readonly SBookmark<Variant, Variant> _outer;
+        internal readonly SBookmark<Variant, Variant> _outer;
         internal readonly SList<TreeInfo<K>> _info;
         internal readonly MTreeBookmark<K>? _inner;
         readonly Bookmark<(long, bool)>? _pmk;
@@ -304,6 +305,28 @@ namespace Shareable
                 {
                     case Variants.Compound:
                         if ((ov.ob as SMTree<K>)?.First() is MTreeBookmark<K> inner)
+                            return new MTreeBookmark<K>(outer, mt._info, false, inner, null, 0);
+                        break;
+                    case Variants.Partial:
+                        if ((ov.ob as SDict<long, bool>)?.First() is Bookmark<(long, bool)> pmk)
+                            return new MTreeBookmark<K>(outer, mt._info, false, null, pmk, 0);
+                        break;
+                    case Variants.Ascending:
+                    case Variants.Descending:
+                        return new MTreeBookmark<K>(outer, mt._info, false, null, null, 0);
+                }
+            }
+            return null;
+        }
+        public static MTreeBookmark<K>? Last(SMTree<K> mt)
+        {
+            for (var outer = mt._impl?.Last() as SBookmark<Variant, Variant>; outer != null; outer = outer.Next() as SBookmark<Variant, Variant>)
+            {
+                var ov = outer.Value.Item2;
+                switch (ov.variant)
+                {
+                    case Variants.Compound:
+                        if (Last((SMTree<K>)ov.ob) is MTreeBookmark<K> inner)
                             return new MTreeBookmark<K>(outer, mt._info, false, inner, null, 0);
                         break;
                     case Variants.Partial:
@@ -414,7 +437,59 @@ namespace Shareable
             }
             done:
             return new MTreeBookmark<K>(outer, _info, changed, inner, pmk, pos + 1, _filter);
-
+        }
+        public Bookmark<(SCList<Variant>, long)>? Previous()
+        {
+            var inner = _inner;
+            var outer = _outer;
+            var pmk = _pmk;
+            var pos = Position;
+            var changed = false;
+            for (; ; )
+            {
+                if (inner != null)
+                {
+                    inner = inner.Previous() as MTreeBookmark<K>;
+                    if (inner != null)
+                        goto done;
+                }
+                if (pmk != null)
+                {
+                    pmk = pmk.Next();
+                    if (pmk != null)
+                        goto done;
+                }
+                var h = _filter?.element;
+                if (h != null)
+                    return null;
+                var ou = outer.Previous();
+                if (ou == null)
+                    return null;
+                else
+                    outer = (SBookmark<Variant, Variant>)ou;
+                changed = true;
+                var oval = outer.val;
+                switch (oval.variant)
+                {
+                    case Variants.Compound:
+                        var t = (SMTree<K>)oval.ob;
+                        inner = (_filter.Length != 0) ? t.PositionAt((SCList<Variant>)_filter.next) : // ok
+                            Last(t) as MTreeBookmark<K>;
+                        if (inner != null)
+                            goto done;
+                        break;
+                    case Variants.Partial:
+                        pmk = ((SDict<long, bool>)oval.ob).First();
+                        if (pmk != null)
+                            goto done;
+                        break;
+                    case Variants.Ascending:
+                    case Variants.Descending:
+                        goto done;
+                }
+            }
+        done:
+            return new MTreeBookmark<K>(outer, _info, changed, inner, pmk, pos + 1, _filter);
         }
         /// <summary>
         /// In join processing if there are ties in both first and second we
@@ -518,7 +593,11 @@ namespace Shareable
         }
         public int CompareTo(object obj)
         {
-            var c = ((IComparable)ob).CompareTo(((Variant)obj).ob);
+            int c = 0;
+            if (ob == null)
+                c = (obj != null || ((Variant)obj).ob != null) ? -1 : 0;
+            else 
+                c = ((IComparable)ob).CompareTo(((Variant)obj).ob);
             return (variant == Variants.Descending) ? -c : c;
         }
 

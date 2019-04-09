@@ -3,7 +3,6 @@ using StrongLink;
 using Shareable;
 using System.Threading;
 using System.Threading.Tasks;
-#nullable enable
 namespace Test
 {
     class Program
@@ -66,7 +65,8 @@ namespace Test
             Test9(test); 
             Test10(test);
             Test11(test);
-    //        Test12(test);
+            Test12(test);
+            Test13(test);
         }
         void Test1(int t)
         {
@@ -153,10 +153,16 @@ namespace Test
             if (t > 0 && t != 4)
                 return;
             Begin();
-            conn.ExecuteNonQuery("create table e(f integer,g string) primary key(f,g)");
+            conn.ExecuteNonQuery("create table e(f integer,g string) primary key(g,f)");
             conn.ExecuteNonQuery("insert e values(23,'XC')");
             conn.ExecuteNonQuery("insert e values(45,'DE')");
-            CheckResults(4, 1,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+            CheckResults(4, 1,"select from e", "[{f:45,g:'DE'},{f:23,g:'XC'}]");
+            conn.ExecuteNonQuery("insert e(g) values('DE')");
+            CheckResults(4, 2, "select from e",
+                "[{f:45,g:'DE'},{f:46,g:'DE'},{f:23,g:'XC'}]");
+            // the EvalRowSet loop in the next test should execute only once
+            CheckResults(4, 3, "select count(f) from e where g='DE' and f<=45",
+                "[{col1:1}]");
             Rollback();
             if (!commit)
             {
@@ -164,10 +170,10 @@ namespace Test
                 conn.CreateTable("e");
                 conn.CreateColumn("e", Types.SInteger, "f");
                 conn.CreateColumn("e", Types.SString, "g"); 
-                conn.CreateIndex("e", IndexType.Primary, null, "f", "g");
+                conn.CreateIndex("e", IndexType.Primary, null, "g", "f");
                 conn.Insert("e", new string[0], new Serialisable[] { new SInteger(23), new SString("XC") },
                     new Serialisable[] { new SInteger(45), new SString("DE") });
-                CheckResults(4,2,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+                CheckResults(4,4,"select from e", "[{f:45,g:'DE'},{f:23,g:'XC'}]");
                 Rollback();
             }
         }
@@ -399,9 +405,17 @@ namespace Test
             CheckResults(12, 1, "select from dst", "[{c:13},{c:14}]");
             CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
                 "[{a:12},{a:14}]");
-            CheckResults(12, 3, "select from dst where c in select a from sce where b='Bakers'",
-                "[{c:13)}]");
+            CheckResults(12, 3, "select from dst where c in (select a from sce where b='Bakers')",
+                "[{c:13}]");
+            conn.ExecuteNonQuery("insert dst(c) select max(x.a)+4 from sce x where x.b<'H'");
+            CheckResults(12, 4, "select from dst", "[{c:13},{c:14},{c:18}]");
+            conn.ExecuteNonQuery("insert dst select min(x.c)-3 from dst x");
+            CheckResults(12, 5, "select from dst", "[{c:13},{c:14},{c:18},{c:10}]");
             Rollback();
+        }
+        void Test13(int t)
+        {
+
         }
         void CheckExceptionQuery(int t, int q, string c, string m)
         {

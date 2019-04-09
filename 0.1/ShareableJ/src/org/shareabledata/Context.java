@@ -12,34 +12,39 @@ package org.shareabledata;
 public class Context
 {
     public final ILookup<Long,Serialisable> refs;
-    public final STransaction tr;
     public final Context next;
     public static Context Empty = new Context();
     private Context()
     {
         refs = null;
         next = null;
-        tr = null;
     }
-    private Context(ILookup<Long,Serialisable> a, Context n, STransaction t)
+    private Context(ILookup<Long,Serialisable> a, Context n)
     {
         refs = a;
         next = n;
-        tr = t;
     }
-    public static Context New(ILookup<Long,Serialisable> a, Context n, STransaction t)
+    public static Context New(ILookup<Long,Serialisable> a, Context n)
     {
-        return (a==null)?((n==null)?Empty:n):new Context(a,n,t);
+        if (a==null)
+            return n;
+        return new Context(a,n);
     }
-    public static Context Append(Context a,Context b,STransaction tr)
+    public static Context Replace(ILookup<Long,Serialisable> a, Context n)
+    {
+        if (a==null)
+            return n;
+        return new Context(a,(n==null)?null:n.next);
+    }
+    public static Context Append(Context a,Context b)
     {
         if (a.refs==null)
             return b;
         if (b.refs==null)
             return a;
         if (a.next == null)
-            return new Context(a.refs, b, tr);
-        return new Context(a.refs, Append(a.next, b, tr), tr);        
+            return new Context(a.refs, b);
+        return new Context(a.refs, Append(a.next, b));        
     }
     public SRow Row() throws Exception
     {
@@ -49,13 +54,18 @@ public class Context
             throw new Exception("PE05");
         return next.Row();
     }
-    public STransaction Transaction() throws Exception
+    public SDict<Long,Serialisable> Ags() throws Exception
     {
-        if (tr!=null)
-            return tr;
-        if (next!=null)
-            return next.Transaction();
-        throw new Exception("PE26");
+        if (refs instanceof SDict)
+        {
+            var r = (SDict)refs;
+            var f = r.First();
+            if (f == null || ((Serialisable)f.getValue().val).type!=Types.SRow)
+                return r;
+        }
+        if (next==null)
+             throw new Exception("PE25");
+        return next.Ags();
     }
     public boolean defines(Long u) {
         if (refs==null)

@@ -152,23 +152,86 @@ public class STable extends SQuery {
             return super.UseAliases(db,ta);
         }
         @Override
-        public Serialisable Lookup(Context nms)
+        public Serialisable Lookup(STransaction tr,Context nms)
         {
              return (nms.refs instanceof RowBookmark)?
                      (SRow)((RowBookmark)nms.refs)._cx.refs: this;
         }
         @Override
         public RowSet RowSet(STransaction tr,SQuery top, 
-                SDict<Long,Serialisable> ags)
+                Context cx)
         {
             if (indexes!=null)
                 for (var b = indexes.First(); b != null; b = b.Next())
                 {
                     var x = (SIndex)tr.objects.Lookup(b.getValue().key);
                     if (x.references < 0)
-                        return new IndexRowSet(tr, this, x, null, null);
+                        return new IndexRowSet(tr, this, x, null, 
+                                SExpression.Op.NotEql, null, cx);
                 }
-            return new TableRowSet(tr, this);
+            return new TableRowSet(tr, this, cx);
+        }
+        @Override
+        public boolean Conflicts(SDatabase db, STransaction tr, Serialisable that)
+        {
+            try {
+            return that.type == Types.STable &&
+                db.Name(uid).compareTo(tr.Name(((STable)that).uid)) == 0;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        public SRecord Check(STransaction tr,SRecord rc) throws Exception
+        {
+            // check primary/unique key for nulls
+            if (indexes!=null)
+            for (var b=indexes.First();b!=null;b=b.Next())
+            {
+                var x = (SIndex)tr.objects.get(b.getValue().key);
+                var k = x.Key(rc, x.cols);
+                var i = 0;
+                for (var kb=k.First();kb!=null;kb=kb.Next(),i++)
+                    if (kb.getValue().ob==null)
+                    {
+                        if (x.primary && i == x.cols.Length - 1)
+                        { 
+                            long cu=0;
+                            var j = 0;
+                            var mb = x.rows.PositionAt(k);
+                            for (var cb = x.cols.First(); j <= i && cb != null; cb = cb.Next(), j++)
+                            {
+                                cu = cb.getValue();
+                                if (j<i)
+                                    mb = mb._inner;
+                            }
+                            var sc = (SColumn)tr.objects.get(cu);
+                            if (sc.dataType == Types.SInteger)
+                            {
+                                var bu = mb._outer._bmk;
+                                while (bu._parent != null)
+                                    bu = bu._parent;
+                                var ov = (Variant)bu._bucket.Last();
+                                var v = new SInteger(((SInteger)ov.ob).value + 1);
+                                var f = rc.fields;
+                                f = f.Add(cu,v);
+                                return new SRecord(tr, rc.table, f);
+                            }
+                        }
+                        throw new Exception("Illegal null value in primary key");
+                    }
+            }
+            return rc;
+        }
+        @Override
+        public void Append(SDatabase db,StringBuilder sb)
+        {
+            try{
+            sb.append("Table ");
+            if (db != null)
+                sb.append(db.Name(uid));
+            else
+                sb.append(_Uid(uid));
+            } catch(Exception e){}
         }
         @Override
         public long getAlias()

@@ -21,7 +21,10 @@ public class SDictBookmark<K extends Comparable,V> extends Bookmark<SSlot<K,V>> 
         SBookmark<K,V> b = _bmk.Next(_bmk,null);
         return (b==null)?null:new SDictBookmark<K,V>(b);
     }
-
+    public SDictBookmark<K, V> Previous(){
+        SBookmark<K,V> b = _bmk.Previous(_bmk,null);
+        return (b==null)?null:new SDictBookmark<K,V>(b);
+    }
     @Override
     public SSlot<K, V> getValue() {
         return ((SLeaf<K,V>)_bmk._bucket).slots[_bmk._bpos];

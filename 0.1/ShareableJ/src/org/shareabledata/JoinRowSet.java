@@ -14,9 +14,9 @@ public class JoinRowSet extends RowSet {
     public final RowSet _left, _right;
     public final int _klen;
     JoinRowSet(STransaction tr,SQuery top, SJoin j,RowSet lf,RowSet rg,
-            SDict<Long,Serialisable> ags) throws Exception
+            Context cx) throws Exception
     {
-        super(tr,j,ags);
+        super(tr,j,cx);
         _join = j;
         SList<TreeInfo<Serialisable>> lti = null;
         SList<TreeInfo<Serialisable>> rti = null;
@@ -152,7 +152,7 @@ public class JoinRowSet extends RowSet {
     {
         var cx = (rbm==null)?null:rbm._cx;
         if (lbm != null)
-            cx = Context.Append(lbm._cx, cx,_tr);
+            cx = Context.Append(lbm._cx, cx);
         return RowBookmark._Cx(this,_Row(this,lbm, ul, rbm, ur), cx);
     }
     public class JoinRowBookmark extends RowBookmark

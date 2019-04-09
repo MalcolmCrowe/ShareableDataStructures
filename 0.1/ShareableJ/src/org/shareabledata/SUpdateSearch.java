@@ -28,7 +28,7 @@ public class SUpdateSearch extends Serialisable
                 for (var c = assigs.First(); c != null; c = c.Next())
                 {
                     var v = c.getValue();
-                    var vl = v.val.Lookup(b._cx);
+                    var vl = v.val.Lookup(tr,b._cx);
                     u=(u==null)?new SDict(v.key,vl):u.Add(v.key, vl);
                 }
                 tr = b.Update(tr,u);

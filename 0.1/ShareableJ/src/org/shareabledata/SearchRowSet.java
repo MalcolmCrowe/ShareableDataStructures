@@ -14,21 +14,21 @@ public class SearchRowSet extends RowSet {
     public final SSearch _sch;
     public final RowSet _sce;
     public SearchRowSet(STransaction tr, SQuery top, SSearch sc,
-            SDict<Long,Serialisable> ags) throws Exception 
+            Context cx) throws Exception 
     {
-        this(Source(tr,top,sc,ags),sc,ags);
+        this(Source(tr,top,sc,cx),sc,cx);
     }
-    SearchRowSet(RowSet sce,SSearch sc,SDict<Long,Serialisable>ags)
+    SearchRowSet(RowSet sce,SSearch sc,Context cx)
     {
-        super(sce._tr,sc,ags);
+        super(sce._tr,sc,cx);
         _sch = sc;
         _sce = sce;
     }
-    static RowSet Source(STransaction tr,SQuery top,SSearch sc,SDict<Long,Serialisable> ags)
+    static RowSet Source(STransaction tr,SQuery top,SSearch sc,Context cx)
             throws Exception
     {
             RowSet s = null;
-            SDict<Long,Serialisable> matches = null;
+            SDict<Long,SSlot<Serialisable,Integer>> matches = null;
             if (sc.sce instanceof STable)
             {
                 var tb = (STable)sc.sce;
@@ -36,26 +36,29 @@ public class SearchRowSet extends RowSet {
                     if (wb.getValue() instanceof SExpression)
                     { 
                         var x = (SExpression)wb.getValue(); 
-                        if(x.op == SExpression.Op.Eql)
+                        if (x.left instanceof SColumn)
                         {
-                            if (x.left instanceof SColumn)
+                            var c = (SColumn)x.left;
+                            if (tb.refs.Contains(c.uid) &&
+                                x.right != null && x.right.isValue())
                             {
-                                var c = (SColumn)x.left;
-                                if (tb.refs.Contains(c.uid) &&
-                                    x.right != null && x.right.isValue())
-                                matches = (matches==null)?new SDict(c.uid,x.right):
-                                matches.Add(c.uid, x.right);
-                            }
-                            else if (x.right instanceof SColumn)
-                            {
-                                var c = (SColumn)x.right;
-                                if (tb.refs.Contains(c.uid) &&
-                                    x.left != null && x.left.isValue())
-                                 matches = (matches==null)?new SDict(c.uid,x.left):
-                                matches.Add(c.uid, x.left);
+                                var sl = new SSlot(x.right,x.op);
+                                matches = (matches==null)?new SDict(c.uid,sl):
+                                    matches.Add(c.uid, sl);
                             }
                         }
-                    }
+                        else if (x.right instanceof SColumn)
+                        {
+                            var c = (SColumn)x.right;
+                            if (tb.refs.Contains(c.uid) &&
+                                x.left != null && x.left.isValue())
+                            {
+                                var sl = new SSlot(x.left,Reverse(x.op));
+                                matches = (matches==null)?new SDict(c.uid,sl):
+                                    matches.Add(c.uid, sl);
+                            }
+                        }
+                     }
                 SCList<Variant> best = null;
                 if (matches != null && tb.indexes!=null)
                     for (var b = tb.indexes.First();(best==null || 
@@ -63,20 +66,24 @@ public class SearchRowSet extends RowSet {
                         b = b.Next())
                     {
                         SCList<Variant> ma = null;
+                        int op = SExpression.Op.Eql;
                         var n = 0;
                         var ix = (SIndex)tr.objects.get(b.getValue().key);
                         for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
                         {
                             if (!matches.Contains(wb.getValue()))
                                 break;
-                            var v = new Variant(Variants.Ascending, matches.get(wb.getValue()));
+                            op = Compat(op, (int)((SSlot)matches.get(wb.getValue())).val);
+                            if (op == SExpression.Op.NotEql)
+                                break;
+                            var v = new Variant(Variants.Ascending, matches.get(wb.getValue()).key);
                             ma = (ma==null)?new SCList(v):ma.InsertAt(v,n);
                             n++;
                         }
                         if (ma!= null && (best==null || ma.Length > best.Length))
                         {
                             best = ma;
-                            s = new IndexRowSet(tr, tb, ix, ma, sc.where);
+                            s = new IndexRowSet(tr, tb, ix, ma, op, sc.where, cx);
                             tr = s._tr;
                         }
                     }
@@ -84,8 +91,25 @@ public class SearchRowSet extends RowSet {
             if (s!=null)
                 return s;
             if (sc.sce!=null)
-                return sc.sce.RowSet(tr,top,ags);
+                return sc.sce.RowSet(tr,top,cx);
             throw new Exception("PE03");
+    }
+    static int Reverse(int op)
+    {
+        switch (op)
+        {
+            case SExpression.Op.Gtr: return SExpression.Op.Lss;
+            case SExpression.Op.Geq: return SExpression.Op.Leq;
+            case SExpression.Op.Lss: return SExpression.Op.Gtr;
+            case SExpression.Op.Leq: return SExpression.Op.Geq;
+        }
+        return op;
+    }
+    static int Compat(int was, int now)
+    {
+        if (was == now || was == SExpression.Op.Eql)
+            return now;
+        return SExpression.Op.NotEql;
     }
     @Override
     public Bookmark<Serialisable> First() {

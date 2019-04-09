@@ -39,7 +39,7 @@ namespace Tpcc
         int s_quantity;
         decimal total;
         bool allhome = true;
-        public int activewh;
+        public int activewh = 1;
         public StrongConnect db;
         public Button btn;
         public TextBox txtBox;
@@ -429,14 +429,14 @@ namespace Tpcc
 				btn.Enabled = true;
 		}
 
-		public NewOrder()
+		public NewOrder(StrongConnect c,int w)
 		{
+            db = c;
+            wid = w;
 			//
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
-            if (wid == 0)
-                wid = 1;
 			VTerm vt1 = this;
 			Width = vt1.Width;
 			Height = vt1.Height+50;
@@ -569,8 +569,6 @@ namespace Tpcc
         public int step = 0,line = 0;
         internal void Step()
         {
-            if (wid == 0)
-                wid = 1;
             switch (step)
             {
                 case 0:

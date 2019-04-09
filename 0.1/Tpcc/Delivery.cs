@@ -22,11 +22,9 @@ namespace Tpcc
 		public Label status;
 		public int wid;
 		public int carid;
-
 		public bool DoCarrier(ref string mess)
 		{
-			db.ExecuteNonQuery("insert DELIVERY(DL_W_ID,DL_ID,DL_CARRIER_ID) select "+wid+",max(a.DL_ID)+1,"+
-					carid+" from DELIVERY a where a.DL_W_ID="+wid);
+			db.ExecuteNonQuery("insert DELIVERY(DL_W_ID,DL_CARRIER_ID) select "+wid+","+carid);
 			Set(2,carid);
 			Set(3,"Delivery has been scheduled");
 			return false;
@@ -40,12 +38,14 @@ namespace Tpcc
 			status.Text = mess;
 		}
 
-		public Delivery()
-		{
-			//
-			// Required for Windows Form Designer support
-			//
-			InitializeComponent();
+		public Delivery(StrongConnect c, int w)
+        {
+            db = c;
+            wid = w;
+            //
+            // Required for Windows Form Designer support
+            //
+            InitializeComponent();
 			Put(38,1,"Delivery");
 			Put(1,2,"Warehouse: ");
 			AddField(12,2,4);

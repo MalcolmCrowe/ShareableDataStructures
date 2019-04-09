@@ -40,10 +40,10 @@ public class SInPredicate extends Serialisable {
             list.Put(f);
         }
         @Override
-        public Serialisable Lookup(Context cx)
+        public Serialisable Lookup(STransaction tr,Context cx)
         {
-            var a = arg.Lookup(cx);
-            var ls = list.Lookup(cx);
+            var a = arg.Lookup(tr,cx);
+            var ls = list.Lookup(tr,cx);
             switch(list.type)
             {
                 case Types.SValues:
@@ -59,7 +59,6 @@ public class SInPredicate extends Serialisable {
                 case Types.SSelect:
                     try {
                         var ss = (SSelectStatement)list;
-                        var tr = cx.Transaction();
                         for (var b = ss.RowSet(tr,ss,null).First(); 
                                 b != null; b = b.Next())
                             if (b.getValue().compareTo(a) == 0)

@@ -14,16 +14,15 @@ public class AliasRowSet extends RowSet {
         public final RowSet _sce;
         public AliasRowSet(SAlias a,RowSet sce)
         {
-            super(sce._tr,a,sce._aggregates);
+            super(sce._tr,a,Context.New(new SDict(a.alias,a.qry),sce._cx));
             _alias = a;
             _sce = sce;
         }
         static Context _Context(AliasRowSet ars,Context cx)
         {
-            var a = ars._alias.alias;
-            var u = ars._tr.objects.get(a).uid;
+            var a = ars._alias;
             return Context.New(cx.refs,
-                Context.New(new SDict(a, cx.get(u)),cx.next,ars._tr),ars._tr);
+                Context.Replace(new SDict(a.alias, a.qry),cx));
         }
         @Override
         public Bookmark<Serialisable> First()

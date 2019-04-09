@@ -13,10 +13,10 @@ namespace Shareable
     {
         public readonly SQuery _qry;
         public readonly STransaction _tr;
-        public readonly SDict<long, Serialisable> _aggregates;
-        public RowSet(STransaction tr, SQuery q, SDict<long, Serialisable>ags, int? n):base(n)
+        public readonly Context _cx;
+        public RowSet(STransaction tr, SQuery q, Context cx, int? n):base(n)
         {
-            _tr = tr; _qry = q; _aggregates = ags;
+            _tr = tr; _qry = q; _cx = cx;
         }
     }
     /// <summary>
@@ -36,15 +36,17 @@ namespace Shareable
         public bool Matches(SList<Serialisable> wh)
         {
             for (var b = wh.First(); b != null; b = b.Next())
-                if (b.Value.Lookup(_cx) != SBoolean.True)
+                if (b.Value.Lookup(_rs._tr,_cx) != SBoolean.True)
                     return false;
             return true;
         }
         protected static Context _Cx(RowSet rs, SRow r, Context? n = null)
         {
+            if (n == null)
+                n = rs._cx;
             if (rs is TableRowSet trs)
-                n = new Context(new SDict<long, Serialisable>(trs._tb.uid, r), n, rs._tr);
-            return new Context(r, n, rs._tr);
+                n = new Context(new SDict<long, Serialisable>(trs._tb.uid, r), n);
+            return new Context(r, n);
         }
         public virtual MTreeBookmark<Serialisable>? Mb()
         {
@@ -73,7 +75,7 @@ namespace Shareable
     {
         public readonly RowSet _sce;
         public readonly SDict<SRow, bool> rows;
-        public DistinctRowSet(RowSet sce) : base(sce._tr, sce._qry, sce._aggregates, null)
+        public DistinctRowSet(RowSet sce) : base(sce._tr, sce._qry, sce._cx, null)
         {
             _sce = sce;
             var r = SDict<SRow, bool>.Empty;
@@ -117,7 +119,7 @@ namespace Shareable
         public readonly RowSet _sce;
         public readonly SMTree<Serialisable> _tree;
         public readonly SDict<int, SRow> _rows;
-        public OrderedRowSet(RowSet sce,SSelectStatement sel) :base(sce._tr,sel,sce._aggregates,sce.Length)
+        public OrderedRowSet(RowSet sce,SSelectStatement sel) :base(sce._tr,sel,sce._cx,sce.Length)
         {
             _sce = sce;
             var ti = SList<TreeInfo<Serialisable>>.Empty;
@@ -132,7 +134,7 @@ namespace Shareable
                 var k = new Variant[n];
                 var i = 0;
                 for (var c = sel.order.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.Value.col.Lookup(b._cx),!c.Value.desc);
+                    k[i] = new Variant(c.Value.col.Lookup(sce._tr,b._cx),!c.Value.desc);
                 t = t.Add(m,k);
                 r += (m++, b._ob);
             }
@@ -140,7 +142,7 @@ namespace Shareable
             _rows = r;
         }
         public OrderedRowSet(RowSet sce,SList<TreeInfo<Serialisable>>ti)
-            : base(sce._tr,sce._qry,sce._aggregates,null)
+            : base(sce._tr,sce._qry,sce._cx,null)
         {
             _sce = sce;
             var t = new SMTree<Serialisable>(ti);
@@ -151,7 +153,7 @@ namespace Shareable
                 var k = new Variant[ti.Length??0];
                 var i = 0;
                 for (var c = ti.First(); c != null; c = c.Next())
-                    k[i] = new Variant(c.Value.headName.Lookup(b._cx));
+                    k[i] = new Variant(c.Value.headName.Lookup(sce._tr,b._cx));
                 t = t.Add(m, k);
                 r += (m++, b._ob);
             }
@@ -209,9 +211,9 @@ namespace Shareable
         /// </summary>
         /// <param name="db"></param>
         /// <param name="t"></param>
-        public TableRowSet(STransaction db,STable t) 
+        public TableRowSet(STransaction db,STable t,Context cx) 
             : base(db+t.uid /*read constraint*/,t,
-                  SDict<long,Serialisable>.Empty,t.rows.Length)
+                  cx,t.rows.Length)
         {
             _tb = t;
         }
@@ -255,11 +257,13 @@ namespace Shareable
         public readonly SIndex _ix;
         public readonly SList<Serialisable> _wh;
         public readonly SCList<Variant> _key;
+        public readonly SExpression.Op _op;
         public readonly bool _unique;
-        public IndexRowSet(STransaction tr,STable t,SIndex ix,SCList<Variant> key, SList<Serialisable> wh) 
-            :base(Rdc(tr,ix,key),t, SDict<long,Serialisable>.Empty, t.rows.Length)
+        public IndexRowSet(STransaction tr,STable t,SIndex ix,SCList<Variant> key, 
+            SExpression.Op op,SList<Serialisable> wh,Context cx) 
+            :base(Rdc(tr,ix,key),t, cx, t.rows.Length)
         {
-            _ix = ix; _key = key; _wh = wh;
+            _ix = ix; _key = key; _wh = wh; _op = op; 
             _unique = key.Length == _ix.cols.Length;
         }
         /// <summary>
@@ -299,24 +303,30 @@ namespace Shareable
                 var k = irs._key;
                 var b = (MTreeBookmark<Serialisable>?)((k.Length!=0) ? irs._ix.rows.PositionAt(k) 
                     : irs._ix.rows.First());
-                for (;b != null; b = b.Next() as MTreeBookmark<Serialisable>)
+                for (;b != null; b=NextOrPrev(irs._op,b))
                 {
                     var rc = irs._tr.Get(b.Value.Item2);
                     var rb = new IndexRowBookmark(irs, new SRow(irs._tr, rc), b, 0);
+                    if (!rc.EqualMatches(rb, irs._wh))
+                        return null;
                     if (rc.Matches(rb, irs._wh))
                         return rb;
                 }
                 return null;
             }
+            static MTreeBookmark<Serialisable>? NextOrPrev(SExpression.Op op,MTreeBookmark<Serialisable> b)
+            {
+                return ((op == SExpression.Op.Lss || op == SExpression.Op.Leq) ?
+                    b.Previous() : b.Next()) as MTreeBookmark<Serialisable>;
+            }
             public override Bookmark<Serialisable>? Next()
             {
-                if (_irs._unique)
+                if (_irs._unique && _irs._op==SExpression.Op.Eql)
                     return null;
-                for (var b = _mbm.Next(); b != null; b = b.Next())
+                for (var b = NextOrPrev(_irs._op,_mbm); b != null; b = NextOrPrev(_irs._op,b))
                 {
                     var rc = _irs._tr.Get(b.Value.Item2);
-                    var rb = new IndexRowBookmark(_irs, new SRow(_irs._tr,rc), 
-                        (MTreeBookmark<Serialisable>)b, Position + 1);
+                    var rb = new IndexRowBookmark(_irs, new SRow(_irs._tr,rc), b, Position + 1);
                     if (rc.Matches(rb, _irs._wh))
                         return rb;
                 }
@@ -348,7 +358,8 @@ namespace Shareable
     {
         public readonly SAlias _alias;
         public readonly RowSet _sce;
-        public AliasRowSet(SAlias a,RowSet sce) :base(sce._tr,a,sce._aggregates,sce.Length)
+        public AliasRowSet(SAlias a,RowSet sce) :
+            base(sce._tr,a,new Context(new SDict<long,Serialisable>(a.alias,a.qry),sce._cx),sce.Length)
         {
             _alias = a;
             _sce = sce;
@@ -370,10 +381,9 @@ namespace Shareable
             }
             static Context _Context(AliasRowSet ars,Context cx)
             {
-                var a = ars._alias.alias;
-                var u = ars._tr.objects[a].uid;
+                var a = ars._alias;
                 return new Context(cx.refs,
-                    new Context(new SDict<long, Serialisable>(a, cx[u]),cx.next),ars._tr);
+                    new Context(new SDict<long, Serialisable>(a.alias, a.qry),cx.next));
             }
             internal static AliasRowBookmark? New(AliasRowSet ars)
             {
@@ -394,29 +404,29 @@ namespace Shareable
         public readonly SSearch _sch;
         public readonly RowSet _sce;
 
-        public SearchRowSet(STransaction tr, SQuery top, SSearch sc, SDict<long, Serialisable> ags)
-            : this(Source(tr, top, sc, ags), sc, ags)
+        public SearchRowSet(STransaction tr, SQuery top, SSearch sc, Context cx)
+            : this(Source(tr, top, sc, cx), sc, cx)
         { }
-        SearchRowSet(RowSet sce, SSearch sc, SDict<long, Serialisable> ags) : base(sce._tr, sc, ags, null)
+        SearchRowSet(RowSet sce, SSearch sc, Context cx) : base(sce._tr, sc, cx, null)
         {
             _sch = sc;
             _sce = sce;
         }
-        static RowSet Source(STransaction tr,SQuery top, SSearch sc,SDict<long,Serialisable>ags)
+        static RowSet Source(STransaction tr,SQuery top, SSearch sc,Context cx)
         { 
             RowSet? s = null;
-            var matches = SDict<long,Serialisable>.Empty;
+            var matches = SDict<long,(Serialisable,SExpression.Op)>.Empty;
             if (sc.sce is STable tb)
             {
                 for (var wb = sc.where.First(); wb != null; wb = wb.Next())
-                    if (wb.Value is SExpression x && x.op == SExpression.Op.Eql)
+                    if (wb.Value is SExpression x)
                     {
                         if (x.left is SColumn c && tb.refs.Contains(c.uid) &&
                             x.right != null && x.right.isValue)
-                            matches = matches+ (c.uid, x.right);
+                            matches = matches+ (c.uid, (x.right,x.op));
                         else if (x.right is SColumn cr && tb.refs.Contains(cr.uid) &&
                                 x.left != null && x.left.isValue)
-                            matches = matches+(cr.uid,x.left);
+                            matches = matches+(cr.uid, (x.left,Reverse(x.op)));
                     }
                 var best = SCList<Variant>.Empty;
                 if (matches.Length != null)
@@ -424,23 +434,44 @@ namespace Shareable
                         b = b.Next())
                     {
                         var ma = SCList<Variant>.Empty;
+                        var op = SExpression.Op.Eql;
                         var ix = (SIndex)tr.objects[b.Value.Item1];
                         for (var wb = ix.cols.First(); wb != null; wb = wb.Next())
                         {
                             if (!matches.Contains(wb.Value))
                                 break;
-                            ma = ma.InsertAt(new Variant(Variants.Ascending, matches[wb.Value]),
-                                ma.Length.Value);
+                            op = Compat(op, matches[wb.Value].Item2);
+                            if (op == SExpression.Op.NotEql)
+                                break;
+                            ma = ma.InsertAt(new Variant(Variants.Ascending, matches[wb.Value].Item1),
+                                ma.Length??0);
                         }
                         if (ma.Length != null && ma.Length.Value > best.Length.Value)
                         {
                             best = ma;
-                            s = new IndexRowSet(tr, tb, ix, ma, sc.where);
+                            s = new IndexRowSet(tr, tb, ix, ma, op, sc.where,cx);
                             tr = s._tr;
                         }
                     }
             }
-            return s?? sc.sce?.RowSet(tr,top,ags) ?? throw new System.Exception("PE03");
+            return s?? sc.sce?.RowSet(tr,top,cx) ?? throw new System.Exception("PE03");
+        }
+        static SExpression.Op Reverse(SExpression.Op op)
+        {
+            switch (op)
+            {
+                case SExpression.Op.Gtr: return SExpression.Op.Lss;
+                case SExpression.Op.Geq: return SExpression.Op.Leq;
+                case SExpression.Op.Lss: return SExpression.Op.Gtr;
+                case SExpression.Op.Leq: return SExpression.Op.Geq;
+            }
+            return op;
+        }
+        static SExpression.Op Compat(SExpression.Op was, SExpression.Op now)
+        {
+            if (was == now || was == SExpression.Op.Eql)
+                return now;
+            return SExpression.Op.NotEql;
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -488,16 +519,17 @@ namespace Shareable
     public class EvalRowSet : RowSet
     {
         public readonly SDict<long, Serialisable> _vals;
-        public EvalRowSet(RowSet r, SQuery q, SDict<long, Serialisable> ags)
-            : base(r._tr, q, ags, null)
+        public EvalRowSet(RowSet r, SQuery q, Context cx)
+            : base(r._tr, q, cx, null)
         {
             var vs = SDict<long, Serialisable>.Empty;
+            var ags = cx.Ags();
             for (var b = r.First() as RowBookmark; b != null;
                 b = b.Next() as RowBookmark)
                 for (var ab = ags.First(); ab != null; ab = ab.Next())
                     if (ab.Value.Item2 is SFunction f)
                     {
-                        var v = f.arg.Lookup(b._cx);
+                        var v = f.arg.Lookup(r._tr,b._cx);
                         if (v.isValue && v != Serialisable.Null)
                             vs += (f.fid, vs.Contains(f.fid) ? f.AddIn(vs[f.fid], v)
                                 : f.StartCounter(v));
@@ -509,13 +541,13 @@ namespace Shareable
             var r = new SRow();
             var ab = _qry.display.First();
             for (var b = _qry.cpos.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                r += (ab.Value.Item2, b.Value.Item2.Lookup(new Context(_vals, null,_tr)));
+                r += (ab.Value.Item2, b.Value.Item2.Lookup(_tr,new Context(_vals, null)));
             return new EvalRowBookmark(this,r, _vals);
         }
         public class EvalRowBookmark : RowBookmark
         {
             internal EvalRowBookmark(EvalRowSet ers, SRow r,SDict<long,Serialisable> a) 
-                : base(ers, _Cx(ers,r, new Context(a,null,ers._tr)), 0) { }
+                : base(ers, _Cx(ers,r, new Context(a,null)), 0) { }
             public override Bookmark<Serialisable>? Next()
             {
                 return null;
@@ -531,12 +563,12 @@ namespace Shareable
         public readonly SQuery _top;
         public readonly RowSet _sce;
         public GroupRowSet(STransaction tr, SQuery top, SGroupQuery gqry,
-            SDict<long, Serialisable> ags) 
-            : this(gqry.source.RowSet(tr, top, ags), top, gqry, ags)
+            Context cx) 
+            : this(gqry.source.RowSet(tr, top, cx), top, gqry, cx)
         {
         }
-        GroupRowSet(RowSet sce,SQuery top,SGroupQuery gqry,SDict<long,Serialisable>ags)
-            :base(sce._tr,gqry,ags,null)
+        GroupRowSet(RowSet sce,SQuery top,SGroupQuery gqry,Context cx)
+            :base(sce._tr,gqry,cx,null)
         {
             _gqry = gqry;
             _sce = sce;
@@ -557,7 +589,7 @@ namespace Shareable
                     n++;
                 }
                 var m = t.PositionAt(k)?.Value.Item2 ?? 0;
-                r += (m, AddIn(ags, r[m], b._cx));
+                r += (m, AddIn(sce._tr,r[m], b._cx));
             }
             _tree = t;
             _grouprows = r;
@@ -577,18 +609,19 @@ namespace Shareable
             var gb = b.Value.Item1.First();
             for (var kb = _info.First(); gb != null && kb != null; gb = gb.Next(), kb = kb.Next())
                 kc += (kb.Value.headName, (Serialisable)gb.Value.ob);
-            var cx = new Context(kc,new Context( _grouprows[b.Value.Item2], null));
+            var cx = new Context(kc,new Context( _grouprows[b.Value.Item2], _cx));
             var ab = _top.Display.First();
             for (var cb = _top.cpos.First(); ab != null && cb != null; ab = ab.Next(), cb = cb.Next())
-                r += (ab.Value.Item2,cb.Value.Item2.Lookup(cx));
+                r += (ab.Value.Item2,cb.Value.Item2.Lookup(_tr,cx));
             return r;
         }
-        static SDict<long,Serialisable> AddIn(SDict<long,Serialisable> ags, SDict<long,Serialisable> cur, Context cx)
+        static SDict<long,Serialisable> AddIn(STransaction tr,SDict<long,Serialisable> cur, Context cx)
         {
+            var ags = cx.Ags();
             for (var b = ags.First(); b != null; b = b.Next())
                 if (b.Value.Item2 is SFunction f)
                 {
-                    var v = f.arg.Lookup(new Context(cur, cx));
+                    var v = f.arg.Lookup(tr,new Context(cur, cx));
                     if (v != Serialisable.Null)
                         cur += (f.fid, cur.Contains(f.fid) ? f.AddIn(cur[f.fid], v)
                             : f.StartCounter(v));
@@ -609,7 +642,7 @@ namespace Shareable
             public readonly MTreeBookmark<long> _bmk;
             protected GroupRowBookmark(GroupRowSet grs, MTreeBookmark<long> b,
                 SRow r, SDict<long,Serialisable> a, int p)
-                : base(grs,_Cx(grs,r,new Context(a,null,grs._tr)),p)
+                : base(grs,_Cx(grs,r,new Context(a,null)),p)
             {
                 _grs = grs; _bmk = b;
             }
@@ -633,8 +666,8 @@ namespace Shareable
     {
         public readonly SSelectStatement _sel;
         public readonly RowSet _source;
-        public SelectRowSet(RowSet sce,SSelectStatement sel,SDict<long,Serialisable>ags)
-            :base(sce._tr,sel,ags,null)
+        public SelectRowSet(RowSet sce,SSelectStatement sel,Context cx)
+            :base(sce._tr,sel,cx,null)
         {
             _sel = sel;
             _source = sce;
@@ -657,7 +690,7 @@ namespace Shareable
             {
                 for (var b = rs._source.First() as RowBookmark;b!=null;b=b.Next() as RowBookmark )
                 {
-                    var rw = (SRow)rs._qry.Lookup(b._cx);
+                    var rw = (SRow)rs._qry.Lookup(rs._tr,b._cx);
                     if (rw.isNull)
                         continue;
                     var rb = new SelectRowBookmark(rs, b, rw, 0);
@@ -670,7 +703,7 @@ namespace Shareable
             {
                 for (var b = _bmk.Next() as RowBookmark; b != null; b = b.Next() as RowBookmark)
                 {
-                    var rw = (SRow)_srs._qry.Lookup(b._cx);
+                    var rw = (SRow)_srs._qry.Lookup(_rs._tr,b._cx);
                     if (rw.isNull)
                         continue;
                     var rb = new SelectRowBookmark(_srs, b, rw, Position + 1);
@@ -695,8 +728,8 @@ namespace Shareable
         public readonly RowSet _left, _right;
         public readonly int _klen;
         internal JoinRowSet(STransaction tr,SQuery top, SJoin j, RowSet lf, RowSet rg, 
-            SDict<long, Serialisable> a)
-            : base(tr, j, a, null)
+            Context cx)
+            : base(tr, j, cx, null)
         {
             _join = j;
             var lti = SList<TreeInfo<Serialisable>>.Empty;
@@ -745,7 +778,7 @@ namespace Shareable
             {
                 var cx = rbm?._cx;
                 if (lbm != null)
-                    cx = Context.Append(lbm._cx, cx, jrs._tr);
+                    cx = Context.Append(lbm._cx, cx);
                 return _Cx(jrs,_Row(jrs, lbm, ul, rbm, ur), cx);
             }
             static SRow _Row(JoinRowSet jrs,RowBookmark? lbm,bool ul,RowBookmark? rbm,bool ur)
@@ -909,7 +942,7 @@ namespace Shareable
     {
         public readonly SysTable tb;
         internal SysRows(STransaction tr, SysTable t) 
-            : base(tr, t, SDict<long,Serialisable>.Empty, null)
+            : base(tr, t, Context.Empty, null)
         {
             tb = t; 
         }

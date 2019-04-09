@@ -18,16 +18,15 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public int wid,activewh;
-		public StrongConnect db;
-		public int did,cwid,cdid,cid;
+		int wid;
+		StrongConnect db;
+		public int did,cdid,cid;
 		public string clast;
 		decimal ytd,dytd,c_balance,c_amount,c_ytd_payment;
         string cdata, c_credit;
 		int count = 0,c_payment_cnt;
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
-
         bool FetchDistrict()
         {
             db.BeginTransaction();
@@ -60,16 +59,16 @@ namespace Tpcc
         {
             ArrayList custs = new ArrayList();
             //				cmd.CommandText="select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
-            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' orderby C_FIRST");
+            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_WID=" + wid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' orderby C_FIRST");
             for (var i = 0; i < s.Length; i++)
                 custs.Add((long)s[i][0]);
             if (custs.Count == 0)
                 return true;
             cid = (int)custs[(custs.Count + 1) / 2];
             Set(14, cid);
-            Set(15, cwid);
+            Set(15, wid);
             Set(16, cdid);
-            s = db.ExecuteQuery("select C_ID,C_FIRST,C_MIDDLE,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_WID=" + cwid + " and C_D_ID=" + cdid + " and  C_LAST='" + clast + "' orderby C_FIRST");
+            s = db.ExecuteQuery("select C_ID,C_FIRST,C_MIDDLE,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_WID=" + wid + " and C_D_ID=" + cdid + " and  C_LAST='" + clast + "' orderby C_FIRST");
             if (s.IsEmpty)
                 return true;
             var rdr = s[0];
@@ -93,9 +92,9 @@ namespace Tpcc
         }
         bool FetchCustFromId(ref string mess)
         {
-            var s = db.ExecuteQuery("select C_FIRST,C_MIDDLE,C_LAST,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_W_ID=" + cwid + " and C_D_ID=" + cdid + " and C_ID=" + cid);
+            var s = db.ExecuteQuery("select C_FIRST,C_MIDDLE,C_LAST,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid);
             Set(14, cid);
-            Set(15, cwid);
+            Set(15, wid);
             Set(16, cdid);
             SetCurField(35);
             if (s.IsEmpty)
@@ -125,18 +124,18 @@ namespace Tpcc
             Set(35, c_amount.ToString());
             db.ExecuteNonQuery("update DISTRICT where D_W_ID=" + wid + " and D_ID=" + did + " set D_YTD=" + (dytd + c_amount));
             Set(36, (c_balance + c_amount).ToString("F2"));
-            db.ExecuteNonQuery("update CUSTOMER where C_W_ID = " + cwid + " and C_D_ID = " + cdid + " and C_ID = " + cid + " set C_BALANCE=" + (c_amount + c_balance) + ",C_YTD_PAYMENT=" + (c_amount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1));
+            db.ExecuteNonQuery("update CUSTOMER where C_W_ID = " + wid + " and C_D_ID = " + cdid + " and C_ID = " + cid + " set C_BALANCE=" + (c_amount + c_balance) + ",C_YTD_PAYMENT=" + (c_amount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1));
             db.ExecuteQuery("update WAREHOUSE where W_ID=" + wid + " set W_YTD=" + (ytd + c_amount));
             if (c_credit == "BC")
             {
-                var s = db.ExecuteQuery("select C_DATA from CUSTOMER where C_W_ID=" + cwid + " and C_D_ID=" + cdid + " and C_ID=" + cid);
+                var s = db.ExecuteQuery("select C_DATA from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid);
                 if (s.IsEmpty)
                     return true;
                 cdata = (string)s[0][0];
-                cdata = "" + cid + "," + cdid + "," + cwid + "," + did + "," + wid + "," + c_amount + ";" + cdata;
+                cdata = "" + cid + "," + cdid + "," + wid + "," + did + "," + wid + "," + c_amount + ";" + cdata;
                 if (cdata.Length > 500)
                     cdata = cdata.Substring(0, 500);
-                db.ExecuteNonQuery("update CUSTOMER where C_W_ID=" + cwid + " and C_D_ID=" + cdid + " and C_ID=" + cid + " set c_data='" + cdata + "'");
+                db.ExecuteNonQuery("update CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid + " set c_data='" + cdata + "'");
 
                 Set(38, cdata.Substring(0, 50));
                 if (cdata.Length > 50)
@@ -154,11 +153,10 @@ namespace Tpcc
 			did = util.random(1,10);
 			if (FetchDistrict())
 				goto bad;
-			cwid = wid;
 			cdid = did;
 			cid = -1;
 			clast="";
-			if (activewh>1)
+/*			if (activewh>1)
 			{
 				int x = util.random(1,100);
 				if (x>85)
@@ -166,7 +164,7 @@ namespace Tpcc
 					cdid = util.random(1,10);
 					cwid = util.random(1,activewh,wid);
 				}
-			}
+			} */
 			int y = util.random(1,100);
 			if (y<=60) // select by random last name
 				clast = enc.GetString(util.NextLast(9999));
@@ -196,12 +194,14 @@ namespace Tpcc
 			bad: ;
 		}
 
-		public Payment()
-		{
-			//
-			// Required for Windows Form Designer support
-			//
-			InitializeComponent();
+		public Payment(StrongConnect c, int w)
+        {
+            db = c;
+            wid = w;
+            //
+            // Required for Windows Form Designer support
+            //
+            InitializeComponent();
 			VTerm vt1 = this;
 			Width = vt1.Width;
 			Height = vt1.Height+50;
@@ -313,15 +313,15 @@ namespace Tpcc
 						FetchDistrict(); break;
 					case 14: 
 						cid = int.Parse(s);
-						if (cid>0 && cwid>0 && cdid>0)
+						if (cid>0 && cdid>0)
 							FetchCustFromId(ref s); 
 						break;
-					case 15: cwid=int.Parse(s); 
-						if (cid>0 && cwid>0 && cdid>0)
+					case 15: wid=int.Parse(s); 
+						if (cid>0 && cdid>0)
 							FetchCustFromId(ref s); 
 						break;
 					case 16: cdid=int.Parse(s); 
-						if (cid>0 && cwid>0 && cdid>0)
+						if (cid>0 && cdid>0)
 							FetchCustFromId(ref s); 
 						break;
 					case 19: 

@@ -334,7 +334,8 @@ public class SJoin extends SQuery {
                 for (var b = ons.First(); b != null; b = b.Next())
                 {
                     var ex = (SExpression)b.getValue();
-                    var c = ex.left.Lookup(lb._cx).compareTo(ex.right.Lookup(rb._cx));
+                    var c = ex.left.Lookup(rb._rs._tr,lb._cx).
+                            compareTo(ex.right.Lookup(rb._rs._tr,rb._cx));
                     if (c!=0)
                         return c;
                 }
@@ -349,11 +350,11 @@ public class SJoin extends SQuery {
         }
         @Override
         public RowSet RowSet(STransaction tr,SQuery top,
-                SDict<Long,Serialisable> ags) throws Exception
+                Context cx) throws Exception
         {
-            var lf = left.RowSet(tr, left, ags);
-            var rg = right.RowSet(lf._tr, right, ags);
-            return new JoinRowSet(rg._tr, top, this, lf, rg, ags);
+            var lf = left.RowSet(tr, left, cx);
+            var rg = right.RowSet(lf._tr, right, cx);
+            return new JoinRowSet(rg._tr, top, this, lf, rg, cx);
         }
         @Override
         public void Append(SDatabase db, StringBuilder sb)
