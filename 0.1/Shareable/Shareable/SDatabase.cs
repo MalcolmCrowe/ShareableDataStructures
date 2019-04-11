@@ -19,7 +19,8 @@ namespace Shareable
         protected static object files = new object(); // a lock
         protected static SDict<string, AStream> dbfiles = SDict<string, AStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string, SDatabase>.Empty;
-        public static readonly SDatabase _system = System(); 
+        public static readonly SDatabase _system = System();
+        public static int commits = 0, rconflicts = 0, wconflicts=0;
         internal virtual SDatabase _Rollback => this;
         protected virtual bool Committed => true;
         public static SDatabase Open(string path, string fname)
@@ -87,8 +88,19 @@ namespace Shareable
         internal SDatabase Load()
         {
             var rd = new Reader(this, curpos);
-            for (var s = rd._Get() as SDbObject; s != null; s = rd._Get() as SDbObject)
-                rd.db += (s,s.uid);
+            long last = 0; 
+            try
+            {
+                for (var s = rd._Get() as SDbObject; s != null; s = rd._Get() as SDbObject)
+                {
+                    last = s.uid;
+                    rd.db += (s, s.uid);
+                }
+            } catch(Exception e)
+            {
+                Console.WriteLine("Database corrupt after " + last);
+                throw e;
+            }
             return new SDatabase(rd.db,rd.Position);
         }
         protected virtual Serialisable _Get(long pos)
@@ -97,7 +109,8 @@ namespace Shareable
         }
         public SRecord Get(long pos)
         {
-            var rc = _Get(pos) as SRecord ??
+            var rc = _Get(pos) as SRecord;
+            if (rc==null)
                 throw new Exception("Record " + SDbObject._Uid(pos) + " never defined");
             var tb = objects[rc.table] as STable ??
                 throw new Exception("Table " + rc.table + " has been dropped");
@@ -112,12 +125,19 @@ namespace Shareable
         {
             switch (s.type)
             {
-                case Types.SUpdate: return Install((SUpdate)s, p);
                 case Types.SRecord: return Install((SRecord)s, p);
-                case Types.SDelete: return Install((SDelete)s, p);
                 case Types.SAlter: return Install((SAlter)s, p);
                 case Types.SDrop: return Install((SDrop)s, p);
                 case Types.SIndex: return Install((SIndex)s, p);
+            }
+            return this;
+        }
+        protected SDatabase _Add(SDbObject s, SRecord r, long p)
+        {
+            switch (s.type)
+            {
+                case Types.SUpdate: return Install((SUpdate)s, r, p);
+                case Types.SDelete: return Install((SDelete)s, r, p);
             }
             return this;
         }
@@ -142,6 +162,10 @@ namespace Shareable
         public static SDatabase operator+(SDatabase d,(SDbObject,long) x)
         {
             return d._Add(x.Item1, x.Item2);
+        }
+        public static SDatabase operator +(SDatabase d, (SDbObject, SRecord, long) x)
+        {
+            return d._Add(x.Item1, x.Item2, x.Item3);
         }
         public static SDatabase operator+(SDatabase d,(SDbObject,string,long)x)
         {
@@ -210,20 +234,17 @@ namespace Shareable
             }
             return New(obs, ro, c);
         }
-        public SDatabase Install(SUpdate u, long c)
+        public SDatabase Install(SUpdate u, SRecord sr, long c)
         {
             var obs = objects;
             var ro = role;
             var st = ((STable)obs[u.table])+u;
-            SRecord? sr = null;
             if (u.uid >= STransaction._uid)
                 obs += (u.uid, u);
             obs += (u.table, st);
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var x = (SIndex)obs[b.Value.Item1];
-                if (sr == null)
-                    sr = Get(u.defpos);
                 var ok = x.Key(sr, x.cols);
                 var uk = x.Key(u, x.cols);
                 x.Check(this, u, ok.CompareTo(uk)==0);
@@ -231,18 +252,15 @@ namespace Shareable
             }
             return New(obs, ro, c);
         }
-        public SDatabase Install(SDelete d, long c)
+        public SDatabase Install(SDelete d, SRecord sr, long c)
         {
             var obs = objects;
             if (d.uid >= STransaction._uid)
                 obs += (d.uid, d);
-            SRecord? sr = null;
             var st = (STable)obs[d.table];
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var px = (SIndex)obs[b.Value.Item1];
-                if (sr == null)
-                    sr = Get(d.delpos);
                 obs += (px.uid, px - (sr, c));
                 if (!px.primary)
                     continue;

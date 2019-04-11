@@ -259,12 +259,8 @@ public class SDatabase {
     }
     public SDatabase _Add(SDbObject s, long p) throws Exception {
         switch (s.type) {
-            case Types.SUpdate:
-                return Install((SUpdate) s, p);
             case Types.SRecord:
                 return Install((SRecord) s, p);
-            case Types.SDelete:
-                return Install((SDelete) s, p);
             case Types.SAlter:
                 return Install((SAlter) s, p);
             case Types.SDrop:
@@ -274,6 +270,16 @@ public class SDatabase {
                 return Install((SIndex) s, p);
         }
         return this;
+    }
+    public SDatabase _Add(SDbObject s,SRecord r,long p) throws Exception
+    {
+       switch (s.type) {
+            case Types.SUpdate:
+                return Install((SUpdate) s, r, p);
+            case Types.SDelete:
+                return Install((SDelete) s, r, p);
+        }
+        return this;        
     }
     /// <summary>
     /// Only for testing environments!
@@ -304,19 +310,16 @@ public class SDatabase {
         return New(obs, ro, p);
     }
 
-    protected SDatabase Install(SUpdate u, long c) throws Exception {
+    public SDatabase Install(SUpdate u, SRecord sr, long c) throws Exception {
         var obs = objects;
         var ro = role;
         if (u.uid >= STransaction._uid)
             obs = obs.Add(u.uid, u);
         var st = ((STable)obs.Lookup(u.table)).Add(u);
-        SRecord sr = null;
         obs = obs.Add(u.table, st);
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            if (sr == null)
-                sr = Get(u.defpos);
             var ok = x.Key(sr,x.cols);
             var uk = x.Key(u, x.cols);
             x.Check(this,u,ok.compareTo(uk)==0);
@@ -327,17 +330,14 @@ public class SDatabase {
         return New(obs, ro, c);
     }
 
-    protected SDatabase Install(SDelete d, long p) throws Exception {
+    public SDatabase Install(SDelete d, SRecord sr, long p) throws Exception {
         var obs = objects;
         if (d.uid >= STransaction._uid)
             obs = obs.Add(d.uid, d);
         var st = ((STable)obs.Lookup(d.table));
-        SRecord sr = null;
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            if (sr == null)
-                sr = Get(d.delpos);
             obs = obs.Add(x.uid, x.Remove(sr, p));
             if (!x.primary)
                 continue;

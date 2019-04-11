@@ -361,7 +361,7 @@ public class StrongServer implements Runnable {
                             throw new Exception("Record " + id + " not found");
                         }
                         tr = (STransaction)tr.Install(new SDelete(tr, rc.table, 
-                                rc.uid),tr.curpos);
+                                rc.uid),rc,tr.curpos);
                         db = db.MaybeAutoCommit(tr);
                         asy.WriteByte((byte)Types.Done);
                         asy.Flush();

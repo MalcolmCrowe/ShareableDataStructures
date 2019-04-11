@@ -1839,22 +1839,27 @@ namespace Shareable
                         { 
                             long cu=0;
                             var j = 0;
-                            var mb = x.rows.PositionAt(k);
+                            var mb = x.rows.PositionAt(k); // will be null if there are no rows
                             for (var cb = x.cols.First(); j <= i && cb != null; cb = cb.Next(), j++)
                             {
                                 cu = cb.Value;
                                 if (j<i)
-                                    mb = mb._inner;
+                                    mb = mb?._inner;
                             }
                             var sc = (SColumn)tr.objects[cu];
                             if (sc.dataType == Types.SInteger)
                             {
-                                var bu = mb._outer;
-                                while (bu._parent != null)
-                                    bu = bu._parent;
-                                var v = new SInteger(((SInteger)bu._bucket.Last().ob).value + 1);
+                                SInteger v = SInteger.One;
+                                if (mb != null)
+                                {
+                                    var bu = mb._outer;
+                                    while (bu._parent != null)
+                                        bu = bu._parent;
+                                    v = new SInteger(((SInteger)bu._bucket.Last().ob).value + 1);
+                                }
                                 var f = rc.fields;
                                 f += (cu,v);
+                                Console.WriteLine("Autokey suuplied " + v.value);
                                 return new SRecord(tr, rc.table, f);
                             }
                         }
@@ -2899,7 +2904,7 @@ namespace Shareable
         public override long Defpos => defpos;
         public SUpdate(SDatabase db,SUpdate r, AStream f) : base(db,r,f)
         {
-            defpos = f.Fix(r.defpos);
+            defpos = r.defpos;
             f.PutLong(defpos);
         }
         SUpdate(Reader f) : base(Types.SUpdate,f)
@@ -2952,8 +2957,8 @@ namespace Shareable
             for (var b = qry.RowSet(tr,qry,cx).First() as RowBookmark; 
                 b != null; b = b.Next() as RowBookmark)
             {
-                var rc = b._ob.rec ?? throw new System.Exception("PE14");// not null
-                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),tr.curpos); 
+                var rc = b._ob.rec ?? throw new System.Exception("PE34");// not null
+                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),rc,tr.curpos); 
             }
             return tr;
         }
@@ -3293,11 +3298,6 @@ namespace Shareable
         public SDbObject context = SRole.Public; // set a function or object being defined
         public long lastAlias = SDbObject.maxAlias;
         public SDatabase db;   // a copy, updatable during Get, Load
-        internal Reader(SDatabase d)
-        {
-            db = d;
-            buf = new StreamBase.Buffer(d.File());
-        }
         internal Reader(StreamBase s)
         {
             db = SDatabase._system;
@@ -3306,7 +3306,9 @@ namespace Shareable
         internal Reader(SDatabase d,long s)
         {
             db = d;
-            buf = new StreamBase.Buffer(d.File(),s);
+            var f = d.File();
+            f.CheckNotWriting();
+            buf = new StreamBase.Buffer(f,s);
         }
         internal long Position => buf.start + pos;
         public virtual int ReadByte()
@@ -3465,11 +3467,40 @@ namespace Shareable
             wposition = length;
             file.Seek(0, SeekOrigin.Begin);
         }
+        public void CheckNotWriting()
+        {
+            if (wbuf != null)
+            {
+                Console.WriteLine("Read during write");
+                throw new Exception("PE31");
+            }
+        }
         public SDatabase Commit(SDatabase db,STransaction tr)
         {
             commits = SDict<long, Serialisable>.Empty;
-            wbuf = new Buffer(this);
             uids = SDict<long, long>.Empty;
+            // We need two passes: manage a cache of SRecords being deleted or updated
+            // before we start writing
+            var cache = SDict<long, SRecord>.Empty;
+            for (var b = tr.objects.PositionAt(STransaction._uid);b!=null;b=b.Next())
+                switch (b.Value.Item2.type)
+                {
+                    case Types.SUpdate:
+                    {
+                        var su = (SUpdate)b.Value.Item2;
+                        var u = su.Defpos;
+                        cache += (u, tr.Get(u));
+                        break;
+                    }
+                    case Types.SDelete:
+                    {
+                        var sd = (SDelete)b.Value.Item2;
+                        var u = sd.delpos;
+                        cache += (u, tr.Get(u));
+                        break;
+                    }
+                }
+            wbuf = new Buffer(this);
             for (var b=tr.objects.PositionAt(STransaction._uid);b!=null; b=b.Next())
             {
                 switch (b.Value.Item2.type)
@@ -3501,24 +3532,31 @@ namespace Shareable
                             var nr = new SRecord(db, sr, this);
                             if (sr.uid>STransaction._uid)
                                 db += (nr,Length);
+                            if (cache.Contains(sr.uid))
+                                cache += (sr.uid, sr);
                             commits += (nr.uid, nr);
                             break;
                         }
                     case Types.SDelete:
                         {
                             var sd = (SDelete)b.Value.Item2;
+                            var sr = cache[sd.delpos];
                             var nd = new SDelete(sd, this);
                             if (sd.uid > STransaction._uid)
-                                db += (nd, Length);
+                                db += (nd, sr, Length);
                             commits += (nd.uid, nd);
                             break;
                         }
                     case Types.SUpdate:
                         {
-                            var sr = (SUpdate)b.Value.Item2;
-                            var nr = new SUpdate(db, sr, this);
+                            var su = (SUpdate)b.Value.Item2;
+                            var u = su.Defpos;
+                            var sr = cache[u];
+                            var nr = new SUpdate(db, su, this);
                             if (sr.uid > STransaction._uid)
-                                db += (nr, Length);
+                                db += (nr, sr, Length);
+                            if (cache.Contains(u))
+                                cache += (u, nr);
                             commits += (nr.uid, nr);
                             break;
                         }
@@ -3545,8 +3583,8 @@ namespace Shareable
                         }
                 }
             }
-            var len = Length;
             Flush();
+            wbuf = null;
             SDatabase.Install(db);
             return db;
         }

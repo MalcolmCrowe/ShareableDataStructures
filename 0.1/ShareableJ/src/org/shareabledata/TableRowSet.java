@@ -63,8 +63,9 @@ public class TableRowSet extends RowSet {
         @Override
         public STransaction Delete(STransaction tr) throws Exception
         {
+            var rc = Ob().rec;
             return (STransaction)tr.Install(new SDelete(tr, Ob().rec.table, 
-                    Ob().rec.Defpos()),tr.curpos); // ok
+                    rc.Defpos()),rc,tr.curpos); // ok
         }
     }
 }

@@ -65,8 +65,31 @@ public class AStream extends StreamBase {
     
     public SDatabase Commit(SDatabase db, STransaction tr) throws Exception {
         commits = null;
-        wbuf = new Buffer(this);
         uids = new SDict<Long, Long>(-1L, -1L);
+        // We need two passes: manage a cache of SRecords being deleted or updated
+        // before we start writing
+        SDict<Long,SRecord> cache = null; 
+        for (var b=tr.objects.PositionAt(STransaction._uid);b!=null;b=b.Next())
+            switch(b.getValue().val.type) 
+            {
+                case Types.SUpdate:
+                {
+                    var su = (SUpdate)b.getValue().val;
+                    var u = su.Defpos();
+                    var sr = tr.Get(u);
+                    cache = (cache==null)?new SDict(u,sr):cache.Add(u, sr);
+                    break;
+                }
+                case Types.SDelete:
+                {
+                    var sd = (SDelete)b.getValue().val;
+                    var u = sd.delpos;
+                    var sr = tr.Get(u);
+                    cache = (cache==null)?new SDict(u,sr):cache.Add(u, sr);
+                    break;
+                }
+            }
+        wbuf = new Buffer(this);
         if (tr.objects!=null)
         for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next()) {
             var bs = b.getValue();
@@ -110,9 +133,10 @@ public class AStream extends StreamBase {
                 }
                 case Types.SDelete: {
                     var sd = (SDelete) bs.val;
+                    var sr = cache.get(sd.delpos);
                     var st = (STable) Lookup(db, Fix(sd.table));
                     var nd = new SDelete(sd, this);
-                    db = db._Add(nd, pos());
+                    db = db._Add(nd, sr, pos());
                     if (commits==null)
                         commits = new SDict<Long,Serialisable>(nd.uid,nd);
                     else
@@ -120,10 +144,11 @@ public class AStream extends StreamBase {
                     break;
                 }
                 case Types.SUpdate: {
-                    var sr = (SUpdate) b.getValue().val;
-                    var st = (STable) Lookup(db, Fix(sr.table));
-                    var nr = new SUpdate(db, sr, this);
-                    db = db._Add(nr, pos());
+                    var su = (SUpdate) b.getValue().val;
+                    var sr = cache.get(su.Defpos());
+                    var st = (STable) Lookup(db, Fix(su.table));
+                    var nr = new SUpdate(db, su, this);
+                    db = db._Add(nr,sr, pos());
                     if (commits==null)
                         commits = new SDict<Long,Serialisable>(nr.uid,nr);
                     else

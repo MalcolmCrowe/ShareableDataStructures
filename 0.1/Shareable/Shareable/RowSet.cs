@@ -242,13 +242,13 @@ namespace Shareable
             }
             public override STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
             {
-                return (STransaction)tr.Install(new SUpdate(tr, 
-                    _ob.rec??throw new Exception("PE01"), assigs),tr.curpos); 
+                var rc = _ob.rec ?? throw new Exception("PE01");
+                return (STransaction)tr.Install(new SUpdate(tr,rc, assigs),rc,tr.curpos); 
             }
             public override STransaction Delete(STransaction tr)
             {
                 var rc = _ob.rec ?? throw new Exception("PE02");
-                return (STransaction)tr.Install(new SDelete(tr,rc.table, rc.Defpos),tr.curpos); // ok
+                return (STransaction)tr.Install(new SDelete(tr,rc.table, rc.Defpos),rc,tr.curpos); // ok
             }
         }
     }
@@ -345,12 +345,13 @@ namespace Shareable
             }
             public override STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
             {
-                return (STransaction)tr.Install(new SUpdate(tr, _ob.rec??throw new System.Exception("No record"), assigs),tr.curpos); // ok
+                var rc = _ob.rec ?? throw new System.Exception("PE41");
+                return (STransaction)tr.Install(new SUpdate(tr, rc, assigs),rc,tr.curpos); // ok
             }
             public override STransaction Delete(STransaction tr)
             {
-                var rc = _ob.rec ?? throw new System.Exception("No record");
-                return (STransaction)tr.Install(new SDelete(tr, rc.table, rc.Defpos),tr.curpos); // ok
+                var rc = _ob.rec ?? throw new System.Exception("PE42");
+                return (STransaction)tr.Install(new SDelete(tr, rc.table, rc.Defpos),rc,tr.curpos); // ok
             }
         }
     }

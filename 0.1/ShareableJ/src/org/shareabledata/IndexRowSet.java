@@ -88,14 +88,15 @@ public class IndexRowSet extends RowSet {
             public STransaction Update(STransaction tr, 
                     SDict<Long, Serialisable> assigs) throws Exception
             {
-                return (STransaction)tr.Install(new SUpdate(tr, Ob().rec, assigs),
-                    tr.curpos); // ok
+                var rc =Ob().rec;
+                return (STransaction)tr.Install(new SUpdate(tr, rc, assigs),
+                    rc, tr.curpos); // ok
             }
             public STransaction Delete(STransaction tr) throws Exception
             {
                 var rc = Ob().rec;
                 return (STransaction)tr.Install(new SDelete(tr, rc.table, 
-                        rc.Defpos()), tr.curpos); // ok
+                        rc.Defpos()), rc, tr.curpos); // ok
             }
         }
     }

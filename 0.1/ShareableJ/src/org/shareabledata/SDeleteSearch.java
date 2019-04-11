@@ -27,7 +27,8 @@ public class SDeleteSearch extends Serialisable {
                 b != null;b = (RowBookmark)b.Next())
             {
                 var rc = b.Ob().rec;// not null
-                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),tr.curpos); 
+                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),
+                        rc,tr.curpos); 
             }
             return tr;
         }

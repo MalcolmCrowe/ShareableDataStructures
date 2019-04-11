@@ -21,7 +21,7 @@ public class SUpdate extends SRecord {
         public SUpdate(SDatabase db,SUpdate r, AStream f)
         {
             super(db,r,f);
-            defpos = f.Fix(r.Defpos());
+            defpos = r.defpos;
             f.PutLong(defpos);
         }
         SUpdate(Reader f) throws Exception

@@ -81,10 +81,16 @@ namespace Shareable
             for (var i = 0; i < since.Length; i++)
             {
                 if (since[i].Check(readConstraints))
+                {
+                    rconflicts++;
                     throw new Exception("Transaction conflict with read");
+                }
                 for (var b = tb; b != null; b = b.Next())
-                    if (since[i].Conflicts(db,this,b.Value.Item2))
+                    if (since[i].Conflicts(db, this, b.Value.Item2))
+                    {
+                        wconflicts++;
                         throw new Exception("Transaction conflict on " + b.Value);
+                    }
             }
             if (tb!=null)
                 lock (f)
@@ -93,15 +99,22 @@ namespace Shareable
                     for (var i = 0; i < since.Length; i++)
                     {
                         if (since[i].Check(readConstraints))
+                        {
+                            rconflicts++;
                             throw new Exception("Transaction conflict with read");
-                        for (Bookmark<(long,SDbObject)>? b = tb; b != null; b = b.Next())
+                        }
+                        for (Bookmark<(long, SDbObject)>? b = tb; b != null; b = b.Next())
                             if (since[i].Conflicts(db, this, b.Value.Item2))
+                            {
+                                wconflicts++;
                                 throw new Exception("Transaction conflict on " + b.Value);
+                            }
                     }
                     db = f.Commit(db, this);
                     f.CommitDone();
                     Install(db);
                 }
+            commits++;
             return db;
         }
         /// <summary>
