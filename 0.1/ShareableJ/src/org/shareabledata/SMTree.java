@@ -34,7 +34,7 @@ public class SMTree<K extends Comparable> extends Collection<SSlot<SCList<Varian
         public final Variants variant;
 
         SITree(TreeInfo<K> ti, Variants vt) {
-            super(null);
+            super((SBucket)null);
             info = ti;
             variant = vt;
         }

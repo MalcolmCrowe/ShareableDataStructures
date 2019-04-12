@@ -18,6 +18,7 @@ namespace StrongLink
         public bool inTransaction = false;
         SDict<long, string> preps = SDict<long, string>.Empty;
         public SDict<int, string>? description = null; // see ExecuteQuery
+        public string lastreq;
         public StrongConnect(string host, int port, string fn)
         {
             Socket? socket = null;
@@ -126,15 +127,16 @@ namespace StrongLink
         }
         public DocArray ExecuteQuery(string sql)
         {
+            lastreq = sql;
             var pair = Parser.Parse(sql);
             var qry = pair.Item1 as SQuery;
             if (qry == null)
                 throw new Exception("Bad query " + sql);
             return Get(pair.Item2,qry);
         }
-        static long _ctr = 0;
         public Types ExecuteNonQuery(string sql)
         {
+            lastreq = sql;
             var s = Parser.Parse(sql);
             if (s.Item2 == null)
                 return Types.Exception;

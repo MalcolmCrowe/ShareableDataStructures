@@ -120,7 +120,7 @@ namespace StrongDB
                                 if (qy == null)
                                     throw new Exception("Bad query");
                                 qy = (SQuery)qy.Prepare(tr, qy.Names(tr,SDict<long,long>.Empty));
-                                RowSet rs = qy.RowSet(tr, qy, SDict<long, Serialisable>.Empty);
+                                RowSet rs = qy.RowSet(tr, qy, Context.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
                                 for (var b = rs?.First(); b != null; b = b.Next())
@@ -134,7 +134,7 @@ namespace StrongDB
                                 asy.Write(Types.Done);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    var dp = rs._qry.Display();
+                                    var dp = rs._qry.Display;
                                     asy.PutInt(dp.Length ?? 0);
                                     for (var b = dp.First(); b != null; b = b.Next())
                                         asy.PutString(b.Value.Item2.Item2);
@@ -357,7 +357,7 @@ namespace StrongDB
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id) as SRecord ??
                                     throw new Exception("Record " + id + " not found");
-                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),tr.curpos);
+                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),rc,tr.curpos);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -542,7 +542,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (22 March 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (12 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase

@@ -16,26 +16,26 @@ public class SValues extends Serialisable {
             super(Types.SValues);
             vals = c;
         }
-        public SValues(SDatabase db,Reader f) throws Exception
+        public SValues(Reader f) throws Exception
         {
             super(Types.SValues);
             var n = f.GetInt();
             var nr = f.GetInt();
             SList<Serialisable> v = null;
             for (var i = 0; i < n; i++)
-                v = (v==null)?new SList<>(f._Get(db)):
-                        v.InsertAt(f._Get(db), i);
+                v = (v==null)?new SList<>(f._Get()):
+                        v.InsertAt(f._Get(), i);
             vals = v;
         }
         @Override
         public boolean isValue() { return true; }
-        public static SValues Get(SDatabase db,Reader f) throws Exception
+        public static SValues Get(Reader f) throws Exception
         {
             var n = f.GetInt();
             var nr = f.GetInt();
             SList<Serialisable> v = null;
             for (var i = 0; i < n; i++)
-                v =(v==null)?new SList(f._Get(db)):v.InsertAt(f._Get(db), i);
+                v =(v==null)?new SList(f._Get()):v.InsertAt(f._Get(), i);
             return new SValues(v);
         }
         @Override

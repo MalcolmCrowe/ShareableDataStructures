@@ -139,7 +139,8 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                 nb = e.val;
                 nb = nb.Remove(k);
                 if (nb.count >= m)
-                    return new SInner<K, V>(gtr, total - 1, Replace(nj.pos, new SSlot<K, SBucket<K, V>>(nb.Top(), nb)));
+                    return new SInner<K, V>(gtr, total - 1, 
+                            Replace(nj.pos, new SSlot<K, SBucket<K, V>>(nb.Last(), nb)));
             }
             else
             {
@@ -289,8 +290,16 @@ public class SInner<K extends Comparable,V> extends SBucket<K,V> {
                 s[k++] = slots[j++];
             return s;
         }
-        public K Top()
+        @Override
+        public K Last()
         {
-            return gtr.Top();
+            return gtr.Last();
         }
+        @Override
+        public SBucket<K,V> Gtr()
+        {
+            return gtr;
+        }
+        @Override
+        public int getEndPos() {return count;}
 }

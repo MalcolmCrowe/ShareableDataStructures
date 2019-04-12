@@ -42,7 +42,7 @@ public class SDelete extends SDbObject {
             return (rdC!=null) && (rdC.Contains(delpos) || rdC.Contains(table));
         }
         @Override
-        public boolean Conflicts(Serialisable that)
+        public boolean Conflicts(SDatabase db,STransaction tr,Serialisable that)
         { 
             switch(that.type)
             {
