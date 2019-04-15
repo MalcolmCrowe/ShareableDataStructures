@@ -1,0 +1,15 @@
+E:\ShareableDataStructures\TpccSqlServer\bin\Debug\Tpcc.exe.config
+E:\ShareableDataStructures\TpccSqlServer\bin\Debug\Tpcc.exe
+E:\ShareableDataStructures\TpccSqlServer\bin\Debug\Tpcc.pdb
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.Delivery.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.DelReport.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.NewOrder.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.OrderStatus.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.Payment.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.StockLevel.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.Form1.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.VTerm.resources
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\TpccSQLServer.csproj.GenerateResource.cache
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\TpccSQLServer.csproj.CoreCompileInputs.cache
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.exe
+E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.pdb
