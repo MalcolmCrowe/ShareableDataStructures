@@ -76,7 +76,7 @@ public class AStream extends StreamBase {
                 {
                     var su = (SUpdate)b.getValue().val;
                     var u = su.Defpos();
-                    var sr = tr.Get(u);
+                    var sr = db.Get(u);
                     cache = (cache==null)?new SDict(u,sr):cache.Add(u, sr);
                     break;
                 }
@@ -84,7 +84,7 @@ public class AStream extends StreamBase {
                 {
                     var sd = (SDelete)b.getValue().val;
                     var u = sd.delpos;
-                    var sr = tr.Get(u);
+                    var sr = db.Get(u);
                     cache = (cache==null)?new SDict(u,sr):cache.Add(u, sr);
                     break;
                 }

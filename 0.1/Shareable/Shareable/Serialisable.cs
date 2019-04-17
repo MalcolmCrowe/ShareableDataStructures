@@ -59,7 +59,8 @@ namespace Shareable
         SNames = 50,
         SQuery = 51, // only used for "STATIC"
         SSysTable = 52,
-        SCreateView = 53
+        SCreateView = 53,
+        SDropIndex = 54 
     }
     public interface ILookup<K, V> where K : IComparable
     {
@@ -2228,70 +2229,92 @@ namespace Shareable
     public class SAlter : SDbObject
     {
         public readonly long defpos;
-        public readonly long col;
-        public readonly string name;
-        public readonly Types dataType;
-        public readonly SDict<string, SFunction> constraints;
+        public readonly long col; // may be -1
+        public readonly string name; // may be ""
+        public readonly Types dataType; // may be Types.Serialisable
+        public readonly int seq; // -1 for no change
+        public readonly SDict<string,SFunction> ccs; // column constraints
         public SAlter(STransaction tr,string n,Types d,long o,long p,
-            SDict<string,SFunction> cs) :base(Types.SAlter,tr)
+            int sq, SDict<string,SFunction> cs) :base(Types.SAlter,tr)
         {
-            defpos = o;  name = n; dataType = d; col = p; constraints = cs; 
+            defpos = o;  name = n; dataType = d; col = p;
+            seq = sq; ccs = cs;
         }
         public SAlter(string n, Types d, long o, long p,
-            SDict<string, SFunction> cs) : base(Types.SAlter)
+            int sq, SDict<string, SFunction> cs) : base(Types.SAlter)
         {
-            defpos = o; name = n; dataType = d; col = p; constraints = cs;
+            defpos = o; name = n; dataType = d; col = p;
+            ccs = cs; seq = sq;
         }
         SAlter(Reader f):base(Types.SAlter,f)
         {
-            defpos = f.GetLong();
-            col = f.GetLong(); //may be -1
+            var p = f.GetLong();
+            var ro = f.db.role;
+            var nm = ro.uids[p];
+            defpos = (ro.globalNames.defines(nm)) ? ro.globalNames[nm] : throw new Exception("No table "+nm);
+            var tb = (STable)f.db.objects[defpos];
+            var dfs = ro.defs[tb.uid];
+            SColumn? co = null;
+            var cc = f.GetLong(); //may be -1
+            if (cc >= 0)
+            {
+                var cn = ro.uids[col];
+                co = dfs.defines(cn) ? (SColumn)f.db.objects[dfs[cn]] : throw new Exception("No column " + cn);
+            }
+            col = co?.uid ?? -1;
             name = f.GetString();
             dataType = (Types)f.ReadByte();
-            var cs = SDict<string, SFunction>.Empty;
+            seq = f.GetInt();
+            var cs = SDict<string,SFunction>.Empty;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
             {
-                var id = f.GetString();
-                cs += (id, f._Get() as SFunction ?? throw new Exception("Constraint expected"));
+                var s = f.GetString();
+                cs += (s, (SFunction)f._Get());
             }
-            constraints = cs;
+            ccs = cs;
         }
         public SAlter(SAlter a,AStream f):base(a,f)
         {
             name = a.name;
             dataType = a.dataType;
+            seq = a.seq;
             defpos = f.Fix(a.defpos);
             col = f.Fix(a.col);
             f.PutLong(defpos);
             f.PutLong(col);
             f.PutString(name);
             f.WriteByte((byte)dataType);
-            var cs = SDict<string, SFunction>.Empty;
-            f.PutInt(a.constraints.Length ?? 0);
-            for (var b=a.constraints.First();b!=null;b=b.Next())
+            f.PutInt(seq);
+            f.PutInt(ccs.Length ?? 0);
+            for (var b = ccs.First(); b != null; b = b.Next())
             {
                 f.PutString(b.Value.Item1);
-                var cf = (SFunction)b.Value.Item2.Fix(f);
-                cs += (b.Value.Item1, cf);
-                cf.Put(f);
+                b.Value.Item2.Fix(f).Put(f);
             }
-            constraints = cs;
         }
         public override long Affects => defpos;
         public new static SAlter Get(Reader f)
         {
             return new SAlter(f);
         }
+        public override void Put(StreamBase f)
+        {
+            f.PutLong(defpos);
+            f.PutLong(col);
+            f.PutString(name);
+            f.WriteByte((byte)dataType);
+            f.PutInt(seq);
+            f.PutInt(ccs.Length ?? 0);
+            for (var b = ccs.First(); b != null; b = b.Next())
+            {
+                f.PutString(b.Value.Item1);
+                b.Value.Item2.Put(f);
+            }
+        }
         public override STransaction Obey(STransaction tr, Context cx)
         {
-            if (col != -1)
-                return (STransaction)tr.Install(new SAlter(tr, name, dataType, defpos, col, constraints), tr.curpos);
-            else if (dataType == Types.Serialisable)
-                return (STransaction)tr.Install(new SAlter(tr, name, Types.Serialisable, defpos, -1,
-                    constraints), tr.curpos);
-            else
-                return (STransaction)tr.Install(new SColumn(tr, defpos, dataType, constraints), name, tr.curpos);
+            return (STransaction)tr.Install(this, tr.curpos);
         }
         public override bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
@@ -2312,14 +2335,58 @@ namespace Shareable
             sb.Append("Alter ");
             sb.Append(_Uid(defpos));
             sb.Append((col == -1) ? "" : (" column " + _Uid(col)));
-            sb.Append(name);
-            sb.Append((dataType!=Types.Serialisable)?(" " + DataTypeName(dataType)):"");
-            for(var b=constraints.First();b!=null;b=b.Next())
+            if (name.Length != 0)
             {
-                sb.Append(" ");sb.Append(b.Value.Item1);
+                sb.Append(" TO ");
+                sb.Append(name);
+            }
+            if (seq!= -1)
+                sb.Append(" TO "+seq);
+            sb.Append((dataType!=Types.Serialisable)?(" " + DataTypeName(dataType)):"");
+            for (var b=ccs.First();b!=null;b=b.Next())
+            {
+                sb.Append(" ");
+                sb.Append(b.Value.Item1);
+                sb.Append(": ");
                 b.Value.Item2.Append(sb);
             }
             return sb.ToString();
+        }
+    }
+    public class SDropIndex : Serialisable
+    {
+        public readonly long table;
+        public readonly SList<long> key;
+        public SDropIndex(long tb,SList<long> k) :base(Types.SDropIndex)
+        {
+            table = tb; key = k;
+        }
+        public SDropIndex(Reader f) : base(Types.SDrop, f)
+        {
+            table = f.GetLong();
+            var n = f.GetInt();
+            var k = SList<long>.Empty;
+            for (var i = 0; i < n; i++)
+                k += (f.GetLong(), i);
+            key = k;
+        }
+        public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
+        {
+            var tb = (STable)db.objects[table];
+            for (var b = tb.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects[b.Value.Item1];
+                if (x.cols.Length != key.Length)
+                    continue;
+                var kb = key.First();
+                var ma = true;
+                for (var xb = x.cols.First(); ma && xb != null && kb != null;
+                    xb = xb.Next(), kb = kb.Next())
+                    ma = xb.Value == kb.Value;
+                if (ma)
+                    return new SDrop(x.uid,-1,"");
+            }
+            throw new Exception("No such table constraint");
         }
     }
     public class SDrop: SDbObject
@@ -2936,10 +3003,8 @@ namespace Shareable
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Update ");
-            sb.Append(Uid());
-            sb.Append(" of "); sb.Append(STransaction.Uid(defpos));
-            sb.Append(" for "); sb.Append(Uid());
+            var sb = new StringBuilder("Update of "); sb.Append(STransaction.Uid(defpos));
+            sb.Append(" for "); sb.Append(STransaction.Uid(table));
             Append(sb);
             return sb.ToString();
         }
@@ -2954,12 +3019,9 @@ namespace Shareable
         }
         public override STransaction Obey(STransaction tr,Context cx)
         {
-            for (var b = qry.RowSet(tr,qry,cx).First() as RowBookmark; 
+            for (var b = qry.RowSet(tr, qry, cx).First() as RowBookmark;
                 b != null; b = b.Next() as RowBookmark)
-            {
-                var rc = b._ob.rec ?? throw new System.Exception("PE34");// not null
-                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),rc,tr.curpos); 
-            }
+                tr = b.Delete(tr);
             return tr;
         }
         public new static SDeleteSearch Get(Reader f)
@@ -3386,6 +3448,7 @@ namespace Shareable
                 case Types.STableExp: s = SJoin.Get(this); break;
                 case Types.SName: s = SDbObject.Get(this); break;
                 case Types.SArg: s = new SArg(this); break;
+                case Types.SDropIndex: s = new SDropIndex(this); break;
                 default: s = Serialisable.Null; break;
             }
             return s;
@@ -3479,7 +3542,7 @@ namespace Shareable
         {
             commits = SDict<long, Serialisable>.Empty;
             uids = SDict<long, long>.Empty;
-            // We need two passes: manage a cache of SRecords being deleted or updated
+            // We need two passes: manage a cache of SRecords being updated or deleted
             // before we start writing
             var cache = SDict<long, SRecord>.Empty;
             for (var b = tr.objects.PositionAt(STransaction._uid);b!=null;b=b.Next())
@@ -3489,103 +3552,105 @@ namespace Shareable
                     {
                         var su = (SUpdate)b.Value.Item2;
                         var u = su.Defpos;
-                        cache += (u, tr.Get(u));
+                        cache += (u, db.Get(u));
                         break;
                     }
                     case Types.SDelete:
                     {
                         var sd = (SDelete)b.Value.Item2;
                         var u = sd.delpos;
-                        cache += (u, tr.Get(u));
+                        cache += (u, db.Get(u));
                         break;
-                    }
+                    } 
                 }
             wbuf = new Buffer(this);
-            for (var b=tr.objects.PositionAt(STransaction._uid);b!=null; b=b.Next())
+            try
             {
-                switch (b.Value.Item2.type)
+                for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next())
                 {
-                    case Types.STable:
-                        {
-                            var st = (STable)b.Value.Item2;
-                            var nm = tr.Name(st.uid);
-                            var nt = new STable(st, nm, this);
-                            db += (nt,nm,Length);
-                            commits += (nt.uid, nt);
-                            break;
-                        }
-                    case Types.SColumn:
-                        {
-                            var sc = (SColumn)b.Value.Item2;
-                            var nm = tr.Name(sc.uid);
-                            var nc = new SColumn(sc, nm, this);
-                            var tb = (STable)db.objects[nc.table];
-                            tb += (nc,nm); 
-                            db = db + (nc,nm,Length) + (tb,db.Name(tb.uid),Length)
-                                + (tb.uid,nc.uid,nm);
-                            commits += (nc.uid, nc);
-                            break;
-                        }
-                    case Types.SRecord:
-                        {
-                            var sr = (SRecord)b.Value.Item2;
-                            var nr = new SRecord(db, sr, this);
-                            if (sr.uid>STransaction._uid)
-                                db += (nr,Length);
-                            if (cache.Contains(sr.uid))
-                                cache += (sr.uid, sr);
-                            commits += (nr.uid, nr);
-                            break;
-                        }
-                    case Types.SDelete:
-                        {
-                            var sd = (SDelete)b.Value.Item2;
-                            var sr = cache[sd.delpos];
-                            var nd = new SDelete(sd, this);
-                            if (sd.uid > STransaction._uid)
+                    switch (b.Value.Item2.type)
+                    {
+                        case Types.STable:
+                            {
+                                var st = (STable)b.Value.Item2;
+                                var nm = tr.Name(st.uid);
+                                var nt = new STable(st, nm, this);
+                                db += (nt, nm, Length);
+                                commits += (nt.uid, nt);
+                                break;
+                            }
+                        case Types.SColumn:
+                            {
+                                var sc = (SColumn)b.Value.Item2;
+                                var nm = tr.Name(sc.uid);
+                                var nc = new SColumn(sc, nm, this);
+                                var tb = (STable)db.objects[nc.table];
+                                tb += (nc, nm);
+                                db = db + (nc, nm, Length) + (tb, db.Name(tb.uid), Length)
+                                    + (tb.uid, nc.uid, nm);
+                                commits += (nc.uid, nc);
+                                break;
+                            }
+                        case Types.SRecord:
+                            {
+                                var sr = (SRecord)b.Value.Item2;
+                                var nr = new SRecord(db, sr, this);
+                                db += (nr, Length);
+                                if (cache.Contains(sr.uid))
+                                    cache += (sr.uid, sr);
+                                commits += (nr.uid, nr);
+                                break;
+                            }
+                         case Types.SDelete:
+                            {
+                                var sd = (SDelete)b.Value.Item2;
+                                var sr = cache[sd.delpos];
+                                var nd = new SDelete(sd, this);
                                 db += (nd, sr, Length);
-                            commits += (nd.uid, nd);
-                            break;
-                        }
-                    case Types.SUpdate:
-                        {
-                            var su = (SUpdate)b.Value.Item2;
-                            var u = su.Defpos;
-                            var sr = cache[u];
-                            var nr = new SUpdate(db, su, this);
-                            if (sr.uid > STransaction._uid)
+                                commits += (nd.uid, nd);
+                                break;
+                            } 
+                        case Types.SUpdate:
+                            {
+                                var su = (SUpdate)b.Value.Item2;
+                                var u = su.Defpos;
+                                var sr = cache[u];
+                                var nr = new SUpdate(db, su, this);
                                 db += (nr, sr, Length);
-                            if (cache.Contains(u))
-                                cache += (u, nr);
-                            commits += (nr.uid, nr);
-                            break;
-                        }
-                    case Types.SAlter:
-                        {
-                            var sa = new SAlter((SAlter)b.Value.Item2, this);
-                            db += (sa,Length);
-                            commits += (sa.uid, sa);
-                            break;
-                        }
-                    case Types.SDrop:
-                        {
-                            var sd = new SDrop((SDrop)b.Value.Item2, this);
-                            db += (sd, Length);
-                            commits += (sd.uid, sd);
-                            break;
-                        }
-                    case Types.SIndex:
-                        {
-                            var si = new SIndex((SIndex)b.Value.Item2, this);
-                            db += (si, Length);
-                            commits += (si.uid, si);
-                            break;
-                        }
+                                if (cache.Contains(u))
+                                    cache += (u, nr);
+                                commits += (nr.uid, nr);
+                                break;
+                            }
+                        case Types.SAlter:
+                            {
+                                var sa = new SAlter((SAlter)b.Value.Item2, this);
+                                db += (sa, Length);
+                                commits += (sa.uid, sa);
+                                break;
+                            }
+                        case Types.SDrop:
+                            {
+                                var sd = new SDrop((SDrop)b.Value.Item2, this);
+                                db += (sd, Length);
+                                commits += (sd.uid, sd);
+                                break;
+                            }
+                        case Types.SIndex:
+                            {
+                                var si = new SIndex((SIndex)b.Value.Item2, this);
+                                db += (si, Length);
+                                commits += (si.uid, si);
+                                break;
+                            }
+                    }
                 }
+                Flush();
+                SDatabase.Install(db);
+            } finally
+            {
+                wbuf = null;
             }
-            Flush();
-            wbuf = null;
-            SDatabase.Install(db);
             return db;
         }
         internal Serialisable Lookup(SDatabase db, long pos)

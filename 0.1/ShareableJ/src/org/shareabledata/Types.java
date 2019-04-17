@@ -63,7 +63,9 @@ public class Types {
             SName = 49,
             SNames = 50,
             SQuery = 51, // only used for "STATIC"
-            SSysTable = 52;
+            SSysTable = 52,
+            SCreateView = 53,
+            SDropIndex = 54;
     static String[] types = new String[]{
         "", "?", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
         "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",//7-13
@@ -74,7 +76,7 @@ public class Types {
         "SFunction","SValues","SOrder","SBigInt","SInPredicate",//36-40
         "DescribedGet","SGroupQuery","STableExp","SAlias",//41-44
         "SSelector","SArg","SRole","SUser","SName","SNames",//45-50
-        "SQuery","SSysTable" //51-52
+        "SQuery","SSysTable","SCreateView","SDropIndex" //51-54
     };
 
     public static String toString(int t) {

@@ -242,29 +242,11 @@ namespace StrongDB
                         case Types.SAlter:
                             {
                                 var tr = db.Transact(asy.rdr);
-                                var ob = rdr._Get(); // table 
-                                if (ob.type != Types.STable)
-                                    throw new Exception("Table " + ob + " not found");
-                                var tb = (STable)ob;
-                                var cn = rdr._Get(); // columnDef or Null
-                                var nm = rdr.GetString(); // new name
+                                rdr.db = tr;
+                                var at = rdr._Get();
                                 tr = (STransaction)rdr.db;
-                                if (cn == Serialisable.Null)
-                                {
-                                    var a = new SAlter(tr, nm, Types.STable, tb.uid, 0,
-                                        SDict<string, SFunction>.Empty);
-                                    a = (SAlter)a.Prepare(tr, tb.Names(tr,SDict<long,long>.Empty));
-                                    tr = (STransaction)tr.Install(a, tr.curpos);
-                                }
-                                else
-                                {
-                                    var a = new SAlter(tr, nm, Types.SColumn, tb.uid,
-                                            (cn is SColumn sc) ? sc.uid :
-                                            throw new Exception("Column " + cn + " not found"),
-                                            SDict<string, SFunction>.Empty);
-                                    a = (SAlter)a.Prepare(tr, tb.Names(tr,SDict<long,long>.Empty));
-                                    tr = (STransaction)tr.Install(a, tr.curpos);
-                                }
+                                tr = at.Prepare(tr, SDict<long, long>.Empty)
+                                    .Obey(tr, Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -300,6 +282,18 @@ namespace StrongDB
                                 rdr.db = tr;
                                 CreateIndex(rdr);
                                 db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                asy.Write(Types.Done);
+                                asy.Flush();
+                                break;
+                            }
+                        case Types.SDropIndex:
+                            {
+                                var tr = db.Transact(asy.rdr);
+                                rdr.db = tr;
+                                var dr = (SDropIndex)rdr._Get();
+                                tr = dr.Prepare(tr, SDict<long, long>.Empty)
+                                    .Obey(tr, Context.Empty);
+                                db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
                                 break;
@@ -345,7 +339,9 @@ namespace StrongDB
                         case Types.SDeleteSearch:
                             {
                                 var tr = db.Transact(asy.rdr);
-                                tr = SDeleteSearch.Get(rdr).Prepare(tr,SDict<long,long>.Empty).Obey(tr,Context.Empty);
+                                rdr.db = tr;
+                                var dr = SDeleteSearch.Get(rdr);
+                                tr = dr.Prepare(tr,dr.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 db = db.MaybeAutoCommit(tr);
                                 asy.Write(Types.Done);
                                 asy.Flush();
@@ -542,7 +538,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (12 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (17 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :StreamBase

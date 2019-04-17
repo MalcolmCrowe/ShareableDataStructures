@@ -14,25 +14,28 @@ public class SAlter extends SDbObject {
         public final long col;
         public final String name;
         public final int dataType;
+        public final int seq;
         public final SDict<String,SFunction> constraints;
         public SAlter(STransaction tr,String n,int d,long o,long p,
-                SDict<String,SFunction> cs)
+                int sq,SDict<String,SFunction> cs)
         {
             super(Types.SAlter,tr);
             defpos = o;  
             name = n; 
             dataType = d; 
             col = p;
+            seq = sq;
             constraints = cs;
         }
         public SAlter(String n,int d,long o,long p,
-            SDict<String,SFunction> cs)
+            int sq,SDict<String,SFunction> cs)
         {
             super(Types.SAlter);
             defpos = o;  
             name = n; 
             dataType = d; 
             col = p;
+            seq = sq;
             constraints = cs;
         }
         SAlter(Reader f) throws Exception
@@ -42,6 +45,7 @@ public class SAlter extends SDbObject {
             col = f.GetLong(); //may be -1
             name = f.GetString();
             dataType = f.ReadByte();
+            seq = f.GetInt();
             SDict<String,SFunction> cs = null;
             var n = f.GetInt();
             for (var i=0;i<n;i++)
@@ -60,12 +64,14 @@ public class SAlter extends SDbObject {
             super(a,f);
             name = a.name;
             dataType = a.dataType;
+            seq = a.seq;
             defpos = f.Fix(a.defpos);
             col = f.Fix(a.col);
             f.PutLong(defpos);
             f.PutLong(col);
             f.PutString(name);
             f.WriteByte((byte)dataType);
+            f.PutInt(seq);
             SDict<String,SFunction> cs = null;
             f.PutInt((a.constraints==null)?0:a.constraints.Length);
             if (a.constraints!=null)
@@ -84,16 +90,7 @@ public class SAlter extends SDbObject {
         }
         public STransaction Obey(STransaction tr, Context cx) throws Exception
         {
-            if (col != -1)
-                return (STransaction)tr.Install(
-                        new SAlter(tr, name, dataType, defpos, col, constraints), 
-                        tr.curpos);
-            else if (dataType == Types.Serialisable)
-                return (STransaction)tr.Install(
-                        new SAlter(tr, name, Types.Serialisable, defpos, -1,
-                        constraints), tr.curpos);
-            else
-                return (STransaction)tr.Install(new SColumn(tr, defpos, dataType, constraints), name, tr.curpos);
+             return (STransaction)tr.Install(this, tr.curpos);
         }
  
         public boolean Conflicts(SDatabase db,STransaction tr,Serialisable that)
@@ -116,7 +113,13 @@ public class SAlter extends SDbObject {
             sb.append("Alter ");
             sb.append(_Uid(defpos));
             sb.append((col == -1) ? "" : (" column " + _Uid(col)));
-            sb.append(name);
+            if (name.length() != 0)
+            {
+                sb.append(" TO ");
+                sb.append(name);
+            }
+            if (seq!= -1)
+                sb.append(" TO "+seq);
             sb.append((dataType!=Types.Serialisable)?(" " + DataTypeName(dataType)):"");
             for(var b=constraints.First();b!=null;b=b.Next())
             {

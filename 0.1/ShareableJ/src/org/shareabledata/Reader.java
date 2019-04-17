@@ -79,6 +79,7 @@ public class Reader {
             case Types.STableExp: s = SJoin.Get(this); break;
             case Types.SName:       s = SDbObject.Get(this); break;
             case Types.SArg:        s = new SArg(this); break;
+            case Types.SDropIndex: s = new SDropIndex(this); break;
         }
         return s;
     }

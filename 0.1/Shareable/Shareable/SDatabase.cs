@@ -161,6 +161,19 @@ namespace Shareable
         }
         public static SDatabase operator+(SDatabase d,(SDbObject,long) x)
         {
+            switch (x.Item1.type)
+            {
+                case Types.SDelete:
+                    {
+                        var del = (SDelete)x.Item1;
+                        return d._Add(x.Item1,d.Get(del.delpos), x.Item2);
+                    }
+                case Types.SUpdate:
+                    {
+                        var upd = (SUpdate)x.Item1;
+                        return d._Add(x.Item1,d.Get(upd.defpos), x.Item2);
+                    }
+            }
             return d._Add(x.Item1, x.Item2);
         }
         public static SDatabase operator +(SDatabase d, (SDbObject, SRecord, long) x)

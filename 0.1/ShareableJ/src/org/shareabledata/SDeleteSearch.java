@@ -21,15 +21,12 @@ public class SDeleteSearch extends Serialisable {
         {
             return new SDeleteSearch((SQuery)qry.Prepare(db, pt));
         }
+        @Override
         public STransaction Obey(STransaction tr,Context cx) throws Exception
         {
             for (var b = (RowBookmark)qry.RowSet(tr,qry,null).First(); 
                 b != null;b = (RowBookmark)b.Next())
-            {
-                var rc = b.Ob().rec;// not null
-                tr = (STransaction)tr.Install(new SDelete(tr, rc.table, rc.uid),
-                        rc,tr.curpos); 
-            }
+                tr = b.Delete(tr);
             return tr;
         }
         public static SDeleteSearch Get(Reader f) throws Exception
@@ -37,11 +34,13 @@ public class SDeleteSearch extends Serialisable {
             return new SDeleteSearch((SQuery)f._Get());
         }
 
+        @Override
         public void Put(StreamBase f)
         {
             super.Put(f);
             qry.Put(f);
         }
+        @Override
         public String toString()
         {
             var sb = new StringBuilder("Delete ");

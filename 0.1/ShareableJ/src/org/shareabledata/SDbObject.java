@@ -126,7 +126,7 @@ public class SDbObject extends Serialisable {
     {
         if (uid>=1 || uid < maxAlias)
             return uid;
-        if (pt!=null && !pt.Contains(uid))
+        if (pt==null || !pt.Contains(uid))
             throw new Exception("Could not find " + _Uid(uid));
         return pt.get(uid);
     }
@@ -140,7 +140,7 @@ public class SDbObject extends Serialisable {
     {
         if (uid<maxAlias || uid >= 0)
             return this;
-        if (pt!=null && !pt.Contains(uid))
+        if (pt==null || !pt.Contains(uid))
             throw new Exception("Could not find " + tr.Name(uid));
         return tr.objects.get(pt.get(uid));
     }

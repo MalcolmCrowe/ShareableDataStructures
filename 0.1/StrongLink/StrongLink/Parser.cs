@@ -432,94 +432,101 @@ namespace StrongLink
             Next();
             var tb = MustBeID();
             long col = -1;
-            var add = false;
-            var cs = SDict<string, SFunction>.Empty;
+            string nm = "";
+            var dt = Types.Serialisable;
+            int sq = -1;
+            var cs = (SDict<string,SFunction>.Empty,SList<SIndex>.Empty);
             switch (lxr.tok)
             {
                 case Sym.COLUMN:
                     Next();
                     col = MustBeID();
- /*                   if (lxr.tok == Sym.ADD)
-                        return AddColumnConstraints(tb, col,cs);
-                    if (lxr.tok == Sym.DROP)
-                        return DropColumnConstraints(tb, col); */
-                    Mustbe(Sym.TO);
-                    break;
+                    switch (lxr.tok)
+                    {
+                        case Sym.ADD:
+                            Next();
+                            cs = ColumnConstraints(tb, col, cs.Item1);
+                            if (cs.Item2.Length != 0)
+                                throw new Exception("Unrecognised column constraint");
+                            return new SAlter("", dt, tb, col, -1, cs.Item1);
+                        case Sym.DROP:
+                            Next();
+                            if (lxr.tok == Sym.ID)
+                            {
+                                var v = (SDbObject)lxr.val;
+                                Next();
+                                return new SDrop(tb, col, uids[v.uid]);
+                            }
+                            var sy = lxr.tok.ToString();
+                            Next();
+                            return new SDrop(tb, col, sy);
+                        case Sym.TO:
+                            Next();
+                            switch (lxr.tok)
+                            {
+                                case Sym.LITERAL:
+                                    {
+                                        var n = lxr.val as SInteger;
+                                        var nn = n?.value ?? throw new Exception("Integer expected");
+                                        Next();
+                                        return new SAlter("", dt, tb, col, (int)nn, cs.Item1);
+                                    }
+                                case Sym.ID:
+                                    {
+                                        var v = (SDbObject)lxr.val;
+                                        Next();
+                                        return new SAlter(uids[v.uid], dt, tb, col, -1, cs.Item1);
+                                    }
+                                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
+                                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
+                                case Sym.STRING: Next(); dt = Types.SString; break;
+                                case Sym.DATE: Next(); dt = Types.SDate; break;
+                                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
+                                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
+                                default:
+                                    throw new Exception("Type expected");
+                            }
+                            cs = ColumnConstraints(tb, col, cs.Item1);
+                            return new SAlter("", dt, tb, col, -1, cs.Item1);
+                        default:
+                            throw new Exception("ADD, DROP or TO expected for ALTER COLUMN");
+                    }
                 case Sym.DROP:
-                    Next();
-/*                    if (lxr.tok != Sym.ID)
-                        return DropTableConstraint(tb); */
-                    col = MustBeID();
-                    return new SDrop(col, tb,""); 
+                    {
+                        Next();
+                        if (lxr.tok == Sym.ID)
+                        {
+                            col = MustBeID();
+                            return new SDrop(col, tb, "");
+                        }
+                        Mustbe(Sym.KEY);
+                        return new SDropIndex(tb, Cols());
+                    }
                 case Sym.TO:
-                    Next(); break;
+                    Next();
+                    var tn = MustBeID();
+                    return new SAlter(uids[tn], dt, tb, -1, -1, cs.Item1);
                 case Sym.ADD:
-                    Next(); add = true;
-/*                    if (lxr.tok != Sym.ID)
-                        return AddTableConstraint(tb); */
-                    break;
+                    Next();
+                    if (lxr.tok != Sym.ID)
+                        return TableConstraint(tb);
+                    return ColumnDef(tb).Item2;
             }
-            var nm = MustBeID();
-            Types dt = Types.Serialisable;
-            switch (lxr.tok)
-            {
-   //             case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
-                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
-                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
-                case Sym.STRING: Next(); dt = Types.SString; break;
-                case Sym.DATE: Next(); dt = Types.SDate; break;
-                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
-                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
-                default: if (add)
-                        throw new Exception("Type expected");
-                    break;
-            }
-            return new SAlter(uids[nm],dt, tb, col,cs); 
+            throw new Exception("Bad Alter syntax");
         }
         SCreateTable CreateTable()
         {
             Next();
             var tb = MustBeID();
             var ctb = TableDef(tb,new SCreateTable(tb, SList<SColumn>.Empty, SList<SIndex>.Empty));
-            for (; ; )
+            while (lxr.tok==Sym.PRIMARY||lxr.tok==Sym.UNIQUE||lxr.tok==Sym.REFERENCES)
             {
-                bool p = true;
-                long r = -1;
-                var c = SList<long>.Empty;
-                switch (lxr.tok)
-                {
-                    case Sym.PRIMARY:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        c = Cols();
-                        break;
-                    case Sym.UNIQUE:
-                        Next();
-                        p = false;
-                        c = Cols();
-                        break;
-                    case Sym.FOREIGN:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        p = false;
-                        c = Cols();
-                        Mustbe(Sym.REFERENCES);
-                        r = MustBeID();
-                        break;
-                    case Sym.Null:
-                        return ctb;
-                    case Sym.COMMA:
-                        Next();
-                        break;
-                    default:
-                        throw new Exception("Syntax error at end of create table statement");
-                }
-                if (c.Length != 0)
-                {
-                    var x = new SIndex(tb, p, r, c);
-                    ctb = new SCreateTable(tb, ctb.coldefs, ctb.constraints + x);
-                }
+                var x = TableConstraint(tb);
+                ctb = new SCreateTable(tb, ctb.coldefs, ctb.constraints + x);
+                if (lxr.tok == Sym.COMMA)
+                    Next();
             }
+            return ctb;
         }
         SCreateTable TableDef(long tb,SCreateTable ctb)
         {
@@ -542,46 +549,36 @@ namespace StrongLink
                 throw new Exception("Syntax error");
             }
         }
-        SCreateTable TableConstraints(long tb,SCreateTable ctb)
+        SIndex TableConstraint(long tb)
         {
-            for (; ; )
+            bool p = true;
+            long r = -1;
+            var c = SList<long>.Empty;
+            switch (lxr.tok)
             {
-                bool p = true;
-                long r = -1;
-                var c = SList<long>.Empty;
-                switch (lxr.tok)
-                {
-                    case Sym.PRIMARY:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        c = Cols();
-                        break;
-                    case Sym.UNIQUE:
-                        Next();
-                        p = false;
-                        c = Cols();
-                        break;
-                    case Sym.FOREIGN:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        c = Cols();
-                        Mustbe(Sym.REFERENCES);
-                        r = MustBeID();
-                        break;
-                    case Sym.COMMA:
-                        Next();
-                        break;
-                    case Sym.Null:
-                        return ctb;
-                    default:
-                        throw new Exception("Syntax error at end of create table statement");
-                }
-                if (c.Length != 0)
-                {
-                    var x = new SIndex(tb, p, r, c);
-                    ctb = new SCreateTable(ctb.tdef, ctb.coldefs, ctb.constraints + x);
-                }
+                case Sym.PRIMARY:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
+                    break;
+                case Sym.UNIQUE:
+                    Next();
+                    p = false;
+                    c = Cols();
+                    break;
+                case Sym.FOREIGN:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
+                    Mustbe(Sym.REFERENCES);
+                    r = MustBeID();
+                    break;
+                default:
+                    throw new Exception("Syntax error at end of create table statement");
             }
+            if (c.Length == 0)
+                throw new Exception("Table constraint expected");
+            return new SIndex(tb, p, r, c);
         }
         (long, SColumn, SList<SIndex>) ColumnDef(long tb)
         {

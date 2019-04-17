@@ -66,7 +66,7 @@ namespace Test
             Test10(test);
             Test11(test);
             Test12(test);
-            Test13(test);
+     //       Test13(test);
         }
         void Test1(int t)
         {
@@ -79,6 +79,8 @@ namespace Test
             CheckResults(1,1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             conn.ExecuteNonQuery("update A where C=9 set C=19");
             CheckResults(1,2, "select from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            conn.ExecuteNonQuery("delete A where C=19");
+            CheckResults(1, 3, "select from A", "[{B:2,C:3,D:'TwentyThree'}]");
             Rollback();
             if (!commit)
             {
@@ -90,7 +92,7 @@ namespace Test
                 conn.CreateIndex("A", IndexType.Primary, null, "B", "C");
                 conn.Insert("A", new string[0], new Serialisable[] { new SInteger(2), new SInteger(3), new SString("TwentyThree") },
                     new Serialisable[] { new SInteger(1), new SInteger(9), new SString("Nineteen") });
-                CheckResults(1,3, "select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+                CheckResults(1,4, "select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
                 Rollback();
             }
         }
@@ -415,7 +417,34 @@ namespace Test
         }
         void Test13(int t)
         {
-
+            if (t > 0 && t != 13)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table ad(a integer,b string)");
+            conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+            CheckExceptionNonQuery(13,1,"alter ad add c string notnull","Table is not empty");
+            conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+            CheckResults(13, 2, "select from ad", "[{a:20,b:'Twenty',c:'XX'}]");
+            conn.ExecuteNonQuery("alter ad drop b");
+            CheckResults(13,3,"select from ad", "[{a:20,c:'XX'}]");
+            conn.ExecuteNonQuery("alter ad add primary key(c)");
+            conn.ExecuteNonQuery("insert ad values(21,'AB')");
+            conn.ExecuteNonQuery("create table de (d integer references ad)");
+            CheckExceptionNonQuery(13,4,"insert de values(14)", "Key 14 not found");
+            conn.ExecuteNonQuery("insert de values(21)");
+            CheckExceptionNonQuery(13, 5, "delete from ad where c='AB'", "Restricted by reference");
+            CheckExceptionNonQuery(13, 6, "drop ad", "Restricted by reference");
+            conn.ExecuteNonQuery("alter ad alter c drop default");
+            CheckResults(13,7,"select from ad", "[{a:21,c:'AB'},{a:20,c:'XX'}]");
+            CheckExceptionNonQuery(13, 8, "alter ad drop key(c)", "Restricted by reference");
+            conn.ExecuteNonQuery("drop de");
+            conn.ExecuteNonQuery("alter ad drop key(c)");
+            CheckResults(13,9, "select from ad", "[{a:20,c:'XX'},{a:21,c:'AB'}]");
+            conn.ExecuteNonQuery("insert ad(a) values(13)");
+            CheckResults(13, 10, "select from ad", "[{a:20,c:'XX'},{a:21,c:'AB'},{a:13}]");
+            conn.ExecuteNonQuery("drop ad");
+            CheckExceptionQuery(13,11,"select from ad", "No table ad");
+            Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)
         {

@@ -525,90 +525,136 @@ public class Parser {
             Next();
             var tb = MustBeID();
             long col = -1;
-            var add = false;
-            SDict<String,SFunction> cs = null;
+            String nm = ""; 
+            int dt = Types.Serialisable;
+            int sq = -1;
+            ConstraintPair cs = null;
             switch (lxr.tok)
             {
                 case Sym.COLUMN:
                     Next();
                     col = MustBeID();
-                    Mustbe(Sym.TO);
-                    break;
+                    switch (lxr.tok)
+                    {
+                        case Sym.ADD:
+                            Next();
+                            cs = ColumnConstraints(tb, col, cs.cs);
+                            if (cs.xs.Length != 0)
+                                throw new Exception("Unrecognised column constraint");
+                            return new SAlter("", dt, tb, col, -1, cs.cs);
+                        case Sym.DROP:
+                            Next();
+                            if (lxr.tok == Sym.ID)
+                            {
+                                var v = (SDbObject)lxr.val;
+                                Next();
+                                return new SDrop(tb, col, uids.get(v.uid));
+                            }
+                            var sy = Sym.syms[lxr.tok];
+                            Next();
+                            return new SDrop(tb, col, sy);
+                        case Sym.TO:
+                            Next();
+                            switch (lxr.tok)
+                            {
+                                case Sym.LITERAL:
+                                    {
+                                        if (!(lxr.val instanceof SInteger))
+                                            throw new Exception("Integer expected");
+                                        var n = (SInteger)lxr.val;
+                                        var nn = n.value;
+                                        Next();
+                                        return new SAlter("", dt, tb, col, (int)nn, cs.cs);
+                                    }
+                                case Sym.ID:
+                                    {
+                                        var v = (SDbObject)lxr.val;
+                                        Next();
+                                        return new SAlter(uids.get(v.uid), dt, tb, col, -1, cs.cs);
+                                    }
+                                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
+                                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
+                                case Sym.STRING: Next(); dt = Types.SString; break;
+                                case Sym.DATE: Next(); dt = Types.SDate; break;
+                                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
+                                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
+                                default:
+                                    throw new Exception("Type expected");
+                            }
+                            cs = ColumnConstraints(tb, col, cs.cs);
+                            return new SAlter("", dt, tb, col, -1, cs.cs);
+                        default:
+                            throw new Exception("ADD, DROP or TO expected for ALTER COLUMN");
+                    }
                 case Sym.DROP:
-                    Next();
-                    col = MustBeID();
-                    return new SDrop(col, tb,""); // ok
+                    {
+                        Next();
+                        if (lxr.tok == Sym.ID)
+                        {
+                            col = MustBeID();
+                            return new SDrop(col, tb, "");
+                        }
+                        Mustbe(Sym.KEY);
+                        return new SDropIndex(tb, Cols());
+                    }
                 case Sym.TO:
-                    Next(); break;
+                    Next();
+                    var tn = MustBeID();
+                    return new SAlter(uids.get(tn), dt, tb, -1, -1, cs.cs);
                 case Sym.ADD:
-                    Next(); add = true;
-                    break;
+                    Next(); 
+                    if (lxr.tok != Sym.ID)
+                        return TableConstraint(tb);
+                    return ColumnDef(tb).col;
             }
-            var nm = MustBeID();
-            int dt = Types.Serialisable;
+            throw new Exception("Bad Alter syntax");
+        }
+        SIndex TableConstraint(long tb) throws Exception
+        {
+            boolean p = true;
+            long r = -1;
+            SList<Long> c = null;
             switch (lxr.tok)
             {
-                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
-                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
-                case Sym.STRING: Next(); dt = Types.SString; break;
-                case Sym.DATE: Next(); dt = Types.SDate; break;
-                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
-                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
-                default: if (add)
-                        throw new Exception("Type expected");
+                case Sym.PRIMARY:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
                     break;
+                case Sym.UNIQUE:
+                    Next();
+                    p = false;
+                    c = Cols();
+                    break;
+                case Sym.FOREIGN:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
+                    Mustbe(Sym.REFERENCES);
+                    r = MustBeID();
+                    break;
+                default:
+                    throw new Exception("Syntax error at end of create table statement");
             }
-            if (col == -1)
-                throw new Exception("PE06");
-            return new SAlter(uids.get(nm), dt, tb, col, cs); // ok
+            if (c.Length == 0)
+                throw new Exception("Table constraint expected");
+            return new SIndex(tb, p, r, c);            
         }
         Serialisable CreateTable() throws Exception
         {
             Next();
             var tb = MustBeID();
             var ctb = TableDef(tb,new SCreateTable(tb, null, null));
-            for (; ; )
+            while (lxr.tok==Sym.PRIMARY||lxr.tok==Sym.UNIQUE||lxr.tok==Sym.REFERENCES)
             {
-                boolean p = true;
-                long r = -1;
-                SList<Long> c = null;
-                switch (lxr.tok)
-                {
-                    case Sym.PRIMARY:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        c = Cols();
-                        break;
-                    case Sym.UNIQUE:
-                        Next();
-                        p = false;
-                        c = Cols();
-                        break;
-                    case Sym.FOREIGN:
-                        Next();
-                        Mustbe(Sym.KEY);
-                        p = false;
-                        c = Cols();
-                        Mustbe(Sym.REFERENCES);
-                        r = MustBeID();
-                        break;
-                    case Sym.Null:
-                        return ctb;
-                    case Sym.COMMA:
-                        Next();
-                        break;
-                    default:
-                        throw new Exception("Syntax error at end of create table statement");
-                }
-                if (c.Length != 0)
-                {
-                    var x = new SIndex(tb, p, r, c);
-                    ctb = new SCreateTable(tb, ctb.coldefs,
-                            (ctb.constraints==null)?new SList(x):
-                       ctb.constraints.InsertAt(x,ctb.constraints.Length));
-                }
+                var x = TableConstraint(tb);
+                var cs = ctb.constraints;
+                cs = (cs==null)?new SList(x):cs.InsertAt(x,0);
+                ctb = new SCreateTable(tb, ctb.coldefs, cs);
+                if (lxr.tok == Sym.COMMA)
+                    Next();
             }
-
+            return ctb;
         }
         SCreateTable TableDef(long tb,SCreateTable ctb)
                 throws Exception

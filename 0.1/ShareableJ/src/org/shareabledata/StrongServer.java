@@ -238,30 +238,11 @@ public class StrongServer implements Runnable {
                     }
                     case Types.SAlter: {
                         var tr = db.Transact(rdr,true);
-                        var ob = rdr._Get(); // table 
-                        if (ob.type != Types.STable)
-                            throw new Exception("Table " + ob + " not found");
-                        var tb = (STable)ob;
-                        var cn = rdr._Get(); // columnDef or Null
-                        if (cn==null || cn.type!=Types.SColumn)
-                            throw new Exception("Expected column");
-                        var nm = rdr.GetString(); // new name
+                        rdr.db = tr;
+                        var at = rdr._Get();
                         tr = (STransaction)rdr.db;
-                        if (cn == Serialisable.Null)
-                        {
-                            var a = new SAlter(tr, nm, Types.STable, tb.uid, 0,
-                                null);
-                            a = (SAlter)a.Prepare(tr, tb.Names(tr,null));
-                            tr = (STransaction)tr.Install(a, tr.curpos);
-                        }
-                        else
-                        {
-                            var a = new SAlter(tr, nm, Types.SColumn, tb.uid,
-                                    ((SColumn)cn).uid,
-                                    null);
-                            a = (SAlter)a.Prepare(tr, tb.Names(tr,null));
-                            tr = (STransaction)tr.Install(a, tr.curpos);
-                        }
+                        tr = at.Prepare(tr, null)
+                            .Obey(tr, Context.Empty);
                         db = db.MaybeAutoCommit(tr);
                         asy.WriteByte((byte)Types.Done);
                         asy.Flush();
@@ -295,6 +276,18 @@ public class StrongServer implements Runnable {
                         rdr.db = tr;
                         CreateIndex(rdr);
                         db = db.MaybeAutoCommit((STransaction)rdr.db);
+                        asy.WriteByte((byte)Types.Done);
+                        asy.Flush();
+                        break;
+                    }
+                    case Types.SDropIndex:
+                    {
+                        var tr = db.Transact(rdr,true);
+                        rdr.db = tr;
+                        var dr = (SDropIndex)rdr._Get();
+                        tr = dr.Prepare(tr, null)
+                            .Obey(tr, Context.Empty);
+                        db = db.MaybeAutoCommit(tr);
                         asy.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
@@ -346,7 +339,8 @@ public class StrongServer implements Runnable {
                     case Types.SDeleteSearch:
                     {
                         var tr = db.Transact(rdr,true);
-                        tr = SDeleteSearch.Get(rdr).Prepare(tr,null)
+                        var dr = SDeleteSearch.Get(rdr);
+                        tr = dr.Prepare(tr,dr.qry.Names(tr,null))
                                 .Obey(tr,Context.Empty);
                         db = db.MaybeAutoCommit(tr);
                         asy.WriteByte((byte)Types.Done);
