@@ -16,7 +16,7 @@ public class SValues extends Serialisable {
             super(Types.SValues);
             vals = c;
         }
-        public SValues(Reader f) throws Exception
+        public SValues(ReaderBase f) throws Exception
         {
             super(Types.SValues);
             var n = f.GetInt();
@@ -29,7 +29,7 @@ public class SValues extends Serialisable {
         }
         @Override
         public boolean isValue() { return true; }
-        public static SValues Get(Reader f) throws Exception
+        public static SValues Get(ReaderBase f) throws Exception
         {
             var n = f.GetInt();
             var nr = f.GetInt();
@@ -39,7 +39,7 @@ public class SValues extends Serialisable {
             return new SValues(v);
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutInt(vals.Length);

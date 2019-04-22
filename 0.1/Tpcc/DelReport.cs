@@ -86,7 +86,11 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-			}
+                if (s.CompareTo("Transaction conflict with read") == 0)
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
+            }
 			SetCurField(curField);
 			status.Text = s;
 			Invalidate(true);

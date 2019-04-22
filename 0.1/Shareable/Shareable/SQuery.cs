@@ -57,7 +57,7 @@ namespace Shareable
             cpos = c;
             refs = cn;
         }
-        protected SQuery(Types t, Reader f) : base(t, f)
+        protected SQuery(Types t, ReaderBase f) : base(t, f)
         {
             display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int,Serialisable>.Empty;
@@ -69,7 +69,7 @@ namespace Shareable
         /// </summary>
         /// <param name="q">The current state of the STable in the transaction</param>
         /// <param name="f"></param>
-        protected SQuery(SQuery q, AStream f) : base(q, f)
+        protected SQuery(SQuery q, Writer f) : base(q, f)
         {
             display = SDict<int, (long,string)>.Empty;
             cpos = SDict<int, Serialisable>.Empty;
@@ -107,7 +107,7 @@ namespace Shareable
         {
             return (Use(u.Item1,ta),Use(u.Item2,ta));
         }
-        public new static SQuery Get(Reader f)
+        public new static SQuery Get(ReaderBase f)
         {
             return Static;
         }
@@ -163,12 +163,12 @@ namespace Shareable
         public readonly SQuery left,right;
         public readonly SList<SExpression> ons; // constrained by Parser to lcol=rcol
         public readonly SDict<long,long> uses; // Item1 is for RIGHT, Item2 for LEFT
-        public SJoin(Reader f) : base(Types.STableExp, _Join(f))
+        public SJoin(ReaderBase f) : base(Types.STableExp, _Join(f))
         {
-            left = f._Get() as SQuery ?? throw new Exception("Query expected");
+            left = f._Get() as SQuery ?? throw new StrongException("Query expected");
             outer = f.GetInt() == 1;
             joinType = (JoinType)f.GetInt();
-            right = f._Get() as SQuery ?? throw new Exception("Query expected");
+            right = f._Get() as SQuery ?? throw new StrongException("Query expected");
             var n = f.GetInt();
             var on = SList<SExpression>.Empty;
             var us = SDict<long, long>.Empty;
@@ -189,14 +189,14 @@ namespace Shareable
                 {
                     var nm = tr.uids[f.GetLong()];
                     if (!(lns.Contains(nm) && rns.Contains(nm)))
-                        throw new Exception("name " + nm + " not present in Join");
+                        throw new StrongException("name " + nm + " not present in Join");
                     us += (rns[nm], lns[nm]);
                 }
             else if (!joinType.HasFlag(JoinType.Cross))
                 for (var i = 0; i < n; i++)
                 {
                     var e = f._Get() as SExpression
-                        ?? throw new Exception("ON exp expected");
+                        ?? throw new StrongException("ON exp expected");
                     on += e;
                 }
             ons = on;
@@ -204,17 +204,17 @@ namespace Shareable
             f.context = this;
         }
         // We peek at the table expression to compute the set of columns of the join
-        static SQuery _Join(Reader f)
+        static SQuery _Join(ReaderBase f)
         {
             f.GetInt();
-            var st = f.pos;
+            var st = f.buf.pos;
             var d = SDict<int, (long,string)>.Empty;
             var c = SDict<int, Serialisable>.Empty;
             var nms = SDict<string, long>.Empty;
-            var left = f._Get() as SQuery ?? throw new Exception("Query expected");
+            var left = f._Get() as SQuery ?? throw new StrongException("Query expected");
             var outer = f.GetInt() == 1;
             var joinType = (JoinType)f.GetInt();
-            var right = f._Get() as SQuery ?? throw new Exception("Query expected");
+            var right = f._Get() as SQuery ?? throw new StrongException("Query expected");
             var ab = left.Display.First();
             var uses = SDict<long,long>.Empty;
             if (joinType.HasFlag(JoinType.Named))
@@ -247,7 +247,7 @@ namespace Shareable
                 c += (k, col.Item2);
                 k++;
             }
-            f.pos = st;
+            f.buf.pos = st;
             return new SQuery(Types.STableExp, d, c);
         }
         public SJoin(SQuery lf, bool ou, JoinType jt, SQuery rg, SList<SExpression> on,
@@ -260,7 +260,7 @@ namespace Shareable
         {
             return right.Names(tr, left.Names(tr,pt));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             left.Put(f);
@@ -368,7 +368,7 @@ namespace Shareable
             return new SJoin((SQuery)left.UpdateAliases(uids), outer, joinType,
                 (SQuery)right.UpdateAliases(uids), os, us, ds, cs);
         }
-        public new static SJoin Get(Reader f)
+        public new static SJoin Get(ReaderBase f)
         {
             return new SJoin(f);
         }
@@ -420,7 +420,7 @@ namespace Shareable
     {
         public readonly SQuery qry;
         public readonly long alias;
-        public SAlias(SQuery q,long a,Reader f,long u) :
+        public SAlias(SQuery q,long a,ReaderBase f,long u) :
             base(Types.SAlias,u)
         {
             var tr = (STransaction)f.db;
@@ -437,7 +437,7 @@ namespace Shareable
         {
             return qry.Names(tr, pt) + (alias,qry.uid);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             qry.Put(f);
@@ -456,7 +456,7 @@ namespace Shareable
         {
             return new SAlias((SQuery)qry.Prepare(db, pt),alias,uid);
         }
-        public new static SAlias Get(Reader f)
+        public new static SAlias Get(ReaderBase f)
         {
             var u = f.GetLong();
             var q = (SQuery)f._Get();
@@ -481,7 +481,7 @@ namespace Shareable
     {
         public readonly SQuery sce;
         public readonly SList<Serialisable> where;
-        public SSearch(SQuery sc,Reader f,long u):base(Types.SSearch,u)
+        public SSearch(SQuery sc,ReaderBase f,long u):base(Types.SSearch,u)
         {
             sce = sc;
             var w = SList<Serialisable>.Empty;
@@ -501,7 +501,7 @@ namespace Shareable
         {
             return sce.Names(tr, pt);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             sce.Put(f);
@@ -536,10 +536,10 @@ namespace Shareable
                 w += (b.Value.UpdateAliases(uids), n++);
             return new SSearch((SQuery)sce.UpdateAliases(uids), w);
         }
-        public new static SSearch Get(Reader f)
+        public new static SSearch Get(ReaderBase f)
         {
             var u = f.GetLong();
-            var sce = f._Get() as SQuery ?? throw new Exception("Query expected");
+            var sce = f._Get() as SQuery ?? throw new StrongException("Query expected");
             return new SSearch(sce,f,u);
         }
         public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
@@ -573,7 +573,7 @@ namespace Shareable
         public readonly SQuery source;
         public readonly SDict<int, long> groupby;
         public readonly SList<Serialisable> having;
-        public SGroupQuery(SQuery sc, Reader f,long u):base(Types.SGroupQuery,u)
+        public SGroupQuery(SQuery sc, ReaderBase f,long u):base(Types.SGroupQuery,u)
         {
             source = sc;
             var g = SDict<int, long>.Empty;
@@ -618,7 +618,7 @@ namespace Shareable
                 h += (b.Value.UseAliases(db, ta), n++);
             return new SGroupQuery((SQuery)source.UseAliases(db, ta), ds, cs, g, h);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             source.Put(f);
@@ -678,10 +678,10 @@ namespace Shareable
             return new SGroupQuery((SQuery)source.UpdateAliases(uids), ds, cs,
                 g, h);
         }
-        public new static SGroupQuery Get(Reader f)
+        public new static SGroupQuery Get(ReaderBase f)
         {
             var u = f.GetLong();
-            var source = f._Get() as SQuery ?? throw new Exception("Query expected");
+            var source = f._Get() as SQuery ?? throw new StrongException("Query expected");
             return new SGroupQuery(source,f,u);
         }
         public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
@@ -753,7 +753,7 @@ namespace Shareable
         {
             return qry.Names(tr, pt);
         }
-        public new static SSelectStatement Get(Reader f)
+        public new static SSelectStatement Get(ReaderBase f)
         {
             var db = f.db;
             f.GetInt(); // uid for the SSelectStatement probably -1
@@ -830,7 +830,7 @@ namespace Shareable
             var qy = (SQuery)qry.UpdateAliases(uids);
             return new SSelectStatement(distinct, ds, cs, qy, os);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.WriteByte((byte)(distinct ? 1 : 0));
@@ -924,13 +924,13 @@ namespace Shareable
         {
             col = c; desc = d;
         }
-        protected SOrder(Reader f) :base(Types.SOrder)
+        protected SOrder(ReaderBase f) :base(Types.SOrder)
         {
             col = f._Get();
             desc = f.ReadByte() == 1;
         }
         public override bool isValue => false;
-        public new static SOrder Get(Reader f)
+        public new static SOrder Get(ReaderBase f)
         {
             return new SOrder(f);
         }
@@ -947,7 +947,7 @@ namespace Shareable
         {
             return new SOrder(col.Prepare(db, pt),desc);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             col.Put(f);

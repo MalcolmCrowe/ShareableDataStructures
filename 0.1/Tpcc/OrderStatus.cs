@@ -59,14 +59,20 @@ namespace Tpcc
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList cids = new ArrayList();
-            var s = db.ExecuteQuery("select CID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' orderby C_FIRST");
+            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' orderby C_FIRST");
             for (var i = 0; i < s.items.Count; i++)
                 cids.Add((long)s[i][0]);
-            cid = (int)cids[(cids.Count + 1) / 2];
+            if (cids.Count == 0)
+            {
+                Console.WriteLine("no custs " + wid + "," + did + "," + clast);
+                cid = 1;
+            }
+            else
+                cid = (int)cids[(cids.Count + 1) / 2];
             s = db.ExecuteQuery("select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
             if (s.IsEmpty)
                 return true;
-            c_balance = (decimal)s[0][0];
+            c_balance = util.GetDecimal(s[0][0]);
             c_first = (string)s[0][1];
             c_middle = (string)s[0][2];
             return false;
@@ -136,6 +142,8 @@ namespace Tpcc
 				DoDisplay(ref mess);
 				Invalidate(true);
 				done = true;
+                db.Commit();
+                Form1.commits++;
 			}
 			bad:;
 		}
@@ -173,7 +181,7 @@ namespace Tpcc
 				vt1.AddField(14,j,6);
 				vt1.AddField(25,j,2);
 				vt1.AddField(33,j,9);
-				vt1.AddField(48,j,9);
+				vt1.AddField(48,j,10);
 			}
 			vt1.AddField(79,22,1,true);
 			vt1.PutBlanks();

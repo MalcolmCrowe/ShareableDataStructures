@@ -17,7 +17,7 @@ public class SOrder extends Serialisable {
             super(Types.SOrder);
             col = c; desc = d;
         }
-        protected SOrder(Reader f) throws Exception
+        protected SOrder(ReaderBase f) throws Exception
         {
             super(Types.SOrder);
             col = f._Get();
@@ -25,7 +25,7 @@ public class SOrder extends Serialisable {
         }
         @Override
         public boolean isValue() {return false;}
-        public static SOrder Get(Reader f) throws Exception
+        public static SOrder Get(ReaderBase f) throws Exception
         {
             return new SOrder(f);
         }
@@ -47,7 +47,7 @@ public class SOrder extends Serialisable {
             return new SOrder(col.Prepare(db, pt),desc);
         }
         @Override
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             col.Put(f);

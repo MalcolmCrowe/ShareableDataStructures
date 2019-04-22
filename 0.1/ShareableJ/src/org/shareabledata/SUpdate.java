@@ -18,13 +18,13 @@ public class SUpdate extends SRecord {
             super(Types.SUpdate,tr,r.table,_Merge(tr,r,u));
             defpos = r.Defpos();
         }
-        public SUpdate(SDatabase db,SUpdate r, AStream f)
+        public SUpdate(SDatabase db,SUpdate r, Writer f)throws Exception
         {
             super(db,r,f);
             defpos = r.defpos;
             f.PutLong(defpos);
         }
-        SUpdate(Reader f) throws Exception
+        SUpdate(ReaderBase f) throws Exception
         {
             super(Types.SUpdate,f);
             defpos = f.GetLong();
@@ -43,11 +43,11 @@ public class SUpdate extends SRecord {
             }
             return r.fields.Merge(u);
         }
-        public Serialisable Commit(STransaction tr,AStream f) 
+        public Serialisable Commit(STransaction tr,Writer f) throws Exception
         {
             return new SUpdate(tr,this, f);
         }
-        public static SRecord Get(Reader f) throws Exception
+        public static SRecord Get(ReaderBase f) throws Exception
         {
             return new SUpdate(f);
         }

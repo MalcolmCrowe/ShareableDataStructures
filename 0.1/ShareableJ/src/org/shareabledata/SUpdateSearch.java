@@ -35,7 +35,7 @@ public class SUpdateSearch extends Serialisable
             }
             return tr;
         }
-        public static SUpdateSearch Get(Reader f) throws Exception
+        public static SUpdateSearch Get(ReaderBase f) throws Exception
         {
             var q = (SQuery)f._Get();
             var n = f.GetInt();
@@ -67,7 +67,7 @@ public class SUpdateSearch extends Serialisable
             return new SUpdateSearch(q,a);
         }
         @Override
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             qry.Put(f);

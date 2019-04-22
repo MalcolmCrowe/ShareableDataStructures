@@ -8,7 +8,7 @@ package org.shareabledata;
 import java.io.IOException;
 
 /**
- *
+ * This class is not shareable
  * @author Malcolm
  */
 public class Buffer {
@@ -17,41 +17,16 @@ public class Buffer {
     public byte[] buf;
     public long start;
     public int len;
-    public int wpos;
-    public boolean busy = false;
-    StreamBase fs;
-    public Buffer(StreamBase f) {
+    public int pos;
+    public Buffer() {
         buf = new byte[Size];
-        wpos = 0;
-        len = Size;
-        start = f.getLength();
-        fs = f;
+        pos = 0;
     }
 
-    Buffer(StreamBase f, long s) throws Exception {
+    Buffer(long s, int n){
         buf = new byte[Size];
         start = s;
-        wpos = 0;
-        f.GetBuf(this);
-        fs = f;
-    }
-
-    int GetByte() throws Exception {
-        if (wpos >= len) {
-            start += len;
-            wpos = 0;
-            if (!fs.GetBuf(this))
-               return -1;
-        }
-        return buf[wpos++];
-    }
-
-    void PutByte(byte b)  {
-        if (wpos >= len) {
-            fs.PutBuf(this);
-            start += len;
-            wpos = 0;
-        }
-        buf[wpos++] = b;
+        len = n;
+        pos = 0;
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Sockets;
 using System.Text;
 namespace Shareable
 {
@@ -112,11 +113,11 @@ namespace Shareable
         {
             type = t;
         }
-        public Serialisable(Types t, Reader f)
+        public Serialisable(Types t, ReaderBase f)
         {
             type = t;
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(ReaderBase f)
         {
             return Null;
         }
@@ -176,7 +177,7 @@ namespace Shareable
         /// Put is used in serialisation by client and server
         /// </summary>
         /// <param name="f"></param>
-        public virtual void Put(StreamBase f)
+        public virtual void Put(WriterBase f)
         {
             f.WriteByte((byte)type);
         }
@@ -224,7 +225,7 @@ namespace Shareable
                 case Types.STimeSpan: return "timespan";
       //          case Types.STimestamp: return "timestamp";
             }
-            throw new Exception("Unknown data type");
+            throw new StrongException("Unknown data type");
         }
         public Serialisable Coerce(Types t)
         {
@@ -237,7 +238,7 @@ namespace Shareable
                     {
                         case Types.SBigInt:
                             return this;
-                        default: throw new Exception("Expected integer got " + type);
+                        default: throw new StrongException("Expected integer got " + type);
                     }
                 case Types.SNumeric:
                     switch (type)
@@ -248,10 +249,10 @@ namespace Shareable
                                 return new SNumeric(b, 12, 0);
                             return new SNumeric(n.value, 12, 0);
                         default:
-                            throw new Exception("Expected numeric got " + type);
+                            throw new StrongException("Expected numeric got " + type);
                     }
             }
-            throw new Exception("Expected " + t + " got " + type);
+            throw new StrongException("Expected " + t + " got " + type);
         }
         public static Serialisable New(Types t,object v)
         {
@@ -262,7 +263,7 @@ namespace Shareable
             }
             return Null;
         }
-        public virtual Serialisable Fix(AStream f)
+        public virtual Serialisable Fix(Writer f)
         {
             return this;
         }
@@ -303,7 +304,7 @@ namespace Shareable
     {
         public readonly Serialisable left, right;
         public readonly Op op;
-        public SExpression(Serialisable lf,Op o,Reader f, long u) : base(Types.SExpression,u)
+        public SExpression(Serialisable lf,Op o,ReaderBase f, long u) : base(Types.SExpression,u)
         {
             left = lf;
             op = o;
@@ -315,7 +316,7 @@ namespace Shareable
         }
         public override bool isValue => false;
         public enum Op { Plus, Minus, Times, Divide, Eql, NotEql, Lss, Leq, Gtr, Geq, Dot, And, Or, UMinus, Not };
-        internal new static SExpression Get(Reader f)
+        internal new static SExpression Get(ReaderBase f)
         {
             var u = f.GetLong();
             var lf = f._Get();
@@ -341,14 +342,14 @@ namespace Shareable
             return (lf == left && rg == right) ?
                 this : new SExpression(lf, op, rg);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             left.Put(f);
             f.WriteByte((byte)op);
             right.Put(f);
         }
-        public override Serialisable Fix(AStream f)
+        public override Serialisable Fix(Writer f)
         {
             return new SExpression(left.Fix(f),op,right.Fix(f));
         }
@@ -612,11 +613,11 @@ namespace Shareable
                         break;
                     }
             }
-            throw new Exception("Bad computation");
+            throw new StrongException("Bad computation");
         }
         Integer getbig(Serialisable x)
         {
-            return ((SInteger)x).big ?? throw new Exception("No Value?");
+            return ((SInteger)x).big ?? throw new StrongException("No Value?");
         }
         SBoolean For(bool v)
         {
@@ -638,7 +639,7 @@ namespace Shareable
         public readonly SDbObject target;
         public static SArg Value = new SArg();
         SArg() : base(Types.SArg) { target = SRole.Public; }
-        public SArg(Reader f) : base(Types.SArg)
+        public SArg(ReaderBase f) : base(Types.SArg)
         {
             target = f.context;
         }
@@ -653,7 +654,7 @@ namespace Shareable
         public readonly Serialisable arg; // probably an SQuery
         public readonly Func func;
         public readonly long fid = --SysTable._uid; // we will have a list of function expressions
-        public SFunction(Func fn,Reader f) : base(Types.SFunction)
+        public SFunction(Func fn,ReaderBase f) : base(Types.SFunction)
         {
             func = fn;
             arg = f._Get();
@@ -663,13 +664,13 @@ namespace Shareable
             func = fn;
             arg = a;
         }
-        public override Serialisable Fix(AStream f)
+        public override Serialisable Fix(Writer f)
         {
             return new SFunction(func,arg.Fix(f));
         }
         public override bool isValue => false;
         public enum Func { Sum, Count, Max, Min, Null, NotNull, Constraint, Default, Generated };
-        internal new static SFunction Get(Reader f)
+        internal new static SFunction Get(ReaderBase f)
         {
             return new SFunction((Func)f.ReadByte(), f);
         }
@@ -685,7 +686,7 @@ namespace Shareable
         {
             return new SFunction(func, arg.Prepare(db, pt));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.WriteByte((byte)func);
@@ -783,7 +784,7 @@ namespace Shareable
         }
         Integer getbig(Serialisable x)
         {
-            return ((SInteger)x).big ?? throw new Exception("No Value?");
+            return ((SInteger)x).big ?? throw new StrongException("No Value?");
         }
         public override string ToString()
         {
@@ -799,7 +800,7 @@ namespace Shareable
             arg = a; list = r;
         }
         public override bool isValue => false;
-        public new static SInPredicate Get(Reader f)
+        public new static SInPredicate Get(ReaderBase f)
         {
             var a = f._Get();
             return new SInPredicate(a, f._Get());
@@ -811,7 +812,7 @@ namespace Shareable
                 pt = q.Names(db, pt);
             return new SInPredicate(a,list.Prepare(db,pt));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             arg.Put(f);
@@ -847,40 +848,6 @@ namespace Shareable
             return SBoolean.False;
         }
     }
-/*    public class STimestamp : Serialisable,IComparable
-    {
-        public readonly long ticks;
-        public STimestamp(DateTime t) : base(Types.STimestamp)
-        {
-            ticks = t.Ticks;
-        }
-        STimestamp(Reader f) : base(Types.STimestamp,f)
-        {
-            ticks = f.GetLong();
-        }
-        public override bool isValue => true;
-        public override void Put(StreamBase f)
-        {
-            base.Put(f);
-            f.PutLong(ticks);
-        }
-        public new static STimestamp Get(Reader f)
-        {
-            return new STimestamp(f);
-        }
-        public override string ToString()
-        {
-            return "Timestamp " + new DateTime(ticks).ToString();
-        }
-
-        public override int CompareTo(object obj)
-        {
-            if (obj == Null)
-                return 1;
-            var that = (STimestamp)obj;
-            return ticks.CompareTo(that.ticks);
-        }
-    } */
     public class SInteger : Serialisable, IComparable
     {
         public readonly long value;
@@ -902,11 +869,11 @@ namespace Shareable
                     value = 0; big = b; break;
             }
         }
-        SInteger(Reader f) : this(f.GetInteger())
+        SInteger(ReaderBase f) : this(f.GetInteger())
         {
         }
         public override bool isValue => true;
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return new SInteger(f);
         }
@@ -922,7 +889,7 @@ namespace Shareable
                     break;
             }
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             switch(type)
@@ -987,7 +954,7 @@ namespace Shareable
         {
             num = new Numeric(m, s, p);
         }
-        SNumeric(Reader f) : base(Types.SNumeric, f)
+        SNumeric(ReaderBase f) : base(Types.SNumeric, f)
         {
             var mantissa = f.GetInteger();
             var precision = f.GetInt();
@@ -995,14 +962,14 @@ namespace Shareable
             num = new Numeric(mantissa, scale, precision);
         }
         public override bool isValue => true;
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutInteger(num.mantissa);
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return new SNumeric(f);
         }
@@ -1054,17 +1021,17 @@ namespace Shareable
         {
             str = s;
         }
-        SString(Reader f) :base(Types.SString, f)
+        SString(ReaderBase f) :base(Types.SString, f)
         {
             str = f.GetString();
         }
         public override bool isValue => true;
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutString(str);
         }
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return new SString(f);
         }
@@ -1102,21 +1069,21 @@ namespace Shareable
         {
             year = y; month = m; rest = r;
         }
-        SDate(Reader f) : base(Types.SDate, f)
+        SDate(ReaderBase f) : base(Types.SDate, f)
         {
             year = f.GetInt();
             month = f.GetInt();
             rest = f.GetLong();
         }
         public override bool isValue => true;
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutInt(year);
             f.PutInt(month);
             f.PutLong(rest);
         }
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return new SDate(f);
         }
@@ -1164,17 +1131,17 @@ namespace Shareable
             months = m;
             ts = new TimeSpan(0);
         }
-        STimeSpan(Reader f) : base(Types.STimeSpan, f)
+        STimeSpan(ReaderBase f) : base(Types.STimeSpan, f)
         {
             ts = new TimeSpan((long)f.GetInteger());
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutLong(ts.Ticks);
         }
         public override bool isValue => true;
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return new STimeSpan(f);
         }
@@ -1211,7 +1178,7 @@ namespace Shareable
             sbool = n;
         }
         public override bool isValue => true;
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             return For(f.ReadByte() == 1);
         }
@@ -1219,7 +1186,7 @@ namespace Shareable
         {
             return r ? True : False;
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.WriteByte((byte)(sbool?1:0));
@@ -1308,7 +1275,7 @@ namespace Shareable
             rec = null;
             isNull = isn;
         }
-        SRow(Reader f) :base(Types.SRow)
+        SRow(ReaderBase f) :base(Types.SRow)
         {
             var n = f.GetInt();
             var cn = SDict<int, (long,string)>.Empty;
@@ -1344,7 +1311,7 @@ namespace Shareable
                     vs += (sc.uid, v);
                 }
                 else
-                    throw new Exception("Unimplemented selector");
+                    throw new StrongException("Unimplemented selector");
             names = cn;
             cols = co;
             vals = vs;
@@ -1376,7 +1343,7 @@ namespace Shareable
             rec = (cx.refs as SRow)?.rec;
             isNull = isn;
         }
-        public new static SRow Get(Reader f)
+        public new static SRow Get(ReaderBase f)
         {
             return new SRow(f);
         }
@@ -1410,7 +1377,7 @@ namespace Shareable
             }
             return new SRow(nms,cls,vls,rec);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutInt(names.Length);
@@ -1552,7 +1519,7 @@ namespace Shareable
         /// </summary>
         /// <param name="t"></param>
         /// <param name="f"></param>
-        protected SDbObject(Types t, Reader f) : base(t)
+        protected SDbObject(Types t, ReaderBase f) : base(t)
         {
             if (t == Types.SName)
                 uid = f.GetLong();
@@ -1577,7 +1544,7 @@ namespace Shareable
         /// </summary>
         /// <param name="s"></param>
         /// <param name="f"></param>
-        protected SDbObject(SDbObject s, AStream f):base(s.type)
+        protected SDbObject(SDbObject s, Writer f):base(s.type)
         {
             if (s.uid < STransaction._uid)
                 throw new Exception("Internal error - misplaced database object");
@@ -1587,7 +1554,7 @@ namespace Shareable
         }
         public override bool isValue => false;
         public virtual long Affects => uid;
-        public new static SDbObject Get(Reader f)
+        public new static SDbObject Get(ReaderBase f)
         {
             return new SDbObject(Types.SName,f);
         }
@@ -1596,7 +1563,7 @@ namespace Shareable
             if (uid < maxAlias || uid >= 0)
                 return this;
             if (!pt.Contains(uid))
-                throw new Exception("Could not find " + tr.Name(uid));
+                throw new StrongException("Could not find " + tr.Name(uid));
             return tr.objects[pt[uid]];
         }
         public override Serialisable UseAliases(SDatabase db,SDict<long,long> ta)
@@ -1614,7 +1581,7 @@ namespace Shareable
             if (u >= 1 || u < maxAlias)
                 return u;
             if (!pt.Contains(u))
-                throw new Exception("Could not find " + _Uid(u));
+                throw new StrongException("Could not find " + _Uid(u));
             return pt[u];
         }
         public static (long,string) Prepare((long,string) n,SDict<long,long> pt)
@@ -1623,14 +1590,14 @@ namespace Shareable
             if (u>=1 || u < maxAlias)
                 return n;
             if (!pt.Contains(u))
-                throw new Exception("Could not find " + n.Item2);
+                throw new StrongException("Could not find " + n.Item2);
             return (pt[u],n.Item2);
         }
         public static (long,long) Prepare((long,long) pair,SDict<long,long> pt)
         {
             return (Prepare(pair.Item1, pt), Prepare(pair.Item2, pt));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutLong(uid);
@@ -1768,7 +1735,7 @@ namespace Shareable
         /// </summary>
         /// <param name="t">The current state of the table in the transaction</param>
         /// <param name="f"></param>
-        public STable(STable t,string nm, AStream f) :base(t,f)
+        public STable(STable t,string nm, Writer f) :base(t,f)
         {
             f.PutString(nm);
             cols = SDict<long, SColumn>.Empty;
@@ -1787,7 +1754,7 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public new static STable Get(Reader f)
+        public new static STable Get(ReaderBase f)
         {
             var db = f.db;
             if (f is SocketReader)
@@ -1795,7 +1762,7 @@ namespace Shareable
                 var u = f.GetLong();
                 var nm = db.role.uids[u];
                 if (!db.role.globalNames.Contains(nm))
-                    throw new Exception("No table " + nm);
+                    throw new StrongException("No table " + nm);
                 return (STable)db.objects[db.role.globalNames[nm]];
             }
             var c = f.Position - 1;
@@ -1860,11 +1827,10 @@ namespace Shareable
                                 }
                                 var f = rc.fields;
                                 f += (cu,v);
-                                Console.WriteLine("Autokey suuplied " + v.value);
                                 return new SRecord(tr, rc.table, f);
                             }
                         }
-                        throw new Exception("Illegal null value in primary key");
+                        throw new StrongException("Illegal null value in primary key");
                     }
             }
             return rc;
@@ -1899,7 +1865,7 @@ namespace Shareable
         public SCreateTable(long tn,SList<SColumn> c, SList<SIndex> cs)
             :base(Types.SCreateTable)
         { tdef = tn; coldefs = c; constraints = cs; }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutLong(tdef);
@@ -1910,12 +1876,12 @@ namespace Shareable
             for (var b = constraints.First(); b != null; b = b.Next())
                 b.Value.Put(f);
         }
-        public new static Serialisable Get(Reader f)
+        public new static Serialisable Get(ReaderBase f)
         {
             var db = f.db;
             var tn = db.role[f.GetLong()];
             if (db.role.globalNames.Contains(tn))
-                throw new Exception("Table " + tn + " already exists");
+                throw new StrongException("Table " + tn + " already exists");
             db = db.Install(new STable((STransaction)db), tn, db.curpos);
             var n = f.GetInt();
             for (var i = 0; i < n; i++)
@@ -2004,9 +1970,9 @@ namespace Shareable
         public SSelector(Types tc, long u) : base(tc, u) { }
         protected SSelector(STransaction tr,Types tc) : base(tc,tr) { }
         protected SSelector(SSelector s) : base(s) { }
-        protected SSelector(SSelector s, AStream f) : base(s, f) { }
-        protected SSelector(Types tc, Reader f) : base(tc, f) { }
-        public new static Serialisable Get(Reader f)
+        protected SSelector(SSelector s, Writer f) : base(s, f) { }
+        protected SSelector(Types tc, ReaderBase f) : base(tc, f) { }
+        public new static Serialisable Get(ReaderBase f)
         {
             var x = f.GetLong(); // a client-side uid
             var ro = f.db.role;
@@ -2022,7 +1988,7 @@ namespace Shareable
             }
             else if (ro.globalNames.defines(n)) // it's a table or stored query
                 return f.db.objects[ro.globalNames[n]];
-            throw new Exception("Unknown " + n);
+            throw new StrongException("Unknown " + n);
         }
     }
     /// <summary>
@@ -2060,7 +2026,7 @@ namespace Shareable
         {
             dataType = d; table = c.table; constraints = e;
         }
-        SColumn(Reader f) :base(Types.SColumn,f)
+        SColumn(ReaderBase f) :base(Types.SColumn,f)
         {
             var db = f.db;
             var ro = db.role;
@@ -2076,7 +2042,7 @@ namespace Shareable
             for (var i = 0; i < n; i++)
             {
                 cn = f.GetString();
-                c += (cn,f._Get() as SFunction ?? throw new Exception("Constraint expected"));
+                c += (cn,f._Get() as SFunction ?? throw new StrongException("Constraint expected"));
             }
             constraints = c;
             f.context = oc;
@@ -2088,7 +2054,7 @@ namespace Shareable
         /// </summary>
         /// <param name="c"></param>
         /// <param name="f"></param>
-        public SColumn(SColumn c,string nm,AStream f)  : base(c, f)
+        public SColumn(SColumn c,string nm,Writer f)  : base(c, f)
         {
             f.PutString(nm);
             dataType = c.dataType;
@@ -2103,11 +2069,11 @@ namespace Shareable
             }
             constraints = c.constraints;
         }
-        public new static SColumn Get(Reader f)
+        public new static SColumn Get(ReaderBase f)
         {
             return new SColumn(f);
         }
-        public void PutColDef(StreamBase f)
+        public void PutColDef(WriterBase f)
         {
             base.Put(f);
             f.WriteByte((byte)dataType);
@@ -2117,13 +2083,13 @@ namespace Shareable
             {
                 f.PutString(b.Value.Item1);
                 var c = b.Value.Item2;
-                if (f is AStream af)
+                if (f is Writer af)
                     c = (SFunction)c.Fix(af);
                 c.Put(f);
             }
         }
         // a column reference
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             f.WriteByte((byte)Types.SName);
             f.PutLong(uid);
@@ -2146,7 +2112,7 @@ namespace Shareable
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
-        public override Serialisable Fix(AStream f)
+        public override Serialisable Fix(Writer f)
         {
             return (f.uids.Contains(uid)) ? new SColumn(f.uids[table], dataType, f.uids[uid]) : this;
         }
@@ -2182,11 +2148,11 @@ namespace Shareable
                 {
                     case "NOTNULL":
                         if (v.type==Types.Serialisable)
-                            throw new Exception("Illegal null value");
+                            throw new StrongException("Illegal null value");
                         break;
                     case "GENERATED":
                         if (v.type!=Types.Serialisable)
-                            throw new Exception("Illegal value for generated column");
+                            throw new StrongException("Illegal value for generated column");
                         return b.Value.Item2.arg.Lookup(tr,cx);
                     case "DEFAULT":
                         if (v.type == Types.Serialisable)
@@ -2195,7 +2161,7 @@ namespace Shareable
                     default:
                         cx = new Context(new SDict<long, Serialisable>(SArg.Value.target.uid, v), cx);
                         if (b.Value.Item2.arg.Lookup(tr,cx) != SBoolean.True)
-                            throw new Exception("Column constraint " + b.Value.Item1 + " fails");
+                            throw new StrongException("Column constraint " + b.Value.Item1 + " fails");
                         break;
                 }
             return v;
@@ -2246,12 +2212,12 @@ namespace Shareable
             defpos = o; name = n; dataType = d; col = p;
             ccs = cs; seq = sq;
         }
-        SAlter(Reader f):base(Types.SAlter,f)
+        SAlter(ReaderBase f):base(Types.SAlter,f)
         {
             var p = f.GetLong();
             var ro = f.db.role;
             var nm = ro.uids[p];
-            defpos = (ro.globalNames.defines(nm)) ? ro.globalNames[nm] : throw new Exception("No table "+nm);
+            defpos = (ro.globalNames.defines(nm)) ? ro.globalNames[nm] : throw new StrongException("No table "+nm);
             var tb = (STable)f.db.objects[defpos];
             var dfs = ro.defs[tb.uid];
             SColumn? co = null;
@@ -2259,7 +2225,7 @@ namespace Shareable
             if (cc >= 0)
             {
                 var cn = ro.uids[col];
-                co = dfs.defines(cn) ? (SColumn)f.db.objects[dfs[cn]] : throw new Exception("No column " + cn);
+                co = dfs.defines(cn) ? (SColumn)f.db.objects[dfs[cn]] : throw new StrongException("No column " + cn);
             }
             col = co?.uid ?? -1;
             name = f.GetString();
@@ -2274,7 +2240,7 @@ namespace Shareable
             }
             ccs = cs;
         }
-        public SAlter(SAlter a,AStream f):base(a,f)
+        public SAlter(SAlter a,Writer f):base(a,f)
         {
             name = a.name;
             dataType = a.dataType;
@@ -2294,11 +2260,11 @@ namespace Shareable
             }
         }
         public override long Affects => defpos;
-        public new static SAlter Get(Reader f)
+        public new static SAlter Get(ReaderBase f)
         {
             return new SAlter(f);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             f.PutLong(defpos);
             f.PutLong(col);
@@ -2361,7 +2327,7 @@ namespace Shareable
         {
             table = tb; key = k;
         }
-        public SDropIndex(Reader f) : base(Types.SDrop, f)
+        public SDropIndex(ReaderBase f) : base(Types.SDrop, f)
         {
             table = f.GetLong();
             var n = f.GetInt();
@@ -2386,7 +2352,7 @@ namespace Shareable
                 if (ma)
                     return new SDrop(x.uid,-1,"");
             }
-            throw new Exception("No such table constraint");
+            throw new StrongException("No such table constraint");
         }
     }
     public class SDrop: SDbObject
@@ -2402,13 +2368,13 @@ namespace Shareable
         {
             drpos = d; parent = p; detail = s;
         }
-        protected SDrop(Reader f) :base(Types.SDrop, f)
+        protected SDrop(ReaderBase f) :base(Types.SDrop, f)
         {
             drpos = f.GetLong();
             parent = f.GetLong();
             detail = f.GetString();
         }
-        public SDrop(SDrop d,AStream f):base(d,f)
+        public SDrop(SDrop d,Writer f):base(d,f)
         {
             drpos = f.Fix(d.drpos);
             parent = f.Fix(d.parent);
@@ -2418,7 +2384,7 @@ namespace Shareable
             f.PutString(detail);
         }
         public override long Affects => drpos;
-        public new static SDrop Get(Reader f)
+        public new static SDrop Get(ReaderBase f)
         {
             return new SDrop(f);
         }
@@ -2473,7 +2439,7 @@ namespace Shareable
             viewdef = d;
             viewobs = ViewObs(tr,d);
         }
-        public SView(STransaction tr,SView v,AStream f):base(v,f)
+        public SView(STransaction tr,SView v,Writer f):base(v,f)
         {
             base.Put(f);
             viewdef = (SQuery)v.viewdef.Fix(f);
@@ -2488,7 +2454,7 @@ namespace Shareable
                 qt += (b.Value.Item2, true);
             return qt;
         }
-        public new static SView Get(Reader f)
+        public new static SView Get(ReaderBase f)
         {
             var vw = (SView)f.db.objects[f.GetLong()];
             // Construct new aliases in tr for all objects used in the view definition including aliases.
@@ -2506,7 +2472,7 @@ namespace Shareable
         /// <param name="u"></param>
         /// <param name="ta"></param>
         /// <returns></returns>
-        static SDict<long,long> Aliases(Reader f,long u,SDict<long,long> ta)
+        static SDict<long,long> Aliases(ReaderBase f,long u,SDict<long,long> ta)
         {
             var a = --f.lastAlias;
             var n = "$" + (maxAlias - a);
@@ -2521,7 +2487,7 @@ namespace Shareable
         {
             return new SView((SQuery)viewdef.Prepare(db,pt));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             viewdef.Put(f);
         }
@@ -2548,7 +2514,7 @@ namespace Shareable
         {
             table = t; cols = c; vals = v;
         }
-        public SInsert(long t,SList<long> c,Reader r) :base(Types.SInsert)
+        public SInsert(long t,SList<long> c,ReaderBase r) :base(Types.SInsert)
         {
             var tr = (STransaction)r.db;
             table = t;
@@ -2562,7 +2528,7 @@ namespace Shareable
             {
                 var tn = tr.role.uids[t];
                 if (!tr.role.globalNames.Contains(tn))
-                    throw new Exception("Table " + tn + " not found");
+                    throw new StrongException("Table " + tn + " not found");
                 t = tr.role.globalNames[tn];
             }
             var cs = SList<long>.Empty;
@@ -2575,7 +2541,7 @@ namespace Shareable
                 {
                     var cn = tr.role.uids[u];
                     if (!rt.Contains(cn))
-                        throw new Exception("Column " + cn + " not found");
+                        throw new StrongException("Column " + cn + " not found");
                     u = rt[cn];
                 }
                 cs += (u, i++);
@@ -2588,7 +2554,7 @@ namespace Shareable
                         var tb = (STable)tr.objects[t];
                         var nc = svs.vals.Length ?? 0;
                         if ((i == 0 && nc != tb.cpos.Length) || (i != 0 && i != nc))
-                            throw new Exception("Wrong number of columns");
+                            throw new StrongException("Wrong number of columns");
                         var vs = SList<Serialisable>.Empty;
                         i = 0;
                         for (var b = svs.vals.First(); b != null; b = b.Next())
@@ -2602,11 +2568,11 @@ namespace Shareable
                         ss = (SSelectStatement)ss.Prepare(tr, ss.Names(tr,pt));
                         var nc = ss.Display.Length;
                         if ((i == 0 && nc != tb.cpos.Length) || (i != 0 && i != nc))
-                            throw new Exception("Wrong number of columns");
+                            throw new StrongException("Wrong number of columns");
                         return new SInsert(t, cs, ss);
                     }
             }
-            throw new Exception("Unkown insert syntax "+vals.type.ToString());
+            throw new StrongException("Unkown insert syntax "+vals.type.ToString());
         }
         public override STransaction Obey(STransaction tr,Context cx)
         {
@@ -2668,7 +2634,7 @@ namespace Shareable
         {
             return new SInsert(table,cols,vals.UpdateAliases(uids));
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutLong(table);
@@ -2685,7 +2651,7 @@ namespace Shareable
         {
             vals = c;
         }
-        public SValues(Reader f) : base(Types.SValues)
+        public SValues(ReaderBase f) : base(Types.SValues)
         {
             var n = f.GetInt();
             var nr = f.GetInt();
@@ -2694,7 +2660,7 @@ namespace Shareable
                 vals += (f._Get(), i);
         }
         public override bool isValue => true;
-        public new static SValues Get(Reader f)
+        public new static SValues Get(ReaderBase f)
         {
             return new SValues(f);
         }
@@ -2714,7 +2680,7 @@ namespace Shareable
                 vs += (b.Value.Prepare(db, pt), n++);
             return new SValues(vs);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutInt(vals.Length);
@@ -2749,20 +2715,20 @@ namespace Shareable
                             break;
                         case SFunction.Func.NotNull:
                             if ((!f.Contains(cn)) || f[cn] == Null)
-                                throw new Exception("Value of "+tr.Name(cn)+" cannot be null");
+                                throw new StrongException("Value of "+tr.Name(cn)+" cannot be null");
                             break;
                         case SFunction.Func.Constraint:
                             {
                                 var cf = new Context(f, cx);
                                 if (fn.arg.Lookup(tr,cf) == SBoolean.False)
-                                    throw new Exception("Constraint violation");
+                                    throw new StrongException("Constraint violation");
                                 break;
                             }
                         case SFunction.Func.Generated:
                             {
                                 var cf = new Context(f, cx);
                                 if (f.Contains(cn) && f[cn] != Null)
-                                    throw new Exception("Value cannot be supplied for column " + tr.Name(cn));
+                                    throw new StrongException("Value cannot be supplied for column " + tr.Name(cn));
                                 f += (cn, fn.arg.Lookup(tr,cf));
                             }
                             break;
@@ -2773,7 +2739,7 @@ namespace Shareable
             table = t;
         }
         public virtual long Defpos => uid;
-        public SRecord(SDatabase db, SRecord r, AStream f) : base(r,f)
+        public SRecord(SDatabase db, SRecord r, Writer f) : base(r,f)
         {
             table = f.Fix(r.table);
             var fs = r.fields;
@@ -2795,7 +2761,7 @@ namespace Shareable
             }
             fields = fs;
         }
-        protected SRecord(Types t,Reader f) : base(t,f)
+        protected SRecord(Types t,ReaderBase f) : base(t,f)
         {
             table = f.GetLong();
             var n = f.GetInt();
@@ -2808,7 +2774,7 @@ namespace Shareable
             }
             fields = a;
         }
-        public new static SRecord Get(Reader f)
+        public new static SRecord Get(ReaderBase f)
         {
             return new SRecord(Types.SRecord, f);
         }
@@ -2912,7 +2878,7 @@ namespace Shareable
             }
             return tr;
         }
-        public new static SUpdateSearch Get(Reader f)
+        public new static SUpdateSearch Get(ReaderBase f)
         {
             var q = (SQuery)f._Get();
             var n = f.GetInt();
@@ -2923,7 +2889,7 @@ namespace Shareable
                 if (s is SDbObject sc)
                     a += (sc.uid, f._Get());
                 else
-                    throw new Exception("Column " + s + " not found");
+                    throw new StrongException("Column " + s + " not found");
             }
             return new SUpdateSearch(q, a);
         }
@@ -2935,7 +2901,7 @@ namespace Shareable
                     b.Value.Item2.Prepare(db, pt));
             return new SUpdateSearch((SQuery)qry.Prepare(db,pt),a);
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             qry.Put(f);
@@ -2969,12 +2935,12 @@ namespace Shareable
             defpos = r.Defpos;
         }
         public override long Defpos => defpos;
-        public SUpdate(SDatabase db,SUpdate r, AStream f) : base(db,r,f)
+        public SUpdate(SDatabase db,SUpdate r, Writer f) : base(db,r,f)
         {
             defpos = r.defpos;
             f.PutLong(defpos);
         }
-        SUpdate(Reader f) : base(Types.SUpdate,f)
+        SUpdate(ReaderBase f) : base(Types.SUpdate,f)
         {
             defpos = f.GetLong();
         }
@@ -2988,7 +2954,7 @@ namespace Shareable
             return r.fields+u;
         }
         public override long Affects => defpos;
-        public new static SUpdate Get(Reader f)
+        public new static SUpdate Get(ReaderBase f)
         {
             return new SUpdate(f);
         }
@@ -3003,7 +2969,9 @@ namespace Shareable
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Update of "); sb.Append(STransaction.Uid(defpos));
+            var sb = new StringBuilder();
+            sb.Append(Uid());
+            sb.Append(" Update of "); sb.Append(STransaction.Uid(defpos));
             sb.Append(" for "); sb.Append(STransaction.Uid(table));
             Append(sb);
             return sb.ToString();
@@ -3024,11 +2992,11 @@ namespace Shareable
                 tr = b.Delete(tr);
             return tr;
         }
-        public new static SDeleteSearch Get(Reader f)
+        public new static SDeleteSearch Get(ReaderBase f)
         {
             return new SDeleteSearch((SQuery)f._Get());
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             qry.Put(f);
@@ -3049,19 +3017,19 @@ namespace Shareable
             table = t;
             delpos = p;
         }
-        public SDelete(SDelete r, AStream f) : base(r,f)
+        public SDelete(SDelete r, Writer f) : base(r,f)
         {
             table = f.Fix(r.table);
             delpos = f.Fix(r.delpos);
             f.PutLong(table);
             f.PutLong(delpos);
         }
-        SDelete(Reader f) : base(Types.SDelete,f)
+        SDelete(ReaderBase f) : base(Types.SDelete,f)
         {
             table = f.GetLong();
             delpos = f.GetLong();
         }
-        public new static SDelete Get(Reader f)
+        public new static SDelete Get(ReaderBase f)
         {
             return new SDelete(f);
         }
@@ -3121,19 +3089,19 @@ namespace Shareable
             if (r >= 0)
             {
                 var rx = tr.GetPrimaryIndex(r) ??
-                    throw new Exception("referenced table has no primary index");
+                    throw new StrongException("referenced table has no primary index");
                 refindex = rx.uid;
             }
             else
                 refindex = -1;
             rows = new SMTree<Serialisable>(Info((STable)tr.objects[table], cols,refindex>=0));
         }
-        SIndex(Reader f) : base(Types.SIndex, f)
+        SIndex(ReaderBase f) : base(Types.SIndex, f)
         {
             var ro = f.db.role;
             var tn = ro[f.GetLong()];
             if (!ro.globalNames.Contains(tn))
-                throw new Exception("Table " + tn + " not found");
+                throw new StrongException("Table " + tn + " not found");
             table = ro.globalNames[tn];
             primary = f.ReadByte()!=0;
             var n = f.GetInt();
@@ -3143,7 +3111,7 @@ namespace Shareable
             {
                 var cn = ro[f.GetLong()];
                 if (!rt.Contains(cn))
-                    throw new Exception("Column " + cn + " not found");
+                    throw new StrongException("Column " + cn + " not found");
                 c[i] = rt[cn];
             }
             var ru = f.GetLong();
@@ -3152,19 +3120,19 @@ namespace Shareable
             if (ru != -1)
             {
                 if (!ro.globalNames.Contains(rn))
-                    throw new Exception("Ref table " + rn + " not found");
+                    throw new StrongException("Ref table " + rn + " not found");
                 ru = ro.globalNames[rn];
                 if (f.db.GetPrimaryIndex(ru) is SIndex x)
                     rx = x.uid;
                 else
-                    throw new Exception("Ref table " + rn + " has no primary index");
+                    throw new StrongException("Ref table " + rn + " has no primary index");
             }
             references = ru;
             refindex = rx;
             cols = SList<long>.New(c);
             rows = new SMTree<Serialisable>(Info((STable)f.db.objects[table], cols,references>=0));
         }
-        public SIndex(SIndex x, AStream f) : base(x, f)
+        public SIndex(SIndex x, Writer f) : base(x, f)
         {
             table = f.Fix(x.table);
             f.PutLong(table);
@@ -3193,7 +3161,7 @@ namespace Shareable
             cols = x.cols;
             rows = nt;
         }
-        public override void Put(StreamBase f)
+        public override void Put(WriterBase f)
         {
             base.Put(f);
             f.PutLong(table);
@@ -3203,7 +3171,7 @@ namespace Shareable
                 f.PutLong(b.Value);
             f.PutLong(references);
         }
-        public new static SIndex Get(Reader f)
+        public new static SIndex Get(ReaderBase f)
         {
             return new SIndex(f);
         }
@@ -3211,12 +3179,12 @@ namespace Shareable
         {
             var k = Key(r, cols);
             if ((!updating) && refindex == -1 && rows.Contains(k))
-                throw new Exception("Duplicate Key constraint violation");
+                throw new StrongException("Duplicate Key constraint violation");
             if (refindex != -1)
             {
                 var rx = (SIndex)db.objects[refindex];
                 if (!rx.rows.Contains(k))
-                    throw new Exception("Referential constraint violation");
+                    throw new StrongException("Referential constraint violation");
             }
         }
         protected SIndex Add(SRecord r,long c)
@@ -3269,7 +3237,7 @@ namespace Shareable
             return sb.ToString();
         }
     }
-    public abstract class StreamBase : Stream
+    public abstract class IOBase
     {
         /// <summary>
         /// This class is not shareable
@@ -3277,51 +3245,51 @@ namespace Shareable
         public class Buffer
         {
             public const int Size = 1024;
-            public readonly bool input;
             public long start;
             public byte[] buf;
             public int len;
-            public int wpos;
-            internal StreamBase fs;
-            public Buffer(StreamBase f)
+            public int pos;
+            public Buffer()
             {
                 buf = new byte[Size];
-                wpos = 0;
-                len = Size;
-                start = f.Length;
-                fs = f;
+                pos = 0;
             }
-            public Buffer(StreamBase f,long s)
+            public Buffer(long s, int n)
             {
                 buf = new byte[Size];
-                wpos = 0;
-                len = Size;
+                pos = 0;
                 start = s;
-                f.GetBuf(this);
-                fs = f;
-            }
-            internal void PutByte(byte b)
-            {
-                if (wpos >= len)
-                {
-                    fs.PutBuf(this);
-                    start += len;
-                }
-                buf[wpos++] = b;
+                len = n;
             }
         }
-        protected Buffer? wbuf = null;
-        protected StreamBase() { }
-        public abstract bool GetBuf(Buffer b);
-        protected abstract void PutBuf(Buffer b);
-        public override void WriteByte(byte value)
+        public Buffer buf = new Buffer();
+        public virtual bool GetBuf(long s)
         {
-            wbuf?.PutByte(value);
+            throw new NotImplementedException();
+        }
+        public virtual void PutBuf()
+        {
+            throw new NotImplementedException();
+        }
+        public virtual int ReadByte()
+        {
+            throw new NotImplementedException();
+        }
+        public virtual void WriteByte(byte value)
+        {
+            throw new NotImplementedException();
+        }
+    }
+    public abstract class WriterBase : IOBase
+    {
+        public void Write(Types t)
+        {
+            WriteByte((byte)t);
         }
         public void PutInt(int? n)
         {
             if (n == null)
-                throw new Exception("Null PutInt");
+                throw new StrongException("Null PutInt");
             PutInteger(new Integer(n.Value));
         }
         public void PutInteger(Integer b)
@@ -3342,46 +3310,18 @@ namespace Shareable
             for (var i = 0; i < cs.Length; i++)
                 WriteByte(cs[i]);
         }
- /*       public void PutStrings(SList<string> ss)
-        {
-            PutInt(ss?.Length??0);
-            for (var b = ss.First(); b != null; b = b.Next())
-                PutString(b.Value);
-        } */
     }
     /// <summary>
     /// This class is not shareable
     /// </summary>
-    public class Reader
+    public abstract class ReaderBase :IOBase
     {
-        public StreamBase.Buffer buf;
-        public int pos = 0;
         public Context ctx = Context.Empty;
         public SDbObject context = SRole.Public; // set a function or object being defined
         public long lastAlias = SDbObject.maxAlias;
+        public Serialisable? req;
         public SDatabase db;   // a copy, updatable during Get, Load
-        internal Reader(StreamBase s)
-        {
-            db = SDatabase._system;
-            buf = new StreamBase.Buffer(s);
-        }
-        internal Reader(SDatabase d,long s)
-        {
-            db = d;
-            var f = d.File();
-            f.CheckNotWriting();
-            buf = new StreamBase.Buffer(f,s);
-        }
-        internal long Position => buf.start + pos;
-        public virtual int ReadByte()
-        {
-            if (pos >= buf.len)
-            {
-                buf = new StreamBase.Buffer(buf.fs, buf.start + buf.len);
-                pos = 0;
-            }
-            return (buf.len == 0) ? -1 : buf.buf[pos++];
-        }
+        public virtual long Position => buf.start + buf.pos;
         public Integer GetInteger()
         {
             var n = ReadByte();
@@ -3476,27 +3416,94 @@ namespace Shareable
         }
         public Serialisable Lookup(long pos)
         {
-            return db.objects[((AStream)buf.fs).Fix(pos)];
+            return db.objects[pos];
+        }
+    }
+    public class Reader: ReaderBase
+    {
+        public Stream file;
+        public readonly long limit;
+        public override bool GetBuf(long s)
+        {
+            int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
+            lock(file)
+            {
+                file.Seek(s, SeekOrigin.Begin);
+                buf.len = file.Read(buf.buf, 0, m);
+            }
+            buf.start = s;
+            return buf.len>0;
+        }
+        public override int ReadByte()
+        {
+            if (Position >= limit)
+                return -1;
+            if (buf.pos==buf.len)
+            {
+                if (!GetBuf(buf.start + buf.len))
+                    return -1;
+                buf.pos = 0;
+            }
+            return buf.buf[buf.pos++];
+        }
+        public Reader(SDatabase d)
+        {
+            db = d;
+            file = d.File();
+            limit = file.Length;
+            GetBuf(d.curpos);
+        }
+        public Reader(SDatabase d,long p)
+        {
+            db = d;
+            file = d.File();
+            limit = d.curpos;
+            GetBuf(p);
         }
     }
     /// <summary>
     /// this class is not shareable
     /// </summary>
-    public class SocketReader : Reader
+    public abstract class SocketReader : ReaderBase
     {
-        public SocketReader(StreamBase s) : base(s)
+        protected Socket client;
+        public SocketReader(Socket c) : base()
         {
-            pos = 2;
+            client = c;
+        }
+        /// <summary>
+        /// Get a byte from the stream: if necessary refill the buffer from the network
+        /// </summary>
+        /// <returns>the byte</returns>
+        public override bool GetBuf(long s) // s is ignored for ServerStream
+        {
+            int rcount;
+            try
+            {
+                var rc = client.Receive(buf.buf, Buffer.Size, 0);
+                if (rc == 0)
+                {
+                    rcount = 0;
+                    return false;
+                }
+                rcount = (buf.buf[0] << 7) + buf.buf[1];
+                buf.len = rcount + 2;
+                return rcount > 0;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
         }
         public override int ReadByte()
         {
-            if (pos >= buf.len)
+            if (buf.pos >= buf.len)
             {
-                if (!buf.fs.GetBuf(buf))
-                    return -1;
-                pos = 2;
+                if (!GetBuf(0))
+                    throw new Exception("EOF on input");
+                buf.pos = 2;
             }
-            return (buf.len == 0) ? -1 : buf.buf[pos++];
+            return (buf.len == 0) ? -1 : buf.buf[buf.pos++];
         }
         public override STable GetTable()
         {
@@ -3508,66 +3515,93 @@ namespace Shareable
                 context = tb;
                 return tb;
             }
-            throw new Exception("No such table " + nm);
+            throw new StrongException("No such table " + nm);
         }
     }
-    /// <summary>
-    /// This class is not shareable
-    /// </summary>
-    public class AStream : StreamBase
+    public abstract class SocketWriter : WriterBase
     {
-        public readonly string filename;
-        internal Stream file;
-        long wposition = 0;
-        public long length = 0;
-        internal SDict<long, long> uids = SDict<long,long>.Empty; // used for movement of SDbObjects
+        protected Socket client;
+        public SocketWriter(Socket c)
+        {
+            client = c;
+            buf.pos = 2;
+            buf.len = 0;
+        }
+        public override void PutBuf()
+        {
+            buf.pos -= 2;
+            buf.buf[0] = (byte)(buf.pos >> 7);
+            buf.buf[1] = (byte)(buf.pos & 0x7f);
+            client.Send(buf.buf, 0);
+            buf.pos = 2;
+        }
+        public override void WriteByte(byte value)
+        {
+            if (buf.pos >= Buffer.Size)
+                PutBuf();
+            buf.buf[buf.pos++] = value;
+        }
+    }
+    public class Writer : WriterBase
+    {
+        public Stream file; // shared with Reader(s)
+        internal SDict<long, long> uids = SDict<long, long>.Empty; // used for movement of SDbObjects
         SDict<long, Serialisable> commits = SDict<long, Serialisable>.Empty;
-        public AStream(string fn)
+        public Writer(Stream f)
         {
-            filename = fn;
-            file = new FileStream(fn,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
-            length = file.Seek(0, SeekOrigin.End);
-            wposition = length;
-            file.Seek(0, SeekOrigin.Begin);
+            file = f;
         }
-        public void CheckNotWriting()
+        public long Length => file.Length + buf.pos;
+        public override void PutBuf()
         {
-            if (wbuf != null)
+            lock (file)
             {
-                Console.WriteLine("Read during write");
-                throw new Exception("PE31");
+                var p = file.Seek(0, SeekOrigin.End);
+                file.Write(buf.buf, 0, buf.pos);
+                file.Flush();
             }
+            buf.pos = 0;
         }
-        public SDatabase Commit(SDatabase db,STransaction tr)
+        public override void WriteByte(byte value)
+        {
+            if (buf.pos>=Buffer.Size)
+            {
+                PutBuf();
+                buf.pos = 0;
+            }
+            buf.buf[buf.pos++] = value;
+        }
+        public SDatabase Commit(SDatabase db, STransaction tr)
         {
             commits = SDict<long, Serialisable>.Empty;
             uids = SDict<long, long>.Empty;
             // We need two passes: manage a cache of SRecords being updated or deleted
             // before we start writing
             var cache = SDict<long, SRecord>.Empty;
-            for (var b = tr.objects.PositionAt(STransaction._uid);b!=null;b=b.Next())
+            for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next())
                 switch (b.Value.Item2.type)
                 {
                     case Types.SUpdate:
-                    {
-                        var su = (SUpdate)b.Value.Item2;
-                        var u = su.Defpos;
-                        cache += (u, db.Get(u));
-                        break;
-                    }
+                        {
+                            var su = (SUpdate)b.Value.Item2;
+                            var u = su.Defpos;
+                            cache += (u, db.Get(u));
+                            break;
+                        }
                     case Types.SDelete:
-                    {
-                        var sd = (SDelete)b.Value.Item2;
-                        var u = sd.delpos;
-                        cache += (u, db.Get(u));
-                        break;
-                    } 
+                        {
+                            var sd = (SDelete)b.Value.Item2;
+                            var u = sd.delpos;
+                            cache += (u, db.Get(u));
+                            break;
+                        }
                 }
-            wbuf = new Buffer(this);
             try
             {
+                //            Console.WriteLine("Committing:");
                 for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next())
                 {
+                    //               Console.WriteLine(" " + b.Value.Item2);
                     switch (b.Value.Item2.type)
                     {
                         case Types.STable:
@@ -3601,7 +3635,7 @@ namespace Shareable
                                 commits += (nr.uid, nr);
                                 break;
                             }
-                         case Types.SDelete:
+                        case Types.SDelete:
                             {
                                 var sd = (SDelete)b.Value.Item2;
                                 var sr = cache[sd.delpos];
@@ -3609,7 +3643,7 @@ namespace Shareable
                                 db += (nd, sr, Length);
                                 commits += (nd.uid, nd);
                                 break;
-                            } 
+                            }
                         case Types.SUpdate:
                             {
                                 var su = (SUpdate)b.Value.Item2;
@@ -3645,97 +3679,22 @@ namespace Shareable
                             }
                     }
                 }
-                Flush();
+                PutBuf();
                 SDatabase.Install(db);
-            } finally
+            }
+            finally
             {
-                wbuf = null;
             }
             return db;
         }
-        internal Serialisable Lookup(SDatabase db, long pos)
-        {
-            pos = Fix(pos);
-            if (pos >= STransaction._uid)
-                return db.objects[pos];
-            if (commits.Contains(pos))
-                return commits[pos];
-            return new Reader(db, pos)._Get();
-        }
         internal long Fix(long pos)
         {
-            return (uids.Contains(pos))?uids[pos]:pos;
+            return (uids.Contains(pos)) ? uids[pos] : pos;
         }
         internal void CommitDone()
         {
             uids = SDict<long, long>.Empty;
             commits = SDict<long, Serialisable>.Empty;
-        }
-        public override bool CanRead => throw new System.NotImplementedException();
-
-        public override bool CanSeek => throw new System.NotImplementedException();
-
-        public override bool CanWrite => throw new System.NotImplementedException();
-
-        public override long Length => length + (wbuf?.wpos)??0;
-
-        public override long Position { get => file.Position; set => throw new System.NotImplementedException(); }
-        public override void Close()
-        {
-            file.Close();
-            base.Close();
-        }
-
-        public override void Flush()
-        {
-            if (wbuf!=null)
-                PutBuf(wbuf);
-        }
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public override void SetLength(long value)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public override bool GetBuf(Buffer b)
-        {
-            lock (file)
-            {
-                if (b.start > wposition)
-                    throw new Exception("File overrun attempt");
-                  //  return false;
-                file.Seek(b.start, SeekOrigin.Begin);
-                var n = length - b.start;
-                if (n > Buffer.Size)
-                    n = Buffer.Size;
-                b.len = file.Read(b.buf, 0, (int)n);
-                return b.len > 0;
-            }
-        }
-
-        protected override void PutBuf(Buffer b)
-        {
-            var p = file.Seek(0, SeekOrigin.End);
-            file.Write(b.buf, 0, b.wpos);
-            file.Flush();
-            length = p + b.wpos;
-            wposition = length;
-            b.wpos = 0;
         }
     }
 }

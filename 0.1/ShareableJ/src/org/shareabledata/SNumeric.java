@@ -15,7 +15,7 @@ public class SNumeric extends Serialisable implements Comparable {
             super(Types.SNumeric);
             num = n;
         }
-        SNumeric(Reader f) throws Exception
+        SNumeric(ReaderBase f) throws Exception
         {
             super(Types.SNumeric);
             var mantissa = f.GetInteger();
@@ -23,14 +23,14 @@ public class SNumeric extends Serialisable implements Comparable {
             var scale = f.GetInt();
             num = new Numeric(mantissa, scale, precision);
         }
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutInteger(num.mantissa);
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SNumeric(f);
         }

@@ -38,7 +38,7 @@ public class SAlter extends SDbObject {
             seq = sq;
             constraints = cs;
         }
-        SAlter(Reader f) throws Exception
+        SAlter(ReaderBase f) throws Exception
         {
             super(Types.SAlter,f);
             defpos = f.GetLong();
@@ -59,7 +59,7 @@ public class SAlter extends SDbObject {
             }
             constraints = cs;
         }
-        public SAlter(SAlter a,AStream f) throws Exception
+        public SAlter(SAlter a,Writer f) throws Exception
         {
             super(a,f);
             name = a.name;
@@ -84,7 +84,7 @@ public class SAlter extends SDbObject {
                 }
             constraints = cs;
         }
-        public static SAlter Get(Reader f) throws Exception
+        public static SAlter Get(ReaderBase f) throws Exception
         {
             return new SAlter(f);
         }

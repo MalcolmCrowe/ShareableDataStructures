@@ -13,7 +13,7 @@ public class SGroupQuery extends SQuery {
     public final SQuery source;
     public final SDict<Integer, Long> groupby;
     public final SList<Serialisable> having;
-    public SGroupQuery(SQuery sc,Reader f,long u) throws Exception
+    public SGroupQuery(SQuery sc,ReaderBase f,long u) throws Exception
     {
         super(Types.SGroupQuery,u);
         source = sc;
@@ -50,7 +50,7 @@ public class SGroupQuery extends SQuery {
         return source.Names(tr, pt);
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f) throws Exception
     {
         super.Put(f);
         source.Put(f);
@@ -182,7 +182,7 @@ public class SGroupQuery extends SQuery {
         return new SGroupQuery((SQuery)source.UpdateAliases(uids), ds, cs,
             g, h);
     }
-    public static SGroupQuery Get(Reader f) throws Exception
+    public static SGroupQuery Get(ReaderBase f) throws Exception
     {
         var u = f.GetLong();
         var source = f._Get();

@@ -9,14 +9,11 @@ namespace Shareable
         public static readonly long _uid = 0x4000000000000000;
         public readonly long uid;
         public readonly bool autoCommit;
-        public readonly SDatabase rollback;
         public readonly SDict<long, bool> readConstraints;
-        internal override SDatabase _Rollback => rollback;
         protected override bool Committed => false;
-        public STransaction(SDatabase d,Reader rdr,bool auto) :base(d)
+        public STransaction(SDatabase d,ReaderBase rdr,bool auto) :base(d)
         {
             autoCommit = auto;
-            rollback = d._Rollback;
             uid = _uid;
             readConstraints = SDict<long, bool>.Empty;
             rdr.db = this;
@@ -31,21 +28,18 @@ namespace Shareable
             : base(tr, obs, r, c)
         {
             autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
             uid = tr.uid + 1;
             readConstraints = tr.readConstraints;
         }
         protected STransaction(STransaction tr,long u) :base(tr)
         {
             autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
             uid = tr.uid;
             readConstraints = tr.readConstraints + (u, true);
         }
         public STransaction(STransaction tr, SRole r) : base(tr, tr.objects, r, tr.curpos)
         {
             autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
             uid = tr.uid;
             readConstraints = tr.readConstraints;
         }
@@ -74,40 +68,40 @@ namespace Shareable
         public SDatabase Commit()
         {
             SDatabase db = databases[name];
-            var f = dbfiles[name];
-            var rdr = new Reader(this, curpos);
-            var since = rdr.GetAll(db.curpos);
+            var f = new Writer(dbfiles[name]);
+            var rdr = new Reader(this);
             var tb = objects.PositionAt(_uid); // start of the work we want to commit
+            var since = rdr.GetAll(f.Length);
             for (var i = 0; i < since.Length; i++)
             {
                 if (since[i].Check(readConstraints))
                 {
                     rconflicts++;
-                    throw new Exception("Transaction conflict with read");
+                    throw new TransactionConflict("Transaction conflict with read");
                 }
                 for (var b = tb; b != null; b = b.Next())
                     if (since[i].Conflicts(db, this, b.Value.Item2))
                     {
                         wconflicts++;
-                        throw new Exception("Transaction conflict on " + b.Value);
+                        throw new TransactionConflict("Transaction conflict on " + b.Value);
                     }
-            }
+            }  
             if (tb!=null)
                 lock (f)
                 {
-                    since = rdr.GetAll(f.length);
+                    since = rdr.GetAll(f.Length);
                     for (var i = 0; i < since.Length; i++)
                     {
                         if (since[i].Check(readConstraints))
                         {
                             rconflicts++;
-                            throw new Exception("Transaction conflict with read");
+                            throw new TransactionConflict("Transaction conflict with read");
                         }
-                        for (Bookmark<(long, SDbObject)>? b = tb; b != null; b = b.Next())
+                        for (var b = tb; b != null; b = b.Next())
                             if (since[i].Conflicts(db, this, b.Value.Item2))
                             {
                                 wconflicts++;
-                                throw new Exception("Transaction conflict on " + b.Value);
+                                throw new TransactionConflict("Transaction conflict on " + b.Value);
                             }
                     }
                     db = f.Commit(db, this);
@@ -125,14 +119,18 @@ namespace Shareable
         {
             return SDbObject._Uid(uid);
         }
-        public override STransaction Transact(Reader rdr, bool auto=true)
+        public override STransaction Transact(ReaderBase rdr, bool auto=true)
         {
             rdr.db = this;
             return this; // ignore the parameter
         }
         public override SDatabase Rollback()
         {
-            return rollback;
+            return databases[name];
         }
+    }
+    public class TransactionConflict: StrongException
+    {
+        public TransactionConflict(string m):base(m) { }
     }
 }

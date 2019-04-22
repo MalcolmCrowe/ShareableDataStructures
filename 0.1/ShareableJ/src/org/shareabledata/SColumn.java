@@ -43,7 +43,7 @@ public class SColumn extends SSelector {
             dataType = d; table = c.table;
             constraints = cs;
         }
-        SColumn(Reader f) throws Exception
+        SColumn(ReaderBase f) throws Exception
         {
             super(Types.SColumn,f);
             var db = f.db;
@@ -70,9 +70,9 @@ public class SColumn extends SSelector {
             f.context = oc;
             if (!(f instanceof SocketReader) && 
                     !f.db.role.uids.Contains(uid))
-                f.db = f.db.Install(this, cn, f.getPosition());
+                f.db = f.db.Install(this, cn, f.Position());
         }
-        public SColumn(SColumn c,String nm,AStream f) 
+        public SColumn(SColumn c,String nm,Writer f) throws Exception
         {
             super(c,f);
             f.PutString(nm);
@@ -89,11 +89,11 @@ public class SColumn extends SSelector {
             }
             constraints = c.constraints;
         }
-        public static SColumn Get(Reader f) throws Exception
+        public static SColumn Get(ReaderBase f) throws Exception
         {
             return new SColumn(f);
         }
-        public void PutColDef(StreamBase f)
+        public void PutColDef(WriterBase f)throws Exception
         {
             super.Put(f);
             f.WriteByte((byte)dataType);
@@ -104,13 +104,13 @@ public class SColumn extends SSelector {
             {
                 f.PutString(b.getValue().key);
                 var c = b.getValue().val;
-                if (f instanceof AStream)
-                    c = (SFunction)c.Fix((AStream)f);
+                if (f instanceof Writer)
+                    c = (SFunction)c.Fix((Writer)f);
                 c.Put(f);
             }
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f)throws Exception
         {
             f.WriteByte((byte)Types.SName);
             f.PutLong(uid);
@@ -162,7 +162,7 @@ public class SColumn extends SSelector {
         /// <param name="f"></param>
         /// <returns></returns>
         @Override
-        public Serialisable Fix(AStream f)
+        public Serialisable Fix(Writer f)
         {
             return (f.uids.Contains(uid)) ? 
                     new SColumn(f.uids.get(uid), f.uids.get(table), dataType) : 

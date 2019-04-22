@@ -4,27 +4,53 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
+import java.net.Socket;
 
 /**
  *
  * @author Malcolm
  */
-public class SocketReader extends Reader {
-    public SocketReader(StreamBase f) throws Exception
+public class SocketReader extends ReaderBase {
+    protected Socket client;
+    public SocketReader(Socket c) throws Exception
     {
-        super(f);
-        pos = 2;
+        client = c;
+    }
+    /// <summary>
+    /// Get a byte from the stream: if necessary refill the buffer from the network
+    /// </summary>
+    /// <returns>the byte</returns>
+    @Override
+    public boolean GetBuf(long s) // s is ignored for ServerStream
+    {
+        int rcount;
+        try
+        {
+            var rc = client.getInputStream().read(buf.buf);
+            if (rc == 0)
+            {
+                rcount = 0;
+                return false;
+            }
+            rcount = (buf.buf[0] << 7) + buf.buf[1];
+            buf.len = rcount + 2;
+            return rcount > 0;
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
     }
     @Override
     public int ReadByte() throws Exception
     {
-        if (pos >= buf.len)
+        if (buf.pos >= buf.len)
         {
-            if (!buf.fs.GetBuf(buf))
-                return -1;
-            pos = 2;
+            if (!GetBuf(0))
+                throw new Exception("EOF on input");
+            buf.pos = 2;
         }
-        return (buf.len == 0) ? -1 : buf.buf[pos++];
+        return (buf.len == 0) ? -1 : buf.buf[buf.pos++];
     }
     @Override
     public STable GetTable() throws Exception

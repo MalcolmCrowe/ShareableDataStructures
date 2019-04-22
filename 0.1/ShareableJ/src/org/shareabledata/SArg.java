@@ -17,7 +17,7 @@ public class SArg extends Serialisable {
             super(Types.SArg); 
             target = SRole.Public; 
         }
-        public SArg(Reader f)
+        public SArg(ReaderBase f)
         {
             super(Types.SArg);
             target = f.context;

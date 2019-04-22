@@ -17,7 +17,7 @@ public class SDropIndex extends Serialisable {
          super(Types.SDropIndex);
          table = tb; key = k;
      }
-     public SDropIndex(Reader f) throws Exception
+     public SDropIndex(ReaderBase f) throws Exception
      {
          super(Types.SDrop, f);
          table = f.GetLong();

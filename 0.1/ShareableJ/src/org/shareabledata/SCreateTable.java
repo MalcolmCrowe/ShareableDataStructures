@@ -18,7 +18,7 @@ public class SCreateTable extends Serialisable {
         super(Types.SCreateTable);
         tdef = tn; coldefs = c; constraints = cs;
     }
-    public static Serialisable Get(Reader f) throws Exception
+    public static Serialisable Get(ReaderBase f) throws Exception
     {
         var db = f.db;
         var tn = db.role.uids.get(f.GetLong());
@@ -38,7 +38,7 @@ public class SCreateTable extends Serialisable {
         return Null;
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f) throws Exception
     {
         super.Put(f);
         f.PutLong(tdef);

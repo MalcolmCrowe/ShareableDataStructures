@@ -68,7 +68,7 @@ public class SRecord extends SDbObject {
         {
             return uid;
         }
-        public SRecord(SDatabase db,SRecord r,AStream f)
+        public SRecord(SDatabase db,SRecord r,Writer f) throws Exception
         {
             super(r,f); 
             table = f.Fix(r.table);
@@ -82,7 +82,7 @@ public class SRecord extends SDbObject {
                 b.getValue().val.Put(f);
             }
         }
-        protected SRecord(int t,Reader f) throws Exception
+        protected SRecord(int t,ReaderBase f) throws Exception
         {
             super(t,f);
             table = f.GetLong();
@@ -99,7 +99,7 @@ public class SRecord extends SDbObject {
             }
             fields = a;
         }
-        public static SRecord Get(Reader f) throws Exception
+        public static SRecord Get(ReaderBase f) throws Exception
         {
             return new SRecord(Types.SRecord,f);
         }

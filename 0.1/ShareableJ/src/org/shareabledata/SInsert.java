@@ -140,7 +140,7 @@ public class SInsert extends Serialisable  {
         return tr;
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f) throws Exception
     {
         super.Put(f);
         f.PutLong(table);

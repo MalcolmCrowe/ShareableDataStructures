@@ -110,7 +110,7 @@ public class StrongStart {
  	static String[] Version = new String[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (12 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (22 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
 
 }

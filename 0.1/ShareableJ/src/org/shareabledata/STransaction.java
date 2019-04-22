@@ -4,7 +4,6 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.io.*;
 /**
  *
  * @author Malcolm
@@ -24,13 +23,14 @@ public class STransaction extends SDatabase {
         SDatabase getRollback() {
             return rollback;
         }
-        public STransaction(SDatabase d, Reader rdr,boolean auto)
+        public STransaction(SDatabase d, ReaderBase rdr,boolean auto)
         {
             super(d);
             uid = _uid;
             autoCommit = auto;
             rollback = d.getRollback();
             readConstraints = null;
+            rdr.db = this;
         }
         private STransaction(STransaction tr,SDict<Long,SDbObject>obs,SRole r,long c) throws Exception
         {
@@ -72,7 +72,7 @@ public class STransaction extends SDatabase {
         }
         @Override
         public Serialisable _Get(long pos) {
-            if (pos<0 || pos>=uid)
+            if (pos<0 || pos>=_uid)
                 return objects.Lookup(pos);
             return super._Get(pos);
         }
@@ -96,10 +96,11 @@ public class STransaction extends SDatabase {
         /// <returns>the steps as modified by the commit process</returns>
         public SDatabase Commit() throws Exception
         {
-            AStream dbfile = dbfiles.Lookup(name);
             SDatabase db = databases.Lookup(name);
+            var f = new Writer(dbfiles.get(name));
             var rdr = new Reader(db,curpos);
-            var since = rdr.GetAll(this, rollback.curpos, db.curpos);
+            var tb = objects.PositionAt(_uid); // start of the work we want to commit
+            var since = rdr.GetAll(f.length());
             for (SDbObject since1 : since) {
                 if (since1.Check(readConstraints))
                     throw new Exception("Transaction conflict with read");
@@ -109,9 +110,9 @@ public class STransaction extends SDatabase {
                     }
                 }
             }
-            synchronized (dbfile)
+            synchronized (f)
             {
-                since = rdr.GetAll(this, db.curpos,dbfile.length);
+                since = rdr.GetAll(f.length());
                 for (SDbObject since1 : since) {
                     if (since1.Check(readConstraints))
                         throw new Exception("Transaction conflict with read");
@@ -121,14 +122,14 @@ public class STransaction extends SDatabase {
                         }
                     }
                 }
-                db = dbfile.Commit(db,this);
-                dbfile.CommitDone();
+                db = f.Commit(db,this);
+                f.CommitDone();
             }
             Install(db);
             return db;
         }
         @Override
-        public STransaction Transact(Reader rdr,boolean auto)
+        public STransaction Transact(ReaderBase rdr,boolean auto)
         {
             rdr.db = this;
             return this; // ignore the parameter

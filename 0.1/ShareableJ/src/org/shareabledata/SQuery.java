@@ -65,7 +65,7 @@ public class SQuery extends SDbObject {
             cpos = c;
             refs = cn;
         }
-        protected SQuery(int t,Reader f) throws Exception
+        protected SQuery(int t,ReaderBase f) throws Exception
         {
             super(t,f);
             display = null;
@@ -74,14 +74,14 @@ public class SQuery extends SDbObject {
         }
         /// This constructor is only called when committing am STable.
         /// Ignore the columns defined in the transaction.
-        protected SQuery(SQuery q, AStream f) throws Exception
+        protected SQuery(SQuery q, Writer f) throws Exception
         {
             super(q,f);
             display = null;
             cpos = null;
             refs = null;
         }
-        public static SQuery Get(Reader f) throws Exception
+        public static SQuery Get(ReaderBase f) throws Exception
         {
             return Static;
         }

@@ -29,13 +29,13 @@ public class SDeleteSearch extends Serialisable {
                 tr = b.Delete(tr);
             return tr;
         }
-        public static SDeleteSearch Get(Reader f) throws Exception
+        public static SDeleteSearch Get(ReaderBase f) throws Exception
         {
             return new SDeleteSearch((SQuery)f._Get());
         }
 
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             qry.Put(f);

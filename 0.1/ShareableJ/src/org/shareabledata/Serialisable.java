@@ -21,11 +21,11 @@ public class Serialisable implements Comparable {
         type = t;
     }
 
-    public Serialisable(int t, Reader f) {
+    public Serialisable(int t, ReaderBase f) {
         type = t;
     }
     public boolean isValue() { return true;}
-    public static Serialisable Get(Reader f) throws Exception
+    public static Serialisable Get(ReaderBase f) throws Exception
     {
         return Null;
     }
@@ -58,7 +58,7 @@ public class Serialisable implements Comparable {
         return ags;
     }
     /// Put is used in serialisation by client and server
-    public void Put(StreamBase f) 
+    public void Put(WriterBase f) throws Exception
     {
         f.WriteByte((byte)type);
     }
@@ -135,7 +135,7 @@ public class Serialisable implements Comparable {
     {
         return this;
     }
-    public Serialisable Fix(AStream f)
+    public Serialisable Fix(Writer f)
     {
         return this;
     }

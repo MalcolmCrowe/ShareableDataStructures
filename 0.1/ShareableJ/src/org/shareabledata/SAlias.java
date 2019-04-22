@@ -12,7 +12,7 @@ package org.shareabledata;
 public class SAlias extends SQuery {
         public final SQuery qry;
         public final long alias;
-        public SAlias(SQuery q,long a,Reader f, long u) throws Exception
+        public SAlias(SQuery q,long a,ReaderBase f, long u) throws Exception
         {
             super(Types.SAlias, u);
             var tr = (STransaction)f.db;
@@ -33,7 +33,7 @@ public class SAlias extends SQuery {
             return qry.Names(tr, pt);
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             qry.Put(f);
@@ -56,7 +56,7 @@ public class SAlias extends SQuery {
         {
             return new SAlias((SQuery)qry.Prepare(db,pt),alias,uid);
         }
-        public static SAlias Get(Reader f) throws Exception
+        public static SAlias Get(ReaderBase f) throws Exception
         {
             var u = f.GetLong();
             var q = (SQuery)f._Get();

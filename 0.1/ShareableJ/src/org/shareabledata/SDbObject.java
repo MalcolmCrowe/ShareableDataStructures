@@ -14,10 +14,10 @@ public class SDbObject extends Serialisable {
     /// For database objects such as STable, we will want to record 
     /// a unique id based on the actual position in the transaction log,
     /// so the Get and Commit methods will capture the appropriate 
-    /// file positions in AStream – this is why the Commit method 
+    /// file positions in Writer – this is why the Commit method 
     /// needs to create a new instance of the Serialisable. 
     /// The uid will initially belong to the Transaction. 
-    /// Once committed the uid will become the position in the AStream file.
+    /// Once committed the uid will become the position in the Writer file.
     /// </summary>
 
     public final long uid;
@@ -67,7 +67,7 @@ public class SDbObject extends Serialisable {
     /// <param name="t"></param>
     /// <param name="f"></param>
 
-    protected SDbObject(int t, Reader f) throws Exception {
+    protected SDbObject(int t, ReaderBase f) throws Exception {
         super(t);
         if (t == Types.SName)
            uid = f.GetLong();
@@ -81,22 +81,22 @@ public class SDbObject extends Serialisable {
                    f.db = f.db.Add(uid, f.db.role.uids.get(u));
            }
            else // file position is uid
-               uid = f.getPosition() - 1;
+               uid = f.Position() - 1;
     }
 
-    protected SDbObject(SDbObject s, AStream f) {
+    protected SDbObject(SDbObject s, Writer f) throws Exception{
         super(s.type);
         if (s.uid < STransaction._uid) {
             throw new Error("Internal error - misplaced database object");
         }
-        uid = f.pos();
+        uid = f.length();
         f.uids = f.uids.Add(s.uid, uid);
         f.WriteByte((byte) s.type);
     }
     @Override
     public boolean isValue() { return false;}
     public long getAffects() { return uid; }
-    public static Serialisable Get(Reader f) throws Exception
+    public static Serialisable Get(ReaderBase f) throws Exception
     {
         return new SDbObject(Types.SName,f);
     }
@@ -145,7 +145,7 @@ public class SDbObject extends Serialisable {
         return tr.objects.get(pt.get(uid));
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f) throws Exception
     {
         super.Put(f);
         f.PutLong(uid);

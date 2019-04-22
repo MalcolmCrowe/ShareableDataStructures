@@ -22,17 +22,17 @@ public class SBoolean extends Serialisable implements Comparable {
         {
             return r? True:False;
         }
-        public Serialisable Commit(STransaction tr,AStream f)
+        public Serialisable Commit(STransaction tr,Writer f)throws Exception
         {
             f.PutInt(sbool?1:0);
             return this;
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return For(f.ReadByte()==1);
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f)throws Exception
         {
             super.Put(f);
             f.WriteByte((byte)(sbool?1:0));

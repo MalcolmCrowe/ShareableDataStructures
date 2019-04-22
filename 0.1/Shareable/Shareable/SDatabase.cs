@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 namespace Shareable
 {
     public class SDatabase
@@ -16,12 +17,11 @@ namespace Shareable
         public readonly SDict<long, SDbObject> objects;
         public readonly long curpos;
         public readonly SRole role;
-        protected static object files = new object(); // a lock
-        protected static SDict<string, AStream> dbfiles = SDict<string, AStream>.Empty;
+        protected static object _lock = new object(); // a lock
+        protected static SDict<string, FileStream> dbfiles = SDict<string, FileStream>.Empty;
         protected static SDict<string, SDatabase> databases = SDict<string, SDatabase>.Empty;
         public static readonly SDatabase _system = System();
         public static int commits = 0, rconflicts = 0, wconflicts=0;
-        internal virtual SDatabase _Rollback => this;
         protected virtual bool Committed => true;
         public static SDatabase Open(string path, string fname)
         {
@@ -29,7 +29,8 @@ namespace Shareable
                 return databases[fname]
                     ?? throw new System.Exception("Database is loading");
             var db = new SDatabase(fname);
-            dbfiles += (fname, new AStream(path + fname));
+            var file = new FileStream(path+fname, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            dbfiles += (fname, file);
             db = db.Load();
             Install(db);
             return db;
@@ -41,9 +42,10 @@ namespace Shareable
         public SDict<long, string> uids => role.uids;  
         public static void Install(SDatabase db)
         {
-            lock(files) databases += (db.name, db);
+            lock (_lock)
+                databases += (db.name, db);
         }
-        public AStream File()
+        public FileStream File()
         {
             return dbfiles[name];
         }
@@ -87,14 +89,14 @@ namespace Shareable
         }
         internal SDatabase Load()
         {
-            var rd = new Reader(this, curpos);
+            var rd = new Reader(this);
             long last = 0; 
             try
             {
-                for (var s = rd._Get() as SDbObject; s != null; s = rd._Get() as SDbObject)
+                for (var s = rd._Get() as SDbObject; s != null && s!=Serialisable.Null; s = rd._Get() as SDbObject)
                 {
                     last = s.uid;
-                    rd.db += (s, s.uid);
+                    rd.db += (s, rd.Position);
                 }
             } catch(Exception e)
             {
@@ -105,21 +107,11 @@ namespace Shareable
         }
         protected virtual Serialisable _Get(long pos)
         {
-            return dbfiles[name].Lookup(this, pos);
+            return new Reader(this, pos)._Get();
         }
         public SRecord Get(long pos)
         {
-            var rc = _Get(pos) as SRecord;
-            if (rc==null)
-                throw new Exception("Record " + SDbObject._Uid(pos) + " never defined");
-            var tb = objects[rc.table] as STable ??
-                throw new Exception("Table " + rc.table + " has been dropped");
-            if (!tb.rows.Contains(rc.Defpos))
-                throw new Exception("Record " + SDbObject._Uid(pos) + " has been dropped");
-            var dp = tb.rows[rc.Defpos];
-            if (dp == pos)
-                return rc;
-            return (SRecord)_Get(dp);
+            return (SRecord)_Get(pos);
         }
         protected SDatabase _Add(SDbObject s, long p)
         {
@@ -189,7 +181,7 @@ namespace Shareable
         /// </summary>
         public void Close()
         {
-            lock (files)
+            lock (_lock)
             {
                 var f = dbfiles[name];
                 databases = databases-name;
@@ -202,7 +194,7 @@ namespace Shareable
             if (uid == -1)
                 return "PUBLIC";
             if (!role.defines(uid))
-                throw new Exception("Bad long " + SDbObject._Uid(uid));
+                throw new StrongException("Bad long " + SDbObject._Uid(uid));
             return role.uids[uid];
         }
         protected virtual SDatabase New(SDict<long,SDbObject> o,SRole r, long c)
@@ -228,7 +220,7 @@ namespace Shareable
                 obs += (c.uid, c);
             var tb = ((STable)obs[c.table]);
             if (role.defs.Contains(c.table) && role.defs[c.table].Contains(n))
-                throw new Exception("Table " + uids[tb.uid] + " already has column " + n);
+                throw new StrongException("Table " + uids[tb.uid] + " already has column " + n);
             return New(obs + (c.table, tb+(c,n))+(c.uid,c), role+(c.table,c.uid,n)+(c.uid,n), p);
         }
         public SDatabase Install(SRecord r, long c)
@@ -284,7 +276,7 @@ namespace Shareable
                         {
                             var x = (SIndex)obs[ox.Value.Item1];
                             if (x.references == d.table && x.rows.Contains(k))
-                                throw new Exception("Referential constraint: illegal delete");
+                                throw new StrongException("Referential constraint: illegal delete");
                         }
             }
             var ro = role;
@@ -359,7 +351,7 @@ namespace Shareable
             tb = new STable(tb, tb.indexes + (x.uid, true));
             return New(objects + (x.uid, x) + (tb.uid, tb),role,c);
         }
-        public virtual STransaction Transact(Reader rdr,bool auto = true)
+        public virtual STransaction Transact(ReaderBase rdr,bool auto = true)
         {
             var tr = new STransaction(this, rdr, auto);
             rdr.db = tr;
@@ -474,5 +466,9 @@ namespace Shareable
         {
             return uids.Contains(s);
         }
+    }
+    public class StrongException : Exception
+    {
+        public StrongException(string m) : base(m) { }
     }
 }

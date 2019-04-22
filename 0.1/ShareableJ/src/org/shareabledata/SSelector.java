@@ -23,15 +23,15 @@ package org.shareabledata;
         {
             super(t,tr);
         }
-        protected SSelector(int t, Reader f) throws Exception
+        protected SSelector(int t, ReaderBase f) throws Exception
         {
             super(t,f);
         }
-        protected SSelector(SSelector s,AStream f) 
+        protected SSelector(SSelector s,Writer f) throws Exception
         {
             super(s,f);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             var x = f.GetLong(); // a client-side uid
             var ro = f.db.role;

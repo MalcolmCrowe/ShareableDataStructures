@@ -30,7 +30,7 @@ public class LogBookmark extends RowBookmark {
             SDbObject s = (SDbObject)rdr._Get();
             return (s == null) ? null
                     : new LogBookmark(rs, 0, 
-                            s, rdr.getPosition(), 0);
+                            s, rdr.Position(), 0);
         } catch(Exception e)
         {
             return null;
@@ -44,7 +44,7 @@ public class LogBookmark extends RowBookmark {
         var ob = rdr._Get();
         SDbObject s = (SDbObject)ob;
         return (s==null)?null:new LogBookmark(_sr,_next,s,
-          rdr.getPosition(),Position + 1);
+          rdr.Position(),Position + 1);
         } catch(Exception e) { return null; }
     }
 }

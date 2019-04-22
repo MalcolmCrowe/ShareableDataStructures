@@ -57,9 +57,10 @@ namespace StrongLink
             if (socket == null || !socket.Connected)
                 throw new Exception("No connection to " + host + ":" + port);
             asy = new ClientStream(this, socket);
-            asy.PutString(fn);
+            var wtr = asy.wtr;
+            wtr.PutString(fn);
             asy.Flush();
-            asy.rbuf.ReadByte();
+            asy.rdr.ReadByte();
             preps = SDict<long, string>.Empty;
         }
         public long Prepare(string n)
@@ -71,11 +72,12 @@ namespace StrongLink
         public void CreateTable(string n)
         {
             var un = Prepare(n);
-            asy.SendUids(preps);
-            asy.Write(Types.SCreateTable);
-            asy.PutLong(un);
-            asy.PutInt(0);
-            asy.PutInt(0);
+            var wtr = asy.wtr;
+            wtr.SendUids(preps);
+            wtr.Write(Types.SCreateTable);
+            wtr.PutLong(un);
+            wtr.PutInt(0);
+            wtr.PutInt(0);
             var b = asy.Receive();
             preps = SDict<long,string>.Empty;
         }
@@ -83,9 +85,9 @@ namespace StrongLink
         {
             var uc = Prepare(c);
             var ut = Prepare(tn);
-            asy.SendUids(preps);
-            asy.Write(Types.SCreateColumn);
-            new SColumn(uc, t, ut, new SDict<string, SFunction>(constraints)).PutColDef(asy);
+            asy.wtr.SendUids(preps);
+            asy.wtr.Write(Types.SCreateColumn);
+            new SColumn(uc, t, ut, new SDict<string, SFunction>(constraints)).PutColDef(asy.wtr);
             var b = asy.Receive();
             preps = SDict<long,string>.Empty;
         }
@@ -98,8 +100,8 @@ namespace StrongLink
             var keys = SList<long>.Empty;
             for (var i = key.Length-1;i>=0; i--)
                 keys += Prepare(key[i]);
-            asy.SendUids(preps);
-            new SIndex(ut, t == IndexType.Primary,u, keys).Put(asy);
+            asy.wtr.SendUids(preps);
+            new SIndex(ut, t == IndexType.Primary,u, keys).Put(asy.wtr);
             var b = asy.Receive();
             preps = SDict<long,string>.Empty;
         }
@@ -109,19 +111,20 @@ namespace StrongLink
             var u = new long[cols.Length];
             for (var i = 0; i < cols.Length; i++)
                 u[i] = Prepare(cols[i]);
-            asy.SendUids(preps);
-            asy.Write(Types.Insert);
-            asy.PutLong(ut);
-            asy.PutInt(cols.Length);
+            var wtr = asy.wtr;
+            wtr.SendUids(preps);
+            wtr.Write(Types.Insert);
+            wtr.PutLong(ut);
+            wtr.PutInt(cols.Length);
             // insert cols if supplied
             for (var i = 0; i < cols.Length;i++)
-                asy.PutLong(u[i]);
+                wtr.PutLong(u[i]);
             // now the rows
-            asy.PutInt(rows[0].Length);
-            asy.PutInt(rows.Length);
+            wtr.PutInt(rows[0].Length);
+            wtr.PutInt(rows.Length);
             for (var i = 0; i < rows.Length; i++)
                 for (var j = 0; j < rows[i].Length; j++)
-                    rows[i][j].Put(asy);
+                    rows[i][j].Put(asy.wtr);
             var b = asy.Receive();
             preps = SDict<long,string>.Empty;
         }
@@ -136,12 +139,14 @@ namespace StrongLink
         }
         public Types ExecuteNonQuery(string sql)
         {
+            asy.rdr.buf.len = 0;
             lastreq = sql;
             var s = Parser.Parse(sql);
             if (s.Item2 == null)
                 return Types.Exception;
-            asy.SendUids(s.Item2);
-            s.Item1.Put(asy);
+            var wtr = asy.wtr;
+            wtr.SendUids(s.Item2);
+            s.Item1.Put(wtr);
             var b = asy.Receive();
             if (b == Types.Exception)
                 inTransaction = false;
@@ -159,54 +164,60 @@ namespace StrongLink
         }
         public DocArray Get(SDict<long,string> d,Serialisable tn)
         {
-            asy.SendUids(d);
-            asy.Write(Types.DescribedGet);
-            tn.Put(asy);
+            asy.rdr.buf.len = 0;
+            var wtr = asy.wtr;
+            wtr.SendUids(d);
+            wtr.Write(Types.DescribedGet);
+            tn.Put(wtr);
             asy.Flush();
-            var b = asy.ReadByte();
+            var b = asy.rdr.ReadByte();
             if (b == (byte)Types.Exception)
             {
                 inTransaction = false;
-                asy.GetException();
+                asy.rdr.GetException();
             }
             if (b == (byte)Types.Done)
             {
                 description = SDict<int, string>.Empty;
-                var n = asy.rbuf.GetInt();
+                var n = asy.rdr.GetInt();
                 for (var i = 0; i < n; i++)
-                    description += (i, asy.rbuf.GetString());
-                return new DocArray(asy.rbuf.GetString());
+                    description += (i, asy.rdr.GetString());
+                return new DocArray(asy.rdr.GetString());
             }
             throw new Exception("PE28");
         }
         public void BeginTransaction()
         {
-            asy.Write(Types.SBegin);
+            asy.rdr.buf.len = 0;
+            asy.wtr.Write(Types.SBegin);
             var b = asy.Receive();
             if (b == Types.Exception)
             {
                 inTransaction = false;
-                asy.GetException();
+                asy.rdr.GetException();
             }
             if (b == Types.Done)
                 inTransaction = true;
         }
         public void Rollback()
         {
-            asy.Write(Types.SRollback);
+            asy.rdr.buf.len = 0;
+            asy.wtr.Write(Types.SRollback);
             var b = asy.Receive();
             inTransaction = false;
         }
         public void Commit()
         {
-            asy.Write(Types.SCommit);
+            asy.rdr.buf.len = 0;
+            asy.wtr.Write(Types.SCommit);
             var b = asy.Receive();
             inTransaction = false;
         }
         public void ExecuteNonQuery(SDict<long,string> d,Serialisable s)
         {
-            asy.SendUids(d);
-            s.Put(asy);
+            asy.rdr.buf.len = 0;
+            asy.wtr.SendUids(d);
+            s.Put(asy.wtr);
             var b = asy.Receive();
             if (b == Types.Exception)
                 inTransaction = false;
@@ -226,146 +237,45 @@ namespace StrongLink
     /// <summary>
     /// not shareable
     /// </summary>
-    class ClientStream : StreamBase
+    class ClientStream : Stream
     {
         internal Socket client;
         static long _cid = 0;
         long cid = ++_cid;
-        public bool getting = false;
         internal int rx = 0;
-        internal Reader rbuf;
+        internal ClientReader rdr;
+        internal ClientWriter wtr;
         internal ClientStream(StrongConnect pc, Socket c)
         {
             client = c;
-            wbuf = new Buffer(this);
-            rbuf = new SocketReader(this);
-            rbuf.pos = 2;
-            rbuf.buf.len = 0;
-            wbuf.wpos = 2;
-        }
-        public override bool GetBuf(Buffer b)
-        {
-            getting = true;
-            int rcount;
-            rx = 0;
-            try
-            {
-                var rc = client.Receive(b.buf, Buffer.Size, 0);
-                if (rc == 0)
-                {
-                    rcount = 0;
-                    getting = false;
-                    return false;
-                }
-                rcount = (b.buf[0] << 7) + b.buf[1];
-                b.len = rcount + 2;
-                if (rcount == Buffer.Size - 1)
-                    GetException();
-                getting = false;
-                return rcount > 0;
-            }
-            catch (SocketException)
-            {
-                return false;
-            }
-            catch (ObjectDisposedException)
-            {
-                return false;
-            }
-        }
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            int j;
-            for (j = 0; j < count; j++)
-            {
-                int x = rbuf.ReadByte();
-                if (x < 0)
-                    break;
-                buffer[offset + j] = (byte)x;
-            }
-            return j;
+            wtr = new ClientWriter(client);
+            rdr = new ClientReader(client);
+            rdr.buf.pos = 2;
+            rdr.buf.len = 0;
         }
         public Types Receive()
         {
-            if (wbuf == null)
-                return Types.Serialisable; // won't occur
-            if (wbuf.wpos > 2)
-                Flush();
-            return (Types)rbuf.ReadByte();
+            if (wtr.buf.pos > 2)
+                wtr.PutBuf();
+            rdr.buf.pos = 2;
+            rdr.buf.len = 0;
+            return (Types)rdr.ReadByte();
         }
-        public void SendUids(SDict<long,string> u)
-        {
-            Write(Types.SNames);
-            PutInt(u.Length);
-            for (var b = u.First(); b != null; b = b.Next())
-            {
-                PutLong(b.Value.Item1);
-                PutString(b.Value.Item2);
-            }
-        }
-        public void SendUids(params (string, long)[] u)
-        {
-            Write(Types.SNames);
-            PutInt(u.Length);
-            for (var i=0;i<u.Length;i++)
-            {
-                PutString(u[i].Item1);
-                PutLong(u[i].Item2);
-            }
-        }
-        protected override void PutBuf(Buffer b)
-        {
-            Flush();
-            b.wpos = 2;
-        }
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            for (int j = 0; j < count; j++)
-                WriteByte(buffer[offset + j]);
-        }
-        public void Write(Types p)
-        {
-            WriteByte((byte)p);
-        }
+
         public override void Flush()
         {
-            rbuf.pos = 2;
-            rbuf.buf.len = 0;
-            if (wbuf == null)
-                return;
-            // now always send bSize bytes (not wcount)
-            wbuf.wpos -= 2;
-            wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
-            wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
+            rdr.buf.pos = 2;
+            rdr.buf.len = 0;
             try
             {
-                client.Send(wbuf.buf, Buffer.Size, 0);
-                wbuf.wpos = 2;
+                wtr.PutBuf();
+                wtr.buf.pos = 2;
             }
             catch (SocketException e)
             {
                 Console.WriteLine("Flush reports exception " + e.Message);
                 throw e;
             }
-        }
-        internal int GetException()
-        {
-            return GetException(Types.Exception);
-        }
-        // v2.0 exception handling during server comms
-        // an illegal nonzero rcount value indicates an exception
-        internal int GetException(Types proto)
-        {
-            Buffer bf = rbuf.buf;
-            if (proto == Types.Exception)
-            {
-                var rcount = (bf.buf[rbuf.pos++] << 7) + (bf.buf[rbuf.pos++] & 0x7f);
-                bf.len = rcount + 4;
-                proto = (Types)bf.buf[rbuf.pos++];
-            }
-            var em = rbuf.GetString();
-    //        Console.WriteLine("Received exception: " + em);
-            throw new ServerException(em);
         }
         public override bool CanRead
         {
@@ -401,6 +311,85 @@ namespace StrongLink
         public override void SetLength(long value)
         {
             throw new Exception("The method or operation is not implemented.");
+        }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new NotImplementedException();
+        }
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotImplementedException();
+        }
+    }
+    public class ClientReader:SocketReader
+    {
+        bool getting;
+        public ClientReader(Socket c) : base(c) { } 
+        public override bool GetBuf(long p) // parameter is ignored
+        {
+            getting = true;
+            int rcount;
+            try
+            {
+                var rc = client.Receive(buf.buf, Buffer.Size, 0);
+                if (rc == 0)
+                {
+                    rcount = 0;
+                    getting = false;
+                    return false;
+                }
+                rcount = (buf.buf[0] << 7) + buf.buf[1];
+                buf.len = rcount + 2;
+                if (rcount == Buffer.Size - 1)
+                    GetException();
+                getting = false;
+                return rcount > 0;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+        // v2.0 exception handling during server comms
+        // an illegal nonzero rcount value indicates an exception
+        internal int GetException()
+        {
+            var rcount = (buf.buf[buf.pos++] << 7) + (buf.buf[buf.pos++] & 0x7f);
+            buf.len = rcount + 4;
+            var b = buf.buf[buf.pos++];
+            if (b != (byte)Types.Exception)
+                throw new Exception("PE30");
+            var em = GetString();
+    //        Console.WriteLine("Received exception: " + em);
+            throw new ServerException(em);
+        }
+    }
+    public class ClientWriter:SocketWriter
+    {
+        public ClientWriter(Socket c) : base(c) { } 
+        public void SendUids(SDict<long, string> u)
+        {
+            Write(Types.SNames);
+            PutInt(u.Length);
+            for (var b = u.First(); b != null; b = b.Next())
+            {
+                PutLong(b.Value.Item1);
+                PutString(b.Value.Item2);
+            }
+        }
+        public void SendUids(params (string, long)[] u)
+        {
+            Write(Types.SNames);
+            PutInt(u.Length);
+            for (var i = 0; i < u.Length; i++)
+            {
+                PutString(u[i].Item1);
+                PutLong(u[i].Item2);
+            }
         }
     }
 }

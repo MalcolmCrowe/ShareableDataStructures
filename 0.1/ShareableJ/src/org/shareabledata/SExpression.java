@@ -12,7 +12,7 @@ package org.shareabledata;
 public class SExpression extends SDbObject {
         public final Serialisable left, right;
         public final int op; // see Op
-        public SExpression(Serialisable lf,int o,Reader f)
+        public SExpression(Serialisable lf,int o,ReaderBase f)
                 throws Exception
         {
             super(Types.SExpression);
@@ -33,7 +33,7 @@ public class SExpression extends SDbObject {
             Plus =0,Minus =1,Times=2,Divide=3,Eql=4,NotEql=5,Lss=6, 
             Leq=7, Gtr=8, Geq=9, Dot=10, And=11, Or=12, UMinus=13, Not=14;
         }
-        public static SExpression Get(Reader f) throws Exception
+        public static SExpression Get(ReaderBase f) throws Exception
         {
             var u = f.GetLong();
             var lf = f._Get();
@@ -67,7 +67,7 @@ public class SExpression extends SDbObject {
                 this : new SExpression(lf, op, rg);            
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             left.Put(f);
@@ -75,7 +75,7 @@ public class SExpression extends SDbObject {
             right.Put(f);
         }
         @Override
-        public Serialisable Fix(AStream f)
+        public Serialisable Fix(Writer f)
         {
             return new SExpression(left.Fix(f),op,right.Fix(f));            
         }

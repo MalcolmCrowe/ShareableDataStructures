@@ -16,18 +16,18 @@ public class SString extends Serialisable implements Comparable {
             super(Types.SString);
             str = s;
         }
-        SString(Reader f) throws Exception
+        SString(ReaderBase f) throws Exception
         {
             super(Types.SString, f);
             str = f.GetString();
         }
         @Override
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutString(str);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SString(f);
         }

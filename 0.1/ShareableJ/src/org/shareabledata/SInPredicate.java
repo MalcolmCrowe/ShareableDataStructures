@@ -19,7 +19,7 @@ public class SInPredicate extends Serialisable {
         }
         @Override
         public boolean isValue() { return false;}
-        public static SInPredicate Get(Reader f) throws Exception
+        public static SInPredicate Get(ReaderBase f) throws Exception
         {
             var a = f._Get();
             return new SInPredicate(a, f._Get());
@@ -33,7 +33,7 @@ public class SInPredicate extends Serialisable {
             return new SInPredicate(a,list.Prepare(db,pt));
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             arg.Put(f);

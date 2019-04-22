@@ -14,7 +14,7 @@ public class SFunction extends Serialisable {
         public final byte func;
         static long _fid = 0;
         public final long fid = --SysTable._uid;
-        public SFunction(byte fn,Reader f) throws Exception
+        public SFunction(byte fn,ReaderBase f) throws Exception
         {
             super(Types.SFunction);
             func = fn;
@@ -35,11 +35,11 @@ public class SFunction extends Serialisable {
             "NotNull","Constraint","Default","Generated"};
         }
         @Override
-        public Serialisable Fix(AStream f)
+        public Serialisable Fix(Writer f)
         {
             return new SFunction(func,arg.Fix(f));
         }
-        public static SFunction Get(Reader f) throws Exception
+        public static SFunction Get(ReaderBase f) throws Exception
         {
             return new SFunction((byte)f.ReadByte(), f);
         }
@@ -54,7 +54,7 @@ public class SFunction extends Serialisable {
             return new SFunction(func,arg.Prepare(tr,pt));
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.WriteByte(func);

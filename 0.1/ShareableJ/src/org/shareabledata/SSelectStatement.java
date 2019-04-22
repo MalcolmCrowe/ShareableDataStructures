@@ -40,7 +40,7 @@ public class SSelectStatement extends SQuery {
         {
             return qry.Names(tr, pt);
         }
-        public static SSelectStatement Get(Reader f) throws Exception
+        public static SSelectStatement Get(ReaderBase f) throws Exception
         {
             f.GetInt(); // uid for the SSelectStatement probably -1
             var d = f.ReadByte() == 1;
@@ -165,7 +165,7 @@ public class SSelectStatement extends SQuery {
             return new SSelectStatement(distinct, ds, cs, qy, os);
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f)throws Exception
         {
             super.Put(f);
             f.WriteByte((byte)(distinct ? 1 : 0));

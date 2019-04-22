@@ -55,7 +55,7 @@ public class STimeSpan extends Serialisable implements Comparable {
             frac = f;
             sign = sg;
         }
-        STimeSpan(Reader f) throws Exception
+        STimeSpan(ReaderBase f) throws Exception
         {
             super(Types.STimeSpan, f);
             Bigint t = f.GetInteger();
@@ -78,12 +78,12 @@ public class STimeSpan extends Serialisable implements Comparable {
             ticks = ot;
         }
         @Override
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutInteger(ticks);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new STimeSpan(f);
         }

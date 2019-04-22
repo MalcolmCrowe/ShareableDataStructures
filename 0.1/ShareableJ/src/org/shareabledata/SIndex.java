@@ -34,7 +34,7 @@ public class SIndex extends SDbObject {
         refindex = -1L;
     }
 
-    SIndex(Reader f) throws Exception 
+    SIndex(ReaderBase f) throws Exception 
     {
         super(Types.SIndex,f);
         var ro = f.db.role;
@@ -74,7 +74,7 @@ public class SIndex extends SDbObject {
 
     }
 
-    public SIndex(SIndex x, AStream f) throws Exception {
+    public SIndex(SIndex x, Writer f) throws Exception {
         super(x, f);
         table = f.Fix(x.table);
         f.PutLong(table);
@@ -119,7 +119,7 @@ public class SIndex extends SDbObject {
         rows = mt;
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f) throws Exception
     {
         super.Put(f);
         f.PutLong(table);
@@ -129,7 +129,7 @@ public class SIndex extends SDbObject {
             f.PutLong(b.getValue());
         f.PutLong(references);
     }
-    public static SIndex Get(Reader f) throws Exception {
+    public static SIndex Get(ReaderBase f) throws Exception {
         return new SIndex(f);
     }
     public void Check(SDatabase db,SRecord r,boolean updating)

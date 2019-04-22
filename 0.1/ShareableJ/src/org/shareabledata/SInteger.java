@@ -32,12 +32,12 @@ public class SInteger extends Serialisable implements Comparable {
                 value = 0; big = b;
             }
         }
-        SInteger(Reader f) throws Exception
+        SInteger(ReaderBase f) throws Exception
         {
             this(f.GetInteger());
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             switch (type)
@@ -50,7 +50,7 @@ public class SInteger extends Serialisable implements Comparable {
                     break;
             }
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SInteger(f);
         }

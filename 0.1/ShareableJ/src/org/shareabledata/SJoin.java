@@ -17,7 +17,7 @@ public class SJoin extends SQuery {
         public final SQuery left,right;
         public final SList<SExpression> ons; // equality expressions lcol=rcol
         public final SDict<Long,Long> uses; // key is for RIGHT, val for LEFT
-        public SJoin(Reader f) throws Exception
+        public SJoin(ReaderBase f) throws Exception
         {
             super(Types.STableExp,_Join(f));
             left = (SQuery)f._Get();
@@ -78,10 +78,10 @@ public class SJoin extends SQuery {
             super(Types.STableExp,d,c);
             left = lf; right = rg; outer = ou; joinType = jt; ons = on;uses=us;
         }
-        static SQuery _Join(Reader f) throws Exception
+        static SQuery _Join(ReaderBase f) throws Exception
         {
             f.GetInt();
-            var st = f.pos;
+            var st = f.buf.pos;
             SDict<Integer, Ident> d = null;
             SDict<Integer, Serialisable> c = null;
             SDict<String,Long> nms = null;
@@ -145,7 +145,7 @@ public class SJoin extends SQuery {
                     k++;
                 }
             }
-            f.pos = st;
+            f.buf.pos = st;
             return new SQuery(Types.STableExp, d, c);            
         }
         @Override
@@ -155,7 +155,7 @@ public class SJoin extends SQuery {
             return right.Names(tr, left.Names(tr,pt));
         }        
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             left.Put(f);
@@ -324,7 +324,7 @@ public class SJoin extends SQuery {
                 (SQuery)right.UseAliases(db,ta), os, us, ds, cs);
         }
 
-        public static SJoin Get(Reader f) throws Exception
+        public static SJoin Get(ReaderBase f) throws Exception
         {
             return new SJoin(f);
         }

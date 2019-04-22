@@ -29,7 +29,7 @@ public class SView extends SDbObject {
             viewdef = d;
             viewobs = ViewObs(tr,d);
         }
-        public SView(STransaction tr,SView v,AStream f) throws Exception
+        public SView(STransaction tr,SView v,Writer f) throws Exception
         {
             super(v,f);
             super.Put(f);
@@ -53,11 +53,11 @@ public class SView extends SDbObject {
         {
             return new SView((SQuery)viewdef.Prepare(db,pt));
         }
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             viewdef.Put(f);
         }
-        public static SView Get(Reader f) throws Exception
+        public static SView Get(ReaderBase f) throws Exception
         {
             var vw = (SView)f.db.objects.get(f.GetLong());
             // Construct new aliases in tr for all objects used in the view definition including aliases.
@@ -68,7 +68,7 @@ public class SView extends SDbObject {
             vw = (SView)vw.UseAliases(f.db,ta);
             return vw;
         }
-        static SDict<Long,Long> Aliases(Reader f,long u,SDict<Long,Long> ta)
+        static SDict<Long,Long> Aliases(ReaderBase f,long u,SDict<Long,Long> ta)
         {
             var a = --f.lastAlias;
             var n = "$" + (maxAlias - a);

@@ -264,7 +264,7 @@ namespace Shareable
             :base(Rdc(tr,ix,key),t, cx, t.rows.Length)
         {
             _ix = ix; _key = key; _wh = wh; _op = op; 
-            _unique = key.Length == _ix.cols.Length;
+            _unique = key.Length == _ix.cols.Length && _ix.references==-1;
         }
         /// <summary>
         /// Add in read constraints: a key specifies just one row as the read
@@ -525,8 +525,12 @@ namespace Shareable
         {
             var vs = SDict<long, Serialisable>.Empty;
             var ags = cx.Ags();
-            for (var b = r.First() as RowBookmark; b != null;
-                b = b.Next() as RowBookmark)
+            var b = r.First() as RowBookmark;
+            if (b==null)
+                for (var ab = ags.First(); ab != null; ab = ab.Next())
+                    if (ab.Value.Item2 is SFunction f)
+                        vs += (f.fid, (f.func == SFunction.Func.Count) ? SInteger.Zero : Serialisable.Null);
+            for (; b != null; b = b.Next() as RowBookmark)
                 for (var ab = ags.First(); ab != null; ab = ab.Next())
                     if (ab.Value.Item2 is SFunction f)
                     {

@@ -26,7 +26,7 @@ public class SDate extends Serialisable implements Comparable {
             year = y; month = m; 
             rest = r;
         }
-        SDate(Reader f) throws Exception
+        SDate(ReaderBase f) throws Exception
         {
             super(Types.SDate, f);
             year = f.GetInt();
@@ -34,14 +34,14 @@ public class SDate extends Serialisable implements Comparable {
             rest = f.GetInteger();
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutInt(year);
             f.PutInt(month);
             f.PutInteger(rest);
         }
-        public static Serialisable Get(Reader f) throws Exception
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SDate(f);
         }

@@ -24,9 +24,10 @@ namespace Tpcc
 		public int carid;
 		public bool DoCarrier(ref string mess)
 		{
-			db.ExecuteNonQuery("insert DELIVERY(DL_W_ID,DL_CARRIER_ID) select "+wid+","+carid);
-			Set(2,carid);
-			Set(3,"Delivery has been scheduled");
+			db.ExecuteNonQuery("insert DELIVERY(DL_W_ID,DL_CARRIER_ID) values ("+wid+","+carid+")");
+            Form1.commits++;
+            Set(1,carid);
+			Set(2,"Delivery has been scheduled");
 			return false;
 		}
 
@@ -92,6 +93,10 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                if (s.CompareTo("Transaction conflict with read")==0)
+                    Form1.rconflicts++;
+                else
+                   Form1.wconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;

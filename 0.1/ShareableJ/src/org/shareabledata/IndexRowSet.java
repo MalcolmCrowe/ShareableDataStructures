@@ -67,6 +67,7 @@ public class IndexRowSet extends RowSet {
                 super(irs,_Cx(irs,ob,null),p);
                 _irs = irs; _mbm = mbm;
             }
+            @Override
             public Bookmark<Serialisable> Next()
             {
                 try{

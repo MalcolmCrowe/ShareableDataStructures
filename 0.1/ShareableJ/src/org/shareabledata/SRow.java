@@ -68,7 +68,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         rec = null;
         isNull = isn;        
     }
-    SRow(Reader f) throws Exception
+    SRow(ReaderBase f) throws Exception
     {
         super(Types.SRow);
         var n = f.GetInt();
@@ -153,7 +153,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         rec = ((SRow)cx.refs).rec;
         isNull = isn;
     }
-    public static SRow Get(Reader f) throws Exception
+    public static SRow Get(ReaderBase f) throws Exception
     {
         return new SRow(f);
     }
@@ -196,7 +196,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         return new SRow(nms,cls,vls,rec);
     }
     @Override
-    public void Put(StreamBase f)
+    public void Put(WriterBase f)throws Exception
     {
         super.Put(f);
         f.PutInt(cols.Length);

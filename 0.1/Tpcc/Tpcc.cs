@@ -47,7 +47,7 @@ namespace Tpcc
 		private DelReport delReport1;
 		Thread thread = null;
 		Thread deferred = null;
-        private System.Windows.Forms.Timer timer1;
+        private System.Windows.Forms.Timer timer1,timer2;
 		Thread emulate = null;
         private Label label3;
         private TextBox textBox4;
@@ -60,7 +60,7 @@ namespace Tpcc
         private Label label5;
         private TextBox Clerks;
         public static string host;
-
+        public static int commits, rconflicts, wconflicts;
 		public Form1()
 		{
 			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
@@ -601,14 +601,24 @@ namespace Tpcc
 
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
-            for (var i = 0; i < int.Parse(Clerks.Text); i++)
+            var nc = int.Parse(Clerks.Text);
+            commits = 0; rconflicts = 0; wconflicts = 0;
+            Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
+            for (var i = 0; i < nc; i++)
             Task.Run(()=>{
                 var f = new Form1();
                 f.ShowDialog();
             });
-		}
-
-		int action = -1;
+            timer2 = new System.Windows.Forms.Timer();
+            timer2.Interval = 600000;
+            timer2.Tick += new System.EventHandler(timer2_Tick);
+            timer2.Enabled = true;
+        }
+        void timer2_Tick(object sender, EventArgs e)
+        {
+            Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+        }
+        int action = -1;
 		int stage = -1;
 
 		void UserChoice()
@@ -623,7 +633,6 @@ namespace Tpcc
 				tabControl1.SelectedIndex=1;
                 action = 1;
 				timer1.Interval = 500;
-				return;
 			}
 			else if (i<20)
 			{

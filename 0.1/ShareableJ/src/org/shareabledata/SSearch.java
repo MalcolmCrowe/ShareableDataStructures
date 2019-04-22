@@ -14,7 +14,7 @@ public class SSearch extends SQuery {
     public final SQuery sce;
     public final SList<Serialisable> where;
 
-    public SSearch(SQuery sc,Reader f,long u) throws Exception {
+    public SSearch(SQuery sc,ReaderBase f,long u) throws Exception {
         super(Types.SSearch, u);
         SList<Serialisable> w = null;
         var n = f.GetInt();
@@ -39,7 +39,7 @@ public class SSearch extends SQuery {
         return sce.Names(tr, pt);
     }
     @Override
-    public void Put(StreamBase f) {
+    public void Put(WriterBase f) throws Exception{
         super.Put(f);
         sce.Put(f);
         f.PutInt(where.Length);
@@ -86,7 +86,7 @@ public class SSearch extends SQuery {
         }
         return new SSearch((SQuery)sce.UpdateAliases(uids), w);
     }
-    public static SSearch Get(Reader f) throws Exception {
+    public static SSearch Get(ReaderBase f) throws Exception {
         var u = f.GetLong();
         var sc = f._Get();
         if (sc==null || !(sc instanceof SQuery))

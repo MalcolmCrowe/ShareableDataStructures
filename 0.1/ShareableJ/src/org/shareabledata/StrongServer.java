@@ -23,7 +23,6 @@ public class StrongServer implements Runnable {
     /// the Strong protocol stream for this client
     /// </summary>
     ServerStream asy;
-    Reader rdr;
     SDatabase db;
     static int _cid = 0;
     int cid = _cid++;
@@ -44,18 +43,17 @@ public class StrongServer implements Runnable {
         int p = -1;
         try {
             asy = new ServerStream(client);
-            rdr = asy.rbuf;
-            var fn = rdr.GetString();
+            var fn = asy.rdr.GetString();
             //       Console.WriteLine("Received " + fn);
             db = SDatabase.Open(path, fn);
-            asy.WriteByte((byte)Types.Done);
+            asy.wtr.WriteByte((byte)Types.Done);
             asy.Flush();
         } catch (Exception e) {
             try {
                 System.out.println(e.getMessage());
                 asy.StartException();
-                asy.WriteByte((byte)Types.Exception);
-                asy.PutString(e.getMessage());
+                asy.wtr.WriteByte((byte)Types.Exception);
+                asy.wtr.PutString(e.getMessage());
                 asy.Flush();
             } catch (Exception ee) {
                 System.out.println(ee.getMessage());
@@ -64,6 +62,8 @@ public class StrongServer implements Runnable {
         }
         // start a Strong protocol service
         for (;;) {
+            var rdr = asy.rdr;
+            var wtr = asy.wtr;
             p = -1;
             try {
                 p = rdr.ReadByte();
@@ -123,15 +123,15 @@ public class StrongServer implements Runnable {
                         }
                         sb.append(']');
                         db = db.MaybeAutoCommit(rs._tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         if (p==Types.DescribedGet)
                         {
                             var d = rs._qry.getDisplay();
-                            asy.PutInt(d.Length);
+                            wtr.PutInt(d.Length);
                             for (var b=d.First();b!=null;b=b.Next())
-                                asy.PutString(b.getValue().val.id);
+                                wtr.PutString(b.getValue().val.id);
                         }
-                        asy.PutString(sb.toString());
+                        wtr.PutString(sb.toString());
                         asy.Flush();
                         break;
                     }
@@ -155,7 +155,7 @@ public class StrongServer implements Runnable {
                             CreateIndex(rdr);
                         }
                         db = db.MaybeAutoCommit((STransaction)rdr.db);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -165,7 +165,7 @@ public class StrongServer implements Runnable {
                         rdr.db = tr;
                         CreateColumn(rdr);
                         db = db.MaybeAutoCommit((STransaction)rdr.db);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -181,7 +181,7 @@ public class StrongServer implements Runnable {
                         tr = new SInsert(t,c,rdr._Get()).Prepare(tr,null)
                                 .Obey(tr,null);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -232,7 +232,7 @@ public class StrongServer implements Runnable {
                             throw ex;
                         }
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -244,7 +244,7 @@ public class StrongServer implements Runnable {
                         tr = at.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -267,7 +267,7 @@ public class StrongServer implements Runnable {
                                 tr.curpos);
                         }
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -276,7 +276,7 @@ public class StrongServer implements Runnable {
                         rdr.db = tr;
                         CreateIndex(rdr);
                         db = db.MaybeAutoCommit((STransaction)rdr.db);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -288,7 +288,7 @@ public class StrongServer implements Runnable {
                         tr = dr.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -296,7 +296,7 @@ public class StrongServer implements Runnable {
                         var id = rdr.GetLong();
                         var sb = new StringBuilder();
                         db.Get(id).Append(db,sb);
-                        asy.PutString(sb.toString());
+                        wtr.PutString(sb.toString());
                         asy.Flush();
                         break;
                     }
@@ -308,7 +308,7 @@ public class StrongServer implements Runnable {
                         u = (SUpdateSearch)u.Prepare(tr,u.qry.Names(tr,null));
                         tr = u.Obey(tr,Context.Empty);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }                    
@@ -332,7 +332,7 @@ public class StrongServer implements Runnable {
                             throw (ex);
                         }
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -343,7 +343,7 @@ public class StrongServer implements Runnable {
                         tr = dr.Prepare(tr,dr.qry.Names(tr,null))
                                 .Obey(tr,Context.Empty);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
@@ -357,18 +357,18 @@ public class StrongServer implements Runnable {
                         tr = (STransaction)tr.Install(new SDelete(tr, rc.table, 
                                 rc.uid),rc,tr.curpos);
                         db = db.MaybeAutoCommit(tr);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     }
                     case Types.SBegin:
                         db = new STransaction(db, rdr, false);
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     case Types.SRollback:
                         db = db.Rollback();
-                        asy.WriteByte((byte)Types.Done);
+                        wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
                     case Types.SCommit:
@@ -377,7 +377,7 @@ public class StrongServer implements Runnable {
                                 throw new Exception("No transaction to commit");
                             var tr = (STransaction)db; 
                             db = tr.Commit();
-                            asy.WriteByte((byte)Types.Done);
+                            wtr.WriteByte((byte)Types.Done);
                             asy.Flush();
                             break;
                         }
@@ -389,18 +389,18 @@ public class StrongServer implements Runnable {
                     db = db.Rollback();
                     //       db.result = null;
                     asy.StartException();
-                    asy.WriteByte((byte)Types.Exception);
+                    wtr.WriteByte((byte)Types.Exception);
                     var m = e.getMessage();
                     if (m==null)
                         m = e.toString();
-                    asy.PutString(m);
+                    wtr.PutString(m);
                     asy.Flush();
                 } catch (Exception ee) {
                 }
             }
         }
     }
-    void CreateColumn(Reader rdr) throws Exception
+    void CreateColumn(ReaderBase rdr) throws Exception
     {
         var sc = (SColumn)rdr._Get();
         var db = (STransaction)rdr.db;
@@ -410,7 +410,7 @@ public class StrongServer implements Runnable {
         rdr.db = db.Install(new SColumn(db,sc.table,sc.dataType,sc.constraints),
                 cn, db.curpos);
     }
-    void CreateIndex(Reader rdr) throws Exception
+    void CreateIndex(ReaderBase rdr) throws Exception
     {
         var db = (STransaction)rdr.db;
         rdr.db = db.Install(SIndex.Get(rdr), db.curpos);

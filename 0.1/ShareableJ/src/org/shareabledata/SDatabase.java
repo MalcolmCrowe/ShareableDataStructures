@@ -17,8 +17,8 @@ public class SDatabase {
     public final SDict<Long, SDbObject> objects;
     public final long curpos;
     public final SRole role;
-    static Object files = new Object(); // a lock 
-    protected static SDict<String, AStream> dbfiles = null;
+    static final Object files = new Object(); // a lock 
+    protected static SDict<String, RandomAccessFile> dbfiles = null;
     protected static SDict<String, SDatabase> databases = null;
     public static final SDatabase _system = System();
 
@@ -39,11 +39,11 @@ public class SDatabase {
             return r;
         }
         var db = new SDatabase(fname);
-        var fs = new AStream(path, fname);
+        var file = new RandomAccessFile(new File(path,fname),"rws");
         if (dbfiles == null) {
-            dbfiles = new SDict<>(fname, fs);
+            dbfiles = new SDict<>(fname, file);
         } else {
-            dbfiles = dbfiles.Add(fname, fs);
+            dbfiles = dbfiles.Add(fname, file);
         }
         db = db.Load();
         Install(db);
@@ -63,27 +63,12 @@ public class SDatabase {
     }
 
     public SRecord Get(Long pos) {
-        var s = _Get(pos);
-        SRecord rc = null;
-        if (s != null && s.type == Types.SRecord || s.type == Types.SUpdate) {
-            rc = (SRecord) s;
-        }
-        if (rc == null) {
-            throw new Error("Record " + pos + " never defined");
-        }
-        var tb = (STable)objects.Lookup(rc.table);
-        if (tb == null) {
-            throw new Error("Table " + rc.table + " has been dropped");
-        }
-        if (tb.rows == null || !tb.rows.Contains(rc.Defpos())) {
-            throw new Error("Record " + pos + " has been dropped");
-        }
-        return (SRecord) _Get(tb.rows.Lookup(rc.Defpos()));
+        return (SRecord)_Get(pos);
     }
 
     public Serialisable _Get(long pos) {
         try {
-            return dbfiles.Lookup(name).Lookup(this,pos);
+            return new Reader(this,pos)._Get();
         } catch(Exception e)
         {
             throw new Error("bad log at "+pos);
@@ -246,16 +231,16 @@ public class SDatabase {
         return New(objects.Add(x.uid, x).Add(tb.uid,tb),role,c);
     }
 
-    public AStream File() {
+    public RandomAccessFile File() {
         return dbfiles.Lookup(name);
     }
 
     SDatabase Load() throws Exception {
         var rd = new Reader(this,curpos);
         var db = this;
-        for (var s = (SDbObject)rd._Get(); s != null; s = (SDbObject)rd._Get())
-            rd.db = rd.db._Add(s, s.uid);
-        return new SDatabase(rd.db,rd.getPosition());
+        for (var s = (SDbObject)rd._Get(); s != null && s!=Serialisable.Null; s = (SDbObject)rd._Get())
+            rd.db = rd.db._Add(s, rd.Position());
+        return new SDatabase(rd.db,rd.Position());
     }
     public SDatabase _Add(SDbObject s, long p) throws Exception {
         switch (s.type) {
@@ -287,10 +272,9 @@ public class SDatabase {
 
     public void Close() throws IOException {
         synchronized (files) {
-            AStream f = dbfiles.Lookup(name);
+            var f = dbfiles.Lookup(name);
             databases = databases.Remove(name);
             dbfiles = dbfiles.Remove(name);
-            f.Close();
         }
     }
 
@@ -363,7 +347,7 @@ public class SDatabase {
         return New(obs, ro, p);
     }
 
-    public STransaction Transact(Reader rdr,boolean auto) {
+    public STransaction Transact(ReaderBase rdr,boolean auto) {
         return new STransaction(this, rdr, auto);
     }
 

@@ -114,7 +114,7 @@ public class STable extends SQuery {
         }
         // When an STable is committed is should be empty.
         // If the transactions has cols/rows for it they will committed later.
-        public STable(STable t,String nm,AStream f) throws Exception
+        public STable(STable t,String nm,Writer f) throws Exception
         {
             super(t,f);
             f.PutString(nm);
@@ -122,7 +122,7 @@ public class STable extends SQuery {
             rows = null;
             indexes = null;
         }
-        public static STable Get(Reader f)throws Exception
+        public static STable Get(ReaderBase f)throws Exception
         {
             var db = f.db;
             if (f instanceof SocketReader)
@@ -133,7 +133,7 @@ public class STable extends SQuery {
                     throw new Exception("No table " + nm);
                 return (STable)db.objects.get(db.role.globalNames.get(nm));
             }
-            var c = f.getPosition() - 1;
+            var c = f.Position() - 1;
             var tb = new STable(c);
             var tn = f.GetString();
             f.db = db.Install(tb,tn,c);

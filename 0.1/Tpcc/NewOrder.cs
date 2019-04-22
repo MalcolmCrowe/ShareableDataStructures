@@ -71,9 +71,14 @@ namespace Tpcc
                 {
                     throw e;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    var s = ex.Message;
                     db.Rollback();
+                    if (s.CompareTo("Transaction conflict with read") == 0)
+                        Form1.rconflicts++;
+                    else
+                        Form1.wconflicts++;
                 }
             }
         }
@@ -84,9 +89,14 @@ namespace Tpcc
                 db.ExecuteNonQuery(cmd);
                 return false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                var s = ex.Message;
                 db.Rollback();
+                if (s.CompareTo("Transaction conflict with read") == 0)
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
             return true;
         }
@@ -243,15 +253,23 @@ namespace Tpcc
                     done = true;
                 }
                 else
+                {
                     db.Commit();
+                    Form1.commits++;
+                }
                 // Phase 3 display the results
                 Set(130, "OKAY");
                 done = true;
             }
             catch (Exception ex)
             {
-                Set(130, ex.Message);
+                var s = ex.Message;
+                Set(130, s);
                 db.Rollback();
+                if (s.CompareTo("Transaction conflict with read") == 0)
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
             return done;
         }
@@ -318,8 +336,8 @@ namespace Tpcc
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
-		}
-		public void Single(ref int stage)
+        }
+        public void Single(ref int stage)
 		{
 			status.Text = "";
 			// Phase 1 generate the "terminal input"
@@ -562,6 +580,10 @@ namespace Tpcc
 			catch(Exception ex) {
 				status.Text = ex.Message;
                 db.Rollback();
+                if (s.CompareTo("Transaction conflict with read") == 0)
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
 			Invalidate(true);
 		}
