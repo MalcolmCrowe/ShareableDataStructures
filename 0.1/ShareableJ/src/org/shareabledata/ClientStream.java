@@ -24,13 +24,20 @@ public class ClientStream {
             rdr.buf.pos = 2;
             rdr.buf.len = 0;
         }
-        public byte Receive() throws Exception
+        public ClientTriple Receive() throws Exception
         {
             if (wtr.buf.pos > 2)
                 wtr.PutBuf();
             rdr.buf.pos = 2;
             rdr.buf.len = 0;
-            return (byte)rdr.ReadByte();
+            long ts = 0,te = 0;
+            var t = (byte)rdr.ReadByte();
+            if (t==Types.Done)
+            {
+                ts = rdr.GetLong();
+                te = rdr.GetLong();
+            }
+            return new ClientTriple(t,ts,te);
         }
         public void Flush() throws Exception
         {

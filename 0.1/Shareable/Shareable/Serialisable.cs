@@ -61,7 +61,7 @@ namespace Shareable
         SQuery = 51, // only used for "STATIC"
         SSysTable = 52,
         SCreateView = 53,
-        SDropIndex = 54 
+        SDropIndex = 54
     }
     public interface ILookup<K, V> where K : IComparable
     {
@@ -187,10 +187,10 @@ namespace Shareable
         /// <param name="db"></param>
         /// <param name="tr"></param>
         /// <param name="that"></param>
-        /// <returns></returns>
-        public virtual bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
+        /// <returns>The conflicting uid or 0</returns>
+        public virtual long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
-            return false;
+            return 0;
         }
         /// <summary>
         /// Append is used by the server when preparing results to send to the client
@@ -289,9 +289,9 @@ namespace Shareable
         /// </summary>
         /// <param name=""></param>
         /// <returns></returns>
-        public virtual bool Check(SDict<long,bool> rdC)
+        public virtual long Check(SDict<long,bool> rdC)
         {
-            return false;
+            return 0;
         }
         public virtual Serialisable this[long col]
         { get { throw new NotImplementedException(); } }
@@ -359,6 +359,22 @@ namespace Shareable
                 ags = left.Aggregates(ags);
             if (right != null)
                 ags = right.Aggregates(ags);
+            ags = CheckForLogFileSearch(left, ags);
+            ags = SearchRowSet.Reverse(this).CheckForLogFileSearch(right, ags);
+            return ags;
+        }
+        /// <summary>
+        /// The Uid column in _Log is an obvious target for a where condition.
+        /// It is a string but it is nice to use the numeric value for a direct lookup.
+        /// We can only really do this for a single simple condition
+        /// </summary>
+        /// <param name="a">Maybe this is _Log.Uid</param>
+        /// <param name="ags"></param>
+        /// <returns></returns>
+        SDict<long,Serialisable>CheckForLogFileSearch(Serialisable a, SDict<long, Serialisable> ags)
+        {
+            if (a is SColumn sc && sc.uid == SysTable._SysUid - 3) // Uid[_Log]
+                ags += (sc.uid, (ags.defines(sc.uid)&&ags[sc.uid]!=this)?Null:this); // poison it if already defined
             return ags;
         }
         public override Serialisable Lookup(STransaction tr,Context cx)
@@ -1835,10 +1851,10 @@ namespace Shareable
             }
             return rc;
         }
-        public override bool Conflicts(SDatabase db, STransaction tr, Serialisable that)
+        public override long Conflicts(SDatabase db, STransaction tr, Serialisable that)
         {
-            return that.type == Types.STable &&
-                db.Name(uid).CompareTo(tr.Name(((STable)that).uid)) == 0;
+            return (that.type == Types.STable &&
+                db.Name(uid).CompareTo(tr.Name(((STable)that).uid)) == 0)?uid:0;
         }
         public override void Append(SDatabase db,StringBuilder sb)
         {
@@ -1930,6 +1946,8 @@ namespace Shareable
         }
         internal static SDatabase SysTables(SDatabase d)
         {
+            // d.objects should be empty and the _Log should be the first table defined
+            // as the LogRowSet code relies on _Log.Uid being at @-3
             d=Add(d,"_Log",("Uid", Types.SString),("Type", Types.SString),("Desc", Types.SString),
                 ("Id",Types.SString),("Affects",Types.SString));
             d=Add(d,"_Columns",("Table",Types.SString),("Name",Types.SString),
@@ -2116,22 +2134,22 @@ namespace Shareable
         {
             return (f.uids.Contains(uid)) ? new SColumn(f.uids[table], dataType, f.uids[uid]) : this;
         }
-        public override bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch (that.type)
             {
                 case Types.SColumn:
                     {
                         var c = (SColumn)that;
-                        return c.table == table && db.Name(c.uid).CompareTo(tr.Name(uid)) == 0;
+                        return (c.table == table && db.Name(c.uid).CompareTo(tr.Name(uid)) == 0)?uid:0;
                     }
                 case Types.SDrop:
                     {
                         var d = (SDrop)that;
-                        return d.drpos == table;
+                        return (d.drpos == table)?uid:0;
                     }
             }
-            return false;
+            return 0;
         }
         public override Serialisable Lookup(STransaction tr,Context cx)
         {
@@ -2282,18 +2300,18 @@ namespace Shareable
         {
             return (STransaction)tr.Install(this, tr.curpos);
         }
-        public override bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch(that.type)
             {
                 case Types.SAlter:
                     var a = (SAlter)that;
-                    return a.defpos == defpos;
+                    return (a.defpos == defpos)?uid:0;
                 case Types.SDrop:
                     var d = (SDrop)that;
-                    return d.drpos == defpos || d.drpos == col;
+                    return (d.drpos == defpos || d.drpos == col)?uid:0;
             }
-            return false;
+            return 0;
         }
         public override string ToString()
         {
@@ -2388,27 +2406,27 @@ namespace Shareable
         {
             return new SDrop(f);
         }
-        public override bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch(that.type)
             {
                 case Types.SDrop:
                     {
                         var d = (SDrop)that;
-                        return (d.drpos == drpos && d.parent==parent) || d.drpos==parent || d.parent==drpos;
+                        return ((d.drpos == drpos && d.parent==parent) || d.drpos==parent || d.parent==drpos)?uid:0;
                     }
                 case Types.SColumn:
                     {
                         var c = (SColumn)that;
-                        return c.table == drpos || c.uid == drpos;
+                        return (c.table == drpos || c.uid == drpos)?uid:0;
                     }
                 case Types.SAlter:
                     {
                         var a = (SAlter)that;
-                        return a.defpos == drpos || a.col == drpos;
+                        return (a.defpos == drpos || a.col == drpos)?uid:0;
                     }
             }
-            return false;
+            return 0;
         }
         public override string ToString()
         {
@@ -2491,17 +2509,17 @@ namespace Shareable
         {
             viewdef.Put(f);
         }
-        public override bool Conflicts(SDatabase db,STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch (that.type)
             {
                 case Types.SView:
                     {
                         var v = (SView)that;
-                        return db.Name(uid).CompareTo(tr.Name(v.uid)) == 0;
+                        return (db.Name(uid).CompareTo(tr.Name(v.uid)) == 0)?uid:0;
                     }
             }
-            return false;
+            return 0;
         }
     }
     public class SInsert : Serialisable
@@ -2836,18 +2854,18 @@ namespace Shareable
                     return false;
             return true;
         }
-        public override bool Check(SDict<long, bool> rdC)
+        public override long Check(SDict<long, bool> rdC)
         {
-            return rdC.Contains(Defpos) || rdC.Contains(table);
+            return (rdC.Contains(Defpos) || rdC.Contains(table))?uid:0;
         }
-        public override bool Conflicts(SDatabase db, STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db, STransaction tr,Serialisable that)
         {
             switch(that.type)
             {
                 case Types.SDelete:
-                    return ((SDelete)that).delpos == Defpos;
+                    return (((SDelete)that).delpos == Defpos)?uid:0;
             }
-            return false;
+            return 0;
         }
         public override string ToString()
         {
@@ -2958,12 +2976,12 @@ namespace Shareable
         {
             return new SUpdate(f);
         }
-        public override bool Conflicts(SDatabase db, STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db, STransaction tr,Serialisable that)
         {
             switch (that.type)
             {
                 case Types.SUpdate:
-                    return ((SUpdate)that).Defpos == Defpos;
+                    return (((SUpdate)that).Defpos == Defpos)?uid:0;
             }
             return base.Conflicts(db,tr,that);
         }
@@ -3034,20 +3052,20 @@ namespace Shareable
             return new SDelete(f);
         }
         public override long Affects => delpos;
-        public override bool Check(SDict<long, bool> rdC)
+        public override long Check(SDict<long, bool> rdC)
         {
-            return rdC.Contains(delpos) || rdC.Contains(table);
+            return (rdC.Contains(delpos) || rdC.Contains(table))?uid:0;
         }
-        public override bool Conflicts(SDatabase db, STransaction tr,Serialisable that)
+        public override long Conflicts(SDatabase db, STransaction tr,Serialisable that)
         { 
             switch(that.type)
             {
                 case Types.SUpdate:
-                    return ((SUpdate)that).Defpos == delpos;
+                    return (((SUpdate)that).Defpos == delpos)?uid:0;
                 case Types.SRecord:
-                    return ((SRecord)that).Defpos == delpos;
+                    return (((SRecord)that).Defpos == delpos)?uid:0;
             }
-            return false;
+            return 0;
         }
         public override string ToString()
         {
@@ -3554,12 +3572,8 @@ namespace Shareable
         public long Length => file.Length + buf.pos;
         public override void PutBuf()
         {
-            lock (file)
-            {
-                var p = file.Seek(0, SeekOrigin.End);
-                file.Write(buf.buf, 0, buf.pos);
-                file.Flush();
-            }
+            var p = file.Seek(0, SeekOrigin.End);
+            file.Write(buf.buf, 0, buf.pos);
             buf.pos = 0;
         }
         public override void WriteByte(byte value)
@@ -3596,7 +3610,7 @@ namespace Shareable
                             break;
                         }
                 }
-            try
+            lock(file)
             {
                 //            Console.WriteLine("Committing:");
                 for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next())
@@ -3678,12 +3692,10 @@ namespace Shareable
                                 break;
                             }
                     }
+                    PutBuf();
+                    file.Flush();
                 }
-                PutBuf();
                 SDatabase.Install(db);
-            }
-            finally
-            {
             }
             return db;
         }

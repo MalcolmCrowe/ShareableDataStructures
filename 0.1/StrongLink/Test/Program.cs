@@ -331,7 +331,7 @@ namespace Test
             conn.ExecuteQuery("select from RDC where A=42");
             var task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict with read");
+            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict");
             Begin();
             conn.ExecuteQuery("select from RDC where A=52");
             var task2 = Task.Factory.StartNew(() => Test10B());
@@ -341,7 +341,7 @@ namespace Test
             CheckResults(10,2,"select from RDC","[{A:42,B:'the product of 6 and 7'},{A:52,B:'Weeks in the year'}]");
             task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict with read");
+            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict");
         }
         void Test10A()
         {
@@ -456,7 +456,7 @@ namespace Test
             }
             catch (Exception e)
             {
-                if (e.Message.CompareTo(m) == 0)
+                if (e.Message.StartsWith(m))
                     return;
                 Console.WriteLine("Unexpected exception (" + t + " " + q + ") " + e.Message);
                 return;
@@ -473,7 +473,7 @@ namespace Test
             }
             catch (Exception e)
             {
-                if (e.Message.CompareTo(m) == 0)
+                if (e.Message.StartsWith(m))
                     return;
                 Console.WriteLine("Unexpected exception (" + t + " " + q + ") " + e.Message);
                 return;

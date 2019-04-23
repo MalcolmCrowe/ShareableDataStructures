@@ -15,7 +15,38 @@ namespace StrongLink
     public class StrongConnect
     {
         internal ClientStream asy;
-        public bool inTransaction = false;
+        static int _cid = 0, _tid = 0, _req = 0;
+        int cid = ++_cid;
+        static StreamWriter reqs = null;
+        static DateTime start = DateTime.Now;
+        void RecordRequest(string sql)
+        {
+            if (reqs == null)
+                return;
+            var t = DateTime.Now - start;
+            lock(reqs)
+                reqs.WriteLine(""+t.TotalMilliseconds+";" +(++_req)+";" + cid + ";" + inTransaction + "; " + sql);
+        }
+        void RecordResponse(long ts,long te)
+        {
+            if (reqs == null)
+                return;
+            var t = DateTime.Now - start;
+            lock (reqs)
+                reqs.WriteLine("" + t.TotalMilliseconds + ";" + (++_req) + ";" + cid + ";" + inTransaction + ";" + ts+";"+te);
+        }
+        public static void OpenRequests()
+        {
+            if (reqs == null)
+                reqs = new StreamWriter("requests.txt");
+        }
+        public static void CloseRequests()
+        {
+            if (reqs!=null)
+                reqs.Close();
+            reqs = null;
+        }
+        public int inTransaction = 0;
         SDict<long, string> preps = SDict<long, string>.Empty;
         public SDict<int, string>? description = null; // see ExecuteQuery
         public string lastreq;
@@ -60,7 +91,7 @@ namespace StrongLink
             var wtr = asy.wtr;
             wtr.PutString(fn);
             asy.Flush();
-            asy.rdr.ReadByte();
+            asy.Receive();
             preps = SDict<long, string>.Empty;
         }
         public long Prepare(string n)
@@ -135,6 +166,9 @@ namespace StrongLink
             var qry = pair.Item1 as SQuery;
             if (qry == null)
                 throw new Exception("Bad query " + sql);
+#if TRACE
+            RecordRequest(sql);
+#endif
             return Get(pair.Item2,qry);
         }
         public Types ExecuteNonQuery(string sql)
@@ -144,23 +178,31 @@ namespace StrongLink
             var s = Parser.Parse(sql);
             if (s.Item2 == null)
                 return Types.Exception;
+#if TRACE
+            RecordRequest(sql);
+#endif
             var wtr = asy.wtr;
             wtr.SendUids(s.Item2);
             s.Item1.Put(wtr);
-            var b = asy.Receive();
-            if (b == Types.Exception)
-                inTransaction = false;
-            else
+            try
             {
+                var b = asy.Receive();
+#if TRACE
+                RecordResponse(b.Item2, b.Item3);
+#endif
                 var su = sql.Trim().Substring(0, 5).ToUpper();
                 switch (su)
                 {
-                    case "BEGIN": inTransaction = true; break;
+                    case "BEGIN": inTransaction = ++_tid; break;
                     case "ROLLB":
-                    case "COMMI": inTransaction = false; break;
+                    case "COMMI": inTransaction = 0; break;
                 }
+            } catch(ServerException em)
+            {
+                RecordRequest("Exception: " + em.Message);
+                throw em;
             }
-            return b;
+            return Types.Done;
         }
         public DocArray Get(SDict<long,string> d,Serialisable tn)
         {
@@ -170,48 +212,63 @@ namespace StrongLink
             wtr.Write(Types.DescribedGet);
             tn.Put(wtr);
             asy.Flush();
-            var b = asy.rdr.ReadByte();
-            if (b == (byte)Types.Exception)
+            try
             {
-                inTransaction = false;
-                asy.rdr.GetException();
-            }
-            if (b == (byte)Types.Done)
+                var b = asy.Receive();
+            } catch(ServerException em)
             {
-                description = SDict<int, string>.Empty;
-                var n = asy.rdr.GetInt();
-                for (var i = 0; i < n; i++)
-                    description += (i, asy.rdr.GetString());
-                return new DocArray(asy.rdr.GetString());
+                RecordRequest("Exception :" + em.Message);
+                throw em;
             }
-            throw new Exception("PE28");
+            description = SDict<int, string>.Empty;
+            var n = asy.rdr.GetInt();
+            for (var i = 0; i < n; i++)
+                description += (i, asy.rdr.GetString());
+            return new DocArray(asy.rdr.GetString());
         }
         public void BeginTransaction()
         {
+            RecordRequest("begin transaction");
             asy.rdr.buf.len = 0;
             asy.wtr.Write(Types.SBegin);
             var b = asy.Receive();
-            if (b == Types.Exception)
+            if (b.Item1 == Types.Exception)
             {
-                inTransaction = false;
+                inTransaction = 0;
                 asy.rdr.GetException();
             }
-            if (b == Types.Done)
-                inTransaction = true;
+            if (b.Item1 == Types.Done)
+                inTransaction = ++_tid;
+#if TRACE
+            RecordResponse(b.Item2, b.Item3);
+#endif
         }
-        public void Rollback()
+            public void Rollback()
         {
+            RecordRequest("rollback");
             asy.rdr.buf.len = 0;
             asy.wtr.Write(Types.SRollback);
             var b = asy.Receive();
-            inTransaction = false;
+            inTransaction = 0;
         }
         public void Commit()
         {
+            RecordRequest("commit");
             asy.rdr.buf.len = 0;
             asy.wtr.Write(Types.SCommit);
-            var b = asy.Receive();
-            inTransaction = false;
+            try
+            {
+                var b = asy.Receive();
+#if TRACE
+                RecordResponse(b.Item2, b.Item3);
+#endif
+            }
+            catch (ServerException em)
+            {
+                RecordRequest("Exception: " + em.Message);
+                throw em;
+            }
+            inTransaction = 0;
         }
         public void ExecuteNonQuery(SDict<long,string> d,Serialisable s)
         {
@@ -219,14 +276,17 @@ namespace StrongLink
             asy.wtr.SendUids(d);
             s.Put(asy.wtr);
             var b = asy.Receive();
-            if (b == Types.Exception)
-                inTransaction = false;
+#if TRACE
+            RecordResponse(b.Item2, b.Item3);
+#endif
+            if (b.Item1 == Types.Exception)
+                inTransaction = 0;
             else
                 switch (s.type)
                 {
-                    case Types.SBegin: inTransaction = true; break;
+                    case Types.SBegin: inTransaction = ++_tid; break;
                     case Types.SRollback:
-                    case Types.SCommit: inTransaction = false; break;
+                    case Types.SCommit: inTransaction = 0; break;
                 }
         } 
         public void Close()
@@ -253,13 +313,20 @@ namespace StrongLink
             rdr.buf.pos = 2;
             rdr.buf.len = 0;
         }
-        public Types Receive()
+        public (Types,long,long) Receive()
         {
             if (wtr.buf.pos > 2)
                 wtr.PutBuf();
             rdr.buf.pos = 2;
             rdr.buf.len = 0;
-            return (Types)rdr.ReadByte();
+            long ts = 0, te = 0;
+            var t = (Types)rdr.ReadByte();
+            if (t==Types.Done)
+            {
+                ts = rdr.GetLong();
+                te = rdr.GetLong();
+            }
+            return (t, ts, te);
         }
 
         public override void Flush()

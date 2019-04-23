@@ -353,7 +353,7 @@ namespace Shareable
         }
         public virtual STransaction Transact(ReaderBase rdr,bool auto = true)
         {
-            var tr = new STransaction(this, rdr, auto);
+            var tr = new STransaction(databases[name], rdr, auto);
             rdr.db = tr;
             return tr;
         }

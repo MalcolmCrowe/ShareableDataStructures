@@ -32,7 +32,7 @@ public class StrongConnect {
             var wtr = asy.wtr;
             wtr.PutString(fn);
             asy.Flush();
-            asy.rdr.ReadByte();
+            asy.Receive();
             preps = null;
         }
         public long Prepare(String n)
@@ -129,7 +129,7 @@ public class StrongConnect {
             asy.wtr.SendUids(s.ns);
             s.ob.Put(asy.wtr);
             var b = asy.Receive();
-            if (b == Types.Exception)
+            if (b.proto == Types.Exception)
                 inTransaction = false;
             else
             {
@@ -141,7 +141,7 @@ public class StrongConnect {
                     case "COMMI": inTransaction = false; break;
                 }
             }
-            return b;
+            return b.proto;
         }
         public DocArray Get(SDict<Long,String> d,Serialisable tn) throws Exception
         {
@@ -151,12 +151,12 @@ public class StrongConnect {
             wtr.Write((byte)Types.DescribedGet);
             tn.Put(wtr);
             var b = asy.Receive();
-            if (b == (byte)Types.Exception)
+            if (b.proto == (byte)Types.Exception)
             {
                 inTransaction = false;
                 rdr.GetException();
             }
-            if (b == (byte)Types.Done)
+            if (b.proto == (byte)Types.Done)
             {
                 description = null;
                 var n = rdr.GetInt();
@@ -172,12 +172,12 @@ public class StrongConnect {
         {
             asy.wtr.Write((byte)Types.SBegin);
             var b = asy.Receive();
-            if (b == Types.Exception)
+            if (b.proto == Types.Exception)
             {
                 inTransaction = false;
                 asy.rdr.GetException();
             }
-            if (b == Types.Done)
+            if (b.proto == Types.Done)
                 inTransaction = true;
         }
         public void Rollback() throws Exception

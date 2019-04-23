@@ -348,7 +348,7 @@ public class SDatabase {
     }
 
     public STransaction Transact(ReaderBase rdr,boolean auto) {
-        return new STransaction(this, rdr, auto);
+        return new STransaction(databases.get(name), rdr, auto);
     }
 
     public SDatabase MaybeAutoCommit(STransaction tr) throws Exception {

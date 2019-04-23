@@ -50,6 +50,8 @@ namespace StrongDB
                 var fn = rdr.GetString();
                 db = SDatabase.Open(path, fn);
                 wtr.Write(Types.Done);
+                wtr.PutLong(0);
+                wtr.PutLong(0);
                 asy.Flush();
             }
             catch (IOException)
@@ -132,8 +134,11 @@ namespace StrongDB
                                         sr.Append(rs._tr, sb);
                                     }
                                 sb.Append(']');
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(rs._tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 if ((Types)p == Types.DescribedGet)
                                 {
                                     var dp = rs._qry.Display;
@@ -162,8 +167,11 @@ namespace StrongDB
                                     rdr.ReadByte();
                                     CreateIndex(rdr);
                                 }
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit((STransaction)rdr.db);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -172,8 +180,11 @@ namespace StrongDB
                                 var tr = db.Transact(rdr);
                                 rdr.db = tr;
                                 CreateColumn(rdr);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit((STransaction)rdr.db);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -191,8 +202,11 @@ namespace StrongDB
                                     c += (rdr.GetLong(), i);
                                 var ins = new SInsert(tb.uid, c, rdr);
                                 tr = ins.Prepare(tr,tb.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -236,8 +250,11 @@ namespace StrongDB
                                 }
                                 if (ex != null)
                                     throw ex;
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -249,8 +266,11 @@ namespace StrongDB
                                 tr = (STransaction)rdr.db;
                                 tr = at.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -273,8 +293,11 @@ namespace StrongDB
                                     tr = (STransaction)tr.Install(new SDrop(tr, ((SColumn)nm).uid,tb.uid,""), 
                                         tr.curpos);
                                 }
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -283,8 +306,11 @@ namespace StrongDB
                                 var tr = db.Transact(asy.rdr);
                                 rdr.db = tr;
                                 CreateIndex(rdr);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit((STransaction)rdr.db);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -295,8 +321,11 @@ namespace StrongDB
                                 var dr = (SDropIndex)rdr._Get();
                                 tr = dr.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
-                                db = db.MaybeAutoCommit(tr);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -314,8 +343,11 @@ namespace StrongDB
                                 var tr = db.Transact(rdr);
                                 var u = SUpdateSearch.Get(rdr);
                                 tr = u.Prepare(tr,u.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -333,19 +365,24 @@ namespace StrongDB
                                     f += (cn, rdr._Get());
                                 }
                                 tr = (STransaction)tr.Install(new SUpdate(tr, rc, f),tr.curpos);
-                                db = db.MaybeAutoCommit(tr);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SDeleteSearch:
                             {
                                 var tr = db.Transact(rdr);
-                                rdr.db = tr;
                                 var dr = SDeleteSearch.Get(rdr);
                                 tr = dr.Prepare(tr,dr.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -356,27 +393,37 @@ namespace StrongDB
                                 var rc = db.Get(id) as SRecord ??
                                     throw new StrongException("Record " + id + " not found");
                                 tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),rc,tr.curpos);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SBegin:
-                            db = new STransaction(db, rdr, false);
+                            db = db.Transact(rdr, false);
                             wtr.Write(Types.Done);
+                            wtr.PutLong(db.curpos);
+                            wtr.PutLong(db.curpos);
                             asy.Flush();
                             break;
                         case Types.SRollback:
                             db = db.Rollback();
                             wtr.Write(Types.Done);
+                            wtr.PutLong(db.curpos);
+                            wtr.PutLong(db.curpos);
                             asy.Flush();
                             break;
                         case Types.SCommit:
                             {
                                 var tr = db as STransaction ??
                                     throw new StrongException("No transaction to commit");
+                                var ts = db.curpos;
                                 db = tr.Commit();
                                 wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -555,7 +602,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (22 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (23 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :Stream

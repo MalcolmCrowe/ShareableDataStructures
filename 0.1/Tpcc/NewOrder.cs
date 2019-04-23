@@ -75,7 +75,7 @@ namespace Tpcc
                 {
                     var s = ex.Message;
                     db.Rollback();
-                    if (s.CompareTo("Transaction conflict with read") == 0)
+                    if (s.Contains("with read"))
                         Form1.rconflicts++;
                     else
                         Form1.wconflicts++;
@@ -93,7 +93,7 @@ namespace Tpcc
             {
                 var s = ex.Message;
                 db.Rollback();
-                if (s.CompareTo("Transaction conflict with read") == 0)
+                if (s.Contains("with read"))
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
@@ -266,7 +266,7 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                 db.Rollback();
-                if (s.CompareTo("Transaction conflict with read") == 0)
+                if (s.Contains("with read"))
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
@@ -580,7 +580,7 @@ namespace Tpcc
 			catch(Exception ex) {
 				status.Text = ex.Message;
                 db.Rollback();
-                if (s.CompareTo("Transaction conflict with read") == 0)
+                if (s.Contains("with read"))
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;

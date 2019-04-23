@@ -454,6 +454,8 @@ namespace Shareable
                             tr = s._tr;
                         }
                     }
+                if (tb.uid == SysTable._SysUid - 1)
+                    s = new SysRows.LogRowSet(tr, (SysTable)tb, cx);
             }
             return s?? sc.sce?.RowSet(tr,top,cx) ?? throw new System.Exception("PE03");
         }
@@ -467,6 +469,10 @@ namespace Shareable
                 case SExpression.Op.Leq: return SExpression.Op.Geq;
             }
             return op;
+        }
+        public static SExpression Reverse(SExpression e)
+        {
+            return new SExpression(e.right, Reverse(e.op), e.left);
         }
         static SExpression.Op Compat(SExpression.Op was, SExpression.Op now)
         {
@@ -972,6 +978,25 @@ namespace Shareable
                     r += ((s.uid,SDatabase._system.Name(s.uid)), vals[j++]);
                         // Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
             return r;
+        }
+        internal class LogRowSet : SysRows
+        {
+            readonly long uPos = 0;
+            readonly SExpression.Op uOp = SExpression.Op.Eql;
+            public LogRowSet(STransaction tr,SysTable tb,Context cx) : base(tr,tb)
+            {
+                var u = SysTable._SysUid - 3; // Log.Uid
+                if (cx.defines(u) && cx[u] is SExpression e && e.right is SString s
+                    && (e.op==SExpression.Op.Eql||e.op==SExpression.Op.Geq))
+                {
+                    uPos = long.Parse(s.str);
+                    uOp = e.op;
+                }
+            }
+            public override Bookmark<Serialisable>? First()
+            {
+                return LogBookmark.New(this, uPos, 0);
+            }
         }
         internal class LogBookmark : RowBookmark
         {

@@ -11,7 +11,7 @@ namespace Shareable
         public readonly bool autoCommit;
         public readonly SDict<long, bool> readConstraints;
         protected override bool Committed => false;
-        public STransaction(SDatabase d,ReaderBase rdr,bool auto) :base(d)
+        internal STransaction(SDatabase d,ReaderBase rdr,bool auto) :base(d)
         {
             autoCommit = auto;
             uid = _uid;
@@ -74,17 +74,21 @@ namespace Shareable
             var since = rdr.GetAll(f.Length);
             for (var i = 0; i < since.Length; i++)
             {
-                if (since[i].Check(readConstraints))
+                var ck = since[i].Check(readConstraints);
+                if (ck!=0)
                 {
                     rconflicts++;
-                    throw new TransactionConflict("Transaction conflict with read");
+                    throw new TransactionConflict("Transaction conflict "+ck+" with read");
                 }
                 for (var b = tb; b != null; b = b.Next())
-                    if (since[i].Conflicts(db, this, b.Value.Item2))
+                {
+                    ck = since[i].Conflicts(db, this, b.Value.Item2);
+                    if (ck!=0)
                     {
                         wconflicts++;
-                        throw new TransactionConflict("Transaction conflict on " + b.Value);
+                        throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
                     }
+                }
             }  
             if (tb!=null)
                 lock (f)
@@ -92,21 +96,27 @@ namespace Shareable
                     since = rdr.GetAll(f.Length);
                     for (var i = 0; i < since.Length; i++)
                     {
-                        if (since[i].Check(readConstraints))
+                        var ck = since[i].Check(readConstraints);
+                        if (ck != 0)
                         {
                             rconflicts++;
-                            throw new TransactionConflict("Transaction conflict with read");
+                            throw new TransactionConflict("Transaction conflict " + ck + " with read");
                         }
                         for (var b = tb; b != null; b = b.Next())
-                            if (since[i].Conflicts(db, this, b.Value.Item2))
+                        {
+                            ck = since[i].Conflicts(db, this, b.Value.Item2);
+                            if (ck != 0)
                             {
                                 wconflicts++;
-                                throw new TransactionConflict("Transaction conflict on " + b.Value);
+                                throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
                             }
+                        }
                     }
+                    var ts = f.Length;
                     db = f.Commit(db, this);
                     f.CommitDone();
                     Install(db);
+  //                 Console.WriteLine("Commit " + ts + " to " + db.curpos+ " "+f.Length);
                 }
             commits++;
             return db;

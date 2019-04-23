@@ -464,6 +464,7 @@ namespace Tpcc
             this.Name = "Form1";
             this.Text = "TPC/C";
             this.Load += new System.EventHandler(this.Form1_Load);
+            this.FormClosing += new FormClosingEventHandler(this.Form1_Closing);
             this.tabControl1.ResumeLayout(false);
             this.tabPage1.ResumeLayout(false);
             this.tabPage1.PerformLayout();
@@ -502,10 +503,15 @@ namespace Tpcc
                     //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
+                    StrongConnect.OpenRequests();
                 }
                 catch (Exception)
                 {
                 }
+        }
+        private void Form1_Closing(object sender,System.EventArgs e)
+        {
+            StrongConnect.CloseRequests();
         }
 
 		private void button1_Click(object sender, System.EventArgs e)
