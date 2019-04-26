@@ -29,7 +29,7 @@ namespace Tpcc
 		Encoding enc = new ASCIIEncoding();
         bool FetchDistrict()
         {
-            tr = db.BeginTransaction();
+   //        tr = db.BeginTransaction();
             Set(42, DateTime.Now.ToString());
             var cmd = db.CreateCommand();
             cmd.Transaction = tr;
@@ -68,7 +68,7 @@ namespace Tpcc
             var cmd = db.CreateCommand();
             cmd.Transaction = tr;
             //"select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
-            cmd.CommandText = "select C_ID from CUSTOMER where C_WID=" + wid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' order by C_FIRST";
+            cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' order by C_FIRST";
             var s = cmd.ExecuteReader();
             while(s.Read())
                 custs.Add((long)s[0]);
@@ -94,7 +94,7 @@ namespace Tpcc
             Set(22, (string)s[5]); // c_city
             Set(23, (string)s[6]); // c_state
             Set(24, (string)s[7]); // c_zip
-            Set(26, s[9].ToString()); // c_since
+            Set(26, ((DateTime)s[9]).ToShortDateString()); // c_since
             c_credit = (string)s[10];
             Set(29, c_credit);
             Set(37, (util.GetDecimal(s[11])).ToString("F2"));
@@ -129,7 +129,7 @@ namespace Tpcc
             Set(22, (string)s[5]); // c_city
             Set(23, (string)s[6]); // c_state
             Set(24, (string)s[7]); // c_zip
-            Set(26, s[9].ToString()); // c_since
+            Set(26, ((DateTime)s[9]).ToShortDateString()); // c_since
             c_credit = (string)s[10];
             Set(29, c_credit);
             Set(37, ((decimal)s[11]).ToString("F2"));
@@ -137,7 +137,7 @@ namespace Tpcc
             Set(31, (string)s[8]); // c_phone
             c_balance = util.GetDecimal(s[13]);
             c_ytd_payment = util.GetDecimal(s[14]);
-            c_payment_cnt = (int)s[15];
+            c_payment_cnt = (int)(decimal)s[15];
             s.Close();
             return false;
         }
@@ -178,7 +178,6 @@ namespace Tpcc
                 if (cdata.Length > 150)
                     Set(41, cdata.Substring(150, 50));
             }
-            tr.Commit();
             return false;
         }
 		public void Single()
@@ -209,7 +208,7 @@ namespace Tpcc
 			string mess="";
 			while (!done && count++<1000)
 			{
-                tr = db.BeginTransaction();
+                tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
 				try
 				{
 					if (cid<0)
@@ -219,11 +218,14 @@ namespace Tpcc
 					DoPayment(ref mess);
 					Invalidate(true);
 					tr.Commit();
-					done = true;
+                    Form1.commits++;
+                    done = true;
 				} 
-				catch(Exception)
+				catch(Exception ex)
 				{
                     tr.Rollback();
+                    Console.WriteLine(ex.Message);
+                    Form1.wconflicts++;
 				}
 			}
 			return;
@@ -371,6 +373,7 @@ namespace Tpcc
 			catch (Exception ex)
 			{
 				s = ex.Message;
+                Form1.wconflicts++;
 			}
 			status.Text = s;
 			SetCurField(curField);

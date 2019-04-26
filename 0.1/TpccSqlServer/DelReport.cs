@@ -90,6 +90,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                Form1.rconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;

@@ -25,9 +25,7 @@ namespace Tpcc
         bool DoThresh(ref string mess)
         {
             int nextoid = 0;
-            tr = db.BeginTransaction();
             var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
             cmd.CommandText = "select D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
             var s = cmd.ExecuteReader();
             s.Read();
@@ -39,7 +37,6 @@ namespace Tpcc
             int n = (int)s[0];
             Set(4, n);
             s.Close();
-            tr.Rollback();
             return false;
         }
 
@@ -107,6 +104,8 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                Console.WriteLine(s);
+                Form1.rconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;

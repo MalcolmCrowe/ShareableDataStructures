@@ -23,10 +23,12 @@ namespace Tpcc
 		public bool DoCarrier(ref string mess)
 		{
             var cmd = db.CreateCommand();
-			cmd.CommandText ="insert into DELIVERY(DL_W_ID,DL_CARRIER_ID) select "+wid+","+carid;
+			cmd.CommandText = "insert into DELIVERY(DL_W_ID,DL_ID,DL_CARRIER_ID) select " + wid + ",count(a.DL_ID)+1," +
+                    carid + " from delivery a where a.DL_W_ID=" + wid;
             cmd.ExecuteNonQuery();
-			Set(2,carid);
-			Set(3,"Delivery has been scheduled");
+            Form1.commits++;
+			Set(1,carid);
+			Set(2,"Delivery has been scheduled");
 			return false;
 		}
 
@@ -92,6 +94,8 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                Console.WriteLine(s);
+                Form1.wconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;

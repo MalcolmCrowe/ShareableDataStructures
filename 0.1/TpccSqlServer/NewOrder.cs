@@ -75,6 +75,7 @@ namespace Tpcc
                 {
                     if (tr!=null)
                         tr.Rollback();
+                    Form1.wconflicts++;
                 }
             }
         }
@@ -91,6 +92,7 @@ namespace Tpcc
             catch (Exception)
             {
                 tr.Rollback();
+                Form1.wconflicts++;
             }
             return true;
         }
@@ -276,6 +278,7 @@ namespace Tpcc
                 else
                 {
                     tr.Commit();
+                    Form1.commits++;
                     tr = null;
                 }
                 // Phase 3 display the results
@@ -286,6 +289,7 @@ namespace Tpcc
             {
                 Set(130, ex.Message);
                 tr.Rollback();
+                Form1.wconflicts++;
             }
             return done;
         }
@@ -322,7 +326,8 @@ namespace Tpcc
 			GetData();
 			count = 0;
 			mess = "OKAY";
-            tr = db.BeginTransaction();
+            if (tr==null)
+            tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
 			//		Invalidate(true);
 			//		Thread.Sleep(1000);
 			// Phase 2 (re)start the transaction
@@ -345,17 +350,17 @@ namespace Tpcc
 				DoTotal();
 				if (DoCommit(ref mess))
 					break;
-			bad:
+                bad:
                 tr.Rollback();
+                tr = null;
                 Set(130,mess);
 				Invalidate(true);
 			}
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
-            tr.Commit();
-		}
-		public void Single(ref int stage)
+        }
+        public void Single(ref int stage)
 		{
 			status.Text = "";
 			// Phase 1 generate the "terminal input"
@@ -368,7 +373,8 @@ namespace Tpcc
 				mess = "OKAY";
                 if (stage == 0)
                     stage++;
-                tr = db.BeginTransaction();
+                if (tr==null)
+                tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
 			}
 			//		Invalidate(true);
 			//		Thread.Sleep(1000);
@@ -598,7 +604,9 @@ namespace Tpcc
 			}
 			catch(Exception ex) {
 				status.Text = ex.Message;
+                Console.WriteLine(ex.Message);
                 tr.Rollback();
+                Form1.wconflicts++;
             }
 			Invalidate(true);
 		}

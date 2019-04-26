@@ -5,7 +5,7 @@
     <ProjectGuid>{3A2277E8-5108-42C7-9C7C-9AE22ADAF34C}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <NoStandardLibraries>false</NoStandardLibraries>
-    <AssemblyName>Tpcc</AssemblyName>
+    <AssemblyName>TpccSqlServer</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>

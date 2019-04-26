@@ -472,7 +472,7 @@ namespace Tpcc
             return s;
         }
         static byte _lastchar = 32;
-        static Random rnd;
+        public static Random rnd;
         public static byte randchar()
         {
             _lastchar = (byte)rnd.Next((_lastchar == 32) ? 65 : 60, 90);

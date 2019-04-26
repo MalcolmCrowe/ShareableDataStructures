@@ -68,12 +68,15 @@ namespace Tpcc
             ArrayList cids = new ArrayList();
             var cmd = db.CreateCommand();
             cmd.Transaction = tr;
-            cmd.CommandText = "select CID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST";
+            cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST";
             var s = cmd.ExecuteReader();
             while (s.Read())
                 cids.Add((long)s[0]);
             s.Close();
-            cid = (int)cids[(cids.Count + 1) / 2];
+            if (cids.Count == 0)
+                cid = 1;
+            else
+                cid = (int)cids[(cids.Count + 1) / 2];
             cmd.CommandText = "select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
             s = cmd.ExecuteReader();
             if (!s.Read())
@@ -96,6 +99,7 @@ namespace Tpcc
             Set(6, "$" + c_balance.ToString("F2"));
             int oid = -1;
             var cmd = db.CreateCommand();
+            cmd.Transaction = tr;
             cmd.CommandText = "select max(O_ID) from [ORDER] where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid;
             var s = cmd.ExecuteReader();
             if (!s.Read())
@@ -113,7 +117,7 @@ namespace Tpcc
                 return true;
             }
             Set(7, oid);
-            var str = (string)s[0];
+            var str = ((DateTime)s[0]).ToShortDateString();
             Set(8, str);
             if (!(s[1] == DBNull.Value))
                 Set(9, (int)s[1]);
@@ -126,7 +130,7 @@ namespace Tpcc
             {
                 Set(k++, (int)s[1]);
                 Set(k++, (int)s[0]);
-                Set(k++, (int)s[2]);
+                Set(k++, (int)(decimal)s[2]);
                 Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[3])));
                 if (s[4] != DBNull.Value)
                     Set(k++, ((DateTime)s[4]).ToShortDateString());
@@ -150,7 +154,8 @@ namespace Tpcc
 			string mess = "";
 			while (!done && count++<1000)
 			{
-				tr = db.BeginTransaction();
+                if (tr==null)
+				tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
 				if (cid>0)
 				{
 					if (FetchCustFromId(ref mess))
@@ -165,6 +170,7 @@ namespace Tpcc
 				Invalidate(true);
 				done = true;
                 tr.Commit();
+                Form1.commits++;
                 tr = null;
 			}
 			bad:;
@@ -203,7 +209,7 @@ namespace Tpcc
 				vt1.AddField(14,j,6);
 				vt1.AddField(25,j,2);
 				vt1.AddField(33,j,9);
-				vt1.AddField(48,j,9);
+				vt1.AddField(48,j,10);
 			}
 			vt1.AddField(79,22,1,true);
 			vt1.PutBlanks();
@@ -255,6 +261,8 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                Console.WriteLine(s);
+                Form1.wconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;

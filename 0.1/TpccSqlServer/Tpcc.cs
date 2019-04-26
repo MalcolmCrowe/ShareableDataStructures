@@ -41,12 +41,12 @@ namespace Tpcc
 		private System.Windows.Forms.TextBox textBox3;
 		public int activewh;
 		private System.Windows.Forms.Button AutoRun;
-		private System.Windows.Forms.Button Commit;
+        private System.Windows.Forms.Button Commit;
 		private System.Windows.Forms.TabPage tabPage7;
 		private DelReport delReport1;
 		Thread thread = null;
 		Thread deferred = null;
-        private System.Windows.Forms.Timer timer1;
+        private System.Windows.Forms.Timer timer1,timer2;
 		Thread emulate = null;
         private Label label3;
         private TextBox textBox4;
@@ -59,10 +59,10 @@ namespace Tpcc
         private Label label5;
         private TextBox Clerks;
         public static string host;
-
+        public static int commits, rconflicts, wconflicts;
 		public Form1()
 		{
-			conn = new SqlConnection("Data Source=MALCOLM1;Initial Catalog=Tpcc;Integrated Security=True;Pooling=False");
+			conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True;Pooling=False");
             conn.Open();
 			//
 			// Required for Windows Form Designer support
@@ -142,6 +142,7 @@ namespace Tpcc
             this.delReport1 = new Tpcc.DelReport(conn,1);
             this.label1 = new System.Windows.Forms.Label();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
+            this.timer2 = new System.Windows.Forms.Timer(this.components);
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -605,12 +606,22 @@ namespace Tpcc
 
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
-            for (var i = 0; i < int.Parse(Clerks.Text); i++)
+            var nc = int.Parse(Clerks.Text);
+            commits = 0;rconflicts = 0;wconflicts = 0;
+            Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks" );
+            for (var i = 0; i < nc; i++)
             Task.Run(()=>{
                 var f = new Form1();
                 f.ShowDialog();
             });
+            timer2.Interval = 600000;
+            timer2.Enabled = true;
+            timer2.Tick += new System.EventHandler(Report_Click);
 		}
+        void Report_Click(object sender,EventArgs e)
+        {
+            Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+        }
 
 		int action = -1;
 		int stage = -1;
@@ -627,7 +638,6 @@ namespace Tpcc
 				tabControl1.SelectedIndex=1;
                 action = 1;
 				timer1.Interval = 500;
-				return;
 			}
 			else if (i<20)
 			{
@@ -718,6 +728,7 @@ namespace Tpcc
                 lock (_lock)
                 {
                     Console.WriteLine("   "+ex.Message);
+                    wconflicts++;
                 }
                 action = 0;
 			}

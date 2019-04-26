@@ -60,13 +60,14 @@ namespace Tpcc
         void Carrier(int carid)
         {
             int done = 0, skipped = 0;
-            var tr = db.BeginTransaction();
+            var tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
             for (int d = 1; d <= 10; d++)
                 if (Schedule(d, carid, tr))
                     done++;
                 else
                     skipped++;
             tr.Commit();
+            Form1.commits++;
         }
 
 		public void Run()
