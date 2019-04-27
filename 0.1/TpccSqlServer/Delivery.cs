@@ -18,13 +18,14 @@ namespace Tpcc
 		private System.ComponentModel.Container components = null;
 		public SqlConnection db;
 		public Label status;
-		public int wid;
+		public int wid,fid,tid;
 		public int carid;
 		public bool DoCarrier(ref string mess)
 		{
             var cmd = db.CreateCommand();
 			cmd.CommandText = "insert into DELIVERY(DL_W_ID,DL_ID,DL_CARRIER_ID) select " + wid + ",count(a.DL_ID)+1," +
                     carid + " from delivery a where a.DL_W_ID=" + wid;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             Form1.commits++;
 			Set(1,carid);
@@ -93,8 +94,7 @@ namespace Tpcc
 			} 
 			catch(Exception ex)
 			{
-				s = ex.Message;
-                Console.WriteLine(s);
+                Form1.RecordResponse(ex, fid, tid);
                 Form1.wconflicts++;
 			}
 			SetCurField(curField);

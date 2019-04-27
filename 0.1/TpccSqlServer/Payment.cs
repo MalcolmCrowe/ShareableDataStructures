@@ -27,6 +27,7 @@ namespace Tpcc
 		int count = 0,c_payment_cnt;
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
+        public int tid, fid;
         bool FetchDistrict()
         {
    //        tr = db.BeginTransaction();
@@ -147,12 +148,14 @@ namespace Tpcc
             var cmd = db.CreateCommand();
             cmd.Transaction = tr;
             cmd.CommandText = "update DISTRICT set D_YTD=" + (dytd + c_amount)+" where D_W_ID=" + wid + " and D_ID=" + did;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             Set(36, (c_balance + c_amount).ToString("F2"));
             cmd.CommandText = "update CUSTOMER set C_BALANCE=" + (c_amount + c_balance) + ",C_YTD_PAYMENT=" + (c_amount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1) +
                 " where C_W_ID = " + wid + " and C_D_ID = " + cdid + " and C_ID = " + cid;
             cmd.ExecuteNonQuery();
             cmd.CommandText="update WAREHOUSE set W_YTD=" + (ytd + c_amount)+" where W_ID=" + wid;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             if (c_credit == "BC")
             {
@@ -169,6 +172,7 @@ namespace Tpcc
                 if (cdata.Length > 500)
                     cdata = cdata.Substring(0, 500);
                 cmd.CommandText = "update CUSTOMER set c_data='" + cdata + "' where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid;
+                Form1.RecordRequest(cmd, fid, tid);
                 cmd.ExecuteNonQuery();
                 Set(38, cdata.Substring(0, 50));
                 if (cdata.Length > 50)
@@ -209,8 +213,9 @@ namespace Tpcc
 			while (!done && count++<1000)
 			{
                 tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
-				try
-				{
+                tid = ++Form1._tid;
+                try
+                {
 					if (cid<0)
 						FetchCustFromLast(ref mess);
 					else
@@ -223,8 +228,7 @@ namespace Tpcc
 				} 
 				catch(Exception ex)
 				{
-                    tr.Rollback();
-                    Console.WriteLine(ex.Message);
+                    Form1.RecordResponse(ex, fid, tid);
                     Form1.wconflicts++;
 				}
 			}

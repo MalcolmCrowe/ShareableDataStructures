@@ -43,6 +43,7 @@ namespace Tpcc
         private SqlTransaction tr = null;
         public Button btn;
         public TextBox txtBox;
+        public int fid, tid;
         public class OrderLine
         {
             public int ol_supply_w_id;
@@ -86,12 +87,13 @@ namespace Tpcc
                 var cmd = db.CreateCommand();
                 cmd.Transaction = tr;
                 cmd.CommandText = sql;
+                Form1.RecordRequest(cmd, fid, tid);
                 cmd.ExecuteNonQuery();
                 return false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                tr.Rollback();
+                Form1.RecordResponse(ex, fid, tid);
                 Form1.wconflicts++;
             }
             return true;
@@ -145,6 +147,7 @@ namespace Tpcc
             Set(9, d_tax.ToString("F4").Substring(1));
             s.Close();
             cmd.CommandText = "update DISTRICT set D_NEXT_O_ID=" + (o_id + 1) + " where D_W_ID=" + wid + " and D_ID=" + did;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             allhome = true;
             return false;
@@ -157,8 +160,10 @@ namespace Tpcc
             cmd.CommandText = "insert into [ORDER](O_ID,O_D_ID,O_W_ID,O_C_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL)"+
                     "values(" + o_id + "," + did + "," + wid + "," + cid + ",'" + 
                     DateTime.Now.ToString("o") + "'," + ol_cnt + "," + (allhome ? "1" : "0") + ")";
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
 			cmd.CommandText = "insert into NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+o_id+","+did+","+wid+")";
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             return false;
 		}
@@ -262,9 +267,11 @@ namespace Tpcc
                     var cmd = db.CreateCommand();
                     cmd.Transaction = tr;
                     cmd.CommandText = "update STOCK set S_QUANTITY=" + s_quantity +" where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id;
+                    Form1.RecordRequest(cmd, fid, tid);
                     cmd.ExecuteNonQuery();
                     cmd.CommandText="insert into ORDER_LINE(OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER,OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT)values(" +
                             o_id + "," + did + "," + wid + "," + (j + 1) + "," + a.oliid + "," + a.ol_supply_w_id + "," + a.ol_quantity + "," + a.ol_amount + ")";
+                    Form1.RecordRequest(cmd, fid, tid);
                     cmd.ExecuteNonQuery();
                 }
                 mess = "OKAY";
@@ -288,6 +295,7 @@ namespace Tpcc
             catch (Exception ex)
             {
                 Set(130, ex.Message);
+                Form1.RecordResponse(ex, fid, tid);
                 tr.Rollback();
                 Form1.wconflicts++;
             }
@@ -328,6 +336,7 @@ namespace Tpcc
 			mess = "OKAY";
             if (tr==null)
             tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            tid = ++Form1._tid;
 			//		Invalidate(true);
 			//		Thread.Sleep(1000);
 			// Phase 2 (re)start the transaction
@@ -375,11 +384,12 @@ namespace Tpcc
                     stage++;
                 if (tr==null)
                 tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
-			}
-			//		Invalidate(true);
-			//		Thread.Sleep(1000);
-			// Phase 2 (re)start the transaction
-			again: count++;
+                tid = ++Form1._tid;
+            }
+        //		Invalidate(true);
+        //		Thread.Sleep(1000);
+        // Phase 2 (re)start the transaction
+        again: count++;
 			if (count>=1000)
 				goto bad;
 			if (stage<0 || stage==1)
@@ -604,7 +614,7 @@ namespace Tpcc
 			}
 			catch(Exception ex) {
 				status.Text = ex.Message;
-                Console.WriteLine(ex.Message);
+                Form1.RecordResponse(ex, fid, tid);
                 tr.Rollback();
                 Form1.wconflicts++;
             }

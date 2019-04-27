@@ -28,6 +28,7 @@ namespace Tpcc
 		string clast = "";
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
+        public int fid, tid;
         bool Check(string c)
 		{
 			if (c!="")
@@ -156,7 +157,8 @@ namespace Tpcc
 			{
                 if (tr==null)
 				tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
-				if (cid>0)
+                tid = ++Form1._tid;
+                if (cid>0)
 				{
 					if (FetchCustFromId(ref mess))
 						goto bad;
@@ -261,7 +263,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Console.WriteLine(s);
+                Form1.RecordResponse(ex, fid, tid);
                 Form1.wconflicts++;
 			}
 			SetCurField(curField);

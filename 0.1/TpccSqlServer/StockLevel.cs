@@ -19,7 +19,7 @@ namespace Tpcc
 		public SqlConnection db;
         SqlTransaction tr;
 		public Label status;
-		public int wid;
+		public int wid,fid,tid;
 		public int did;
 		public int thresh;
         bool DoThresh(ref string mess)
@@ -104,7 +104,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Console.WriteLine(s);
+                Form1.RecordResponse(ex, fid, tid);
                 Form1.rconflicts++;
 			}
 			SetCurField(curField);

@@ -20,10 +20,12 @@ namespace Tpcc
 		public Label status;
 		public int wid = 1;
 		public int carid;
+        public int fid, tid;
         public bool FetchCarrier(ref string mess)
         {
             var cmd = db.CreateCommand();
             cmd.CommandText = "select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc";
+            Form1.RecordRequest(cmd, fid, tid);
             var s = cmd.ExecuteReader();
             var r = s.Read();
             if (r)
@@ -90,6 +92,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
+                Form1.RecordResponse(ex, fid, tid);
                 Form1.rconflicts++;
 			}
 			SetCurField(curField);

@@ -17,7 +17,6 @@ E:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\TpccSQLServer.csprojAssem
 F:\ShareableDataStructures\TpccSqlServer\bin\Debug\TpccSqlServer.exe.config
 F:\ShareableDataStructures\TpccSqlServer\bin\Debug\TpccSqlServer.exe
 F:\ShareableDataStructures\TpccSqlServer\bin\Debug\TpccSqlServer.pdb
-F:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\TpccSQLServer.csprojAssemblyReference.cache
 F:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.Delivery.resources
 F:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.DelReport.resources
 F:\ShareableDataStructures\TpccSqlServer\obj\x86\Debug\Tpcc.NewOrder.resources

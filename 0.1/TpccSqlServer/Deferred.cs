@@ -11,7 +11,7 @@ namespace Tpcc
 	public class Deferred
 	{
 		public SqlConnection db;
-		public int wid;
+		public int wid,fid,tid;
 
 		public Deferred(int w)
 		{
@@ -27,6 +27,7 @@ namespace Tpcc
             var cmd = db.CreateCommand();
             cmd.Transaction = tr;
 			cmd.CommandText = "select NO_O_ID from NEW_ORDER where NO_W_ID="+wid+" and NO_D_ID="+did;
+            Form1.RecordRequest(cmd, fid, tid);
             var s = cmd.ExecuteReader();
             if (!s.Read())
             {
@@ -36,15 +37,19 @@ namespace Tpcc
 			oid = (int)s[0];
             s.Close();
             cmd.CommandText ="delete NEW_ORDER where NO_W_ID="+wid+" and NO_D_ID="+did+" and NO_O_ID="+oid;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
 			cmd.CommandText="select O_C_ID from ORDER where O_W_ID="+wid+" and O_D_ID="+did+" and O_ID="+oid;
+            Form1.RecordRequest(cmd, fid, tid);
             s = cmd.ExecuteReader();
             s.Read();
 		    ocid = (int)s[0];
             s.Close();
             cmd.CommandText="update [ORDER] where O_W_ID="+wid+" and O_D_ID="+did+" and O_ID="+oid + " set O_CARRIER_ID = "+carid;
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
 			cmd.CommandText = "update ORDER_LINE  where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid+ " set OL_DELIVERY_DATE='" + DateTime.Now.ToString("o") + "'";
+            Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
             decimal amount = 0.0M;
 			cmd.CommandText = "select sum(OL_AMOUNT) from ORDER_LINE where OL_W_ID="+wid+" and OL_D_ID="+did+" and OL_O_ID="+oid;
@@ -53,6 +58,7 @@ namespace Tpcc
 		    amount = util.GetDecimal(s[0]);
             s.Close();
 			cmd.CommandText = "update CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + ocid+" set C_BALANCE =C_BALANCE+"+amount+",C_DELIVERY_CNT=C_DELIVERY_CNT+1";
+            Form1.RecordRequest(cmd, fid, tid);
             s = cmd.ExecuteReader();
             return true;
 		}
@@ -61,13 +67,20 @@ namespace Tpcc
         {
             int done = 0, skipped = 0;
             var tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
-            for (int d = 1; d <= 10; d++)
-                if (Schedule(d, carid, tr))
-                    done++;
-                else
-                    skipped++;
-            tr.Commit();
-            Form1.commits++;
+            tid = ++Form1._tid;
+            try
+            {
+                for (int d = 1; d <= 10; d++)
+                    if (Schedule(d, carid, tr))
+                        done++;
+                    else
+                        skipped++;
+                tr.Commit();
+                Form1.commits++;
+            } catch(Exception ex)
+            {
+                Form1.RecordResponse(ex, fid, tid);
+            }
         }
 
 		public void Run()
