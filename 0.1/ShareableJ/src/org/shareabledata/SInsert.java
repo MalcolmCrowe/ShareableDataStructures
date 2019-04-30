@@ -95,14 +95,14 @@ public class SInsert extends Serialisable  {
                     for (var b = tb.cpos.First(); c!=null && b != null; b = b.Next(), c = c.next)
                     {
                         var sc = (SColumn)b.getValue().val;
-                        var v = sc.Check(tr,c.element.Lookup(tr,cx),cx);
+                        var v = sc.Check(tr,c.element.Lookup(tr,cx),Context.New(f,cx));
                         f =(f==null)?new SDict(sc.uid, v):f.Add(sc.uid, v);
                     }
                 else if (cols!=null)
                     for (var b = cols; c!=null && b!=null; b = b.next, c = c.next)
                     {
                         var sc = (SColumn)tr.objects.get(b.element);
-                        var v = sc.Check(tr,c.element.Lookup(tr,cx),cx);
+                        var v = sc.Check(tr,c.element.Lookup(tr,cx),Context.New(f, cx));
                         f =(f==null)?new SDict(sc.uid, v):f.Add(sc.uid, v);
                     }
                 else

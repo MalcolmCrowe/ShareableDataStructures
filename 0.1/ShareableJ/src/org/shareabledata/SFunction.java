@@ -39,6 +39,11 @@ public class SFunction extends Serialisable {
         {
             return new SFunction(func,arg.Fix(f));
         }
+        @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return arg.Arg(v,cx);
+        }
         public static SFunction Get(ReaderBase f) throws Exception
         {
             return new SFunction((byte)f.ReadByte(), f);
@@ -69,7 +74,7 @@ public class SFunction extends Serialisable {
             var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
-            return cx.defines(fid) ? cx.get(fid) : Null;
+            return x;
         }
         @Override
         public Serialisable StartCounter(Serialisable v)

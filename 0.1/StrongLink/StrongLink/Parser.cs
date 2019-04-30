@@ -87,8 +87,9 @@ namespace StrongLink
             UNIQUE = 76,
             UPDATE = 77,
             USING = 78,
-            VALUES = 79,
-            WHERE = 80
+            VALUE = 79,
+            VALUES = 80,
+            WHERE = 81
         }
         internal class Lexer
         {
@@ -1103,6 +1104,9 @@ namespace StrongLink
                 case Sym.NULL:
                     Next();
                     return Serialisable.Null;
+                case Sym.VALUE:
+                    Next();
+                    return SArg.Value;
             }
             throw new Exception("Bad syntax");
         }

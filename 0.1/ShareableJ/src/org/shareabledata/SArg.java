@@ -28,6 +28,11 @@ public class SArg extends Serialisable {
             return cx.refs.get(target.uid);
         }
         @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return Context.New(new SDict(target.uid,v),cx);
+        }
+        @Override
         public boolean isValue()
         {
             return false;

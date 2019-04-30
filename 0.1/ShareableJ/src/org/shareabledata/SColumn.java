@@ -197,8 +197,9 @@ public class SColumn extends SSelector {
                             return b.getValue().val.arg;
                         break;
                     default:
-                        cx = Context.New(new SDict(SArg.Value.target.uid, v), cx);
-                        if (b.getValue().val.arg.Lookup(tr,cx) != SBoolean.True)
+                        var f = b.getValue().val;
+                        cx = f.Arg(v, cx);
+                        if (f.Lookup(tr,cx) != SBoolean.True)
                             throw new Exception("Column constraint " + 
                                     b.getValue().key + " fails");
                         break;

@@ -94,8 +94,9 @@ public class Parser {
         UNIQUE = 76,
         UPDATE = 77,
         USING = 78,
-        VALUES = 79,
-        WHERE = 80;
+        VALUE = 79,
+        VALUES = 80,
+        WHERE = 81;
     static String[] syms= new String[]{ 
         "Null","ID","LITERAL","LPAREN","COMMA","RPAREN", //0-5
         "COLON","EQUAL","NEQ","LEQ","LSS","GEQ","GTR","DOT", // 6-13
@@ -108,7 +109,7 @@ public class Parser {
         "NATURAL","NOT","NOTNULL","NULL","NUMERIC","ON","OR", // 55-61
         "ORDERBY","OUTER","PRIMARY","REFERENCES","RIGHT","ROLLBACK",//62-67
         "SELECT","SET","STRING","SUM","TABLE","TIMESPAN",//68-73
-        "TO","TRUE","UNIQUE","UPDATE","USING","VALUES","WHERE"}; // 74-80
+        "TO","TRUE","UNIQUE","UPDATE","USING","VALUE","VALUES","WHERE"}; // 74-81
     }
     class Lexer
     {
@@ -1227,6 +1228,9 @@ public class Parser {
                 case Sym.NULL:
                     Next();
                     return Serialisable.Null;
+                case Sym.VALUE:
+                    Next();
+                    return SArg.Value;
             }
             throw new Exception("Bad syntax");
         }

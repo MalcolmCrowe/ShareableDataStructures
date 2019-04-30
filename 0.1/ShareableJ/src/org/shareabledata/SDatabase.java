@@ -79,7 +79,11 @@ public class SDatabase {
         if (uid == -1)
             return "PUBLIC";
         if (!role.defines(uid))
+        {
+            if (uid < SDbObject.maxAlias)
+                return "$" + (SDbObject.maxAlias - uid);
             throw new Exception("Bad long " + SDbObject._Uid(uid));
+        }
         return role.uids.get(uid);
     }
     SDatabase(){

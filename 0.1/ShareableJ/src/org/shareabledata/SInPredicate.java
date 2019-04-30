@@ -70,4 +70,9 @@ public class SInPredicate extends Serialisable {
             }
             return SBoolean.False;
         }
+        @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return arg.Arg(v,cx);
+        }
 }

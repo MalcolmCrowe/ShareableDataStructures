@@ -52,6 +52,11 @@ public class SExpression extends SDbObject {
             return new SExpression(lf, op, right.Prepare(db, pt));          
         }
         @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return left.Arg(v, right.Arg(v,cx));
+        }
+        @Override
         public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
         {
             if (op == Op.Dot)
@@ -108,6 +113,13 @@ public class SExpression extends SDbObject {
                 }
                 return this;
             }
+                        if (op==Op.UMinus)
+                switch (lf.type)
+                {
+                    case Types.SInteger: return new SInteger(-((SInteger)lf).value);
+                    case Types.SBigInt: return new SInteger((getbig(lf).Negate()));
+                    case Types.SNumeric: return new SNumeric(((SNumeric)lf).num.Negate());
+                }
             var rg = right.Lookup(tr,cx);
             if (!(lf.isValue() && rg.isValue()))
                 return new SExpression(lf, op, rg);

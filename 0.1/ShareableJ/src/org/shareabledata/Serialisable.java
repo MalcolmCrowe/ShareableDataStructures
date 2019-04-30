@@ -139,6 +139,10 @@ public class Serialisable implements Comparable {
     {
         return this;
     }
+    public Context Arg(Serialisable v,Context cx)
+    {
+        return cx;
+    }
     public boolean Check(SDict<Long,Boolean> rdC)
     {
         return false;
