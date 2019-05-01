@@ -227,6 +227,10 @@ namespace Shareable
             }
             throw new StrongException("Unknown data type");
         }
+        public virtual Context Arg(Serialisable v,Context cx)
+        {
+            return cx;
+        }
         public Serialisable Coerce(Types t)
         {
             if (type == t || type==Types.Serialisable)
@@ -353,6 +357,10 @@ namespace Shareable
         {
             return new SExpression(left.Fix(f),op,right.Fix(f));
         }
+        public override Context Arg(Serialisable v, Context cx)
+        {
+            return left.Arg(v, right.Arg(v,cx));
+        }
         public override SDict<long,Serialisable> Aggregates(SDict<long, Serialisable> ags)
         {
             if (left != null)
@@ -389,6 +397,13 @@ namespace Shareable
                             return sr[rn.uid];
                 return this;
             }
+            if (op==Op.UMinus)
+                switch (lf.type)
+                {
+                    case Types.SInteger: return new SInteger(-((SInteger)lf).value);
+                    case Types.SBigInt: return new SInteger(-getbig(lf));
+                    case Types.SNumeric: return new SNumeric(-((SNumeric)lf).num);
+                }
             var rg = right.Lookup(tr,cx);
             if (!(lf.isValue && rg.isValue))
                 return new SExpression(lf, op, rg);
@@ -659,6 +674,10 @@ namespace Shareable
         {
             target = f.context;
         }
+        public override Context Arg(Serialisable v, Context cx)
+        {
+            return new Context(new SDict<long,Serialisable>(target.uid,v), cx);
+        }
         public override Serialisable Lookup(STransaction tr,Context cx)
         {
             return cx.refs[target.uid];
@@ -713,6 +732,10 @@ namespace Shareable
         {
             return (func == Func.Constraint || IsAgg) ? ags + (fid, this) : ags;
         }
+        public override Context Arg(Serialisable v, Context cx)
+        {
+            return arg.Arg(v, cx);
+        }
         public override Serialisable Lookup(STransaction tr,Context cx)
         {
             if (cx.refs==SDict<long,Serialisable>.Empty)
@@ -720,7 +743,7 @@ namespace Shareable
             var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
-            return cx.defines(fid) ? cx[fid] : Null;
+            return x;
         }
         public override Serialisable StartCounter(Serialisable v)
         {
@@ -862,6 +885,10 @@ namespace Shareable
                     break;
             }
             return SBoolean.False;
+        }
+        public override Context Arg(Serialisable v, Context cx)
+        {
+            return arg.Arg(v, cx);
         }
     }
     public class SInteger : Serialisable, IComparable
@@ -2177,8 +2204,9 @@ namespace Shareable
                             return b.Value.Item2.arg;
                         break;
                     default:
-                        cx = new Context(new SDict<long, Serialisable>(SArg.Value.target.uid, v), cx);
-                        if (b.Value.Item2.arg.Lookup(tr,cx) != SBoolean.True)
+                        var f = b.Value.Item2;
+                        cx = f.Arg(v,cx);
+                        if (f.Lookup(tr,cx) != SBoolean.True)
                             throw new StrongException("Column constraint " + b.Value.Item1 + " fails");
                         break;
                 }
@@ -2606,14 +2634,14 @@ namespace Shareable
                             for (var b = tb.cpos.First(); c.Length != 0 && b != null; b = b.Next(), c = c.next)
                             {
                                 var sc = (SColumn)b.Value.Item2;
-                                var v = sc.Check(tr,c.element.Lookup(tr,cx), cx);
+                                var v = sc.Check(tr,c.element.Lookup(tr,cx), new Context(f,cx));
                                 f += (sc.uid, v);
                             }
                         else
                             for (var b = cols; c.Length != 0 && b.Length != 0; b = b.next, c = c.next)
                             {
                                 var sc = (SColumn)tr.objects[b.element];
-                                var v = sc.Check(tr,c.element.Lookup(tr,cx), cx);
+                                var v = sc.Check(tr,c.element.Lookup(tr,cx), new Context(f,cx));
                                 f += (b.element, v);
                             }
                         tr = (STransaction)tr.Install(tb.Check(tr,new SRecord(tr, table, f)), tr.curpos);
