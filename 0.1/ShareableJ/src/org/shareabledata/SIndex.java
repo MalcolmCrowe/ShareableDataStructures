@@ -30,30 +30,70 @@ public class SIndex extends SDbObject {
         primary = p;
         cols = c;
         references = r;
-        rows = new SMTree<Serialisable>(null);
+        rows = new SMTree(null);
         refindex = -1L;
+    }
+    public SIndex(STransaction tr,long t, boolean p, long r, SList<Long> c)
+            throws Exception {
+        super(Types.SIndex,tr);
+        table = t;
+        primary = p;
+        cols = c;
+        references = r;
+        if (r >= 0)
+        {
+            var rx = tr.GetPrimaryIndex(r);
+            if (rx==null)
+                throw new Exception("referenced table has no primary index");
+            refindex = rx.uid;
+        }
+        else
+            refindex = -1;
+            rows = new SMTree(Info((STable)tr.objects.get(table), cols,refindex>=0));
     }
 
     SIndex(ReaderBase f) throws Exception 
     {
         super(Types.SIndex,f);
-        var ro = f.db.role;
-        var tn = ro.uids.get(f.GetLong());
-        if (!ro.globalNames.Contains(tn))
-            throw new Exception("Table " + tn + " not found");
-        table = ro.globalNames.get(tn);
+        table = f.GetLong();
         primary = f.ReadByte()!=0;
         var n = f.GetInt();
-        var rt = ro.defs.get(table);
         var c = new Long[n];
         for (var i = 0; i < n; i++)
+            c[i] = f.GetLong();
+        references = f.GetLong();
+        refindex = -1;
+        cols = new SList(c);
+        if (f instanceof Reader)
         {
-            var cn = ro.uids.get(f.GetLong());
-            if (!rt.Contains(cn))
-                throw new Exception("Column " + cn + " not found");
-            c[i] = rt.get(cn);
+            var rdr = (Reader) f;
+            rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects.get(table), cols, refindex >= 0));
         }
-        var ru = f.GetLong();
+        else
+            rows = new SMTree(null);
+
+    }
+    @Override
+    public Serialisable Prepare(STransaction tr,SDict<Long,Long>pt)
+            throws Exception
+    {
+        var ro = tr.role;
+        var tn = ro.uids.get(table);
+        if (!ro.globalNames.Contains(tn))
+            throw new Exception("Table " + tn + " not found");
+        var tb = ro.globalNames.get(tn);
+        var pr = primary;
+        var rt = ro.subs.get(tb);
+        var c = new Long[cols.Length];
+        var i = 0;
+        for (var b=cols.First();b!=null;b=b.Next(),i++)
+        {
+            var cn = ro.uids.get(b.getValue());
+            if (rt==null || !rt.defs.Contains(cn))
+                throw new Exception("Column " + cn + " not found");
+            c[i] = rt.obs.get(rt.defs.get(cn)).key;
+        }
+        var ru = references;
         var rn = (ru == -1L) ? "" : ro.uids.get(ru);
         var rx = -1L;
         if (ru != -1)
@@ -61,20 +101,10 @@ public class SIndex extends SDbObject {
             if (!ro.globalNames.Contains(rn))
                 throw new Exception("Ref table " + rn + " not found");
             ru = ro.globalNames.get(rn);
-            var qx = f.db.GetPrimaryIndex(ru);
-            if (qx!=null)
-                rx = ((SIndex)qx).uid;
-            else
-                throw new Exception("Ref table " + rn + " has no primary index");
-        }
-        references = ru;
-        refindex = rx;
-        cols = new SList<Long>(c);
-        rows = new SMTree<Serialisable>(Info((STable)f.db.objects.get(table), cols,references>=0));
-
+         }
+        return new SIndex(tr,tb,pr,ru,new SList(c));
     }
-
-    public SIndex(SIndex x, Writer f) throws Exception {
+    public SIndex(SDatabase db,SIndex x, Writer f) throws Exception {
         super(x, f);
         table = f.Fix(x.table);
         f.PutLong(table);
@@ -90,8 +120,8 @@ public class SIndex extends SDbObject {
         references = f.Fix(x.references);
         refindex = f.Fix(x.refindex);
         f.PutLong(references);
-        cols = new SList<Long>(c);
-        rows = x.rows;
+        cols = new SList(c);
+        rows = new SMTree(Info((STable)db.objects.get(table), cols, references >= 0));
     }
 
     public SIndex(SIndex x, SMTree<Serialisable>.MTResult mt) throws Exception 
@@ -187,7 +217,8 @@ public class SIndex extends SDbObject {
 
     @Override
     public String toString() {
-        var sb = new StringBuilder(super.toString() + " [" + SDbObject._Uid(table) + "] (");
+        var sb = new StringBuilder( "Index "+
+                _Uid(uid) + "[" + SDbObject._Uid(table) + "] (");
         var cm = "";
         if (cols!=null)
         for (var b = cols.First(); b != null; b = b.Next()) {
@@ -196,6 +227,10 @@ public class SIndex extends SDbObject {
             sb.append(SDbObject._Uid(b.getValue()));
         }
         sb.append(")");
+        if (primary)
+            sb.append(" primary ");
+        if (refindex >= 0)
+            sb.append(" ref index " + refindex);
         return sb.toString();
     }
 }

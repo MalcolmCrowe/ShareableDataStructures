@@ -52,7 +52,7 @@ public class IndexesBookmark extends RowBookmark {
                         tbm = (TablesBookmark)tbm.Next())
                 {
                     if (tbm._tb.indexes==null)
-                        return null;
+                        continue;
                     var b = tbm._tb.indexes.First();
                     if (b != null)
                         return new IndexesBookmark(rs, tbm, 

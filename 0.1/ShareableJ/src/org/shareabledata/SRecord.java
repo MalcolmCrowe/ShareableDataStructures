@@ -153,7 +153,7 @@ public class SRecord extends SDbObject {
         @Override
         public String toString()
         {
-            StringBuilder sb = new StringBuilder(super.toString());
+            StringBuilder sb = new StringBuilder();
             Append(null,sb);
             return sb.toString();
         }

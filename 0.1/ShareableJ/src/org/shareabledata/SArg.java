@@ -36,5 +36,10 @@ public class SArg extends Serialisable {
         public boolean isValue()
         {
             return false;
-        }   
+        }
+        @Override
+        public String toString()
+        {
+            return "VALUE";
+        }
 }

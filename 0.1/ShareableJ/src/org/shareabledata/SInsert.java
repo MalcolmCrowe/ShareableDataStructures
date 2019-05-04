@@ -31,7 +31,7 @@ public class SInsert extends Serialisable  {
             t = tr.role.globalNames.get(tn);
         }
         SList<Long> cs = null;
-        var rt = tr.role.defs.get(t);
+        var rt = tr.role.subs.get(t);
         var i = 0;
         if (cols!=null)
         for (var b = cols.First(); b != null; b = b.Next())
@@ -40,9 +40,9 @@ public class SInsert extends Serialisable  {
             if (u < 0) // it is a client-side uid to be looked up in the SNames contribution to tr
             {
                 var cn = tr.role.uids.get(u);
-                if (!rt.Contains(cn))
+                if (!rt.defs.Contains(cn))
                     throw new Exception("Column " + cn + " not found");
-                u = rt.get(cn);
+                u = rt.obs.get(rt.defs.get(cn)).key;
             }
             cs =(cs==null)?new SList(u):cs.InsertAt(u,i);
             i++;

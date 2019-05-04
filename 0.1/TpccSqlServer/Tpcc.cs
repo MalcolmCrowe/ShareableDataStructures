@@ -64,7 +64,7 @@ namespace Tpcc
         static System.IO.StreamWriter reqs = null;
         public Form1()
 		{
-			conn = new SqlConnection("Data Source=MUSIC-PC;Initial Catalog=Tpcc;Integrated Security=True");
+			conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
             conn.Open();
 			//
 			// Required for Windows Form Designer support

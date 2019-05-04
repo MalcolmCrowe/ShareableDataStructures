@@ -211,10 +211,10 @@ public class StrongServer implements Runnable {
                         Exception ex = null;
                         for (var i = 0; i < n; i++) {
                             var cn = db.role.uids.get(rdr.GetLong());
-                            var cr = db.role.defs.get(tb.uid);
-                            if (cr.Contains(cn))
+                            var ss = db.role.subs.get(tb.uid);
+                            if (ss.defs.Contains(cn))
                             {
-                                var sc = (SColumn)db.objects.get(cr.get(cn));
+                                var sc = (SColumn)db.objects.get(ss.obs.get(ss.defs.get(cn)).key);
                                 cs = (cs==null)?new SList(sc):cs.InsertAt(sc,i);
                             }
                             else 
@@ -256,7 +256,7 @@ public class StrongServer implements Runnable {
                     case Types.SAlter: {
                         var tr = db.Transact(rdr,true);
                         rdr.db = tr;
-                        var at = rdr._Get();
+                        var at = SAlter.Get(rdr);
                         tr = (STransaction)rdr.db;
                         tr = at.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
@@ -267,22 +267,8 @@ public class StrongServer implements Runnable {
                     }
                     case Types.SDrop: {
                         var tr = db.Transact(rdr,true);
-                        var nm = rdr._Get(); // object name
-                        if (nm.type != Types.STable)
-                            throw new Exception("Object " + nm + " not found");
-                        var tb = (STable)nm;
-                        var cn = rdr.GetString();
-                        tr = (STransaction)rdr.db;
-                        if (cn.length() == 0)
-                            tr = (STransaction)tr.Install(new SDrop(tr, tb.uid, -1, ""),tr.curpos);
-                        else
-                        {
-                            nm = rdr._Get();
-                            if (nm.type != Types.SColumn)
-                                throw new Exception("Column " + cn + " not found");
-                            tr = (STransaction)tr.Install(new SDrop(tr, ((SColumn)nm).uid,tb.uid,""), 
-                                tr.curpos);
-                        }
+                        var dr = SDrop.Get(rdr).Prepare(tr,null);
+                        tr = dr.Obey(tr,Context.Empty);
                         var ts = db.curpos;
                         db = db.MaybeAutoCommit(tr);
                         wtr.Write(Types.Done);
@@ -295,8 +281,9 @@ public class StrongServer implements Runnable {
                         var tr = db.Transact(rdr,true);
                         rdr.db = tr;
                         CreateIndex(rdr);
+                        tr = (STransaction)rdr.db;
                         var ts = db.curpos;
-                        db = db.MaybeAutoCommit((STransaction)rdr.db);
+                        db = db.MaybeAutoCommit(tr);
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -307,7 +294,8 @@ public class StrongServer implements Runnable {
                     {
                         var tr = db.Transact(rdr,true);
                         rdr.db = tr;
-                        var dr = (SDropIndex)rdr._Get();
+                        var dr = new SDropIndex(rdr);
+                        tr = (STransaction)rdr.db;
                         tr = dr.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
                         var ts = db.curpos;
@@ -464,6 +452,6 @@ public class StrongServer implements Runnable {
     void CreateIndex(ReaderBase rdr) throws Exception
     {
         var db = (STransaction)rdr.db;
-        rdr.db = db.Install(SIndex.Get(rdr), db.curpos);
+        rdr.db = db.Install((SIndex)SIndex.Get(rdr).Prepare(db,null), db.curpos);
     }
 }

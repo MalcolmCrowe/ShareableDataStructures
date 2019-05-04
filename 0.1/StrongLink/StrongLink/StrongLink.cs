@@ -390,11 +390,9 @@ namespace StrongLink
     }
     public class ClientReader:SocketReader
     {
-        bool getting;
         public ClientReader(Socket c) : base(c) { } 
         public override bool GetBuf(long p) // parameter is ignored
         {
-            getting = true;
             int rcount;
             try
             {
@@ -402,14 +400,12 @@ namespace StrongLink
                 if (rc == 0)
                 {
                     rcount = 0;
-                    getting = false;
                     return false;
                 }
                 rcount = (buf.buf[0] << 7) + buf.buf[1];
                 buf.len = rcount + 2;
                 if (rcount == Buffer.Size - 1)
                     GetException();
-                getting = false;
                 return rcount > 0;
             }
             catch (SocketException)

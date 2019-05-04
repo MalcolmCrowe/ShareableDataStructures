@@ -74,8 +74,8 @@ public class SView extends SDbObject {
             var n = "$" + (maxAlias - a);
             f.db.Add(a, n);
             ta = (ta==null)?new SDict(u, a):ta.Add(u,a);
-            if (f.db.role.props.Contains(u))
-                for (var b = f.db.role.props.get(u).First(); b != null; b = b.Next())
+            if (f.db.role.subs.Contains(u))
+                for (var b = f.db.role.subs.get(u).props.First(); b != null; b = b.Next())
                     ta = Aliases(f, b.getValue().key, ta);
             return ta;
         }        

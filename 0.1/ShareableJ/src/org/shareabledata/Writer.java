@@ -95,10 +95,10 @@ public class Writer extends WriterBase {
                     var nm = tr.Name(sc.uid);
                     var nc = new SColumn(sc, nm, this);
                     var tb = (STable)db.objects.get(nc.table);
-                    tb = tb.Add(nc,nm);
+                    tb = tb.Add(-1,nc,nm);
                     db = db._Add(nc, nm, length())
                             ._Add(tb,db.Name(tb.uid),length())
-                            .Add(tb.uid,nc.uid,nm);
+                            .Add(tb.uid,-1,nc.uid,nm);
                     if (commits==null)
                         commits = new SDict(nc.uid,nc);
                     else
@@ -135,7 +135,7 @@ public class Writer extends WriterBase {
                     var nr = new SUpdate(db, su, this);
                     db = db._Add(nr,sr, length());
                     if (commits==null)
-                        commits = new SDict<Long,Serialisable>(nr.uid,nr);
+                        commits = new SDict(nr.uid,nr);
                     else
                         commits = commits.Add(nr.uid, nr);
                     break;
@@ -144,7 +144,7 @@ public class Writer extends WriterBase {
                     var sa = new SAlter((SAlter) b.getValue().val, this);
                     db = db._Add(sa, length());
                     if (commits==null)
-                        commits = new SDict<Long,Serialisable>(sa.uid,sa);
+                        commits = new SDict(sa.uid,sa);
                     else
                         commits = commits.Add(sa.uid, sa);
                     break;
@@ -153,18 +153,28 @@ public class Writer extends WriterBase {
                     var sd = new SDrop((SDrop) b.getValue().val, this);
                     db = db._Add(sd, length());
                     if (commits==null)
-                        commits = new SDict<Long,Serialisable>(sd.uid,sd);
+                        commits = new SDict(sd.uid,sd);
                     else
                         commits = commits.Add(sd.uid, sd);
                     break;
                 }
                 case Types.SIndex: {
-                    var si = new SIndex((SIndex) b.getValue().val, this);
+                    var si = new SIndex(db,(SIndex) b.getValue().val, this);
                     db = db._Add(si, length());
                     if (commits==null)
-                        commits = new SDict<Long,Serialisable>(si.uid,si);
+                        commits = new SDict(si.uid,si);
                     else
                         commits = commits.Add(si.uid, si);
+                    break;
+                }
+                case Types.SDropIndex:
+                {
+                    var di = new SDropIndex(db, (SDropIndex)b.getValue().val, this);
+                    db = db._Add(di, length());
+                    if (commits==null)
+                        commits = new SDict(di.uid,di);
+                    else
+                        commits = commits.Add(di.uid, di);
                     break;
                 }
             }

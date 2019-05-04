@@ -90,7 +90,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         isNull = false;
         rec = null;
     }
-    public SRow(SDatabase db,SRecord r) throws Exception
+    public SRow(STransaction db,SRecord r) throws Exception
     {
         super(Types.SRow);
         var tb = (STable)db.objects.Lookup(r.table);
@@ -106,6 +106,17 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
             var v = r.fields.Lookup(sc.uid);
             if (v==null)
                 v = Null;
+            if (sc.constraints!=null)
+                for (var c=sc.constraints.First();c!=null;c=c.Next())
+                    switch(c.getValue().key)
+                    {
+                        case "DEFAULT": if (v==Null)
+                            v = c.getValue().val.Lookup(db,Context.New(r.fields,Context.Empty));
+                        break;
+                        case "GENERATED":
+                            v = c.getValue().val.Lookup(db,Context.New(r.fields,Context.Empty));
+                        break;
+                    }
             co = (co==null)?new SDict(k, v):co.Add(k,v);
             cn = (cn==null)?new SDict(k, id):cn.Add(k,id);
             vs = (vs==null)? new SDict(sc.uid, v):vs.Add(sc.uid, v);

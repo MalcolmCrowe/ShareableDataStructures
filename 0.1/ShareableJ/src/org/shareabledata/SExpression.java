@@ -32,6 +32,11 @@ public class SExpression extends SDbObject {
             public static final int 
             Plus =0,Minus =1,Times=2,Divide=3,Eql=4,NotEql=5,Lss=6, 
             Leq=7, Gtr=8, Geq=9, Dot=10, And=11, Or=12, UMinus=13, Not=14;
+            public final String[] ops=
+            new String[]{
+                "+","-","*","/","==","!=","<","<=",">",">=",".",
+                "&&","||","-","!"
+            };
         }
         public static SExpression Get(ReaderBase f) throws Exception
         {
@@ -382,5 +387,10 @@ public class SExpression extends SDbObject {
             if (right != null)
                 ags = right.Aggregates(ags);
             return ags;
+        }
+        @Override
+        public String toString()
+        {
+            return left.toString()+" "+new Op().ops[op]+" "+right.toString();
         }
 }

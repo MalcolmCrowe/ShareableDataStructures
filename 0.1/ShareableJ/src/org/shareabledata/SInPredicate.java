@@ -75,4 +75,9 @@ public class SInPredicate extends Serialisable {
         {
             return arg.Arg(v,cx);
         }
+        @Override
+        public String toString()
+        {
+             return arg.toString()+" in "+list.toString();           
+        }
 }

@@ -224,9 +224,9 @@ namespace StrongDB
                                 for (var i = 0; i < n; i++)
                                 {
                                     var cn = db.role[rdr.GetLong()];
-                                    var cr = db.role.defs[tb.uid];
-                                    if (cr.Contains(cn))
-                                        cs += ((SColumn)db.objects[cr[cn]], i);
+                                    var ss = db.role.subs[tb.uid];
+                                    if (ss.defs.Contains(cn))
+                                        cs += ((SColumn)db.objects[ss.obs[ss.defs[cn]].Item1], i);
                                     else
                                         ex = new StrongException("Column " + cn + " not found");
                                 }
@@ -262,7 +262,7 @@ namespace StrongDB
                             {
                                 var tr = db.Transact(asy.rdr);
                                 rdr.db = tr;
-                                var at = rdr._Get();
+                                var at = SAlter.Get(rdr);
                                 tr = (STransaction)rdr.db;
                                 tr = at.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
@@ -277,22 +277,8 @@ namespace StrongDB
                         case Types.SDrop:
                             {
                                 var tr = db.Transact(asy.rdr);
-                                var nm = rdr._Get(); // object name
-                                if (nm.type != Types.STable)
-                                    throw new StrongException("Object " + nm + " not found");
-                                var tb = (STable)nm;
-                                var cn = rdr.GetString();
-                                tr = (STransaction)rdr.db;
-                                if (cn.Length == 0)
-                                    tr = (STransaction)tr.Install(new SDrop(tr, tb.uid, -1, ""),tr.curpos);
-                                else
-                                {
-                                    nm = rdr._Get();
-                                    if (nm.type != Types.SColumn)
-                                        throw new StrongException("Column " + cn + " not found");
-                                    tr = (STransaction)tr.Install(new SDrop(tr, ((SColumn)nm).uid,tb.uid,""), 
-                                        tr.curpos);
-                                }
+                                var dr = SDrop.Get(rdr).Prepare(tr,SDict<long,long>.Empty);
+                                tr = dr.Obey(tr, Context.Empty);
                                 var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
@@ -318,11 +304,12 @@ namespace StrongDB
                             {
                                 var tr = db.Transact(rdr);
                                 rdr.db = tr;
-                                var dr = (SDropIndex)rdr._Get();
+                                var dr = new SDropIndex(rdr);
+                                tr = (STransaction)rdr.db;
                                 tr = dr.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                db = db.MaybeAutoCommit(tr);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -478,7 +465,7 @@ namespace StrongDB
         void CreateIndex(ReaderBase rdr)
         {
             var db = (STransaction)rdr.db;
-            rdr.db = db.Install(SIndex.Get(rdr), db.curpos);
+            rdr.db = db.Install((SIndex)SIndex.Get(rdr).Prepare(db,SDict<long,long>.Empty), db.curpos);
         }
     }
         /// <summary>
@@ -602,7 +589,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (30 April 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (1 May 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :Stream
@@ -669,6 +656,7 @@ namespace StrongDB
         public override void Flush()
         {
             wtr.PutBuf();
+            wtr.buf.pos = 2;
         }
     }
     public class ServerWriter : SocketWriter
@@ -696,6 +684,7 @@ namespace StrongDB
             try
             {
                 client.Send(buf.buf, 0);
+                buf.len = 0;
             }
             catch (Exception)
             {

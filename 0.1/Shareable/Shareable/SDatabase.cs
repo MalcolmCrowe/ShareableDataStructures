@@ -121,6 +121,7 @@ namespace Shareable
                 case Types.SAlter: return Install((SAlter)s, p);
                 case Types.SDrop: return Install((SDrop)s, p);
                 case Types.SIndex: return Install((SIndex)s, p);
+                case Types.SDropIndex: return Install((SDropIndex)s,p);
             }
             return this;
         }
@@ -147,7 +148,7 @@ namespace Shareable
         {
             return d.New(d.objects, d.role + n,d.curpos);
         }
-        public static SDatabase operator +(SDatabase d, (long, long, string) n)
+        public static SDatabase operator +(SDatabase d, (long, int,long, string) n)
         {
             return d.New(d.objects, d.role + n, d.curpos);
         }
@@ -223,9 +224,15 @@ namespace Shareable
             if (c.uid >= STransaction._uid)
                 obs += (c.uid, c);
             var tb = ((STable)obs[c.table]);
-            if (role.defs.Contains(c.table) && role.defs[c.table].Contains(n))
+            if (role.subs.Contains(c.table) && role.subs[c.table].defs.Contains(n))
                 throw new StrongException("Table " + uids[tb.uid] + " already has column " + n);
-            return New(obs + (c.table, tb+(c,n))+(c.uid,c), role+(c.table,c.uid,n)+(c.uid,n), p);
+            if (tb.rows.Length!=0)
+                for (var b=c.constraints.First();b!=null;b=b.Next())
+                    switch (b.Value.Item1)
+                    {
+                        case "NOTNULL": throw new StrongException("Table is not empty");
+                    }
+            return New(obs + (c.table, tb+(-1,c,n))+(c.uid,c), role+(c.table,-1,c.uid,n)+(c.uid,n), p);
         }
         public SDatabase Install(SRecord r, long c)
         {
@@ -305,8 +312,9 @@ namespace Shareable
             {
                 var ot = (STable)objects[a.defpos];
                 var nc = new SColumn(ot.uid, a.dataType, a.col);
-                var nt = ot + (nc,Name(nc.uid));
-                return New(obs + (a.defpos, nt),role,c);
+                var nm = Name(nc.uid);
+                var nt = ot + (a.seq,nc,nm);
+                return New(obs + (a.defpos, nt),role+(a.defpos,a.seq,a.col,nm),c);
             }
         }
         public SDatabase Install(SDrop d, long c)
@@ -322,6 +330,8 @@ namespace Shareable
                 {
                     case Types.STable:
                         ro -= Name(((STable)ot).uid);
+                        for (var b = ((STable)ot).indexes.First(); b != null; b = b.Next())
+                            obs -= b.Value.Item1;
                         break;
                     case Types.SIndex:
                         {
@@ -339,8 +349,20 @@ namespace Shareable
             else
             {
                 var ot = (STable)objects[d.parent];
-                var nt = ot.Remove(d.drpos);
-                return New(obs + (d.parent, nt), role, c);
+                var sc = (SColumn)obs[d.drpos];
+                var ss = role.subs[sc.table];
+                var sq = ss.props[sc.uid];
+                if (d.detail.Length == 0)
+                {
+                    var nt = ot.Remove(d.drpos);
+                    return New(obs + (d.parent, nt), role-(d.parent,sq), c);
+                } else
+                {
+                    var nc = new SColumn(sc.table, sc.dataType, sc.uid, sc.constraints - d.detail);
+                    var nt = ot + (sq,nc, Name(nc.uid));
+                    var ro = role + (Name(nt.uid),nt.uid);
+                    return New(obs + (d.drpos,nc)+(nt.uid,nt),ro,c);
+                }
             }
         }
         public SDatabase Install(SView v, string n, long c)
@@ -354,6 +376,16 @@ namespace Shareable
                 x += (Get(b.Value.Item2), b.Value.Item2);
             tb = new STable(tb, tb.indexes + (x.uid, true));
             return New(objects + (x.uid, x) + (tb.uid, tb),role,c);
+        }
+        public SDatabase Install(SDropIndex d,long c)
+        {
+            var obs = objects;
+            if (d.uid >= STransaction._uid)
+                obs = obs + (d.uid, d);
+            var tb = (STable)objects[d.table];
+            var x = tb.FindIndex(this, d.key);
+            tb = new STable(tb, tb.indexes - x.uid);
+            return New(obs - x.uid + (tb.uid, tb), role, c);
         }
         public virtual STransaction Transact(ReaderBase rdr,bool auto = true)
         {
@@ -380,6 +412,22 @@ namespace Shareable
                     return x;
             return null;
         }
+        internal STable Role(STable tb)
+        {
+            var ss = role.subs[tb.uid];
+            var d = SDict<int, (long, string)>.Empty;
+            var cp = SDict<int, Serialisable>.Empty;
+            var i = 0;
+            for (var b = tb.cols.First(); b != null; b = b.Next(),i++)
+            {
+                var cu = b.Value.Item1;
+                var sc = b.Value.Item2;
+                var seq = ss.props[cu];
+                d += (seq,(cu,tb.display[i].Item2));
+                cp += (seq, sc);
+            }
+            return new STable(tb, tb.cols, d, cp, tb.refs);
+        }
     }
     /// <summary>
     /// Roles are used for naming SDbObjects: each role can have its own name for any 
@@ -387,10 +435,73 @@ namespace Shareable
     /// </summary>
     public class SRole : SDbObject, ILookup<long,string>
     {
+        public class SRObject
+        {
+            public readonly SDict<long, int> props;
+            public readonly SDict<string, int> defs;
+            public readonly SDict<int, (long,string)> obs;
+            public static readonly SRObject Empty =
+                new SRObject(SDict<long, int>.Empty, SDict<string, int>.Empty, 
+                    SDict<int, (long,string)>.Empty);
+            public SRObject(SDict<long,int>p,SDict<string,int>d,SDict<int,(long,string)>s)
+            { props = p; defs = d; obs = s; }
+            SRObject Remove(int k)
+            {
+                if (k < 0 || k>=(obs.Length??0))
+                    return this;
+                var pr = SDict<long, int>.Empty;
+                var df = SDict<string, int>.Empty;
+                var os = SDict<int, (long, string)>.Empty;
+                var m = 0;
+                for (var b=obs.First();b!=null;b=b.Next())
+                {
+                    var (i,(p,n)) = b.Value;
+                    if (i == k)
+                        continue;
+                    pr += (p, m);
+                    df += (n, m);
+                    os += (m, (p, n));
+                    m++;
+                }
+                return new SRObject(pr, df, os);
+            }
+            SRObject Add((int,long,string) e)
+            {
+                var (i, p, n) = e;
+                var k = props.defines(p) ? props[p] : -1;
+                if (i < 0)
+                    i = (k < 0) ? (props.Length ?? 0) : k;
+                var pr = SDict<long, int>.Empty;
+                var df = SDict<string, int>.Empty;
+                var os = SDict<int, (long, string)>.Empty;
+                var m = 0;
+                for (var b = obs.First(); b != null; b = b.Next())
+                {
+                    var (ii, (pp, nn)) = b.Value;
+                    if (ii == k)
+                        continue;
+                    pr += (pp, m);
+                    df += (nn, m);
+                    os += (m, (pp, nn));
+                    m++;
+                }
+                pr += (p, i);
+                df += (n, i);
+                os += (i, (p, n));
+                return new SRObject(pr, df, os);
+            }
+            public static SRObject operator+(SRObject r,(int,long,string)e)
+            {
+                return r.Add(e);
+            }
+            public static SRObject operator-(SRObject r,int k)
+            {
+                return r.Remove(k);
+            }
+        }
         public readonly string name;
         public readonly SDict<long, string> uids;
-        public readonly SDict<long, SDict<long, string>> props;
-        public readonly SDict<long, SDict<string, long>> defs;
+        public readonly SDict<long, SRObject> subs;
         public readonly SDict<string, long> globalNames;
         public static readonly SRole Public = new SRole("PUBLIC", -1);
 
@@ -399,55 +510,51 @@ namespace Shareable
         public SRole(string n,long u) :base(Types.SRole,u)
         {
             name = n; uids = SDict<long, string>.Empty;
-            props = SDict<long, SDict<long, string>>.Empty;
-            defs = SDict<long, SDict<string, long>>.Empty;
+            subs = SDict<long, SRObject>.Empty;
             globalNames = SDict<string, long>.Empty;
         }
         public SRole(SRole sr,SDict<long,string>u) :base(Types.SRole,sr.uid)
         {
             name = sr.name;
             uids = u;
-            props = sr.props;
-            defs = sr.defs;
+            subs = sr.subs;
             globalNames = sr.globalNames;
         }
         protected SRole(SRole sr,(long,string)e) :base(Types.SRole,sr.uid)
         {
             name = sr.name;
             uids = sr.uids + e;
-            props = sr.props;
-            defs = sr.defs;
+            subs = sr.subs;
             globalNames = sr.globalNames;
         }
         protected SRole(SRole sr,(string,long)e): base(Types.SRole,sr.uid)
         {
             name = sr.name;
             uids = sr.uids+(e.Item2, e.Item1);
-            props = sr.props;
-            defs = sr.defs;
+            subs = sr.subs;
             globalNames = sr.globalNames + (e.Item1, e.Item2);
         }
         protected SRole(SRole sr, string s) :base(Types.SRole,sr.uid)
         {
             name = sr.name;
             uids = sr.uids;
-            props = sr.props;
-            defs = sr.defs;
+            subs = sr.subs;
             globalNames = sr.globalNames - s;
         }
-        protected SRole(SRole sr,(long,long,string)e) :base(Types.SRole,sr.uid)
+        protected SRole(SRole sr,long p,(int,long,string)e) :base(Types.SRole,sr.uid)
         {
             name = sr.name;
             uids = sr.uids;
-            var p = sr.props;
-            var d = sr.defs;
-            if (!p.Contains(e.Item1))
-            {
-                p += (e.Item1, SDict<long, string>.Empty);
-                d += (e.Item1, SDict<string, long>.Empty);
-            }
-            props = p + (e.Item1, p[e.Item1] + (e.Item2,e.Item3));
-            defs = d + (e.Item1, d[e.Item1] + (e.Item3, e.Item2));
+            var so = sr.subs.defines(p)?sr.subs[p]:SRObject.Empty;
+            subs = sr.subs + (p, so + e);
+            globalNames = sr.globalNames;
+        }
+        protected SRole(SRole sr,long p,int k) :base(Types.SRole,sr.uid)
+        {
+            name = sr.name;
+            uids = sr.uids;
+            var so = sr.subs.defines(p) ? sr.subs[p] : SRObject.Empty;
+            subs = sr.subs + (p, so - k);
             globalNames = sr.globalNames;
         }
         public static SRole operator+(SRole sr,(string,long)e)
@@ -458,13 +565,17 @@ namespace Shareable
         {
             return new SRole(sr, e);
         }
-        public static SRole operator+(SRole sr,(long,long,string)e)
+        public static SRole operator+(SRole sr,(long,int,long,string)e)
         {
-            return new SRole(sr, e);
+            return new SRole(sr, e.Item1,(e.Item2,e.Item3,e.Item4));
         }
         public static SRole operator-(SRole sr,string s)
         {
             return new SRole(sr, s);
+        }
+        public static SRole operator-(SRole sr,(long,int) e)
+        {
+            return new SRole(sr, e.Item1, e.Item2);
         }
         public bool defines(long s)
         {

@@ -552,7 +552,7 @@ namespace Shareable
             var r = new SRow();
             var ab = _qry.display.First();
             for (var b = _qry.cpos.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                r += (ab.Value.Item2, b.Value.Item2.Lookup(_tr,new Context(_vals, null)));
+                      r += (ab.Value.Item2, b.Value.Item2.Lookup(_tr, new Context(_vals, null)));
             return new EvalRowBookmark(this,r, _vals);
         }
         public class EvalRowBookmark : RowBookmark

@@ -71,6 +71,8 @@ public class SFunction extends Serialisable {
         {
             if (cx.refs==null)
                 return this;
+            if (cx.defines(fid))
+                return cx.get(fid);
             var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);

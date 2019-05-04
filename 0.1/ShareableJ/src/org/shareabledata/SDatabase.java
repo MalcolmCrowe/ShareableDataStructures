@@ -140,9 +140,9 @@ public class SDatabase {
     {
         return New(objects, role.Add(u,n),curpos);
     }
-    public SDatabase Add(long t, long c, String n)
+    public SDatabase Add(long t, int s, long c, String n)
     {
-        return New(objects, role.Add(t,c,n), curpos);
+        return New(objects, role.Add(t,s,c,n), curpos);
     }
     public SDatabase Add(SDbObject ob,long u) throws Exception
     {
@@ -162,13 +162,19 @@ public class SDatabase {
         var obs = objects;
         if (c.uid >= STransaction._uid)
             obs = obs.Add(c.uid, c);
-        var tb = ((STable)obs.get(c.table)).Add(c,n);
-        if (role.defs!=null && role.defs.Contains(c.table) && 
-                role.defs.get(c.table).Contains(n))
+        var tb = ((STable)obs.get(c.table)).Add(-1,c,n);
+        if (role.subs!=null && role.subs.Contains(c.table) && 
+                role.subs.get(c.table).defs.Contains(n))
             throw new Exception("Table "+role.uids.get(tb.uid)+ 
                     " already has column "+n);
+        if (tb.rows!=null && c.constraints!=null)
+        for (var b=c.constraints.First();b!=null;b=b.Next())
+            switch (b.getValue().key)
+            {
+                case "NOTNULL": throw new Exception("Table is not empty");
+            }
         return New(obs.Add(c.table,tb).Add(c.uid, c), 
-                role.Add(c.table,c.uid,n).Add(c.uid,n), p);
+                role.Add(c.table,-1,c.uid,n).Add(c.uid,n), p);
     }
 
     protected SDatabase Install(SAlter a, long c) throws Exception
@@ -183,7 +189,7 @@ public class SDatabase {
         } else {
             var ot = (STable) obs.Lookup(a.defpos);
             var nc = new SColumn(a.col, ot.uid, a.dataType);
-            var nt = ot.Add(nc,Name(nc.uid));
+            var nt = ot.Add(a.seq,nc,Name(nc.uid));
             return New(obs.Add(a.defpos, nt),role,c);
         }
     }
@@ -199,8 +205,14 @@ public class SDatabase {
             switch(ot.type)
             {
                 case Types.STable:
+                {
                     ro = ro.Remove(Name(((STable)ot).uid));
+                    var tb = (STable)ot;
+                    if (tb.indexes!=null)
+                        for (var b=tb.indexes.First();b!=null;b=b.Next())
+                            obs = obs.Remove(b.getValue().key);
                     break;
+                }
                 case Types.SIndex:
                 {
                     var x = (SIndex)ot;
@@ -210,11 +222,26 @@ public class SDatabase {
                     break;
                 }
             }
-            return New(objects.Remove(d.drpos),ro,c);
+            return New(obs.Remove(d.drpos),ro,c);
         } else {
             var ot = (STable)objects.Lookup(d.parent);
-            var nt = ot.Remove(d.drpos);
-            return New(objects.Add(d.parent, nt),role,c);
+            var sc = (SColumn)obs.get(d.drpos);
+            var ss = role.subs.get(sc.table);
+            var sq = ss.props.get(sc.uid);
+            if (d.detail.length() == 0)
+            {
+                var nt = ot.Remove(d.drpos);
+                obs = obs.Add(d.parent, nt);
+                return New(obs, role.Remove(d.parent,sq), c);
+            } else
+            {
+                var nc = new SColumn(sc.table, sc.dataType, sc.uid, 
+                        sc.constraints.Remove(d.detail));
+                var nt = ot.Add(sq,nc, Name(nc.uid));
+                var ro = role.Add(Name(nt.uid),nt.uid);
+                obs = obs.Add(d.drpos, nc).Add(nt.uid,nt);
+                return New(obs,ro,c);
+            }
         }
     }
 
@@ -234,13 +261,23 @@ public class SDatabase {
         tb = new STable((tb.indexes==null)?new SDict(x.uid,true):tb.indexes.Add(x.uid,true),tb);
         return New(objects.Add(x.uid, x).Add(tb.uid,tb),role,c);
     }
+    protected SDatabase Install(SDropIndex d,long c) throws Exception
+    {
+        var obs = objects;
+        if (d.uid >= STransaction._uid)
+            obs = obs.Add(d.uid, d);
+        var tb = (STable)objects.Lookup(d.table);
+        var x = tb.FindIndex(this,d.key);
+        tb = new STable(tb.indexes.Remove(x.uid),tb);
+        return New(obs.Remove(x.uid).Add(tb.uid,tb),role,c);
+    }
 
     public RandomAccessFile File() {
         return dbfiles.Lookup(name);
     }
 
     SDatabase Load() throws Exception {
-        var rd = new Reader(this,curpos);
+        var rd = new Reader(this);
         var db = this;
         for (var s = (SDbObject)rd._Get(); s != null && s!=Serialisable.Null; s = (SDbObject)rd._Get())
             rd.db = rd.db._Add(s, rd.Position());
@@ -257,6 +294,8 @@ public class SDatabase {
             //        case Types.SView: return Install((SView)s, p);
             case Types.SIndex:
                 return Install((SIndex) s, p);
+            case Types.SDropIndex:
+                return Install((SDropIndex)s,p);
         }
         return this;
     }

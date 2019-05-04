@@ -12,15 +12,16 @@ public class STable extends SQuery {
         public final SDict<Long,SColumn> cols;
         public final SDict<Long, Long> rows; // defpos->uid of latest update
         public final SDict<Long,Boolean> indexes;
-        public STable Add(SColumn c,String s) 
+        public STable Add(int sq,SColumn c,String s) 
         {
-            return new STable(this,
-                    (cols==null)?new SDict<>(c.uid,c):cols.Add(c.uid,c),
-                    (display==null)?new SDict<>(0,new Ident(c.uid,s)):
-                            display.Add(display.Length,new Ident(c.uid,s)),
-                    (cpos==null)?new SDict<>(0,c):cpos.Add(cpos.Length,c),
-                    (refs==null)?new SDict<>(c.uid,c):refs.Add(c.uid, c)
-           );
+            var sd = (sq>=0)?sq:(display==null)?0:display.Length;
+            var sp = (sq>=0)?sq:(cpos==null)?0:cpos.Length;
+            var cs = (cols==null)?new SDict(c.uid,c):cols.Add(c.uid,c);
+            var ds = (display==null)?new SDict(sd,new Ident(c.uid,s)):
+                            display.Add(sd,new Ident(c.uid,s));
+            var cp = (cpos==null)?new SDict(sp,c):cpos.Add(sp,c);
+            var rf = (refs==null)?new SDict(c.uid,c):refs.Add(c.uid, c);
+            return new STable(this,cs,ds,cp,rf);
         }
         public STable Add(SRecord r)
         {
@@ -28,6 +29,38 @@ public class STable extends SQuery {
             var v = r.uid;
             var rws = (rows==null)?new SDict<Long,Long>(k,v):rows.Add(k,v);
             return new STable(this,rws);
+        }
+        public SColumn FindForRole(SDatabase db,String nm)
+        {
+            var ss = db.role.subs.get(uid);
+            return (SColumn)db.objects.get(ss.obs.get(ss.defs.get(nm)).key);
+        }
+        public SIndex FindIndex(SDatabase db,SList<Long> key)
+        {
+            var ss = db.role.subs.get(uid);
+            if (indexes!=null)
+                for (var b = indexes.First(); b != null; b = b.Next())
+                {
+                    var x = (SIndex)db.objects.get(b.getValue().key);
+                    if (x.cols.Length != key.Length)
+                        continue;
+                    var kb = key.First();
+                    var ma = true;
+                    for (var xb = x.cols.First(); ma && xb != null && kb != null;
+                        xb = xb.Next(), kb = kb.Next())
+                    {
+                        var u = kb.getValue();
+                        if (u < 0)
+                        {
+                            var kn = db.role.uids.get(kb.getValue());
+                            u = ss.obs.get(ss.defs.get(kn)).key;
+                        }
+                        ma = xb.getValue() == u;
+                    }
+                    if (ma)
+                        return x;
+                }
+            return null;
         }
         public STable Remove(long n)
         {
@@ -39,7 +72,7 @@ public class STable extends SQuery {
                 SDict<Integer,Ident> di = null;
                 var db = display.First();
                 for(var b=cpos.First();db!=null && b!=null;b=b.Next(),
-                        db=db.Next(),k++)
+                        db=db.Next())
                 {
                     var v = b.getValue().val;
                     if (v instanceof SColumn && ((SColumn)v).uid!=n)
@@ -47,7 +80,8 @@ public class STable extends SQuery {
                         var c = (SColumn)v;
                         var id = db.getValue().val;
                         di = (di==null)?new SDict<>(k,id):di.Add(k,id);
-                        cp = (cp==null)?new SDict<>(k,c):cp.Add(k,c);   
+                        cp = (cp==null)?new SDict<>(k,c):cp.Add(k,c);  
+                        k++;
                     }
                 }
                 return new STable(this, cols.Remove(n),di,cp,refs.Remove(sc.uid));

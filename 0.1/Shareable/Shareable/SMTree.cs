@@ -90,8 +90,8 @@ namespace Shareable
         }
         public bool Contains(SCList<Variant> k)
         {
-            return (k.Length == 0) ? 
-                Length != 0 :
+            return Length==0? false :(k.Length == 0) ? 
+                true :
                 (_impl?.Lookup(k.element) is Variant v) ?
                     ((v.variant == Variants.Compound) ?
                         ((SMTree<K>)v.ob).Contains((SCList<Variant>)k.next) : // not null
@@ -170,7 +170,7 @@ namespace Shareable
         protected SMTree<K> Add(SCList<Variant> k, long v)
         {
             var r = Add(k, v, out TreeBehaviour tb);
-            return (tb==TreeBehaviour.Allow)?r:throw new Exception("Duplicate key");
+            return (tb==TreeBehaviour.Allow)?r:throw new StrongException("Duplicate key");
         }
         public static SMTree<K> operator+(SMTree<K> t, (SCList<Variant>,long) x)
         {

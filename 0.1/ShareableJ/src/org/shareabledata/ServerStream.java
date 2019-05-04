@@ -33,5 +33,6 @@ public class ServerStream  {
         public void Flush() throws Exception
         {
             wtr.PutBuf();
+            wtr.buf.pos = 2;
         }
 };

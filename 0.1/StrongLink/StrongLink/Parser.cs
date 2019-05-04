@@ -452,11 +452,16 @@ namespace StrongLink
                             return new SAlter("", dt, tb, col, -1, cs.Item1);
                         case Sym.DROP:
                             Next();
-                            if (lxr.tok == Sym.ID)
+                            switch (lxr.tok)
                             {
-                                var v = (SDbObject)lxr.val;
-                                Next();
-                                return new SDrop(tb, col, uids[v.uid]);
+                                case Sym.ID:
+                                    var v = (SDbObject)lxr.val;
+                                    Next();
+                                    return new SDrop(col, tb, uids[v.uid]);
+                                case Sym.DEFAULT:
+                                case Sym.GENERATED:
+                                case Sym.NOTNULL:
+                                    return new SDrop(col, tb, lxr.tok.ToString());
                             }
                             var sy = lxr.tok.ToString();
                             Next();
@@ -511,7 +516,7 @@ namespace StrongLink
                     Next();
                     if (lxr.tok != Sym.ID)
                         return TableConstraint(tb);
-                    return ColumnDef(tb).Item2;
+                    return new SCreateColumn(ColumnDef(tb).Item2);
             }
             throw new Exception("Bad Alter syntax");
         }

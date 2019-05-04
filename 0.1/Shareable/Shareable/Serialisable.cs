@@ -683,6 +683,10 @@ namespace Shareable
             return cx.refs[target.uid];
         }
         public override bool isValue => false;
+        public override string ToString()
+        {
+            return "VALUE";
+        }
     }
     public class SFunction : Serialisable
     {
@@ -740,6 +744,8 @@ namespace Shareable
         {
             if (cx.refs==SDict<long,Serialisable>.Empty)
                 return this;
+            if (cx.defines(fid))
+                return cx[fid];
             var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
@@ -889,6 +895,10 @@ namespace Shareable
         public override Context Arg(Serialisable v, Context cx)
         {
             return arg.Arg(v, cx);
+        }
+        public override string ToString()
+        {
+            return arg.ToString()+" in "+list.ToString();
         }
     }
     public class SInteger : Serialisable, IComparable
@@ -1338,7 +1348,7 @@ namespace Shareable
             isNull = false;
             rec = null;
         }
-        public SRow(SDatabase db,SRecord r) :base(Types.SRow)
+        public SRow(STransaction db,SRecord r) :base(Types.SRow)
         {
             var tb = (STable)db.objects[r.table];
             var cn = SDict<int, (long,string)>.Empty;
@@ -1349,6 +1359,16 @@ namespace Shareable
                 if (b.Value.Item2 is SColumn sc)
                 {
                     var v = r.fields.Lookup(sc.uid)??Null;
+                    for (var c=sc.constraints.First();c!=null;c=c.Next())
+                        switch (c.Value.Item1)
+                        {
+                            case "DEFAULT": if (v == Null)
+                                    goto case "GENERATED";
+                                break;
+                            case "GENERATED":
+                                v = c.Value.Item2.Lookup(db, new Context(r.fields));
+                                break;
+                        }
                     co += (k, v);
                     cn += (k++, (sc.uid,db.Name(sc.uid)));
                     vs += (sc.uid, v);
@@ -1671,6 +1691,10 @@ namespace Shareable
         {
             return "SName "+_Uid(uid);
         }
+        internal virtual STable ForRole(SDatabase db)
+        {
+            throw new NotImplementedException();
+        }
     }
     public class STable : SQuery
     {
@@ -1688,17 +1712,17 @@ namespace Shareable
             rows = SDict<long, long>.Empty;
             indexes = SDict<long, bool>.Empty;
         }
-        protected virtual STable Add(SColumn c,string s)
+        protected virtual STable Add(int sq,SColumn c,string s)
         {
             var t = new STable(this,cols + (c.uid,c),
-                display+(display.Length??0,(c.uid,s)),
-                cpos + (cpos.Length??0,c),
+                display+((sq>=0)?sq:display.Length??0,(c.uid,s)),
+                cpos + ((sq>=0)?sq:cpos.Length??0,c),
                 refs + (c.uid,c));
             return t;
         }
-        public static STable operator+(STable t,(SColumn,string) c)
+        public static STable operator+(STable t,(int,SColumn,string) c)
         {
-            return t.Add(c.Item1,c.Item2);
+            return t.Add(c.Item1,c.Item2,c.Item3);
         }
         protected STable Add(SRecord r)
         {
@@ -1710,7 +1734,34 @@ namespace Shareable
         }
         public SColumn FindForRole(SDatabase db,string nm)
         {
-            return (SColumn)db.objects[db.role.defs[uid][nm]];
+            var ss = db.role.subs[uid];
+            return (SColumn)db.objects[ss.obs[ss.defs[nm]].Item1];
+        }
+        public SIndex? FindIndex(SDatabase db,SList<long> key)
+        {
+            var ss = db.role.subs[uid];
+            for (var b = indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects[b.Value.Item1];
+                if (x.cols.Length != key.Length)
+                    continue;
+                var kb = key.First();
+                var ma = true;
+                for (var xb = x.cols.First(); ma && xb != null && kb != null;
+                    xb = xb.Next(), kb = kb.Next())
+                {
+                    var u = kb.Value;
+                    if (u < 0)
+                    {
+                        var kn = db.uids[kb.Value];
+                        u = ss.obs[ss.defs[kn]].Item1;
+                    }
+                    ma = xb.Value == u;
+                }
+                if (ma)
+                    return x;
+            }
+            return null;
         }
         /// <summary>
         /// This method works for SColumns and SRecords
@@ -1757,7 +1808,7 @@ namespace Shareable
             rows = t.rows;
             indexes = t.indexes;
         }
-        protected STable(STable t, SDict<long, SColumn> co, 
+        public STable(STable t, SDict<long, SColumn> co, 
             SDict<int,(long,string)> a,
             SDict<int,Serialisable> cp, SDict<long,Serialisable> na) 
             :base(t,a,cp,na)
@@ -1806,7 +1857,7 @@ namespace Shareable
                 var nm = db.role.uids[u];
                 if (!db.role.globalNames.Contains(nm))
                     throw new StrongException("No table " + nm);
-                return (STable)db.objects[db.role.globalNames[nm]];
+                return db.objects[db.role.globalNames[nm]].ForRole(db);
             }
             var c = f.Position - 1;
             var tb = new STable(c);
@@ -1817,6 +1868,10 @@ namespace Shareable
         public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
             return this;
+        }
+        internal override STable ForRole(SDatabase db)
+        {
+            return db.Role(this);
         }
         public override Serialisable UseAliases(SDatabase db,SDict<long, long> ta)
         {
@@ -1943,6 +1998,19 @@ namespace Shareable
             return "CreateTable "+SDbObject._Uid(tdef)+" "+coldefs.ToString();
         }
     }
+    public class SCreateColumn : Serialisable
+    {
+        public readonly SColumn coldef;
+        public SCreateColumn(SColumn sc) : base(Types.SCreateColumn)
+        {
+            coldef = sc;
+        }
+        public override void Put(WriterBase f)
+        {
+            base.Put(f);
+            coldef.PutColDef(f);
+        }
+    }
     public class SysTable : STable
     {
         public static readonly long _SysUid = -0x7000000000000000;
@@ -1955,7 +2023,7 @@ namespace Shareable
             : base(t, c, d, p, n)
         {
         }
-        protected override STable Add(SColumn c,string s)
+        protected override STable Add(int sq,SColumn c,string s) // we ignore sq: System tables can't be altered
         {
             var t = new SysTable(this, cols + (c.uid, c),
                 display + (display.Length ?? 0, (c.uid,s)),
@@ -1970,6 +2038,10 @@ namespace Shareable
             for (var i = 0; i < ss.Length; i++)
                 d = d.Install(new SColumn(--_uid,st.uid,ss[i].Item2),ss[i].Item1,0);
             return d;
+        }
+        internal override STable ForRole(SDatabase db)
+        {
+            return this;
         }
         internal static SDatabase SysTables(SDatabase d)
         {
@@ -2024,9 +2096,10 @@ namespace Shareable
             var n = ro[x];// client-side name
             if (f.context is SQuery)
             {
-                if (ro.defs[f.context.uid].defines(n)) //it's a ColumnDef
+                var ss = ro.subs[f.context.uid];
+                if (ss.defs.defines(n)) //it's a ColumnDef
                 {
-                    var sc = ((STable)f.context).cols[ro.defs[f.context.uid][n]];
+                    var sc = ((STable)f.context).cols[ss.obs[ss.defs[n]].Item1];
                     f.db += (sc, sc.uid);
                     return sc;
                 }
@@ -2086,8 +2159,8 @@ namespace Shareable
             var c = SDict<string,SFunction>.Empty;
             for (var i = 0; i < n; i++)
             {
-                cn = f.GetString();
-                c += (cn,f._Get() as SFunction ?? throw new StrongException("Constraint expected"));
+                var ccn = f.GetString();
+                c += (ccn,f._Get() as SFunction ?? throw new StrongException("Constraint expected"));
             }
             constraints = c;
             f.context = oc;
@@ -2260,18 +2333,15 @@ namespace Shareable
         }
         SAlter(ReaderBase f):base(Types.SAlter,f)
         {
-            var p = f.GetLong();
             var ro = f.db.role;
-            var nm = ro.uids[p];
-            defpos = (ro.globalNames.defines(nm)) ? ro.globalNames[nm] : throw new StrongException("No table "+nm);
             var tb = (STable)f.db.objects[defpos];
-            var dfs = ro.defs[tb.uid];
+            var ss = ro.subs[tb.uid];
             SColumn? co = null;
             var cc = f.GetLong(); //may be -1
-            if (cc >= 0)
-            {
-                var cn = ro.uids[col];
-                co = dfs.defines(cn) ? (SColumn)f.db.objects[dfs[cn]] : throw new StrongException("No column " + cn);
+            if (cc!=-1)
+            { 
+                var cn = ro.uids[cc];
+                co = ss.defs.defines(cn) ? (SColumn)f.db.objects[ss.obs[ss.defs[cn]].Item1] : throw new StrongException("No column " + cn);
             }
             col = co?.uid ?? -1;
             name = f.GetString();
@@ -2286,7 +2356,7 @@ namespace Shareable
             }
             ccs = cs;
         }
-        public SAlter(SAlter a,Writer f):base(a,f)
+        public SAlter(SDatabase db,SAlter a,Writer f):base(a,f)
         {
             name = a.name;
             dataType = a.dataType;
@@ -2298,12 +2368,15 @@ namespace Shareable
             f.PutString(name);
             f.WriteByte((byte)dataType);
             f.PutInt(seq);
-            f.PutInt(ccs.Length ?? 0);
-            for (var b = ccs.First(); b != null; b = b.Next())
+            f.PutInt(a.ccs.Length ?? 0);
+            var cs = SDict<string, SFunction>.Empty;
+            for (var b = a.ccs.First(); b != null; b = b.Next())
             {
-                f.PutString(b.Value.Item1);
-                b.Value.Item2.Fix(f).Put(f);
+                var nm = b.Value.Item1;
+                f.PutString(nm);
+                cs += (nm, (SFunction)b.Value.Item2.Fix(f));
             }
+            ccs = cs;
         }
         public override long Affects => defpos;
         public new static SAlter Get(ReaderBase f)
@@ -2312,6 +2385,7 @@ namespace Shareable
         }
         public override void Put(WriterBase f)
         {
+            f.Write(Types.SAlter);
             f.PutLong(defpos);
             f.PutLong(col);
             f.PutString(name);
@@ -2326,7 +2400,7 @@ namespace Shareable
         }
         public override STransaction Obey(STransaction tr, Context cx)
         {
-            return (STransaction)tr.Install(this, tr.curpos);
+            return (STransaction)tr.Install(new SAlter(tr,name,dataType,defpos,col,seq,ccs), tr.curpos);
         }
         public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
@@ -2365,15 +2439,19 @@ namespace Shareable
             return sb.ToString();
         }
     }
-    public class SDropIndex : Serialisable
+    public class SDropIndex : SDbObject
     {
         public readonly long table;
         public readonly SList<long> key;
         public SDropIndex(long tb,SList<long> k) :base(Types.SDropIndex)
         {
+            table = tb; key = k; 
+        }
+        public SDropIndex(STransaction tr,long tb, SList<long> k) : base(Types.SDropIndex,tr)
+        {
             table = tb; key = k;
         }
-        public SDropIndex(ReaderBase f) : base(Types.SDrop, f)
+        public SDropIndex(ReaderBase f) : base(Types.SDropIndex, f)
         {
             table = f.GetLong();
             var n = f.GetInt();
@@ -2382,23 +2460,62 @@ namespace Shareable
                 k += (f.GetLong(), i);
             key = k;
         }
+        public SDropIndex(SDatabase db,SDropIndex di,Writer f) :base(di,f)
+        {
+            table = f.Fix(di.table);
+            f.PutLong(table);
+            f.PutInt(di.key.Length ?? 0);
+            var k = SList<long>.Empty;
+            var i = 0;
+            for (var b = di.key.First(); b != null; b = b.Next())
+            {
+                var u = f.Fix(b.Value);
+                k += (u, i++);
+                f.PutLong(u);
+            }
+            key = k;
+        }
         public override Serialisable Prepare(STransaction db, SDict<long, long> pt)
         {
-            var tb = (STable)db.objects[table];
-            for (var b = tb.indexes.First(); b != null; b = b.Next())
+            var tn = db.uids[table];
+            if (!db.role.globalNames.defines(tn))
+                throw new StrongException("Table " + tn + " not found");
+            var tb = (STable)db.objects[db.role.globalNames[tn]];
+            var x = tb.FindIndex(db, key);
+            if (x!=null)
             {
-                var x = (SIndex)db.objects[b.Value.Item1];
-                if (x.cols.Length != key.Length)
-                    continue;
-                var kb = key.First();
-                var ma = true;
-                for (var xb = x.cols.First(); ma && xb != null && kb != null;
-                    xb = xb.Next(), kb = kb.Next())
-                    ma = xb.Value == kb.Value;
-                if (ma)
-                    return new SDrop(x.uid,-1,"");
+                for (var xb = db.objects.First(); xb != null; xb = xb.Next())
+                    if (xb.Value.Item2 is SIndex rx && rx.refindex == x.uid)
+                        throw new StrongException("Restricted by reference");
+                return new SDropIndex(db,tb.uid, x.cols);
             }
             throw new StrongException("No such table constraint");
+        }
+        public override STransaction Obey(STransaction tr, Context cx)
+        {
+            return (STransaction)tr.Install(this, tr.curpos);
+        }
+        public override void Put(WriterBase f)
+        {
+            base.Put(f);
+            f.PutLong(table);
+            f.PutInt(key.Length ?? 0);
+            for (var b = key.First(); b != null; b = b.Next())
+                f.PutLong(b.Value);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("DropIndex for ");
+            sb.Append(_Uid(table));
+            sb.Append(" (");
+            var cm = "";
+            for (var b = key.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(_Uid(b.Value));
+            }
+            sb.Append(")");
+            return sb.ToString();
         }
     }
     public class SDrop: SDbObject
@@ -2434,6 +2551,53 @@ namespace Shareable
         {
             return new SDrop(f);
         }
+        public override void Put(WriterBase f)
+        {
+            base.Put(f);
+            f.PutLong(drpos);
+            f.PutLong(parent);
+            f.PutString(detail);
+        }
+        public override Serialisable Prepare(STransaction tr, SDict<long, long> pt)
+        {
+            var pr = parent;
+            var dp = drpos;
+            var st = detail;
+            var tn = tr.uids[(pr == -1) ? dp : pr];
+            var tb = (STable)tr.objects[tr.role.globalNames[tn]] ?? 
+                throw new StrongException("Table " + tn + " not found");
+            if (pr == -1)
+            {
+                dp = tb.uid;
+                for (var b = tr.objects.First(); b != null; b = b.Next())
+                    if (b.Value.Item2 is SIndex x && x.references == tb.uid)
+                        throw new StrongException("Restricted by reference");
+            }
+            else
+            {
+                pr = tb.uid;
+                var ss = tr.role.subs[tb.uid];
+                var cn = tr.uids[dp];
+                if (!ss.defs.defines(cn))
+                    throw new StrongException("Column " + cn + " not found");
+                dp = ss.obs[ss.defs[cn]].Item1;
+                if (st.Length != 0 && tr.objects[dp] is SColumn sc
+                    && !sc.constraints.defines(st))
+                    throw new StrongException("Column " + cn + " lacks constraint " + st);
+                for (var b = tb.indexes.First(); b != null; b = b.Next())
+                {
+                    var x = (SIndex)tr.objects[b.Value.Item1];
+                    for (var c = x.cols.First(); c != null; c = c.Next())
+                        if (c.Value == dp)
+                            throw new StrongException("Restrict: column " + cn + " is an index key");
+                }
+            } 
+            return new SDrop(tr, dp, pr, st);
+        }
+        public override STransaction Obey(STransaction tr, Context cx)
+        {
+            return (STransaction)tr.Install(this, tr.curpos);
+        }
         public override long Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch(that.type)
@@ -2462,6 +2626,7 @@ namespace Shareable
             sb.Append("Drop ");
             sb.Append("" + drpos);
             sb.Append((parent!=0)?"":(" of "+parent));
+            sb.Append(" ");
             sb.Append(detail);
             return sb.ToString();
         }
@@ -2524,8 +2689,8 @@ namespace Shareable
             var n = "$" + (maxAlias - a);
             f.db += (a, n);
             ta += (u, a);
-            if (f.db.role.props.Contains(u))
-                for (var b = f.db.role.props[u].First(); b != null; b = b.Next())
+            if (f.db.role.subs.Contains(u))
+                for (var b = f.db.role.subs[u].props.First(); b != null; b = b.Next())
                     ta = Aliases(f, b.Value.Item1, ta);
             return ta;
         }
@@ -2578,7 +2743,7 @@ namespace Shareable
                 t = tr.role.globalNames[tn];
             }
             var cs = SList<long>.Empty;
-            var rt = tr.role.defs[t];
+            var rt = tr.role.subs[t];
             var i = 0;
             for (var b = cols.First(); b != null; b = b.Next())
             {
@@ -2586,9 +2751,9 @@ namespace Shareable
                 if (u < 0) // it is a client-side uid to be looked up in the SNames contribution to tr
                 {
                     var cn = tr.role.uids[u];
-                    if (!rt.Contains(cn))
+                    if (!rt.defs.Contains(cn))
                         throw new StrongException("Column " + cn + " not found");
-                    u = rt[cn];
+                    u = rt.obs[rt.defs[cn]].Item1;
                 }
                 cs += (u, i++);
             }
@@ -3112,19 +3277,14 @@ namespace Shareable
         public readonly long refindex;
         public readonly SList<long> cols;
         public readonly SMTree<Serialisable> rows;
-        /// <summary>
-        /// A primary or unique index
-        /// </summary>
-        /// <param name="t"></param>
-        /// <param name="c"></param>
         public SIndex(long t, bool p, long r, SList<long> c) : base(Types.SIndex)
         {
             table = t;
             primary = p;
             cols = c;
             references = r;
-            rows = new SMTree<Serialisable>(SList<TreeInfo<Serialisable>>.Empty);
             refindex = -1;
+            rows = new SMTree<Serialisable>(SList<TreeInfo<Serialisable>>.Empty);
         }
         public SIndex(STransaction tr, long t, bool p, long r, SList<long> c) : base(Types.SIndex, tr)
         {
@@ -3144,41 +3304,56 @@ namespace Shareable
         }
         SIndex(ReaderBase f) : base(Types.SIndex, f)
         {
-            var ro = f.db.role;
-            var tn = ro[f.GetLong()];
-            if (!ro.globalNames.Contains(tn))
-                throw new StrongException("Table " + tn + " not found");
-            table = ro.globalNames[tn];
+            table = f.GetLong();
             primary = f.ReadByte()!=0;
             var n = f.GetInt();
-            var rt = ro.defs[table];
             var c = new long[n];
             for (var i = 0; i < n; i++)
+                c[i] = f.GetLong();
+            references = f.GetLong();
+            refindex = -1;
+            cols = SList<long>.New(c);
+            if (f is Reader rdr)
+                rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects[table], cols, refindex >= 0));
+            else
+                rows = new SMTree<Serialisable>(SList<TreeInfo<Serialisable>>.Empty);
+        }
+        public override Serialisable Prepare(STransaction tr, SDict<long, long> pt)
+        {
+            var ro = tr.role;
+            var tn = ro[table];
+            if (!ro.globalNames.Contains(tn))
+                throw new StrongException("Table " + tn + " not found");
+            var tb = ro.globalNames[tn];
+            var pr = primary;
+            var rt = ro.subs[tb];
+            var c = new long[cols.Length??0];
+            var i = 0;
+            for (var b=cols.First();b!=null;b=b.Next(),i++)
             {
-                var cn = ro[f.GetLong()];
-                if (!rt.Contains(cn))
+                var cn = ro[b.Value];
+                if (!rt.defs.Contains(cn))
                     throw new StrongException("Column " + cn + " not found");
-                c[i] = rt[cn];
+                c[i] = rt.obs[rt.defs[cn]].Item1;
+                var sc = (SColumn)tr.objects[c[i]];
+                // Many DBMS would require a NOTNULL constraint for all key columns
+                // StrongDBMS will merely complain if any key contains null values.
+                if (sc.constraints.Contains("DEFAULT"))
+                    throw new StrongException("Default values do not make good keys");
             }
-            var ru = f.GetLong();
+            var ru = references;
             var rn = (ru == -1) ? "" : ro[ru];
-            var rx = -1L;
             if (ru != -1)
             {
                 if (!ro.globalNames.Contains(rn))
                     throw new StrongException("Ref table " + rn + " not found");
                 ru = ro.globalNames[rn];
-                if (f.db.GetPrimaryIndex(ru) is SIndex x)
-                    rx = x.uid;
-                else
-                    throw new StrongException("Ref table " + rn + " has no primary index");
             }
-            references = ru;
-            refindex = rx;
-            cols = SList<long>.New(c);
-            rows = new SMTree<Serialisable>(Info((STable)f.db.objects[table], cols,references>=0));
+            var rf = ru;
+            var cs = SList<long>.New(c);
+            return new SIndex(tr, tb, pr, rf, cs);
         }
-        public SIndex(SIndex x, Writer f) : base(x, f)
+        public SIndex(SDatabase db,SIndex x, Writer f) : base(x, f)
         {
             table = f.Fix(x.table);
             f.PutLong(table);
@@ -3196,7 +3371,7 @@ namespace Shareable
             refindex = f.Fix(x.refindex);
             f.PutLong(references);
             cols = SList<long>.New(c);
-            rows = x.rows;
+            rows = new SMTree<Serialisable>(Info((STable)db.objects[table], cols, references >= 0));
         }
         public SIndex(SIndex x,SMTree<Serialisable> nt) :base(x)
         {
@@ -3661,9 +3836,9 @@ namespace Shareable
                                 var nm = tr.Name(sc.uid);
                                 var nc = new SColumn(sc, nm, this);
                                 var tb = (STable)db.objects[nc.table];
-                                tb += (nc, nm);
+                                tb += (-1,nc, nm);
                                 db = db + (nc, nm, Length) + (tb, db.Name(tb.uid), Length)
-                                    + (tb.uid, nc.uid, nm);
+                                    + (tb.uid, -1, nc.uid, nm);
                                 commits += (nc.uid, nc);
                                 break;
                             }
@@ -3700,7 +3875,7 @@ namespace Shareable
                             }
                         case Types.SAlter:
                             {
-                                var sa = new SAlter((SAlter)b.Value.Item2, this);
+                                var sa = new SAlter(db,(SAlter)b.Value.Item2, this);
                                 db += (sa, Length);
                                 commits += (sa.uid, sa);
                                 break;
@@ -3714,9 +3889,16 @@ namespace Shareable
                             }
                         case Types.SIndex:
                             {
-                                var si = new SIndex((SIndex)b.Value.Item2, this);
+                                var si = new SIndex(db,(SIndex)b.Value.Item2, this);
                                 db += (si, Length);
                                 commits += (si.uid, si);
+                                break;
+                            }
+                        case Types.SDropIndex:
+                            {
+                                var di = new SDropIndex(db, (SDropIndex)b.Value.Item2, this);
+                                db += (di, Length);
+                                commits += (di.uid, di);
                                 break;
                             }
                     }

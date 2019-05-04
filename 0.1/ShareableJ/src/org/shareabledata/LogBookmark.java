@@ -17,7 +17,7 @@ public class LogBookmark extends RowBookmark {
             throws Exception
     {
         super(rs,_Cx(rs,rs._Row(new SString(ob.Uid()),
-            new SString(""+ob.type), //Type
+            new SString(new Types().types[ob.type]), //Type
             new SString(ob.toString()),
             new SString(rs._tr.role.uids.Contains(ob.uid)?rs._tr.Name(ob.uid):""),
             new SString(SDbObject._Uid(ob.getAffects()))),null),p);

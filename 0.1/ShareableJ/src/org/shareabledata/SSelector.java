@@ -38,9 +38,10 @@ package org.shareabledata;
             var n = ro.uids.get(x);// client-side name
             if (f.context instanceof SQuery)
             {
-                if (ro.defs.get(f.context.uid).defines(n)) //it's a ColumnDef
+                var ss = ro.subs.get(f.context.uid);
+                if (ss.defs.defines(n)) //it's a ColumnDef
                 {
-                    var sc = ((STable)f.context).cols.get(ro.defs.get(f.context.uid).get(n));
+                    var sc = ((STable)f.context).cols.get(ss.obs.get(ss.defs.get(n)).key);
                     f.db = f.db.Add(sc, sc.uid);
                     return sc;
                 }

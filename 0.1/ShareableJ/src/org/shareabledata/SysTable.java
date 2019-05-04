@@ -58,7 +58,7 @@ public class SysTable extends STable {
             super(t, c, d, p, n);
         }
         @Override
-        public STable Add(SColumn c,String s) 
+        public STable Add(int sq,SColumn c,String s) 
         {
             var id = new Ident(c.uid,s);
             return new SysTable(this,

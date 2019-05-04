@@ -124,7 +124,7 @@ public class SAlter extends SDbObject {
             for(var b=constraints.First();b!=null;b=b.Next())
             {
                 sb.append(" ");sb.append(b.getValue().key);
-                b.getValue().val.Append(sb);
+                sb.append(": ");b.getValue().val.Append(sb);
             }
             return sb.toString();
         }
