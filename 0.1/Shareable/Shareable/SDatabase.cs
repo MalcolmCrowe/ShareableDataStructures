@@ -90,7 +90,7 @@ namespace Shareable
         internal SDatabase Load()
         {
             var rd = new Reader(this);
-            long last = 0; 
+            long last = 0;
             try
             {
                 for (var s = rd._Get() as SDbObject; s != null && s!=Serialisable.Null; s = rd._Get() as SDbObject)

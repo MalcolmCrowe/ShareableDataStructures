@@ -3300,7 +3300,7 @@ namespace Shareable
             }
             else
                 refindex = -1;
-            rows = new SMTree<Serialisable>(Info((STable)tr.objects[table], cols,refindex>=0));
+            rows = new SMTree<Serialisable>(Info((STable)tr.objects[table], cols,references>=0));
         }
         SIndex(ReaderBase f) : base(Types.SIndex, f)
         {
@@ -3314,7 +3314,7 @@ namespace Shareable
             refindex = -1;
             cols = SList<long>.New(c);
             if (f is Reader rdr)
-                rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects[table], cols, refindex >= 0));
+                rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects[table], cols, references >= 0));
             else
                 rows = new SMTree<Serialisable>(SList<TreeInfo<Serialisable>>.Empty);
         }
@@ -3399,7 +3399,7 @@ namespace Shareable
         public void Check(SDatabase db,SRecord r,bool updating)
         {
             var k = Key(r, cols);
-            if ((!updating) && refindex == -1 && rows.Contains(k))
+            if ((!updating) && references == -1 && rows.Contains(k))
                 throw new StrongException("Duplicate Key constraint violation");
             if (refindex != -1)
             {

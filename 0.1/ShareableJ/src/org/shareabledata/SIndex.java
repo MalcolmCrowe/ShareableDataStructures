@@ -49,7 +49,7 @@ public class SIndex extends SDbObject {
         }
         else
             refindex = -1;
-            rows = new SMTree(Info((STable)tr.objects.get(table), cols,refindex>=0));
+            rows = new SMTree(Info((STable)tr.objects.get(table), cols,references>=0));
     }
 
     SIndex(ReaderBase f) throws Exception 
@@ -67,7 +67,7 @@ public class SIndex extends SDbObject {
         if (f instanceof Reader)
         {
             var rdr = (Reader) f;
-            rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects.get(table), cols, refindex >= 0));
+            rows = new SMTree<Serialisable>(Info((STable)rdr.db.objects.get(table), cols, references >= 0));
         }
         else
             rows = new SMTree(null);
