@@ -42,15 +42,18 @@ namespace StrongDB
             // client.Blocking = false;
             // process the connection string
             asy = new ServerStream(client);
-            var rdr = asy.rbuf;
+            var rdr = asy.rdr;
+            var wtr = asy.wtr;
             int p = -1;
             try
             {
                 var fn = rdr.GetString();
-                db = SDatabase.Open(path,fn);
-                asy.Write(Types.Done);
+                db = SDatabase.Open(path, fn);
+                wtr.Write(Types.Done);
+                wtr.PutLong(0);
+                wtr.PutLong(0);
                 asy.Flush();
-            } 
+            }
             catch (IOException)
             {
                 asy.Close();
@@ -61,21 +64,21 @@ namespace StrongDB
                 try
                 {
                     asy.StartException();
-                    asy.Write(Types.Exception);
-                    asy.PutString(e.Message);
+                    wtr.Write(Types.Exception);
+                    wtr.PutString(e.Message);
                     asy.Flush();
                 }
                 catch (Exception) { }
                 goto _return;
             }
             // start a Strong protocol service
-            for (; ;)
+            for (; ; )
             {
                 p = -1;
                 try
                 {
                     p = rdr.ReadByte();
-                } catch(Exception)
+                } catch (Exception)
                 {
                     p = -1;
                 }
@@ -83,173 +86,233 @@ namespace StrongDB
                     goto _return;
                 try
                 {
+         //           Console.WriteLine("[" + cid + "] Start " + ((Types)p).ToString());
                     switch ((Types)p)
                     {
+                        case Types.SNames:
+                            {
+                                var tr = db.Transact(rdr);
+                                var us = db.uids;
+                                for (var b = us.PositionAt(SysTable._SysUid); b != null && b.Value.Item1 < 0; b = b.Next())
+                                    us -= b.Value.Item1;
+                                var n = rdr.GetInt();
+                                for (var i = 0; i < n; i++)
+                                {
+                                    var u = rdr.GetLong();
+                                    var s = rdr.GetString();
+                                    if (u < rdr.lastAlias)
+                                        rdr.lastAlias = u;
+                                    us += (u, s);
+                                }
+                                db = new STransaction(tr,new SRole(tr.role,us));
+                                break;
+                            }
                         case Types.DescribedGet:
                         case Types.Get:
                             {
-                                var tr = db.Transact();
+                                var tr = db.Transact(rdr);
                                 SQuery? qy = null;
                                 try
                                 {
-                                    qy = rdr._Get(tr) as SQuery;
-                                } catch(Exception e)
+                                    qy = rdr._Get() as SQuery;
+                                    tr = (STransaction)rdr.db;
+                                } catch (Exception e)
                                 {
                                     rdr.buf.len = 0;
                                     throw e;
                                 }
-                                if (qy==null)
-                                    throw new Exception("Bad query");
-                                RowSet rs = qy.RowSet(tr,qy,SDict<long,SFunction>.Empty,Context.Empty);
+                                if (qy == null)
+                                    throw new StrongException("Bad query");
+                                qy = (SQuery)qy.Prepare(tr, qy.Names(tr,SDict<long,long>.Empty));
+                                RowSet rs = qy.RowSet(tr, qy, Context.Empty);
                                 var sb = new StringBuilder("[");
                                 var cm = "";
-                                for (var b = rs?.First();b!=null;b=b.Next())
-                                {
-                                    sb.Append(cm); cm = ",";
-                                    ((RowBookmark)b)._ob.Append(db,sb);
-                                }
+                                for (var b = rs?.First(); b != null; b = b.Next())
+                                    if (((RowBookmark)b)._ob is SRow sr && sr.isValue)
+                                    {
+                                        sb.Append(cm); cm = ",";
+                                        sr.Append(rs._tr, sb);
+                                    }
                                 sb.Append(']');
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(rs._tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 if ((Types)p == Types.DescribedGet)
                                 {
-                                    asy.PutInt(rs._qry.Display.Length??0);
-                                    for (var b = rs._qry.Display.First(); b != null; b = b.Next())
-                                         asy.PutString(b.Value.Item2);
+                                    var dp = rs._qry.Display;
+                                    wtr.PutInt(dp.Length ?? 0);
+                                    for (var b = dp.First(); b != null; b = b.Next())
+                                        wtr.PutString(b.Value.Item2.Item2);
                                 }
-                                asy.PutString(sb.ToString());
+                                wtr.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
                             }
                         case Types.SCreateTable:
                             {
-                                var tr = db.Transact();
-                                var tn = rdr.GetString();// table name
-                                if (tr.names.Contains(tn))
-                                    throw new Exception("Duplicate table name " + tn);
-                                var tb = new STable(tr, tn);
-                                tr = (STransaction)tr.Install(tb,tr.curpos); 
-                                var n = rdr.GetInt(); // #cols
+                                var tr = db.Transact(rdr);
+                                var tn = db.role[rdr.GetLong()];// table name
+                                if (db.role.globalNames.Contains(tn))
+                                    throw new StrongException("Duplicate table name " + tn);
+                                tr = (STransaction)tr.Install(new STable(tr), tn, tr.curpos);
+                                rdr.db = tr;
+                                var n = rdr.GetInt();
+                                for (var i = 0; i < n; i++)
+                                    CreateColumn(rdr);
+                                n = rdr.GetInt();
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = rdr.GetString(); // column name
-                                    var dt = (Types)rdr.ReadByte(); // dataType
-                                    tr = (STransaction)tr.Install(new SColumn(tr,cn,dt,tb.uid),tr.curpos);
+                                    rdr.ReadByte();
+                                    CreateIndex(rdr);
                                 }
-                                db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
+                                asy.Flush();
+                                break;
+                            }
+                        case Types.SCreateColumn:
+                            {
+                                var tr = db.Transact(rdr);
+                                rdr.db = tr;
+                                CreateColumn(rdr);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SInsert:
                             {
-                                var tr = db.Transact();
-                                tr = SInsertStatement.Get(db,rdr).Obey(tr);
+                                var tr = db.Transact(rdr);
+                                var tn = tr.role[rdr.GetLong()];
+                                if (!db.role.globalNames.Contains(tn))
+                                    throw new StrongException("Table " + tn + " not found");
+                                var tb = (STable)db.objects[db.role.globalNames[tn]];
+                                rdr.context = tb;
+                                var n = rdr.GetInt();
+                                var c = SList<long>.Empty;
+                                for (var i = 0; i < n; i++)
+                                    c += (rdr.GetLong(), i);
+                                var ins = new SInsert(tb.uid, c, rdr);
+                                tr = ins.Prepare(tr,tb.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.Insert:
                             {
-                                var tr = db.Transact();
-                                var tb = (STable)tr.names.Lookup(rdr.GetString()); // table name
+                                var tr = db.Transact(rdr);
+                                var tn = tr.role[rdr.GetLong()];
+                                if (!db.role.globalNames.Contains(tn))
+                                    throw new StrongException("Table " + tn + " not found");
+                                var tb = (STable)db.objects[db.role.globalNames[tn]];
+                                rdr.context = tb;
                                 var n = rdr.GetInt(); // # named cols
-                                var cs = SList<long>.Empty;
+                                var cs = SList<SColumn>.Empty;
                                 Exception? ex = null;
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = rdr.GetString();
-                                    if (tb.names.Lookup(cn) is SColumn sc)
-                                        cs += (sc.uid, i);
+                                    var cn = db.role[rdr.GetLong()];
+                                    var ss = db.role.subs[tb.uid];
+                                    if (ss.defs.Contains(cn))
+                                        cs += ((SColumn)db.objects[ss.obs[ss.defs[cn]].Item1], i);
                                     else
-                                        ex = new Exception("Column " + cn + " not found");
+                                        ex = new StrongException("Column " + cn + " not found");
                                 }
                                 var nc = rdr.GetInt(); // #cols
-                                if ((n==0 && nc!=tb.cpos.Length) || (n!=0 && n!=nc))
-                                    throw new Exception("Wrong number of columns");
+                                if ((n == 0 && nc != tb.cpos.Length) || (n != 0 && n != nc))
+                                    ex = new StrongException("Wrong number of columns");
                                 var nr = rdr.GetInt(); // #records
                                 for (var i = 0; i < nr; i++)
                                 {
                                     var f = SDict<long, Serialisable>.Empty;
                                     if (n == 0)
-                                        for (var b = tb.cpos.First(); b!= null; b = b.Next())
+                                        for (var b = tb.cpos.First(); b != null; b = b.Next())
                                         {
                                             if (b.Value.Item2 is SColumn sc)
-                                                f += (sc.uid, rdr._Get(tr)); // serialisable values
+                                                f += (sc.uid, rdr._Get());
                                         }
                                     else
                                         for (var b = cs; b.Length != 0; b = b.next)
-                                            f += (b.element, rdr._Get(tr)); // serialisable values
-                                    tr = (STransaction)tr.Install(new SRecord(tr, tb.uid, f),tr.curpos);
+                                            f += (b.element.uid, rdr._Get());
+                                    tr = (STransaction)tr.Install(new SRecord(tr, tb.uid, f), tr.curpos);
                                 }
                                 if (ex != null)
                                     throw ex;
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
-                          case Types.SAlter:
+                        case Types.SAlter:
                             {
-                                var tr = db.Transact();
-                                var tn = rdr.GetString(); // table name
-                                var tb = (STable)tr.names.Lookup(tn) ??
-                                    throw new Exception("Table " + tn + " not found");
-                                var cn = rdr.GetString(); // column name or ""
-                                var nm = rdr.GetString(); // new name
-                                if (cn.Length == 0)
-                                    tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.STable, tb.uid, 0), tr.curpos);
-                                else
-                                    tr = (STransaction)tr.Install(new SAlter(tr, nm, Types.SColumn, tb.uid,
-                                            (tb.names.Lookup(cn) is SColumn sc) ? sc.uid :
-                                            throw new Exception("Column " + cn + " not found")), tr.curpos);
+                                var tr = db.Transact(asy.rdr);
+                                rdr.db = tr;
+                                var at = SAlter.Get(rdr);
+                                tr = (STransaction)rdr.db;
+                                tr = at.Prepare(tr, SDict<long, long>.Empty)
+                                    .Obey(tr, Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SDrop:
                             {
-                                var tr = db.Transact();
-                                var nm = rdr.GetString(); // object name
-                                var pt = tr.names.Lookup(nm) ??
-                                    throw new Exception("Object " + nm + " not found");
-                                var cn = rdr.GetString();
-                                tr = (STransaction)tr.Install(
-                                    (cn.Length == 0) ?
-                                        new SDrop(tr, pt.uid, -1) :
-                                        new SDrop(tr,
-                                            (((STable)pt).names.Lookup(cn) is SColumn sc) ? sc.uid :
-                                            throw new Exception("Column " + cn + " not found"),
-                                        pt.uid), tr.curpos);
+                                var tr = db.Transact(asy.rdr);
+                                var dr = SDrop.Get(rdr).Prepare(tr,SDict<long,long>.Empty);
+                                tr = dr.Obey(tr, Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
-                        case Types.SCreateIndex:
+                        case Types.SIndex:
                             {
-                                var tr = db.Transact();
-                                var tn = rdr.GetString(); // table name
-                                var tb = (STable)tr.names.Lookup(tn) ??
-                                    throw new Exception("Table " + tn + " not found");
-                                var xt = rdr.ReadByte();
-                                var rn = rdr.GetString();
-                                var ru = (rn.Length==0)?-1: (tr.names.Lookup(rn)?.uid ??
-                                    throw new Exception("Table " + tn + " not found"));
-                                var nc = rdr.GetInt();
-                                var cs = SList<long>.Empty;
-                                for (var i=0;i<nc;i++)
-                                {
-                                    var cn = rdr.GetString();
-                                    var se = (tb.names.Lookup(cn) is SColumn sc)? sc.uid :
-                                        throw new Exception("Column " + cn + " not found");
-                                    cs += (se, i);
-                                }
-                                tr = (STransaction)tr.Install(new SIndex(tr, tb.uid, xt < 2, ru,cs),tr.curpos);
+                                var tr = db.Transact(asy.rdr);
+                                rdr.db = tr;
+                                CreateIndex(rdr);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
+                                asy.Flush();
+                                break;
+                            }
+                        case Types.SDropIndex:
+                            {
+                                var tr = db.Transact(rdr);
+                                rdr.db = tr;
+                                var dr = new SDropIndex(rdr);
+                                tr = (STransaction)rdr.db;
+                                tr = dr.Prepare(tr, SDict<long, long>.Empty)
+                                    .Obey(tr, Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
@@ -258,101 +321,151 @@ namespace StrongDB
                                 var id = rdr.GetLong();
                                 var sb = new StringBuilder();
                                 db.Get(id).Append(db,sb);
-                                asy.PutString(sb.ToString());
+                                wtr.PutString(sb.ToString());
                                 asy.Flush();
                                 break;
                             }
                         case Types.SUpdateSearch:
                             {
-                                var tr = db.Transact();
-                                tr = SUpdateSearch.Get(db, rdr).Obey(tr,Context.Empty);
+                                var tr = db.Transact(rdr);
+                                var u = SUpdateSearch.Get(rdr);
+                                tr = u.Prepare(tr,u.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SUpdate:
                             {
-                                var tr = db.Transact();
+                                var tr = db.Transact(rdr);
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id);
                                 var tb = (STable)tr.objects[rc.table]; 
                                 var n = rdr.GetInt(); // # cols updated
-                                var f = SDict<string, Serialisable>.Empty;
+                                var f = SDict<long, Serialisable>.Empty;
                                 for (var i = 0; i < n; i++)
                                 {
-                                    var cn = rdr.GetString();
-                                    f += (cn, rdr._Get(db));
+                                    var cn = rdr.GetLong();
+                                    f += (cn, rdr._Get());
                                 }
                                 tr = (STransaction)tr.Install(new SUpdate(tr, rc, f),tr.curpos);
-                                db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                var ts = db.curpos;
+                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SDeleteSearch:
                             {
-                                var tr = db.Transact();
-                                tr = SDeleteSearch.Get(db, rdr).Obey(tr,Context.Empty);
+                                var tr = db.Transact(rdr);
+                                var dr = SDeleteSearch.Get(rdr);
+                                tr = dr.Prepare(tr,dr.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SDelete:
                             {
-                                var tr = db.Transact();
+                                var tr = db.Transact(rdr);
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id) as SRecord ??
-                                    throw new Exception("Record " + id + " not found");
-                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),tr.curpos);
+                                    throw new StrongException("Record " + id + " not found");
+                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),rc,tr.curpos);
+                                var ts = db.curpos;
                                 db = db.MaybeAutoCommit(tr);
-                                asy.Write(Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         case Types.SBegin:
-                            db = new STransaction(db, false);
-                            asy.WriteByte((byte)Types.Done);
+                            db = db.Transact(rdr, false);
+                            wtr.Write(Types.Done);
+                            wtr.PutLong(db.curpos);
+                            wtr.PutLong(db.curpos);
                             asy.Flush();
                             break;
                         case Types.SRollback:
                             db = db.Rollback();
-                            asy.WriteByte((byte)Types.Done);
+                            wtr.Write(Types.Done);
+                            wtr.PutLong(db.curpos);
+                            wtr.PutLong(db.curpos);
                             asy.Flush();
                             break;
                         case Types.SCommit:
                             {
                                 var tr = db as STransaction ??
-                                    throw new Exception("No transaction to commit");
+                                    throw new StrongException("No transaction to commit");
+                                var ts = db.curpos;
                                 db = tr.Commit();
-                                asy.WriteByte((byte)Types.Done);
+                                wtr.Write(Types.Done);
+                                wtr.PutLong(ts);
+                                wtr.PutLong(db.curpos);
                                 asy.Flush();
                                 break;
                             }
                         default:
-                            throw new Exception("Protocol error");
+                            throw new StrongException("Protocol error");
                     }
+         //           Console.WriteLine("[" + cid + "] End " + ((Types)p).ToString());
                 }
                 catch (SocketException)
                 {
                     return;
                 }
-                catch (Exception e)
+                catch (StrongException e)
                 {
                     try
                     {
                         db = db.Rollback();
            //             db.result = null;
                         asy.StartException();
-                        asy.Write(Types.Exception);
-                        asy.PutString(e.Message);
+           //             Console.WriteLine(""+cid+" Reporting Exception: " + e.Message);
+                        wtr.Write(Types.Exception);
+                        wtr.PutString(e.Message);
                          asy.Flush();
+                    }
+                    catch (Exception) { }
+                }
+                catch (Exception e)
+                {
+                    try
+                    {
+                        db = db.Rollback();
+                        //             db.result = null;
+                        asy.StartException();
+                        //             Console.WriteLine(""+cid+" Reporting Exception: " + e.Message);
+                        wtr.Write(Types.Exception);
+                        wtr.PutString(e.Message);
+                        asy.Flush();
                     }
                     catch (Exception) { }
                 }
             }
         _return:;
+        }
+        void CreateColumn(ReaderBase rdr)
+        {
+            var sc = (SColumn)rdr._Get();
+            var db = (STransaction)rdr.db;
+            sc = (SColumn)sc.Prepare(db, ((STable)db.objects[sc.table]).Names(db,SDict<long,long>.Empty));
+            var cn = db.role[sc.uid];
+            rdr.db = db.Install(new SColumn(db,sc.table,sc.dataType,sc.constraints), cn, db.curpos);
+        }
+        void CreateIndex(ReaderBase rdr)
+        {
+            var db = (STransaction)rdr.db;
+            rdr.db = db.Install((SIndex)SIndex.Get(rdr).Prepare(db,SDict<long,long>.Empty), db.curpos);
         }
     }
         /// <summary>
@@ -388,7 +501,7 @@ namespace StrongDB
                 }
             }
             if (tcp == null)
-                throw new Exception("Cannot open a port on " + host);
+                throw new StrongException("Cannot open a port on " + host);
             Console.WriteLine("StrongDBMS protocol on " + host + ":" + port);
             if (StrongServer.path != "")
                 Console.WriteLine("Database folder " + StrongServer.path);
@@ -456,7 +569,7 @@ namespace StrongDB
                 if ((FileSystemRights.Write & r.FileSystemRights) == FileSystemRights.Write
                     && r.AccessControlType == AccessControlType.Allow)
                     return;
-                bad: throw new Exception("Cannot access path " + StrongServer.path);
+                bad: throw new StrongException("Cannot access path " + StrongServer.path);
         }
         /// <summary>
         /// Provide help about the command line options
@@ -476,14 +589,15 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.0"," (13 February 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (5 May 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
-    public class ServerStream :StreamBase
+    public class ServerStream :Stream
     {
         internal Socket client;
         internal int rx = 0;
-        internal Reader rbuf;
+        internal ServerReader rdr;
+        internal ServerWriter wtr;
         bool exception = false;
         public override bool CanRead => throw new NotImplementedException();
 
@@ -498,43 +612,10 @@ namespace StrongDB
         internal ServerStream(Socket c)
         {
             client = c;
-            rbuf = new SocketReader(this);
-            wbuf = new Buffer(this);
-            wbuf.wpos = 2;
-            rbuf.pos = 2;
-            rbuf.buf.len = 0;
-        }
-
-        public override void Flush()
-        {
-            if (wbuf==null || wbuf.wpos == 2)
-                return;
-            // now always send bSize bytes (not wcount)
-            if (exception) // version 2.0
-                unchecked
-                {
-                    exception = false;
-                    wbuf.buf[0] = (byte)((Buffer.Size - 1) >> 7);
-                    wbuf.buf[1] = (byte)((Buffer.Size - 1) & 0x7f);
-                    wbuf.wpos -= 4;
-                    wbuf.buf[2] = (byte)(wbuf.wpos >> 7);
-                    wbuf.buf[3] = (byte)(wbuf.wpos & 0x7f);
-                }
-            else
-            {
-                wbuf.wpos -= 2;
-                wbuf.buf[0] = (byte)(wbuf.wpos >> 7);
-                wbuf.buf[1] = (byte)(wbuf.wpos & 0x7f);
-            }
-            try
-            {
-                client.Send(wbuf.buf, Buffer.Size,SocketFlags.None);
-                wbuf.wpos = 2;
-            }
-            catch (Exception)
-            {
-               Console.WriteLine("Socket Exception reported on Flush");
-            }
+            rdr = new ServerReader(client);
+            wtr = new ServerWriter(client);
+            rdr.buf.pos = 2;
+            rdr.buf.len = 0;
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -546,64 +627,73 @@ namespace StrongDB
         {
             throw new NotImplementedException();
         }
-        /// <summary>
-        /// Get a byte from the stream: if necessary refill the buffer from the network
-        /// </summary>
-        /// <returns>the byte</returns>
-        public override bool GetBuf(Buffer b)
-        {
-            var rcount = 0;
-            rx = 0;
-            try
-            {
-                var rc = client.Receive(b.buf, Buffer.Size, 0);
-                if (rc == 0)
-                {
-                    rcount = 0;
-                    return false;
-                }
-                rcount = (b.buf[0] << 7) + b.buf[1];
-                b.len = rcount+2;
-                return rcount > 0;
-            }
-            catch (SocketException)
-            {
-                return false;
-            }
-        }
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            int j;
-            for (j = 0; j < count; j++)
-            {
-                int x = ReadByte();
-                if (x < 0)
-                    break;
-                buffer[offset + j] = (byte)x;
-            }
-            return j;
-        }
-
         public override void Write(byte[] buffer, int offset, int count)
         {
             throw new NotImplementedException();
         }
-
-        protected override void PutBuf(Buffer b)
-        {
-            Flush();
-        }
         internal void StartException()
         {
-            rbuf.pos = rbuf.buf.len;
-            if (wbuf!=null)
-                wbuf.wpos = 4;
-            exception = true;
+            rdr.buf.pos = rdr.buf.len;
+            wtr.buf.pos = 4;
+            wtr.exception = true;
         }
         public void Write(Types p)
         {
             WriteByte((byte)p);
         }
-    }
 
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var b = ReadByte();
+                if (b < 0)
+                    return i;
+                buffer[i] = (byte)b;
+            }
+            return count;
+        }
+        public override void Flush()
+        {
+            wtr.PutBuf();
+            wtr.buf.pos = 2;
+        }
+    }
+    public class ServerWriter : SocketWriter
+    {
+        public bool exception = false;
+        public ServerWriter(Socket c) : base(c) { }
+        public override void PutBuf()
+        {
+            if (buf.pos == 2)
+                return;
+            // now always send bSize bytes (not wcount)
+            if (!exception) {// version 2.0
+                base.PutBuf();
+                return;
+            }
+            unchecked
+            {
+                exception = false;
+                buf.buf[0] = (byte)((Buffer.Size - 1) >> 7);
+                buf.buf[1] = (byte)((Buffer.Size - 1) & 0x7f);
+                buf.pos -= 4;
+                buf.buf[2] = (byte)(buf.pos >> 7);
+                buf.buf[3] = (byte)(buf.pos & 0x7f);
+            }
+            try
+            {
+                client.Send(buf.buf, 0);
+                buf.len = 0;
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("Socket Exception reported on Flush");
+            }
+        }
+    }
+    public class ServerReader : SocketReader
+    {
+        public ServerReader(Socket c) : base(c) { }
+    }
 }

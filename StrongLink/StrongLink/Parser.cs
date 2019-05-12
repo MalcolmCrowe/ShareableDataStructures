@@ -13,74 +13,83 @@ namespace StrongLink
             LPAREN = 3,
             COMMA = 4,
             RPAREN = 5,
-            EQUAL = 6, // EQUAL to GTR must be adjacent
-            NEQ = 7,
-            LEQ = 8,
-            LSS = 9,
-            GEQ = 10,
-            GTR = 11,
-            DOT = 12,
-            PLUS = 13,
-            MINUS = 14,
-            TIMES = 15,
-            DIVIDE = 16,
+            COLON = 6,
+            EQUAL = 7, // EQUAL to GTR must be adjacent
+            NEQ = 8,
+            LEQ = 9,
+            LSS = 10,
+            GEQ = 11,
+            GTR = 12,
+            DOT = 13,
+            PLUS = 14,
+            MINUS = 15,
+            TIMES = 16,
+            DIVIDE = 17,
             //=== RESERVED WORDS
-            ADD = 17,
-            ALTER = 18,
-            AND = 19,
-            AS = 20,
-            BEGIN = 21,
-            BOOLEAN = 22,
-            COLUMN = 23,
-            COMMIT = 24,
-            COUNT = 25,
-            CREATE = 26,
-            CROSS = 27,
-            DATE = 28,
-            DELETE = 29,
-            DESC = 30,
-            DISTINCT = 31,
-            DROP = 32,
-            FALSE = 33,
-            FOR = 34,
-            FROM = 35,
-            FULL = 36,
-            GROUPBY = 37,
-            HAVING = 38,
-            INDEX = 39,
-            INSERT = 40,
-            INTEGER = 41,
-            IN = 42,
-            INNER = 43,
-            IS = 44,
-            JOIN = 45,
-            LEFT = 46,
-            MAX = 47,
-            MIN = 48,
-            NATURAL = 49,
-            NOT = 50,
-            NULL = 51,
-            NUMERIC = 52,
-            ON = 53,
-            OR = 54,
-            ORDERBY = 55,
-            OUTER = 56,
-            PRIMARY = 57,
-            REFERENCES = 58,
-            RIGHT = 59,
-            ROLLBACK = 60,
-            SELECT = 61,
-            SET = 62,
-            STRING = 63,
-            SUM = 64,
-            TABLE = 65,
-            TIMESPAN = 66,
-            TO = 67,
-            TRUE = 68,
-            UPDATE = 69,
-            USING = 70,
-            VALUES = 71,
-            WHERE = 72
+            ADD = 18,
+            ALTER = 19,
+            AND = 20,
+            AS = 21,
+            BEGIN = 22,
+            BOOLEAN = 23,
+            CHECK = 24,
+            COLUMN = 25,
+            COMMIT = 26,
+            COUNT = 27,
+            CREATE = 28,
+            CROSS = 29,
+            DATE = 30,
+            DEFAULT = 31,
+            DELETE = 32,
+            DESC = 33,
+            DISTINCT = 34,
+            DROP = 35,
+            FALSE = 36,
+            FOR = 37,
+            FOREIGN = 38,
+            FROM = 39,
+            FULL = 40,
+            GENERATED = 41,
+            GROUPBY = 42,
+            HAVING = 43,
+            INDEX = 44,
+            INSERT = 45,
+            INTEGER = 46,
+            IN = 47,
+            INNER = 48,
+            IS = 49,
+            JOIN = 50,
+            KEY = 51,
+            LEFT = 52,
+            MAX = 53,
+            MIN = 54,
+            NATURAL = 55,
+            NOT = 56,
+            NOTNULL = 57,
+            NULL = 58,
+            NUMERIC = 59,
+            ON = 60,
+            OR = 61,
+            ORDERBY = 62,
+            OUTER = 63,
+            PRIMARY = 64,
+            REFERENCES = 65,
+            RIGHT = 66,
+            ROLLBACK = 67,
+            SELECT = 68,
+            SET = 69,
+            STRING = 70,
+            SUM = 71,
+            TABLE = 72,
+            TIMESPAN = 73,
+            TO = 74,
+            TRUE = 75,
+            UNIQUE = 76,
+            UPDATE = 77,
+            USING = 78,
+            VALUE = 79,
+            VALUES = 80,
+            WHERE = 81
         }
         internal class Lexer
         {
@@ -92,8 +101,10 @@ namespace StrongLink
             internal Serialisable val = Serialisable.Null;
             char ch = '\0';
             char? pushCh = null;
-            public Lexer(string inp)
+            Parser psr;
+            public Lexer(Parser ps,string inp)
             {
+                psr = ps;
                 input = inp.ToCharArray();
                 Advance();
                 tok = Next();
@@ -269,7 +280,7 @@ namespace StrongLink
                                 default:
                                     return tok = t;
                             }
-                    val = new SString(s);
+                    val = psr.SName(s);
                     return tok = Sym.ID;
                 }
                 else
@@ -284,6 +295,7 @@ namespace StrongLink
                         case ',': Advance(); return tok = Sym.COMMA;
                         case ')': Advance(); return tok = Sym.RPAREN;
                         case '=': Advance(); return tok = Sym.EQUAL;
+                        case ':': Advance(); return tok = Sym.COLON;
                         case '!':
                             Advance();
                             if (ch == '=')
@@ -312,12 +324,15 @@ namespace StrongLink
                 throw new Exception("Bad input " + ch + " at " + pos);
             }
         }
+        internal long _uid = -1;
+        internal SDict<string, long> names = SDict<string, long>.Empty;
+        internal SDict<long, string> uids = SDict<long, string>.Empty;
         Lexer lxr;
         Parser(string inp)
         {
-            lxr = new Lexer(inp);
+            lxr = new Lexer(this,inp);
         }
-        public static Serialisable Parse(string sql)
+        public static (Serialisable, SDict<long,string>) Parse(string sql)
         {
             return new Parser(sql).Statement();
         }
@@ -331,15 +346,28 @@ namespace StrongLink
                 throw new Exception(CheckEOF());
             Next();
         }
-        SString MustBeID()
+        long MustBeID()
         {
             var s = lxr.val;
             if (lxr.tok != Sym.ID || s==null)
                 throw new Exception(CheckEOF());
             Next();
-            return (SString)s;
+            return ((SDbObject)s).uid;
         }
-        Types For(Sym t)
+        internal SDbObject SName(string s)
+        {
+            long uid;
+            if (names.Contains(s))
+                uid = names[s];
+            else
+            {
+                uid = --_uid;
+                names += (s, uid);
+                uids += (uid, s);
+            }
+            return new SDbObject(Types.SName,uid);
+        }
+        Types DataType(Sym t)
         {
             switch (t)
             {
@@ -353,44 +381,44 @@ namespace StrongLink
             }
             throw new Exception("Syntax error: " + t);
         }
-        public Serialisable Statement()
+        public (Serialisable,SDict<long,string>) Statement()
         {
             switch(lxr.tok)
             {
                 case Sym.ALTER:
-                    return Alter();
+                    return (Alter(),uids);
                 case Sym.CREATE:
                     {
                         Next();
                         switch (lxr.tok)
                         {
                             case Sym.TABLE:
-                                return CreateTable();
+                                return (CreateTable(),uids);
                             case Sym.INDEX:
                                 Next();
-                                return CreateIndex();
+                                return (CreateIndex(), uids);
                             case Sym.PRIMARY:
                                 Next(); Mustbe(Sym.INDEX);
-                                return CreateIndex(true);
+                                return (CreateIndex(true), uids);
                         }
                         throw new Exception("Unknown Create " + lxr.tok);
                     }
                 case Sym.DROP:
-                    return Drop();
+                    return (Drop(), uids);
                 case Sym.INSERT:
-                    return Insert();
+                    return (Insert().UpdateAliases(uids), uids);
                 case Sym.DELETE:
-                    return Delete();
+                    return (Delete().UpdateAliases(uids), uids);
                 case Sym.UPDATE:
-                    return Update();
+                    return (Update().UpdateAliases(uids), uids);
                 case Sym.SELECT:
-                    return Select();
+                    return (Select().UpdateAliases(uids),uids);
                 case Sym.BEGIN:
-                    return new Serialisable(Types.SBegin);
+                    return (new Serialisable(Types.SBegin), uids);
                 case Sym.ROLLBACK:
-                    return new Serialisable(Types.SRollback);
+                    return (new Serialisable(Types.SRollback), uids);
                 case Sym.COMMIT:
-                    return new Serialisable(Types.SCommit);
+                    return (new Serialisable(Types.SCommit), uids);
             }
             throw new Exception(CheckEOF());
         }
@@ -404,73 +432,233 @@ namespace StrongLink
         {
             Next();
             var tb = MustBeID();
-            SString? col = null;
-            var add = false;
+            long col = -1;
+            string nm = "";
+            var dt = Types.Serialisable;
+            int sq = -1;
+            var cs = (SDict<string,SFunction>.Empty,SList<SIndex>.Empty);
             switch (lxr.tok)
             {
                 case Sym.COLUMN:
                     Next();
                     col = MustBeID();
-                    Mustbe(Sym.TO);
-                    break;
+                    switch (lxr.tok)
+                    {
+                        case Sym.ADD:
+                            Next();
+                            cs = ColumnConstraints(tb, col, cs.Item1);
+                            if (cs.Item2.Length != 0)
+                                throw new Exception("Unrecognised column constraint");
+                            return new SAlter("", dt, tb, col, -1, cs.Item1);
+                        case Sym.DROP:
+                            Next();
+                            switch (lxr.tok)
+                            {
+                                case Sym.ID:
+                                    var v = (SDbObject)lxr.val;
+                                    Next();
+                                    return new SDrop(col, tb, uids[v.uid]);
+                                case Sym.DEFAULT:
+                                case Sym.GENERATED:
+                                case Sym.NOTNULL:
+                                    return new SDrop(col, tb, lxr.tok.ToString());
+                            }
+                            var sy = lxr.tok.ToString();
+                            Next();
+                            return new SDrop(tb, col, sy);
+                        case Sym.TO:
+                            Next();
+                            switch (lxr.tok)
+                            {
+                                case Sym.LITERAL:
+                                    {
+                                        var n = lxr.val as SInteger;
+                                        var nn = n?.value ?? throw new Exception("Integer expected");
+                                        Next();
+                                        return new SAlter("", dt, tb, col, (int)nn, cs.Item1);
+                                    }
+                                case Sym.ID:
+                                    {
+                                        var v = (SDbObject)lxr.val;
+                                        Next();
+                                        return new SAlter(uids[v.uid], dt, tb, col, -1, cs.Item1);
+                                    }
+                                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
+                                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
+                                case Sym.STRING: Next(); dt = Types.SString; break;
+                                case Sym.DATE: Next(); dt = Types.SDate; break;
+                                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
+                                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
+                                default:
+                                    throw new Exception("Type expected");
+                            }
+                            cs = ColumnConstraints(tb, col, cs.Item1);
+                            return new SAlter("", dt, tb, col, -1, cs.Item1);
+                        default:
+                            throw new Exception("ADD, DROP or TO expected for ALTER COLUMN");
+                    }
                 case Sym.DROP:
-                    Next();
-                    col = MustBeID();
-                    return new SDropStatement(col.str, tb.str); // ok
+                    {
+                        Next();
+                        if (lxr.tok == Sym.ID)
+                        {
+                            col = MustBeID();
+                            return new SDrop(col, tb, "");
+                        }
+                        Mustbe(Sym.KEY);
+                        return new SDropIndex(tb, Cols());
+                    }
                 case Sym.TO:
-                    Next(); break;
+                    Next();
+                    var tn = MustBeID();
+                    return new SAlter(uids[tn], dt, tb, -1, -1, cs.Item1);
                 case Sym.ADD:
-                    Next(); add = true;
-                    break;
+                    Next();
+                    if (lxr.tok != Sym.ID)
+                        return TableConstraint(tb);
+                    return new SCreateColumn(ColumnDef(tb).Item2);
             }
-            var nm = MustBeID();
-            Types dt = Types.Serialisable;
-            switch (lxr.tok)
-            {
-   //             case Sym.TIMESTAMP: Next(); dt = Types.STimestamp; break;
-                case Sym.INTEGER: Next(); dt = Types.SInteger; break;
-                case Sym.NUMERIC: Next(); dt = Types.SNumeric; break;
-                case Sym.STRING: Next(); dt = Types.SString; break;
-                case Sym.DATE: Next(); dt = Types.SDate; break;
-                case Sym.TIMESPAN: Next(); dt = Types.STimeSpan; break;
-                case Sym.BOOLEAN: Next(); dt = Types.SBoolean; break;
-                default: if (add)
-                        throw new Exception("Type expected");
-                    break;
-            }
-            if (col == null)
-                throw new System.Exception("??");
-            return new SAlterStatement(tb.str, col.str, nm.str, dt); // ok
+            throw new Exception("Bad Alter syntax");
         }
-        Serialisable CreateTable()
+        SCreateTable CreateTable()
         {
             Next();
-            var id = MustBeID();
-            var tb = id.str; // ok
+            var tb = MustBeID();
+            var ctb = TableDef(tb,new SCreateTable(tb, SList<SColumn>.Empty, SList<SIndex>.Empty));
+            while (lxr.tok==Sym.PRIMARY||lxr.tok==Sym.UNIQUE||lxr.tok==Sym.REFERENCES)
+            {
+                var x = TableConstraint(tb);
+                ctb = new SCreateTable(tb, ctb.coldefs, ctb.constraints + x);
+                if (lxr.tok == Sym.COMMA)
+                    Next();
+            }
+            return ctb;
+        }
+        SCreateTable TableDef(long tb,SCreateTable ctb)
+        {
             Mustbe(Sym.LPAREN);
-            var cols = SList<SColumn>.Empty;
+            var cols = ctb.coldefs;
+            var cons = ctb.constraints;
             for (; ; )
             {
-                var c = MustBeID();
-                var t = For(lxr.tok);
-                cols = cols+(new SColumn(c.str, t), cols.Length??0); // ok
-                Next();
-                switch(lxr.tok)
+                var cd = ColumnDef(tb);
+                cols += (cd.Item2,cols.Length??0); // tb updated with the new column
+                if (cd.Item3 != null) // tableconstraint?
+                    cons = cons.Append(cd.Item3);
+                switch (lxr.tok)
                 {
-                    case Sym.RPAREN: Next(); return new SCreateTable(tb, cols);
+                    case Sym.RPAREN:
+                        Next();
+                        return new SCreateTable(ctb.tdef, cols,cons);
                     case Sym.COMMA: Next(); continue;
                 }
-                throw new Exception(CheckEOF());
+                throw new Exception("Syntax error");
             }
         }
-        SList<SSelector> Cols()
+        SIndex TableConstraint(long tb)
         {
-            var cols = SList<SSelector>.Empty;
+            bool p = true;
+            long r = -1;
+            var c = SList<long>.Empty;
+            switch (lxr.tok)
+            {
+                case Sym.PRIMARY:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
+                    break;
+                case Sym.UNIQUE:
+                    Next();
+                    p = false;
+                    c = Cols();
+                    break;
+                case Sym.FOREIGN:
+                    Next();
+                    Mustbe(Sym.KEY);
+                    c = Cols();
+                    Mustbe(Sym.REFERENCES);
+                    r = MustBeID();
+                    break;
+                default:
+                    throw new Exception("Syntax error at end of create table statement");
+            }
+            if (c.Length == 0)
+                throw new Exception("Table constraint expected");
+            return new SIndex(tb, p, r, c);
+        }
+        (long, SColumn, SList<SIndex>) ColumnDef(long tb)
+        {
+            var c = MustBeID();
+            var t = DataType(lxr.tok);
+            Next();
+            var ccs = ColumnConstraints(tb, c, SDict<string,SFunction>.Empty);
+            return (c, new SColumn(tb, t, c, ccs.Item1), ccs.Item2);
+        }
+        (SDict<string,SFunction>, SList<SIndex>) ColumnConstraints(long tb, long cn,SDict<string,SFunction> cs)
+        {
+            var x = SList<SIndex>.Empty;
+            for (; ; )
+                switch (lxr.tok)
+                {
+                    case Sym.CHECK:
+                        Next();
+                        var id = MustBeID();
+                        Mustbe(Sym.COLON);
+                        if (cs.Contains(uids[id]))
+                            throw new Exception("Check constraint " + uids[id] + " already declared");
+                        cs += (uids[id],new SFunction(SFunction.Func.Constraint, Value()));
+                        break;
+                    case Sym.DEFAULT:
+                        Next();
+                        if (cs.Contains("DEFAULT"))
+                            throw new Exception("Default is already declared");
+                        if (cs.Contains("NOTNULL"))
+                            throw new Exception("A column with a default value cannot be declared notnull");
+                        if (cs.Contains("GENERATED"))
+                            throw new Exception(" generated column cannot specify a default value");
+                        cs += ("DEFAULT",new SFunction(SFunction.Func.Default, Value()));
+                        break;
+                    case Sym.GENERATED:
+                        Next();
+                        if (cs.Contains("GENERATED"))
+                            throw new Exception("Generated expression already defined");
+                        if (cs.Contains("NOTNULL"))
+                            throw new Exception("A generated columnn cannot be declared notnull");
+                        if (cs.Contains("DEFAULT"))
+                            throw new Exception(" generated column cannot specify a default value");
+                        cs += ("GENERATED",new SFunction(SFunction.Func.Generated, Value()));
+                        break;
+                    case Sym.NOTNULL:
+                        Next();
+                        if (cs.Contains("GENERATED"))
+                            throw new Exception("A generated column cannot be declared notnull");
+                        if (cs.Contains("NOTNULL"))
+                            throw new Exception("Notnull already specified");
+                        if (cs.Contains("DEFAULT"))
+                            throw new Exception("A column with a default value cannot be declared notnull");
+                        cs += ("NOTNULL",new SFunction(SFunction.Func.NotNull, SArg.Value));
+                        break;
+                    case Sym.PRIMARY:
+                        Next();
+                        Mustbe(Sym.KEY);
+                        x += new SIndex(tb, true, -1, SList<long>.New(cn));
+                        break;
+                    case Sym.REFERENCES:
+                        Next();
+                        x += new SIndex(tb, false, MustBeID(), SList<long>.New(cn));
+                        break;
+                    default:
+                        return (cs, x);
+                }
+        }
+        SList<long> Cols()
+        {
+            var cols = SList<long>.Empty;
             Mustbe(Sym.LPAREN);
             for (; ;)
             {
                 var c = MustBeID();
-                cols = cols+(new SColumn(c.str), cols.Length??0); // ok
+                cols = cols+(c, cols.Length??0); // ok
                 switch (lxr.tok)
                 {
                     case Sym.RPAREN: Next(); return cols;
@@ -502,70 +690,109 @@ namespace StrongLink
                 case Sym.Null:
                     return "Premature eof at column " + lxr.pos;
                 case Sym.ID:
+                    return "Syntax error at " + uids[((SDbObject)lxr.val).uid];
                 case Sym.LITERAL:
                     return "Syntax error at " + lxr.val;
                 default:
                     return "Syntax error at " + lxr.tok;
             }
         }
-        SList<ValueTuple<string,Serialisable>> Selects()
+        SList<(long,Serialisable)> Selects()
         {
-            var r = SList<ValueTuple<string, Serialisable>>.Empty;
+            var r = SList<(long, Serialisable)>.Empty;
             var k = 0;
             for (; ;Next(),k++)
             {
-                var c = Value();
-                var n = c.Alias(k+1);
-                if (c is SExpression se && se.op == SExpression.Op.Dot)
-                    n = ((SString)se.left).str + "." + ((SString)se.right).str;
-                if (lxr.tok == Sym.AS)
-                {
-                    Next();
-                    n = MustBeID().str;
-                }
-                r += ((n, c??Serialisable.Null), k);
+                var p = SelectItem(k);
+                r += ((p.Item1, p.Item2), k);
                 if (lxr.tok != Sym.COMMA)
                     return r;
             }
         }
+        (long,Serialisable) SelectItem(int k)
+        {
+            var c = Value();
+            long uid;
+            if (lxr.tok == Sym.AS)
+            {
+                Next();
+                uid = Alias(MustBeID());
+            }
+            else
+            {
+                var p = NameFor(c);
+                if (p != null)
+                    uid = p.Value.Item1;
+                else
+                    uid = Alias(SName("col" + (k + 1)).uid);
+            }
+            return (uid, c);
+        }
+        long Alias(long u)
+        {
+            var s = uids[u];
+            var uid = u - 1000000;
+            uids = uids + (uid, s); // leave in u for now: see UpdateAliases
+            names += (s, uid);
+            return uid;
+        }
+        (long,string)? NameFor(Serialisable s)
+        {
+            if (s is SDbObject so && uids.Contains(so.uid))
+                return (so.uid,uids[so.uid]);
+            if (s is SExpression se && se.op==SExpression.Op.Dot)
+            {
+                var rp = NameFor(se.right);
+                /* var lp = NameFor(se.left);
+                if (lp!=null && rp!=null)
+                {
+                    var str = lp.Value.Item2 + "." + rp.Value.Item2;
+                    return (Alias(SName(str).uid), str);
+                } */
+                return rp;
+            }
+            return null;
+        }
         Serialisable CreateIndex(bool primary=false)
         {
-            var id = MustBeID();
+            var xn = MustBeID();
             Mustbe(Sym.FOR);
             var tb = MustBeID();
             var cols = Cols();
-            Serialisable rt = Serialisable.Null;
+            long rt = -1;
             if (lxr.tok==Sym.REFERENCES)
             {
                 Next();
                 rt = MustBeID();
             }
-            return new SCreateIndex(id, tb, SBoolean.For(primary), rt, cols); // ok
+            return new SIndex(tb, primary, rt, cols); 
         }
         Serialisable Drop() // also see Drop column in Alter
         {
             Next();
             var id = MustBeID();
-            return new SDropStatement(id.str, "");
+            return new SDrop(id, -1,"");
         }
         Serialisable Insert()
         {
             Next();
             var id = MustBeID();
-            var cols = SList<SSelector>.Empty;
+            var cols = SList<long>.Empty;
             if (lxr.tok == Sym.LPAREN)
                 cols = Cols();
             Serialisable vals;
             if (lxr.tok == Sym.VALUES)
                 vals = Vals();
-            else
-            {
-                Mustbe(Sym.SELECT);
+            else if (lxr.tok == Sym.SELECT)
                 vals = Select();
-            }
-            return new SInsertStatement(id.str, cols, vals);
+            else
+                throw new Exception("Unknown kind of INSERT");
+            var cs = SList<long>.Empty;
+            for (var b = cols.First(); b != null; b = b.Next())
+                cs += (b.Value, cs.Length ?? 0);
+            return new SInsert(id, cs, vals);
         }
-        SQuery Query(SDict<int,string>als,SDict<int,Serialisable>cp)
+        SQuery Query(SDict<int,(long,string)>als,SDict<int,Serialisable>cp)
         {
             var tb = TableExp(als,cp);
             var wh = SList<Serialisable>.Empty;
@@ -580,10 +807,10 @@ namespace StrongLink
             if (lxr.tok!=Sym.GROUPBY)
                 return sqry;
             Next();
-            var gp = SDict<int, string>.Empty;
+            var gp = SDict<int, long>.Empty;
             for (n = 0; lxr.tok==Sym.ID; n++)
             {
-                gp += (n, ((SString)lxr.val).str);
+                gp += (n, ((SDbObject)lxr.val).uid);
                 Next();
                 if (lxr.tok != Sym.COMMA)
                     break;
@@ -598,10 +825,9 @@ namespace StrongLink
                     if (lxr.tok != Sym.AND)
                         break;
                 }
-            return new SGroupQuery(sqry, sqry.display, sqry.cpos, 
-                new Context(sqry.names,null),gp, h);
+            return new SGroupQuery(sqry, sqry.display, sqry.cpos,gp, h);
         }
-        SQuery TableExp(SDict<int, string> als, SDict<int, Serialisable> cp)
+        SQuery TableExp(SDict<int, (long,string)> als, SDict<int, Serialisable> cp)
         {
             if (lxr.tok==Sym.LPAREN)
             {
@@ -610,17 +836,17 @@ namespace StrongLink
                 if (lxr.tok == Sym.SELECT)
                     r= (SQuery)Select();
                 else
-                    r =TableExp(SDict<int,string>.Empty,SDict<int,Serialisable>.Empty);
+                    r =TableExp(als,cp);
                 Mustbe(Sym.RPAREN);
                 return r;
             }
             var id = MustBeID();
-            var tb = new STable(id.str);
+            SQuery tb = new STable(id);
             if (lxr.tok == Sym.ID && lxr.val != null)
             {
-                var alias = ((SString)lxr.val).str;
+                var alias = Alias(((SDbObject)lxr.val).uid);
                 Next();
-                tb = new SAliasedTable(tb,alias);
+                tb = new SAlias(tb,alias,id);
             }
             var jt = SJoin.JoinType.None;
             if (lxr.tok == Sym.COMMA)
@@ -676,11 +902,8 @@ namespace StrongLink
             if (jt!=SJoin.JoinType.None)
             {
                 var on = SList<SExpression>.Empty;
-                var ra = TableExp(SDict<int, string>.Empty, SDict<int, Serialisable>.Empty);
-                var da = SDict<int, string>.Empty;
-                var ca = SDict<int, Serialisable>.Empty;
-                var na = SDict<string, Serialisable>.Empty;
-                var us = SList<string>.Empty;
+                var ra = TableExp(als, cp);
+                var us = SDict<long,long>.Empty;
                 if ((jt&(SJoin.JoinType.Cross|SJoin.JoinType.Natural))==0)
                 {
                     if (lxr.tok == Sym.USING)
@@ -689,9 +912,8 @@ namespace StrongLink
                         jt |= SJoin.JoinType.Named;
                         for (; ; )
                         {
-                            var v = lxr.val;
-                            Mustbe(Sym.ID);
-                            us += ((SString)v).str;
+                            var v = MustBeID();
+                            us += (v,v);
                             if (lxr.tok == Sym.COMMA)
                                 Next();
                             else
@@ -705,8 +927,8 @@ namespace StrongLink
                         {
                             var ex = Conjunct();
                             if (!(ex is SExpression e) || e.op != SExpression.Op.Eql
-                                || e.left.type!=Types.SColumn || 
-                                e.right.type!=Types.SColumn)
+                                || e.left.type!=Types.SName || 
+                                e.right.type!=Types.SName)
                                 throw new Exception("Column matching expression expected");
                             on += (SExpression)ex;
                             if (lxr.tok == Sym.AND)
@@ -716,8 +938,7 @@ namespace StrongLink
                         }
                     }
                 }
-                return new SJoin(tb, false, jt, ra, on, us,
-                    da, ca, new Context(na, null)); 
+                return new SJoin(tb, false, jt, ra, on, us, als, cp); 
             }
             return tb;
         }
@@ -822,7 +1043,7 @@ namespace StrongLink
             if (lxr.tok==Sym.IN)
             {
                 Next();
-                return new SInPredicate(a, Value());
+                return new SInPredicate(a, Factor());
             }
             return a;
         }
@@ -833,20 +1054,20 @@ namespace StrongLink
             {
                 case Sym.LITERAL:
                     Next();
-                    return v ?? throw new Exception("??");
+                    return v ?? throw new Exception("PE26");
                 case Sym.ID:
                     {
                         if (v == null)
-                            throw new Exception("??");
-                        var s = ((SString)v).str;
+                            throw new Exception("PE27");
+                        var s = ((SDbObject)v).uid;
                         Next();
                         if (lxr.tok == Sym.DOT)
                         {
                             Next();
                             var nv = MustBeID();
-                            return new SExpression(v, SExpression.Op.Dot, nv);
+                            return new SExpression(v, SExpression.Op.Dot, new SDbObject(Types.SName,nv));
                         }
-                        return new SColumn(((SString)v).str);
+                        return v;
                     }
                 case Sym.SUM:
                 case Sym.COUNT:
@@ -862,33 +1083,35 @@ namespace StrongLink
                 case Sym.LPAREN:
                     {
                         Next();
-                        var a = SList<string>.Empty;
+                        if (lxr.tok==Sym.SELECT)
+                        {
+                            var sq = Select();
+                            Mustbe(Sym.RPAREN);
+                            return sq;
+                        }
+                        var a = SList<(long,string)>.Empty;
                         var c = SList<Serialisable>.Empty;
                         int n = 0;
-                        bool asseen = false;
                         for (; ; n++)
                         {
-                            var cv = Value();
-                            var als = cv.Alias(n+1);
-                            if (lxr.tok == Sym.AS)
-                            {
-                                Next();
-                                als = MustBeID().str;
-                                asseen = true;
-                            }
-                            c += (cv, n);
-                            a += (als, n++);
+                            var p = SelectItem(n);
+                            c += (p.Item2, n);
+                            a += ((p.Item1,uids[p.Item1]), n);
                             if (lxr.tok != Sym.COMMA)
                                 break;
                             Next();
                         }
                         Mustbe(Sym.RPAREN);
-                        if (n == 1 && !asseen)
+                        if (n+1 == 1 && a.element.Item1<-1000000)
                             return c.element;
                         return new SRow(a, c);
                     }
-                case Sym.SELECT:
-                    return Select();
+                case Sym.NULL:
+                    Next();
+                    return Serialisable.Null;
+                case Sym.VALUE:
+                    Next();
+                    return SArg.Value;
             }
             throw new Exception("Bad syntax");
         }
@@ -912,15 +1135,15 @@ namespace StrongLink
                 dct = true;
                 Next();
             }
-            var sels = SList<ValueTuple<string, Serialisable>>.Empty;
+            var sels = SList<(long, Serialisable)>.Empty;
             if (lxr.tok!=Sym.FROM)
                 sels = Selects();
-            var als = SDict<int, string>.Empty;
+            var als = SDict<int, (long,string)>.Empty;
             var cp = SDict<int, Serialisable>.Empty;
             var k = 0;
             for (var b = sels.First();b!=null;b=b.Next())
             {
-                als += (k, b.Value.Item1);
+                als += (k, (b.Value.Item1,uids[b.Value.Item1]));
                 cp += (k++, b.Value.Item2);
             }
             Mustbe(Sym.FROM);
@@ -947,18 +1170,18 @@ namespace StrongLink
                         break;
                 }
             }
-            return new SSelectStatement(dct, als, cp, q, or,Context.Empty);
+            return new SSelectStatement(dct, als, cp, q, or);
         }
         Serialisable Delete()
         {
             Next();
-            return new SDeleteSearch(Query(SDict<int,string>.Empty,SDict<int,Serialisable>.Empty));
+            return new SDeleteSearch(Query(SDict<int,(long,string)>.Empty,SDict<int,Serialisable>.Empty));
         }
         Serialisable Update()
         {
             Next();
-            var q = Query(SDict<int, string>.Empty, SDict<int, Serialisable>.Empty);
-            var sa = SDict<string, Serialisable>.Empty;
+            var q = Query(SDict<int, (long,string)>.Empty, SDict<int, Serialisable>.Empty);
+            var sa = SDict<long, Serialisable>.Empty;
             if (lxr.tok != Sym.SET)
                 throw new Exception("Expected SET");
             var tt = lxr.tok;
@@ -967,7 +1190,7 @@ namespace StrongLink
                 Next(); tt = Sym.COMMA;
                 var c = MustBeID();
                 Mustbe(Sym.EQUAL);
-                sa += (c.str, Value());
+                sa += (c, Value());
             }
             return new SUpdateSearch(q, sa);
         }

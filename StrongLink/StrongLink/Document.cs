@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 #endif
 using System.Text;
-#nullable enable
 namespace StrongLink
 {
     /// <summary>
@@ -580,7 +579,7 @@ namespace StrongLink
             return i;
         }
         public int Length => items.Count;
-        public bool IsEmpty => items.Count == 0;
+        public bool IsEmpty => items.Count == 0 || items[0].fields.Count==0;
         public Document this[int i] => items[i];
         internal DocArray(byte[] b) : this(b, 0) { }
         /// <summary>

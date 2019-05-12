@@ -39,7 +39,7 @@ namespace Tpcc
         int s_quantity;
         decimal total;
         bool allhome = true;
-        public int activewh;
+        public int activewh = 1;
         public StrongConnect db;
         public Button btn;
         public TextBox txtBox;
@@ -60,6 +60,7 @@ namespace Tpcc
         public void Multiple()
         {
             int Tcount = 0;
+            Console.WriteLine(DateTime.Now.ToString());
             while (Tcount++ < 2000)
             {
                 try
@@ -71,11 +72,17 @@ namespace Tpcc
                 {
                     throw e;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    var s = ex.Message;
                     db.Rollback();
+                    if (s.Contains("with read"))
+                        Form1.rconflicts++;
+                    else
+                        Form1.wconflicts++;
                 }
             }
+            Console.WriteLine(DateTime.Now.ToString());
         }
         bool ExecNQ(string cmd)
         {
@@ -84,20 +91,22 @@ namespace Tpcc
                 db.ExecuteNonQuery(cmd);
                 return false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                var s = ex.Message;
                 db.Rollback();
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
             return true;
         }
         bool FetchCustomer(ref string mess)
         {
             var s = db.ExecuteQuery("select C_DISCOUNT,C_LAST,C_CREDIT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
-            if (s.items.Count == 0)
-            {
-                mess = "No customer " + cid;
+            if (s.IsEmpty)
                 return true;
-            }
             Set(3, (string)s[0][1]);
             Set(4, (string)s[0][2]);
             c_discount = util.GetDecimal(s[0][0]);
@@ -109,20 +118,14 @@ namespace Tpcc
             db.BeginTransaction();
             var s = db.ExecuteQuery("select D_TAX,D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did);
             if (s.IsEmpty)
-            {
-                mess = "No District " + did;
                 return true;
-            }
             d_tax = util.GetDecimal(s[0][0]);
             o_id = (int)s[0][1];
             Set(6, o_id);
             Set(132, DateTime.Now.ToString());
             s = db.ExecuteQuery("select W_TAX from WAREHOUSE where W_ID=" + wid);
             if (s.IsEmpty)
-            {
-                mess = "No warehouse " + wid;
                 return true;
-            }
             w_tax = util.GetDecimal(s[0][0]);
             Set(8, w_tax.ToString("F4").Substring(1));
             Set(9, d_tax.ToString("F4").Substring(1));
@@ -243,15 +246,23 @@ namespace Tpcc
                     done = true;
                 }
                 else
+                {
                     db.Commit();
+                    Form1.commits++;
+                }
                 // Phase 3 display the results
                 Set(130, "OKAY");
                 done = true;
             }
             catch (Exception ex)
             {
-                Set(130, ex.Message);
+                var s = ex.Message;
+                Set(130, s);
                 db.Rollback();
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
             return done;
         }
@@ -318,8 +329,8 @@ namespace Tpcc
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
-		}
-		public void Single(ref int stage)
+        }
+        public void Single(ref int stage)
 		{
 			status.Text = "";
 			// Phase 1 generate the "terminal input"
@@ -429,14 +440,14 @@ namespace Tpcc
 				btn.Enabled = true;
 		}
 
-		public NewOrder()
+		public NewOrder(StrongConnect c,int w)
 		{
+            db = c;
+            wid = w;
 			//
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
-            if (wid == 0)
-                wid = 1;
 			VTerm vt1 = this;
 			Width = vt1.Width;
 			Height = vt1.Height+50;
@@ -562,6 +573,10 @@ namespace Tpcc
 			catch(Exception ex) {
 				status.Text = ex.Message;
                 db.Rollback();
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
 			Invalidate(true);
 		}
@@ -569,8 +584,6 @@ namespace Tpcc
         public int step = 0,line = 0;
         internal void Step()
         {
-            if (wid == 0)
-                wid = 1;
             switch (step)
             {
                 case 0:
