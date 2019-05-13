@@ -27,7 +27,6 @@ namespace Tpcc
                     carid + " from delivery a where a.DL_W_ID=" + wid;
             Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
-            Form1.commits++;
 			Set(1,carid);
 			Set(2,"Delivery has been scheduled");
 			return false;

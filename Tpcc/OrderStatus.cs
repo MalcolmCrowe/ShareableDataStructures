@@ -143,7 +143,6 @@ namespace Tpcc
 				Invalidate(true);
 				done = true;
                 db.Commit();
-                Form1.commits++;
 			}
 			bad:;
 		}

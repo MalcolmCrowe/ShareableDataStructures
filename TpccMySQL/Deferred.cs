@@ -76,7 +76,6 @@ namespace Tpcc
                     else
                         skipped++;
                 tr.Commit();
-                Form1.commits++;
             } catch(Exception ex)
             {
                 Form1.RecordResponse(ex, fid, tid);

@@ -223,7 +223,6 @@ namespace Tpcc
 					DoPayment(ref mess);
 					Invalidate(true);
 					tr.Commit();
-                    Form1.commits++;
                     done = true;
 				} 
 				catch(Exception ex)

@@ -184,7 +184,6 @@ namespace Tpcc
 				DoPayment(ref mess);
 				Invalidate(true);
 				db.Commit();
-                Form1.commits++;
 			} 
 			catch(Exception ex)
 			{

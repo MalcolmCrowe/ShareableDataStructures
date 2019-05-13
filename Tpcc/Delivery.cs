@@ -25,7 +25,6 @@ namespace Tpcc
 		public bool DoCarrier(ref string mess)
 		{
 			db.ExecuteNonQuery("insert DELIVERY(DL_W_ID,DL_CARRIER_ID) values ("+wid+","+carid+")");
-            Form1.commits++;
             Set(1,carid);
 			Set(2,"Delivery has been scheduled");
 			return false;

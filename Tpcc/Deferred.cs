@@ -50,7 +50,6 @@ namespace Tpcc
                     done++;
                 else
                     skipped++;
-            Form1.commits++;
         }
 
 		public void Run()

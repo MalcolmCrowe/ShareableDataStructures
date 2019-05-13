@@ -60,7 +60,6 @@ namespace Tpcc
         public void Multiple()
         {
             int Tcount = 0;
-            Console.WriteLine(DateTime.Now.ToString());
             while (Tcount++ < 2000)
             {
                 try
@@ -82,7 +81,6 @@ namespace Tpcc
                         Form1.wconflicts++;
                 }
             }
-            Console.WriteLine(DateTime.Now.ToString());
         }
         bool ExecNQ(string cmd)
         {
@@ -105,8 +103,11 @@ namespace Tpcc
         bool FetchCustomer(ref string mess)
         {
             var s = db.ExecuteQuery("select C_DISCOUNT,C_LAST,C_CREDIT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
-            if (s.IsEmpty)
+            if (s.items.Count == 0)
+            {
+                mess = "No customer " + cid;
                 return true;
+            }
             Set(3, (string)s[0][1]);
             Set(4, (string)s[0][2]);
             c_discount = util.GetDecimal(s[0][0]);
@@ -118,14 +119,20 @@ namespace Tpcc
             db.BeginTransaction();
             var s = db.ExecuteQuery("select D_TAX,D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did);
             if (s.IsEmpty)
+            {
+                mess = "No District " + did;
                 return true;
+            }
             d_tax = util.GetDecimal(s[0][0]);
             o_id = (int)s[0][1];
             Set(6, o_id);
             Set(132, DateTime.Now.ToString());
             s = db.ExecuteQuery("select W_TAX from WAREHOUSE where W_ID=" + wid);
             if (s.IsEmpty)
+            {
+                mess = "No warehouse " + wid;
                 return true;
+            }
             w_tax = util.GetDecimal(s[0][0]);
             Set(8, w_tax.ToString("F4").Substring(1));
             Set(9, d_tax.ToString("F4").Substring(1));
@@ -248,10 +255,11 @@ namespace Tpcc
                 else
                 {
                     db.Commit();
-                    Form1.commits++;
+
                 }
                 // Phase 3 display the results
                 Set(130, "OKAY");
+                Form1.commits++;
                 done = true;
             }
             catch (Exception ex)
