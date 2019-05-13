@@ -50,6 +50,7 @@ namespace Tpcc
                     done++;
                 else
                     skipped++;
+            Form1.commits++;
         }
 
 		public void Run()
@@ -57,7 +58,7 @@ namespace Tpcc
 			ArrayList al = new ArrayList();
             for (; ; )
             {
-                var s = db.ExecuteQuery("select DL_CARRIER_ID from DELIVERY where DL_W_ID=" + wid + " and DL_DONE is null order by DL_ID");
+                var s = db.ExecuteQuery("select DL_CARRIER_ID from DELIVERY where DL_W_ID=" + wid + " and DL_DONE is null orderby DL_ID");
                 for (var i = 0; i < s.items.Count; i++)
                     al.Add((int)s.items[i].fields[0].Value);
                 foreach (int k in al)

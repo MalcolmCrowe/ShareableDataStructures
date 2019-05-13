@@ -7,6 +7,7 @@ using System.Data;
 using Shareable;
 using StrongLink;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Tpcc
 {
@@ -31,10 +32,13 @@ namespace Tpcc
 		private Tpcc.StockLevel stockLevel1;
         private Tpcc.Delivery delivery1;
 		private System.ComponentModel.IContainer components;
-		public static StrongConnect conn;
+		public StrongConnect conn;
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
+        static int _fid = 0;
+        int fid = ++_fid;
+        static object _lock = new object();
 		private System.Windows.Forms.TextBox textBox3;
 		public int activewh;
 		private System.Windows.Forms.Button AutoRun;
@@ -43,7 +47,7 @@ namespace Tpcc
 		private DelReport delReport1;
 		Thread thread = null;
 		Thread deferred = null;
-        private System.Windows.Forms.Timer timer1;
+        private System.Windows.Forms.Timer timer1,timer2;
 		Thread emulate = null;
         private Label label3;
         private TextBox textBox4;
@@ -53,16 +57,18 @@ namespace Tpcc
         private TextBox textBox2;
         private Label label4;
         private Button Step;
+        private Label label5;
+        private TextBox Clerks;
         public static string host;
-
+        public static int commits, rconflicts, wconflicts;
 		public Form1()
 		{
+			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
 			//
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
             Control.CheckForIllegalCrossThreadCalls = false;
-			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
 		}
 
 		/// <summary>
@@ -105,6 +111,8 @@ namespace Tpcc
             this.components = new System.ComponentModel.Container();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.label5 = new System.Windows.Forms.Label();
+            this.Clerks = new System.Windows.Forms.TextBox();
             this.textBox2 = new System.Windows.Forms.TextBox();
             this.label4 = new System.Windows.Forms.Label();
             this.textBox4 = new System.Windows.Forms.TextBox();
@@ -117,23 +125,23 @@ namespace Tpcc
             this.button3 = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
             this.tabPage2 = new System.Windows.Forms.TabPage();
+            this.Step = new System.Windows.Forms.Button();
             this.Commit = new System.Windows.Forms.Button();
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.button2 = new System.Windows.Forms.Button();
-            this.newOrder1 = new Tpcc.NewOrder();
+            this.newOrder1 = new Tpcc.NewOrder(conn,1);
             this.tabPage3 = new System.Windows.Forms.TabPage();
-            this.orderStatus1 = new Tpcc.OrderStatus();
+            this.orderStatus1 = new Tpcc.OrderStatus(conn,1);
             this.tabPage4 = new System.Windows.Forms.TabPage();
-            this.payment1 = new Tpcc.Payment();
+            this.payment1 = new Tpcc.Payment(conn,1);
             this.tabPage5 = new System.Windows.Forms.TabPage();
-            this.stockLevel1 = new Tpcc.StockLevel();
+            this.stockLevel1 = new Tpcc.StockLevel(conn,1);
             this.tabPage6 = new System.Windows.Forms.TabPage();
-            this.delivery1 = new Tpcc.Delivery();
+            this.delivery1 = new Tpcc.Delivery(conn,1);
             this.tabPage7 = new System.Windows.Forms.TabPage();
-            this.delReport1 = new Tpcc.DelReport();
+            this.delReport1 = new Tpcc.DelReport(conn,1);
             this.label1 = new System.Windows.Forms.Label();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
-            this.Step = new System.Windows.Forms.Button();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -162,6 +170,8 @@ namespace Tpcc
             // 
             // tabPage1
             // 
+            this.tabPage1.Controls.Add(this.label5);
+            this.tabPage1.Controls.Add(this.Clerks);
             this.tabPage1.Controls.Add(this.textBox2);
             this.tabPage1.Controls.Add(this.label4);
             this.tabPage1.Controls.Add(this.textBox4);
@@ -178,6 +188,23 @@ namespace Tpcc
             this.tabPage1.Size = new System.Drawing.Size(560, 366);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "Setup";
+            // 
+            // label5
+            // 
+            this.label5.AutoSize = true;
+            this.label5.Location = new System.Drawing.Point(267, 238);
+            this.label5.Name = "label5";
+            this.label5.Size = new System.Drawing.Size(35, 13);
+            this.label5.TabIndex = 16;
+            this.label5.Text = "clerks";
+            // 
+            // Clerks
+            // 
+            this.Clerks.Location = new System.Drawing.Point(161, 235);
+            this.Clerks.Name = "Clerks";
+            this.Clerks.Size = new System.Drawing.Size(100, 20);
+            this.Clerks.TabIndex = 15;
+            this.Clerks.Text = "1";
             // 
             // textBox2
             // 
@@ -229,7 +256,7 @@ namespace Tpcc
             // 
             // AutoRun
             // 
-            this.AutoRun.Location = new System.Drawing.Point(19, 234);
+            this.AutoRun.Location = new System.Drawing.Point(26, 232);
             this.AutoRun.Name = "AutoRun";
             this.AutoRun.Size = new System.Drawing.Size(112, 24);
             this.AutoRun.TabIndex = 9;
@@ -292,6 +319,15 @@ namespace Tpcc
             this.tabPage2.Size = new System.Drawing.Size(560, 366);
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "New Order";
+            // 
+            // Step
+            // 
+            this.Step.Location = new System.Drawing.Point(399, 336);
+            this.Step.Name = "Step";
+            this.Step.Size = new System.Drawing.Size(64, 24);
+            this.Step.TabIndex = 4;
+            this.Step.Text = "Step";
+            this.Step.Click += new System.EventHandler(this.Step_Click);
             // 
             // Commit
             // 
@@ -419,15 +455,6 @@ namespace Tpcc
             // 
             this.timer1.Tick += new System.EventHandler(this.timer1_Tick);
             // 
-            // Step
-            // 
-            this.Step.Location = new System.Drawing.Point(399, 336);
-            this.Step.Name = "Step";
-            this.Step.Size = new System.Drawing.Size(64, 24);
-            this.Step.TabIndex = 4;
-            this.Step.Text = "Step";
-            this.Step.Click += new System.EventHandler(this.Step_Click);
-            // 
             // Form1
             // 
             this.AutoScaleBaseSize = new System.Drawing.Size(5, 13);
@@ -437,6 +464,7 @@ namespace Tpcc
             this.Name = "Form1";
             this.Text = "TPC/C";
             this.Load += new System.EventHandler(this.Form1_Load);
+            this.FormClosing += new FormClosingEventHandler(this.Form1_Closing);
             this.tabControl1.ResumeLayout(false);
             this.tabPage1.ResumeLayout(false);
             this.tabPage1.PerformLayout();
@@ -464,24 +492,31 @@ namespace Tpcc
 
         private void Form1_Load(object sender, System.EventArgs e)
         {
-            try
-            {
-                var s = conn.ExecuteQuery("select count(W_ID) from WAREHOUSE");
-                activewh = (int)s.items[0].fields[0].Value;
-                textBox1.Text = "" + activewh;
-                wid = 1;
-                //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
-                //          deferred.Name = "Deferred";
-                //			deferred.Start();
-            }
-            catch (Exception)
-            {
-            }
+            if (fid!=1)
+                UserChoice();
+            else
+                try
+                {
+                    var s = conn.ExecuteQuery("select count(W_ID) from WAREHOUSE");
+                    activewh = (int)s.items[0].fields[0].Value;
+                    textBox1.Text = "" + activewh;
+                    //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
+                    //          deferred.Name = "Deferred";
+                    //			deferred.Start();
+                    StrongConnect.OpenRequests();
+                }
+                catch (Exception)
+                {
+                }
+        }
+        private void Form1_Closing(object sender,System.EventArgs e)
+        {
+            StrongConnect.CloseRequests();
         }
 
 		private void button1_Click(object sender, System.EventArgs e)
 		{
-            var g = new GenBase();
+            var g = new GenBase(conn);
     	    g.BuildTpcc();
 		}
 
@@ -494,46 +529,34 @@ namespace Tpcc
 				case 1:
 					NewOrder n = newOrder1;
                     n.step = 0;
-					n.wid = wid;
 					vt = n;
 					n.activewh = activewh;
-					n.db = conn;
 					n.status = label1;
 					break;
 				case 2:
 					OrderStatus o = (OrderStatus)tabPage3.Controls[0];
-					o.wid = wid;
-					o.db = conn;
 					o.status = label1;
 					vt = o;
 					break;
 				case 3:
 					Payment p = (Payment)tabPage4.Controls[0];
-					p.wid = wid;
 					vt = p;
 					p.status = label1;
-					p.db = conn;
 					break;
 				case 4:
 					StockLevel s = (StockLevel)tabPage5.Controls[0];
-					s.wid = wid;
 					s.did = 1;
-					s.db = conn;
 					s.status = label1;
 					vt = s;
 					break;
 				case 5:
 					Delivery d = (Delivery)tabPage6.Controls[0];
-					d.wid = wid;
-					d.db = conn;
 					d.status = label1;
 					vt = d;
 					break;
 				case 6:
 					DelReport dl = (DelReport)tabPage7.Controls[0];
-					dl.wid = wid;
-					dl.db = conn;
-					dl.status = label1;
+    				dl.status = label1;
 					vt = dl;
 					break;
 			}
@@ -545,7 +568,8 @@ namespace Tpcc
 		{
 			try
 			{
-				wid = int.Parse(textBox1.Text);
+                textBox1.Text = "1";
+	//			wid = int.Parse(textBox1.Text);
 			} 
 			catch(Exception)
 			{
@@ -583,10 +607,24 @@ namespace Tpcc
 
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
-			UserChoice();
-		}
-
-		int action = -1;
+            var nc = int.Parse(Clerks.Text);
+            commits = 0; rconflicts = 0; wconflicts = 0;
+            Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
+            for (var i = 0; i < nc; i++)
+            Task.Run(()=>{
+                var f = new Form1();
+                f.ShowDialog();
+            });
+            timer2 = new System.Windows.Forms.Timer();
+            timer2.Interval = 600000;
+            timer2.Tick += new System.EventHandler(timer2_Tick);
+            timer2.Enabled = true;
+        }
+        void timer2_Tick(object sender, EventArgs e)
+        {
+            Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+        }
+        int action = -1;
 		int stage = -1;
 
 		void UserChoice()
@@ -595,22 +633,19 @@ namespace Tpcc
 			stage = 0;
 			if (i<10)
 			{
-				newOrder1.db = conn;
 				newOrder1.status = label1;
-				newOrder1.wid = 1;
 				newOrder1.PutBlanks();
+                newOrder1.Activate();
 				tabControl1.SelectedIndex=1;
-				action = 1;
+                action = 1;
 				timer1.Interval = 500;
-				return;
 			}
 			else if (i<20)
 			{
 				payment1.PutBlanks();
 				tabControl1.SelectedIndex=3;
-				payment1.db = conn;
-				payment1.wid = wid;
 				payment1.status = label1;
+                payment1.Activate();
 				action = 3;
 				timer1.Interval = 3000;
 			}
@@ -618,9 +653,8 @@ namespace Tpcc
 			{
 				orderStatus1.PutBlanks();
 				tabControl1.SelectedIndex=2;
-				orderStatus1.db = conn;
-				orderStatus1.wid = wid;
 				orderStatus1.status = label1;
+                orderStatus1.Activate();
 				action = 2;
 				timer1.Interval = 2000;
 			}
@@ -628,9 +662,8 @@ namespace Tpcc
 			{
 				delivery1.PutBlanks();
 				tabControl1.SelectedIndex=4;
-				delivery1.db = conn;
-				delivery1.wid = wid;
 				delivery1.status = label1;
+                delivery1.Activate();
 				action = 4;
 				timer1.Interval = 2000;
 			}
@@ -638,10 +671,9 @@ namespace Tpcc
 			{
 				stockLevel1.PutBlanks();
 				tabControl1.SelectedIndex=5;
-				stockLevel1.db = conn;
 				stockLevel1.status = label1;
-				stockLevel1.wid = wid;
 				stockLevel1.did = 1;
+                stockLevel1.Activate();
 				action = 5;
 				timer1.Interval = 2000;
 			}
@@ -694,6 +726,12 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				label1.Text = ex.Message;
+                lock (_lock)
+                {
+                    Console.WriteLine("" + fid + " " + conn.lastreq);
+                    Console.WriteLine("   "+ex.Message);
+                }
+                action = 0;
 			}
 			timer1.Enabled = true;
 		}
@@ -709,7 +747,7 @@ namespace Tpcc
 
         private void button3_Click(object sender, EventArgs e)
         {
-            var g = new GenBase();
+            var g = new GenBase(conn);
             g.FillWarehouse(int.Parse(textBox1.Text));
         }
 
@@ -719,10 +757,10 @@ namespace Tpcc
             {
                 int d = int.Parse(textBox4.Text);
                 conn = new StrongConnect("localhost",50433,"Tpcc");
-                new GenBase().FillDistrict(int.Parse(textBox1.Text),d);
+                new GenBase(conn).FillDistrict(int.Parse(textBox1.Text),d);
             }
             else
-                new GenBase().FillDistricts(int.Parse(textBox1.Text));
+                new GenBase(conn).FillDistricts(int.Parse(textBox1.Text));
         }
 
         private void textBox2_TextChanged(object sender, EventArgs e)
@@ -734,5 +772,6 @@ namespace Tpcc
         {
             newOrder1.Step();
         }
-	}
+
+    }
 }

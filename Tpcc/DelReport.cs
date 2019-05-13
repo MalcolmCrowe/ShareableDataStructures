@@ -19,12 +19,11 @@ namespace Tpcc
 		private System.ComponentModel.Container components = null;
 		public StrongConnect db;
 		public Label status;
-		public int wid;
+		public int wid = 1;
 		public int carid;
-
         public bool FetchCarrier(ref string mess)
         {
-            var s = db.ExecuteQuery("select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc");
+            var s = db.ExecuteQuery("select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " orderby DL_ID desc");
             if (s.items.Count == 0)
                 return true;
             Set(3, (int)s.items[0].fields[0].Value);
@@ -32,8 +31,10 @@ namespace Tpcc
             return false;
         }
 
-		public DelReport()
+		public DelReport(StrongConnect c,int w)
 		{
+            db = c;
+            wid = w;
 			// This call is required by the Windows.Forms Form Designer.
 			InitializeComponent();
 
@@ -85,7 +86,11 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-			}
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
+            }
 			SetCurField(curField);
 			status.Text = s;
 			Invalidate(true);

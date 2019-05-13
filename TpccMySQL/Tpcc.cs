@@ -607,7 +607,7 @@ namespace Tpcc
             else
                 try
                 {
-                    OpenRequests();
+       //             OpenRequests();
                     var cmd = conn.CreateCommand();
                     cmd.CommandText = "select count(W_ID) from WAREHOUSE";
                     RecordRequest(cmd, fid, 0);

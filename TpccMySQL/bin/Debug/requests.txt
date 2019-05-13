@@ -1,0 +1,3 @@
+00:00:02.4703699;1;1;0; select count(W_ID) from WAREHOUSE
+00:00:02.7203705;2;1;0; Exception: Specified cast is not valid.
+0; 0; 30000; 9000; 284512; 0

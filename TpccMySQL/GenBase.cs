@@ -110,6 +110,7 @@ namespace Tpcc
         public void FillItems()
         {
             Console.WriteLine("Adding Items: "+DateTime.Now);
+            var tr = conn.BeginTransaction();
             util ut = new util(14, 24);
 #if TRY
             for (int j=1;j<=10;j++)
@@ -117,6 +118,7 @@ namespace Tpcc
             for (int j = 1; j <= 100000; j++)
             {
                 var cmd = conn.CreateCommand();
+                cmd.Transaction = tr;
 #endif
                 cmd.CommandText ="insert into ITEM(I_ID,I_IM_ID,I_NAME,I_PRICE,I_DATA)" +
                     " values(" +
@@ -129,6 +131,7 @@ namespace Tpcc
                     util.NextNString(100, 10000, 2) + "," + NextData() + ")";
                 cmd.ExecuteNonQuery();
             }
+            tr.Commit();
             Console.WriteLine("Items done: Fill stock?"+DateTime.Now);
         }
         public void FillWarehouse(int w)
@@ -152,6 +155,7 @@ namespace Tpcc
         public void FillStock(int wid)
         {
             Console.WriteLine("filling stock " + DateTime.Now);
+            var tr = conn.BeginTransaction();
 #if TRY
             for (int siid=1;siid<=10;siid++)
 #else
@@ -160,6 +164,7 @@ namespace Tpcc
             { 
                 util u = new util(26, 50);
                 var cmd = conn.CreateCommand();
+                cmd.Transaction = tr;
                 cmd.CommandText="insert into STOCK(" +
                  "S_I_ID,S_W_ID,S_QUANTITY,S_DIST_01,S_DIST_02," +
                  "S_DIST_03,S_DIST_04,S_DIST_05,S_DIST_06," +
@@ -179,6 +184,7 @@ namespace Tpcc
                  "0.0,0,0," + GetString(util.fixStockData(u.NextAString())) + ")";
                 cmd.ExecuteNonQuery();
             }
+            tr.Commit();
             Console.WriteLine("Done filling stock " + DateTime.Now);
         }
         public void FillDistricts(int wid)
@@ -208,7 +214,8 @@ namespace Tpcc
         }
         public void FillCustomer(int wid, int did)
         {
-            Console.WriteLine("starting customer w=" + wid + " d=" + did+" " + DateTime.Now);
+            //           Console.WriteLine("starting customer w=" + wid + " d=" + did+" " + DateTime.Now);
+            var tr = conn.BeginTransaction();
             util uf = new util(8, 16);
             util us = new util(10, 20);
             util ud = new util(300, 500);
@@ -220,6 +227,7 @@ namespace Tpcc
 #endif
             {
                 var cmd = conn.CreateCommand();
+                cmd.Transaction = tr;
                 cmd.CommandText="insert into CUSTOMER(" +
                     "C_ID,C_D_ID,C_W_ID,C_FIRST,C_MIDDLE,C_LAST," +
                 "C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE," +
@@ -243,6 +251,7 @@ namespace Tpcc
                     GetString(uh.NextAString()) + ")";
                 cmd.ExecuteNonQuery();
             }
+            tr.Commit();
             Console.WriteLine("Customers done " + DateTime.Now);
         }
         static string credit()
@@ -255,6 +264,7 @@ namespace Tpcc
         }
         void FillOrder(int wid, int did)
         {
+            var tr = conn.BeginTransaction();
 #if TRY
             int[] perm = util.Permute(3);//3000);
 			for (int oid=1;oid<=3;oid++)//3000;oid++)
@@ -267,6 +277,7 @@ namespace Tpcc
                 if (oid < 2101)
                 {
                     var cmd = conn.CreateCommand();
+                    cmd.Transaction = tr;
                     cmd.CommandText="insert into `ORDER`(" +
                         "O_ID,O_C_ID,O_D_ID,O_W_ID,O_ENTRY_D,O_CARRIER_ID,O_OL_CNT,O_ALL_LOCAL) values(" +
                         oid + "," + (perm[oid - 1] + 1) + "," + did + "," +
@@ -288,6 +299,7 @@ namespace Tpcc
                 }
                 FillOrderLine(wid, did, oid, cnt);
             }
+            tr.Commit();
         }
         void FillOrderLine(int wid, int did, int oid, int cnt)
         {

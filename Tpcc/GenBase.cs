@@ -8,155 +8,78 @@ namespace Tpcc
 {
     public class GenBase
     {
-        static public StrongConnect conn;
+        public StrongConnect conn;
         static Encoding enc = new ASCIIEncoding();
+        public GenBase(StrongConnect c)
+        {
+            conn = c;
+        }
         public void BuildTpcc()
         {
-            conn = Form1.conn;
             CreationScript();
             FillItems();
         }
         public void CreationScript()
         {
-            conn.CreateTable("WAREHOUSE",
-                new SColumn("W_ID", Types.SInteger),
-                new SColumn("W_NAME", Types.SString),
-                new SColumn("W_STREET_1", Types.SString),
-                new SColumn("W_STREET_2", Types.SString),
-                new SColumn("W_CITY", Types.SString),
-                new SColumn("W_STATE", Types.SString),
-                new SColumn("W_ZIP", Types.SString),
-                new SColumn("W_TAX", Types.SNumeric),
-                new SColumn("W_YTD", Types.SNumeric)
-            );
-            conn.CreateIndex("WAREHOUSE", IndexType.Primary, null, "W_ID");
-            conn.CreateTable("DISTRICT",
-                new SColumn("D_ID", Types.SInteger),
-                new SColumn("D_W_ID", Types.SInteger),
-                new SColumn("D_NAME", Types.SString),
-                new SColumn("D_STREET_1", Types.SString),
-                new SColumn("D_STREET_2", Types.SString),
-                new SColumn("D_CITY", Types.SString),
-                new SColumn("D_STATE", Types.SString),
-                new SColumn("D_ZIP", Types.SString),
-                new SColumn("D_TAX", Types.SNumeric),
-                new SColumn("D_YTD", Types.SNumeric),
-                new SColumn("D_NEXT_O_ID", Types.SInteger)
-                );
-            conn.CreateIndex("DISTRICT", IndexType.Primary, null, "D_W_ID", "D_ID");
-            conn.CreateIndex("DISTRICT", IndexType.Reference, "WAREHOUSE", "D_W_ID");
-            conn.CreateTable("CUSTOMER",
-                new SColumn("C_ID", Types.SInteger),
-                new SColumn("C_D_ID", Types.SInteger),
-                new SColumn("C_W_ID", Types.SInteger),
-                new SColumn("C_FIRST", Types.SString),
-                new SColumn("C_MIDDLE", Types.SString),
-                new SColumn("C_LAST", Types.SString),
-                new SColumn("C_STREET_1", Types.SString),
-                new SColumn("C_STREET_2", Types.SString),
-                new SColumn("C_CITY", Types.SString),
-                new SColumn("C_STATE", Types.SString),
-                new SColumn("C_ZIP", Types.SString),
-                new SColumn("C_PHONE", Types.SString),
-                new SColumn("C_SINCE", Types.SDate),
-                new SColumn("C_CREDIT", Types.SString),
-                new SColumn("C_CREDIT_LIM", Types.SNumeric),
-                new SColumn("C_DISCOUNT", Types.SNumeric),
-                new SColumn("C_BALANCE", Types.SNumeric),
-                new SColumn("C_YTD_PAYMENT", Types.SNumeric),
-                new SColumn("C_PAYMENT_CNT", Types.SInteger),
-                new SColumn("C_DELIVERY_CNT", Types.SInteger),
-                new SColumn("C_DATA", Types.SString)
-                );
-            conn.CreateIndex("CUSTOMER", IndexType.Primary, null, "C_W_ID", "C_D_ID", "C_ID");
-            conn.CreateIndex("CUSTOMER", IndexType.Reference, "DISTRICT", "C_W_ID", "C_D_ID");
-            conn.CreateTable("HISTORY",
-                new SColumn("H_C_ID", Types.SInteger),
-                new SColumn("H_C_D_ID", Types.SInteger),
-                new SColumn("H_C_W_ID", Types.SInteger),
-                new SColumn("H_D_ID", Types.SInteger),
-                new SColumn("H_W_ID", Types.SInteger),
-                new SColumn("H_DATE", Types.SDate),
-                new SColumn("H_AMOUNT", Types.SNumeric),
-                new SColumn("H_DATA", Types.SString)
-                );
-            conn.CreateIndex("HISTORY", IndexType.Reference, "CUSTOMER", "H_C_W_ID", "H_C_D_ID", "H_C_ID");
-            conn.CreateIndex("HISTORY", IndexType.Reference, "DISTRICT", "H_W_ID", "H_D_ID");
-            conn.CreateTable("ORDER",
-                new SColumn("O_ID", Types.SInteger),
-                new SColumn("O_D_ID", Types.SInteger),
-                new SColumn("O_W_ID", Types.SInteger),
-                new SColumn("O_C_ID", Types.SInteger),
-                new SColumn("O_ENTRY_D", Types.SDate),
-                new SColumn("O_CARRIER_ID", Types.SInteger),
-                new SColumn("O_OL_CNT", Types.SInteger),
-                new SColumn("O_ALL_LOCAL", Types.SBoolean)
-                );
-            conn.CreateIndex("ORDER", IndexType.Primary, null, "O_W_ID", "O_D_ID", "O_ID");
-            conn.CreateIndex("ORDER", IndexType.Reference, "CUSTOMER", "O_W_ID", "O_D_ID", "O_C_ID");
-            conn.CreateTable("NEW_ORDER",
-                new SColumn("NO_O_ID", Types.SInteger),
-                new SColumn("NO_D_ID", Types.SInteger),
-                new SColumn("NO_W_ID", Types.SInteger)
-                );
-            conn.CreateIndex("NEW_ORDER", IndexType.Primary, null, "NO_W_ID", "NO_D_ID", "NO_O_ID");
-            conn.CreateIndex("NEW_ORDER", IndexType.Reference, "ORDER", "NO_W_ID", "NO_D_ID", "NO_O_ID");
-            conn.CreateTable("ITEM",
-                new SColumn("I_ID", Types.SInteger),
-                new SColumn("I_IM_ID", Types.SInteger),
-                new SColumn("I_NAME", Types.SString),
-                new SColumn("I_PRICE", Types.SNumeric),
-                new SColumn("I_DATA", Types.SString)
-                );
-            conn.CreateIndex("ITEM", IndexType.Primary, null, "I_ID");
-            conn.CreateTable("STOCK",
-                new SColumn("S_I_ID", Types.SInteger),
-                new SColumn("S_W_ID", Types.SInteger),
-                new SColumn("S_QUANTITY", Types.SInteger),
-                new SColumn("S_DIST_01", Types.SString),
-                new SColumn("S_DIST_02", Types.SString),
-                new SColumn("S_DIST_03", Types.SString),
-                new SColumn("S_DIST_04", Types.SString),
-                new SColumn("S_DIST_05", Types.SString),
-                new SColumn("S_DIST_06", Types.SString),
-                new SColumn("S_DIST_07", Types.SString),
-                new SColumn("S_DIST_08", Types.SString),
-                new SColumn("S_DIST_09", Types.SString),
-                new SColumn("S_DIST_10", Types.SString),
-                new SColumn("S_YTD", Types.SNumeric),
-                new SColumn("S_ORDER_CNT", Types.SInteger),
-                new SColumn("S_REMOTE_CNT", Types.SInteger),
-                new SColumn("S_DATA", Types.SString)
-                );
-            conn.CreateIndex("STOCK", IndexType.Primary, null, "S_W_ID", "S_I_ID");
-            conn.CreateIndex("STOCK", IndexType.Reference, "ITEM", "S_I_ID");
-            conn.CreateIndex("STOCK", IndexType.Reference, "WAREHOUSE", "S_W_ID");
-            conn.CreateTable("ORDER_LINE",
-                new SColumn("OL_O_ID", Types.SInteger),
-                new SColumn("OL_D_ID", Types.SInteger),
-                new SColumn("OL_W_ID", Types.SInteger),
-                new SColumn("OL_NUMBER", Types.SInteger),
-                new SColumn("OL_I_ID", Types.SInteger),
-                new SColumn("OL_SUPPLY_W_ID", Types.SInteger),
-                new SColumn("OL_DELIVERY_D", Types.SDate),
-                new SColumn("OL_QUANTITY", Types.SInteger),
-                new SColumn("OL_AMOUNT", Types.SNumeric),
-                new SColumn("OL_DIST_INFO", Types.SString)
-                );
-            conn.CreateIndex("ORDER_LINE", IndexType.Primary, null, "OL_W_ID", "OL_D_ID", "OL_O_ID", "OL_NUMBER");
-            conn.CreateIndex("ORDER_LINE", IndexType.Reference, "ORDER", "OL_W_ID", "OL_D_ID", "OL_O_ID");
-            conn.CreateIndex("ORDER_LINE", IndexType.Reference, "STOCK", "OL_SUPPLY_W_ID", "OL_I_ID");
-            conn.CreateTable("DELIVERY",
-                new SColumn("DL_W_ID", Types.SInteger),
-                new SColumn("DL_ID", Types.SInteger),
-                new SColumn("DL_CARRIER_ID", Types.SInteger),
-                new SColumn("DL_DONE", Types.SInteger),
-                new SColumn("DL_SKIPPED", Types.SInteger)
-                );
-            conn.CreateIndex("DELIVERY", IndexType.Primary, null, "DL_W_ID", "DL_ID");
-
+            conn.ExecuteNonQuery("create table WAREHOUSE(" +
+                "W_ID integer primary key,W_NAME string,W_STREET_1 string," +
+                "W_STREET_2 string,W_CITY string,W_STATE string," +
+                "W_ZIP string,W_TAX numeric,W_YTD numeric)");
+            conn.ExecuteNonQuery("create table DISTRICT(D_ID integer,"+
+                "D_W_ID integer references WAREHOUSE,D_NAME string,D_STREET_1 string,"+
+                "D_STREET_2 string,D_CITY string,D_STATE string," +
+                "D_ZIP string,D_TAX numeric,D_YTD numeric,D_NEXT_O_ID integer)" +
+                "primary key (D_W_ID,D_ID)");
+            conn.ExecuteNonQuery("create table CUSTOMER("+
+                "C_ID integer,C_D_ID integer,C_W_ID integer,"+
+                "C_FIRST string,C_MIDDLE string,C_LAST string,"+
+                "C_STREET_1 string,C_STREET_2 string,C_CITY string,"+
+                "C_STATE string,C_ZIP string,C_PHONE string,C_SINCE date,"+
+                "C_CREDIT string,C_CREDIT_LIM numeric,C_DISCOUNT numeric,"+
+                "C_BALANCE numeric,C_YTD_PAYMENT numeric,C_PAYMENT_CNT integer,"+
+                "C_DELIVERY_CNT integer,C_DATA string)"+
+                "primary key(C_W_ID,C_D_ID,C_ID),"+
+                "foreign key(C_W_ID,C_D_ID) references DISTRICT");
+            conn.ExecuteNonQuery("create table HISTORY("+
+                "H_C_ID integer,H_C_D_ID integer,H_C_W_ID integer,"+
+                "H_D_ID integer,H_W_ID integer,H_DATE date,"+
+                "H_AMOUNT numeric,H_DATA string)"+
+                "foreign key (H_C_W_ID, H_C_D_ID, H_C_ID) references CUSTOMER,"+
+                "foreign key (H_W_ID,H_D_ID) references DISTRICT");
+            conn.ExecuteNonQuery("create table ORDER(O_ID integer,"+
+                "O_D_ID integer,O_W_ID integer,O_C_ID integer,O_ENTRY_D date,"+
+                "O_CARRIER_ID integer,O_OL_CNT integer,O_ALL_LOCAL boolean)"+
+                "primary key(O_W_ID,O_D_ID,O_ID),"+
+                "foreign key(O_W_ID, O_D_ID,O_C_ID) references CUSTOMER");
+            conn.ExecuteNonQuery("create table NEW_ORDER("+
+                "NO_O_ID integer,NO_D_ID integer,NO_W_ID integer)"+
+                "primary key(NO_W_ID, NO_D_ID, NO_O_ID),"+
+                "foreign key(NO_W_ID, NO_D_ID, NO_O_ID) references ORDER");
+            conn.ExecuteNonQuery("create table ITEM("+
+                "I_ID integer primary key,I_IM_ID integer,I_NAME string,I_PRICE numeric,"+
+                "I_DATA string)");
+            conn.ExecuteNonQuery("create table STOCK(" +
+                "S_I_ID integer references ITEM,S_W_ID integer references WAREHOUSE,S_QUANTITY integer," +
+                "S_DIST_01 string,S_DIST_02 string,S_DIST_03 string," +
+                "S_DIST_04 string,S_DIST_05 string,S_DIST_06 string," +
+                "S_DIST_07 string,S_DIST_08 string,S_DIST_09 string," +
+                "S_DIST_10 string,S_YTD numeric,S_ORDER_CNT integer," +
+                "S_REMOTE_CNT integer,S_DATA string)" +
+                "primary key(S_W_ID,S_I_ID)");
+            conn.ExecuteNonQuery("create table ORDER_LINE("+
+                "OL_O_ID integer,OL_D_ID integer,OL_W_ID integer,"+
+                "OL_NUMBER integer,OL_I_ID integer,OL_SUPPLY_W_ID integer,"+
+                "OL_DELIVERY_D date,OL_QUANTITY integer,OL_AMOUNT numeric,"+
+                "OL_DIST_INFO string)"+
+                "primary key(OL_W_ID,OL_D_ID,OL_O_ID,OL_NUMBER)"+
+                "foreign key(OL_W_ID,OL_D_ID,OL_O_ID) references ORDER,"+
+                "foreign key(OL_SUPPLY_W_ID,OL_I_ID) references STOCK");
+            conn.ExecuteNonQuery("create table DELIVERY(" +
+                "DL_W_ID integer,DL_ID integer,DL_CARRIER_ID integer," +
+                "DL_DONE integer,DL_SKIPPED integer)"+
+                "primary key(DL_W_ID,DL_ID)");
         }
-        SString NextData()
+        string NextData()
         {
             byte[] b = uData.NextAString();
             int n = util.random(0, 10);
@@ -169,77 +92,76 @@ namespace Tpcc
             }
             return GetString(b);
         }
-        SString GetString(byte[] b)
+        string GetString(byte[] b)
         {
-            return new SString(enc.GetString(b));
+            return "'"+enc.GetString(b)+"'";
         }
         util uData = new util(26, 50);
         public void FillItems()
         {
+            Console.WriteLine("Adding Items: "+DateTime.Now);
             util ut = new util(14, 24);
-            var cols = new string[] { "I_ID", "I_IM_ID", "I_NAME", "I_PRICE", "I_DATA" };
 #if TRY
             for (int j=1;j<=10;j++)
 #else
             for (int j = 1; j <= 100000; j++)
 #endif
-                conn.Insert("ITEM", cols, new Serialisable[][] { new Serialisable[] {
+                conn.ExecuteNonQuery("insert  ITEM(I_ID,I_IM_ID,I_NAME,I_PRICE,I_DATA)"+
+                    " values("+
 #if TRY
-                    new SInteger(j),new SNumeric(util.random(1,10)),
+                    j+","+util.random(1,10)+
 #else
-                    new SInteger(j), new SInteger(util.random(1, 10000)),
+                    j+","+util.random(1, 10000)+
 #endif
-                    GetString(ut.NextAString()),
-                    new SNumeric(util.NextNString(100, 10000, 2)),
-                    NextData() } });
+                    ","+GetString(ut.NextAString())+","+
+                    util.NextNString(100, 10000, 2)+","+NextData()+")");
+            Console.WriteLine("Items done: Fill stock?"+DateTime.Now);
         }
         public void FillWarehouse(int w)
         {
             util u1 = new util(6, 10);
             util u2 = new util(10, 20);
-            var cols = new string[] {"W_ID","W_NAME","W_STREET_1","W_STREET_2",
-            "W_CITY","W_STATE","W_ZIP","W_TAX","W_YTD"};
-            Console.WriteLine("Starting warehouse " + w);
-            conn.Insert("WAREHOUSE", cols, new Serialisable[][] { new Serialisable[] {
-                new SInteger(w), GetString(u1.NextAString()),
-                GetString(u2.NextAString()),
-                GetString(u2.NextAString()),
-                GetString(u2.NextAString()),
-                new SString(""+(char)util.random(65, 90) + (char)util.random(65, 90)),
-                GetString(util.NZip()),
-                new SNumeric(util.NextNString(0, 2000, 4)),
-                new SNumeric(30000000,12,2) } });
+            Console.WriteLine("Starting warehouse " + w+ " " + DateTime.Now);
+            conn.ExecuteNonQuery("insert  WAREHOUSE(W_ID,W_NAME,W_STREET_1,W_STREET_2,"+
+            "W_CITY,W_STATE,W_ZIP,W_TAX,W_YTD) values(" +
+                w+"," + GetString(u1.NextAString())+","+
+                GetString(u2.NextAString())+","+
+                GetString(u2.NextAString())+","+
+                GetString(u2.NextAString())+",'"+
+                (char)util.random(65, 90) + (char)util.random(65, 90)+"',"+
+                GetString(util.NZip())+","+
+                util.NextNString(0, 2000, 4)+",300000.00)");
             FillStock(w);
         }
         public void FillStock(int wid)
         {
-            Console.WriteLine("filling stock");
-            var cols = new string[] {  "S_I_ID","S_W_ID","S_QUANTITY",
-                "S_DIST_01","S_DIST_02","S_DIST_03","S_DIST_04","S_DIST_05",
-                "S_DIST_06","S_DIST_07","S_DIST_08","S_DIST_09","S_DIST_10",
-                "S_YTD","S_ORDER_CNT","S_REMOTE_CNT","S_DATA" };
+            Console.WriteLine("filling stock " + DateTime.Now);
 #if TRY
             for (int siid=1;siid<=10;siid++)
 #else
             for (int siid = 1; siid <= 100000; siid++)
 #endif
-                conn.Insert("STOCK", cols, new Serialisable[][] { StockVals(siid, wid) });
-            Console.WriteLine("Done filling stock");
-        }
-        Serialisable[] StockVals(int siid, int wid)
-        {
-            util u = new util(26, 50);
-            var r = new Serialisable[17];
-            r[0] = new SInteger(siid);
-            r[1] = new SInteger(wid);
-            r[2] = new SInteger(util.random(10, 100));
-            for (var i = 3; i < 13; i++)
-                r[i] = GetString(util.randchar(24));
-            r[13] = SInteger.Zero;
-            r[14] = SInteger.Zero;
-            r[15] = SInteger.Zero;
-            r[16] = GetString(util.fixStockData(u.NextAString()));
-            return r;
+            { 
+                util u = new util(26, 50);
+                conn.ExecuteNonQuery("insert  STOCK(" +
+                 "S_I_ID,S_W_ID,S_QUANTITY,S_DIST_01,S_DIST_02," +
+                 "S_DIST_03,S_DIST_04,S_DIST_05,S_DIST_06," +
+                 "S_DIST_07,S_DIST_08,S_DIST_09,S_DIST_10," +
+                 "S_YTD,S_ORDER_CNT,S_REMOTE_CNT,S_DATA) values (" +
+                 siid + "," + wid + "," + util.random(10, 100) + "," + //0,1,2
+                 GetString(util.randchar(24)) + "," +    // 3
+                 GetString(util.randchar(24)) + "," + // 4
+                 GetString(util.randchar(24)) + "," + // 5
+                 GetString(util.randchar(24)) + "," + // 6
+                 GetString(util.randchar(24)) + "," + // 7
+                 GetString(util.randchar(24)) + "," + // 8
+                 GetString(util.randchar(24)) + "," + // 9
+                 GetString(util.randchar(24)) + "," + // 10
+                 GetString(util.randchar(24)) + "," + // 11
+                 GetString(util.randchar(24)) + "," + // 12
+                 "0.0,0,0," + GetString(util.fixStockData(u.NextAString())) + ")");
+            }
+            Console.WriteLine("Done filling stock " + DateTime.Now);
         }
         public void FillDistricts(int wid)
         {
@@ -248,70 +170,57 @@ namespace Tpcc
         }
         public void FillDistrict(int wid, int did)
         {
-            Console.WriteLine("Filling District " + did);
+            Console.WriteLine("Filling District " + did+" " + DateTime.Now);
             util us = new util(10, 20);
             util un = new util(6, 10);
-            var cols = new string[] { "D_ID","D_W_ID","D_NAME","D_STREET_1","D_STREET_2",
-            "D_CITY","D_STATE","D_ZIP","D_TAX","D_YTD","D_NEXT_O_ID" };
-            conn.Insert("DISTRICT", cols, new Serialisable[][] { new Serialisable[] {
-                new SInteger(did),new SInteger(wid),
-                GetString(un.NextAString()),
-                GetString(un.NextAString()),
-                GetString(un.NextAString()),
-                GetString(un.NextAString()),
-                new SString(""+ (char)util.random(65, 90) + (char)util.random(65, 90)),
-                GetString(util.NZip()),new SNumeric(util.NextNString(0, 2000, 4)),
-                new SNumeric(300000,12,2), new SInteger(3001)
-            } });
+            conn.ExecuteNonQuery("insert DISTRICT(D_ID,D_W_ID,D_NAME,D_STREET_1,D_STREET_2,"+
+            "D_CITY,D_STATE,D_ZIP,D_TAX,D_YTD,D_NEXT_O_ID) values("+
+                did+","+wid+","+GetString(un.NextAString())+","+
+                GetString(un.NextAString())+","+
+                GetString(un.NextAString())+","+
+                GetString(un.NextAString())+",'"+
+                (char)util.random(65, 90) + (char)util.random(65, 90)+"',"+
+                GetString(util.NZip())+","+util.NextNString(0, 2000, 4)+","+
+                "3000.00,3001)");
             FillCustomer(wid, did);
             FillOrder(wid, did);
-            Console.WriteLine("Done Filling District");
+            Console.WriteLine("Done Filling District " + DateTime.Now);
         }
         public void FillCustomer(int wid, int did)
         {
-            Console.WriteLine("starting customer w=" + wid + " d=" + did);
+            Console.WriteLine("starting customer w=" + wid + " d=" + did+" " + DateTime.Now);
             util uf = new util(8, 16);
             util us = new util(10, 20);
             util ud = new util(300, 500);
             util uh = new util(12, 24);
-            var ccols = new string[] { "C_ID", "C_D_ID", "C_W_ID", "C_FIRST", "C_MIDDLE", "C_LAST",
-                "C_STREET_1","C_STREET_2","C_CITY","C_STATE","C_ZIP","C_PHONE",
-                "C_SINCE","C_CREDIT","C_CREDIT_LIM","C_DISCOUNT","C_BALANCE",
-                "C_YTD_PAYMENT","C_PAYMENT_CNT","C_DELIVERY_CNT","C_DATA"
-            };
-            var hcols = new string[] { "H_C_ID", "H_C_D_ID", "H_C_W_ID", "H_D_ID",
-                "H_W_ID", "H_DATE", "H_AMOUNT", "H_DATA"
-            };
 #if TRY
             for (int cid=1;cid<=3;cid++)
 #else
             for (int cid = 1; cid <= 3000; cid++)
 #endif
             {
-                conn.Insert("CUSTOMER", ccols, new Serialisable[][] { new Serialisable[] {
-                    new SInteger(cid),new SInteger(did),new SInteger(wid),
-                    GetString(util.NextLast(cid)),new SString("OE"),
-                    GetString(uf.NextAString()),
-                    GetString(uf.NextAString()),
-                    GetString(uf.NextAString()),
-                    GetString(uf.NextAString()),
-                    new SString(""+(char)util.random(65, 90) + (char)util.random(65, 90)),
-                    GetString(util.NZip()), new SInteger(util.NString(16)),
-                    new SDate(DateTime.Now),new SString(credit()),new SNumeric(500000,12,2),
-                    new SNumeric(util.random(0,5000),4,4),
-                    new SNumeric(-1000,12,2),
-                    new SNumeric(1000,12,2),
-                    new SNumeric(1,4,0),
-                    new SNumeric(0,4,0),
-                    GetString(ud.NextAString())
-                } });
-                conn.Insert("HISTORY", hcols, new Serialisable[][] { new Serialisable[] {
-                    new SInteger(cid), new SInteger(did), new SInteger(wid),
-                    new SInteger(did), new SInteger(wid), new SDate(DateTime.Now),
-                    new SNumeric(1000,6,2), GetString(uh.NextAString())
-                } });
+                conn.ExecuteNonQuery("insert  CUSTOMER(" +
+                    "C_ID,C_D_ID,C_W_ID,C_FIRST,C_MIDDLE,C_LAST," +
+                "C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE," +
+                "C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE," +
+                "C_YTD_PAYMENT,C_PAYMENT_CNT,C_DELIVERY_CNT,C_DATA) values (" +
+                cid + "," + did + "," + wid + "," +
+                GetString(util.NextLast(cid)) + ",'OE'," +
+                GetString(uf.NextAString()) + "," +
+                GetString(uf.NextAString()) + "," +
+                GetString(uf.NextAString()) + "," +
+                GetString(uf.NextAString()) + ",'" +
+                (char)util.random(65, 90) + (char)util.random(65, 90) + "'," +
+                GetString(util.NZip()) + ",'" + util.NString(16) + "',date" +
+                new SDate(DateTime.Now) + ",'" + credit() + "',5000.00," +
+                util.randomA(0, 5000, 10000.0) + ",-10.00,10.00,1,0," +
+                GetString(ud.NextAString()) + ")");
+                conn.ExecuteNonQuery("insert  HISTORY(" +
+                    "H_C_ID,H_C_D_ID,H_C_W_ID,H_D_ID,H_W_ID,H_DATE,H_AMOUNT,H_DATA) values(" +
+                    cid + "," + did + "," + wid + "," + did + "," + wid + ",date" + new SDate(DateTime.Now) + ",10.00," +
+                    GetString(uh.NextAString()) + ")");
             }
-            Console.WriteLine("Customers done");
+            Console.WriteLine("Customers done " + DateTime.Now);
         }
         static string credit()
         {
@@ -323,11 +232,6 @@ namespace Tpcc
         }
         void FillOrder(int wid, int did)
         {
-            var ocols = new string[] { "O_ID", "O_D_ID", "O_W_ID", "O_C_ID",
-                "O_ENTRY_D","O_CARRIER_ID","O_OL_CNT","O_ALL_LOCAL" };
-            var ocols1 = new string[] { "O_ID", "O_D_ID", "O_W_ID", "O_C_ID",
-                "O_ENTRY_D","O_OL_CNT","O_ALL_LOCAL" };
-            var ncols = new string[] { "NO_O_ID", "NO_D_ID", "NO_W_ID" };
 #if TRY
             int[] perm = util.Permute(3);//3000);
 			for (int oid=1;oid<=3;oid++)//3000;oid++)
@@ -338,52 +242,52 @@ namespace Tpcc
             {
                 int cnt = util.random(5, 15);
                 if (oid < 2101)
-                    conn.Insert("ORDER", ocols, new Serialisable[][] { new Serialisable[] {
-                        new SInteger(oid),new SInteger(perm[oid - 1] + 1),new SInteger(did),
-                        new SInteger(wid),new SDate(DateTime.Now),new SInteger(util.random(1,10)),
-                        new SInteger(util.random(1,15)),SBoolean.True
-                    } });
+                    conn.ExecuteNonQuery("insert  ORDER(" +
+                        "O_ID,O_C_ID,O_D_ID,O_W_ID,O_ENTRY_D,O_CARRIER_ID,O_OL_CNT,O_ALL_LOCAL) values(" +
+                        oid + "," + (perm[oid - 1] + 1) + "," + did + "," +
+                        wid + ",date" + new SDate(DateTime.Now) + "," + util.random(1, 10) + "," +
+                        util.random(1, 15) + ",true)");
                 else
                 {
-                    conn.Insert("ORDER", ocols1, new Serialisable[][] { new Serialisable[] {
-                        new SInteger(oid),new SInteger(perm[oid - 1] + 1),new SInteger(did),
-                        new SInteger(wid),new SDate(DateTime.Now),new SInteger(cnt),SBoolean.True
-                    } });
-                    conn.Insert("NEW_ORDER", ncols, new Serialisable[][] { new Serialisable[] {
-                        new SInteger(oid),new SInteger(did),new SInteger(wid)
-                    } });
+                    conn.ExecuteNonQuery("insert  ORDER(" +
+                        "O_ID,O_C_ID,O_D_ID,O_W_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL) values(" +
+                        oid + "," + (perm[oid - 1] + 1) + "," + did + "," +
+                        wid + ",date" + new SDate(DateTime.Now) + "," + cnt + ",true)");
+                    conn.ExecuteNonQuery("insert  NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID) values(" +
+                        oid + "," + did + "," + wid + ")");
                 }
                 FillOrderLine(wid, did, oid, cnt);
             }
         }
         void FillOrderLine(int wid, int did, int oid, int cnt)
         {
-            var cols = new string[] { "OL_O_ID", "OL_D_ID", "OL_W_ID", "OL_NUMBER",
-            "OL_I_ID", "OL_SUPPLY_W_ID", "OL_DELIVERY_D", "OL_QUANTITY", "OL_AMOUNT","OL_DIST_INFO"};
             for (int j = 1; j <= cnt; j++)
                 if (oid < 2101)
-                    conn.Insert("ORDER_LINE", cols, new Serialisable[][] { new Serialisable[] {
-                        new SInteger(oid),new SInteger(did),new SInteger(wid), new SInteger(j),
+                    conn.ExecuteNonQuery("insert  ORDER_LINE(" +
+                        "OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER," +
+                        "OL_I_ID,OL_SUPPLY_W_ID,OL_DELIVERY_D,OL_QUANTITY," +
+                        "OL_AMOUNT,OL_DIST_INFO) values(" +
+                        oid + "," + did + "," + wid + "," + j + "," +
 #if TRY
-                        new SInteger(util.random(1, 10)),
+                        util.random(1, 10)+","+
 #else
-                        new SInteger(util.random(1, 100000)),
+                        util.random(1, 100000) + "," +
 #endif
-                        new SInteger(wid),
-                        new SDate(DateTime.Now),new SNumeric(5,2,0), new SNumeric(0,6,2),
-                        GetString(util.randchar(24))
-                    } });
+                        wid + ",date" + new SDate(DateTime.Now) + ",5,0.00," +
+                        GetString(util.randchar(24)) + ")");
                 else
-                    conn.Insert("ORDER_LINE", cols, new Serialisable[][] { new Serialisable[] {
-                        new SInteger(oid),new SInteger(did),new SInteger(wid), new SInteger(j),
+                    conn.ExecuteNonQuery("insert  ORDER_LINE(" +
+                        "OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER," +
+                        "OL_I_ID,OL_SUPPLY_W_ID,OL_DELIVERY_D,OL_QUANTITY," +
+                        "OL_AMOUNT,OL_DIST_INFO) values(" +
+                        oid + "," + did + "," + wid + "," + j + "," +
 #if TRY
-                        new SInteger(util.random(1, 10)),
+                        util.random(1, 10)+","+
 #else
-                        new SInteger(util.random(1, 100000)),
+                        util.random(1, 100000) + "," +
 #endif
-                        new SInteger(wid),new SDate(DateTime.Now),new SNumeric(5,2,0),
-                        new SNumeric(util.random(1,999999),6,2),GetString(util.randchar(24))
-                    } });
+                        wid + ",date" + new SDate(DateTime.Now) + ",5," +
+                        util.randomA(1, 999999,100.0) + "," + GetString(util.randchar(24)) + ")");
         }
     }
     /// <summary>
@@ -508,7 +412,7 @@ namespace Tpcc
         {
             var r = Integer.Zero;
             for (int j = 0; j < ln; j++)
-                r = r.Times((byte)rnd.Next(0, 9));
+                r = r.Times(10)+new Integer(rnd.Next(0, 9));
             return r;
         }
         public static Numeric NextNString(int min, int max, int scale)
@@ -545,6 +449,13 @@ namespace Tpcc
         public static int random(int x, int y)
         {
             return rnd.Next(x, y);
+        }
+        public static string randomA(int x,int y,double z)
+        {
+            var r = (rnd.Next(x, y) / z).ToString();
+            if (r.Contains("."))
+                return r;
+            return r + ".00";
         }
         public static int random(int x, int y, int z)
         {
