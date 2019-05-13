@@ -64,7 +64,7 @@ namespace Tpcc
                 cids.Add((long)s[i][0]);
             if (cids.Count == 0)
             {
-                Console.WriteLine("no custs " + wid + "," + did + "," + clast);
+   //             Console.WriteLine("no custs " + wid + "," + did + "," + clast);
                 cid = 1;
             }
             else

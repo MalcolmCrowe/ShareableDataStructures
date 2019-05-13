@@ -623,7 +623,7 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            var rdr = conn.ExecuteQuery("select count(NO_ID) from NEW_ORDER");
+            var rdr = conn.ExecuteQuery("select count(NO_O_ID) from NEW_ORDER");
             Console.WriteLine("New Orders: " + ((long)rdr[0][0] - 9000));
             Application.Exit();
         }

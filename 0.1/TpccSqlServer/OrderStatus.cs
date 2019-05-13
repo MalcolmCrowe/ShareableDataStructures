@@ -4,7 +4,8 @@ using System.Drawing;
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
-using System.Data.SqlClient;
+using Shareable;
+using StrongLink;
 
 namespace Tpcc
 {
@@ -17,8 +18,7 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public SqlConnection db;
-        SqlTransaction tr;
+		public StrongConnect db;
         int wid;
         public int did;
 		decimal c_balance;
@@ -28,7 +28,6 @@ namespace Tpcc
 		string clast = "";
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
-        public int fid, tid;
         bool Check(string c)
 		{
 			if (c!="")
@@ -48,47 +47,34 @@ namespace Tpcc
 		}
         bool FetchCustFromId(ref string mess)
         {
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
-            cmd.CommandText="select C_BALANCE,C_FIRST,C_MIDDLE,C_LAST from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
-            var s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                s.Close();
+            var s = db.ExecuteQuery("select C_BALANCE,C_FIRST,C_MIDDLE,C_LAST from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
+            if (s.IsEmpty)
                 return true;
-            }
-            clast = (string)s[3];
-            c_balance = util.GetDecimal(s[0]);
-            c_first = (string)s[1];
-            c_middle = (string)s[2];
-            s.Close();
+            clast = (string)s[0][3];
+            c_balance = util.GetDecimal(s[0][0]);
+            c_first = (string)s[0][1];
+            c_middle = (string)s[0][2];
             return false;
         }
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList cids = new ArrayList();
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
-            cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST";
-            var s = cmd.ExecuteReader();
-            while (s.Read())
-                cids.Add((long)s[0]);
-            s.Close();
+            var s = db.ExecuteQuery("select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' orderby C_FIRST");
+            for (var i = 0; i < s.items.Count; i++)
+                cids.Add((long)s[i][0]);
             if (cids.Count == 0)
+            {
+   //             Console.WriteLine("no custs " + wid + "," + did + "," + clast);
                 cid = 1;
+            }
             else
                 cid = (int)cids[(cids.Count + 1) / 2];
-            cmd.CommandText = "select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
-            s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                s.Close();
+            s = db.ExecuteQuery("select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid);
+            if (s.IsEmpty)
                 return true;
-            }
-            c_balance = (decimal)s[0];
-            c_first = (string)s[1];
-            c_middle = (string)s[2];
-            s.Close();
+            c_balance = util.GetDecimal(s[0][0]);
+            c_first = (string)s[0][1];
+            c_middle = (string)s[0][2];
             return false;
         }
         bool DoDisplay(ref string mess)
@@ -99,46 +85,33 @@ namespace Tpcc
             Set(5, clast);
             Set(6, "$" + c_balance.ToString("F2"));
             int oid = -1;
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
-            cmd.CommandText = "select max(O_ID) from [ORDER] where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid;
-            var s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                s.Close();
+            var s = db.ExecuteQuery("select max(O_ID) from ORDER where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid);
+            if (s.IsEmpty)
                 return true;
-            }
-            oid = (int)s[0];
-            s.Close();
-            cmd.CommandText = "select O_ENTRY_D,O_CARRIER_ID from [ORDER] where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_ID=" + oid;
-            s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                s.Close();
+            oid = (int)s[0][0];
+            s = db.ExecuteQuery("select O_ENTRY_D,O_CARRIER_ID from ORDER where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_ID=" + oid);
+            if (s.IsEmpty)
                 return true;
-            }
             Set(7, oid);
-            var str = ((DateTime)s[0]).ToShortDateString();
+
+            var str = (string)s[0][0];
             Set(8, str);
-            if (!(s[1] == DBNull.Value))
-                Set(9, (int)s[1]);
-            s.Close();
+            if (!(s[0][1] == Serialisable.Null))
+                Set(9, (int)s[0][1]);
             int k = 10;
-            cmd.CommandText = "select OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT,OL_DELIVERY_D from ORDER_LINE where OL_W_ID="
-                + wid + " and OL_D_ID=" + did + " and OL_O_ID=" + oid;
-            s = cmd.ExecuteReader();
-            while(s.Read())
+            s = db.ExecuteQuery("select OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT,OL_DELIVERY_D from ORDER_LINE where OL_W_ID="
+                + wid + " and OL_D_ID=" + did + " and OL_O_ID=" + oid);
+            for (var i = 0; i < s.Length; i++)
             {
-                Set(k++, (int)s[1]);
-                Set(k++, (int)s[0]);
-                Set(k++, (int)(decimal)s[2]);
-                Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[3])));
-                if (s[4] != DBNull.Value)
-                    Set(k++, ((DateTime)s[4]).ToShortDateString());
+                Set(k++, (int)s[i][1]);
+                Set(k++, (int)s[i][0]);
+                Set(k++, (int)s[i][2]);
+                Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[i][3])));
+                if (s[i][4] != Serialisable.Null)
+                    Set(k++, DateTime.Parse((string)s[i][4]).ToShortDateString());
                 else
                     k++;
             }
-            s.Close();
             return false;
         }
 		public void Single()
@@ -155,10 +128,8 @@ namespace Tpcc
 			string mess = "";
 			while (!done && count++<1000)
 			{
-                if (tr==null)
-				tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
-                tid = ++Form1._tid;
-                if (cid>0)
+				db.BeginTransaction();
+				if (cid>0)
 				{
 					if (FetchCustFromId(ref mess))
 						goto bad;
@@ -171,14 +142,13 @@ namespace Tpcc
 				DoDisplay(ref mess);
 				Invalidate(true);
 				done = true;
-                tr.Commit();
+                db.Commit();
                 Form1.commits++;
-                tr = null;
 			}
 			bad:;
 		}
 
-		public OrderStatus(SqlConnection c, int w)
+		public OrderStatus(StrongConnect c, int w)
         {
             db = c;
             wid = w;
@@ -263,8 +233,6 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Form1.RecordResponse(ex, fid, tid);
-                Form1.wconflicts++;
 			}
 			SetCurField(curField);
 			status.Text = s;
