@@ -61,11 +61,10 @@ namespace Tpcc
         public static string host;
         public static int commits, rconflicts, wconflicts;
         public static int _tid = 0, _req = 0;
-        static DateTime start_time = DateTime.Now;
         static System.IO.StreamWriter reqs = null;
         public Form1()
 		{
-			conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
+			conn = new SqlConnection("Data Source=MUSIC-PC;Initial Catalog=Tpcc;Integrated Security=True");
             conn.Open();
 			//
 			// Required for Windows Form Designer support
@@ -78,19 +77,14 @@ namespace Tpcc
             if (reqs == null)
                 return;
             lock (reqs)
-                reqs.WriteLine(Seconds()+";" + (++_req) + ";" + cid + ";" + tid + "; " + cmd.CommandText);
+                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; " + cmd.CommandText);
         }
         public static void RecordResponse(Exception e,int cid,int tid)
         {
             if (reqs == null)
                 return;
             lock (reqs)
-                reqs.WriteLine(Seconds()+";" + (++_req) + ";" + cid + ";" + tid + "; Exception: "+ e.Message);
-        }
-        static string Seconds()
-        {
-            var t = DateTime.Now - start_time;
-            return t.ToString();
+                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; Exception: "+ e.Message);
         }
         public static void OpenRequests()
         {
@@ -606,7 +600,7 @@ namespace Tpcc
             else
                 try
                 {
-     //               OpenRequests();
+                    OpenRequests();
                     var cmd = conn.CreateCommand();
                     cmd.CommandText = "select count(W_ID) from WAREHOUSE";
                     RecordRequest(cmd, fid, 0);
@@ -736,6 +730,8 @@ namespace Tpcc
         void Report_Click(object sender,EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            CloseRequests();
+            Application.Exit();
         }
 
 		int action = -1;

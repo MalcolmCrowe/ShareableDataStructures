@@ -607,7 +607,7 @@ namespace Tpcc
             else
                 try
                 {
-       //             OpenRequests();
+                    OpenRequests();
                     var cmd = conn.CreateCommand();
                     cmd.CommandText = "select count(W_ID) from WAREHOUSE";
                     RecordRequest(cmd, fid, 0);
@@ -741,6 +741,8 @@ namespace Tpcc
         void Report_Click(object sender,EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            CloseRequests();
+            Application.Exit();
         }
 
 		int action = -1;

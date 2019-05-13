@@ -503,7 +503,7 @@ namespace Tpcc
                     //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
-                    StrongConnect.OpenRequests();
+        //            StrongConnect.OpenRequests();
                 }
                 catch (Exception)
                 {
@@ -511,7 +511,7 @@ namespace Tpcc
         }
         private void Form1_Closing(object sender,System.EventArgs e)
         {
-            StrongConnect.CloseRequests();
+      //      StrongConnect.CloseRequests();
         }
 
 		private void button1_Click(object sender, System.EventArgs e)
@@ -623,6 +623,9 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            var rdr = conn.ExecuteQuery("select count(NO_ID) from NEW_ORDER");
+            Console.WriteLine("New Orders: " + ((long)rdr[0][0] - 9000));
+            Application.Exit();
         }
         int action = -1;
 		int stage = -1;
