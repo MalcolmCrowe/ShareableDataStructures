@@ -61,6 +61,7 @@ namespace Tpcc
         private TextBox Clerks;
         public static string host;
         public static int commits, rconflicts, wconflicts;
+        public static bool exiting = false;
 		public Form1()
 		{
 			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
@@ -623,6 +624,7 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            Form1.exiting = true;
             Application.Exit();
         }
         int action = -1;
@@ -727,6 +729,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				label1.Text = ex.Message;
+                if (!exiting)
                 lock (_lock)
                 {
                     Console.WriteLine("" + fid + " " + conn.lastreq);
