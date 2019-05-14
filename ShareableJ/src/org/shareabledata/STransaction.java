@@ -110,8 +110,28 @@ public class STransaction extends SDatabase {
                     }
                 }
             }
+            if (tb!=null)
             synchronized (f)
             {
+                db = databases.Lookup(name);
+                for (var b = tb; b != null; b = b.Next())
+                {
+                    var ob = b.getValue().val;
+                    switch (ob.type)
+                    {
+                        case Types.SUpdate:
+                        case Types.SRecord:
+                        {
+                            var sr = (SRecord) ob;
+                            sr.CheckConstraints(db, (STable)objects.Lookup(sr.table));
+                        }
+                        case Types.SDelete:
+                        {
+                            var sd = (SDelete)ob;
+                            sd.CheckConstraints(db, (STable)objects.Lookup(sd.table));
+                        }
+                    }                       
+                }
                 since = rdr.GetAll(f.length());
                 for (SDbObject since1 : since) {
                     if (since1.Check(readConstraints))
