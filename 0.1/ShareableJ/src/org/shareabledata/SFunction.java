@@ -67,7 +67,7 @@ public class SFunction extends Serialisable {
         }
         public boolean isAgg() { return (func!=Func.Null);}
         @Override
-        public Serialisable Lookup(STransaction tr,Context cx)
+        public Serialisable Lookup(SDatabase tr,Context cx)
         {
             if (cx.refs==null)
                 return this;

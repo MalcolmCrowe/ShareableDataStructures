@@ -151,7 +151,7 @@ public class SQuery extends SDbObject {
         /// </summary>
         /// <param name="db">The current state of the database or transaction</param>
         /// <returns></returns>
-        public RowSet RowSet(STransaction db,SQuery top,
+        public RowSet RowSet(SDatabase db,SQuery top,
                 Context cx) throws Exception{
             throw new Exception("Not implemented");
         }

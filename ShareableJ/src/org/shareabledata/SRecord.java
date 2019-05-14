@@ -12,15 +12,55 @@ import java.io.*;
 public class SRecord extends SDbObject {
         public final SDict<Long, Serialisable> fields;
         public final long table;
-        public SRecord(STransaction tr,long t,SDict<Long,Serialisable> f)
+        public SRecord(STransaction tr,long t,SDict<Long,Serialisable> f) throws Exception
         {
-            super(Types.SRecord,tr);
-            fields = f;
-            table = t;
+            this(Types.SRecord,tr,t,f);
         }
         public SRecord(int ty,STransaction tr,long t,SDict<Long,Serialisable> f)
+                throws Exception
         {
             super(ty,tr);
+            var tb = (STable)tr.objects.get(t);
+            var a = tb.Aggregates(null);
+            var cx = Context.New(a, null);
+            var rb = tb.getDisplay().First();
+            for (var b = tb.cols.First(); b != null && rb!=null; b = b.Next(), rb=rb.Next())
+            {
+                var sc = b.getValue().val;
+                var cn = rb.getValue().val.uid;
+                if (sc.constraints!=null)
+                for (var c = sc.constraints.First(); c != null; c = c.Next())
+                {
+                    var fn = c.getValue().val;
+                    switch (fn.func)
+                    {
+                        case SFunction.Func.Default:
+                            if ((!f.Contains(cn)) || f.get(cn) == Null)
+                                f=(f==null)?new SDict(cn, fn.arg):f.Add(cn,fn.arg);
+                            break;
+                        case SFunction.Func.NotNull:
+                            if ((!f.Contains(cn)) || f.get(cn) == Null)
+                                throw new Exception("Value of "+tr.Name(cn)+" cannot be null");
+                            break;
+                        case SFunction.Func.Constraint:
+                            {
+                                var cf = Context.New(f, cx);
+                                if (fn.arg.Lookup(tr,cf) == SBoolean.False)
+                                    throw new Exception("Constraint violation");
+                                break;
+                            }
+                        case SFunction.Func.Generated:
+                            {
+                                var cf = Context.New(f, cx);
+                                if (f.Contains(cn) && f.get(cn) != Null)
+                                    throw new Exception("Value cannot be supplied for column " + tr.Name(cn));
+                                var v = fn.arg.Lookup(tr,cf);
+                                f=(f==null)?new SDict(cn, v):f.Add(cn,v);
+                            }
+                            break;
+                    }
+                }
+            }
             fields = f;
             table = t;
         }
@@ -28,7 +68,7 @@ public class SRecord extends SDbObject {
         {
             return uid;
         }
-        public SRecord(SDatabase db,SRecord r,AStream f)
+        public SRecord(SDatabase db,SRecord r,Writer f) throws Exception
         {
             super(r,f); 
             table = f.Fix(r.table);
@@ -42,26 +82,26 @@ public class SRecord extends SDbObject {
                 b.getValue().val.Put(f);
             }
         }
-        protected SRecord(int t,SDatabase d,Reader f) throws Exception
+        protected SRecord(int t,ReaderBase f) throws Exception
         {
             super(t,f);
             table = f.GetLong();
             int n = f.GetInt();
-            var tb = (STable)d.objects.Lookup(table);
+            var tb = (STable)f.db.objects.Lookup(table);
             SDict<Long,Serialisable> a = null;
             for(int i = 0;i< n;i++)
             {
                 var k = f.GetLong();
                 if (a==null)
-                    a = new SDict<Long,Serialisable>(k,f._Get(d));
+                    a = new SDict<Long,Serialisable>(k,f._Get());
                 else
-                    a = a.Add(k, f._Get(d));
+                    a = a.Add(k, f._Get());
             }
             fields = a;
         }
-        public static SRecord Get(SDatabase d,Reader f) throws Exception
+        public static SRecord Get(ReaderBase f) throws Exception
         {
-            return new SRecord(Types.SRecord,d,f);
+            return new SRecord(Types.SRecord,f);
         }
         @Override
         public void Append(SDatabase db,StringBuilder sb)
@@ -84,7 +124,7 @@ public class SRecord extends SDbObject {
                     var v = b.getValue();
                     if (v instanceof SExpression)
                      try {
-                        var e = ((SExpression)v).Lookup(new Context(rb,null));
+                        var e = ((SExpression)v).Lookup(rb._rs._tr,rb._cx);
                         if (e!=SBoolean.True)
                             return false;
                         } catch(Exception e)
@@ -95,13 +135,31 @@ public class SRecord extends SDbObject {
                 }
             return true;
         }
+        public void CheckConstraints(SDatabase db,STable st) throws Exception
+        {
+            var cx = Context.New(fields,Context.Empty);
+            for (var b= st.cols.First();b!=null;b=b.Next())
+                for (var c = b.getValue().val.constraints.First();c!=null;c=c.Next())
+                    switch (c.getValue().key)
+                    {
+                        case "CHECK":
+                            if (c.getValue().val.Lookup(db, cx) != SBoolean.True)
+                                throw new Exception("Check condition fails");
+                            break;
+                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects.get(b.getValue().key);
+                x.Check(db, this, false);
+            }
+        }        
         @Override
         public boolean Check(SDict<Long, Boolean> rdC)
         {
             return (rdC!=null) && (rdC.Contains(Defpos()) || rdC.Contains(table));
         }
         @Override
-        public boolean Conflicts(Serialisable that)
+        public boolean Conflicts(SDatabase db,STransaction tr,Serialisable that)
         {
             switch(that.type)
             {
@@ -113,7 +171,7 @@ public class SRecord extends SDbObject {
         @Override
         public String toString()
         {
-            StringBuilder sb = new StringBuilder(super.toString());
+            StringBuilder sb = new StringBuilder();
             Append(null,sb);
             return sb.toString();
         }

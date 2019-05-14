@@ -1,5 +1,4 @@
-﻿#nullable enable
-/// <summary>
+﻿/// <summary>
 /// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// http://shareabledata.org 
 /// This is free-to-use software

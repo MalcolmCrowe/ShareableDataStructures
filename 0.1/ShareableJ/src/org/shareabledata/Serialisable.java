@@ -131,7 +131,7 @@ public class Serialisable implements Comparable {
     public int compareTo(Object o) {
         return (o==Null)?0:-1;
     }
-    public Serialisable Lookup(STransaction tr,Context cx)
+    public Serialisable Lookup(SDatabase tr,Context cx)
     {
         return this;
     }

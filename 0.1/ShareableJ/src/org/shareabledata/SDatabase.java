@@ -287,6 +287,10 @@ public class SDatabase {
         switch (s.type) {
             case Types.SRecord:
                 return Install((SRecord) s, p);
+            case Types.SUpdate:
+                return Install((SUpdate) s, p);
+            case Types.SDelete:
+                return Install((SDelete) s, p);
             case Types.SAlter:
                 return Install((SAlter) s, p);
             case Types.SDrop:
@@ -298,16 +302,6 @@ public class SDatabase {
                 return Install((SDropIndex)s,p);
         }
         return this;
-    }
-    public SDatabase _Add(SDbObject s,SRecord r,long p) throws Exception
-    {
-       switch (s.type) {
-            case Types.SUpdate:
-                return Install((SUpdate) s, r, p);
-            case Types.SDelete:
-                return Install((SDelete) s, r, p);
-        }
-        return this;        
     }
     /// <summary>
     /// Only for testing environments!
@@ -337,7 +331,7 @@ public class SDatabase {
         return New(obs, ro, p);
     }
 
-    public SDatabase Install(SUpdate u, SRecord sr, long c) throws Exception {
+    public SDatabase Install(SUpdate u, long c) throws Exception {
         var obs = objects;
         var ro = role;
         if (u.uid >= STransaction._uid)
@@ -347,17 +341,17 @@ public class SDatabase {
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            var ok = x.Key(sr,x.cols);
+            var ok = x.Key(u.oldrec,x.cols);
             var uk = x.Key(u, x.cols);
             x.Check(this,u,ok.compareTo(uk)==0);
-            obs = obs.Add(x.uid, x.Update(sr, ok,u,uk, c));
+            obs = obs.Add(x.uid, x.Update(u.oldrec, ok,u,uk, c));
             if (x.references == u.table && !x.Contains(u))
                 throw new Exception("Referential constraint");
         }
         return New(obs, ro, c);
     }
 
-    public SDatabase Install(SDelete d, SRecord sr, long p) throws Exception {
+    public SDatabase Install(SDelete d, long p) throws Exception {
         var obs = objects;
         if (d.uid >= STransaction._uid)
             obs = obs.Add(d.uid, d);
@@ -365,10 +359,10 @@ public class SDatabase {
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            obs = obs.Add(x.uid, x.Remove(sr, p));
+            obs = obs.Add(x.uid, x.Remove(d.oldrec, p));
             if (!x.primary)
                 continue;
-            var k = x.Key(sr,x.cols);
+            var k = x.Key(d.oldrec,x.cols);
             for (var ob = obs.PositionAt(0L); ob != null; ob = ob.Next()) // don't bother with system tables
                 if (ob.getValue().val instanceof STable)
                 {
@@ -382,9 +376,9 @@ public class SDatabase {
                 }
         }
         var ro = role;
-        if (sr!=null)
+        if (d.oldrec!=null)
         {
-            st = st.Remove(sr.Defpos());
+            st = st.Remove(d.oldrec.Defpos());
             obs = obs.Add(d.table, st);
         }
         return New(obs, ro, p);
@@ -394,14 +388,21 @@ public class SDatabase {
         return new STransaction(databases.get(name), rdr, auto);
     }
 
-    public SDatabase MaybeAutoCommit(STransaction tr) throws Exception {
-        return tr.autoCommit ? tr.Commit() : tr;
+    public SDatabase MaybeAutoCommit() throws Exception {
+        return this;
     }
 
     public SDatabase Rollback() {
         return this;
     }
-
+    public SDatabase Rdc(SIndex ix, SCList<Variant> _key)
+    {
+        return this;
+    }
+    public SDatabase Rdc(long uid)
+    {
+        return this;
+    }
     STable GetTable(String tn) {
         return role.globalNames.Contains(tn)?
                 (STable)objects.get(role.globalNames.get(tn)):null;

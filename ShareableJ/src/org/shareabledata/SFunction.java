@@ -13,12 +13,12 @@ public class SFunction extends Serialisable {
         public final Serialisable arg; // probably an SQuery
         public final byte func;
         static long _fid = 0;
-        public final long fid = ++_fid;
-        public SFunction(SDatabase db,byte fn,Reader f) throws Exception
+        public final long fid = --SysTable._uid;
+        public SFunction(byte fn,ReaderBase f) throws Exception
         {
             super(Types.SFunction);
             func = fn;
-            arg = f._Get(db);
+            arg = f._Get();
         }
         public SFunction(byte fn, Serialisable a)
         { 
@@ -26,29 +26,57 @@ public class SFunction extends Serialisable {
             func = fn;
             arg = a;
         }
+        @Override
         public boolean isValue() { return false;}
-        class Func {
-            static final byte Sum =0, Count =1, Max=2, Min=3, Null=4;
+        public static class Func {
+            public static final byte Sum =0, Count =1, Max=2, Min=3, Null=4,
+                    NotNull=5,Constraint=6,Default=7,Generated=8;
+            public static String names[] = { "Sum","Count","Max","Min","Null",
+            "NotNull","Constraint","Default","Generated"};
         }
-        static SFunction Get(SDatabase db,Reader f) throws Exception
+        @Override
+        public Serialisable Fix(Writer f)
         {
-            return new SFunction(db, (byte)f.ReadByte(), f);
+            return new SFunction(func,arg.Fix(f));
         }
-        public void Put(StreamBase f)
+        @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return arg.Arg(v,cx);
+        }
+        public static SFunction Get(ReaderBase f) throws Exception
+        {
+            return new SFunction((byte)f.ReadByte(), f);
+        }
+        @Override
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            return new SFunction(func,arg.UseAliases(db, ta));
+        }
+        @Override
+        public Serialisable Prepare(STransaction tr,SDict<Long,Long> pt) throws Exception
+        {
+            return new SFunction(func,arg.Prepare(tr,pt));
+        }
+        @Override
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.WriteByte(func);
             arg.Put(f);
         }
+        public boolean isAgg() { return (func!=Func.Null);}
         @Override
-        public Serialisable Lookup(Context cx)
+        public Serialisable Lookup(SDatabase tr,Context cx)
         {
-            if (cx.ags==null)
+            if (cx.refs==null)
                 return this;
-            var x = arg.Lookup(cx);
+            if (cx.defines(fid))
+                return cx.get(fid);
+            var x = arg.Lookup(tr,cx);
             if (func == Func.Null)
                 return SBoolean.For(x == Null);
-            return cx.defines(fid) ? cx.get(fid) : Null;
+            return x;
         }
         @Override
         public Serialisable StartCounter(Serialisable v)
@@ -56,6 +84,8 @@ public class SFunction extends Serialisable {
             switch (func)
             {
                 case Func.Count:
+                    if ((!v.isValue()) || v==Null)
+                        return SInteger.Zero;
                     return SInteger.One;
                 case Func.Max:
                 case Func.Min:
@@ -69,7 +99,7 @@ public class SFunction extends Serialisable {
             switch (func)
             {
                 case Func.Count:
-                    if (v == Null)
+                    if ((!v.isValue()) || v == Null)
                         return a;
                     return new SInteger(((SInteger)a).value + 1);
                 case Func.Max:
@@ -131,11 +161,15 @@ public class SFunction extends Serialisable {
         {
             return ((SInteger)x).big;
         }
-        public boolean isAgg() { return func!=Func.Null; }
         @Override
-        public SDict<Long, SFunction> Aggregates(SDict<Long, SFunction> a, Context cx)
+        public SDict<Long, Serialisable> Aggregates(SDict<Long, Serialisable> a)
         {
             return isAgg()? ((a==null)?new SDict(fid, this):a.Add(fid,this)) : a;
+        }
+        @Override
+        public String toString()
+        {
+            return new Func().names[func] + "(" + arg + ")";
         }
     }
 

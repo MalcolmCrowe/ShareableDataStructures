@@ -4,7 +4,6 @@
  * and open the template in the editor.
  */
 package org.shareabledata;
-import java.io.*;
 /**
  *
  * @author Malcolm
@@ -16,7 +15,7 @@ public class SNumeric extends Serialisable implements Comparable {
             super(Types.SNumeric);
             num = n;
         }
-        SNumeric(Reader f)
+        SNumeric(ReaderBase f) throws Exception
         {
             super(Types.SNumeric);
             var mantissa = f.GetInteger();
@@ -24,19 +23,35 @@ public class SNumeric extends Serialisable implements Comparable {
             var scale = f.GetInt();
             num = new Numeric(mantissa, scale, precision);
         }
-        public void Put(StreamBase f) 
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             f.PutInteger(num.mantissa);
             f.PutInt(num.precision);
             f.PutInt(num.scale);
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SNumeric(f);
         }
         @Override
         public int compareTo(Object o) {
+            if (o==Null)
+                return 1;
+            if (o instanceof SRow)
+            {
+                var sr = (SRow)o;
+                if (sr.cols.Length==1)
+                    return compareTo(sr.vals.First().getValue().val);
+            }
+            if (o instanceof SInteger)
+            {
+                var si = (SInteger)o;
+                if (si.big==null)
+                    return num.compareTo(new Numeric(si.value));
+                else
+                    return num.compareTo(new Numeric(si.big,0));
+            }
             return num.compareTo(((SNumeric)o).num);
         }
         @Override

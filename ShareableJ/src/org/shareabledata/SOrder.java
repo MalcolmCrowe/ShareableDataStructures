@@ -17,20 +17,37 @@ public class SOrder extends Serialisable {
             super(Types.SOrder);
             col = c; desc = d;
         }
-        protected SOrder(SDatabase db,Reader f) throws Exception
+        protected SOrder(ReaderBase f) throws Exception
         {
             super(Types.SOrder);
-            col = f._Get(db);
+            col = f._Get();
             desc = f.ReadByte() == 1;
         }
         @Override
         public boolean isValue() {return false;}
-        public static SOrder Get(SDatabase db,Reader f) throws Exception
+        public static SOrder Get(ReaderBase f) throws Exception
         {
-            return new SOrder(db, f);
+            return new SOrder(f);
         }
         @Override
-        public void Put(StreamBase f) 
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            return new SOrder(col.UseAliases(db, ta),desc);
+        }
+        @Override
+        public Serialisable UpdateAliases(SDict<Long, String> uids)
+        {
+            var c = col.UpdateAliases(uids);
+            return (c == col) ? this : new SOrder(c, desc);
+        }
+        @Override
+        public Serialisable Prepare(STransaction db, SDict<Long, Long> pt)
+                throws Exception
+        {
+            return new SOrder(col.Prepare(db, pt),desc);
+        }
+        @Override
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             col.Put(f);

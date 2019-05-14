@@ -169,7 +169,7 @@ public class SColumn extends SSelector {
                     this;
         }
         @Override
-        public Serialisable Lookup(STransaction tr,Context cx)
+        public Serialisable Lookup(SDatabase tr,Context cx)
         {
             var r = cx.defines(uid) ? cx.get(uid) : Null;
             if (r == Null && !(cx.refs instanceof RowBookmark))

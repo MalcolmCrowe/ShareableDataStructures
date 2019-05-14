@@ -34,39 +34,49 @@ public class Types {
             SRollback = 20,
             SCommit = 21,
             SCreateTable = 22,
-            SCreateIndex = 23,
+            SCreateColumn = 23,
             SUpdateSearch = 24,
             SDeleteSearch = 25,
             SAlterStatement = 26,
-            SDropStatement = 27,
-            SInsert = 28,
-            SSelect = 29,
-            EoF = 30,
-            Get = 31,
-            Insert = 32,
-            Read = 33,
-            Done = 34,
-            Exception = 35,
-            SExpression = 36,
-            SFunction = 37,
-            SValues = 38,
-            SOrder = 39,
-            SBigInt = 40,
-            SInPredicate = 41,
-            DescribedGet = 42,
-            SGroupQuery = 43,
-            STableExp = 44,
-            SAliasedTable = 45,
-            SJoin = 46;
+            SInsert = 27,
+            SSelect = 28,
+            EoF = 39,
+            Get = 30,
+            Insert = 31,
+            Read = 32,
+            Done = 33,
+            Exception = 34,
+            SExpression = 35,
+            SFunction = 36,
+            SValues = 37,
+            SOrder = 38,
+            SBigInt = 39,
+            SInPredicate = 40,
+            DescribedGet = 41,
+            SGroupQuery = 42,
+            STableExp = 43,
+            SAlias = 44,
+            SSelector = 45,
+            SArg = 46,
+            SRole = 47,
+            SUser = 48,
+            SName = 49,
+            SNames = 50,
+            SQuery = 51, // only used for "STATIC"
+            SSysTable = 52,
+            SCreateView = 53,
+            SDropIndex = 54;
     static String[] types = new String[]{
         "", "?", "Integer", "Numeric", "String", "Date", "TimeSpan",//0-6
         "Boolean", "Row", "Table", "Column", "Record", "Update", "Delete",//7-13
         "Alter", "Drop", "View", "Index", "Search", "Begin", "Rollback", "Commit",//14-21
         "CreateTable", "CreateIndex", "UpdateSearch", "DeleteSearch",//22-25
-        "AlterStatement", "DropStatement", "SInsert", "SSelect",//26-29
-        "EoF","Get","Insert","Read","Done","Exception","SExpression",//30-36
-        "SFunction","SValues","SOrder","SBigInt","SInPredicate",//37-41
-        "DescribedGet","SGroupQuery","STableExp","SAliasedTable"//42-45
+        "AlterStatement", "SInsert", "SSelect",//26-28
+        "EoF","Get","Insert","Read","Done","Exception","SExpression",//29-35
+        "SFunction","SValues","SOrder","SBigInt","SInPredicate",//36-40
+        "DescribedGet","SGroupQuery","STableExp","SAlias",//41-44
+        "SSelector","SArg","SRole","SUser","SName","SNames",//45-50
+        "SQuery","SSysTable","SCreateView","SDropIndex" //51-54
     };
 
     public static String toString(int t) {

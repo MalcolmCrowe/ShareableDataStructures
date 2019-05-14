@@ -90,7 +90,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         isNull = false;
         rec = null;
     }
-    public SRow(STransaction db,SRecord r) throws Exception
+    public SRow(SDatabase db,SRecord r) throws Exception
     {
         super(Types.SRow);
         var tb = (STable)db.objects.Lookup(r.table);
@@ -127,7 +127,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         rec = r;
         isNull = false;
     }
-    public SRow(STransaction tr,SSelectStatement ss, Context cx)
+    public SRow(SDatabase tr,SSelectStatement ss, Context cx)
     { 
         super(Types.SRow);
         SDict<Integer, Serialisable> r = null;
@@ -224,7 +224,7 @@ public class SRow extends Serialisable implements ILookup<Long,Serialisable>,
         }
     }
     @Override
-    public Serialisable Lookup(STransaction tr,Context cx)
+    public Serialisable Lookup(SDatabase tr,Context cx)
     {
         SDict<Integer, Serialisable> v = null;
         SDict<Long, Serialisable> r = null;

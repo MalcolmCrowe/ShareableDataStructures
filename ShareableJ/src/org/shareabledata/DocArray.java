@@ -58,6 +58,13 @@ public class DocArray extends DocBase
             return i;
         }
         public int getLength() { return (items==null)?0:items.Length; }
+        public Document get(int n)
+        {
+            for (var b=items.First();n>=0 && b!=null;b=b.Next())
+              if (n--==0)
+                  return b.getValue();
+            return null;
+        }
         public boolean IsEmpty() { return items==null; }
     
 }

@@ -48,46 +48,34 @@ public class SBookmark<K extends Comparable,V> {
         {
             Object b;
             SSlot<K,Object> d;
-            if (stk == null) // following Create or Reset
+             // guaranteed to be at a LEAF
+            int stkPos = stk._bpos;
+            if (++stkPos == stk._bucket.count) // this is the right test for a leaf
             {
-                // if Tree is empty return null
-                if (tree == null || tree.Length == 0)
-                    return null;
-                // The first entry is root.slots[0] or below
-                stk = new SBookmark<K, V>(tree.root, 0, null);
-                d = tree.root.Slot(0);
-                b = (SBucket<K,V>)d.val;
-            }
-            else // guaranteed to be at a LEAF
-            {
-                int stkPos = stk._bpos;
-                if (++stkPos == stk._bucket.count) // this is the right test for a leaf
+                // at end of current bucket: pop till we aren't
+                for (; ; )
                 {
-                    // at end of current bucket: pop till we aren't
-                    for (; ; )
-                    {
-                        if (++stkPos <= stk._bucket.count)// this is the right test for a non-leaf; redundantly ok for first time (leaf)
-                            break;
-                        stk = stk._parent;
-                        if (stk == null)
-                            break;
-                        stkPos = stk._bpos;
-                    }
-                    // we may run out of the BTree
+                    if (++stkPos <= stk._bucket.count)// this is the right test for a non-leaf; redundantly ok for first time (leaf)
+                        break;
+                    stk = stk._parent;
                     if (stk == null)
-                        return null;
+                        break;
+                    stkPos = stk._bpos;
                 }
-                stk = new SBookmark<K, V>(stk._bucket, stkPos, stk._parent);
-                if (stk._bpos == stk._bucket.count)
-                { // will only happen for a non-leaf
-                    b = ((SInner<K,V>)(stk._bucket)).gtr;
-           //         d = new SSlot<>(null, null); // or compiler complains
-                }
-                else // might be leaf or not
-                {
-                    d = stk._bucket.Slot(stkPos);
-                    b = d.val;
-                }
+                // we may run out of the BTree
+                if (stk == null)
+                    return null;
+            }
+            stk = new SBookmark<K, V>(stk._bucket, stkPos, stk._parent);
+            if (stk._bpos == stk._bucket.count)
+            { // will only happen for a non-leaf
+                b = ((SInner<K,V>)(stk._bucket)).gtr;
+       //         d = new SSlot<>(null, null); // or compiler complains
+            }
+            else // might be leaf or not
+            {
+                d = stk._bucket.Slot(stkPos);
+                b = d.val;
             }
             while (b instanceof SBucket) // now ensure we are at a leaf
             {
@@ -97,5 +85,33 @@ public class SBookmark<K extends Comparable,V> {
             }
             return stk;
 
-        }  
-}
+        } 
+        public SBookmark<K, V> Previous(SBookmark<K, V> stk, SDict<K, V> tree)
+        {
+            SBucket<K, V> b;
+            SSlot<K, Object> d;
+             // guaranteed to be at a LEAF
+            var stkPos = stk._bpos-1;
+            if (stkPos < 0)
+            {
+                while (stkPos < 0)
+                {
+                    // before start of current bucket: pop till we aren't
+                    stk = stk._parent;
+                    if (stk == null)
+                        return null;
+                    stkPos = stk._bpos - 1;
+                }
+            }
+            stk = new SBookmark<K, V>(stk._bucket, stkPos, stk._parent);
+            d = stk._bucket.Slot(stkPos);
+            b = (SBucket<K,V>)d.val;
+            while (b != null) // now ensure we are at a leaf
+            {
+                stk = new SBookmark<K, V>(b, b.getEndPos(), stk);
+                b = ((SBucket<K,V>)d.val).Gtr();
+            }
+            return stk;
+        }
+    }
+

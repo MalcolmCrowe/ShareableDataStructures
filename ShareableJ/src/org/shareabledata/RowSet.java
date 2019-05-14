@@ -11,11 +11,11 @@ package org.shareabledata;
  */
 public abstract class RowSet  extends Collection<Serialisable> {
         public final SQuery _qry;
-        public final STransaction _tr;
-        public final SDict<Long,SFunction> _aggregates;
-        public RowSet(STransaction d, SQuery q, SDict<Long,SFunction>ags)
+        public final SDatabase _tr;
+        public final Context _cx;
+        public RowSet(SDatabase d, SQuery q, Context cx)
         {
             super(0);
-            _tr = d; _qry = q; _aggregates = ags;
+            _tr = d; _qry = q; _cx = cx;
         }
 }

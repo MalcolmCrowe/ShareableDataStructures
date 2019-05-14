@@ -284,7 +284,7 @@ namespace Shareable
         {
             return a;
         }
-        public virtual Serialisable Lookup(STransaction tr,Context cx)
+        public virtual Serialisable Lookup(SDatabase tr,Context cx)
         {
             return this;
         }
@@ -385,7 +385,7 @@ namespace Shareable
                 ags += (sc.uid, (ags.defines(sc.uid)&&ags[sc.uid]!=this)?Null:this); // poison it if already defined
             return ags;
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             var lf = left.Lookup(tr, cx);
             if (op == Op.Dot && right is SDbObject rn)
@@ -678,7 +678,7 @@ namespace Shareable
         {
             return new Context(new SDict<long,Serialisable>(target.uid,v), cx);
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             return cx.refs[target.uid];
         }
@@ -740,7 +740,7 @@ namespace Shareable
         {
             return arg.Arg(v, cx);
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             if (cx.refs==SDict<long,Serialisable>.Empty)
                 return this;
@@ -863,7 +863,7 @@ namespace Shareable
             arg.Put(f);
             list.Put(f);
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             var a = arg.Lookup(tr,cx);
             var ls = list.Lookup(tr,cx);
@@ -1348,7 +1348,7 @@ namespace Shareable
             isNull = false;
             rec = null;
         }
-        public SRow(STransaction db,SRecord r) :base(Types.SRow)
+        public SRow(SDatabase db,SRecord r) :base(Types.SRow)
         {
             var tb = (STable)db.objects[r.table];
             var cn = SDict<int, (long,string)>.Empty;
@@ -1381,7 +1381,7 @@ namespace Shareable
             rec = r;
             isNull = false;
         }
-        public SRow(STransaction tr,SSelectStatement ss, Context cx) : base(Types.SRow)
+        public SRow(SDatabase tr,SSelectStatement ss, Context cx) : base(Types.SRow)
         {
             var r = SDict<int, Serialisable>.Empty;
             var vs = SDict<long, Serialisable>.Empty;
@@ -1503,7 +1503,7 @@ namespace Shareable
                 }
             sb.Append("}");
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             var v = SDict<int, Serialisable>.Empty;
             var r = SDict<long, Serialisable>.Empty;
@@ -1665,7 +1665,7 @@ namespace Shareable
             base.Put(f);
             f.PutLong(uid);
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             if (cx.defines(uid))
                 return cx[uid];
@@ -1879,7 +1879,7 @@ namespace Shareable
                 return new SAlias(this, ta[uid], uid);
             return base.UseAliases(db,ta);
         }
-        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
+        public override RowSet RowSet(SDatabase tr,SQuery top,Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
             {
@@ -2059,7 +2059,7 @@ namespace Shareable
                 ("Rows", Types.SInteger),("Indexes",Types.SInteger), ("Uid", Types.SString));
             return d;
         }
-        public override RowSet RowSet(STransaction tr,SQuery top, Context cx)
+        public override RowSet RowSet(SDatabase tr,SQuery top, Context cx)
         {
             return new SysRows(tr,this);
         }
@@ -2251,7 +2251,7 @@ namespace Shareable
             }
             return 0;
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             var r = cx.defines(uid) ? cx[uid] : Null;
             if (r == Null && !(cx.refs is RowBookmark))
@@ -3047,6 +3047,24 @@ namespace Shareable
                     return false;
             return true;
         }
+        public virtual void CheckConstraints(SDatabase db,STable st)
+        {
+            var cx = new Context(fields);
+            for (var b= st.cols.First();b!=null;b=b.Next())
+                for (var c = b.Value.Item2.constraints.First();c!=null;c=c.Next())
+                    switch (c.Value.Item1)
+                    {
+                        case "CHECK":
+                            if (c.Value.Item2.Lookup(db, cx) != SBoolean.True)
+                                throw new Exception("Check condition fails");
+                            break;
+                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects[b.Value.Item1];
+                x.Check(db, this, false);
+            }
+        }
         public override long Check(SDict<long, bool> rdC)
         {
             return (rdC.Contains(Defpos) || rdC.Contains(table))?uid:0;
@@ -3140,25 +3158,29 @@ namespace Shareable
     public class SUpdate : SRecord
     {
         public readonly long defpos;
+        public readonly SRecord? oldrec;
         public SUpdate(STransaction tr,SRecord r,SDict<long,Serialisable>u) 
             : base(Types.SUpdate,tr,r.table,_Merge(tr,r,u))
         {
             defpos = r.Defpos;
+            oldrec = r;
         }
         public override long Defpos => defpos;
         public SUpdate(SDatabase db,SUpdate r, Writer f) : base(db,r,f)
         {
-            defpos = r.defpos;
+            defpos = f.Fix(r.defpos);
+            oldrec = r.oldrec;
             f.PutLong(defpos);
         }
         SUpdate(ReaderBase f) : base(Types.SUpdate,f)
         {
-            defpos = f.GetLong();
+           defpos = f.GetLong();
+           if (f is Reader)
+                oldrec = f.db.Get(defpos);
         }
         static SDict<long,Serialisable> _Merge(STransaction tr,SRecord r,
             SDict<long,Serialisable> us)
         {
-            var tb = (STable)tr.objects[r.table];
             var u = SDict<long, Serialisable>.Empty;
             for (var b=us.First();b!=null;b=b.Next())
                 u += b.Value;
@@ -3168,6 +3190,26 @@ namespace Shareable
         public new static SUpdate Get(ReaderBase f)
         {
             return new SUpdate(f);
+        }
+        public override void CheckConstraints(SDatabase db, STable st)
+        {
+            var cx = new Context(fields);
+            for (var b = st.cols.First(); b != null; b = b.Next())
+                for (var c = b.Value.Item2.constraints.First(); c != null; c = c.Next())
+                    switch (c.Value.Item1)
+                    {
+                        case "CHECK":
+                            if (c.Value.Item2.Lookup(db, cx) != SBoolean.True)
+                                throw new Exception("Check condition fails");
+                            break;
+                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects[b.Value.Item1];
+                var ok = x.Key(oldrec, x.cols);
+                var uk = x.Key(this, x.cols);
+                x.Check(db, this, ok.CompareTo(uk) == 0);
+            }
         }
         public override long Conflicts(SDatabase db, STransaction tr,Serialisable that)
         {
@@ -3182,7 +3224,11 @@ namespace Shareable
         {
             var sb = new StringBuilder();
             sb.Append(Uid());
-            sb.Append(" Update of "); sb.Append(STransaction.Uid(defpos));
+            sb.Append(" Update of ");
+            if (oldrec != null)
+                oldrec.Append(sb);
+            else
+                sb.Append(STransaction.Uid(defpos));
             sb.Append(" for "); sb.Append(STransaction.Uid(table));
             Append(sb);
             return sb.ToString();
@@ -3223,19 +3269,22 @@ namespace Shareable
     {
         public readonly long table;
         public readonly long delpos;
-        public SDelete(STransaction tr, long t, long p) : base(Types.SDelete,tr)
+        public readonly SRecord? oldrec;
+        public SDelete(STransaction tr, SRecord or) : base(Types.SDelete, tr)
         {
-            table = t;
-            delpos = p;
+            table = or.table;
+            delpos = or.Defpos;
+            oldrec = or;
         }
-        public SDelete(SDelete r, Writer f) : base(r,f)
+        public SDelete(SDelete r, Writer f) : base(r, f)
         {
             table = f.Fix(r.table);
             delpos = f.Fix(r.delpos);
+            oldrec = r.oldrec;
             f.PutLong(table);
             f.PutLong(delpos);
         }
-        SDelete(ReaderBase f) : base(Types.SDelete,f)
+        SDelete(ReaderBase f) : base(Types.SDelete, f)
         {
             table = f.GetLong();
             delpos = f.GetLong();
@@ -3245,6 +3294,24 @@ namespace Shareable
             return new SDelete(f);
         }
         public override long Affects => delpos;
+        public void CheckConstraints(SDatabase db, STable st)
+        {
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var px = (SIndex)db.objects[b.Value.Item1];
+                if (!px.primary)
+                    continue;
+                var k = px.Key(oldrec, px.cols);
+                for (var ob = db.objects.PositionAt(0); ob != null; ob = ob.Next()) // don't bother with system tables
+                    if (ob.Value.Item2 is STable ot)
+                        for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
+                        {
+                            var x = (SIndex)db.objects[ox.Value.Item1];
+                            if (x.references == table && x.rows.Contains(k))
+                                throw new StrongException("Referential constraint: illegal delete");
+                        }
+            }
+        }
         public override long Check(SDict<long, bool> rdC)
         {
             return (rdC.Contains(delpos) || rdC.Contains(table))?uid:0;
@@ -3554,7 +3621,6 @@ namespace Shareable
         public static long pe13;
         public int GetInt()
         {
-            pe13 = Position;
             return (int)GetInteger();
         }
         public long GetLong()
@@ -3767,7 +3833,6 @@ namespace Shareable
     {
         public Stream file; // shared with Reader(s)
         internal SDict<long, long> uids = SDict<long, long>.Empty; // used for movement of SDbObjects
-        SDict<long, Serialisable> commits = SDict<long, Serialisable>.Empty;
         public Writer(Stream f)
         {
             file = f;
@@ -3790,29 +3855,7 @@ namespace Shareable
         }
         public SDatabase Commit(SDatabase db, STransaction tr)
         {
-            commits = SDict<long, Serialisable>.Empty;
             uids = SDict<long, long>.Empty;
-            // We need two passes: manage a cache of SRecords being updated or deleted
-            // before we start writing
-            var cache = SDict<long, SRecord>.Empty;
-            for (var b = tr.objects.PositionAt(STransaction._uid); b != null; b = b.Next())
-                switch (b.Value.Item2.type)
-                {
-                    case Types.SUpdate:
-                        {
-                            var su = (SUpdate)b.Value.Item2;
-                            var u = su.Defpos;
-                            cache += (u, db.Get(u));
-                            break;
-                        }
-                    case Types.SDelete:
-                        {
-                            var sd = (SDelete)b.Value.Item2;
-                            var u = sd.delpos;
-                            cache += (u, db.Get(u));
-                            break;
-                        }
-                }
             lock(file)
             {
                 //            Console.WriteLine("Committing:");
@@ -3827,7 +3870,6 @@ namespace Shareable
                                 var nm = tr.Name(st.uid);
                                 var nt = new STable(st, nm, this);
                                 db += (nt, nm, Length);
-                                commits += (nt.uid, nt);
                                 break;
                             }
                         case Types.SColumn:
@@ -3839,7 +3881,6 @@ namespace Shareable
                                 tb += (-1,nc, nm);
                                 db = db + (nc, nm, Length) + (tb, db.Name(tb.uid), Length)
                                     + (tb.uid, -1, nc.uid, nm);
-                                commits += (nc.uid, nc);
                                 break;
                             }
                         case Types.SRecord:
@@ -3847,58 +3888,45 @@ namespace Shareable
                                 var sr = (SRecord)b.Value.Item2;
                                 var nr = new SRecord(db, sr, this);
                                 db += (nr, Length);
-                                if (cache.Contains(sr.uid))
-                                    cache += (sr.uid, sr);
-                                commits += (nr.uid, nr);
                                 break;
                             }
                         case Types.SDelete:
                             {
                                 var sd = (SDelete)b.Value.Item2;
-                                var sr = cache[sd.delpos];
                                 var nd = new SDelete(sd, this);
-                                db += (nd, sr, Length);
-                                commits += (nd.uid, nd);
+                                db += (nd, Length);
                                 break;
                             }
                         case Types.SUpdate:
                             {
                                 var su = (SUpdate)b.Value.Item2;
                                 var u = su.Defpos;
-                                var sr = cache[u];
                                 var nr = new SUpdate(db, su, this);
-                                db += (nr, sr, Length);
-                                if (cache.Contains(u))
-                                    cache += (u, nr);
-                                commits += (nr.uid, nr);
+                                db += (nr, Length);
                                 break;
                             }
                         case Types.SAlter:
                             {
                                 var sa = new SAlter(db,(SAlter)b.Value.Item2, this);
                                 db += (sa, Length);
-                                commits += (sa.uid, sa);
                                 break;
                             }
                         case Types.SDrop:
                             {
                                 var sd = new SDrop((SDrop)b.Value.Item2, this);
                                 db += (sd, Length);
-                                commits += (sd.uid, sd);
                                 break;
                             }
                         case Types.SIndex:
                             {
                                 var si = new SIndex(db,(SIndex)b.Value.Item2, this);
                                 db += (si, Length);
-                                commits += (si.uid, si);
                                 break;
                             }
                         case Types.SDropIndex:
                             {
                                 var di = new SDropIndex(db, (SDropIndex)b.Value.Item2, this);
                                 db += (di, Length);
-                                commits += (di.uid, di);
                                 break;
                             }
                     }
@@ -3916,7 +3944,6 @@ namespace Shareable
         internal void CommitDone()
         {
             uids = SDict<long, long>.Empty;
-            commits = SDict<long, Serialisable>.Empty;
         }
     }
 }

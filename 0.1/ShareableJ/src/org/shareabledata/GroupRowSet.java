@@ -16,7 +16,7 @@ public class GroupRowSet extends RowSet {
     public final SDict<Long, SDict<Long,Serialisable>> _grouprows; // accumulators for the aggregates
     public final SQuery _top;
     public final RowSet _sce;
-    public GroupRowSet(STransaction tr,SQuery top,SGroupQuery gqry,
+    public GroupRowSet(SDatabase tr,SQuery top,SGroupQuery gqry,
             Context cx) throws Exception
     {
         this(gqry.source.RowSet(tr,top,cx), top, gqry, cx);
@@ -83,7 +83,7 @@ public class GroupRowSet extends RowSet {
             r = r.Add(ab.getValue().val,cb.getValue().val.Lookup(_tr,cx));
         return r;
     }
-    static SDict<Long,Serialisable> AddIn(STransaction tr, 
+    static SDict<Long,Serialisable> AddIn(SDatabase tr, 
             SDict<Long,Serialisable> cur, Context cx) throws Exception
     {
         var ags = (cx==null)?null:cx.Ags();

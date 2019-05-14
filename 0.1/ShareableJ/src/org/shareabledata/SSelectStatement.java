@@ -218,7 +218,7 @@ public class SSelectStatement extends SQuery {
         }
 
         @Override
-        public RowSet RowSet(STransaction tr,SQuery top,
+        public RowSet RowSet(SDatabase tr,SQuery top,
                 Context cx) throws Exception
         {
             var ags = (cx==null)?null:cx.Ags();
@@ -247,7 +247,7 @@ public class SSelectStatement extends SQuery {
             return r;
         }
         @Override
-        public Serialisable Lookup(STransaction tr,Context cx) 
+        public Serialisable Lookup(SDatabase tr,Context cx) 
         {
             if (display==null)
                 return (SRow)cx.refs;

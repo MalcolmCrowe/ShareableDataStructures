@@ -497,7 +497,7 @@ namespace Shareable
         /// </summary>
         /// <param name="depth"></param>
         /// <returns>an earlier bookmark or null</returns>
-        internal MTreeBookmark<K> ResetToTiesStart(STransaction tr, int depth)
+        internal MTreeBookmark<K> ResetToTiesStart(SDatabase tr, int depth)
         {
             var m = (depth > 1) ? _inner?.ResetToTiesStart(tr, depth - 1) : null;
             var ov = (depth == 1) ? _outer.Value.Item2.ob as SDict<long, bool> : null;
@@ -509,7 +509,7 @@ namespace Shareable
         /// </summary>
         /// <param name="depth">The depth in the key</param>
         /// <returns>whether there are more matches</returns>
-        internal bool hasMore(STransaction tr, int depth)
+        internal bool hasMore(SDatabase tr, int depth)
         {
             if (depth > 1)
                 return _pmk?.Next() != null || (_inner != null && _inner.hasMore(tr, depth - 1));

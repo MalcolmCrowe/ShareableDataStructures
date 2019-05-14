@@ -32,12 +32,12 @@ public class SInteger extends Serialisable implements Comparable {
                 value = 0; big = b;
             }
         }
-        SInteger(Reader f)
+        SInteger(ReaderBase f) throws Exception
         {
             this(f.GetInteger());
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             switch (type)
@@ -50,12 +50,12 @@ public class SInteger extends Serialisable implements Comparable {
                     break;
             }
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return new SInteger(f);
         }
         @Override
-        public void Append(SDatabase db,StringBuilder sb)
+        public void Append(StringBuilder sb)
         {
             switch (type)
             {
@@ -69,6 +69,23 @@ public class SInteger extends Serialisable implements Comparable {
         }
         @Override
         public int compareTo(Object o) {
+            if (o==Null)
+                return 1;
+            if (o instanceof SRow)
+            {
+                var sr = (SRow)o;
+                if (sr.cols.Length==1)
+                    return compareTo(sr.vals.First().getValue().val);
+            }
+            if (o instanceof SNumeric)
+            {
+                var nm = (SNumeric)o;
+                if (big==null)
+                    return new Numeric(new Bigint(value),0)
+                            .compareTo(nm.num);
+                else
+                    return new Numeric(big,0).compareTo(nm.num);
+            }
             SInteger that = (SInteger)o;
             if (big==null)
             {

@@ -22,23 +22,31 @@ public class SBoolean extends Serialisable implements Comparable {
         {
             return r? True:False;
         }
-        public Serialisable Commit(STransaction tr,AStream f)
+        public Serialisable Commit(STransaction tr,Writer f)throws Exception
         {
             f.PutInt(sbool?1:0);
             return this;
         }
-        public static Serialisable Get(Reader f)
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
             return For(f.ReadByte()==1);
         }
         @Override
-        public void Put(StreamBase f)
+        public void Put(WriterBase f)throws Exception
         {
             super.Put(f);
             f.WriteByte((byte)(sbool?1:0));
         }
         @Override
         public int compareTo(Object o) {
+            if (o==Null)
+                return 1;
+            if (o instanceof SRow)
+            {
+                var sr = (SRow)o;
+                if (sr.cols.Length==1)
+                    return compareTo(sr.vals.First().getValue().val);
+            }
             var that = (SBoolean)o;
             return (sbool==that.sbool)?0:sbool?1:-1;
         }

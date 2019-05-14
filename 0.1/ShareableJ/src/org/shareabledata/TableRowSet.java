@@ -13,8 +13,8 @@ public class TableRowSet extends RowSet {
 
     public final STable _tb;
 
-    public TableRowSet(STransaction db, STable t, Context cx) {
-        super(db.Add(t.uid), t,cx);
+    public TableRowSet(SDatabase db, STable t, Context cx) {
+        super(db.Rdc(t.uid), t,cx);
         _tb = t;
     }
 
@@ -64,8 +64,7 @@ public class TableRowSet extends RowSet {
         public STransaction Delete(STransaction tr) throws Exception
         {
             var rc = Ob().rec;
-            return (STransaction)tr.Install(new SDelete(tr, Ob().rec.table, 
-                    rc.Defpos()),rc,tr.curpos); // ok
+            return (STransaction)tr.Install(new SDelete(tr, rc),tr.curpos); // ok
         }
     }
 }

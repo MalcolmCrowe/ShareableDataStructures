@@ -12,17 +12,20 @@ import java.io.*;
 public class SDelete extends SDbObject {
         public final long table;
         public final long delpos;
-        public SDelete(STransaction tr, long t, long p) 
+        public final SRecord oldrec;
+        public SDelete(STransaction tr, SRecord or) 
         {
             super(Types.SDelete,tr);
-            table = t;
-            delpos = p;
+            table = or.table;
+            delpos = or.Defpos();
+            oldrec = or;
         }
         public SDelete(SDelete r, Writer f) throws Exception
         {
             super(r,f);
             table = f.Fix(r.table);
             delpos = f.Fix(r.delpos);
+            oldrec = r.oldrec;
             f.PutLong(table);
             f.PutLong(delpos);
         }
@@ -31,6 +34,7 @@ public class SDelete extends SDbObject {
             super(Types.SDelete,f);
             table = f.GetLong();
             delpos = f.GetLong();
+            oldrec = null;
         }
         public static SDelete Get(SDatabase d, ReaderBase f) throws Exception
         {

@@ -128,7 +128,7 @@ namespace Shareable
         /// <param name="ags">The aggregates found so far</param>
         /// <param name="cx">A context for evaluation</param>
         /// <returns></returns>
-        public virtual RowSet RowSet(STransaction tr,SQuery top,Context cx)
+        public virtual RowSet RowSet(SDatabase tr,SQuery top,Context cx)
         {
             throw new NotImplementedException();
         }
@@ -390,7 +390,7 @@ namespace Shareable
             }
             return 0;
         }
-        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
+        public override RowSet RowSet(SDatabase tr, SQuery top, Context cx)
         {
             var lf = left.RowSet(tr, left, cx);
             var rg = right.RowSet(lf._tr, right, cx);
@@ -468,7 +468,7 @@ namespace Shareable
             sb.Append(" "); sb.Append(alias);
         }
         public override long Alias => alias;
-        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
+        public override RowSet RowSet(SDatabase tr, SQuery top, Context cx)
         {
             return new AliasRowSet(this,qry.RowSet(tr, top, cx));
         }
@@ -542,7 +542,7 @@ namespace Shareable
             var sce = f._Get() as SQuery ?? throw new StrongException("Query expected");
             return new SSearch(sce,f,u);
         }
-        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
+        public override RowSet RowSet(SDatabase tr,SQuery top,Context cx)
         {
             var ags = SDict<long, Serialisable>.Empty;
             for (var b = where.First(); b != null; b = b.Next())
@@ -551,7 +551,7 @@ namespace Shareable
                 cx = new Context(ags, cx);
             return new SearchRowSet(tr, top, this, cx);
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             return (cx.refs is SearchRowSet.SearchRowBookmark srb) ? sce.Lookup(tr,srb._bmk._cx) : this;
         }
@@ -684,7 +684,7 @@ namespace Shareable
             var source = f._Get() as SQuery ?? throw new StrongException("Query expected");
             return new SGroupQuery(source,f,u);
         }
-        public override RowSet RowSet(STransaction tr, SQuery top, Context cx)
+        public override RowSet RowSet(SDatabase tr, SQuery top, Context cx)
         {
             return new GroupRowSet(tr, top, this, cx);
         }
@@ -881,7 +881,7 @@ namespace Shareable
             return sb.ToString();
         }
 
-        public override RowSet RowSet(STransaction tr,SQuery top,Context cx)
+        public override RowSet RowSet(SDatabase tr,SQuery top,Context cx)
         {
             var ags = cx.Ags();
             for (var b = order.First(); b != null; b = b.Next())
@@ -907,7 +907,7 @@ namespace Shareable
                 r = new OrderedRowSet(r, this);
             return r;
         }
-        public override Serialisable Lookup(STransaction tr,Context cx)
+        public override Serialisable Lookup(SDatabase tr,Context cx)
         {
             if (display.Length == 0)
                 return (SRow)cx.refs;

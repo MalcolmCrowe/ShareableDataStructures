@@ -14,11 +14,11 @@ public class DistinctRowSet extends RowSet {
         public final SDict<SRow, Boolean> rows;
         public DistinctRowSet(RowSet sce) throws Exception
         {
-            super(sce._tr, sce._qry, sce._aggregates);
+            super(sce._tr, sce._qry, sce._cx);
             _sce = sce;
             SDict<SRow, Boolean> r = null;
             for (var b = (RowBookmark)sce.First(); b != null; b = (RowBookmark)b.Next())
-                r=(r==null)?new SDict(b._ob, true):r.Add(b._ob,true);
+                r=(r==null)?new SDict(b.Ob(), true):r.Add(b.Ob(),true);
             rows = r;
         }
         public Bookmark<Serialisable> First()
@@ -34,7 +34,7 @@ public class DistinctRowSet extends RowSet {
             DistinctRowBookmark(DistinctRowSet drs,
                     Bookmark<SSlot<SRow,Boolean>> bmk,int pos) 
             { 
-                super (drs,bmk.getValue().key,pos);
+                super (drs,_Cx(drs,bmk.getValue().key,null),pos);
                 _drs = drs; _bmk = bmk; 
             }
             public Bookmark<Serialisable> Next()

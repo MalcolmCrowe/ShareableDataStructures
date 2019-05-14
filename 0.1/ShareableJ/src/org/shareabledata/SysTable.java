@@ -79,7 +79,7 @@ public class SysTable extends STable {
             return d;
         }
         @Override
-        public RowSet RowSet(STransaction db,SQuery top, 
+        public RowSet RowSet(SDatabase db,SQuery top, 
                 Context cx)
         {
             return new SysRows(db,this);

@@ -9,53 +9,38 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SysRows extends RowSet {
-
-    public final SysTable tb;
-    public final AStream fs;
-
-    SysRows(STransaction d, SysTable t) {
-        super(d, t,null);
-        fs = d.File();
-        tb = t;
-    }
-
+public class SysRows extends RowSet{
+        public final SysTable tb;
+        SysRows(SDatabase tr, SysTable t) 
+        {
+            super(tr, t, null);
+            tb = t; 
+        }
+        public SRow _Row(Serialisable... vals) throws Exception
+        {
+            var r = new SRow();
+            int j = 0;
+            for (var b = tb.cpos.First(); b != null; b = b.Next())
+            {
+                var k = (SColumn)b.getValue().val;
+                r = r.Add(new Ident(k.uid,SDatabase._system.Name(k.uid)),vals[j++]);
+            }
+                        // Serialisable.New(((SColumn)b.Value.val).dataType, vals[j++]));
+            return r;
+        }
     @Override
     public Bookmark<Serialisable> First() {
         try {
-            var rdr = new Reader(fs, 0);
-            switch (tb.name) {
-                case "_Log": {
-                    SDbObject s = (SDbObject)rdr._Get(_tr);
-                    return (s == null) ? null
-                            : new LogBookmark(this, 0, 
-                                    _Row(new SString(SDbObject._Uid(s.uid)),
-                    new SInteger((int)s.type), 
-                    new SString(s.toString())), rdr.getPosition(), 0);
-                }
-                case "_Tables": {
-                for (var b = _tr.objects.First(); b != null; b = b.Next())
-                {
-                    var tb = b.getValue().val;
-                    if (tb instanceof STable)
-                        return new TablesBookmark(this, b, (STable)tb, 0);
-                }
-                return null;                    
-                }
+            var rdr = new Reader(_tr, 0);
+            switch (_tr.Name(tb.uid)) {
+                case "_Log": return LogBookmark.New(this);
+                case "_Tables": return TablesBookmark.New(this);
+                case "_Columns": return ColumnsBookmark.New(this);
+                case "_Constraints": return ConstraintsBookmark.New(this);
+                case "_Indexes": return IndexesBookmark.New(this);
             }
         } catch (Exception e) {
         }
         return null;
-    }
-    public SRow _Row(Serialisable... vals)
-    {
-        var r = new SRow();
-        int j = 0;
-        for (var b = tb.cpos.First(); b != null; b = b.Next())
-        {
-            var s = (SSelector)b.getValue().val;
-            r = r.Add(s.name, vals[j++]);
-        }
-        return r;
     }
 }

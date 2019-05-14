@@ -349,7 +349,7 @@ public class SJoin extends SQuery {
             return 0;
         }
         @Override
-        public RowSet RowSet(STransaction tr,SQuery top,
+        public RowSet RowSet(SDatabase tr,SQuery top,
                 Context cx) throws Exception
         {
             var lf = left.RowSet(tr, left, cx);

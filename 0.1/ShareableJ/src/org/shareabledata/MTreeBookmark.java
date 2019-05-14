@@ -251,7 +251,7 @@ package org.shareabledata;
         /// </summary>
         /// <param name="depth"></param>
         /// <returns>an earlier bookmark or null</returns>
-        MTreeBookmark<K> ResetToTiesStart(STransaction tr, int depth)
+        MTreeBookmark<K> ResetToTiesStart(SDatabase tr, int depth)
         {
             var m = (_inner!=null && depth > 1) ? _inner.ResetToTiesStart(tr, depth - 1) : null;
             var ov = (depth == 1) ? (SDict)_outer.getValue().val.ob : null;
@@ -263,7 +263,7 @@ package org.shareabledata;
         /// </summary>
         /// <param name="depth">The depth in the key</param>
         /// <returns>whether there are more matches</returns>
-        boolean hasMore(STransaction tr, int depth) 
+        boolean hasMore(SDatabase tr, int depth) 
         {
             if (depth > 1)
                 return (_pmk!=null && _pmk.Next() != null) || 

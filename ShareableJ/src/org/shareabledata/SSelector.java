@@ -11,49 +11,43 @@ package org.shareabledata;
  */
     public abstract class SSelector extends SDbObject
     {
-        public final String name;
-        public SSelector(int t, String n, long u)
-        {
-            super(t,u);
-            name = n;
-        }
-        public SSelector(int t, String n, STransaction tr)
-        {
-            super(t, tr);
-            name = n;
-        }
-        public SSelector(SSelector s, String n)
+        public SSelector(SSelector s)
         {
             super(s);
-            name = n;
         }
-        protected SSelector(int t, Reader f)
+        public SSelector(int t,long u)
+        {
+            super(t,u);
+        }
+        public SSelector(STransaction tr,int t)
+        {
+            super(t,tr);
+        }
+        protected SSelector(int t, ReaderBase f) throws Exception
         {
             super(t,f);
-            name = f.GetString();
         }
-        protected SSelector(SSelector s,AStream f) 
+        protected SSelector(SSelector s,Writer f) throws Exception
         {
             super(s,f);
-            name = s.name;
-            f.PutString(name);
         }
-        @Override
-        public void Put(StreamBase f)
+        public static Serialisable Get(ReaderBase f) throws Exception
         {
-            super.Put(f);
-            f.PutString(name);
-        }
-        @Override
-        public Serialisable Lookup(Context nms)
-        {
-            if (nms!=null && nms.defines(name))
-                return nms.get(name);
-            return this;
-        }
-        @Override
-        public String Alias(int n)
-        {
-            return name;
+            var x = f.GetLong(); // a client-side uid
+            var ro = f.db.role;
+            var n = ro.uids.get(x);// client-side name
+            if (f.context instanceof SQuery)
+            {
+                var ss = ro.subs.get(f.context.uid);
+                if (ss.defs.defines(n)) //it's a ColumnDef
+                {
+                    var sc = ((STable)f.context).cols.get(ss.obs.get(ss.defs.get(n)).key);
+                    f.db = f.db.Add(sc, sc.uid);
+                    return sc;
+                }
+            }
+            else if (ro.globalNames.defines(n)) // it's a table or stored query
+                return f.db.objects.get(ro.globalNames.get(n));
+            throw new Exception("Unknown " + n);
         }
     }

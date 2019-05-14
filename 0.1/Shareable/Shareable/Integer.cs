@@ -186,13 +186,10 @@ namespace Shareable
         /// <returns>The corresponding int value</returns>
         static public explicit operator int(Integer x)
 		{
-			int n = x.bytes.Length;
+            int n = x.bytes.Length;
             if (n > 4)
             {
                 Console.WriteLine("PE13");
-                for (var i = 0; i < n; i++)
-                    Console.Write(" " + x.bytes[i]);
-                Console.WriteLine();
                 throw new Exception("PE13");
             }
 			int j=0;

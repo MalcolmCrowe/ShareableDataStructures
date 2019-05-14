@@ -135,6 +135,24 @@ public class SRecord extends SDbObject {
                 }
             return true;
         }
+        public void CheckConstraints(SDatabase db,STable st) throws Exception
+        {
+            var cx = Context.New(fields,Context.Empty);
+            for (var b= st.cols.First();b!=null;b=b.Next())
+                for (var c = b.getValue().val.constraints.First();c!=null;c=c.Next())
+                    switch (c.getValue().key)
+                    {
+                        case "CHECK":
+                            if (c.getValue().val.Lookup(db, cx) != SBoolean.True)
+                                throw new Exception("Check condition fails");
+                            break;
+                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects.get(b.getValue().key);
+                x.Check(db, this, false);
+            }
+        }        
         @Override
         public boolean Check(SDict<Long, Boolean> rdC)
         {

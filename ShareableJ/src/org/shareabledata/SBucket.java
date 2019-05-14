@@ -26,4 +26,7 @@ public abstract class SBucket<K extends Comparable,V> {
         abstract SSlot<K,SBucket<K,V>> LowHalf();
         abstract SSlot<K, Object> Slot(int i);
         abstract void Add(ArrayList ab);
+        public abstract K Last();
+        public SBucket<K, V> Gtr() { return null; }
+        public int getEndPos() { return count - 1; }
 }

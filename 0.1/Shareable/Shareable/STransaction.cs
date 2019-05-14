@@ -93,6 +93,12 @@ namespace Shareable
             if (tb!=null)
                 lock (f)
                 {
+                    db = databases[name];
+                    for (var b = tb; b != null; b = b.Next())
+                        if (b.Value.Item2 is SRecord sr)
+                            sr.CheckConstraints(db, (STable)objects[sr.table]);
+                        else if (b.Value.Item2 is SDelete sd)
+                            sd.CheckConstraints(db, (STable)objects[sd.table]);
                     since = rdr.GetAll(f.Length);
                     for (var i = 0; i < since.Length; i++)
                     {
@@ -133,6 +139,32 @@ namespace Shareable
         {
             rdr.db = this;
             return this; // ignore the parameter
+        }
+        /// <summary>
+        /// Add in read constraints: a key specifies just one row as the read
+        /// Constraint. Otherwise lock the entire table
+        /// </summary>
+        /// <param name="ix"></param>
+        /// <param name="_key"></param>
+        /// <returns></returns>
+        public override SDatabase Rdc(SIndex ix, SCList<Variant> _key)
+        {
+            if (_key.Length == 0)
+                return new STransaction(this,ix.table);
+            var mb = ix.rows.PositionAt(_key);
+            if (mb == null)
+                return this;
+            if (mb.hasMore(this, ix.cols.Length ?? 0))
+                return new STransaction(this,ix.table);
+            return new STransaction(this, mb.Value.Item2);
+        }
+        public override SDatabase Rdc(long uid)
+        {
+            return new STransaction(this,uid);
+        }
+        public override SDatabase MaybeAutoCommit()
+        {
+            return autoCommit ? Commit() : this;
         }
         public override SDatabase Rollback()
         {

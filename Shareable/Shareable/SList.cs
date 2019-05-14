@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Text;
-#nullable enable
 /// <summary>
 /// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// See github.com/MalcolmCrowe/ShareableDataStructures
@@ -47,9 +46,16 @@ namespace Shareable
                 return new SList<T>(x, this);
             return new SList<T>(element, next.InsertAt(x, n - 1));
         }
-        public static SList<T> operator+(SList<T> s,ValueTuple<T,int> x)
+        public static SList<T> operator+(SList<T> s,(T,int) x)
         {
             return s.InsertAt(x.Item1, x.Item2);
+        }
+        public SList<T> Append(SList<T> x)
+        {
+            var n = 0;
+            for (var b = First(); b != null; b = b.Next(), n++)
+                x += (b.Value, n);
+            return x;
         }
         protected SList<T> Pop()
         {

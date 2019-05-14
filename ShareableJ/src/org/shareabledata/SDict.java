@@ -18,7 +18,15 @@ public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
     public SDict(K k, V v) {
         this(new SLeaf<K, V>(new SSlot<K, V>(k, v)));
     }
-
+    public SDict(SSlot<K,V>... pairs)
+    {
+        super(pairs.length);
+        SBucket<K, V> r = null;
+        for (var i=0;i<pairs.length;i++)
+            r = (r==null)?new SLeaf<K,V>(pairs[i]): 
+                    r.Add(pairs[i].key,pairs[i].val);
+        root = r;
+    }
     SDict(SBucket<K, V> r) {
         super((r == null) ? 0 : r.total);
         root = r;
@@ -60,6 +68,22 @@ public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
         }
         return new SDictBookmark<K,V>(stk);
     }
+    public SDictBookmark<K,V> Last()
+    {
+        if(root == null || root.total == 0)
+            return null;
+        var stk = new SBookmark<K,V>(root, root.getEndPos(), null);
+        var d = root.Slot(root.count-1);
+        var b = root.Gtr();
+        while (b instanceof SBucket)
+        {
+            var bb = (SBucket)b;
+            stk = new SBookmark<K,V>(bb,bb.getEndPos(),stk);
+            d = bb.Slot(bb.count-1);
+            b = ((SBucket)d.val).Gtr();
+        }
+        return new SDictBookmark<K,V>(stk);
+    }
 
     public SDict<K, V> Add(K k, V v) {
         return (root == null || root.total == 0) ? new SDict<>(k, v)
@@ -70,7 +94,7 @@ public class SDict<K extends Comparable, V> extends Collection<SSlot<K, V>>
 
     public SDict<K, V> Remove(K k) {
         return (root == null || root.Lookup(k) == null) ? this
-                : (root.total == 1) ? new SDict<>(null)
+                : (root.total == 1) ? new SDict((SBucket)null)
                         : new SDict<>(root.Remove(k));
     }
 

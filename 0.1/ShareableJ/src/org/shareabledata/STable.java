@@ -186,13 +186,13 @@ public class STable extends SQuery {
             return super.UseAliases(db,ta);
         }
         @Override
-        public Serialisable Lookup(STransaction tr,Context nms)
+        public Serialisable Lookup(SDatabase tr,Context nms)
         {
              return (nms.refs instanceof RowBookmark)?
                      (SRow)((RowBookmark)nms.refs)._cx.refs: this;
         }
         @Override
-        public RowSet RowSet(STransaction tr,SQuery top, 
+        public RowSet RowSet(SDatabase tr,SQuery top, 
                 Context cx)
         {
             if (indexes!=null)

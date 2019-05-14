@@ -13,16 +13,21 @@ public class TableRowSet extends RowSet {
 
     public final STable _tb;
 
-    public TableRowSet(STransaction db, STable t) {
-        super(db.Add(t.uid), t,null);
+    public TableRowSet(SDatabase db, STable t, Context cx) {
+        super(db.Rdc(t.uid), t,cx);
         _tb = t;
     }
 
     @Override
     public Bookmark<Serialisable> First() {
             var b = _tb.rows.First();
+            try {
             return (b != null)
                     ? new TableRowBookmark(this, b, 0) : null;
+            } catch(Exception e)
+            {
+                return null;
+            }
     }
 
     class TableRowBookmark extends RowBookmark {
@@ -31,8 +36,10 @@ public class TableRowSet extends RowSet {
         public Bookmark<SSlot<Long, Long>> _bmk;
 
         protected TableRowBookmark(TableRowSet trs, Bookmark<SSlot<Long, Long>> bm, int p)
+                throws Exception
         {
-            super(trs, new SRow(trs._tr,trs._tr.Get(bm.getValue().val)), p);
+            super(trs,_Cx(trs,new SRow(trs._tr,
+                    trs._tr.Get(bm.getValue().val)),null), p);
             _trs = trs;
             _bmk = bm;
         }
@@ -48,16 +55,16 @@ public class TableRowSet extends RowSet {
             }
         }
         @Override
-        public STransaction Update(STransaction tr, SDict<String, Serialisable> assigs)
+        public STransaction Update(STransaction tr, SDict<Long, Serialisable> assigs)
                 throws Exception
         {
-            return (STransaction)tr.Install(new SUpdate(tr, _ob.rec, assigs),tr.curpos); // ok
+            return (STransaction)tr.Install(new SUpdate(tr, Ob().rec, assigs),tr.curpos); // ok
         }
         @Override
         public STransaction Delete(STransaction tr) throws Exception
         {
-            return (STransaction)tr.Install(new SDelete(tr, _ob.rec.table, 
-                    _ob.rec.Defpos()),tr.curpos); // ok
+            var rc = Ob().rec;
+            return (STransaction)tr.Install(new SDelete(tr, rc),tr.curpos); // ok
         }
     }
 }

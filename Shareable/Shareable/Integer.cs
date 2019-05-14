@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-#nullable enable
 namespace Shareable
 {
     /// <summary>
@@ -187,9 +186,12 @@ namespace Shareable
         /// <returns>The corresponding int value</returns>
         static public explicit operator int(Integer x)
 		{
-			int n = x.bytes.Length;
-			if (n>4)
-				throw(new Exception("PE13"));
+            int n = x.bytes.Length;
+            if (n > 4)
+            {
+                Console.WriteLine("PE13");
+                throw new Exception("PE13");
+            }
 			int j=0;
 			int iVal = (n>0 && x.bytes[0]>127)?-1:0;
 			for (;j<n;j++)

@@ -9,64 +9,123 @@ package org.shareabledata;
  *
  * @author Malcolm
  */
-public class SExpression extends Serialisable {
+public class SExpression extends SDbObject {
         public final Serialisable left, right;
         public final int op; // see Op
-        public SExpression(SDatabase db,Serialisable lf,int o,Reader f)
+        public SExpression(Serialisable lf,int o,ReaderBase f)
                 throws Exception
         {
             super(Types.SExpression);
             left = lf;
             op = o;
-            right = f._Get(db);
+            right = f._Get();
         }
         public SExpression(Serialisable lf,int o,Serialisable rt)
         {
             super(Types.SExpression);
             left = lf; right = rt; op = o;
         }
+        @Override
         public  boolean isValue() {return false; }
         public class Op 
         { 
             public static final int 
             Plus =0,Minus =1,Times=2,Divide=3,Eql=4,NotEql=5,Lss=6, 
             Leq=7, Gtr=8, Geq=9, Dot=10, And=11, Or=12, UMinus=13, Not=14;
+            public final String[] ops=
+            new String[]{
+                "+","-","*","/","==","!=","<","<=",">",">=",".",
+                "&&","||","-","!"
+            };
         }
-        static SExpression Get(SDatabase db,Reader f) throws Exception
+        public static SExpression Get(ReaderBase f) throws Exception
         {
-            var lf = f._Get(db);
-            return new SExpression(db, lf, f.ReadByte(), f);
+            var u = f.GetLong();
+            var lf = f._Get();
+            return new SExpression(lf, f.ReadByte(), f);
         }
-        public void Put(StreamBase f)
+        @Override
+        public Serialisable Prepare(STransaction db,SDict<Long,Long> pt)throws Exception
+        {
+            var lf = left.Prepare(db, pt);
+            if (op == Op.Dot && lf instanceof SDbObject)
+            {
+                var qq = db.objects.get(((SDbObject)lf).uid);
+                if (qq instanceof SQuery)
+                pt = ((SQuery)qq).Names(db,pt);
+            }
+            return new SExpression(lf, op, right.Prepare(db, pt));          
+        }
+        @Override
+        public Context Arg(Serialisable v,Context cx)
+        {
+            return left.Arg(v, right.Arg(v,cx));
+        }
+        @Override
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            if (op == Op.Dot)
+                return new SExpression(left.UseAliases(db,ta), op, right);
+            return new SExpression(left.UseAliases(db, ta),op,right.UseAliases(db,ta));
+        }
+        @Override
+        public Serialisable UpdateAliases(SDict<Long,String> uids)
+        {
+            var lf = left.UpdateAliases(uids);
+            var rg = right.UpdateAliases(uids);
+            return (lf == left && rg == right) ?
+                this : new SExpression(lf, op, rg);            
+        }
+        @Override
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             left.Put(f);
             f.WriteByte((byte)op);
             right.Put(f);
         }
-        public Serialisable Lookup(Context nms)
+        @Override
+        public Serialisable Fix(Writer f)
         {
-            if (op == Op.Dot)
+            return new SExpression(left.Fix(f),op,right.Fix(f));            
+        }
+        @Override
+        public Serialisable Lookup(SDatabase tr,Context cx) 
+        {
+            var lf = left.Lookup(tr,cx);
+            if (op == Op.Dot && right instanceof SDbObject)
             {
-                if (nms.head instanceof RowBookmark)
+                SDbObject rn = (SDbObject)right;
+                if (lf instanceof SRow)
                 {
-                    var rb = (RowBookmark)nms.head;
-                    var ls = ((SString)left).str;
-                    var rs = ((SString)right).str;
-                    var n = ls + "." +rs;
-                    if (rb._ob.vals.Contains(n))
-                        return rb._ob.vals.Lookup(n);
-                    if (nms==null || !nms.defines(ls))
-                        return this;
-                    if (ls.compareTo(rb._rs._qry.getAlias()) == 0)
-                        return (nms!=null && nms.defines(rs))?nms.get(rs):this;
-                    var rw = (SRow)rb._ob.get(ls);
-                    return (rw!=null && rw.defines(rs))?rw.get(rs).Lookup(nms):Null;
+                    var rw = (SRow)lf;
+                    if (rw.defines(rn.uid))
+                        return rw.get(rn.uid);
+                }
+                if (lf instanceof SDbObject)
+                {
+                    var ln = (SDbObject)lf;
+                    if (cx.defines(ln.uid))
+                    {
+                        var t = cx.get(ln.uid);
+                        if (t instanceof SRow)
+                        {
+                            var sr = (SRow)t;
+                            if (sr.defines(rn.uid))
+                                return sr.get(rn.uid);
+                        }
+                    }
                 }
                 return this;
             }
-            var lf = left.Lookup(nms);
-            var rg = right.Lookup(nms);
+                        if (op==Op.UMinus)
+                switch (lf.type)
+                {
+                    case Types.SInteger: return new SInteger(-((SInteger)lf).value);
+                    case Types.SBigInt: return new SInteger((getbig(lf).Negate()));
+                    case Types.SNumeric: return new SNumeric(((SNumeric)lf).num.Negate());
+                }
+            var rg = right.Lookup(tr,cx);
             if (!(lf.isValue() && rg.isValue()))
                 return new SExpression(lf, op, rg);
             switch (op)
@@ -267,71 +326,12 @@ public class SExpression extends Serialisable {
                         }
                     }
                     break;
-                case Op.Eql:
-                case Op.NotEql:
-                case Op.Gtr:
-                case Op.Geq:
-                case Op.Leq:
-                case Op.Lss:
-                    {
-                        int c = 0;
-                        switch (lf.type)
-                        {
-                            case Types.SInteger:
-                                {
-                                    var lv = ((SInteger)lf).value;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = compare(lv,((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = new Bigint(lv).compareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(new Bigint(lv), 0).compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SBigInt:
-                                {
-                                    var lv = getbig(lf);
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.compareTo(((SInteger)rg).value); break;
-                                        case Types.SBigInt:
-                                            c = lv.compareTo(getbig(rg)); break;
-                                        case Types.SNumeric:
-                                            c = new Numeric(lv, 0).compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                            case Types.SNumeric:
-                                {
-                                    var lv = ((SNumeric)lf).num;
-                                    switch (rg.type)
-                                    {
-                                        case Types.SInteger:
-                                            c = lv.compareTo(new Numeric(((SInteger)rg).value)); break;
-                                        case Types.SBigInt:
-                                            c = lv.compareTo(new Numeric(getbig(rg), 0)); break;
-                                        case Types.SNumeric:
-                                            c = lv.compareTo(((SNumeric)rg).num); break;
-                                    }
-                                    break;
-                                }
-                        }
-                        boolean r = true;
-                        switch (op)
-                        {
-                            case Op.Eql: r = c == 0; break;
-                            case Op.NotEql: r = c != 0; break;
-                            case Op.Leq: r = c <= 0; break;
-                            case Op.Lss: r = c < 0; break;
-                            case Op.Geq: r = c >= 0; break;
-                            case Op.Gtr: r = c > 0; break;
-                        }
-                        return SBoolean.For(r);
-                    }
+                case Op.Eql: return SBoolean.For(lf.compareTo(rg) == 0); 
+                case Op.NotEql: return SBoolean.For(lf.compareTo(rg) != 0);
+                case Op.Leq: return SBoolean.For(lf.compareTo(rg) <= 0);
+                case Op.Lss: return SBoolean.For(lf.compareTo(rg) < 0);
+                case Op.Geq: return SBoolean.For(lf.compareTo(rg) >= 0);
+                case Op.Gtr: return SBoolean.For(lf.compareTo(rg) > 0);
                 case Op.UMinus:
                     switch (left.type)
                     {
@@ -360,9 +360,10 @@ public class SExpression extends Serialisable {
                     }
                 case Op.Dot:
                     {
-                        var ls = ((SString)left).str;
-                        var a = (nms!=null && nms.defines(ls)) ? nms.get(ls)  : left;
-                        return a.Lookup(nms);
+                        var ls = (ILookup<Long,Serialisable>)left.Lookup(tr,cx);
+                        if (ls!=null)
+                            return ls.get(((SDbObject)right).uid);
+                        break;
                     }
             }
             return Null;
@@ -379,12 +380,17 @@ public class SExpression extends Serialisable {
         {
             return v ? SBoolean.True : SBoolean.False;
         }
-        public SDict<Long,SFunction> Aggregates(SDict<Long,SFunction> ags,Context cx)
+        public SDict<Long,Serialisable> Aggregates(SDict<Long,Serialisable> ags)
         {
             if (left != null)
-                ags = left.Aggregates(ags, cx);
+                ags = left.Aggregates(ags);
             if (right != null)
-                ags = right.Aggregates(ags, cx);
+                ags = right.Aggregates(ags);
             return ags;
+        }
+        @Override
+        public String toString()
+        {
+            return left.toString()+" "+new Op().ops[op]+" "+right.toString();
         }
 }

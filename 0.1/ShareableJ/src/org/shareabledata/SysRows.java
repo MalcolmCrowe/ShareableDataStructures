@@ -11,7 +11,7 @@ package org.shareabledata;
  */
 public class SysRows extends RowSet{
         public final SysTable tb;
-        SysRows(STransaction tr, SysTable t) 
+        SysRows(SDatabase tr, SysTable t) 
         {
             super(tr, t, null);
             tb = t; 

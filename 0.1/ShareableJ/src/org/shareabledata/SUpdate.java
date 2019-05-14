@@ -10,6 +10,7 @@ package org.shareabledata;
  */
 public class SUpdate extends SRecord {
         public final long defpos;
+        public final SRecord oldrec;
         @Override
         public long Defpos() { return defpos; }
         public SUpdate(STransaction tr,SRecord r,SDict<Long,Serialisable> u)
@@ -17,17 +18,20 @@ public class SUpdate extends SRecord {
         {
             super(Types.SUpdate,tr,r.table,_Merge(tr,r,u));
             defpos = r.Defpos();
+            oldrec = r;
         }
         public SUpdate(SDatabase db,SUpdate r, Writer f)throws Exception
         {
             super(db,r,f);
             defpos = r.defpos;
+            oldrec = r.oldrec;
             f.PutLong(defpos);
         }
         SUpdate(ReaderBase f) throws Exception
         {
             super(Types.SUpdate,f);
             defpos = f.GetLong();
+            oldrec = (f instanceof Reader)?f.db.Get(defpos):null;
         }
         static SDict<Long,Serialisable> _Merge(STransaction tr,SRecord r,
             SDict<Long,Serialisable> us)
@@ -50,6 +54,27 @@ public class SUpdate extends SRecord {
         public static SRecord Get(ReaderBase f) throws Exception
         {
             return new SUpdate(f);
+        }
+        @Override
+        public void CheckConstraints(SDatabase db, STable st) throws Exception
+        {
+            var cx = Context.New(fields,Context.Empty);
+            for (var b = st.cols.First(); b != null; b = b.Next())
+                for (var c = b.getValue().val.constraints.First(); c != null; c = c.Next())
+                    switch (c.getValue().key)
+                    {
+                        case "CHECK":
+                            if (c.getValue().val.Lookup(db, cx) != SBoolean.True)
+                                throw new Exception("Check condition fails");
+                            break;
+                    }
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var x = (SIndex)db.objects.get(b.getValue().key);
+                var ok = x.Key(oldrec, x.cols);
+                var uk = x.Key(this, x.cols);
+                x.Check(db, this, ok.compareTo(uk) == 0);
+            }
         }
         @Override
         public boolean Conflicts(SDatabase db,STransaction tr,Serialisable that)

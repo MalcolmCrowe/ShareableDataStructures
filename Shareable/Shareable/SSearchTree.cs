@@ -1,5 +1,4 @@
-﻿#nullable enable
-/// <summary>
+﻿/// <summary>
 /// See "Collection Data Structures" (c) Malcolm Crowe, University of the West of Scotland 2018
 /// http://shareabledata.org 
 /// This is free-to-use software 
@@ -66,7 +65,7 @@ namespace Shareable
         {
             if (stk == null) stk = SList<SSearchTree<T>>.Empty;
             for (; doLeft && s.left != SSearchTree<T>.Empty; 
-                s = s.left ?? throw new System.Exception("??")) 
+                s = s.left ?? throw new System.Exception("PE22")) 
                 stk = stk+(s, 0);
             _s = s; _stk = stk;
         }
@@ -74,10 +73,10 @@ namespace Shareable
         public override Bookmark<T>? Next()
         {
             return (_s.right != SSearchTree<T>.Empty) ?
-                new SSearchTreeBookmark<T>(_s.right ?? throw new System.Exception("??"), true, _stk, Position + 1) // ok
+                new SSearchTreeBookmark<T>(_s.right ?? throw new System.Exception("PE23"), true, _stk, Position + 1) // ok
                 : (_stk == SList<SSearchTree<T>>.Empty) ? null
-                : new SSearchTreeBookmark<T>((_stk?.First() ?? throw new System.Exception("??")).Value, false, //ok
-            (_stk ?? throw new System.Exception("??"))-0, Position + 1);
+                : new SSearchTreeBookmark<T>((_stk?.First() ?? throw new System.Exception("PE24")).Value, false, //ok
+            (_stk ?? throw new System.Exception("PE25"))-0, Position + 1);
         }
     }
 

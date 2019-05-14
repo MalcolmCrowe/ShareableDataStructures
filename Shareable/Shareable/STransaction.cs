@@ -1,5 +1,4 @@
 ﻿using System;
-#nullable enable
 
 namespace Shareable
 {
@@ -10,16 +9,14 @@ namespace Shareable
         public static readonly long _uid = 0x4000000000000000;
         public readonly long uid;
         public readonly bool autoCommit;
-        public readonly SDatabase rollback;
         public readonly SDict<long, bool> readConstraints;
-        internal override SDatabase _Rollback => rollback;
         protected override bool Committed => false;
-        public STransaction(SDatabase d,bool auto) :base(d)
+        internal STransaction(SDatabase d,ReaderBase rdr,bool auto) :base(d)
         {
             autoCommit = auto;
-            rollback = d._Rollback;
             uid = _uid;
             readConstraints = SDict<long, bool>.Empty;
+            rdr.db = this;
         }
         /// <summary>
         /// Some other set of updates to existing (and maybe named) objects 
@@ -27,28 +24,40 @@ namespace Shareable
         /// <param name="tr"></param>
         /// <param name="obs"></param>
         /// <param name="nms"></param>
-        protected STransaction(STransaction tr, SDict<long,SDbObject> obs,SDict<string,SDbObject> nms,long c)
-            : base(tr, obs, nms, c)
+        protected STransaction(STransaction tr, SDict<long,SDbObject> obs,SRole r,long c)
+            : base(tr, obs, r, c)
         {
             autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
             uid = tr.uid + 1;
             readConstraints = tr.readConstraints;
         }
         protected STransaction(STransaction tr,long u) :base(tr)
         {
             autoCommit = tr.autoCommit;
-            rollback = tr.rollback;
             uid = tr.uid;
             readConstraints = tr.readConstraints + (u, true);
+        }
+        public STransaction(STransaction tr, SRole r) : base(tr, tr.objects, r, tr.curpos)
+        {
+            autoCommit = tr.autoCommit;
+            uid = tr.uid;
+            readConstraints = tr.readConstraints;
         }
         public static STransaction operator+(STransaction tr,long uid)
         {
             return new STransaction(tr, uid);
         }
-        protected override SDatabase New(SDict<long, SDbObject> o, SDict<string, SDbObject> ns, long c)
+        public static STransaction operator+(STransaction tr, string s)
         {
-            return new STransaction(this,o, ns, c);
+            return (STransaction)tr.New(tr.objects, tr.role + (tr.uid, s), tr.curpos);
+        }
+        public static STransaction operator +(STransaction tr, (long,SDbObject) s)
+        {
+            return (STransaction)tr.New(tr.objects+s, tr.role, tr.curpos);
+        }
+        protected override SDatabase New(SDict<long, SDbObject> o, SRole r, long c)
+        {
+            return new STransaction(this,o, r, c);
         }
         protected override Serialisable _Get(long pos)
         {
@@ -58,33 +67,64 @@ namespace Shareable
         }
         public SDatabase Commit()
         {
-            var f = dbfiles[name];
             SDatabase db = databases[name];
-            var rdr = new Reader(f, curpos);
-            var since = rdr.GetAll(db,db.curpos);
+            var f = new Writer(dbfiles[name]);
+            var rdr = new Reader(this);
+            var tb = objects.PositionAt(_uid); // start of the work we want to commit
+            var since = rdr.GetAll(f.Length);
             for (var i = 0; i < since.Length; i++)
             {
-                if (since[i].Check(readConstraints))
-                    throw new Exception("Transaction conflict with read");
-                for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
-                    if (since[i].Conflicts(b.Value.Item2))
-                        throw new Exception("Transaction conflict on " + b.Value);
-            }
-            lock (f)
-            {
-                since = rdr.GetAll(this, f.length);
-                for (var i = 0; i < since.Length; i++)
+                var ck = since[i].Check(readConstraints);
+                if (ck!=0)
                 {
-                    if (since[i].Check(readConstraints))
-                        throw new Exception("Transaction conflict with read");
-                    for (var b = objects.PositionAt(_uid); b != null; b = b.Next())
-                        if (since[i].Conflicts(b.Value.Item2))
-                            throw new Exception("Transaction conflict on " + b.Value);
+                    rconflicts++;
+                    throw new TransactionConflict("Transaction conflict "+ck+" with read");
                 }
-                db = f.Commit(db,this);
-                f.CommitDone();
-            }
-            Install(db);
+                for (var b = tb; b != null; b = b.Next())
+                {
+                    ck = since[i].Conflicts(db, this, b.Value.Item2);
+                    if (ck!=0)
+                    {
+                        wconflicts++;
+                        throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
+                    }
+                }
+            }  
+            if (tb!=null)
+                lock (f)
+                {
+                    db = databases[name];
+                    for (var b = tb; b != null; b = b.Next())
+                        if (b.Value.Item2 is SRecord sr)
+                            sr.CheckConstraints(db, (STable)objects[sr.table]);
+                        else if (b.Value.Item2 is SDelete sd)
+                            sd.CheckConstraints(db, (STable)objects[sd.table]);
+                    since = rdr.GetAll(f.Length);
+                    for (var i = 0; i < since.Length; i++)
+                    {
+                        var ck = since[i].Check(readConstraints);
+                        if (ck != 0)
+                        {
+                            rconflicts++;
+                            throw new TransactionConflict("Transaction conflict " + ck + " with read");
+                        }
+                        for (var b = tb; b != null; b = b.Next())
+                        {
+                            ck = since[i].Conflicts(db, this, b.Value.Item2);
+                            if (ck != 0)
+                            {
+                                wconflicts++;
+                                throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
+                            }
+                        }
+                    }
+                    var ts = f.Length;
+                    db = f.Commit(db, this);
+                    f.CommitDone();
+                    Install(db);
+  //                 Console.WriteLine("Commit " + ts + " to " + db.curpos+ " "+f.Length);
+                }
+            commits++;
             return db;
         }
         /// <summary>
@@ -95,13 +135,44 @@ namespace Shareable
         {
             return SDbObject._Uid(uid);
         }
-        public override STransaction Transact(bool auto=true)
+        public override STransaction Transact(ReaderBase rdr, bool auto=true)
         {
+            rdr.db = this;
             return this; // ignore the parameter
+        }
+        /// <summary>
+        /// Add in read constraints: a key specifies just one row as the read
+        /// Constraint. Otherwise lock the entire table
+        /// </summary>
+        /// <param name="ix"></param>
+        /// <param name="_key"></param>
+        /// <returns></returns>
+        public override SDatabase Rdc(SIndex ix, SCList<Variant> _key)
+        {
+            if (_key.Length == 0)
+                return new STransaction(this,ix.table);
+            var mb = ix.rows.PositionAt(_key);
+            if (mb == null)
+                return this;
+            if (mb.hasMore(this, ix.cols.Length ?? 0))
+                return new STransaction(this,ix.table);
+            return new STransaction(this, mb.Value.Item2);
+        }
+        public override SDatabase Rdc(long uid)
+        {
+            return new STransaction(this,uid);
+        }
+        public override SDatabase MaybeAutoCommit()
+        {
+            return autoCommit ? Commit() : this;
         }
         public override SDatabase Rollback()
         {
-            return rollback;
+            return databases[name];
         }
+    }
+    public class TransactionConflict: StrongException
+    {
+        public TransactionConflict(string m):base(m) { }
     }
 }

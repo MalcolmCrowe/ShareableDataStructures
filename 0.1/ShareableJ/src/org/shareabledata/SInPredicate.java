@@ -40,7 +40,7 @@ public class SInPredicate extends Serialisable {
             list.Put(f);
         }
         @Override
-        public Serialisable Lookup(STransaction tr,Context cx)
+        public Serialisable Lookup(SDatabase tr,Context cx)
         {
             var a = arg.Lookup(tr,cx);
             var ls = list.Lookup(tr,cx);

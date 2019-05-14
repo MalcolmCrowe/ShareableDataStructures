@@ -13,7 +13,7 @@ public class SearchRowSet extends RowSet {
 
     public final SSearch _sch;
     public final RowSet _sce;
-    public SearchRowSet(STransaction tr, SQuery top, SSearch sc,
+    public SearchRowSet(SDatabase tr, SQuery top, SSearch sc,
             Context cx) throws Exception 
     {
         this(Source(tr,top,sc,cx),sc,cx);
@@ -24,7 +24,7 @@ public class SearchRowSet extends RowSet {
         _sch = sc;
         _sce = sce;
     }
-    static RowSet Source(STransaction tr,SQuery top,SSearch sc,Context cx)
+    static RowSet Source(SDatabase tr,SQuery top,SSearch sc,Context cx)
             throws Exception
     {
             RowSet s = null;

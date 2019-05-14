@@ -1,5 +1,4 @@
 ﻿using System;
-#nullable enable
 namespace Shareable
 {
     /// <summary>

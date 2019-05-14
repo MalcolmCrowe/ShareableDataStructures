@@ -134,10 +134,31 @@ public class STransaction extends SDatabase {
             rdr.db = this;
             return this; // ignore the parameter
         }
+        public SDatabase MaybeCommit() throws Exception
+        {
+            return autoCommit? Commit():this;
+        }
         @Override
         public SDatabase Rollback()
         {
             return rollback;
+        }
+        @Override
+        public SDatabase Rdc(SIndex ix, SCList<Variant> _key)
+        {
+            if (_key.Length == 0)
+                return new STransaction(this,ix.table);
+            var mb = ix.rows.PositionAt(_key);
+            if (mb == null)
+                return this;
+            if (mb.hasMore(this, ix.cols.Length))
+                return new STransaction(this,ix.table);
+            return new STransaction(this, (long)mb.getValue().val);
+        }
+        @Override
+        public SDatabase Rdc(long uid)
+        {
+            return new STransaction(this,uid);
         }
     }
 

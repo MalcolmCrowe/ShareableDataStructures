@@ -13,7 +13,7 @@ public class JoinRowSet extends RowSet {
     public final SJoin _join;
     public final RowSet _left, _right;
     public final int _klen;
-    JoinRowSet(STransaction tr,SQuery top, SJoin j,RowSet lf,RowSet rg,
+    JoinRowSet(SDatabase tr,SQuery top, SJoin j,RowSet lf,RowSet rg,
             Context cx) throws Exception
     {
         super(tr,j,cx);

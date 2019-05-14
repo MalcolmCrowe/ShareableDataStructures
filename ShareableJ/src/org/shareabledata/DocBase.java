@@ -61,7 +61,16 @@ public class DocBase {
                     throw new Error("bad format");
                 c = s.charAt(i);
                 if (i >= n || (c != '.' && c != 'e' && c != 'E'))
-                    return new ObjPos(sg ? whole.Negate() : whole,i);
+                {
+                    Object ob = null;
+                    if (whole.compareTo(Bigint.intMax) < 0)
+                        ob = sg ? whole.Negate().toInt() : whole.toInt();
+                    else if (whole.compareTo(Bigint.longMax) < 0)
+                        ob = sg ? whole.Negate().toLong() : whole.toLong();
+                    else
+                        ob = sg ? whole.Negate() : whole;
+                    return new ObjPos(ob,i);
+                }
                 int scale = 0;
                 if (c == '.')
                 {

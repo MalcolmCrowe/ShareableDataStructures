@@ -191,13 +191,13 @@ public class SGroupQuery extends SQuery {
         return new SGroupQuery((SQuery)source, f,u);
     }
     @Override
-    public RowSet RowSet(STransaction tr, SQuery top, Context cx)
+    public RowSet RowSet(SDatabase tr, SQuery top, Context cx)
             throws Exception
     {
         return new GroupRowSet(tr,top, this, cx);
     }
     @Override
-    public Serialisable Lookup(STransaction tr,Context cx)
+    public Serialisable Lookup(SDatabase tr,Context cx)
     {
         if (!(cx.refs instanceof SearchRowSet.SearchRowBookmark))
             return this;

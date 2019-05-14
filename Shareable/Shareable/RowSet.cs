@@ -12,9 +12,9 @@ namespace Shareable
     public abstract class RowSet : Collection<Serialisable>
     {
         public readonly SQuery _qry;
-        public readonly STransaction _tr;
+        public readonly SDatabase _tr;
         public readonly Context _cx;
-        public RowSet(STransaction tr, SQuery q, Context cx, int? n):base(n)
+        public RowSet(SDatabase tr, SQuery q, Context cx, int? n):base(n)
         {
             _tr = tr; _qry = q; _cx = cx;
         }
@@ -211,8 +211,8 @@ namespace Shareable
         /// </summary>
         /// <param name="db"></param>
         /// <param name="t"></param>
-        public TableRowSet(STransaction db,STable t,Context cx) 
-            : base(db+t.uid /*read constraint*/,t,
+        public TableRowSet(SDatabase db,STable t,Context cx) 
+            : base(db.Rdc(t.uid),t,
                   cx,t.rows.Length)
         {
             _tb = t;
@@ -243,12 +243,12 @@ namespace Shareable
             public override STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
             {
                 var rc = _ob.rec ?? throw new Exception("PE01");
-                return (STransaction)tr.Install(new SUpdate(tr,rc, assigs),rc,tr.curpos); 
+                return (STransaction)tr.Install(new SUpdate(tr,rc, assigs),tr.curpos); 
             }
             public override STransaction Delete(STransaction tr)
             {
                 var rc = _ob.rec ?? throw new Exception("PE02");
-                return (STransaction)tr.Install(new SDelete(tr,rc.table, rc.Defpos),rc,tr.curpos); // ok
+                return (STransaction)tr.Install(new SDelete(tr,rc),tr.curpos); // ok
             }
         }
     }
@@ -259,31 +259,12 @@ namespace Shareable
         public readonly SCList<Variant> _key;
         public readonly SExpression.Op _op;
         public readonly bool _unique;
-        public IndexRowSet(STransaction tr,STable t,SIndex ix,SCList<Variant> key, 
+        public IndexRowSet(SDatabase tr,STable t,SIndex ix,SCList<Variant> key, 
             SExpression.Op op,SList<Serialisable> wh,Context cx) 
-            :base(Rdc(tr,ix,key),t, cx, t.rows.Length)
+            :base(tr.Rdc(ix,key),t, cx, t.rows.Length)
         {
             _ix = ix; _key = key; _wh = wh; _op = op; 
             _unique = key.Length == _ix.cols.Length && _ix.references==-1;
-        }
-        /// <summary>
-        /// Add in read constraints: a key specifies just one row as the read
-        /// Constraint. Otherwise lock the entire table
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="ix"></param>
-        /// <param name="_key"></param>
-        /// <returns></returns>
-        static STransaction Rdc(STransaction tr,SIndex ix,SCList<Variant> _key)
-        {
-            if (_key.Length ==0)
-                return tr + ix.table;
-            var mb = ix.rows.PositionAt(_key);
-            if (mb == null)
-                return tr;
-            if (mb.hasMore(tr, ix.cols.Length??0))
-                return tr + ix.table;
-            return tr + mb.Value.Item2;
         }
         public override Bookmark<Serialisable>? First()
         {
@@ -346,12 +327,12 @@ namespace Shareable
             public override STransaction Update(STransaction tr, SDict<long, Serialisable> assigs)
             {
                 var rc = _ob.rec ?? throw new System.Exception("PE41");
-                return (STransaction)tr.Install(new SUpdate(tr, rc, assigs),rc,tr.curpos); // ok
+                return (STransaction)tr.Install(new SUpdate(tr, rc, assigs),tr.curpos); // ok
             }
             public override STransaction Delete(STransaction tr)
             {
                 var rc = _ob.rec ?? throw new System.Exception("PE42");
-                return (STransaction)tr.Install(new SDelete(tr, rc.table, rc.Defpos),rc,tr.curpos); // ok
+                return (STransaction)tr.Install(new SDelete(tr, rc),tr.curpos); // ok
             }
         }
     }
@@ -405,7 +386,7 @@ namespace Shareable
         public readonly SSearch _sch;
         public readonly RowSet _sce;
 
-        public SearchRowSet(STransaction tr, SQuery top, SSearch sc, Context cx)
+        public SearchRowSet(SDatabase tr, SQuery top, SSearch sc, Context cx)
             : this(Source(tr, top, sc, cx), sc, cx)
         { }
         SearchRowSet(RowSet sce, SSearch sc, Context cx) : base(sce._tr, sc, cx, null)
@@ -413,7 +394,7 @@ namespace Shareable
             _sch = sc;
             _sce = sce;
         }
-        static RowSet Source(STransaction tr,SQuery top, SSearch sc,Context cx)
+        static RowSet Source(SDatabase tr,SQuery top, SSearch sc,Context cx)
         { 
             RowSet? s = null;
             var matches = SDict<long,(Serialisable,SExpression.Op)>.Empty;
@@ -573,7 +554,7 @@ namespace Shareable
         public readonly SDict<long, SDict<long,Serialisable>> _grouprows; // accumulators for the aggregates
         public readonly SQuery _top;
         public readonly RowSet _sce;
-        public GroupRowSet(STransaction tr, SQuery top, SGroupQuery gqry,
+        public GroupRowSet(SDatabase tr, SQuery top, SGroupQuery gqry,
             Context cx) 
             : this(gqry.source.RowSet(tr, top, cx), top, gqry, cx)
         {
@@ -626,7 +607,7 @@ namespace Shareable
                 r += (ab.Value.Item2,cb.Value.Item2.Lookup(_tr,cx));
             return r;
         }
-        static SDict<long,Serialisable> AddIn(STransaction tr,SDict<long,Serialisable> cur, Context cx)
+        static SDict<long,Serialisable> AddIn(SDatabase tr,SDict<long,Serialisable> cur, Context cx)
         {
             var ags = cx.Ags();
             for (var b = ags.First(); b != null; b = b.Next())
@@ -738,7 +719,7 @@ namespace Shareable
         public readonly SJoin _join;
         public readonly RowSet _left, _right;
         public readonly int _klen;
-        internal JoinRowSet(STransaction tr,SQuery top, SJoin j, RowSet lf, RowSet rg, 
+        internal JoinRowSet(SDatabase tr,SQuery top, SJoin j, RowSet lf, RowSet rg, 
             Context cx)
             : base(tr, j, cx, null)
         {
@@ -952,7 +933,7 @@ namespace Shareable
     public class SysRows : RowSet
     {
         public readonly SysTable tb;
-        internal SysRows(STransaction tr, SysTable t) 
+        internal SysRows(SDatabase tr, SysTable t) 
             : base(tr, t, Context.Empty, null)
         {
             tb = t; 
@@ -983,7 +964,7 @@ namespace Shareable
         {
             readonly long uPos = 0;
             readonly SExpression.Op uOp = SExpression.Op.Eql;
-            public LogRowSet(STransaction tr,SysTable tb,Context cx) : base(tr,tb)
+            public LogRowSet(SDatabase tr,SysTable tb,Context cx) : base(tr,tb)
             {
                 var u = SysTable._SysUid - 3; // Log.Uid
                 if (cx.defines(u) && cx[u] is SExpression e && e.right is SString s
@@ -1080,7 +1061,7 @@ namespace Shareable
             {
                 _srs = rs; _cbm = cbm; _cf = cf; _id = id;
             }
-            static string Check(STransaction tr,SFunction cf,string id)
+            static string Check(SDatabase tr,SFunction cf,string id)
             {
                 return (cf.func == SFunction.Func.Constraint) ? id : 
                     cf.func.ToString().ToUpper();
@@ -1147,7 +1128,7 @@ namespace Shareable
                 sb.Append(")");
                 return sb.ToString();
             }
-            static string References(STransaction tr,SIndex ix)
+            static string References(SDatabase tr,SIndex ix)
             {
                 return (ix.references < 0) ? "" : ("" + tr.Name(ix.references));
             }

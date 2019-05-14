@@ -15,119 +15,147 @@ public class SJoin extends SQuery {
         public final int joinType;
         public final boolean outer;
         public final SQuery left,right;
-        public final SList<SExpression> ons;
-        public final SList<String> uses;
-        public SJoin(SDatabase db,Reader f) throws Exception
+        public final SList<SExpression> ons; // equality expressions lcol=rcol
+        public final SDict<Long,Long> uses; // key is for RIGHT, val for LEFT
+        public SJoin(ReaderBase f) throws Exception
         {
-            super(Types.STableExp,_Join(db,f));
-            left = (SQuery)f._Get(db);
+            super(Types.STableExp,_Join(f));
+            left = (SQuery)f._Get();
             if (left==null)
                  throw new Exception("Query expected");
             outer = f.GetInt() == 1;
             joinType = f.GetInt();
-            right = (SQuery)f._Get(db);
+            right = (SQuery)f._Get();
             if (right==null)
                 throw new Exception("Query expected");
             var n = f.GetInt();
             SList<SExpression> on = null;
-            SList<String> us = null;
-            int m=0;
-            if ((joinType&JoinType.Natural)!=0)
-                for (var lb=left.names.First();lb!=null;lb=lb.Next())
-                {
-                    var k = lb.getValue().key;
-                    if (right.names.Contains(k))
-                    {
-                        us = (us==null)?new SList(k):us.InsertAt(k,m);
-                        m++;
-                    }
-                }
-            else if ((joinType&JoinType.Named)!=0)
+            SDict<Long,Long> us = null;
+            var tr = (STransaction)f.db;
+            SDict<String,Long> lns = null;
+            var ld = left.getDisplay();
+            if (ld!=null)
+            for (var b=ld.First();b!=null;b=b.Next())
+            {
+                var v = b.getValue().val;
+                lns = (lns==null)?new SDict(v.id,v.uid):lns.Add(v.id, v.uid);
+            }
+            SDict<String,Long> rns = null;
+            var rd = right.getDisplay();
+            if (rd!=null)
+            for (var b=rd.First();b!=null;b=b.Next())
+            {
+                var v = b.getValue().val;
+                if (joinType==JoinType.Natural && lns!=null && lns.Contains(v.id))
+                    us = (us==null)?new SDict(v.uid,lns.get(v.id)):
+                            us.Add(v.uid, lns.get(v.id));
+                rns = (rns==null)?new SDict(v.id,v.uid):rns.Add(v.id, v.uid);
+            }
+            if((joinType & JoinType.Named) !=0 && lns!=null && rns!=null)
                 for (var i=0;i<n;i++)
                 {
-                    var k = f.GetString();
-                    us = (us==null)?new SList(k):us.InsertAt(k,i);
+                    var nm = tr.role.uids.get(f.GetLong());
+                    if (!(lns.Contains(nm) && rns.Contains(nm)))
+                       throw new Exception("name "+nm+" not present in Join");
+                    us = (us==null)?new SDict(rns.get(nm),lns.get(nm)):
+                            us.Add(rns.get(nm),lns.get(nm));
                 }
             else if (!((joinType&JoinType.Cross)!=0))
                 for (var i = 0; i < n; i++)
                 {
-                    var e =(SExpression)f._Get(db);
+                    var e =(SExpression)f._Get();
                     if (e==null)
                         throw new Exception("ON exp expected");
-                    on =(on==null)?new SList(e):on.InsertAt(e, i);
+                    on =(on==null)?new SList(e):on.InsertAt(e, 0);
                 }
             ons = on;
             uses = us;
+            f.context = this;
         }
         public SJoin(SQuery lf,boolean ou,int jt,SQuery rg,SList<SExpression> on,
-            SList<String>us,SDict<Integer,String> d,SDict<Integer,Serialisable> c,
-            Context cx) 
+            SDict<Long,Long>us,SDict<Integer,Ident> d,SDict<Integer,Serialisable> c) 
         {
-            super(Types.STableExp,d,c,cx);
+            super(Types.STableExp,d,c);
             left = lf; right = rg; outer = ou; joinType = jt; ons = on;uses=us;
         }
-        static SQuery _Join(SDatabase db,Reader f) throws Exception
+        static SQuery _Join(ReaderBase f) throws Exception
         {
             f.GetInt();
-            var st = f.pos;
-            SDict<Integer, String> d = null;
+            var st = f.buf.pos;
+            SDict<Integer, Ident> d = null;
             SDict<Integer, Serialisable> c = null;
-            var x = f._Get(db);
+            SDict<String,Long> nms = null;
+            var x = f._Get();
             if (!(x instanceof SQuery))
                 throw new Exception("Query expected");
             var left = (SQuery)x; 
             var outer = f.GetInt() == 1;
             var joinType = f.GetInt();
-            x = f._Get(db);
+            x = f._Get();
             if (!(x instanceof SQuery))
                 throw new Exception("Query expected");
             var right = (SQuery)x;
-            var ab = left.getDisplay().First();
-            SDict<String,Boolean> uses = null;
+            SDict<Long,Long> uses = null;
             if ((joinType&JoinType.Named)!=0)
             {
                 var n = f.GetInt();
                 for (var i = 0; i < n; i++)
                 {
-                    var k = f.GetString();
-                    uses =(uses==null)?new SDict<String,Boolean>(k,true):
-                            uses.Add(k,true);
+                    var k = f.GetLong();
+                    var m = f.GetLong();
+                    uses =(uses==null)?new SDict<Long,Long>(k,m):
+                            uses.Add(k,m);
                 }
             }
             var k = 0;
-            for (var lb = left.cpos.First(); ab!=null && lb != null; ab=ab.Next(), lb = lb.Next())
+            var ld = left.getDisplay();
+            if (ld!=null && left.cpos!=null)
             {
-                var col = lb.getValue();
-                var n = ab.getValue().val;
-                if (right.names.Contains(n) 
-                    && ((!((joinType&JoinType.Natural)!=0))|| 
-                        (uses!=null&&uses.Contains(n))))
-                    n = left.getAlias() + "." + n;
-                d=(d==null)?new SDict(k, n):d.Add(k,n);
-                c=(c==null)?new SDict(k, col.val):c.Add(k,col.val);
-                k++;
+                var ab = ld.First();
+                for (var lb = left.cpos.First(); ab != null && lb != null; 
+                        ab = ab.Next(),lb = lb.Next())
+                {
+                    var col = lb.getValue();
+                    var ai = ab.getValue().val;
+                    var u = ai.uid;
+                    d=(d==null)?new SDict(k, ai):d.Add(k,ai);
+                    c=(c==null)?new SDict(k, col.val):c.Add(k,col.val);
+                    var n = f.db.role.uids.get(u);
+                    nms = (nms==null)?new SDict(n,u):nms.Add(n,u);
+                    k++;
+                }
             }
-            ab = right.getDisplay().First();
-            for (var rb = right.cpos.First(); ab != null && rb != null; ab = ab.Next(), rb = rb.Next())
+            var rd = right.getDisplay();
+            if (rd!=null && right.cpos!=null)
             {
-                if (joinType == JoinType.Natural && left.names.Contains(ab.getValue().val))
-                    continue;
-                if (uses!=null && uses.Contains(ab.getValue().val))
-                    continue;
-                var col = rb.getValue();
-                var n = ab.getValue().val;
-                if (left.names.Contains(n)
-                     && ((!((joinType&JoinType.Natural)!=0)) || 
-                        (uses!=null && uses.Contains(n))))
-                    n = right.getAlias() + "." + n;
-                d=(d==null)?new SDict(k, n):d.Add(k,n);
-                c=(c==null)?new SDict(k, col.val):c.Add(k,col.val);
-                k++;
+                var ab = rd.First();
+                for (var rb = right.cpos.First(); ab!=null && rb != null; 
+                        ab=ab.Next(),rb = rb.Next())
+                {
+                    var col = rb.getValue();
+                    var ai = ab.getValue().val;
+                    var u = ai.uid;
+                    var n = f.db.role.uids.get(u);
+                    if (joinType==JoinType.Natural && nms!=null && nms.Contains(n))
+                        continue;
+                    if (uses!=null && uses.Contains(u))
+                        continue;
+                    d=(d==null)?new SDict(k, ai):d.Add(k,ai);
+                    c=(c==null)?new SDict(k, col.val):c.Add(k,col.val);
+                    k++;
+                }
             }
-            f.pos = st;
-            return new SQuery(Types.STableExp, d, c,Context.Empty);            
+            f.buf.pos = st;
+            return new SQuery(Types.STableExp, d, c);            
         }
-        public void Put(StreamBase f)
+        @Override
+        public SDict<Long, Long> Names(SDatabase tr, SDict<Long, Long> pt)
+                throws Exception
+        {
+            return right.Names(tr, left.Names(tr,pt));
+        }        
+        @Override
+        public void Put(WriterBase f) throws Exception
         {
             super.Put(f);
             left.Put(f);
@@ -144,39 +172,189 @@ public class SJoin extends SQuery {
             for (var b = ons.First(); b != null; b = b.Next())
                 b.getValue().Put(f);
             if (uses!=null)
-            for (var b = uses.First(); b != null; b = b.Next())
-                f.PutString(b.getValue());
+                for (var b = uses.First(); b != null; b = b.Next())
+                    f.PutLong(b.getValue().key);
         }
-        public static SJoin Get(SDatabase d,Reader f) throws Exception
+        @Override
+        public Serialisable Prepare(STransaction db, SDict<Long,Long> pt) throws Exception
         {
-            return new SJoin(d, f);
+            SList<SExpression> os = null;
+            SDict<Long,Long> us = null;
+            SDict<Integer, Ident> ds = null;
+            SDict<Integer, Serialisable> cs = null;
+            var n = 0;
+            if (ons!=null)
+            for (var b = ons.First(); b != null; b = b.Next())
+            {
+                var v = (SExpression)b.getValue().Prepare(db, pt);
+                os =(os==null)?new SList(v):os.InsertAt(v, n);
+                n++;
+            }
+            n = 0;
+            if (uses!=null)
+            for (var b = uses.First(); b != null; b = b.Next())
+            {
+                var v = Prepare(b.getValue(),db,pt);
+                us =(us==null)?new SDict(v.key,v.val):us.Add(v.key,v.val);
+            }
+            var lf = (SQuery)left.Prepare(db, pt);
+            var rg = (SQuery)right.Prepare(db, pt);
+            SDict<String, Long> lns = null;
+            for (var b = lf.getDisplay().First(); b != null; b = b.Next())
+            {
+                var u = b.getValue().val;
+                lns= (lns==null)?new SDict(u.id,u.uid):lns.Add(u.id,u.uid);
+            }
+            SDict<String, Long> rns = null;
+            for (var b = rg.getDisplay().First(); b != null; b = b.Next())
+            {
+                var u = b.getValue().val;
+                rns= (rns==null)?new SDict(u.id,u.uid):rns.Add(u.id,u.uid);
+            }
+            for (var b = lf.getDisplay().First(); b != null; b = b.Next())
+            {
+                var ou = b.getValue().val.uid;
+                var dn = b.getValue().val.id;
+                if (rns.Contains(dn) && joinType!=JoinType.Natural)
+                    dn = db.Name(lf.getAlias()) + "." + dn;
+                ds = (ds==null)?new SDict(n,new Ident(ou,dn)):
+                        ds.Add(n,new Ident(ou,dn));
+                n++;
+            }
+            for (var b = rg.getDisplay().First(); b != null; b = b.Next())
+            {
+                var ou = b.getValue().val.uid;
+                var dn = b.getValue().val.id;
+                if (lns.Contains(dn) && joinType!=JoinType.Natural)
+                    dn = db.Name(rg.getAlias()) + "." + dn;
+                ds = (ds==null)?new SDict(n,new Ident(ou,dn)):
+                        ds.Add(n,new Ident(ou,dn));
+                n++;
+            }
+            if (cpos!=null)
+            for (var b = cpos.First(); b != null; b = b.Next())
+            {
+                var k = b.getValue().key;
+                var v = b.getValue().val.Prepare(db, pt);
+                cs = (cs==null)?new SDict(k,v):cs.Add(k,v);
+            }
+            return new SJoin((SQuery)left.Prepare(db, pt), outer, joinType,
+                (SQuery)right.Prepare(db, pt), os, us, ds, cs);
+        }
+                @Override
+        public Serialisable UpdateAliases(SDict<Long, String> uids)
+        {
+            var w = uids.First();
+            if (w == null || w.getValue().key > -1000000)
+                return this;
+            SList<SExpression> os = null;
+            SDict<Long,Long> us = null;
+            SDict<Integer, Ident> ds = null;
+            SDict<Integer, Serialisable> cs = null;
+            var n = 0;
+            if (ons!=null)
+            for (var b = ons.First(); b != null; b = b.Next())
+            {
+                var v = (SExpression)b.getValue().UpdateAliases(uids);
+                os =(os==null)?new SList(v):os.InsertAt(v, n);
+                n++;
+            }
+            n = 0;
+            if (uses!=null)
+            for (var b = uses.First(); b != null; b = b.Next())
+            {
+                var v = CheckAlias(uids,b.getValue());
+                us =(us==null)?new SDict(v.key,v.val):us.Add(v.key,v.val);
+            }
+            if(display!=null)
+            for (var b=display.First();b!=null;b=b.Next())
+            {
+                var k = b.getValue().key;
+                var v = CheckAlias(uids,b.getValue().val);
+                ds = (ds==null)?new SDict(k,v):ds.Add(k, v);
+            }
+            if (cpos!=null)
+            for (var b = cpos.First(); b != null; b = b.Next())
+            {
+                var k = b.getValue().key;
+                var v = b.getValue().val.UpdateAliases(uids);
+                cs = (cs==null)?new SDict(k,v):cs.Add(k,v);
+            }
+            return new SJoin((SQuery)left.UpdateAliases(uids), outer, joinType,
+                (SQuery)right.UpdateAliases(uids), os, us, ds, cs);
+        }
+
+        @Override
+        public Serialisable UseAliases(SDatabase db, SDict<Long, Long> ta)
+        {
+            SList<SExpression> os = null;
+            SDict<Long,Long> us = null;
+            SDict<Integer, Ident> ds = null;
+            SDict<Integer, Serialisable> cs = null;
+            var n = 0;
+            if (ons!=null)
+            for (var b = ons.First(); b != null; b = b.Next())
+            {
+                var v = (SExpression)b.getValue().UseAliases(db,ta);
+                os =(os==null)?new SList(v):os.InsertAt(v, n);
+                n++;
+            }
+            n = 0;
+            if (uses!=null)
+            for (var b = uses.First(); b != null; b = b.Next())
+            {
+                var v = Use(b.getValue(),ta);
+                us =(us==null)?new SDict(v.key,v.val):us.Add(v.key,v.val);
+            }
+            if (display!=null)
+            for (var b=display.First();b!=null;b=b.Next())
+            {
+                var k = b.getValue().key;
+                var v = Use(b.getValue().val,ta);
+                ds = (ds==null)?new SDict(k,v):ds.Add(k, v);
+            }
+            if (cpos!=null)
+            for (var b = cpos.First(); b != null; b = b.Next())
+            {
+                var k = b.getValue().key;
+                var v = b.getValue().val.UseAliases(db,ta);
+                cs = (cs==null)?new SDict(k,v):cs.Add(k,v);
+            }
+            return new SJoin((SQuery)left.UseAliases(db,ta), outer, joinType,
+                (SQuery)right.UseAliases(db,ta), os, us, ds, cs);
+        }
+
+        public static SJoin Get(ReaderBase f) throws Exception
+        {
+            return new SJoin(f);
         }
         public int Compare(RowBookmark lb,RowBookmark rb)
         {
-            var lc = new Context(lb,Context.Empty);
-            var rc = new Context(rb, Context.Empty);
             if (ons!=null)
                 for (var b = ons.First(); b != null; b = b.Next())
                 {
                     var ex = (SExpression)b.getValue();
-                    var c = ex.left.Lookup(lc).compareTo(ex.right.Lookup(rc));
+                    var c = ex.left.Lookup(rb._rs._tr,lb._cx).
+                            compareTo(ex.right.Lookup(rb._rs._tr,rb._cx));
                     if (c!=0)
                         return c;
                 }
             if (uses!=null)
                 for (var b = uses.First(); b != null; b = b.Next())
                 {
-                    var c = lc.get(b.getValue()).compareTo(rc.get(b.getValue()));
+                    var c = lb._cx.get(b.getValue().key).compareTo(rb._cx.get(b.getValue().val));
                     if (c != 0)
                         return c;
                 }
             return 0;
         }
         @Override
-        public RowSet RowSet(STransaction tr,SQuery top,
-                SDict<Long,SFunction> ags,Context cx) throws Exception
+        public RowSet RowSet(SDatabase tr,SQuery top,
+                Context cx) throws Exception
         {
-            return new JoinRowSet(tr, top, this, ags, cx);
+            var lf = left.RowSet(tr, left, cx);
+            var rg = right.RowSet(lf._tr, right, cx);
+            return new JoinRowSet(rg._tr, top, this, lf, rg, cx);
         }
         @Override
         public void Append(SDatabase db, StringBuilder sb)

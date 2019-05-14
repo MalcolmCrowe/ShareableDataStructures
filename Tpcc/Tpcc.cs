@@ -69,7 +69,7 @@ namespace Tpcc
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
-            Control.CheckForIllegalCrossThreadCalls = false;
+            CheckForIllegalCrossThreadCalls = false;
 		}
 
 		/// <summary>
@@ -504,7 +504,7 @@ namespace Tpcc
                     //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
-        //            StrongConnect.OpenRequests();
+                    StrongConnect.OpenRequests();
                 }
                 catch (Exception)
                 {
@@ -512,7 +512,7 @@ namespace Tpcc
         }
         private void Form1_Closing(object sender,System.EventArgs e)
         {
-      //      StrongConnect.CloseRequests();
+            StrongConnect.CloseRequests();
         }
 
 		private void button1_Click(object sender, System.EventArgs e)
@@ -624,7 +624,7 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            Form1.exiting = true;
+            exiting = true;
             Application.Exit();
         }
         int action = -1;

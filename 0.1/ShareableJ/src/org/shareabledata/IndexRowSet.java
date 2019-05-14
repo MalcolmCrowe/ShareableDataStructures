@@ -15,24 +15,13 @@ public class IndexRowSet extends RowSet {
         public final SCList<Variant> _key;
         public final int _op;
         public final boolean _unique;
-        public IndexRowSet(STransaction db,STable t,SIndex ix,SCList<Variant> key,
+        public IndexRowSet(SDatabase db,STable t,SIndex ix,SCList<Variant> key,
                 int op,SList<Serialisable> wh,Context cx)
         {
-            super(Rdc(db,ix,key),t,null);
+            super(db.Rdc(ix,key),t,null);
             _ix = ix; _wh = wh;
             _key = key; _op = op;
             _unique = key!=null && key.Length == _ix.cols.Length;
-        }
-        static STransaction Rdc(STransaction tr,SIndex ix,SCList<Variant> _key)
-        {
-            if (_key==null)
-                return tr.Add(ix.table);
-            var mb = ix.rows.PositionAt(_key);
-            if (mb == null)
-                return tr;
-            if (mb.hasMore(tr, ix.cols.Length))
-                return tr.Add(ix.table);
-            return tr.Add((long)mb.getValue().val);            
         }
        @Override
         public Bookmark<Serialisable> First()
@@ -91,13 +80,13 @@ public class IndexRowSet extends RowSet {
             {
                 var rc =Ob().rec;
                 return (STransaction)tr.Install(new SUpdate(tr, rc, assigs),
-                    rc, tr.curpos); // ok
+                    tr.curpos); // ok
             }
             public STransaction Delete(STransaction tr) throws Exception
             {
                 var rc = Ob().rec;
-                return (STransaction)tr.Install(new SDelete(tr, rc.table, 
-                        rc.Defpos()), rc, tr.curpos); // ok
+                return (STransaction)tr.Install(new SDelete(tr, rc),
+                        tr.curpos); // ok
             }
         }
     }

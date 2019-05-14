@@ -13,6 +13,7 @@ import java.net.*;
 public class StrongConnect {
         ClientStream asy;
         public boolean inTransaction = false;
+        SDict<Long,String> preps = null;
         public SDict<Integer,String> description = null;
         public StrongConnect(String host,int port,String fn) throws Exception
         {
@@ -28,72 +29,107 @@ public class StrongConnect {
             if (socket == null || !socket.isConnected())
                 throw new Exception("No connection to " + host + ":" + port);
             asy = new ClientStream(this, socket);
-            asy.PutString(fn);
+            var wtr = asy.wtr;
+            wtr.PutString(fn);
+            asy.Flush();
             asy.Receive();
+            preps = null;
         }
-        public void CreateTable(String n,SColumn... cols) throws Exception
+        public long Prepare(String n)
         {
-            asy.Write((byte)Types.SCreateTable);
-            asy.PutString(n);
-            asy.PutInt(cols.length);
-            for (SColumn col : cols) {
-                asy.PutString(col.name);
-                asy.WriteByte((byte) col.dataType);
-            }
+            var u = -2L-((preps!=null)?(preps.Length):0);
+            preps = (preps==null)?new SDict(u,n):preps.Add(u, n);
+            return u;
+        }
+        public void CreateTable(String n) throws Exception
+        {
+            var un = Prepare(n);
+            var wtr = asy.wtr;
+            wtr.SendUids(preps);
+            wtr.Write((byte)Types.SCreateTable);
+            wtr.PutLong(un);
+            wtr.PutInt(0);
+            wtr.PutInt(0);
             var b = asy.Receive();
+            preps = null;
+        }
+        public void CreateColumn(String c,int t,String tn,SSlot<String,SFunction>...cs)
+                throws Exception
+        {
+            var uc = Prepare(c);
+            var ut = Prepare(tn);
+            asy.wtr.SendUids(preps);
+            asy.wtr.WriteByte((byte)Types.SCreateColumn);
+            new SColumn(uc, t, ut, new SDict(cs)).PutColDef(asy.wtr);
+            var b = asy.Receive();
+            preps = null;
         }
         public void CreateIndex(String tn,byte t,String rt,String... key)
                 throws Exception
         {
-            asy.Write((byte)Types.SCreateIndex);
-            asy.PutString(tn);
-            asy.WriteByte(t);
-            if (rt == null)
-                asy.PutInt(0);
-            else
-                asy.PutString(rt);
-            asy.PutInt(key.length);
-            for (String key1 : key) {
-                asy.PutString(key1);
+            var ut = Prepare(tn);
+            long u = -1;
+            if (rt!=null)
+                u = Prepare(rt);
+            SList<Long> keys = null;
+            int i = 0;
+            for (String key1 : key) 
+            {
+                keys =(keys==null)?new SList(Prepare(key1)):
+                        keys.InsertAt(Prepare(key1),i);
+                i++;
             }
+            asy.wtr.SendUids(preps);
+            new SIndex(ut,t==IndexType.Primary,u,keys).Put(asy.wtr);
             var b = asy.Receive();
+            preps = null;
         }
         public void Insert(String tn,String[] cols,Serialisable[]... rows)
                 throws Exception
         {
-            asy.Write((byte)Types.Insert);
-            asy.PutString(tn);
+            var ut = Prepare(tn);
+            var u = new long[cols.length];
+            for (var i = 0; i < cols.length; i++)
+                u[i] = Prepare(cols[i]);
+            var wtr = asy.wtr;
+            wtr.SendUids(preps);
+            wtr.WriteByte((byte)Types.Insert);
+            wtr.PutLong(ut);
             if (cols == null)
-                asy.PutInt(0);
+                wtr.PutInt(0);
             else
             {
-                asy.PutInt(cols.length);
-                for (String col : cols) {
-                    asy.PutString(col);
+                wtr.PutInt(cols.length);
+                for (long ui : u) {
+                    wtr.PutLong(ui);
                 }
             }
-            asy.PutInt(rows[0].length); // cols
-            asy.PutInt(rows.length);  // rows
+            wtr.PutInt(rows[0].length); // cols
+            wtr.PutInt(rows.length);  // rows
             for (Serialisable[] row : rows) {
                 for (Serialisable row1 : row) {
-                    row1.Put(asy);
+                    row1.Put(asy.wtr);
                 }
             }
             var b = asy.Receive();
         }
         public DocArray ExecuteQuery(String sql) throws Exception
         {
-            var qry = (SQuery)Parser.Parse(sql);
-            return Get(qry);
+            var pair = Parser.Parse(sql);
+            if (pair.ob.type!=Types.SSelect)
+                throw new Exception("Bad query " + sql);
+            var qry = (SQuery)pair.ob;
+            return Get(pair.ns,qry);
         }
         public int ExecuteNonQuery(String sql) throws Exception
         {
             var s = Parser.Parse(sql);
             if (s == null)
                 return Types.Exception;
-            s.Put(asy);
+            asy.wtr.SendUids(s.ns);
+            s.ob.Put(asy.wtr);
             var b = asy.Receive();
-            if (b == Types.Exception)
+            if (b.proto == Types.Exception)
                 inTransaction = false;
             else
             {
@@ -105,51 +141,54 @@ public class StrongConnect {
                     case "COMMI": inTransaction = false; break;
                 }
             }
-            return b;
+            return b.proto;
         }
-        public DocArray Get(Serialisable tn) throws Exception
+        public DocArray Get(SDict<Long,String> d,Serialisable tn) throws Exception
         {
-            asy.Write((byte)Types.DescribedGet);
-            tn.Put(asy);
+            var wtr = asy.wtr;
+            var rdr = asy.rdr;
+            wtr.SendUids(d);
+            wtr.Write((byte)Types.DescribedGet);
+            tn.Put(wtr);
             var b = asy.Receive();
-            if (b == (byte)Types.Exception)
+            if (b.proto == (byte)Types.Exception)
             {
                 inTransaction = false;
-                asy.GetException();
+                rdr.GetException();
             }
-            if (b == (byte)Types.Done)
+            if (b.proto == (byte)Types.Done)
             {
                 description = null;
-                var n = asy.rbuf.GetInt();
+                var n = rdr.GetInt();
                 for (var i = 0; i < n; i++)
                     description = (description==null)?
-                            new SDict(i, asy.rbuf.GetString()):
-                            description.Add(i, asy.rbuf.GetString());
-                return new DocArray(asy.rbuf.GetString());
+                            new SDict(i, rdr.GetString()):
+                            description.Add(i, rdr.GetString());
+                return new DocArray(rdr.GetString());
             }
-            throw new Exception("??");
+            throw new Exception("PE28");
         }
         public void BeginTransaction() throws Exception
         {
-            asy.Write((byte)Types.SBegin);
+            asy.wtr.Write((byte)Types.SBegin);
             var b = asy.Receive();
-            if (b == Types.Exception)
+            if (b.proto == Types.Exception)
             {
                 inTransaction = false;
-                asy.GetException();
+                asy.rdr.GetException();
             }
-            if (b == Types.Done)
+            if (b.proto == Types.Done)
                 inTransaction = true;
         }
         public void Rollback() throws Exception
         {
-            asy.Write((byte)Types.SRollback);
+            asy.wtr.Write((byte)Types.SRollback);
             var b = asy.Receive();
             inTransaction = false;
         }
         public void Commit() throws Exception
         {
-            asy.Write((byte)Types.SCommit);
+            asy.wtr.Write((byte)Types.SCommit);
             var b = asy.Receive();
             inTransaction = false;
         }

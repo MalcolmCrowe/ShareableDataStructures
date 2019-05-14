@@ -34,6 +34,13 @@ public class Document extends DocBase {
                     return true;
             return false;
         }
+        public Object get(String k)
+        {
+            for (var b=fields.First();b!=null;b=b.Next())
+                if (b.getValue().key.compareTo(k)==0)
+                    return b.getValue().val;
+            return null;            
+        }
         private enum ParseState { StartKey, Key, Colon, StartValue, Comma }
         /// <summary>
         /// Parse the contents of {} 

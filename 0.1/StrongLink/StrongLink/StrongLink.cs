@@ -212,9 +212,11 @@ namespace StrongLink
             wtr.Write(Types.DescribedGet);
             tn.Put(wtr);
             asy.Flush();
+            (Types,long,long) b;
             try
             {
-                var b = asy.Receive();
+                while (asy.rdr.buf.pos>=asy.rdr.buf.len)
+                    b = asy.Receive(); 
             } catch(ServerException em)
             {
                 RecordRequest("Exception :" + em.Message);
@@ -317,10 +319,14 @@ namespace StrongLink
         {
             if (wtr.buf.pos > 2)
                 wtr.PutBuf();
-            rdr.buf.pos = 2;
-            rdr.buf.len = 0;
+            if (rdr.buf.pos != 2)
+            {
+                rdr.buf.pos = 2;
+                rdr.buf.len = 0;
+            }
             long ts = 0, te = 0;
-            var t = (Types)rdr.ReadByte();
+            Types t;
+            t = (Types)rdr.ReadByte();
             if (t==Types.Done)
             {
                 ts = rdr.GetLong();

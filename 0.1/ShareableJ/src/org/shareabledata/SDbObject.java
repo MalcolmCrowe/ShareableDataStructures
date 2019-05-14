@@ -151,7 +151,7 @@ public class SDbObject extends Serialisable {
         f.PutLong(uid);
     }
     @Override
-    public Serialisable Lookup(STransaction tr,Context cx)
+    public Serialisable Lookup(SDatabase tr,Context cx)
     {
         if (cx.defines(uid))
             return cx.get(uid);

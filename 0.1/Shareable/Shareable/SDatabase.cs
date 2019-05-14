@@ -122,15 +122,8 @@ namespace Shareable
                 case Types.SDrop: return Install((SDrop)s, p);
                 case Types.SIndex: return Install((SIndex)s, p);
                 case Types.SDropIndex: return Install((SDropIndex)s,p);
-            }
-            return this;
-        }
-        protected SDatabase _Add(SDbObject s, SRecord r, long p)
-        {
-            switch (s.type)
-            {
-                case Types.SUpdate: return Install((SUpdate)s, r, p);
-                case Types.SDelete: return Install((SDelete)s, r, p);
+                case Types.SUpdate: return Install((SUpdate)s, p);
+                case Types.SDelete: return Install((SDelete)s, p);
             }
             return this;
         }
@@ -159,19 +152,15 @@ namespace Shareable
                 case Types.SDelete:
                     {
                         var del = (SDelete)x.Item1;
-                        return d._Add(x.Item1,d.Get(del.delpos), x.Item2);
+                        return d._Add(del, x.Item2);
                     }
                 case Types.SUpdate:
                     {
                         var upd = (SUpdate)x.Item1;
-                        return d._Add(x.Item1,d.Get(upd.defpos), x.Item2);
+                        return d._Add(upd,x.Item2);
                     }
             }
             return d._Add(x.Item1, x.Item2);
-        }
-        public static SDatabase operator +(SDatabase d, (SDbObject, SRecord, long) x)
-        {
-            return d._Add(x.Item1, x.Item2, x.Item3);
         }
         public static SDatabase operator+(SDatabase d,(SDbObject,string,long)x)
         {
@@ -250,7 +239,7 @@ namespace Shareable
             }
             return New(obs, ro, c);
         }
-        public SDatabase Install(SUpdate u, SRecord sr, long c)
+        public SDatabase Install(SUpdate u, long c)
         {
             var obs = objects;
             var ro = role;
@@ -261,14 +250,14 @@ namespace Shareable
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var x = (SIndex)obs[b.Value.Item1];
-                var ok = x.Key(sr, x.cols);
+                var ok = x.Key(u.oldrec, x.cols);
                 var uk = x.Key(u, x.cols);
                 x.Check(this, u, ok.CompareTo(uk)==0);
-                obs += (x.uid, x.Update(sr,ok,u,uk,c));
+                obs += (x.uid, x.Update(u.oldrec,ok,u,uk,c));
             }
             return New(obs, ro, c);
         }
-        public SDatabase Install(SDelete d, SRecord sr, long c)
+        public SDatabase Install(SDelete d, long c)
         {
             var obs = objects;
             if (d.uid >= STransaction._uid)
@@ -277,10 +266,10 @@ namespace Shareable
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var px = (SIndex)obs[b.Value.Item1];
-                obs += (px.uid, px - (sr, c));
+                obs += (px.uid, px - (d.oldrec, c));
                 if (!px.primary)
                     continue;
-                var k = px.Key(sr, px.cols);
+                var k = px.Key(d.oldrec, px.cols);
                 for (var ob = obs.PositionAt(0); ob != null; ob = ob.Next()) // don't bother with system tables
                     if (ob.Value.Item2 is STable ot)
                         for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
@@ -291,9 +280,9 @@ namespace Shareable
                         }
             }
             var ro = role;
-            if (sr != null)
+            if (d.oldrec != null)
             {
-                st = st.Remove(sr.Defpos);
+                st = st.Remove(d.oldrec.Defpos);
                 obs += (d.table, st);
             }
             return New(obs, ro, c);
@@ -393,11 +382,31 @@ namespace Shareable
             rdr.db = tr;
             return tr;
         }
-        public SDatabase MaybeAutoCommit(STransaction tr)
+        public virtual SDatabase MaybeAutoCommit()
         {
-            return tr.autoCommit ? tr.Commit() : tr;
+            return this;
         }
         public virtual SDatabase Rollback()
+        {
+            return this;
+        }
+        /// <summary>
+        /// Add in read constraints: a key specifies just one row as the read
+        /// Constraint. Otherwise lock the entire table
+        /// </summary>
+        /// <param name="ix"></param>
+        /// <param name="_key"></param>
+        /// <returns></returns>
+        public virtual SDatabase Rdc(SIndex ix, SCList<Variant> _key)
+        {
+            return this;
+        }
+        /// <summary>
+        /// Add in a read constraint to lock a table
+        /// </summary>
+        /// <param name="uid">The table uid</param>
+        /// <returns></returns>
+        public virtual SDatabase Rdc(long uid)
         {
             return this;
         }

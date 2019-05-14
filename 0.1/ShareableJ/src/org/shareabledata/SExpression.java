@@ -90,7 +90,7 @@ public class SExpression extends SDbObject {
             return new SExpression(left.Fix(f),op,right.Fix(f));            
         }
         @Override
-        public Serialisable Lookup(STransaction tr,Context cx) 
+        public Serialisable Lookup(SDatabase tr,Context cx) 
         {
             var lf = left.Lookup(tr,cx);
             if (op == Op.Dot && right instanceof SDbObject)

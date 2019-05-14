@@ -146,5 +146,9 @@ public class SLeaf<K extends Comparable, V> extends SBucket<K, V> {
             s.add(slots[j++ + 1]);
         return s.toArray(new SSlot[0]);
     }
-
+    @Override
+    public K Last()
+    {
+        return slots[count - 1].key;
+    }
 }

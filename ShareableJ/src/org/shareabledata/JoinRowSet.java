@@ -13,10 +13,10 @@ public class JoinRowSet extends RowSet {
     public final SJoin _join;
     public final RowSet _left, _right;
     public final int _klen;
-    JoinRowSet(STransaction tr,SQuery top, SJoin j,
-            SDict<Long,SFunction> ags, Context cx) throws Exception
+    JoinRowSet(SDatabase tr,SQuery top, SJoin j,RowSet lf,RowSet rg,
+            Context cx) throws Exception
     {
-        super(tr,j,ags);
+        super(tr,j,cx);
         _join = j;
         SList<TreeInfo<Serialisable>> lti = null;
         SList<TreeInfo<Serialisable>> rti = null;
@@ -37,53 +37,61 @@ public class JoinRowSet extends RowSet {
         for (var b = j.uses.First(); b != null; b = b.Next())
         {
             var e = b.getValue();
-            var al = new TreeInfo<Serialisable>(j.left.names.Lookup(e), 'A', 'D',true);
-            var ar = new TreeInfo<Serialisable>(j.right.names.Lookup(e), 'A', 'D',true);
+            var al = new TreeInfo<Serialisable>(j.left.refs.Lookup(e.val), 'A', 'D',true);
+            var ar = new TreeInfo<Serialisable>(j.right.refs.Lookup(e.key), 'A', 'D',true);
             lti=(lti==null)?new SList<>(al):lti.InsertAt(al,n);
             rti=(rti==null)?new SList<>(ar):rti.InsertAt(ar,n);
             n++;
         }
-        var lf = j.left.RowSet(tr, j.left, ags, cx);
-        var rg = j.right.RowSet(tr, j.right, ags, cx);
         _klen = (lti==null)?0:lti.Length;
         if (lti!=null)
         {
-            lf = new OrderedRowSet(lf, lti, cx);
-            rg = new OrderedRowSet(rg, rti, cx);
+            lf = new OrderedRowSet(lf, lti);
+            rg = new OrderedRowSet(rg, rti);
         }
         _left = lf;
         _right = rg;
     }
     static SRow _Row(JoinRowSet jrs,RowBookmark lbm,boolean ul,
-            RowBookmark rbm,boolean ur)
+            RowBookmark rbm,boolean ur) 
     {
         var r = new SRow();
-        Bookmark<SSlot<Integer, String>> ab;
+        Bookmark<SSlot<Integer, Ident>> ab;
+        SRow lr = null,rr = null;
+        try { lr = lbm.Ob(); } catch(Exception e){}
+        try { rr = rbm.Ob(); } catch(Exception e){}
+        SDict<Long,Ident> ds = null;
+        for (var b = jrs._qry.display.First(); b != null; b = b.Next())
+        {
+            var id = b.getValue().val;
+            ds = (ds==null)?new SDict(id.uid,id):ds.Add(id.uid,id);
+        }
         switch (jrs._join.joinType)
         {
             default:
                 {
                     if (lbm != null && ul)
                     {
-                        ab = lbm._ob.names.First();
-                        if (ul)
-                            for (var b = lbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                        ab = (lr==null)?null:lr.names.First();
+                        if (ab!=null && ul)
+                            for (var b = lr.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                             {
                                 var n = ab.getValue().val;
-                                if (jrs._join.right.names.Contains(n))
-                                    n = jrs._left._qry.getAlias() + "." + n;
-                                r = r.Add(n, b.getValue().val);
+                                var k = ds.get(n.uid);
+                                var v = b.getValue().val;
+                                r = r.Add(k, v);
                             }
                     }
                     if (rbm != null && ur)
                     {
-                        ab = rbm._ob.names.First();
-                        for (var b = rbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                        ab = (rr==null)?null:rr.names.First();
+                        if (ab!=null && ur)
+                        for (var b = rr.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                         {
-                            var n = ab.getValue().val;
-                            if (jrs._join.left.names.Contains(n))
-                                n = jrs._right._qry.getAlias() + "." + n;
-                            r =r.Add(n, b.getValue().val);
+                                var n = ab.getValue().val;
+                                var k = ds.get(n.uid);
+                                var v = b.getValue().val;
+                                r = r.Add(k, v);
                         }
                     }
                     break;
@@ -92,15 +100,16 @@ public class JoinRowSet extends RowSet {
                 {
                     if (lbm != null && ul)
                     {
-                        ab = lbm._ob.names.First();
-                        for (var b = lbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                        ab = lr.names.First();
+                        for (var b = lr.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
                             r =r.Add(ab.getValue().val, b.getValue().val);
                     }
                     if (rbm != null && ur)
                     {
-                        ab = rbm._ob.names.First();
-                        for (var b = rbm._ob.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
-                            if (lbm==null || !ul || !lbm._ob.vals.Contains(ab.getValue().val))
+                        ab = rr.names.First();
+                        for (var b = rr.cols.First(); ab != null && b != null; ab = ab.Next(), b = b.Next())
+                              if (!((SJoin)jrs._qry).uses.Contains(ab.getValue().val.uid))
+             //               if (lbm==null || !ul || !lr.vals.Contains(ab.getValue().val))
                                 r =r.Add(ab.getValue().val, b.getValue().val);
                     }
                     break;
@@ -139,6 +148,13 @@ public class JoinRowSet extends RowSet {
             return new JoinRowBookmark(this, null, false, rg, true, 0);
         return null;
     }
+    Context _Context(RowBookmark lbm, boolean ul, RowBookmark rbm, boolean ur)
+    {
+        var cx = (rbm==null)?null:rbm._cx;
+        if (lbm != null)
+            cx = Context.Append(lbm._cx, cx);
+        return RowBookmark._Cx(this,_Row(this,lbm, ul, rbm, ur), cx);
+    }
     public class JoinRowBookmark extends RowBookmark
     {
         public final JoinRowSet _jrs;
@@ -147,9 +163,10 @@ public class JoinRowSet extends RowSet {
         protected JoinRowBookmark(JoinRowSet jrs,RowBookmark lbm,boolean ul,
                 RowBookmark rbm,boolean ur,int pos)
         {
-            super(jrs,jrs._Row(jrs,lbm,ul,rbm,ur),pos);
+            super(jrs,jrs._Context(lbm,ul,rbm,ur),pos);
             _jrs = jrs; _lbm = lbm; _rbm = rbm; _useL=ul; _useR=ur;
         }
+        @Override
         public Bookmark<Serialisable> Next()
         {
                 var lbm = _lbm;
