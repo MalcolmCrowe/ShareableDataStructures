@@ -45,6 +45,30 @@ public class SDelete extends SDbObject {
         {
             return (rdC!=null) && (rdC.Contains(delpos) || rdC.Contains(table));
         }
+        public void CheckConstraints(SDatabase db, STable st) throws Exception
+        {
+            for (var b = st.indexes.First(); b != null; b = b.Next())
+            {
+                var px = (SIndex)db.objects.Lookup(b.getValue().key);
+                if (!px.primary)
+                    continue;
+                var k = px.Key(oldrec, px.cols);
+                for (var ob = db.objects.PositionAt(0L); ob != null; ob = ob.Next()) // don't bother with system tables
+                {
+                    var s = ob.getValue().val;
+                    if (s.type==Types.STable)
+                    {
+                        var ot = (STable)s;
+                        for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
+                        {
+                            var x = (SIndex)db.objects.Lookup(ox.getValue().key);
+                            if (x.references == table && x.rows.Contains(k))
+                                throw new Exception("Referential constraint: illegal delete");
+                        }
+                    }
+                }
+            }
+        }
         @Override
         public boolean Conflicts(SDatabase db,STransaction tr,Serialisable that)
         { 
