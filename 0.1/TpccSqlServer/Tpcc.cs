@@ -4,8 +4,7 @@ using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
 using System.Data;
-using Shareable;
-using StrongLink;
+using System.Data.SqlClient;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,7 +31,7 @@ namespace Tpcc
 		private Tpcc.StockLevel stockLevel1;
         private Tpcc.Delivery delivery1;
 		private System.ComponentModel.IContainer components;
-		public StrongConnect conn;
+		public SqlConnection conn;
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
@@ -42,7 +41,7 @@ namespace Tpcc
 		private System.Windows.Forms.TextBox textBox3;
 		public int activewh;
 		private System.Windows.Forms.Button AutoRun;
-		private System.Windows.Forms.Button Commit;
+        private System.Windows.Forms.Button Commit;
 		private System.Windows.Forms.TabPage tabPage7;
 		private DelReport delReport1;
 		Thread thread = null;
@@ -61,20 +60,123 @@ namespace Tpcc
         private TextBox Clerks;
         public static string host;
         public static int commits, rconflicts, wconflicts;
-		public Form1()
+        public static int _tid = 0, _req = 0;
+        static System.IO.StreamWriter reqs = null;
+        public Form1()
 		{
-			conn = new StrongConnect("127.0.0.1",50433,"Tpcc");
+			conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
+            conn.Open();
 			//
 			// Required for Windows Form Designer support
 			//
 			InitializeComponent();
-            Control.CheckForIllegalCrossThreadCalls = false;
+            CheckForIllegalCrossThreadCalls = false;
 		}
+        public static void RecordRequest(SqlCommand cmd,int cid,int tid)
+        {
+            if (reqs == null)
+                return;
+            lock (reqs)
+                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; " + cmd.CommandText);
+        }
+        public static void RecordResponse(Exception e,int cid,int tid)
+        {
+            if (reqs == null)
+                return;
+            lock (reqs)
+                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; Exception: "+ e.Message);
+        }
+        public static void OpenRequests()
+        {
+            if (reqs == null)
+                reqs = new System.IO.StreamWriter("requests.txt");
+        }
+        public static void CloseRequests()
+        {
+            if (reqs != null)
+            {
+                var conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                int orders, neworders, orderlines, deliveries;
+                cmd.CommandText = "select count(*) from [order]";
+                var rdr = cmd.ExecuteReader();
+                rdr.Read();
+                orders = rdr.GetInt32(0);
+                rdr.Close();
+                cmd.CommandText = "select count(*) from new_order";
+                rdr = cmd.ExecuteReader();
+                rdr.Read();
+                neworders = rdr.GetInt32(0);
+                rdr.Close();
+                cmd.CommandText = "select count(*) from order_line";
+                rdr = cmd.ExecuteReader();
+                rdr.Read();
+                orderlines = rdr.GetInt32(0);
+                rdr.Close();
+                cmd.CommandText = "select count(*) from delivery";
+                rdr = cmd.ExecuteReader();
+                rdr.Read();
+                deliveries = rdr.GetInt32(0);
+                rdr.Close();
+                reqs.WriteLine("" +commits + "; "+(rconflicts+wconflicts)+"; "+ orders + "; " + neworders + "; " + orderlines + "; " + deliveries);
+                reqs.Close();
+            }
+            reqs = null;
+ /*           try
+            {
+                var log = new System.IO.StreamWriter("translog.txt");
+                var conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
+                conn.Open();
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT [current lsn],[operation],[context]," +
+     "[begin time],[end time],[number of locks],[lock Information],[description]" +
+      " where operation IN ('LOP_INSERT_ROWS','LOP_MODIFY_ROW'," +
+      "'LOP_DELETE_ROWS','LOP_BEGIN_XACT','LOP_COMMIT_XACT')";
+                var rdr = cmd.ExecuteReader();
+                var hdrs = false;
+                while (rdr.Read())
+                {
+                    var sb = new System.Text.StringBuilder();
+                    var cm = "";
+                    if (!hdrs)
+                    {
+                        hdrs = true;
+                        for (var i = 0; i < rdr.FieldCount; i++)
+                        {
+                            sb.Append(cm); cm = "; ";
+                            sb.Append(rdr.GetDataTypeName(i));
+                        }
+                        log.WriteLine(sb.ToString());
+                        sb.Clear(); cm = "";
+                        for (var i = 0; i < rdr.FieldCount; i++)
+                        {
+                            sb.Append(cm); cm = "; ";
+                            sb.Append(rdr.GetName(i));
+                        }
+                        log.WriteLine(sb.ToString());
+                        sb.Clear(); cm = "";
+                    }
+                    for (var i = 0; i < rdr.FieldCount; i++)
+                    {
+                        sb.Append(cm); cm = "; ";
+                        sb.Append(rdr[i]);
+                    }
+                    log.WriteLine(sb.ToString());
+                }
+                rdr.Close();
+                conn.Close();
+                log.Close();
+            } catch(Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }*/
+        }
 
-		/// <summary>
-		/// Clean up any resources being used.
-		/// </summary>
-		protected override void Dispose( bool disposing )
+        /// <summary>
+        /// Clean up any resources being used.
+        /// </summary>
+        protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{
@@ -142,6 +244,7 @@ namespace Tpcc
             this.delReport1 = new Tpcc.DelReport(conn,1);
             this.label1 = new System.Windows.Forms.Label();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
+            this.timer2 = new System.Windows.Forms.Timer(this.components);
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
@@ -464,7 +567,7 @@ namespace Tpcc
             this.Name = "Form1";
             this.Text = "TPC/C";
             this.Load += new System.EventHandler(this.Form1_Load);
-            this.FormClosing += new FormClosingEventHandler(this.Form1_Closing);
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_Closing);
             this.tabControl1.ResumeLayout(false);
             this.tabPage1.ResumeLayout(false);
             this.tabPage1.PerformLayout();
@@ -497,23 +600,28 @@ namespace Tpcc
             else
                 try
                 {
-                    var s = conn.ExecuteQuery("select count(W_ID) from WAREHOUSE");
-                    activewh = (int)s.items[0].fields[0].Value;
+                    OpenRequests();
+                    var cmd = conn.CreateCommand();
+                    cmd.CommandText = "select count(W_ID) from WAREHOUSE";
+                    RecordRequest(cmd, fid, 0);
+                    var s = cmd.ExecuteReader();
+                    s.Read();
+                    activewh = (int)s[0];
+                    s.Close();
                     textBox1.Text = "" + activewh;
                     //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
-        //            StrongConnect.OpenRequests();
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    RecordResponse(ex, fid, 0);
                 }
         }
         private void Form1_Closing(object sender,System.EventArgs e)
         {
-      //      StrongConnect.CloseRequests();
+            CloseRequests();
         }
-
 		private void button1_Click(object sender, System.EventArgs e)
 		{
             var g = new GenBase(conn);
@@ -588,7 +696,7 @@ namespace Tpcc
             if (checkBox1.Checked)
             {
                 n.did = int.Parse(textBox4.Text);
-                n.db = new StrongConnect("localhost",50433,"Tpcc");
+                n.db = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
             }
 			n.btn = button2;
 			n.txtBox = textBox3;
@@ -608,26 +716,25 @@ namespace Tpcc
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
             var nc = int.Parse(Clerks.Text);
-            commits = 0; rconflicts = 0; wconflicts = 0;
-            Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
+            commits = 0;rconflicts = 0;wconflicts = 0;
+            Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks" );
             for (var i = 0; i < nc; i++)
             Task.Run(()=>{
                 var f = new Form1();
                 f.ShowDialog();
             });
-            timer2 = new System.Windows.Forms.Timer();
             timer2.Interval = 600000;
-            timer2.Tick += new System.EventHandler(timer2_Tick);
             timer2.Enabled = true;
-        }
-        void timer2_Tick(object sender, EventArgs e)
+            timer2.Tick += new System.EventHandler(Report_Click);
+		}
+        void Report_Click(object sender,EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            var rdr = conn.ExecuteQuery("select count(NO_O_ID) from NEW_ORDER");
-            Console.WriteLine("New Orders: " + ((long)rdr[0][0] - 9000));
+            CloseRequests();
             Application.Exit();
         }
-        int action = -1;
+
+		int action = -1;
 		int stage = -1;
 
 		void UserChoice()
@@ -636,6 +743,7 @@ namespace Tpcc
 			stage = 0;
 			if (i<10)
 			{
+                newOrder1.fid = fid;
 				newOrder1.status = label1;
 				newOrder1.PutBlanks();
                 newOrder1.Activate();
@@ -645,6 +753,7 @@ namespace Tpcc
 			}
 			else if (i<20)
 			{
+                payment1.fid = fid;
 				payment1.PutBlanks();
 				tabControl1.SelectedIndex=3;
 				payment1.status = label1;
@@ -654,6 +763,7 @@ namespace Tpcc
 			}
 			else if (i<21)
 			{
+                orderStatus1.fid = fid;
 				orderStatus1.PutBlanks();
 				tabControl1.SelectedIndex=2;
 				orderStatus1.status = label1;
@@ -663,6 +773,7 @@ namespace Tpcc
 			}
 			else if (i<22)
 			{
+                delivery1.fid = fid;
 				delivery1.PutBlanks();
 				tabControl1.SelectedIndex=4;
 				delivery1.status = label1;
@@ -672,6 +783,7 @@ namespace Tpcc
 			}
 			else
 			{
+                stockLevel1.fid = fid;
 				stockLevel1.PutBlanks();
 				tabControl1.SelectedIndex=5;
 				stockLevel1.status = label1;
@@ -731,8 +843,8 @@ namespace Tpcc
 				label1.Text = ex.Message;
                 lock (_lock)
                 {
-                    Console.WriteLine("" + fid + " " + conn.lastreq);
-                    Console.WriteLine("   "+ex.Message);
+                    RecordResponse(ex, fid, 0);
+                    wconflicts++;
                 }
                 action = 0;
 			}
@@ -759,7 +871,7 @@ namespace Tpcc
             if (checkBox1.Checked)
             {
                 int d = int.Parse(textBox4.Text);
-                conn = new StrongConnect("localhost",50433,"Tpcc");
+                conn = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
                 new GenBase(conn).FillDistrict(int.Parse(textBox1.Text),d);
             }
             else
