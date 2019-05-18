@@ -229,11 +229,11 @@ namespace Shareable
     public class SBookmark<K,V> :Bookmark<(K,V)> where K:IComparable
     {
         public readonly SBucket<K, V> _bucket;
-        public readonly int _bpos;
+        public readonly int _bpos,D;
         public readonly SBookmark<K, V>? _parent;
         public SBookmark(SBucket<K,V> b,int bp,SBookmark<K,V>? n) :base(position(b,bp,n))
         {
-            _bucket = b; _bpos = bp; _parent = n;
+            _bucket = b; _bpos = bp; _parent = n; D = (n?.D+1)??1;
         }
         public override Bookmark<(K,V)>? Next() { return Next(this); }
         public Bookmark<(K,V)>? Previous() { return Previous(this); }

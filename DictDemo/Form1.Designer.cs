@@ -44,7 +44,11 @@
             this.button4 = new System.Windows.Forms.Button();
             this.label4 = new System.Windows.Forms.Label();
             this.button2 = new System.Windows.Forms.Button();
+            this.label3 = new System.Windows.Forms.Label();
+            this.depthBox = new System.Windows.Forms.TextBox();
+            this.pictureBox2 = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.SuspendLayout();
             // 
             // label1
@@ -68,7 +72,7 @@
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(247, 22);
+            this.label2.Location = new System.Drawing.Point(232, 19);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(15, 13);
             this.label2.TabIndex = 2;
@@ -76,7 +80,7 @@
             // 
             // textBox2
             // 
-            this.textBox2.Location = new System.Drawing.Point(276, 19);
+            this.textBox2.Location = new System.Drawing.Point(261, 16);
             this.textBox2.Name = "textBox2";
             this.textBox2.ReadOnly = true;
             this.textBox2.Size = new System.Drawing.Size(99, 20);
@@ -89,9 +93,9 @@
             this.button1.Name = "button1";
             this.button1.Size = new System.Drawing.Size(101, 24);
             this.button1.TabIndex = 4;
-            this.button1.Text = "10000";
+            this.button1.Text = "More";
             this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.Steps10000_Click);
+            this.button1.Click += new System.EventHandler(this.More_Click);
             // 
             // pictureBox1
             // 
@@ -191,7 +195,7 @@
             this.button4.TabIndex = 10;
             this.button4.Text = "Max*10";
             this.button4.UseVisualStyleBackColor = true;
-            this.button4.Click += new System.EventHandler(this.Button4_Click);
+            this.button4.Click += new System.EventHandler(this.Max10_Click);
             // 
             // label4
             // 
@@ -212,11 +216,38 @@
             this.button2.UseVisualStyleBackColor = true;
             this.button2.Click += new System.EventHandler(this.Clear_Click);
             // 
+            // label3
+            // 
+            this.label3.AutoSize = true;
+            this.label3.Location = new System.Drawing.Point(377, 20);
+            this.label3.Name = "label3";
+            this.label3.Size = new System.Drawing.Size(15, 13);
+            this.label3.TabIndex = 2;
+            this.label3.Text = "D";
+            // 
+            // depthBox
+            // 
+            this.depthBox.Location = new System.Drawing.Point(406, 17);
+            this.depthBox.Name = "depthBox";
+            this.depthBox.ReadOnly = true;
+            this.depthBox.Size = new System.Drawing.Size(99, 20);
+            this.depthBox.TabIndex = 3;
+            this.depthBox.Text = "0";
+            // 
+            // pictureBox2
+            // 
+            this.pictureBox2.Location = new System.Drawing.Point(28, 431);
+            this.pictureBox2.Name = "pictureBox2";
+            this.pictureBox2.Size = new System.Drawing.Size(747, 313);
+            this.pictureBox2.TabIndex = 7;
+            this.pictureBox2.TabStop = false;
+            this.pictureBox2.Paint += new System.Windows.Forms.PaintEventHandler(this.PictureBox2_Paint);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
+            this.ClientSize = new System.Drawing.Size(800, 773);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.button4);
             this.Controls.Add(this.textBox3);
@@ -226,9 +257,12 @@
             this.Controls.Add(this.compInsert);
             this.Controls.Add(this.memRem);
             this.Controls.Add(this.memInsert);
+            this.Controls.Add(this.pictureBox2);
             this.Controls.Add(this.pictureBox1);
             this.Controls.Add(this.button1);
+            this.Controls.Add(this.depthBox);
             this.Controls.Add(this.textBox2);
+            this.Controls.Add(this.label3);
             this.Controls.Add(this.label4);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.textBox1);
@@ -237,6 +271,7 @@
             this.Text = "Form1";
             this.Load += new System.EventHandler(this.Form1_Load);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -260,6 +295,9 @@
         private System.Windows.Forms.Button button4;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Button button2;
+        private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.TextBox depthBox;
+        private System.Windows.Forms.PictureBox pictureBox2;
     }
 }
 

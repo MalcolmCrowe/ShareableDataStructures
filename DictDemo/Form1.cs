@@ -16,6 +16,7 @@ namespace DictDemo
         // we will add instrumentation to dict
         public SDict<int, int> dict = SDict<int, int>.Empty;
         public int max; // keys will fall in range 0..max
+        public int depth=1;
         // we will build accumulators for a number of costs
         public SDict<int, decimal>
             // insert 
@@ -25,7 +26,14 @@ namespace DictDemo
             // ssearch
             compSuccessSearch, compFailedSearch;
         int rTag;
+        SDict<int, decimal>             // insert 
+            memInsertion2, compInsertion2,
+            // remove
+            memRemove2, compRemove2,
+            // ssearch
+            compSuccessSearch2, compFailedSearch2;
         public Random rnd = new Random(0);
+        float scale1, scale2;
         public int N => dict.Length ?? 0;
         public void Step()
         {
@@ -35,12 +43,14 @@ namespace DictDemo
                 dict = Remove(dict, x);
             else
                 dict = Add(dict, x);
-            textBox2.Text = "" + N;
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
             pictureBox1.Image = new Bitmap(700, 313);
+            pictureBox2.Image = new Bitmap(700, 313);
+            memInsertion2 = compInsertion2 = memRemove2
+ = compRemove2 = compSuccessSearch2 = compFailedSearch2 = SDict<int, decimal>.Empty;
             Clear();
         }
 
@@ -48,6 +58,8 @@ namespace DictDemo
         {
             max = 1000;
             Clear();
+            textBox2.Text = "" + N;
+            depthBox.Text = Depth().ToString();
         }
         private void Clear()
         {
@@ -55,41 +67,62 @@ namespace DictDemo
             {
                 textBox1.Text = max.ToString();
                 dict = SDict<int, int>.Empty;
-                memInsertion = compInsertion = memRemove = compRemove = compSuccessSearch = compFailedSearch = SDict<int, decimal>.Empty;
+                memInsertion = compInsertion = memRemove 
+                    = compRemove = compSuccessSearch = compFailedSearch = SDict<int, decimal>.Empty;
                 textBox2.Text = "0";
-                Steps10000();
+                depthBox.Text = "0";
+                More();
             }
             catch (Exception) { }
         }
 
-        private void Steps10000()
+        private void More()
         {
-            for (var i = 0; i < 10000; i++)
+            for (var i = 0; i < max; i++)
                 Step();
+            textBox2.Text = "" + N;
+            depthBox.Text = Depth().ToString();
             pictureBox1.Invalidate();
         }
-        private void Steps10000_Click(object sender, EventArgs e)
+        private void More_Click(object sender, EventArgs e)
         {
-            Steps10000();
+            More();
+            pictureBox2.Image = pictureBox1.Image;
+            pictureBox2.Invalidate();
+        }
+        int Depth()
+        {
+            depth = 1;
+            for (var b = (SBookmark<int,int>)dict.First(); b != null; b = (SBookmark<int,int>)b.Next())
+                if (b.D > depth)
+                    depth = b.D;
+            return depth;
         }
         private void PictureBox1_Paint(object sender, PaintEventArgs e)
         {
             var select = SDict<int, decimal>.Empty;
+            var select2 = SDict<int, decimal>.Empty;
+            switch (rTag)
+            {
+                case 0: select = memInsertion; select2 = memInsertion2;  break;
+                case 1: select = compInsertion; select2 = compInsertion2; break;
+                case 2: select = memRemove; select2 = memRemove2; break;
+                case 3: select = compRemove; select2 = compRemove2; break;
+                case 4: select = compSuccessSearch; select2 = compSuccessSearch2; break;
+                case 5: select = compFailedSearch; select2 = compFailedSearch2; break;
+            }
+            var scale1 = DrawGraph(select, e);
+            var pn = (float)((select2.Length ?? 0) * scale1);
+            e.Graphics.DrawLine(Pens.Black, pn, 0F, pn, 300F);
+        }
+        private decimal DrawGraph(SDict<int,decimal>select,PaintEventArgs e)
+        { 
             var display = SDict<int, decimal>.Empty;
             e.Graphics.Clear(Color.White);
             var br = Brushes.Black;
-            switch (rTag)
-            {
-                case 0: select = memInsertion; break;
-                case 1: select = compInsertion; break;
-                case 2: select = memRemove; break;
-                case 3: select = compRemove; break;
-                case 4: select = compSuccessSearch; break;
-                case 5: select = compFailedSearch; break;
-            }
             var count = select.Length??0;
             if (count == 0)
-                return;
+                return 0M;
             var xscale = 700M / count;
             var yscale = 0M;
             for (var b=select.First();b!=null;b=b.Next())
@@ -119,6 +152,7 @@ namespace DictDemo
                 var x = b.Value.Item1*1.0;
                 e.Graphics.FillRectangle(br, (float)x, 313-(float)(y / yscale), 2, 2);
             }
+            return xscale;
         }
 
         private void Radio_CheckedChanged(object sender, EventArgs e)
@@ -129,12 +163,34 @@ namespace DictDemo
             pictureBox1.Invalidate();
         }
 
-        private void Button4_Click(object sender, EventArgs e)
+        private void Max10_Click(object sender, EventArgs e)
         {
             max = max * 10;
             textBox1.Text = "" + max;
+            memInsertion2 = memInsertion;
+            compInsertion2 = compInsertion;
+            memRemove2 = memRemove;
+            compRemove2 = compRemove;
+            compSuccessSearch2 = compSuccessSearch;
+            compFailedSearch2 = compFailedSearch;
             Clear();
             pictureBox1.Invalidate();
+            pictureBox2.Invalidate();
+        }
+
+        private void PictureBox2_Paint(object sender, PaintEventArgs e)
+        {
+            var select = SDict<int, decimal>.Empty;
+            switch (rTag)
+            {
+                case 0: select = memInsertion2; break;
+                case 1: select = compInsertion2; break;
+                case 2: select = memRemove2; break;
+                case 3: select = compRemove2; break;
+                case 4: select = compSuccessSearch2; break;
+                case 5: select = compFailedSearch2; break;
+            }
+            DrawGraph(select, e);
         }
 
         SDict<int,int> Remove(SDict<int,int> d,int x)
