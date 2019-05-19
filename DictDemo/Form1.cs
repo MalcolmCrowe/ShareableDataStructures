@@ -33,7 +33,7 @@ namespace DictDemo
             // ssearch
             compSuccessSearch2, compFailedSearch2;
         public Random rnd = new Random(0);
-        float scale1, scale2;
+        decimal Y,Y2,S;
         public int N => dict.Length ?? 0;
         public void Step()
         {
@@ -111,18 +111,19 @@ namespace DictDemo
                 case 4: select = compSuccessSearch; select2 = compSuccessSearch2; break;
                 case 5: select = compFailedSearch; select2 = compFailedSearch2; break;
             }
-            var scale1 = DrawGraph(select, e);
-            var pn = (float)((select2.Length ?? 0) * scale1);
+            (S,Y) = DrawGraph(select, e);
+            var pn = (float)((select2.Length ?? 0) *S);
             e.Graphics.DrawLine(Pens.Black, pn, 0F, pn, 300F);
+            textBox3.Text = Y.ToString();
         }
-        private decimal DrawGraph(SDict<int,decimal>select,PaintEventArgs e)
+        private (decimal,decimal) DrawGraph(SDict<int,decimal>select,PaintEventArgs e)
         { 
             var display = SDict<int, decimal>.Empty;
             e.Graphics.Clear(Color.White);
             var br = Brushes.Black;
             var count = select.Length??0;
             if (count == 0)
-                return 0M;
+                return (0M,0M);
             var xscale = 700M / count;
             var yscale = 0M;
             for (var b=select.First();b!=null;b=b.Next())
@@ -130,8 +131,9 @@ namespace DictDemo
                 if (b.Value.Item1 == 0)
                     continue;
                 var x = (int)(b.Value.Item1*xscale);
-                var y = display.Contains(x) ? display[x] : 0M;
-                y += b.Value.Item2;
+                var y = b.Value.Item2;
+                if (display.Contains(x))
+                    y = display[x]*0.75M+y*0.25M;
                 display += (x, y);
             }
             for (var b=display.First();b!=null;b=b.Next())
@@ -143,16 +145,16 @@ namespace DictDemo
                     yscale = y;
             } 
             textBox3.Text = yscale.ToString();
-            yscale = yscale / 300;
+            var ys= yscale / 300;
             for (var b = display.First(); b != null; b = b.Next())
             {
                 if (b.Value.Item1 == 0)
                     continue;
                 var y = b.Value.Item2;
                 var x = b.Value.Item1*1.0;
-                e.Graphics.FillRectangle(br, (float)x, 313-(float)(y / yscale), 2, 2);
+                e.Graphics.FillRectangle(br, (float)x, 313-(float)(y / ys), 2, 2);
             }
-            return xscale;
+            return (xscale,yscale);
         }
 
         private void Radio_CheckedChanged(object sender, EventArgs e)
@@ -161,6 +163,7 @@ namespace DictDemo
             if (r.Checked)
                 rTag = int.Parse((string)r.Tag);
             pictureBox1.Invalidate();
+            pictureBox2.Invalidate();
         }
 
         private void Max10_Click(object sender, EventArgs e)
@@ -190,7 +193,8 @@ namespace DictDemo
                 case 4: select = compSuccessSearch2; break;
                 case 5: select = compFailedSearch2; break;
             }
-            DrawGraph(select, e);
+            Y2 = DrawGraph(select, e).Item2;
+            textBox4.Text = Y2.ToString();
         }
 
         SDict<int,int> Remove(SDict<int,int> d,int x)
