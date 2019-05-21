@@ -15,7 +15,7 @@ namespace Tpcc
 
 		public Deferred(int w)
 		{
-            db = new SqlConnection("Data Source=MALCOLM1;Initial Catalog=Tpcc;Integrated Security=True;Pooling=False");
+            db = new SqlConnection("Data Source=.;Initial Catalog=Tpcc;Integrated Security=True");
             db.Open();
             wid = w;
 		}
@@ -76,7 +76,6 @@ namespace Tpcc
                     else
                         skipped++;
                 tr.Commit();
-                Form1.commits++;
             } catch(Exception ex)
             {
                 Form1.RecordResponse(ex, fid, tid);
