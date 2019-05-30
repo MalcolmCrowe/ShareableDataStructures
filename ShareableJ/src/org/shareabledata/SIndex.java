@@ -183,13 +183,13 @@ public class SIndex extends SDbObject {
         return new SIndex(this, rows.Add(Key(r, cols), c));
     }
 
-    public SIndex Update(SRecord o, SCList<Variant> ok, SUpdate u, 
+    public SIndex Update(long r, SCList<Variant> ok, SUpdate u, 
             SCList<Variant> uk, long c) throws Exception {
         return new SIndex(this, 
-                rows.Remove(ok, o.uid).Add(uk, u.uid));
+                rows.Remove(ok, r).Add(uk, u.uid));
     }
 
-    public SIndex Remove(SRecord sr, long c) throws Exception {
+    public SIndex Remove(SDict<Long,Serialisable> sr, long c) throws Exception {
         return new SIndex(this, rows.Remove(Key(sr, cols), c));
     }
 
@@ -207,14 +207,16 @@ public class SIndex extends SDbObject {
         }
         return n.InsertAt(ti, 0);
     }
-
-    SCList<Variant> Key(SRecord sr, SList<Long> cols) throws Exception {
-        if (cols==null) {
-            return null;
+        SCList<Variant> Key(SDict<Long,Serialisable>f,SList<Long>cols)
+        {
+            if (cols.Length == 0)
+                return null;
+            return new SCList(f.Lookup(cols.element), Key(f, cols.next)); // not null
         }
-        return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element),true), Key(sr, cols.next));
-    }
-
+        SCList<Variant> Key(SRecord sr,SList<Long> cols)
+        {
+            return Key(sr.fields, cols);
+        }
     @Override
     public String toString() {
         var sb = new StringBuilder( "Index "+

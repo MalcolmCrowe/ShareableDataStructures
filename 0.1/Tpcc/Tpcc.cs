@@ -36,7 +36,7 @@ namespace Tpcc
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
-        static int _fid = 0;
+        static int _fid = 0,maxfid=0,maxloaded=0;
         int fid = ++_fid;
         static object _lock = new object();
 		private System.Windows.Forms.TextBox textBox3;
@@ -492,6 +492,10 @@ namespace Tpcc
 
         private void Form1_Load(object sender, System.EventArgs e)
         {
+            if (fid > maxfid)
+                Console.WriteLine("fid " + fid + " loaded at " + DateTime.Now);
+            if (fid > maxloaded)
+                maxloaded = fid;
             if (fid!=1)
                 UserChoice();
             else
@@ -503,7 +507,7 @@ namespace Tpcc
                     //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
-        //            StrongConnect.OpenRequests();
+                    StrongConnect.OpenRequests();
                 }
                 catch (Exception)
                 {
@@ -608,6 +612,7 @@ namespace Tpcc
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
             var nc = int.Parse(Clerks.Text);
+            Form1.maxfid += nc;
             commits = 0; rconflicts = 0; wconflicts = 0;
             Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
             for (var i = 0; i < nc; i++)
@@ -623,23 +628,21 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            var rdr = conn.ExecuteQuery("select count(NO_O_ID) from NEW_ORDER");
-            Console.WriteLine("New Orders: " + ((long)rdr[0][0] - 9000));
+            Console.WriteLine("Last fid=" + maxloaded);
             Application.Exit();
         }
         int action = -1;
 		int stage = -1;
-
 		void UserChoice()
 		{
-			int i = util.random(0,23);
+            int i = util.random(0,23);
 			stage = 0;
 			if (i<10)
 			{
 				newOrder1.status = label1;
 				newOrder1.PutBlanks();
                 newOrder1.Activate();
-				tabControl1.SelectedIndex=1;
+                tabControl1.SelectedIndex=1;
                 action = 1;
 				timer1.Interval = 500;
 			}
@@ -649,7 +652,7 @@ namespace Tpcc
 				tabControl1.SelectedIndex=3;
 				payment1.status = label1;
                 payment1.Activate();
-				action = 3;
+                action = 3;
 				timer1.Interval = 3000;
 			}
 			else if (i<21)
@@ -685,11 +688,12 @@ namespace Tpcc
 
 		private void timer1_Tick(object sender, System.EventArgs e)
 		{
-			timer1.Enabled = false;
-			label1.Text = "";
+            timer1.Enabled = false;
+            while (maxloaded < maxfid)
+                Thread.Sleep(1000);
+            label1.Text = "";
 			try
 			{
-				
 				switch (action)
 				{
 					case 0:

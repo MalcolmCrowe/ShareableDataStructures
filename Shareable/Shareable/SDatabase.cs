@@ -103,6 +103,8 @@ namespace Shareable
                 Console.WriteLine("Database corrupt after " + last);
                 throw e;
             }
+            var p = rd.Position;
+            var lim = rd.limit;
             return new SDatabase(rd.db,rd.Position);
         }
         protected virtual Serialisable _Get(long pos)
@@ -165,19 +167,6 @@ namespace Shareable
         public static SDatabase operator+(SDatabase d,(SDbObject,string,long)x)
         {
             return d._Add(x.Item1, x.Item2, x.Item3);
-        }
-        /// <summary>
-        /// Close() is only for testing environments!
-        /// </summary>
-        public void Close()
-        {
-            lock (_lock)
-            {
-                var f = dbfiles[name];
-                databases = databases-name;
-                dbfiles = dbfiles-name;
-                f.Close();
-            }
         }
         public string Name(long uid)
         {
@@ -247,13 +236,26 @@ namespace Shareable
             if (u.uid >= STransaction._uid)
                 obs += (u.uid, u);
             obs += (u.table, st);
+            var checkoldkeys = (u.oldfields != SDict<long, Serialisable>.Empty);
+            var fs = u.fields; // start with the new ones
+            if (checkoldkeys)
+                // Make a full list of all old key fields
+                // replace the old fields that were different
+                for (var b = u.oldfields.First(); b != null; b = b.Next())
+                    fs += b.Value;
+                // We will use fs to compute the old keys
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var x = (SIndex)obs[b.Value.Item1];
-                var ok = x.Key(u.oldrec, x.cols);
                 var uk = x.Key(u, x.cols);
-                x.Check(this, u, ok.CompareTo(uk)==0);
-                obs += (x.uid, x.Update(u.oldrec,ok,u,uk,c));
+                if (checkoldkeys)
+                {
+                    var ok = x.Key(fs, x.cols);
+                    x.Check(this, u, ok.CompareTo(uk) == 0);
+                    obs += (x.uid, x.Update(u.defpos, ok, u, uk, c));
+                }
+                else
+                    obs += (x.uid, x.Update(u.defpos, uk, u, uk, c));
             }
             return New(obs, ro, c);
         }
@@ -266,10 +268,10 @@ namespace Shareable
             for (var b = st.indexes.First(); b != null; b = b.Next())
             {
                 var px = (SIndex)obs[b.Value.Item1];
-                obs += (px.uid, px - (d.oldrec, c));
+                obs += (px.uid, px - (d.oldfields, c));
                 if (!px.primary)
                     continue;
-                var k = px.Key(d.oldrec, px.cols);
+                var k = px.Key(d.oldfields, px.cols);
                 for (var ob = obs.PositionAt(0); ob != null; ob = ob.Next()) // don't bother with system tables
                     if (ob.Value.Item2 is STable ot)
                         for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
@@ -279,13 +281,9 @@ namespace Shareable
                                 throw new StrongException("Referential constraint: illegal delete");
                         }
             }
-            var ro = role;
-            if (d.oldrec != null)
-            {
-                st = st.Remove(d.oldrec.Defpos);
-                obs += (d.table, st);
-            }
-            return New(obs, ro, c);
+            st = st.Remove(d.delpos);
+            obs += (d.table, st);
+            return New(obs, role, c);
         }
         public SDatabase Install(SAlter a, long c)
         {
@@ -382,9 +380,9 @@ namespace Shareable
             rdr.db = tr;
             return tr;
         }
-        public virtual SDatabase MaybeAutoCommit()
+        public virtual (SDatabase,long) MaybeAutoCommit(int c)
         {
-            return this;
+            return (this,curpos);
         }
         public virtual SDatabase Rollback()
         {
@@ -409,10 +407,6 @@ namespace Shareable
         public virtual SDatabase Rdc(long uid)
         {
             return this;
-        }
-        public virtual STable? GetTable(string tn)
-        {
-            return role.globalNames.Contains(tn)?(STable)objects[role.globalNames[tn]]:null;
         }
         public virtual SIndex? GetPrimaryIndex(long t)
         {

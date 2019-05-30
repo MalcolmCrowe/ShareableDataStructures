@@ -81,6 +81,7 @@ namespace Test
             CheckResults(1,2, "select from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             conn.ExecuteNonQuery("delete A where C=19");
             CheckResults(1, 3, "select from A", "[{B:2,C:3,D:'TwentyThree'}]");
+            CheckExceptionNonQuery(1, 4, "insert A values(2,3,'What?')","Duplicate Key constraint violation");
             Rollback();
             if (!commit)
             {

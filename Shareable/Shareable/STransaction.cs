@@ -7,6 +7,7 @@ namespace Shareable
         // uids above this number are for uncommitted objects in this transaction
         // Note: uncommitted objects of any type are added to tr.objects 
         public static readonly long _uid = 0x4000000000000000;
+        static object lck = new object();
         public readonly long uid;
         public readonly bool autoCommit;
         public readonly SDict<long, bool> readConstraints;
@@ -43,14 +44,6 @@ namespace Shareable
             uid = tr.uid;
             readConstraints = tr.readConstraints;
         }
-        public static STransaction operator+(STransaction tr,long uid)
-        {
-            return new STransaction(tr, uid);
-        }
-        public static STransaction operator+(STransaction tr, string s)
-        {
-            return (STransaction)tr.New(tr.objects, tr.role + (tr.uid, s), tr.curpos);
-        }
         public static STransaction operator +(STransaction tr, (long,SDbObject) s)
         {
             return (STransaction)tr.New(tr.objects+s, tr.role, tr.curpos);
@@ -65,20 +58,28 @@ namespace Shareable
                 return objects[pos];
             return base._Get(pos);
         }
-        public SDatabase Commit()
+        public (SDatabase,long) Commit(int cid)
         {
             SDatabase db = databases[name];
+            var ts = db.curpos; // updated below
             var f = new Writer(dbfiles[name]);
             var rdr = new Reader(this);
+            var pro = -1L;
             var tb = objects.PositionAt(_uid); // start of the work we want to commit
-            var since = rdr.GetAll(f.Length);
+            for (var pb = tb; pb != null; pb = pb.Next())
+                if (pb.Value.Item2 is SRecord pr)
+                {
+                    pro = pr.table;
+                    break;
+                }
+            var since = rdr.GetAll(f.Length,rdr.limit);
             for (var i = 0; i < since.Length; i++)
             {
                 var ck = since[i].Check(readConstraints);
                 if (ck!=0)
                 {
                     rconflicts++;
-                    throw new TransactionConflict("Transaction conflict "+ck+" with read");
+                    throw new TransactionConflict(pro,ck,0,"Transaction conflict "+ck+" with read");
                 }
                 for (var b = tb; b != null; b = b.Next())
                 {
@@ -86,27 +87,28 @@ namespace Shareable
                     if (ck!=0)
                     {
                         wconflicts++;
-                        throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
+                        throw new TransactionConflict(pro,ck,b.Value.Item1,"Transaction conflict " + ck + " on " + b.Value);
                     }
                 }
-            }  
-            if (tb!=null)
-                lock (f)
+            }
+            if (tb != null)
+                lock (f.file)
                 {
-                    db = databases[name];
+                    db = databases[name].Load();
+                    ts = db.curpos;
                     for (var b = tb; b != null; b = b.Next())
                         if (b.Value.Item2 is SRecord sr)
                             sr.CheckConstraints(db, (STable)objects[sr.table]);
                         else if (b.Value.Item2 is SDelete sd)
                             sd.CheckConstraints(db, (STable)objects[sd.table]);
-                    since = rdr.GetAll(f.Length);
+                    since = rdr.GetAll(f.Length, rdr.limit);
                     for (var i = 0; i < since.Length; i++)
                     {
                         var ck = since[i].Check(readConstraints);
                         if (ck != 0)
                         {
                             rconflicts++;
-                            throw new TransactionConflict("Transaction conflict " + ck + " with read");
+                            throw new TransactionConflict(pro, ck, 0, "Transaction conflict " + ck + " with read");
                         }
                         for (var b = tb; b != null; b = b.Next())
                         {
@@ -114,18 +116,17 @@ namespace Shareable
                             if (ck != 0)
                             {
                                 wconflicts++;
-                                throw new TransactionConflict("Transaction conflict " + ck + " on " + b.Value);
+                                throw new TransactionConflict(pro, ck, b.Value.Item1, "Transaction conflict " + ck + " on " + b.Value);
                             }
                         }
                     }
-                    var ts = f.Length;
                     db = f.Commit(db, this);
                     f.CommitDone();
                     Install(db);
-  //                 Console.WriteLine("Commit " + ts + " to " + db.curpos+ " "+f.Length);
+                    //                Console.WriteLine("Commit " + ts + " to " + db.curpos+ " "+f.Length);
                 }
             commits++;
-            return db;
+            return (db,ts);
         }
         /// <summary>
         /// We will single-quote transaction-local uids
@@ -162,9 +163,9 @@ namespace Shareable
         {
             return new STransaction(this,uid);
         }
-        public override SDatabase MaybeAutoCommit()
-        {
-            return autoCommit ? Commit() : this;
+        public override (SDatabase,long) MaybeAutoCommit(int c)
+        { 
+            return autoCommit ? Commit(c) : (this,curpos);
         }
         public override SDatabase Rollback()
         {
@@ -173,6 +174,7 @@ namespace Shareable
     }
     public class TransactionConflict: StrongException
     {
-        public TransactionConflict(string m):base(m) { }
+        public TransactionConflict(long pr, long ck, long ob, string m)
+            : base(m) { }
     }
 }

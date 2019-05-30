@@ -1615,6 +1615,13 @@ namespace Shareable
             f.uids = f.uids + (s.uid, uid);
             f.WriteByte((byte)s.type);
         }
+        public override int CompareTo(object ob)
+        {
+            var that = ob as SDbObject;
+            if (that != null)
+                return uid.CompareTo(that.uid);
+            return base.CompareTo(ob);
+        }
         public override bool isValue => false;
         public virtual long Affects => uid;
         public new static SDbObject Get(ReaderBase f)
@@ -2985,6 +2992,13 @@ namespace Shareable
             }
             fields = a;
         }
+        public override int CompareTo(object ob)
+        {
+            var that = ob as SRecord;
+            if (that != null)
+                return table.CompareTo(that.table);
+            return base.CompareTo(ob);
+        }
         public new static SRecord Get(ReaderBase f)
         {
             return new SRecord(Types.SRecord, f);
@@ -3158,25 +3172,50 @@ namespace Shareable
     public class SUpdate : SRecord
     {
         public readonly long defpos;
-        public readonly SRecord? oldrec;
+        public readonly SDict<long,Serialisable> oldfields; // for old keys if needed
         public SUpdate(STransaction tr,SRecord r,SDict<long,Serialisable>u) 
             : base(Types.SUpdate,tr,r.table,_Merge(tr,r,u))
         {
             defpos = r.Defpos;
-            oldrec = r;
+            var tb = (STable)tr.objects[r.table];
+            var ofs = SDict<long,Serialisable>.Empty;
+            for (var b = tb.indexes.First(); b != null; b = b.Next())
+                for (var c = ((SIndex)tr.objects[b.Value.Item1]).cols.First(); c != null; c = c.Next())
+                {
+                    var ov = r.fields[c.Value];
+                    var nv = fields[c.Value];
+                    if (ov.CompareTo(nv)!=0)
+                        ofs += (c.Value, ov);
+                }
+            oldfields = ofs;
         }
         public override long Defpos => defpos;
         public SUpdate(SDatabase db,SUpdate r, Writer f) : base(db,r,f)
         {
             defpos = f.Fix(r.defpos);
-            oldrec = r.oldrec;
+            oldfields = r.oldfields;
             f.PutLong(defpos);
+            f.PutInt(oldfields.Length ?? 0);
+            for (var b=oldfields.First();b!=null;b=b.Next())
+            {
+                f.PutLong(b.Value.Item1);
+                b.Value.Item2.Put(f);
+            }
         }
         SUpdate(ReaderBase f) : base(Types.SUpdate,f)
         {
-           defpos = f.GetLong();
-           if (f is Reader)
-                oldrec = f.db.Get(defpos);
+            defpos = f.GetLong();
+            var ofs = SDict<long, Serialisable>.Empty;
+            if (!(f is SocketReader))
+            {
+                var n = f.GetInt();
+                for (var i = 0; i < n; i++)
+                {
+                    var u = f.GetLong();
+                    ofs += (u, f._Get());
+                }
+            }
+            oldfields = ofs;
         }
         static SDict<long,Serialisable> _Merge(STransaction tr,SRecord r,
             SDict<long,Serialisable> us)
@@ -3203,12 +3242,21 @@ namespace Shareable
                                 throw new Exception("Check condition fails");
                             break;
                     }
-            for (var b = st.indexes.First(); b != null; b = b.Next())
+            if (oldfields != SDict<long, Serialisable>.Empty)
             {
-                var x = (SIndex)db.objects[b.Value.Item1];
-                var ok = x.Key(oldrec, x.cols);
-                var uk = x.Key(this, x.cols);
-                x.Check(db, this, ok.CompareTo(uk) == 0);
+                // Make a full list of all old key fields
+                var ofs = fields; // start with the new ones
+                // replace the old fields that were different
+                for (var b = oldfields.First(); b != null; b = b.Next())
+                    ofs += b.Value;
+                // Now use ofs to compute the old keys
+                for (var b = st.indexes.First(); b != null; b = b.Next())
+                {
+                    var x = (SIndex)db.objects[b.Value.Item1];
+                    var ok = x.Key(ofs, x.cols);
+                    var uk = x.Key(this, x.cols);
+                    x.Check(db, this, ok.CompareTo(uk) == 0);
+                }
             }
         }
         public override long Conflicts(SDatabase db, STransaction tr,Serialisable that)
@@ -3225,10 +3273,21 @@ namespace Shareable
             var sb = new StringBuilder();
             sb.Append(Uid());
             sb.Append(" Update of ");
-            if (oldrec != null)
-                oldrec.Append(sb);
+            sb.Append(STransaction.Uid(defpos));
+            if (oldfields == SDict<long, Serialisable>.Empty)
+                sb.Append(" keys unchanged");
             else
-                sb.Append(STransaction.Uid(defpos));
+            {
+                sb.Append(" (old key fields ");
+                var cm = "";
+                for (var b=oldfields.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm);cm = ",";
+                    sb.Append(STransaction.Uid(b.Value.Item1));
+                    sb.Append(':'); sb.Append(b.Value.Item2);
+                }
+                sb.Append(')');
+            }
             sb.Append(" for "); sb.Append(STransaction.Uid(table));
             Append(sb);
             return sb.ToString();
@@ -3269,25 +3328,42 @@ namespace Shareable
     {
         public readonly long table;
         public readonly long delpos;
-        public readonly SRecord? oldrec;
+        public readonly SDict<long,Serialisable> oldfields;
         public SDelete(STransaction tr, SRecord or) : base(Types.SDelete, tr)
         {
             table = or.table;
             delpos = or.Defpos;
-            oldrec = or;
+            oldfields = or.fields;
         }
         public SDelete(SDelete r, Writer f) : base(r, f)
         {
             table = f.Fix(r.table);
             delpos = f.Fix(r.delpos);
-            oldrec = r.oldrec;
+            oldfields = r.oldfields;
             f.PutLong(table);
             f.PutLong(delpos);
+            f.PutInt(oldfields.Length ?? 0);
+            for (var b = oldfields.First(); b != null; b = b.Next())
+            {
+                f.PutLong(b.Value.Item1);
+                b.Value.Item2.Put(f);
+            }
         }
         SDelete(ReaderBase f) : base(Types.SDelete, f)
         {
             table = f.GetLong();
             delpos = f.GetLong();
+            var ofs = SDict<long, Serialisable>.Empty;
+            if (!(f is SocketReader))
+            {
+                var n = f.GetInt();
+                for (var i = 0; i < n; i++)
+                {
+                    var u = f.GetLong();
+                    ofs += (u, f._Get());
+                }
+            }
+            oldfields = ofs;
         }
         public new static SDelete Get(ReaderBase f)
         {
@@ -3301,7 +3377,7 @@ namespace Shareable
                 var px = (SIndex)db.objects[b.Value.Item1];
                 if (!px.primary)
                     continue;
-                var k = px.Key(oldrec, px.cols);
+                var k = px.Key(oldfields, px.cols);
                 for (var ob = db.objects.PositionAt(0); ob != null; ob = ob.Next()) // don't bother with system tables
                     if (ob.Value.Item2 is STable ot)
                         for (var ox = ot.indexes.First(); ox != null; ox = ox.Next())
@@ -3483,15 +3559,15 @@ namespace Shareable
         {
             return x.Add(t.Item1, t.Item2);
         }
-        public SIndex Update(SRecord o,SCList<Variant> ok,SUpdate u, SCList<Variant>uk, long c)
+        public SIndex Update(long d,SCList<Variant> ok,SUpdate u, SCList<Variant>uk, long c)
         {
-            return new SIndex(this, rows-(ok,o.uid)+(uk, u.uid));
+            return new SIndex(this, rows-(ok,d)+(uk, u.uid));
         }
-        protected SIndex Remove(SRecord sr,long c)
+        protected SIndex Remove(SDict<long,Serialisable> sr,long c)
         {
             return new SIndex(this, rows-(Key(sr, cols),c));
         }
-        public static SIndex operator-(SIndex x,(SRecord,long) a)
+        public static SIndex operator-(SIndex x,(SDict<long,Serialisable>,long) a)
         {
             return x.Remove(a.Item1, a.Item2);
         }
@@ -3502,11 +3578,15 @@ namespace Shareable
             return Info(tb, cols.next,fkey)+(new TreeInfo<Serialisable>( // not null
                 tb.cols.Lookup(cols.element), (cols.Length!=1 || fkey)?'A':'D', 'D'), 0);
         }
-        internal SCList<Variant> Key(SRecord sr,SList<long> cols)
+        internal SCList<Variant> Key(SDict<long,Serialisable>f,SList<long>cols)
         {
             if (cols.Length == 0)
                 return SCList<Variant>.Empty;
-            return new SCList<Variant>(new Variant(sr.fields.Lookup(cols.element)), Key(sr, cols.next)); // not null
+            return new SCList<Variant>(new Variant(f.Lookup(cols.element)), Key(f, cols.next)); // not null
+        }
+        internal SCList<Variant> Key(SRecord sr,SList<long> cols)
+        {
+            return Key(sr.fields, cols);
         }
         public override string ToString()
         {
@@ -3676,7 +3756,8 @@ namespace Shareable
                 case Types.SName: s = SDbObject.Get(this); break;
                 case Types.SArg: s = new SArg(this); break;
                 case Types.SDropIndex: s = new SDropIndex(this); break;
-                default: s = Serialisable.Null; break;
+                default:
+                   s = Serialisable.Null; break;
             }
             return s;
         }
@@ -3694,11 +3775,19 @@ namespace Shareable
         /// <param name="pos"></param>
         /// <param name="max"></param>
         /// <returns></returns>
-        public SDbObject[] GetAll(long max)
+        public SDbObject[] GetAll(long max,long limit)
         {
             var r = new List<SDbObject>();
-            while (Position < max)
-                r.Add((SDbObject)_Get());
+            for (var p =Position; p < max && p<limit; p=Position) // will have moved on
+            {
+                var s = _Get();
+                if (s==Serialisable.Null)
+                {
+                    Console.WriteLine("GetAll got Null at " + p + " with max=" + max);
+                    break;
+                }
+                r.Add((SDbObject)s);
+            }
             return r.ToArray();
         }
         public Serialisable Lookup(long pos)
@@ -3717,6 +3806,7 @@ namespace Shareable
             {
                 file.Seek(s, SeekOrigin.Begin);
                 buf.len = file.Read(buf.buf, 0, m);
+                buf.pos = 0;
             }
             buf.start = s;
             return buf.len>0;

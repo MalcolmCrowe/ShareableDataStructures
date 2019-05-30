@@ -338,15 +338,22 @@ public class SDatabase {
             obs = obs.Add(u.uid, u);
         var st = ((STable)obs.Lookup(u.table)).Add(u);
         obs = obs.Add(u.table, st);
+        var fs = u.fields;
+        if (u.oldfields!=null)
+            for (var b = u.oldfields.First();b!=null;b=b.Next())
+                fs = fs.Add(b.getValue().key,b.getValue().val);
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            var ok = x.Key(u.oldrec,x.cols);
             var uk = x.Key(u, x.cols);
-            x.Check(this,u,ok.compareTo(uk)==0);
-            obs = obs.Add(x.uid, x.Update(u.oldrec, ok,u,uk, c));
-            if (x.references == u.table && !x.Contains(u))
-                throw new Exception("Referential constraint");
+            if (u.oldfields!=null)
+            {
+                var ok = x.Key(fs,x.cols);
+                x.Check(this,u,ok.compareTo(uk)==0);
+                obs = obs.Add(x.uid, x.Update(u.defpos, ok,u,uk, c));
+            }
+            else
+                obs = obs.Add(x.uid,x.Update(u.defpos,uk,u,uk,c));
         }
         return New(obs, ro, c);
     }
@@ -359,10 +366,10 @@ public class SDatabase {
         if (st.indexes!=null)
         for (var b = st.indexes.First(); b != null; b = b.Next()) {
             var x = (SIndex) obs.Lookup(b.getValue().key);
-            obs = obs.Add(x.uid, x.Remove(d.oldrec, p));
+            obs = obs.Add(x.uid, x.Remove(d.oldfields, p));
             if (!x.primary)
                 continue;
-            var k = x.Key(d.oldrec,x.cols);
+            var k = x.Key(d.oldfields,x.cols);
             for (var ob = obs.PositionAt(0L); ob != null; ob = ob.Next()) // don't bother with system tables
                 if (ob.getValue().val instanceof STable)
                 {
@@ -376,11 +383,8 @@ public class SDatabase {
                 }
         }
         var ro = role;
-        if (d.oldrec!=null)
-        {
-            st = st.Remove(d.oldrec.Defpos());
-            obs = obs.Add(d.table, st);
-        }
+        st = st.Remove(d.delpos);
+        obs = obs.Add(d.table, st);
         return New(obs, ro, p);
     }
 
@@ -388,8 +392,8 @@ public class SDatabase {
         return new STransaction(databases.get(name), rdr, auto);
     }
 
-    public SDatabase MaybeAutoCommit() throws Exception {
-        return this;
+    public SSlot<SDatabase,Long> MaybeAutoCommit() throws Exception {
+        return new SSlot(this,curpos);
     }
 
     public SDatabase Rollback() {

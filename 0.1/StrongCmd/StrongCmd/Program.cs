@@ -96,7 +96,7 @@ namespace StrongCmd
                         }
                         else
                         {
-                            if (db.inTransaction)
+                            if (db.inTransaction>0)
                                 Console.Write("SQL-T>");
                             else
                                 Console.Write("SQL> ");
@@ -170,7 +170,7 @@ namespace StrongCmd
                         switch (strlow)
                         {
                             case "begin":
-                                if (db.inTransaction)
+                                if (db.inTransaction>0)
                                 {
                                     Console.WriteLine("Transaction already started");
                                     continue;
@@ -178,7 +178,7 @@ namespace StrongCmd
                                 db.BeginTransaction();
                                 continue;
                             case "rollback":
-                                if (!db.inTransaction)
+                                if (db.inTransaction==0)
                                 {
                                     Console.WriteLine("No current transaction");
                                     continue;
@@ -186,7 +186,7 @@ namespace StrongCmd
                                 db.Rollback();
                                 continue;
                             case "commit":
-                                if (!db.inTransaction)
+                                if (db.inTransaction==0)
                                 {
                                     Console.WriteLine("No current transaction");
                                     continue;
@@ -202,9 +202,9 @@ namespace StrongCmd
                     catch (ServerException e)
                     {
                         Console.WriteLine(e.Message);
-                        if (db.inTransaction)
+                        if (db.inTransaction>0)
                             Console.WriteLine("Transaction aborted by server exception");
-                        db.inTransaction = false;
+                        db.inTransaction = 0;
                         lasterr = e;
                         if (!interactive)
                             break;
