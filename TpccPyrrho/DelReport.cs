@@ -2,7 +2,8 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Drawing;
-using Npgsql;
+using System.Data;
+using Pyrrho;
 using System.Windows.Forms;
 
 namespace Tpcc
@@ -16,40 +17,31 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public Form1 form;
+        public Form1 form;
 		public Label status;
 		public int wid = 1;
 		public int carid;
-        public int fid, tid;
         public bool FetchCarrier(ref string mess)
         {
             var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc";
-            Form1.RecordRequest(cmd, fid, tid);
-            var s = cmd.ExecuteReader();
-            try
-            {
-                var r = s.Read();
-                if (r)
-                {
-                    Set(3, (int)s[0]);
-                    Set(4, (int)s[1]);
-                }
-                return !r;
+            cmd.CommandText = "select dl_done,dl_skipped from delivery where dl_w_id=" + wid + " and dl_carrier_id=" + carid + " order by dl_id desc";
+            var rdr = cmd.ExecuteReader();
+            try { 
+                if (!rdr.Read())
+                    return true;
+                Set(3, (int)(long)rdr[0]);
+                Set(4, (int)(long)rdr[1]);
             }
-            catch (Exception)
+            finally
             {
-                form.Rollback();
-            } finally
-            {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
 
-		public DelReport(Form1 fm,int w)
+		public DelReport(Form1 f,int w)
 		{
-            form = fm;
+            form = f;
             wid = w;
 			// This call is required by the Windows.Forms Form Designer.
 			InitializeComponent();
@@ -102,9 +94,11 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Form1.RecordResponse(ex, fid, tid);
-                Form1.rconflicts++;
-			}
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
+            }
 			SetCurField(curField);
 			status.Text = s;
 			Invalidate(true);

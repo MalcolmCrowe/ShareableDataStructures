@@ -6,7 +6,7 @@ using System.ComponentModel;
 using System.Windows.Forms;
 using System.Threading;
 using System.Data;
-using Npgsql;
+using Pyrrho;
 using System.Net.Sockets;
 
 namespace Tpcc
@@ -40,10 +40,9 @@ namespace Tpcc
         decimal total;
         bool allhome = true;
         public int activewh = 1;
-        public Form1 form;
         public Button btn;
         public TextBox txtBox;
-        public int fid, tid;
+        public Form1 form;
         public class OrderLine
         {
             public int ol_supply_w_id;
@@ -54,14 +53,13 @@ namespace Tpcc
             public int ol_quantity;
             public decimal ol_amount;
         }
-        bool Check(NpgsqlConnection c)
+        bool Check(IDbCommand c)
         {
             return false;
         }
         public void Multiple()
         {
             int Tcount = 0;
-            Console.WriteLine(DateTime.Now.ToString());
             while (Tcount++ < 2000)
             {
                 try
@@ -73,57 +71,71 @@ namespace Tpcc
                 {
                     throw e;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    form.Rollback();
-                    Form1.wconflicts++;
+                    var s = ex.Message;
+                        Form1.wconflicts++;
                 }
             }
-            Console.WriteLine(DateTime.Now.ToString());
+        }
+        bool ExecNQ(IDbCommand cmd)
+        {
+            try
+            {
+                form.conn.Act(cmd.CommandText);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                var s = ex.Message;
+                    Form1.wconflicts++;
+            }
+            return true;
         }
         bool FetchCustomer(ref string mess)
         {
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select C_DISCOUNT,C_LAST,C_CREDIT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
-            var s = cmd.ExecuteReader();
+                cmd.CommandText = "select c_discount,c_last,c_credit from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
+            //			mess=cmd.CommandText;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                Check(cmd);
+                if (!rdr.Read())
                 {
                     mess = "No customer " + cid;
-                    s.Close();
                     return true;
                 }
-                Set(3, (string)s[1]);
-                Set(4, (string)s[2]);
-                c_discount = util.GetDecimal(s[0]);
+                Set(3, (string)rdr[1]);
+                Set(4, (string)rdr[2]);
+                c_discount = (decimal)rdr[0];
                 Set(5, c_discount.ToString("F4").Substring(1));
             }
-            catch (Exception)
+            catch(Exception)
             {
                 form.Rollback();
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
 		}
         bool FetchDistrict(ref string mess)
         {
+            form.BeginTransaction();
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select D_TAX,D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
-            var s = cmd.ExecuteReader();
+                cmd.CommandText = "select d_tax,d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
+            //		mess=cmd.CommandText;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                 {
                     mess = "No District " + did;
-                    s.Close();
                     return true;
                 }
-                d_tax = (decimal)s[0];
-                o_id = (int)s[1];
+                var o = rdr[0];
+                d_tax = (decimal)o;
+                o_id = (int)(long)rdr[1];
                 Set(6, o_id);
                 Set(132, DateTime.Now.ToString());
             }
@@ -133,17 +145,19 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            cmd.CommandText = "select W_TAX from WAREHOUSE where W_ID=" + wid;
-            s = cmd.ExecuteReader();
-            try {
-                if (!s.Read())
+            cmd.CommandText = "select w_tax from warehouse where w_id=" + wid;
+            //		mess=cmd.CommandText;
+            rdr = cmd.ExecuteReader();
+            try
+            {
+                if (!rdr.Read())
                 {
                     mess = "No warehouse " + wid;
                     return true;
                 }
-                w_tax = (decimal)s[0];
+                w_tax = (decimal)rdr[0];
                 Set(8, w_tax.ToString("F4").Substring(1));
                 Set(9, d_tax.ToString("F4").Substring(1));
             }
@@ -153,27 +167,29 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            cmd.CommandText = "update DISTRICT set D_NEXT_O_ID=" + (o_id + 1) + " where D_W_ID=" + wid + " and D_ID=" + did;
-            Form1.RecordRequest(cmd, fid, tid);
-            cmd.ExecuteNonQuery();
+            cmd.CommandText = "update district set d_next_o_id=" + (o_id + 1) + " where d_w_id=" + wid + " and d_id=" + did;
+            //		mess=cmd.CommandText;
+            if (ExecNQ(cmd))
+                return true;
             allhome = true;
             return false;
         }
 		bool DoOLCount(ref string mess)
 		{
-			Set(7,ol_cnt);
+            Set(7, ol_cnt);
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "insert into \"ORDER\"(O_ID,O_D_ID,O_W_ID,O_C_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL)"+
-                    "values(" + o_id + "," + did + "," + wid + "," + cid + ",'" + 
-                    DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? "1" : "0") + ")";
-            Form1.RecordRequest(cmd, fid, tid);
-            cmd.ExecuteNonQuery();
-			cmd.CommandText = "insert into NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+o_id+","+did+","+wid+")";
-            Form1.RecordRequest(cmd, fid, tid);
-            cmd.ExecuteNonQuery();
+            cmd.CommandText = "insert into \"ORDER\"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)" +
+                "values(" + o_id + "," + did + "," + wid + "," + cid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? 1 : 0) + ")";
+            //		mess=cmd.CommandText;
+            if (ExecNQ(cmd))
+                return true;
+            cmd.CommandText = "insert into new_order(no_o_id,no_d_id,no_w_id)values(" +
+                o_id + "," + did + "," + wid + ")";
+            //		mess=cmd.CommandText;
+            if (ExecNQ(cmd))
+                return true;
             return false;
 		}
 
@@ -187,19 +203,21 @@ namespace Tpcc
             OrderLine a = ols[j];
             int k = 10 + j * 8;
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select I_PRICE,I_NAME,I_DATA from ITEM where I_ID=" + a.oliid;
-            var s = cmd.ExecuteReader();
+                cmd.CommandText = "select i_price,i_name,i_data from item where i_id=" + a.oliid;
+            //		mess=cmd.CommandText;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                 {
                     mess = "No such item " + a.oliid;
                     return true;
                 }
-                i_price = (decimal)s[0];
+                i_price = (decimal)rdr[0];
                 a.ol_price = i_price;
-                i_name = (string)s[1];
-                i_data = (string)s[2];
+                i_name = (string)rdr[1];
+                i_data = (string)rdr[2];
+                Set(k, a.ol_supply_w_id);
+                Set(k + 1, String.Format("{0,6}", a.oliid));
             }
             catch (Exception)
             {
@@ -207,34 +225,37 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            Set(k, a.ol_supply_w_id);
-            Set(k + 1, String.Format("{0,6}", a.oliid));
             return false;
         }
         bool FetchItemData2(int j, ref string mess)
         {
             OrderLine a = ols[j];
             int k = 10 + j * 8;
-            string ds = "0" + did;
-            if (ds.Length > 2)
-                ds = ds.Substring(1);
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select S_QUANTITY,S_DIST_" + ds + ",S_DATA from STOCK where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id;
-            var s = cmd.ExecuteReader();
+                string ds = "0" + did;
+                if (ds.Length > 2)
+                    ds = ds.Substring(1);
+                cmd.CommandText = "select s_quantity,s_dist_" + ds + ",s_data from stock where s_i_id=" + a.oliid + " and s_w_id=" + a.ol_supply_w_id;
+            //		mess=cmd.CommandText;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                 {
                     mess = "no such stock item " + a.oliid + " in " + a.ol_supply_w_id;
                     return true;
                 }
                 Set(k + 2, i_name);
-                s_quantity = (int)(decimal)s[0];
+                object o = rdr[0];
+                s_quantity = 0;
+                if (o is long)
+                    s_quantity = (int)(long)o;
+                else if (o is decimal)
+                    s_quantity = (int)(decimal)o;
                 Set(k + 4, s_quantity);
                 a.s_quantity = s_quantity;
-                sdata = (string)s[2];
+                sdata = (string)rdr[2];
             }
             catch (Exception)
             {
@@ -242,14 +263,13 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             bg = "G";
             if (sdata.IndexOf("ORIGINAL") >= 0 && i_data.IndexOf("ORIGINAL") >= 0)
                 bg = "B";
             Set(k + 5, bg);
-            Set(k + 6, String.Format("${0,6:F2}", i_price));
-            return false;
+            Set(k + 6, String.Format("${0,6:F2}", i_price)); return false;
         }
 		bool DoOLQuantity(int j,ref string mess)
 		{
@@ -288,14 +308,15 @@ namespace Tpcc
                     if (s_quantity < 10)
                         s_quantity += 91;
                     var cmd = form.conn.CreateCommand();
-                    cmd.Transaction = form.trans;
-                    cmd.CommandText = "update STOCK set S_QUANTITY=" + s_quantity +" where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id;
-                    Form1.RecordRequest(cmd, fid, tid);
-                    cmd.ExecuteNonQuery();
-                    cmd.CommandText="insert into ORDER_LINE(OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER,OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT)values(" +
-                            o_id + "," + did + "," + wid + "," + (j + 1) + "," + a.oliid + "," + a.ol_supply_w_id + "," + a.ol_quantity + "," + a.ol_amount + ")";
-                    Form1.RecordRequest(cmd, fid, tid);
-                    cmd.ExecuteNonQuery();
+                    cmd.CommandText = "update stock set s_quantity=" + s_quantity + " where s_i_id=" + a.oliid + " and s_w_id=" + a.ol_supply_w_id;
+                    //				mess=cmd.CommandText;
+                    if (ExecNQ(cmd))
+                        return false;
+                    cmd.CommandText = "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(" +
+                        o_id + "," + did + "," + wid + "," + (j + 1) + "," + a.oliid + "," + a.ol_supply_w_id + "," + a.ol_quantity + "," + a.ol_amount + ")";
+                    //				mess = cmd.CommandText;
+                    if (ExecNQ(cmd))
+                        return false;
                 }
                 mess = "OKAY";
                 int rbk = util.random(1, 100);
@@ -308,7 +329,6 @@ namespace Tpcc
                 {
                     form.Commit();
                     Form1.commits++;
-                    form.trans = null;
                 }
                 // Phase 3 display the results
                 Set(130, "OKAY");
@@ -316,8 +336,9 @@ namespace Tpcc
             }
             catch (Exception ex)
             {
-                Set(130, ex.Message);
-                throw ex;
+                var s = ex.Message;
+                Set(130, s);
+                    Form1.wconflicts++;
             }
             return done;
         }
@@ -354,8 +375,6 @@ namespace Tpcc
 			GetData();
 			count = 0;
 			mess = "OKAY";
-            form.BeginTransaction();
-            tid = ++Form1._tid;
 			//		Invalidate(true);
 			//		Thread.Sleep(1000);
 			// Phase 2 (re)start the transaction
@@ -378,10 +397,10 @@ namespace Tpcc
 				DoTotal();
 				if (DoCommit(ref mess))
 					break;
-                bad:
-                    form.Rollback();
-                    Set(130,mess);
-				    Invalidate(true);
+			bad:
+                form.Rollback();
+                Set(130,mess);
+				Invalidate(true);
 			}
 			Invalidate(true);
 			if (btn!=null)
@@ -398,15 +417,13 @@ namespace Tpcc
 				GetData();
 				count = 0;
 				mess = "OKAY";
-                if (stage == 0)
-                    stage++;
-                form.BeginTransaction();
-                tid = ++Form1._tid;
-            }
-        //		Invalidate(true);
-        //		Thread.Sleep(1000);
-        // Phase 2 (re)start the transaction
-        again: count++;
+				if (stage==0)
+					stage++;
+			}
+			//		Invalidate(true);
+			//		Thread.Sleep(1000);
+			// Phase 2 (re)start the transaction
+			again: count++;
 			if (count>=1000)
 				goto bad;
 			if (stage<0 || stage==1)
@@ -492,16 +509,16 @@ namespace Tpcc
 				btn.Enabled = true;
 			return;
 			bad:
-                form.Rollback();
+            form.Rollback();
             Set(130,mess);
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
 		}
 
-		public NewOrder(Form1 fm,int w)
+		public NewOrder(Form1 f,int w)
 		{
-            form = fm;
+            form = f;
             wid = w;
 			//
 			// Required for Windows Form Designer support
@@ -631,7 +648,8 @@ namespace Tpcc
 			}
 			catch(Exception ex) {
 				status.Text = ex.Message;
-                throw ex;
+                form.Rollback();
+                Form1.wconflicts++;
             }
 			Invalidate(true);
 		}

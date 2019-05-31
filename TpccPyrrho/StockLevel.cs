@@ -1,6 +1,6 @@
 using System;
 using System.Drawing;
-using Npgsql;
+using Pyrrho;
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
@@ -18,43 +18,25 @@ namespace Tpcc
 		private System.ComponentModel.Container components = null;
         public Form1 form;
 		public Label status;
-		public int wid,fid,tid;
+		public int wid;
 		public int did;
 		public int thresh;
         bool DoThresh(ref string mess)
         {
             int nextoid = 0;
+            form.BeginTransaction();
             var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
-            var s = cmd.ExecuteReader();
-            try { 
-                s.Read();
-                nextoid = (int)s[0];
-            }
-            catch (Exception)
+            cmd.CommandText = "select d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
+            nextoid = (int)(long)cmd.ExecuteScalar();
+            cmd.CommandText = "select count(s_i_id) from stock where s_w_id=" + wid + " and s_i_id in (select distinct ol_i_id from order_line where ol_w_id=" + wid + " and ol_d_id=" + did + " and ol_o_id>=" + (nextoid - 20) + ") and s_quantity<" + thresh;
+            int n = 0;
+            try
             {
-                form.Rollback();
+                n = (int)(long)(cmd.ExecuteScalar() ?? 0L);
             }
-            finally
-            {
-                s.Close();
-            }
-            cmd.CommandText = "select count(S_I_ID) from STOCK where S_W_ID=" + wid + " and S_I_ID in (select distinct OL_I_ID from ORDER_LINE where OL_W_ID=" + wid + " and OL_D_ID=" + did + " and OL_O_ID>=" + (nextoid - 20) + ") and S_QUANTITY<" + thresh;
-            s = cmd.ExecuteReader();
-            try { 
-                s.Read();
-                var o = s[0];
-                int n = (int)(long)s[0];
-                Set(4, n);
-            }
-            catch (Exception)
-            {
-                form.Rollback();
-            }
-            finally
-            {
-                s.Close();
-            }
+            catch (Exception) { }
+            Set(4, n);
+            form.Commit();
             return false;
         }
 
@@ -66,9 +48,9 @@ namespace Tpcc
 			status.Text = mess;
 		}
 
-		public StockLevel(Form1 fm, int w)
+		public StockLevel(Form1 f, int w)
         {
-            form = fm;
+            form = f;
             wid = w;
             //
             // Required for Windows Form Designer support
@@ -122,8 +104,11 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                throw ex;
-			}
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
+            }
 			SetCurField(curField);
 			status.Text = s;
 			Invalidate(true);

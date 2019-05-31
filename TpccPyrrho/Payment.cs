@@ -1,10 +1,11 @@
 using System;
 using System.Drawing;
 using System.Collections;
+using System.Text;
 using System.ComponentModel;
 using System.Windows.Forms;
-using System.Text;
-using Npgsql;
+using System.Data;
+using Pyrrho;
 
 namespace Tpcc
 {
@@ -19,31 +20,29 @@ namespace Tpcc
 		private System.ComponentModel.Container components = null;
 		int wid;
         Form1 form;
-		public int did,cdid,cid;
+		public int did,cwid=1,cdid,cid;
 		public string clast;
-		decimal ytd,dytd,c_balance,c_amount,c_ytd_payment;
-        string cdata, c_credit;
+		decimal ytd,dytd,c_balance,camount,c_ytd_payment;
+        string cdata, c_credit,c_amount;
 		int count = 0,c_payment_cnt;
+        Encoding enc = Encoding.ASCII;
 		public Label status;
-		Encoding enc = new ASCIIEncoding();
-        public int tid, fid;
         bool FetchDistrict()
         {
-   //        form.trans = form.conn.BeginTransaction();
+            form.BeginTransaction();
             Set(42, DateTime.Now.ToString());
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select W_NAME,W_STREET_1,W_STREET_2,W_CITY,W_STATE,W_ZIP,W_YTD from WAREHOUSE where W_ID=" + wid;
-            var s = cmd.ExecuteReader();
+            cmd.CommandText = "select w_name,w_street_1,w_street_2,w_city,w_state,w_zip,w_ytd from warehouse where w_id=" + wid;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                Set(1, (string)s[0]);
-                Set(2, (string)s[1]);
-                Set(3, (string)s[3]);
-                Set(4, (string)s[4]);
-                Set(5, (string)s[5]);
-                ytd = (decimal)s[6];
+                Set(1, (string)rdr[0]);
+                Set(2, (string)rdr[1]);
+                Set(3, (string)rdr[3]);
+                Set(4, (string)rdr[4]);
+                Set(5, (string)rdr[5]);
+                ytd = (decimal)rdr[6];
             }
             catch (Exception)
             {
@@ -51,19 +50,19 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            cmd.CommandText = "select D_NAME,D_STREET_1,D_STREET_2,D_CITY,D_STATE,D_ZIP,D_YTD from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
-            s = cmd.ExecuteReader();
+            cmd.CommandText = "select d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_ytd from district where d_w_id=" + wid + " and d_id=" + did;
+            rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                Set(8, (string)s[0]);
-                Set(9, (string)s[1]);
-                Set(10, (string)s[3]);
-                Set(11, (string)s[4]);
-                Set(12, (string)s[5]);
-                dytd = (decimal)s[6];
+                Set(8, (string)rdr[0]);
+                Set(9, (string)rdr[1]);
+                Set(10, (string)rdr[3]);
+                Set(11, (string)rdr[4]);
+                Set(12, (string)rdr[5]);
+                dytd = (decimal)rdr[6];
             }
             catch (Exception)
             {
@@ -71,23 +70,20 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            Set(0, wid);
-            Set(7, did);
             return false;
         }
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList custs = new ArrayList();
+            //				cmd.CommandText="select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            //"select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
-            cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_LAST='" + clast + "' order by C_FIRST";
-            var s = cmd.ExecuteReader();
+            cmd.CommandText= "select c_id from customer where c_w_id = " + cwid + " and c_d_id = " + cdid + " and c_last = '" + clast+"' order by c_first";
+            var rdr = cmd.ExecuteReader();
             try { 
-                while(s.Read())
-                    custs.Add((long)s[0]);
+                while (rdr.Read())
+                    custs.Add((long)rdr[0]);
             }
             catch (Exception)
             {
@@ -95,76 +91,70 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             if (custs.Count == 0)
                 return true;
-            cid = (int)custs[(custs.Count + 1) / 2];
+            cid = (int)(long)custs[custs.Count / 2];
             Set(14, cid);
             Set(15, wid);
             Set(16, cdid);
-            cmd.CommandText = "select C_ID,C_FIRST,C_MIDDLE,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_WID=" + 
-                wid + " and C_D_ID=" + cdid + " and  C_LAST='" + clast + "' order by C_FIRST";
-            s = cmd.ExecuteReader();
+            cmd.CommandText = "select c_id,c_first,c_middle,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and  c_last='" + clast + "' order by c_first";
+            rdr = cmd.ExecuteReader();
             try { 
-                if (!s.HasRows)
-                    return true;
-                Set(17, (string)s[1]);
-                Set(18, (string)s[2]);
-                Set(20, (string)s[3]); // c_street_1
-                Set(21, (string)s[4]); // c_street_2
-                Set(22, (string)s[5]); // c_city
-                Set(23, (string)s[6]); // c_state
-                Set(24, (string)s[7]); // c_zip
-                Set(26, ((DateTime)s[9]).ToShortDateString()); // c_since
-                c_credit = (string)s[10];
+                rdr.Read();
+                Set(17, (string)rdr[1]);
+                Set(18, (string)rdr[2]);
+                Set(20, (string)rdr[3]); // c_street_1
+                Set(21, (string)rdr[4]); // c_street_2
+                Set(22, (string)rdr[5]); // c_city
+                Set(23, (string)rdr[6]); // c_state
+                Set(24, (string)rdr[7]); // c_zip
+                Set(26, rdr[9].ToString()); // c_since
+                c_credit = (string)rdr[10];
                 Set(29, c_credit);
-                Set(37, (util.GetDecimal(s[11])).ToString("F2"));
-                Set(30, (util.GetDecimal(s[12])).ToString("F4").Substring(1)); // c_discount
-                Set(31, (string)s[8]); // c_phone
-                c_balance = (decimal)s[13];
-                c_ytd_payment = (decimal)s[14];
-            }
-            catch (Exception)
-            {
-                form.Rollback();
+                Set(37, ((decimal)rdr[11]).ToString("F2"));
+                Set(30, ((decimal)rdr[12]).ToString("F4").Substring(1)); // c_discount
+                Set(31, (string)rdr[8]); // c_phone
+                c_balance = (decimal)rdr[13];
+                c_ytd_payment = (decimal)rdr[14];
+                c_payment_cnt = (int)(decimal)rdr[15];
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
         bool FetchCustFromId(ref string mess)
         {
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select C_FIRST,C_MIDDLE,C_LAST,C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE,C_SINCE,C_CREDIT,C_CREDIT_LIM,C_DISCOUNT,C_BALANCE,C_YTD_PAYMENT,C_PAYMENT_CNT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid;
-            var s = cmd.ExecuteReader();
+            cmd.CommandText = "select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
+            Set(14, cid);
+            Set(15, cwid);
+            Set(16, cdid);
+            SetCurField(35);
+            var rdr = cmd.ExecuteReader();
             try { 
-                Set(14, cid);
-                Set(15, wid);
-                Set(16, cdid);
-                SetCurField(35);
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                Set(17, (string)s[0]); // c_first
-                Set(18, (string)s[1]); // c_middle
-                Set(19, (string)s[2]); // c_last
-                Set(20, (string)s[3]); // c_street_1
-                Set(21, (string)s[4]); // c_street_2
-                Set(22, (string)s[5]); // c_city
-                Set(23, (string)s[6]); // c_state
-                Set(24, (string)s[7]); // c_zip
-                Set(26, ((DateTime)s[9]).ToShortDateString()); // c_since
-                c_credit = (string)s[10];
+                Set(17, (string)rdr[0]); // c_first
+                Set(18, (string)rdr[1]); // c_middle
+                Set(19, (string)rdr[2]); // c_last
+                Set(20, (string)rdr[3]); // c_street_1
+                Set(21, (string)rdr[4]); // c_street_2
+                Set(22, (string)rdr[5]); // c_city
+                Set(23, (string)rdr[6]); // c_state
+                Set(24, (string)rdr[7]); // c_zip
+                Set(26, rdr[9].ToString()); // c_since
+                c_credit = (string)rdr[10];
                 Set(29, c_credit);
-                Set(37, ((decimal)s[11]).ToString("F2"));
-                Set(30, ((decimal)s[12]).ToString("F4").Substring(1)); // c_discount
-                Set(31, (string)s[8]); // c_phone
-                c_balance = util.GetDecimal(s[13]);
-                c_ytd_payment = util.GetDecimal(s[14]);
-                c_payment_cnt = (int)(decimal)s[15];
+                Set(37, ((decimal)rdr[11]).ToString("F2"));
+                Set(30, ((decimal)rdr[12]).ToString("F4").Substring(1)); // c_discount
+                Set(31, (string)rdr[8]); // c_phone
+                c_balance = (decimal)rdr[13];
+                c_ytd_payment = (decimal)rdr[14];
+                c_payment_cnt = (int)(decimal)rdr[15];
             }
             catch (Exception)
             {
@@ -172,48 +162,39 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
         bool DoPayment(ref string mess)
         {
-            Set(35, c_amount.ToString());
-            var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "update DISTRICT set D_YTD=" + (dytd + c_amount)+" where D_W_ID=" + wid + " and D_ID=" + did;
-            Form1.RecordRequest(cmd, fid, tid);
-            cmd.ExecuteNonQuery();
-            Set(36, (c_balance + c_amount).ToString("F2"));
-            cmd.CommandText = "update CUSTOMER set C_BALANCE=" + (c_amount + c_balance) + ",C_YTD_PAYMENT=" + (c_amount + c_ytd_payment) + ",C_PAYMENT_CNT=" + (c_payment_cnt + 1) +
-                " where C_W_ID = " + wid + " and C_D_ID = " + cdid + " and C_ID = " + cid;
-            cmd.ExecuteNonQuery();
-            cmd.CommandText="update WAREHOUSE set W_YTD=" + (ytd + c_amount)+" where W_ID=" + wid;
-            Form1.RecordRequest(cmd, fid, tid);
-            cmd.ExecuteNonQuery();
+            var db = form.conn;
+            Set(35, c_amount);
+            camount = decimal.Parse(c_amount);
+            db.Act("update district set d_ytd = "+(dytd+camount)+" where d_w_id = "+wid+" and d_id = "+did);
+            Set(36, (c_balance + camount).ToString("F2"));
+            var s = "update customer set c_balance=" + (camount + c_balance) + ",c_ytd_payment=" + (camount + c_ytd_payment) + ",c_payment_cnt=" + (c_payment_cnt + 1) + " where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
+            db.Act(s);
+            db.Act("update warehouse set w_ytd = "+(ytd+camount)+" where w_id = "+wid);
             if (c_credit == "BC")
             {
-                cmd.CommandText = "select C_DATA from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid;
-                var s = cmd.ExecuteReader();
+                var cmd = db.CreateCommand();
+                cmd.CommandText = "select c_data from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
+                var rdr = cmd.ExecuteReader();
                 try { 
-                    if (!s.Read())
+                    if (!rdr.Read())
                         return true;
-                    cdata = (string)s[0];
-                }
-                catch (Exception)
-                {
-                    form.Rollback();
+                   cdata = (string)rdr[0]; 
                 }
                 finally
                 {
-                    s.Close();
+                    rdr.Close();
                 }
                 cdata = "" + cid + "," + cdid + "," + wid + "," + did + "," + wid + "," + c_amount + ";" + cdata;
                 if (cdata.Length > 500)
                     cdata = cdata.Substring(0, 500);
-                cmd.CommandText = "update CUSTOMER set c_data='" + cdata + "' where C_W_ID=" + wid + " and C_D_ID=" + cdid + " and C_ID=" + cid;
-                Form1.RecordRequest(cmd, fid, tid);
-                cmd.ExecuteNonQuery();
+                db.Act("update customer set c_data = '"+cdata+"' where c_w_id = "+cwid+" and c_d_id = "+cdid+" and c_id = "+cid);
+
                 Set(38, cdata.Substring(0, 50));
                 if (cdata.Length > 50)
                     Set(39, cdata.Substring(50, 50));
@@ -228,8 +209,8 @@ namespace Tpcc
 		{
 			PutBlanks();
 			did = util.random(1,10);
-			if (FetchDistrict())
-				goto bad;
+            if (FetchDistrict())
+                return;
 			cdid = did;
 			cid = -1;
 			clast="";
@@ -247,38 +228,33 @@ namespace Tpcc
 				clast = enc.GetString(util.NextLast(9999));
 			else
 				cid = util.NURandCID();
-			c_amount = decimal.Parse(util.NextNString(1,500000,2).ToString());
-			bool done = false;
+			c_amount = enc.GetString(util.NextNString(1, 500000, 2));
+            count = 0;
 			string mess="";
-			while (!done && count++<1000)
+			try
 			{
-                form.BeginTransaction();
-                tid = ++Form1._tid;
-                try
-                {
-					if (cid<0)
-						FetchCustFromLast(ref mess);
-					else
-						FetchCustFromId(ref mess);
-					DoPayment(ref mess);
-					Invalidate(true);
-					form.Commit();
-                    done = true;
-				} 
-				catch(Exception ex)
-				{
-                    Form1.RecordResponse(ex, fid, tid);
+				if (cid<0)
+					FetchCustFromLast(ref mess);
+				else
+					FetchCustFromId(ref mess);
+				DoPayment(ref mess);
+				Invalidate(true);
+				form.Commit();
+			} 
+			catch(Exception ex)
+			{
+                var s = ex.Message;
+                form.Rollback();
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
                     Form1.wconflicts++;
-                    form.Rollback();
-                }
-			}
-			return;
-			bad: ;
+            }
 		}
 
-		public Payment(Form1 fm, int w)
+		public Payment(Form1 f, int w)
         {
-            form = fm;
+            form = f;
             wid = w;
             //
             // Required for Windows Form Designer support
@@ -410,15 +386,17 @@ namespace Tpcc
 						clast = s;
 						FetchCustFromLast(ref s); break;
 					case 35:	
-						c_amount = decimal.Parse(s);
+						c_amount = s;
 						DoPayment(ref s); break;
 				}
 			}
 			catch (Exception ex)
 			{
 				s = ex.Message;
-                Form1.wconflicts++;
-                form.Rollback();
+                if (s.Contains("with read"))
+                    Form1.rconflicts++;
+                else
+                    Form1.wconflicts++;
             }
 			status.Text = s;
 			SetCurField(curField);

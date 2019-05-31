@@ -4,7 +4,8 @@ using System.Drawing;
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
-using Npgsql;
+using System.Data;
+using Pyrrho;
 
 namespace Tpcc
 {
@@ -17,7 +18,7 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public Form1 form;
+        public Form1 form;
         int wid;
         public int did;
 		decimal c_balance;
@@ -27,12 +28,11 @@ namespace Tpcc
 		string clast = "";
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
-        public int fid, tid;
-        bool Check(string c)
+        bool Check(PyrrhoCommand c)
 		{
-			if (c!="")
+			if (c.CommandText!="")
 			{
-				Set(130,c);
+				Set(130,c.CommandText);
 				Invalidate(true);
 				return true;
 			}
@@ -48,16 +48,15 @@ namespace Tpcc
         bool FetchCustFromId(ref string mess)
         {
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText="select C_BALANCE,C_FIRST,C_MIDDLE,C_LAST from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
-            var s = cmd.ExecuteReader();
+                cmd.CommandText = "select c_balance,c_first,c_middle,c_last from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                clast = (string)s[3];
-                c_balance = util.GetDecimal(s[0]);
-                c_first = (string)s[1];
-                c_middle = (string)s[2];
+                clast = (string)rdr[3];
+                c_balance = (decimal)rdr[0];
+                c_first = (string)rdr[1];
+                c_middle = (string)rdr[2];
             }
             catch (Exception)
             {
@@ -65,7 +64,7 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
@@ -73,12 +72,12 @@ namespace Tpcc
         {
             ArrayList cids = new ArrayList();
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST";
-            var s = cmd.ExecuteReader();
+            cmd.CommandText = "select c_id from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_last='" + clast + "' order by c_first";
+            var rdr = cmd.ExecuteReader();
             try { 
-                while (s.Read())
-                    cids.Add((long)s[0]);
+                while (rdr.Read())
+                    cids.Add((long)rdr[0]);
+                cid = (int)(long)cids[(cids.Count + 1) / 2];
             }
             catch (Exception)
             {
@@ -86,28 +85,20 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            if (cids.Count == 0)
-                cid = 1;
-            else
-                cid = (int)cids[(cids.Count + 1) / 2];
-            cmd.CommandText = "select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
-            s = cmd.ExecuteReader();
+            cmd.CommandText = "select c_balance,c_first,c_middle from customer  where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
+            rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                c_balance = (decimal)s[0];
-                c_first = (string)s[1];
-                c_middle = (string)s[2];
-            }
-            catch (Exception)
-            {
-                form.Rollback();
+                c_balance = (decimal)rdr[0];
+                c_first = (string)rdr[1];
+                c_middle = (string)rdr[2];
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
@@ -120,13 +111,12 @@ namespace Tpcc
             Set(6, "$" + c_balance.ToString("F2"));
             int oid = -1;
             var cmd = form.conn.CreateCommand();
-            cmd.Transaction = form.trans;
-            cmd.CommandText = "select max(O_ID) from \"ORDER\" where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid;
-            var s = cmd.ExecuteReader();
+            cmd.CommandText = "select max(o_id) from \"ORDER\" where o_w_id=" + wid + " and o_d_id=" + did + " and o_c_id=" + cid;
+            var rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
-                oid = (int)s[0];
+                oid = (int)(long)rdr[0];
             }
             catch (Exception)
             {
@@ -134,51 +124,41 @@ namespace Tpcc
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
-            cmd.CommandText = "select O_ENTRY_D,O_CARRIER_ID from \"ORDER\" where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_ID=" + oid;
-            s = cmd.ExecuteReader();
+            cmd.CommandText = "select o_entry_d,o_carrier_id from \"ORDER\" where o_w_id=" + wid + " and o_d_id=" + did + " and o_id=" + oid;
+            rdr = cmd.ExecuteReader();
             try { 
-                if (!s.Read())
+                if (!rdr.Read())
                     return true;
                 Set(7, oid);
-                var str = ((DateTime)s[0]).ToShortDateString();
-                Set(8, str);
-                if (!(s[1] == DBNull.Value))
-                    Set(9, (int)s[1]);
-            }
-            catch (Exception)
-            {
-                form.Rollback();
+                Set(8, "" + (Date)rdr[0]);
+                if (!(rdr[1] is DBNull))
+                    Set(9, (int)(long)rdr[1]);
             }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             int k = 10;
-            cmd.CommandText = "select OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT,OL_DELIVERY_D from ORDER_LINE where OL_W_ID="
-                + wid + " and OL_D_ID=" + did + " and OL_O_ID=" + oid;
-            s = cmd.ExecuteReader();
+            cmd.CommandText = "select ol_i_id,ol_supply_w_id,ol_quantity,ol_amount,ol_delivery_d from order_line where ol_w_id=" + wid + " and ol_d_id=" + did + " and ol_o_id=" + oid;
+            rdr = cmd.ExecuteReader();
             try { 
-                while(s.Read())
+                while (rdr.Read())
                 {
-                    Set(k++, (int)s[1]);
-                    Set(k++, (int)s[0]);
-                    Set(k++, (int)(decimal)s[2]);
-                    Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[3])));
-                    if (s[4] != DBNull.Value)
-                        Set(k++, ((DateTime)s[4]).ToShortDateString());
+                    Set(k++, (int)(long)rdr[1]);
+                    Set(k++, (int)(long)rdr[0]);
+                    Set(k++, (int)(decimal)rdr[2]);
+                    Set(k++, String.Format("${0,8:F2}", (decimal)rdr[3]));
+                    if (!(rdr[4] is DBNull))
+                        Set(k++, ((Date)rdr[4]).ToString());
                     else
                         k++;
                 }
             }
-            catch (Exception)
-            {
-                form.Rollback();
-            }
             finally
             {
-                s.Close();
+                rdr.Close();
             }
             return false;
         }
@@ -197,8 +177,7 @@ namespace Tpcc
 			while (!done && count++<1000)
 			{
 				form.BeginTransaction();
-                tid = ++Form1._tid;
-                if (cid>0)
+				if (cid>0)
 				{
 					if (FetchCustFromId(ref mess))
 						goto bad;
@@ -211,15 +190,14 @@ namespace Tpcc
 				DoDisplay(ref mess);
 				Invalidate(true);
 				done = true;
-                form.Commit();
-                form.trans = null;
 			}
-			bad:;
+        bad:
+            form.Rollback();
 		}
 
-		public OrderStatus(Form1 fm, int w)
+		public OrderStatus(Form1 f, int w)
         {
-            form = fm;
+            form = f;
             wid = w;
             //
             // Required for Windows Form Designer support
@@ -302,7 +280,6 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                throw ex;
 			}
 			SetCurField(curField);
 			status.Text = s;

@@ -2,17 +2,16 @@
 using System.Collections;
 using System.Text;
 using Npgsql;
-using System.Data;
 
 namespace Tpcc
 {
     public class GenBase
     {
-        public NpgsqlConnection PGconn;
+        public Form1 form;
         static Encoding enc = new ASCIIEncoding();
-        public GenBase(NpgsqlConnection c)
+        public GenBase(Form1 fm)
         {
-            PGconn = c;
+            form = fm;
         }
         public void BuildTpcc()
         {
@@ -21,20 +20,20 @@ namespace Tpcc
         }
         public void CreationScript()
         {
-            var cmd = PGconn.CreateCommand();
+            var cmd = form.conn.CreateCommand();
             cmd.CommandText="create table WAREHOUSE(" +
-                "W_ID integer primary key,W_NAME varchar(10),W_STREET_1 varchar(20)," +
+                "W_ID int primary key,W_NAME varchar(10),W_STREET_1 varchar(20)," +
                 "W_STREET_2 varchar(20),W_CITY varchar(20),W_STATE char(2)," +
                 "W_ZIP char(9),W_TAX numeric(4,4),W_YTD numeric(12,2))";
             cmd.ExecuteNonQuery();
-            cmd.CommandText = "create table DISTRICT(D_ID integer," +
-                "D_W_ID integer references WAREHOUSE(W_ID),D_NAME varchar(10),D_STREET_1 varchar(20)," +
+            cmd.CommandText = "create table DISTRICT(D_ID int," +
+                "D_W_ID int references WAREHOUSE(W_ID),D_NAME varchar(10),D_STREET_1 varchar(20)," +
                 "D_STREET_2 varchar(20),D_CITY varchar(20),D_STATE char(2)," +
-                "D_ZIP char(9),D_TAX numeric(4,4),D_YTD numeric(12,2),D_NEXT_O_ID integer," +
+                "D_ZIP char(9),D_TAX numeric(4,4),D_YTD numeric(12,2),D_NEXT_O_ID int," +
                 "primary key (D_W_ID,D_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table CUSTOMER(" +
-                "C_ID integer,C_D_ID integer,C_W_ID integer,"+
+                "C_ID int,C_D_ID int,C_W_ID int,"+
                 "C_FIRST varchar(16),C_MIDDLE char(2),C_LAST varchar(16)," +
                 "C_STREET_1 varchar(20),C_STREET_2 varchar(20),C_CITY varchar(20)," +
                 "C_STATE char(2),C_ZIP char(9),C_PHONE varchar(16),C_SINCE date," +
@@ -45,29 +44,29 @@ namespace Tpcc
                 "foreign key(C_W_ID,C_D_ID) references DISTRICT(D_W_ID,D_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table HISTORY(" +
-                "H_C_ID integer,H_C_D_ID integer,H_C_W_ID integer,"+
-                "H_D_ID integer,H_W_ID integer,H_DATE date,"+
+                "H_C_ID int,H_C_D_ID int,H_C_W_ID int,"+
+                "H_D_ID int,H_W_ID int,H_DATE date,"+
                 "H_AMOUNT numeric(6,2),H_DATA varchar(24),"+
                 "foreign key (H_C_W_ID, H_C_D_ID, H_C_ID) references CUSTOMER(C_W_ID,C_D_ID,C_ID),"+
                 "foreign key (H_W_ID,H_D_ID) references DISTRICT(D_W_ID,D_ID))";
             cmd.ExecuteNonQuery();
-            cmd.CommandText = "create table \"ORDER\"(O_ID integer," +
-                "O_D_ID integer,O_W_ID integer,O_C_ID integer,O_ENTRY_D date,"+
-                "O_CARRIER_ID integer,O_OL_CNT integer,O_ALL_LOCAL integer,"+
+            cmd.CommandText = "create table \"ORDER\"(O_ID int," +
+                "O_D_ID int,O_W_ID int,O_C_ID int,O_ENTRY_D date,"+
+                "O_CARRIER_ID int,O_OL_CNT int,O_ALL_LOCAL int,"+
                 "primary key(O_W_ID,O_D_ID,O_ID),"+
                 "foreign key(O_W_ID, O_D_ID,O_C_ID) references CUSTOMER(C_W_ID,C_D_ID,C_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table NEW_ORDER(" +
-                "NO_O_ID integer,NO_D_ID integer,NO_W_ID integer,"+
+                "NO_O_ID int,NO_D_ID int,NO_W_ID int,"+
                 "primary key(NO_W_ID, NO_D_ID, NO_O_ID),"+
                 "foreign key(NO_W_ID, NO_D_ID, NO_O_ID) references \"ORDER\"(O_W_ID,O_D_ID,O_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table ITEM(" +
-                "I_ID integer primary key,I_IM_ID integer,I_NAME varchar(24),I_PRICE numeric(5,2),"+
+                "I_ID int primary key,I_IM_ID int,I_NAME varchar(24),I_PRICE numeric(5,2),"+
                 "I_DATA varchar(50))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table STOCK(" +
-                "S_I_ID integer references ITEM(I_ID),S_W_ID integer references WAREHOUSE(W_ID),S_QUANTITY numeric(4)," +
+                "S_I_ID int references ITEM(I_ID),S_W_ID int references WAREHOUSE(W_ID),S_QUANTITY numeric(4)," +
                 "S_DIST_01 char(24),S_DIST_02 char(24),S_DIST_03 char(24)," +
                 "S_DIST_04 char(24),S_DIST_05 char(24),S_DIST_06 char(24)," +
                 "S_DIST_07 char(24),S_DIST_08 char(24),S_DIST_09 char(24)," +
@@ -76,8 +75,8 @@ namespace Tpcc
                 "primary key(S_W_ID,S_I_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table ORDER_LINE(" +
-                "OL_O_ID integer,OL_D_ID integer,OL_W_ID integer,"+
-                "OL_NUMBER integer,OL_I_ID integer,OL_SUPPLY_W_ID integer,"+
+                "OL_O_ID int,OL_D_ID int,OL_W_ID int,"+
+                "OL_NUMBER int,OL_I_ID int,OL_SUPPLY_W_ID int,"+
                 "OL_DELIVERY_D date,OL_QUANTITY numeric(2),OL_AMOUNT numeric(6,2),"+
                 "OL_DIST_INFO char(24)," +
                 "primary key(OL_W_ID,OL_D_ID,OL_O_ID,OL_NUMBER),"+
@@ -85,8 +84,8 @@ namespace Tpcc
                 "foreign key(OL_SUPPLY_W_ID,OL_I_ID) references STOCK(S_W_ID,S_I_ID))";
             cmd.ExecuteNonQuery();
             cmd.CommandText = "create table DELIVERY(" +
-                "DL_W_ID integer,DL_ID integer,DL_CARRIER_ID integer," +
-                "DL_DONE integer,DL_SKIPPED integer,"+
+                "DL_W_ID int,DL_ID int,DL_CARRIER_ID int," +
+                "DL_DONE int,DL_SKIPPED int,"+
                 "primary key(DL_W_ID,DL_ID))";
             cmd.ExecuteNonQuery();
         }
@@ -111,13 +110,15 @@ namespace Tpcc
         public void FillItems()
         {
             Console.WriteLine("Adding Items: "+DateTime.Now);
+            form.BeginTransaction();
             util ut = new util(14, 24);
 #if TRY
             for (int j=1;j<=10;j++)
 #else
             for (int j = 1; j <= 100000; j++)
             {
-                var cmd = PGconn.CreateCommand();
+                var cmd = form.conn.CreateCommand();
+                cmd.Transaction = form.trans;
 #endif
                 cmd.CommandText ="insert into ITEM(I_ID,I_IM_ID,I_NAME,I_PRICE,I_DATA)" +
                     " values(" +
@@ -130,6 +131,7 @@ namespace Tpcc
                     util.NextNString(100, 10000, 2) + "," + NextData() + ")";
                 cmd.ExecuteNonQuery();
             }
+            form.Commit();
             Console.WriteLine("Items done: Fill stock?"+DateTime.Now);
         }
         public void FillWarehouse(int w)
@@ -137,7 +139,7 @@ namespace Tpcc
             util u1 = new util(6, 10);
             util u2 = new util(10, 20);
             Console.WriteLine("Starting warehouse " + w+ " " + DateTime.Now);
-            var cmd = PGconn.CreateCommand();
+            var cmd = form.conn.CreateCommand();
             cmd.CommandText="insert into WAREHOUSE(W_ID,W_NAME,W_STREET_1,W_STREET_2,"+
             "W_CITY,W_STATE,W_ZIP,W_TAX,W_YTD) values(" +
                 w+"," + GetString(u1.NextAString())+","+
@@ -153,6 +155,7 @@ namespace Tpcc
         public void FillStock(int wid)
         {
             Console.WriteLine("filling stock " + DateTime.Now);
+            form.BeginTransaction();
 #if TRY
             for (int siid=1;siid<=10;siid++)
 #else
@@ -160,7 +163,8 @@ namespace Tpcc
 #endif
             { 
                 util u = new util(26, 50);
-                var cmd = PGconn.CreateCommand();
+                var cmd = form.conn.CreateCommand();
+                cmd.Transaction = form.trans;
                 cmd.CommandText="insert into STOCK(" +
                  "S_I_ID,S_W_ID,S_QUANTITY,S_DIST_01,S_DIST_02," +
                  "S_DIST_03,S_DIST_04,S_DIST_05,S_DIST_06," +
@@ -180,6 +184,7 @@ namespace Tpcc
                  "0.0,0,0," + GetString(util.fixStockData(u.NextAString())) + ")";
                 cmd.ExecuteNonQuery();
             }
+            form.Commit();
             Console.WriteLine("Done filling stock " + DateTime.Now);
         }
         public void FillDistricts(int wid)
@@ -192,7 +197,7 @@ namespace Tpcc
             Console.WriteLine("Filling District " + did+" " + DateTime.Now);
             util us = new util(10, 20);
             util un = new util(6, 10);
-            var cmd = PGconn.CreateCommand();
+            var cmd = form.conn.CreateCommand();
             cmd.CommandText="insert into DISTRICT(D_ID,D_W_ID,D_NAME,D_STREET_1,D_STREET_2,"+
             "D_CITY,D_STATE,D_ZIP,D_TAX,D_YTD,D_NEXT_O_ID) values("+
                 did+","+wid+","+GetString(un.NextAString())+","+
@@ -209,7 +214,8 @@ namespace Tpcc
         }
         public void FillCustomer(int wid, int did)
         {
-            Console.WriteLine("starting customer w=" + wid + " d=" + did+" " + DateTime.Now);
+            //           Console.WriteLine("starting customer w=" + wid + " d=" + did+" " + DateTime.Now);
+            form.BeginTransaction();
             util uf = new util(8, 16);
             util us = new util(10, 20);
             util ud = new util(300, 500);
@@ -220,7 +226,8 @@ namespace Tpcc
             for (int cid = 1; cid <= 3000; cid++)
 #endif
             {
-                var cmd = PGconn.CreateCommand();
+                var cmd = form.conn.CreateCommand();
+                cmd.Transaction = form.trans;
                 cmd.CommandText="insert into CUSTOMER(" +
                     "C_ID,C_D_ID,C_W_ID,C_FIRST,C_MIDDLE,C_LAST," +
                 "C_STREET_1,C_STREET_2,C_CITY,C_STATE,C_ZIP,C_PHONE," +
@@ -234,16 +241,17 @@ namespace Tpcc
                 GetString(uf.NextAString()) + ",'" +
                 (char)util.random(65, 90) + (char)util.random(65, 90) + "'," +
                 GetString(util.NZip()) + ",'" + util.NString(16) + "','"+
-                DateTime.Now.ToString("o") +"','"+ credit() + "',5000.00," +
+                DateTime.Now.ToString("yyyy-MM-dd") +"','"+ credit() + "',5000.00," +
                 util.randomA(0, 5000, 10000.0) + ",-10.00,10.00,1,0," +
                 GetString(ud.NextAString()) + ")";
                 cmd.ExecuteNonQuery();
                 cmd.CommandText= "insert into HISTORY(" +
                     "H_C_ID,H_C_D_ID,H_C_W_ID,H_D_ID,H_W_ID,H_DATE,H_AMOUNT,H_DATA) values(" +
-                    cid + "," + did + "," + wid + "," + did + "," + wid + ",'" + DateTime.Now.ToString("o") + "',10.00," +
+                    cid + "," + did + "," + wid + "," + did + "," + wid + ",'" + DateTime.Now.ToString("yyyy-MM-dd") + "',10.00," +
                     GetString(uh.NextAString()) + ")";
                 cmd.ExecuteNonQuery();
             }
+            form.Commit();
             Console.WriteLine("Customers done " + DateTime.Now);
         }
         static string credit()
@@ -256,6 +264,7 @@ namespace Tpcc
         }
         void FillOrder(int wid, int did)
         {
+            form.BeginTransaction();
 #if TRY
             int[] perm = util.Permute(3);//3000);
 			for (int oid=1;oid<=3;oid++)//3000;oid++)
@@ -267,21 +276,22 @@ namespace Tpcc
                 int cnt = util.random(5, 15);
                 if (oid < 2101)
                 {
-                    var cmd = PGconn.CreateCommand();
+                    var cmd = form.conn.CreateCommand();
+                    cmd.Transaction = form.trans;
                     cmd.CommandText="insert into \"ORDER\"(" +
                         "O_ID,O_C_ID,O_D_ID,O_W_ID,O_ENTRY_D,O_CARRIER_ID,O_OL_CNT,O_ALL_LOCAL) values(" +
                         oid + "," + (perm[oid - 1] + 1) + "," + did + "," +
-                        wid + ",'"+DateTime.Now.ToString("o") + "'," + util.random(1, 10) + "," +
+                        wid + ",'"+DateTime.Now.ToString("yyyy-MM-dd") + "'," + util.random(1, 10) + "," +
                         util.random(1, 15) + ",1)";
                     cmd.ExecuteNonQuery();
                 }
                 else
                 {
-                    var cmd = PGconn.CreateCommand();
+                    var cmd = form.conn.CreateCommand();
                     cmd.CommandText="insert into \"ORDER\"(" +
                         "O_ID,O_C_ID,O_D_ID,O_W_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL) values(" +
                         oid + "," + (perm[oid - 1] + 1) + "," + did + "," +
-                        wid + ",'"+DateTime.Now.ToString("o") + "'," + cnt + ",1)";
+                        wid + ",'"+DateTime.Now.ToString("yyyy-MM-dd") + "'," + cnt + ",1)";
                     cmd.ExecuteNonQuery();
                     cmd.CommandText = "insert into NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID) values(" +
                         oid + "," + did + "," + wid + ")";
@@ -289,13 +299,14 @@ namespace Tpcc
                 }
                 FillOrderLine(wid, did, oid, cnt);
             }
+            form.Commit();
         }
         void FillOrderLine(int wid, int did, int oid, int cnt)
         {
             for (int j = 1; j <= cnt; j++)
                 if (oid < 2101)
                 {
-                    var cmd = PGconn.CreateCommand();
+                    var cmd = form.conn.CreateCommand();
                     cmd.CommandText = "insert into ORDER_LINE(" +
                         "OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER," +
                         "OL_I_ID,OL_SUPPLY_W_ID,OL_DELIVERY_D,OL_QUANTITY," +
@@ -306,13 +317,13 @@ namespace Tpcc
 #else
                         util.random(1, 100000) + "," +
 #endif
-                        wid + ",'" + DateTime.Now.ToString("o") + "',5,0.00," +
+                        wid + ",'" + DateTime.Now.ToString("yyyy-MM-dd") + "',5,0.00," +
                         GetString(util.randchar(24)) + ")";
                     cmd.ExecuteNonQuery();
                 }
                 else
                 {
-                    var cmd = PGconn.CreateCommand();
+                    var cmd = form.conn.CreateCommand();
                     cmd.CommandText = "insert into ORDER_LINE(" +
                         "OL_O_ID,OL_D_ID,OL_W_ID,OL_NUMBER," +
                         "OL_I_ID,OL_SUPPLY_W_ID,OL_DELIVERY_D,OL_QUANTITY," +
@@ -323,7 +334,7 @@ namespace Tpcc
 #else
                         util.random(1, 100000) + "," +
 #endif
-                        wid + ",'" + DateTime.Now.ToString("o") + "',5," +
+                        wid + ",'" + DateTime.Now.ToString("yyyy-MM-dd") + "',5," +
                         util.randomA(1, 999999, 100.0) + "," + GetString(util.randchar(24)) + ")";
                     cmd.ExecuteNonQuery();
                 }
