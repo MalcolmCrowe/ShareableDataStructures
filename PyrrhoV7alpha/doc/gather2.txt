@@ -1,0 +1,26 @@
+create table ga(a1 int,a2 char)
+insert into ga values(1,'First'),(2,'Second')
+[create function gather2() returns char 
+ begin declare b char default '';
+  for select a2 from ga do if b='' then set b=a2 else set b=b||', '||a2 end if end for;
+  return b end]
+select gather2() from static
+
+                       0         1
+                       0123456789012345
+create function gather2() returns char 
+    2         3         4
+678901234567890123456789012345678
+begin declare b char default '';
+ 5         6         7         8         9         10        11        12        13        14
+9012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345
+for select "123" from "70" do if b='' then set b="123" else set b=b||', '||"123" end if end for;
+    15
+678901234567
+return b end
+
+
+        
+
+                
+    

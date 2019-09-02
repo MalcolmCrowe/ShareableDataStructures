@@ -1,0 +1,15 @@
+create table xa(b int,c int,d char)
+create table xb(tot int)
+create table xc(totb int,totc int)
+insert into xb values (0)
+[create trigger sdai instead of delete on xa referencing old table as ot 
+ for each statement 
+   begin atomic insert into xc (select b as totb,c as totc from ot) end]
+[create trigger riab before insert on xa referencing new as nr 
+  for each row begin atomic set nr.c=nr.b+3; update xb set tot=tot+nr.b end]
+[create trigger ruab before update on xa referencing old as mr new as nr 
+ for each row begin atomic update xb set tot=tot-mr.b+nr.b; set nr.d='changed' end]
+insert into xa(b,d) values (7,'inserted')
+update xa set b=8,d='updated' where b=7
+delete from xa where d='changed'
+

@@ -1,0 +1,5 @@
+F_accesses problem
+1. Fred should not see an exception from trigger processing.
+2. I am not sure that Fred should have role mac.
+3. The trigger should recompute the actual fields of new_row, and not use Fred's
+names.

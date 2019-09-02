@@ -1,0 +1,79 @@
+Manadatory Access control testing - revised
+A. Logged in as database owner 
+1. Starting with empty database mac
+create table A(B int,C char)
+create table D(E char primary key) security level D groups Army Navy references Defence scope read
+create table F(G char primary key,H char security level C)
+revoke "mac" from public 
+2. Create some users with and without clearance
+grant "mac" to "MALCOLM1\Student"
+grant "mac" to "MALCOLM1\Fred"
+grant security level B groups Army references Defence Cyber to "MALCOLM1\Student"
+table "Sys$User"
+3. Add some rows with and without classification
+insert into A values(2,'Two')
+insert into A values(3,'Three') security level C
+insert into D values('Test')
+insert into F values('MI6','sis.gov.uk')
+table "Sys$Classification"
+4. Check we can see two rows in A, one row in D and two columns in F
+table A
+table D
+table F
+B. Logged in as Fred
+5. Check we can only see one row in A, one column in F, and nothing in D
+table A
+table D
+table F
+6. Check we can add a row in A, D and F
+insert into A values(4,'Four')
+insert into D values('Fred wrote this')
+insert into F values('UWS')
+C. Logged in as Student
+7. Check we can see three rows in A, two rows in D and two columns in F
+table A
+table D
+table F
+8. Check we can only make changes in table D (enforcement in D is only on read)
+update A set c = 'No' where b=2
+update A set c = 'No' where b=3
+update A set c = 'No' where b=4
+update D set E='Fred?' where E<>'Test'
+update F set H='www.sis.gov.uk' where G='MI6'
+update F set H='www.uws.ac.uk' where G='UWS'
+9. Check we can add and update our rows in all three tables
+insert into A values(5,'Fiv')
+update A set c='Five' where b=5
+insert into D values('Another')
+insert into F values('BBC','bbc.co.uk')
+update F set H='www.bbc.co.uk' where G='BBC'
+10. Check we can see our rows and changes
+table A
+table D
+table F
+D. Logged in as Fred
+11. Check Fred can't see the new rows
+table A
+table D
+table F
+E. Logged in as database owner
+12. Check all tables including the security information
+select B,C,security from A
+select E,security from D
+select G,H,security from F
+select * from A where security=level c
+update A set security=level C where security=level B
+update F set security=level D where G='BBC'
+table "Sys$Classification"
+F. Logged in as Student
+13. Check we can still see our row in A
+select * from a where b=5
+14. Check we can no longer update our rows in A or F
+delete from A where b=5
+update F set H='bbc.com' where G='BBC'
+G. Logged in as Fred
+15. Check we can see the row about the BBC
+H. Logged in as database owner
+16. Check that auditing has been happening
+table "Sys$Audit"
+ 

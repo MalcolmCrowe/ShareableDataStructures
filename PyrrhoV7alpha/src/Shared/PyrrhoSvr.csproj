@@ -1,0 +1,150 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9DE6C4F6-7AD5-44C4-9135-DDBB75A6ABB9}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <AppDesignerFolder>Properties/PS</AppDesignerFolder>
+    <RootNamespace>PyrrhoSvr</RootNamespace>
+    <AssemblyName>PyrrhoSvr</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;LOCAL</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>Server.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Common\BTree.cs" />
+    <Compile Include="Common\CTree.cs" />
+    <Compile Include="Common\DataType.cs" />
+    <Compile Include="Common\Integer.cs" />
+    <Compile Include="Common\Interfaces.cs" />
+    <Compile Include="Common\Pyrrho.cs" />
+    <Compile Include="Common\Row.cs" />
+    <Compile Include="Level2\IndexConstraint.cs" />
+    <Compile Include="Level4\ParseClasses.cs" />
+    <Compile Include="Level4\Symbols.cs" />
+    <Compile Include="Common\TDocument.cs" />
+    <Compile Include="Common\Tree.cs" />
+    <Compile Include="Document.cs" />
+    <Compile Include="HttpService.cs" />
+    <Compile Include="Level1\IOBase.cs" />
+    <Compile Include="Level1\TCPStream.cs" />
+    <Compile Include="Level1\Crypt.cs" />
+    <Compile Include="Level2\Alter.cs" />
+    <Compile Include="Level2\Change.cs" />
+    <Compile Include="Level2\Checkpoint.cs" />
+    <Compile Include="Level2\Delete.cs" />
+    <Compile Include="Level2\Drop.cs" />
+    <Compile Include="Level2\Edit.cs" />
+    <Compile Include="Level2\EndOfFile.cs" />
+    <Compile Include="Level2\Grant.cs" />
+    <Compile Include="Level2\Modify.cs" />
+    <Compile Include="Level3\MTree.cs" />
+    <Compile Include="Level2\Ordering.cs" />
+    <Compile Include="Level2\PCheck.cs" />
+    <Compile Include="Level2\PColumn.cs" />
+    <Compile Include="Level2\PDomain.cs" />
+    <Compile Include="Level2\Physical.cs" />
+    <Compile Include="Level2\PIndex.cs" />
+    <Compile Include="Level2\PMethod.cs" />
+    <Compile Include="Level2\PPeriodDef.cs" />
+    <Compile Include="Level2\PProcedure.cs" />
+    <Compile Include="Level2\PRole.cs" />
+    <Compile Include="Level2\PTable.cs" />
+    <Compile Include="Level2\PTransaction.cs" />
+    <Compile Include="Level2\PTrigger.cs" />
+    <Compile Include="Level2\PType.cs" />
+    <Compile Include="Level2\PUser.cs" />
+    <Compile Include="Level2\PView.cs" />
+    <Compile Include="Level2\Record.cs" />
+    <Compile Include="Level2\Revoke.cs" />
+    <Compile Include="Level2\Update.cs" />
+    <Compile Include="Level3\Check.cs" />
+    <Compile Include="Level3\Database.cs" />
+    <Compile Include="Level3\DBObject.cs" />
+    <Compile Include="Level3\Domain.cs" />
+    <Compile Include="Level3\Index.cs" />
+    <Compile Include="Level3\Method.cs" />
+    <Compile Include="Level3\PeriodDef.cs" />
+    <Compile Include="Level3\Procedure.cs" />
+    <Compile Include="Level3\Profile.cs" />
+    <Compile Include="Level3\ReadConstraint.cs" />
+    <Compile Include="Level3\Role.cs" />
+    <Compile Include="Level3\Table.cs" />
+    <Compile Include="Level3\TableColumn.cs" />
+    <Compile Include="Level3\Trigger.cs" />
+    <Compile Include="Level3\UDType.cs" />
+    <Compile Include="Level3\User.cs" />
+    <Compile Include="Level3\View.cs" />
+    <Compile Include="Level4\Activation.cs" />
+    <Compile Include="Level4\Context.cs" />
+    <Compile Include="Level3\Executable.cs" />
+    <Compile Include="Level3\From.cs" />
+    <Compile Include="Level4\Group.cs" />
+    <Compile Include="Level4\Join.cs" />
+    <Compile Include="Level4\LogRowColSelect.cs" />
+    <Compile Include="Level4\LogTableSelect.cs" />
+    <Compile Include="Level4\MergeResults.cs" />
+    <Compile Include="Level3\QueryClasses.cs" />
+    <Compile Include="Level4\Parser.cs" />
+    <Compile Include="Level3\Query.cs" />
+    <Compile Include="Level3\QuerySpecification.cs" />
+    <Compile Include="Level4\RowSet.cs" />
+    <Compile Include="Level4\RowType.cs" />
+    <Compile Include="Level4\RTree.cs" />
+    <Compile Include="Level4\SystemResults.cs" />
+    <Compile Include="Level3\Transaction.cs" />
+    <Compile Include="Level3\Value.cs" />
+    <Compile Include="Properties\PS\AssemblyInfo.cs" />
+    <Compile Include="Resx.cs" />
+    <Compile Include="Start.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Server.ico" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

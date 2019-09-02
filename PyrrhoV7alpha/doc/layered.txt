@@ -1,0 +1,24 @@
+d:
+cd PyrrhoDB\Py*\Op*\Wi*
+ospsvr -d:\C -D
+ospsvr -d:\C -p:5434 -s:0 -S:0 -D
+
+ospcmd -p:5433 A
+create table D(e int primary key, f char, g char) 
+insert into D values(1,'Joe','Soap'),(2,'Betty','Boop')
+
+ospcmd -p:5434 B
+create table H(e int primary key, k char, m int) 
+insert into H values (1,'Cleaner',12500)
+insert into H values (2,'Manager',31400)
+[create view W of (e int, f char, g char) as get 'http://localhost:8180/A/A/D']
+create view V as select * from W natural join H
+select e,f,m,check from V where e=1
+update v set f='Elizabeth' where e=2
+insert into v(e,f,g,k,m) values(3,'Fred','Smith','Janitor',22160)
+delete from v where g='Soap'
+delete from v where e=2
+select e,f,m,check from V
+
+
+

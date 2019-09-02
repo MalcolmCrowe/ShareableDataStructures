@@ -1,0 +1,7 @@
+create table student(name char,test char,score int)
+[insert into student values('Chun','SQL',75),('Chun','Tuning',73),
+('Esben', 'SQL', 43), ('Esben', 'Tuning', 31),
+('Kaolin', 'SQL', 56), ('Kaolin', 'Tuning', 88),
+('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)]
+[SELECT name, test, score, AVG(score) OVER (PARTITION BY test) AS average_by_test FROM student]
+[SELECT name, test, score, AVG(score) OVER (PARTITION BY name) AS average_by_name FROM student]

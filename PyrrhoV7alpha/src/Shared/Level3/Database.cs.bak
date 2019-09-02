@@ -1,0 +1,3452 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using PyrrhoBase;
+using Pyrrho.Level1;
+using Pyrrho.Level2;
+using Pyrrho.Level4;
+using Pyrrho.Common;
+// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2017
+//
+// This software is without support and no liability for damage consequential to use
+// You can view and test this code
+// All other use or distribution or the construction of any product incorporating this technology 
+// requires a license from the University of the West of Scotland
+
+namespace Pyrrho.Level3
+{
+    /// <summary>
+    /// The different sorts of changes a transaction can make to a Database
+    /// When a database object is updated we need to ensure the change is stored durably in the listed databases 
+    /// This enumeration helps to ensure this, by indicating the nature of the change involved
+    /// </summary>
+	public enum DBTree { Unknown,Tables,Domains,Indexes,Procedures,Roles,Users,
+        Checks, Columns, Triggers, Methods, Periods, References }; // last few used for DROP
+
+    /// <summary>
+    /// The shell layer is for handling remote databases and partitions.
+    /// A shell can have a Configuration with details of a remote server.
+    /// In a thread-local Connection, the Database can have a AsyncStream to a Connection on that server.
+    /// </summary>
+    internal class Database
+    {
+        static int _did = 0;
+        internal readonly int did = ++_did;
+        /// <summary>
+        /// Lock the databaselist while a new database is added to the list
+        /// </summary>
+        internal readonly static Lock databaselist = new Lock(":L3Lock");
+        /// <summary>
+        /// The type system needs a place to store "abstract" data types, i.e. not reified in
+        /// any physical database. When data with any data type is committed to a database this must be
+        /// prepared by reifying the data type in the database. All data types decalred in
+        /// table definitions etc are automatically reified, and the resulting type from an SQL computation
+        /// is refified if necessary to the subtype of the value.
+        /// Reified data types are kept to a minimum, with the help of a hashcoding system for simple types.
+        /// </summary>
+        internal readonly static Database SysDatabase = new Database("SYSTEM", "SYSTEM"
+#if !EMBEDDED
+            , "", "SYSTEM", "*", ServerRole.Undefined
+#endif
+);
+#if !EMBEDDED
+        public string server = null;
+        public string creator = null;
+        public string password = null;
+#endif
+        /// <summary>
+        /// The list of databases known to this server: transName->Database
+        /// </summary>
+        internal static ATree<string, Database> databases = BTree<string, Database>.Empty;
+        /// <summary>
+        /// The name of the database
+        /// </summary>
+        public readonly string name = null;
+        public Connected cd = null;
+        public virtual string trid
+        {
+            get { return name; }
+        }
+        internal readonly string transName;
+        /// <summary>
+        /// the default role (set to pb.startData for local databases)
+        /// </summary>
+        public long defRole = 0L;
+        /// <summary>
+        /// Transaction user id, set in PTransaction
+        /// </summary>
+        internal long transuserid { get { return context?.user(this) ?? -1; } }
+        internal long transrole { get { return context?.role(this) ?? -1; } }
+        internal virtual Role role { get { return objects[transrole] as Role; } }
+        internal Role user { get { return objects[transuserid] as Role; } } // will always be a User except for "guest"
+        /// <summary>
+        /// code executed during Load is always for the currently loading database
+        /// </summary>
+        public int dbix = 0;
+        /// <summary>
+        /// Context is a level 4 concept, but we need to parse when loading databases etc
+        /// </summary>
+        public Context _context = null;
+        internal virtual Context context { get { return _context; } set { _context = value; } }
+        /// <summary>
+        /// The underlying physical database (Level 2)
+        /// </summary>
+        public PhysBase pb = null;
+        /// <summary>
+        /// Transaction profiling
+        /// </summary>
+        public Profile profile = null;
+        /// <summary>
+        /// For each Record defpos, the latest PTransaction to update it (directly or indirectly via foreign keys)
+        /// </summary>
+        public ATree<long, long?> versions = BTree<long, long?>.Empty;
+        /// <summary>
+        /// baseDb will be a local base database for a remote Partition
+        /// </summary>
+        public string baseDb = null;
+#if !EMBEDDED
+        public ATree<long, TablePartition> partitionedTables = BTree<long, TablePartition>.Empty;
+        long partitionsHwm = 0;
+#endif
+        /// <summary>
+        /// A potential "unqiue id" for the database
+        /// </summary>
+        public long uid = 0;
+        /// <summary>
+        /// The current position in the associated datafile
+        /// </summary>
+        public virtual long curpos
+        {
+            get
+            {
+                return pb.curpos;
+            }
+        }
+        /// <summary>
+        /// If we were to define something this is where it would go
+        /// </summary>
+        /// <returns>A potential defining position</returns>
+        public virtual long NextPos()
+        {
+            return pb.curpos;
+        }
+        /// <summary>
+        /// Database can be detached (scary): if this happens the filename will be filled in here
+        /// </summary>
+        protected static string detached = "";
+        /// <summary>
+        /// Time of a detach request
+        /// </summary>
+        protected static DateTime detachTime;
+        /// <summary>
+        /// Detach a database from the engine
+        /// </summary>
+        /// <param name="fname">the file name to detach</param>
+        public static void DetachDatabase(string fname)
+        {
+            var sh = Database.databases[fname];
+            sh.pb.Detach(); // scary
+            sh.pb = null;
+            detached = fname;
+            detachTime = DateTime.Now;
+            ATree<string, Database>.Remove(ref databases, fname); // this bit is easy
+            BTree<string, PhysBase>.Remove(ref PhysBase.physBases, fname);
+        }
+        /// <summary>
+        /// State of synchronisation: we have processed the transaction log to here
+        /// </summary>
+        internal long loadpos;
+        /// <summary>
+        /// The guest role is usually null, but can be configured
+        /// </summary>
+        public Role guestRole
+        {
+            get
+            {
+                return objects[-1] as Role;
+            }
+        }
+        /// <summary>
+        /// the rv User position
+        /// </summary>
+        internal long owner = 0L;
+        // I'q like to make these protected: but I want to be able to enumerate them as System tables
+        /// <summary>
+        /// The list of database objects: defpos->DBObject
+        /// </summary>
+        public ATree<long, DBObject> objects = BTree<long, DBObject>.Empty;
+        /// <summary>
+        /// The list of Indexes: pos->bool
+        /// </summary>
+        public ATree<long, bool> indexes = BTree<long, bool>.Empty;
+        /// <summary>
+        /// The list of Reference1s (cross-partition fkeys)
+        /// </summary>
+        public ATree<long, Reference> references = BTree<long, Reference>.Empty;
+        /// <summary>
+        /// The list of Roles: name->objects->Role (nb: users are not placed here)
+        /// </summary>
+        public ATree<string, long?> roles = BTree<string, long?>.Empty;
+        /// <summary>
+        /// The list of Users: name->objects->User
+        /// </summary>
+        public ATree<string, long?> users = BTree<string, long?>.Empty;
+#if APPEND
+        /// <summary>
+        /// The list of backups: pos->true, for persisted Backup records and non-persisted remote commits
+        /// </summary>
+        public ATree<long, bool> backups = BTree<long, bool>.Empty;
+#else
+        /// <summary>
+        /// The list of backups: pos->pb.df.check, for persisted Backup records and non-persisted remote commits
+        /// </summary>
+        public ATree<long, long?> backups = BTree<long, long?>.Empty;
+#endif
+        /// <summary>
+        /// The list of types for a given URI (partially ordered: one URI may have several types)
+        /// </summary>
+        public ATree<string, ATree<long, bool>> typeuris = BTree<string, ATree<long, bool>>.Empty;
+        /// <summary>
+        /// Anonymous datatypes are unqiue in the database
+        /// </summary>
+        public ATree<SqlDataType, long?> domains = BTree<SqlDataType, long?>.Empty;
+        /// <summary>
+        /// lastSchemaPos is position of last schema change
+        /// </summary>
+        internal long lastSchemaPos = 0L;
+        /// <summary>
+        /// Load the database
+        /// Storage: we cache everything (by pb.Load()) keep pb.dataType info
+        /// Master: we deserialise Physicals to reconstruct all of the datatype information
+        /// (done by MasterBase, in an override of pb.Load())
+        /// Query: we install all the Physicals and reconstruct all the indexes
+        /// Client: Schema only
+        /// </summary>
+        public virtual void Load()
+        {
+            var cp = curpos;
+            if (loadpos >= cp)
+                return;
+            if (loadpos < 4)
+                Console.WriteLine("Bad loadpos");
+            Physical p;
+            var oc = context;
+            lock (pb.df.dslock) //(consistency)
+            {
+                var lk = pb.df.dslock.OnLock(true, "db.Load", context?.transaction ?? null);
+                try
+                {
+                    var buf = (ReadBuffer)pb.df.newBuffer(pb, loadpos);
+                    var bp = buf.basepos;
+                    var ct = buf.count;
+                    Authority au = null;
+                    int nr = 0;
+                    var cx = context ?? pb.ctx;
+                    for (int counter = 0; ; counter++)
+                    {
+                        p = buf.Create();
+                        if (p == null)
+                            break;
+                        if (p.type == Physical.Type.PTransaction)
+                        {
+                            var pt = (PTransaction)p;
+                            nr = pt.nrecs;
+                            au = cx.PushRole(this, pt.role, pt.user);
+                        }
+                        //               PyrrhoServer.Trace("Read ["+p.ppos+"] "+p);
+                        if (!pb.stopped)
+                        {
+                            Install(p);
+                            //                           if (profile!=null && addToProfile)
+                            //                             profile.AddProfile(p);
+                        }
+                        if (p.type != Physical.Type.PTransaction && au != null && --nr == 0)
+                        {
+                            cx.PopTo(au);
+                            au = null;
+                        }
+                        loadpos = buf.basepos + buf.off
+#if !APPEND
+                        - 5
+#endif
+                        ;
+                    }
+
+                }
+                finally
+                {
+                    pb.df.dslock.Unlock(lk);
+                }
+            }
+            if (cp > uid)
+                uid = cp;
+            context = oc;
+            lock (databaselist)
+                ATree<string, Database>.Add(ref databases, transName, this);
+        }
+        /// <summary>
+        /// For local transaction this is the number of records to be committed
+        /// </summary>
+        public virtual long Count
+        {
+            get { return 0; }
+        }
+        /// <summary>
+        /// Abandon a local transaction or close a remote connection
+        /// </summary>
+        internal virtual void Dispose()
+        {
+        }
+        /// <summary>
+        /// Accessor: a database object by defining position
+        /// </summary>
+        /// <param name="defpos">a defining position</param>
+        /// <returns>the database object</returns>
+        public DBObject GetObject(long defpos)
+        {
+            return objects[defpos];
+        }
+        /// <summary>
+        /// Mutator: Rollback a localtransaction
+        /// </summary>
+        /// <returns>the previous Database object</returns>
+        public virtual Connected Rollback() { return null; }
+        /// <summary>
+        /// Mutator: Commit stage 1 for a localtransaction
+        /// (Conflict detection)
+        /// </summary>
+        /// <param name="fromPos">Starting defining position for the transaction</param>
+        /// <returns>true if commit succeeds</returns>
+        public virtual DBException Commit1(ref long fromPos) { return null; }
+        /// <summary>
+        /// Mutator: Commit stage 2 for a localtransaction
+        /// (Flush the records to the physical database)
+        /// </summary>
+        public virtual void Commit2(ATree<string, long?> parts) { }
+        public virtual void Commit3() { }
+        /// <summary>
+        /// Mutator: Commit stage 3 for a localtransaction
+        /// (Assess the effects of the transaction)
+        /// </summary>
+        /// <returns>the new database</returns>
+        public virtual Database Commit4(List<Rvv> obs)
+        {
+            return null;
+        }
+        /// <summary>
+        /// Helper for locking: conflicts
+        /// </summary>
+        public virtual void LockConflicts() { }
+        /// <summary>
+        /// Helper for locking: conflicts
+        /// </summary>
+        public virtual void ConflictsDone() { }
+        /// <summary>
+        /// Helper for locking: conflicts
+        /// </summary>
+        public virtual bool ConflictsLocked { get { return false; } }
+        /// <summary>
+        /// Accessor: determine if there is anything to commit
+        /// </summary>
+        public virtual bool WorkToCommit { get { return false; } }
+        /// <summary>
+        /// Accessor: get the start of the work to be committed
+        /// </summary>
+        public virtual long WorkPos { get { return long.MaxValue; } }
+
+        internal virtual void NoteBackup()
+        {
+#if APPEND
+            BTree<long, bool>.Add(ref backups, curpos, true);
+#else
+            BTree<long, long?>.Add(ref backups, curpos, pb.df.check);
+#endif
+        }
+        /// <summary>
+        /// Accessor: a level2 record by position
+        /// </summary>
+        /// <param name="pos">a given position</param>
+        /// <returns>the physical record</returns>
+        public Physical GetD(long pos)
+        {
+            return pb.Get(pos);
+        }
+        /// <summary>
+        /// Accessor: a level2 record by position
+        /// </summary>
+        /// <param name="pos">a given position</param>
+        /// <returns>the physical record</returns>
+        public Physical GetS(long pos)
+        {
+            return pb.GetS(pos);
+        }
+        /// <summary>
+        /// Accessor: the position of the latest transaction defining a given defining position.
+        /// Will return -1 if the object/record no longer exists.
+        /// </summary>
+        /// <param name="pos">A defining position</param>
+        /// <returns>The transaction that defined its current value</returns>
+        public long GetVersion(long pos)
+        {
+            var iq = versions[pos];
+            if (!iq.HasValue)
+            {
+                var ph = GetD(pos);
+                if (ph != null)
+                    return ph.trans;
+                return -1; // this would be strange
+            }
+            return iq.Value; // if <0 the object has been deleted
+        }
+        /// <summary>
+        /// Record changes to database objects and data records
+        /// so that we can get version from defpos. 
+        /// With the compile-time option TRACKRELATEDDATA, the row version is affected by change to related information
+        /// e.g. a transaction updates a record holding a foreign key referencing def.
+        /// This was a proposed mechanism, but is now replaced by the readCheck concept.
+        /// </summary>
+        /// <param name="def">defining position</param>
+        /// <param name="cur">current transaction</param>
+        bool TrackChanges(long def, long cur)
+        {
+            if (versions.Contains(def))
+            {
+                var iq = versions[def];
+                if (iq.HasValue && iq.Value == cur)
+                    return true; // already done
+                BTree<long, long?>.Update(ref versions, def, cur);
+            }
+            else
+                BTree<long, long?>.Add(ref versions, def, cur);
+            return false;
+        }
+        /// <summary>
+        /// The current role
+        /// </summary>
+        public Role SessionRole
+        {
+            get
+            {
+                return GetRole(transrole);
+            }
+        }
+        /// <summary>
+        /// Mutator: Install a single Physical.
+        /// Called from Install(ar)
+        /// </summary>
+        /// <param name="p">The Physical to install</param>
+        internal void Install(Physical p)
+        {
+            switch (p.type)
+            {
+                case Physical.Type.EndOfFile: return;
+                case Physical.Type.PTable: Install((PTable)p); break; // for schema changes update forTypeParsingDb
+                case Physical.Type.PRole: Install((PRole)p); break;
+                case Physical.Type.PColumn: Install((PColumn)p); break;
+                case Physical.Type.Record: Install((Record)p); return;
+                case Physical.Type.Update: Install((Update)p); return;
+                case Physical.Type.Change: Install((Change)p); break;
+                case Physical.Type.Alter: Install((Alter)p); break;
+                case Physical.Type.Drop: Install((Drop)p); break;
+                case Physical.Type.Checkpoint: Install((Checkpoint)p); break;
+                case Physical.Type.Delete: Install((Delete)p); return;
+                case Physical.Type.Edit: Install((Edit)p); break;
+                case Physical.Type.PIndex: Install((PIndex)p); return;
+                case Physical.Type.Modify: Install((Modify)p); break;
+                case Physical.Type.PDomain: Install((PDomain)p); break;
+                case Physical.Type.PCheck: Install((PCheck)p); return;
+                case Physical.Type.PProcedure: Install((PProcedure)p); break;
+                case Physical.Type.PTrigger: Install((PTrigger)p); break;
+                case Physical.Type.PView: Install((PView)p); break;
+                case Physical.Type.PUser: Install((PUser)p); break;
+                case Physical.Type.PTransaction: Install((PTransaction)p); return;
+                case Physical.Type.Grant: Install((Grant)p); break;
+                case Physical.Type.Revoke: Install((Revoke)p); break;
+                case Physical.Type.PRole1: Install((PRole)p); break;
+                case Physical.Type.PColumn2: Install((PColumn)p); break; // .2 is okay
+                case Physical.Type.PType: Install((PType)p); break;
+                case Physical.Type.PMethod: Install((PMethod)p); break;
+                case Physical.Type.PTransaction2: Install((PTransaction2)p); return;
+                case Physical.Type.Ordering: Install((Ordering)p); break;
+                case Physical.Type.PDateType: Install((PDomain)p); break;
+                case Physical.Type.PImportTransaction: Install((PTransaction)p); return; // this is okay
+                case Physical.Type.Record1: ((Record)p).Install(this); return; // this is okay
+                case Physical.Type.PType1: Install((PType)p); break; // this is okay
+                case Physical.Type.PProcedure2: Install((PProcedure)p); break;
+                case Physical.Type.PMethod2: Install((PMethod)p); break;
+                case Physical.Type.PIndex1: Install((PIndex)p); return; // this is okay
+                case Physical.Type.Reference: Install((Reference)p); return;
+                case Physical.Type.Record2: ((Record)p).Install(this); return;
+                case Physical.Type.Curated: owner = 0L; return;
+                //                case Physical.Type.Partitioned: Install((Partitioned)p); return;
+                case Physical.Type.PDomain1: Install((PDomain)p); break;
+                case Physical.Type.Namespace: Install((Namespace)p); break;
+                case Physical.Type.PTable1: Install((PTable)p); break;
+                case Physical.Type.Alter2: Install((Alter2)p); break;
+                case Physical.Type.AlterRowIri: Install((AlterRowIri)p); break;
+                case Physical.Type.PColumn3: Install((PColumn3)p); break;
+                case Physical.Type.Alter3: Install((Alter3)p); break;
+                case Physical.Type.PView1: Install((PView)p); break;
+                case Physical.Type.RestView: Install((PRestView)p); break;
+                case Physical.Type.RestView1: goto case Physical.Type.RestView;
+                case Physical.Type.Metadata: Install((PMetadata)p); return;
+                case Physical.Type.PeriodDef: Install((PPeriodDef)p); return;
+                case Physical.Type.Versioning: Install((Versioning)p); break;
+                case Physical.Type.PCheck2: Install((PCheck)p); return;
+#if !EMBEDDED
+                case Physical.Type.Partition: Install((Partition)p); break;
+#endif
+                case Physical.Type.Reference1: Install((Reference1)p); return;
+                case Physical.Type.ColumnPath: Install((PColumnPath)p); break;
+                case Physical.Type.Metadata2: Install((PMetadata2)p); return;
+                case Physical.Type.Index2: Install((PIndex)p); return;
+                case Physical.Type.DeleteReference1: Install((DeleteReference1)p); return;
+                case Physical.Type.TriggeredAction: return; // nothing to do
+                default: throw new PEException("PE47");
+            }
+            pb.SetTypeParsingDb(this); // for VirtBase etc
+        }
+        /// <summary>
+        /// Mutator: Install a PTable
+        /// </summary>
+        /// <param name="t">The PTable entry</param>
+        void Install(PTable t)
+        {
+            var ro = SessionRole;
+            if (ro == null)
+                throw new DBException("42105", name).Mix();
+            if (ro.names.Contains(t.name.ident))
+                throw new DBException("42153", t.name).Mix();
+            var sr = new BTree<long, Grant.Privilege>(transrole, Grant.Privilege.Insert |
+                Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
+                Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences);
+            Table s = new Table(t, role, transuserid, sr);
+            var dfs = ro.defs;
+            var rr = new RoleObject(t.ppos, t.name);
+            BTree<long, RoleObject>.Add(ref dfs, s.defpos, rr);
+            ro = new Role(ro, dfs);
+            ATree<string, long?>.Add(ref ro.names, t.name.ident, t.defpos);
+            ATree<long, SqlDataType>.Add(ref ro.types, t.defpos, SqlDataType.Null);
+            pb.SetType(t.defpos, SqlDataType.Null, false);
+            Change(ro, TAction.NoOp, null);
+            Change(s, TAction.NoOp, null);
+            // set the new table type
+            lastSchemaPos = t.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a PColumn or PColumn2
+        /// </summary>
+        /// <param name="c">the PColumn or PColumn2</param>
+        void Install(PColumn c)
+        {
+            var t = (Table)GetObject(c.tabledefpos); // don't access the BTrees directly
+            if (t == null)
+                return;
+            Grant.Privilege priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
+            if (c.generated == PColumn.GenerationRule.No)
+                priv |= Grant.Privilege.Insert | Grant.Privilege.GrantInsert;
+            if (c.upd != "" || c.generated == PColumn.GenerationRule.No)
+                priv |= Grant.Privilege.Update | Grant.Privilege.GrantUpdate;
+            var rs = new BTree<long, Grant.Privilege>(transrole, priv);
+            var s = new TableColumn(this, t, c, rs); // so s.defpos==c.defpos
+            var os = t._GetColumn(this, c.name) as TableColumn;
+            if (os != null && os.defpos != s.defpos)
+                throw new DBException("42104", s.CurrentName(this)).Mix();
+            CheckAdminPermission();
+            var dt = pb.dataTypes[s.domaindefpos].typeInOwner;
+            ATree<SqlDataType, long?>.Add(ref pb.types, dt, s.domaindefpos);
+            s.notNull = s.notNull || c.notNull || (c.generated != PColumn.GenerationRule.No) || s.defaultValue != "";
+            Change(s, TAction.NoOp, null);
+            pb.SetType(c.defpos, dt, false);
+            var ro = new Role(SessionRole);
+            ATree<long, SqlDataType>.Add(ref ro.types, c.defpos, dt);
+            Change(ro, TAction.NoOp, null);
+            pb.Uses(c, c.defpos, s.domaindefpos, -1);
+            pb.Uses(c, t.defpos, s.defpos, s.seq);
+            t = t.AddColumn(c.ppos, this, s, c.name.ident);
+            lastSchemaPos = c.ppos;
+        }
+        /// <summary>
+        /// Install a column path (used in deep structure references)
+        /// </summary>
+        /// <param name="pc">the Level 2 columnPath</param>
+        void Install(PColumnPath pc)
+        {
+            var c = GetObject(pc.coldefpos) as Selector;
+            var t = GetObject(c.tabledefpos) as Table;
+            t = new Table(t);
+            CheckAdminPermission();
+            var s = new ColumnPath(this, pc, new BTree<long, Grant.Privilege>(transrole, Grant.Privilege.Select | Grant.Privilege.GrantSelect));
+            var dt = pb.dataTypes[s.domaindefpos].typeInOwner;
+            pb.SetType(s.defpos, dt, false);
+            pb.Uses(pc, pc.defpos, s.domaindefpos, -1);
+            pb.Uses(pc, t.defpos, pc.coldefpos, c.seq);
+            c = c.Localise();
+            ATree<long, bool>.Add(ref c.columnPaths, pc.defpos, true);
+            var ro = new Role(role);
+            var nm = new long(c.CurrentName(this) + "." + pc.path, long.IDType.Path);
+            nm.defpos = pc.defpos;
+            nm.dbix = dbix;
+            ATree<long, RoleObject>.Add(ref ro.defs, pc.defpos, new RoleObject(pc.ppos, nm));
+            ATree<long, SqlDataType>.Add(ref ro.types, pc.defpos, dt);
+            var rt = ro.defs[pc.coldefpos];
+            ATree<string, long?>.Add(ref rt.props, pc.path, pc.defpos);
+            Change(ro, TAction.NoOp, null);
+            Change(c, TAction.New, s);
+            ATree<long, bool>.Add(ref t.cols, c.defpos, true);
+            ATree<long, PColumnPath>.Add(ref pb.paths, pc.defpos, pc);
+            lastSchemaPos = s.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Drop request
+        /// </summary>
+        /// <param name="q">The Drop to perform</param>
+        protected virtual void Install(Drop d)
+        {
+            var ob = GetObject(d.delpos);
+            if (ob == null) // really should only happen with Versioning
+            {
+                var vr = GetS(d.delpos) as Versioning;
+                if (vr != null)
+                {
+                    var pd = GetS(vr.perioddefpos) as PPeriodDef;
+                    if (pd != null)
+                    {
+                        var tb = GetObject(pd.tabledefpos) as Table;
+                        tb.DropVersioning(this, pd);
+                    }
+                }
+            }
+            else
+                switch (ob.type)
+                {
+                    case DBTree.Tables:
+                        {
+                            Table tb = ob as Table;
+                            if (tb != null)
+                                for (var p = role.defs[tb.defpos].props.First(); p != null; p = p.Next())
+                                    if (p.value().HasValue)
+                                        BTree<long, DBObject>.Remove(ref objects, (long)p.value());
+                            for (var x = objects.First(); x != null; x = x.Next())
+                                x.value().RemoveGrantee(this, ob.defpos);
+                            Role.Drop(this, ob);
+                            break;
+                        }
+                    case DBTree.Domains:
+                        Role.Drop(this, ob);
+                        break;
+                    case DBTree.Indexes:
+                        {
+                            Index x = (Index)ob;
+                            BTree<long, bool>.Remove(ref indexes, ob.defpos);
+                            if (x.reftabledefpos > 0)
+                            {
+                                Table table = (Table)objects[x.reftabledefpos];
+                                if (table != null)
+                                    table.ForgetReference(this, x);
+                            }
+                            if (x.flags == PIndex.ConstraintType.PrimaryKey)
+                            {
+                                Table table = (Table)objects[x.tabledefpos];
+                                table.tableRows = BTree<long, bool>.Empty;
+                                for (var e = x.rows.First(); e != null; e = e.Next())
+                                    if (e.Value().HasValue)
+                                        ATree<long, bool>.Add(ref table.tableRows, e.Value().Value, true);
+                            }
+                            if (x.name.IndexOf('(') < 0)
+                            {
+                                var tb = (Table)objects[x.tabledefpos];
+                                tb.DropConstraint(this, new long(this, x));
+                            }
+                            break;
+                        }
+                    case DBTree.Procedures:
+                        {
+                            for (var x = objects.First(); x != null; x = x.Next())
+                                x.value().RemoveGrantee(this, ob.defpos);
+                            Role.Drop(this, ob);
+                            break;
+                        }
+                    case DBTree.Methods: goto case DBTree.Procedures;
+                    case DBTree.Roles:
+                        BTree<string, long?>.Remove(ref roles, ob.NameInSession(this).ident);
+                        for (var x = objects.First(); x != null; x = x.Next())
+                            x.value().RemoveGrantee(this, ob.defpos);
+                        break;
+                    case DBTree.Columns:
+                        {
+                            TableColumn col = (TableColumn)ob;
+                            if (col.generated != PColumn.GenerationRule.No)
+                                CheckAdminPermission();
+                            Table table = (Table)objects[col.tabledefpos];
+                            if (table != null)
+                                table.ForgetColumn(this, col, d);
+                            pb.SetType(d.ppos, new SqlDataType(this, table.defpos, role.defs[table.defpos].props), false);
+                            pb.NotUsed(table.defpos, col.defpos);
+                            return;
+                        }
+                    case DBTree.Triggers:
+                        {
+                            Trigger trig = (Trigger)ob;
+                            Table table = (Table)objects[trig.tabledefpos];
+                            if (table != null)
+                                table.DropTrigger(this, trig);
+                            break;
+                        }
+                    case DBTree.Checks:
+                        {
+                            Check pc = (Check)ob;
+                            DBObject pb = GetObject(pc.checkobjpos);
+                            switch (pb.type)
+                            {
+                                case DBTree.Tables:
+                                    {
+                                        Table tb = (Table)pb;
+                                        tb.DropConstraint(this, new long(this, pc));
+                                        break;
+                                    }
+                                case DBTree.Columns:
+                                    {
+                                        TableColumn tc = (TableColumn)pb;
+                                        tc.DropConstraint(this, new long(this, pc));
+                                        break;
+                                    }
+                                case DBTree.Domains:
+                                    {
+                                        Domain dm = (Domain)pb;
+                                        dm.DropConstraint(this, new long(this, pc));
+                                        break;
+                                    }
+                            }
+                            break;
+                        }
+                    case DBTree.Periods:
+                        {
+                            var pd = (PeriodDef)ob;
+                            var tb = GetObject(pd.tabledefpos) as Table;
+                            tb.DropPeriodDef(this, pd);
+                            break;
+                        }
+                }
+            BTree<long, DBObject>.Remove(ref objects, ob.defpos);
+            TrackChanges(ob.defpos, -1L);
+            lastSchemaPos = d.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Modify request (change proc/func/method/trigger)
+        /// </summary>
+        /// <param name="m">The Modify to install</param>
+        void Install(Modify m)
+        {
+            DBObject ob = GetObject(m.modifydefpos);
+            if (ob == null)
+                return;
+            CheckOwnerPermission(ob);
+            switch (ob.type)
+            {
+                case DBTree.Procedures:
+                    {
+                        Procedure pr = (Procedure)ob;
+                        pr = new Procedure(pr, pr.defpos, m.ppos);
+                        pr.proc_clause = m.body;
+                        Change(pr, TAction.NoOp, null);
+                        break;
+                    }
+                case DBTree.Methods:
+                    {
+                        Method mt = (Method)ob;
+                        UDType ut = (UDType)GetObject(mt.typedefpos);
+                        mt = new Method(mt, mt.defpos, m.ppos);
+                        mt.proc_clause = m.body;
+                        Change(mt, TAction.NoOp, null);
+                        break;
+                    }
+                case DBTree.Triggers:
+                    {
+                        Trigger tr = (Trigger)ob;
+                        Table tb = (Table)GetObject(tr.tabledefpos);
+                        tb.DropTrigger(this, tr);
+                        tr = new Trigger(tr, tr.defpos, m.ppos);
+                        tr.def = m.body;
+                        tb.AddTrigger(this, tr);
+                        Change(tb, TAction.NoOp, null);
+                        break;
+                    }
+                case DBTree.Tables: // used for Views!
+                    {
+                        View vw = (View)ob;
+                        vw = new View(vw, vw.defpos, m.ppos);
+                        if (m.name == "Source")
+                            vw.viewdef = m.body;
+                        Change(vw, TAction.NoOp, null);
+                        break;
+                    }
+                case DBTree.Checks:
+                    {
+                        Check ck = (Check)ob;
+                        DBObject co = GetObject(ck.checkobjpos);
+                        ck = new Check(ck, m.ppos);
+                        ck.search = m.body;
+                        Change(ck, TAction.NoOp, null);
+                        break;
+                    }
+                case DBTree.Indexes:
+                    {
+                        Index ix = (Index)ob;
+                        BTree<long, bool>.Remove(ref indexes, ix.defpos);
+                        ix = new Index(ix, ix.defpos, m.ppos);
+                        ix.adapter = m.body;
+                        Change(ix, TAction.NoOp, null);
+                        break;
+                    }
+                default: throw new PEException("PE48");
+            }
+            lastSchemaPos = m.ppos;
+            // Don't use TrackChanges since we are changing dependent information only
+        }
+        /// <summary>
+        /// Mutator: Install a new record
+        /// </summary>
+        /// <param name="r"></param>
+        protected virtual void Install(Record r)
+        {
+            r.Install(this);
+            TrackChanges(r.defpos, r.trans);
+        }
+        /// <summary>
+        /// Mutator: Install a Delete request
+        /// </summary>
+        /// <param name="q">The Delete</param>
+        protected virtual void Install(Delete d)
+        {
+            Record r = (Record)GetD(d.delpos);
+            Table t = (Table)GetObject(r.tabledefpos); // don't access the BTree directly
+            if (t == null)
+                return;
+            t.DeleteRecord(this, r, d);
+            TrackChanges(d.delpos, -1L);
+        }
+        /// <summary>
+        /// Mutator: Install a DeleteReference1
+        /// </summary>
+        /// <param name="r">The Record to isntall</param>
+        void Install(DeleteReference1 r)
+        {
+            var x = GetObject(r.index) as Index;
+            var m = new Record(x.tabledefpos, r.fields, this).MakeKey(x.cols);
+            var rows = x.rows;
+            Reference1 rf = null;
+            for (var p = references.First(); p != null; p = p.Next())
+            {
+                rf = (Reference1)GetD(p.key());
+                if (rf.partname == r.partname && rf.recpos == r.recpos)
+                {
+                    MTree.Remove(context, ref rows, m, rf.ppos);
+                    Change(new Index(context, x, rows, x.subTypes), TAction.NoOp, null);
+                    ATree<long, Reference>.Remove(ref references, r.recpos);
+                    return;
+                }
+            }
+        }
+        /// <summary>
+        /// Mutator: Install an Update
+        /// </summary>
+        /// <param name="v">The Update</param>
+        void Install(Update v)
+        {
+            Table t = (Table)GetObject(v.tabledefpos); // don't access the BTree directly
+            if (t == null)
+                return;
+            t.UpdateRecord(this, v);
+            TrackChanges(v.defpos, v.trans);
+        }
+        /// <summary>
+        /// Mutator: Install a Change request (change name)
+        /// </summary>
+        /// <param name="r">The Change to install</param>
+        void Install(Change r)
+        {
+            DBObject ob = GetObject(r.Affects);
+            if (ob == null)
+                return;
+            CheckAdminPermission();
+            var ro = SessionRole;
+            var dfs = ro.defs;
+            switch (r.previous.type)
+            {
+                case Physical.Type.PTable:
+                    {
+                        var rt = dfs[r.defpos];
+                        rt = new RoleObject(r.ppos, rt, rt.props);
+                        ATree<string, long?>.Remove(ref ro.names, rt.name.ident);
+                        rt.name = r.name;
+                        ATree<string, long?>.Add(ref ro.names, r.name.ident, rt.name.defpos);
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PRole:
+                    {
+                        ro.name = r.name.ident;
+                        Change(ro, TAction.NoOp, null);
+                        return;
+                    }
+                case Physical.Type.PColumn:
+                    {
+                        var tc = ob as TableColumn;
+                        var rt = dfs[tc.tabledefpos];
+                        var ps = rt.props;
+                        var rc = dfs[tc.defpos];
+                        rc = new RoleObject(r.ppos, rc, rc.props);
+                        var dt = new SqlDataType(ro.types[tc.tabledefpos]);
+                        dt.names[tc.seq] = r.name;
+                        // update the Role MetaData
+                        ATree<string, long?>.Remove(ref ps, rc.name.ident);
+                        rc.name = r.name;
+                        ATree<string, long?>.Add(ref ps, r.name.ident, rc.name.defpos);
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rc);
+                        rt = new RoleObject(r.ppos, rt, ps);
+                        ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                        if (ob.definer == role.defpos)
+                            pb.SetType(r.ppos, dt, false);
+                        ro = new Role(ro, dfs);
+                        Change(ro, TAction.NoOp, ob); // we need this just now
+                        // and update the role types tree
+                        ro = UpdateType(this, r.ppos, tc.tabledefpos, dt);
+                        break;
+                    }
+                case Physical.Type.PDomain:
+                    {
+                        var rt = dfs[r.defpos];
+                        rt = new RoleObject(r.ppos, rt, rt.props);
+                        var dt = pb.FindDataType(r.ppos, r.defpos);
+                        if (dt.name != "")
+                        {
+                            ATree<string, long?>.Remove(ref ro.names, dt.name);
+                            dt = new SqlDataType(dt);
+                            dt.name = r.name.ident;
+                            pb.SetType(r.ppos, dt, true);
+                            ATree<string, long?>.Add(ref ro.names, dt.name, rt.name.defpos);
+                        }
+                        rt.name = r.name;
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PCheck:
+                    {
+                        var c = ob as Check;
+                        var co = GetObject(c.checkobjpos);
+                        switch (co.type)
+                        {
+                            case DBTree.Tables:
+                                {
+                                    var rt = dfs[co.defpos];
+                                    rt = new RoleObject(r.ppos, rt, rt.props);
+                                    var rc = new RoleObject(r.ppos, dfs[c.defpos]);
+                                    ATree<string, long?>.Remove(ref rt.constraints, rc.name.ident);
+                                    rc.name = r.name;
+                                    ATree<string, long?>.Add(ref rt.constraints, rc.name.ident, rc.name.defpos);
+                                    ATree<long, RoleObject>.Update(ref dfs, rc.name.defpos, rc);
+                                    ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                                    break;
+                                }
+                            case DBTree.Columns:
+                                {
+                                    var tc = co as TableColumn;
+                                    var rt = dfs[tc.tabledefpos];
+                                    var ps = rt.props;
+                                    var rc = dfs[tc.defpos];
+                                    var rk = new RoleObject(r.ppos, dfs[c.defpos]);
+                                    rc = new RoleObject(r.ppos, rc, rc.props);
+                                    ATree<string, long?>.Remove(ref rc.constraints, rk.name.ident);
+                                    rk.name = r.name;
+                                    ATree<string, long?>.Add(ref rc.constraints, rk.name.ident, rk.name.defpos);
+                                    rt = new RoleObject(r.ppos, rt, ps);
+                                    ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                                    break;
+                                }
+                            case DBTree.Domains:
+                                {
+                                    var rt = dfs[co.defpos];
+                                    rt = new RoleObject(r.ppos, rt, rt.props);
+                                    var rc = new RoleObject(r.ppos, dfs[c.defpos]);
+                                    ATree<string, long?>.Remove(ref rt.constraints, rc.name.ident);
+                                    rc.name = r.name;
+                                    ATree<string, long?>.Add(ref rt.constraints, rc.name.ident, rc.name.defpos);
+                                    ATree<long, RoleObject>.Update(ref dfs, rc.name.defpos, rc);
+                                    ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                                    break;
+                                }
+                        }
+                        break;
+                    }
+                case Physical.Type.PeriodDef:
+                    {
+                        var ppd = r.previous as PPeriodDef;
+                        var rt = dfs[ppd.tabledefpos];
+                        var ps = rt.props;
+                        var rc = new RoleObject(r.ppos, rt, ps);
+                        ATree<string, long?>.Remove(ref ps, rc.name.ident);
+                        rc.name = r.name;
+                        ATree<string, long?>.Add(ref ps, r.name.ident, rc.name.defpos);
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rc);
+                        rt = new RoleObject(r.ppos, rt, ps);
+                        ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PProcedure:
+                    {
+                        var rt = dfs[r.defpos];
+                        rt = new RoleObject(r.ppos, rt, rt.props);
+                        var ncomps = rt.name.ident.Split('$');
+                        ATree<string, long?>.Remove(ref ro.names, rt.name.ident);
+                        rt.name = new long(r.name.ident + "$" + ncomps[1], long.IDType.Procedure);
+                        ATree<string, long?>.Add(ref ro.names, rt.name.ident, rt.name.defpos);
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PTrigger:
+                    {
+                        var rt = dfs[r.defpos];
+                        rt = new RoleObject(r.ppos, rt);
+                        rt.name = r.name;
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PView: goto case Physical.Type.PTable;
+                case Physical.Type.PRole1: goto case Physical.Type.PRole;
+                case Physical.Type.PColumn2: goto case Physical.Type.PColumn;
+                case Physical.Type.PType: goto case Physical.Type.PDomain;
+                case Physical.Type.PMethod:
+                    {
+                        var mt = ob as Method;
+                        var rt = dfs[mt.typedefpos];
+                        var ps = rt.props;
+                        var rm = dfs[mt.defpos];
+                        ATree<string, long?>.Remove(ref ps, rm.name.ident);
+                        rm.name = r.name;
+                        ATree<string, long?>.Add(ref ps, r.name.ident, rm.name.defpos);
+                        ATree<long, RoleObject>.Update(ref dfs, r.defpos, rm);
+                        rt = new RoleObject(r.ppos, rt, ps);
+                        ATree<long, RoleObject>.Update(ref dfs, rt.name.defpos, rt);
+                        break;
+                    }
+                case Physical.Type.PDateType: goto case Physical.Type.PDomain;
+                case Physical.Type.PTemporalView: goto case Physical.Type.PView;
+                case Physical.Type.PType1: goto case Physical.Type.PType;
+                case Physical.Type.PProcedure2: goto case Physical.Type.PProcedure;
+                case Physical.Type.PMethod2: goto case Physical.Type.PMethod;
+                case Physical.Type.PDomain1: goto case Physical.Type.PDomain;
+                case Physical.Type.PTable1: goto case Physical.Type.PTable;
+                case Physical.Type.PColumn3: goto case Physical.Type.PColumn;
+                case Physical.Type.PView1: goto case Physical.Type.PView;
+            }
+            ro = new Role(ro, dfs);
+            Change(ro, TAction.NoOp, ob);
+            TrackChanges(r.defpos, r.trans);
+            lastSchemaPos = r.ppos;
+        }
+        private Role UpdateType(Database db, long ppos, long p, SqlDataType dt)
+        {
+            var ro = new Role(db.role);
+            ATree<long, long> pos = BTree<long, long>.Empty;
+            for (var t = ro.types.First(); t != null; t = t.Next())
+            {
+                var tk = pb.dataTypes[t.key()];
+                var pp = tk?.defpos ?? t.key();
+                ATree<long, long>.Add(ref pos, pp, t.key());
+            }
+            ATree<long, SqlDataType> tps = new BTree<long, SqlDataType>(p, dt);
+            for (var pp = pos.First(); pp != null; pp = pp.Next())
+                if (!tps.Contains(pp.value()))
+                    db.GetObject(pp.value()).UpdateTypes(db, ppos, ref tps);
+            for (var t = ro.types.First(); t != null; t = t.Next())
+                if (!tps.Contains(t.key()))
+                    ATree<long, SqlDataType>.Add(ref tps, t.key(), t.value());
+            ro.types = tps;
+            return ro;
+        }
+        /// <summary>
+        /// Mutator: Install an Alter table request
+        /// </summary>
+        /// <param name="a">The Alter table request</param>
+        void Install(Alter a)
+        {
+            Table t = (Table)GetObject(a.tabledefpos); // don't access the BTree directly
+            if (t == null)
+                return;
+            CheckAdminPermission();
+            t.AlterColumn(this, a);
+            lastSchemaPos = a.ppos;
+        }
+        void Install(Alter2 a)
+        {
+            Table t = (Table)GetObject(a.tabledefpos); // don't access the BTree directly
+            if (t == null)
+                return;
+            CheckAdminPermission();
+            t.AlterColumn(this, a);
+            Install((PColumn)a);
+        }
+        void Install(Alter3 a)
+        {
+            Table t = (Table)GetObject(a.tabledefpos); // don't access the BTree directly
+            if (t == null)
+                return;
+            CheckAdminPermission();
+            t.AlterColumn(this, a);
+            Install((PColumn)a);
+        }
+        /// <summary>
+        /// Mutator: Install an Index
+        /// </summary>
+        /// <param name="c">The PIndex</param>
+        void Install(PIndex c)
+        {
+            CheckAdminPermission();
+            Index x = new Index(this, c);
+#if PARTITIONING
+            if ((int)(x.flags&PIndex.ConstraintType.PrimaryKey)!=0)
+                IndexPartition.Index(this, x);
+#endif
+            var ro = new Role(SessionRole);
+            var n = x.cols.Length;
+            var ts = new SqlDataType[n];
+            var cn = new long[n];
+            for (int i = 0; i < n; i++)
+            {
+                var tc = objects[x.cols[i]] as Selector;
+                ts[i] = ro.types[tc.defpos];
+                cn[i] = tc.CurrentName(this);
+            }
+            var dt = new SqlDataType(ts, cn);
+            ATree<long, SqlDataType>.Add(ref ro.types, x.defpos, dt);
+            pb.SetType(x.defpos, dt, false);
+            Change(ro, TAction.NoOp, null);
+            x = x.Build(this);
+            AddIndex(x);
+            lastSchemaPos = c.ppos;
+            if (c.name.ident.IndexOf('(') < 0) // has a name: add to constraints list
+            {
+                var dfs = ro.defs;
+                var nr = new RoleObject(c.ppos, c.name);
+                Table t = new Table((Table)objects[c.tabledefpos]);
+                var rt = dfs[t.defpos];
+                var cts = rt.constraints;
+                BTree<long, RoleObject>.Add(ref dfs, x.defpos, nr);
+                BTree<string, long?>.Add(ref cts, c.name.ident, x.defpos);
+                rt = new RoleObject(c.ppos, rt, rt.props);
+                rt.constraints = cts;
+                BTree<long, RoleObject>.Update(ref dfs, t.defpos, rt);
+                ro = new Role(ro, dfs);
+                BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+                BTree<long, bool>.Add(ref t.constraints, x.defpos, true);
+                Change(t, TAction.New, x);
+            }
+        }
+        /// <summary>
+        /// Mutator: Install a Domain
+        /// </summary>
+        /// <param name="q">The PDomain</param>
+        void Install(PDomain d)
+        {
+            CheckAdminPermission();
+            ATree<long, Grant.Privilege> rs = new BTree<long, Grant.Privilege>(role.defpos,
+                Grant.Privilege.Usage | Grant.Privilege.GrantUsage);
+            if (transuserid < 0)
+                BTree<long, Grant.Privilege>.Add(ref rs, -1, Grant.Privilege.Usage | Grant.Privilege.GrantUsage);
+            Domain dm = new Domain(this, d, rs);
+            Lexer lxr = new Lexer(d.name.ident, context);
+            var ro = SessionRole;
+            if (ro == null)
+                throw new DBException("42105", name).Mix();
+            if (d.name != null && ro.names.Contains(d.name.ident))
+                throw new DBException("42166", d.name).Mix();
+            SqlDataType dt = d.dataType;
+            if (dt.super == null)
+                switch (lxr.tok)
+                {
+                    case Sqlx.CONTENT:
+                    case Sqlx.CHAR:
+                    case Sqlx.NCHAR:
+                    case Sqlx.VARCHAR:
+                    case Sqlx.BOOLEAN:
+                    case Sqlx.INT:
+                    case Sqlx.INTEGER:
+                    case Sqlx.BIGINT:
+                    case Sqlx.SMALLINT:
+                    case Sqlx.NUMERIC:
+                    case Sqlx.DECIMAL:
+                    case Sqlx.DEC:
+                    case Sqlx.REAL:
+                    case Sqlx.DOUBLE:
+                    case Sqlx.FLOAT:
+                    case Sqlx.BLOB:
+                    case Sqlx.CLOB:
+                    case Sqlx.NCLOB: 
+                        ATree<SqlDataType, long?>.Add(ref pb.types, dt, dm.defpos);
+                        break;
+                }
+            ATree<long, SqlDataType>.Add(ref ro.types, d.defpos, dt);
+            if (dm.owner < 0)
+            {
+                for (var r = roles.First(); r != null; r = r.Next())
+                    Change(AddDomain(d, objects[r.value().Value] as Role, dt), TAction.NoOp, null);
+            }
+            else
+                Change(AddDomain(d, ro, dt), TAction.NoOp, null);
+            Change(dm, TAction.NoOp, null);
+            pb.SetType(d.ppos, dt, true);
+            lastSchemaPos = d.ppos;
+        }
+        Role AddDomain(PDomain d, Role r, SqlDataType dt)
+        {
+            var ro = new Role(r);
+            var rx = new RoleObject(d.ppos, d.name);
+            ATree<long, RoleObject>.Add(ref ro.defs, d.defpos, rx);
+            ATree<SqlDataType, long?>.Add(ref domains, dt, d.defpos);
+            if (dt.name != "")
+                ATree<string, long?>.Add(ref ro.names, d.name.ident, d.defpos);
+            ATree<long, SqlDataType>.Add(ref ro.types, d.defpos, dt);
+            return ro;
+        }
+        /// <summary>
+        /// Mutator: Install an Edit (ALTER DOMAIN)
+        /// </summary>
+        /// <param name="e">The Edit to install</param>
+        void Install(Edit e)
+        {
+            var od = objects[e.defpos];
+            Domain dm = new Domain(this, e, od.roles);
+            CheckAdminPermission();
+            var dt = e.dataType;
+            Change(dm, TAction.NoOp, null);
+            pb.SetType(e.ppos, dt, true);
+            lastSchemaPos = e.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install an Ordering
+        /// </summary>
+        /// <param name="e">The Ordering to install</param>
+        void Install(Ordering po)
+        {
+            UDType tp = GetObject(po.typedefpos) as UDType;
+            if (tp == null)
+                return; // should not occur
+            var dt = new SqlDataType(pb.dataTypes[tp.defpos].typeInOwner);
+            dt.name = dt.name + ":o";
+            dt.orderfunc = (Procedure)GetObject(po.funcdefpos);
+            dt.orderflags = po.flags;
+            pb.SetType(tp.defpos, dt, false);
+            lastSchemaPos = po.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Method
+        /// </summary>
+        /// <param name="pm">The PMethod</param>
+        void Install(PMethod pm)
+        {
+            CheckAdminPermission();
+            var t = (UDType)GetObject(pm.typedefpos);
+            if (pm.methodType == PMethod.MethodType.Constructor)
+                pm.retdefpos = pm.typedefpos;
+            var m = new Method(pm, role, transuserid,
+                new BTree<long, Grant.Privilege>(transrole,
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute | Grant.Privilege.Owner));
+            t = new UDType(t);
+            ATree<long, bool>.Add(ref t.methods, m.defpos, true);
+            var ro = SessionRole;
+            var rt = ro.defs[t.defpos];
+            var ps = rt.props;
+            var dfs = ro.defs;
+            var na = new long(pm.name.ident + "$" + pm.arity, long.IDType.Method);
+            ATree<long, RoleObject>.Add(ref dfs, m.defpos, new RoleObject(pm.ppos, na));
+            ATree<string, long?>.Add(ref ps, na.ident, pm.defpos);
+            rt = new RoleObject(pm.ppos, rt, ps);
+            ATree<long, RoleObject>.Update(ref dfs, t.defpos, rt);
+            ro = new Role(ro, dfs);
+            Change(t, TAction.New, m);
+            var dt = pb.dataTypes[pm.retdefpos].typeInOwner;
+            ATree<long, SqlDataType>.Add(ref ro.types, pm.defpos, dt);
+            pb.SetType(pm.defpos, dt, false);
+            pb.Uses(pm, pm.defpos, pm.retdefpos, -1);
+            ATree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            lastSchemaPos = pm.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install some sort of Check constraint
+        /// </summary>
+        /// <param name="p">The PCheck</param>
+        void Install(PCheck p)
+        {
+            DBObject o = GetObject(p.ckobjdefpos);
+            if (o == null)
+                return;
+            CheckAdminPermission();
+            Check ck = new Check(p, role, transuserid, BTree<long, Grant.Privilege>.Empty);
+            var ro = SessionRole;
+            var dfs = ro.defs;
+            var nr = new RoleObject(p.ppos, p.name);
+            switch (o.type)
+            {
+                case DBTree.Tables:
+                    {
+                        Table t = new Table((Table)o);
+                        var rt = dfs[t.defpos];
+                        var cs = rt.constraints;
+                        BTree<long, RoleObject>.Add(ref dfs, ck.defpos, nr);
+                        BTree<string, long?>.Add(ref cs, p.name.ident, nr.name.defpos);
+                        rt = new RoleObject(p.ppos, rt, rt.props);
+                        rt.constraints = cs;
+                        BTree<long, RoleObject>.Update(ref dfs, t.defpos, rt);
+                        ro = new Role(ro, dfs);
+                        BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+                        BTree<long, bool>.Add(ref t.constraints, ck.defpos, true);
+                        Change(t, TAction.New, ck);
+                        break;
+                    }
+                case DBTree.Domains:
+                    {
+                        Domain d = new Domain((Domain)o);
+                        var rt = dfs[d.defpos];
+                        var cs = rt.constraints;
+                        BTree<long, RoleObject>.Add(ref dfs, ck.defpos, nr);
+                        BTree<string, long?>.Add(ref cs, p.name.ident, nr.name.defpos);
+                        rt = new RoleObject(p.ppos, rt, rt.props);
+                        rt.constraints = cs;
+                        BTree<long, RoleObject>.Update(ref dfs, d.defpos, rt);
+                        ro = new Role(ro, dfs);
+                        BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+                        BTree<long, bool>.Add(ref d.constraints, ck.defpos, true);
+                        pb.SetType(d.defpos, new SqlDataType(pb.dataTypes[d.defpos].typeInOwner, GetS(ck.defpos) as PCheck), true);
+                        Change(d, TAction.New, ck);
+                        break;
+                    }
+                case DBTree.Columns:
+                    {
+                        Table tb = new Table((Table)o);
+                        TableColumn tc = new TableColumn((TableColumn)GetObject(p.subobjdefpos));
+                        if (tc == null)
+                            return;
+                        var rt = dfs[tb.defpos];
+                        var rc = dfs[tc.defpos];
+                        var cs = rc.constraints;
+                        BTree<long, RoleObject>.Add(ref dfs, ck.defpos, nr);
+                        BTree<string, long?>.Add(ref cs, p.name.ident, nr.name.defpos);
+                        rc = new RoleObject(p.ppos, rc, rc.props);
+                        rc.constraints = cs;
+                        BTree<long, RoleObject>.Update(ref dfs, tc.defpos, rc);
+                        rt = new RoleObject(p.ppos, rt, rt.props);
+                        BTree<long, RoleObject>.Update(ref dfs, tb.defpos, rt);
+                        ro = new Role(ro, dfs);
+                        BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+                        BTree<long, bool>.Add(ref tc.constraints, ck.defpos, true);
+                        Change(tb, TAction.Change, tc);
+                        break;
+                    }
+                default:
+                    throw new PEException("PE49");
+            }
+            lastSchemaPos = p.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Procedure or Function
+        /// </summary>
+        /// <param name="p">The Proc/Func</param>
+        void Install(PProcedure p)
+        {
+            Procedure pr = new Procedure(p, role, transuserid,
+                new BTree<long, Grant.Privilege>(transrole,
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute | Grant.Privilege.Owner));
+            var ro = SessionRole;
+            var dfs = ro.defs;
+            var name = new long(p.name.ident + "$" + p.arity);
+            name.defpos = p.defpos;
+            name.dbix = dbix;
+            var rr = new RoleObject(p.ppos, name);
+            BTree<long, RoleObject>.Add(ref dfs, pr.defpos, rr);
+            ro = new Role(ro, dfs);
+            ATree<string, long?>.Add(ref ro.names, name.ident, p.defpos);
+            Change(pr, TAction.NoOp, null);
+            if (p.retdefpos > 0)
+            {
+                var dt = pb.dataTypes[p.retdefpos].typeInOwner;
+                pb.SetType(p.defpos, dt, false);
+                pb.Uses(p, p.defpos, p.retdefpos, -1);
+                ATree<long, SqlDataType>.Add(ref ro.types, p.defpos, dt);
+            }
+            else
+                pb.SetType(p.defpos, SqlDataType.Null, false);
+            BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            lastSchemaPos = p.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Trigger
+        /// </summary>
+        /// <param name="pt">The PTrigger</param>
+        void Install(PTrigger pt)
+        {
+            Table t = (Table)GetObject(pt.tabledefpos);
+            Trigger trig = new Trigger(this, pt, role, transuserid, BTree<long, Grant.Privilege>.Empty);
+            var ro = SessionRole;
+            var dfs = ro.defs;
+            var rt = dfs[t.defpos];
+            var ps = rt.props;
+            var rr = new RoleObject(pt.ppos, pt.name);
+            if (ro.names.Contains(pt.name.ident))
+                throw new DBException("42104", pt.name).Mix();
+            var tgs = ro.names;
+            ATree<string, long?>.Add(ref tgs, pt.name.ident, pt.defpos);
+            BTree<long, RoleObject>.Add(ref dfs, trig.defpos, rr);
+            BTree<string, long?>.Add(ref ps, pt.name.ident, rr.name.defpos);
+            rt = new RoleObject(pt.ppos, rt, ps);
+            BTree<long, RoleObject>.Update(ref dfs, t.defpos, rt);
+            ro = new Role(ro, dfs);
+            ro.names = tgs;
+            BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            var dt = pb.dataTypes[t.defpos].typeInOwner;
+            trig.def = pt.def;
+            t.AddTrigger(this, trig);
+            lastSchemaPos = pt.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a user-defined type
+        /// </summary>
+        /// <param name="pt">the PType</param>
+        void Install(PType pt)
+        {
+            Table el = null;
+            var dt = pt.dataType;
+            var dd = pt.underdefpos;
+            if (dd > 0)
+                el = GetObject(dd) as Table;
+            if (el != null)
+                dt.columns = pb.dataTypes[el.defpos].typeInOwner.columns;
+            if (pt.structdefpos > 0)
+                dt.elType = pb.dataTypes[pt.structdefpos].typeInOwner;
+            ATree<long, Grant.Privilege> rs = new BTree<long, Grant.Privilege>(transrole,
+                Grant.Privilege.Usage | Grant.Privilege.GrantUsage);
+            ATree<long, Grant.Privilege>.Add(ref rs, -1, Grant.Privilege.Under);
+            var t = new UDType(this, pt, rs);
+            var ro = SessionRole;
+            var dfs = ro.defs;
+            var rr = new RoleObject(pt.ppos, pt.name);
+            ATree<long, RoleObject>.Add(ref dfs, t.defpos, rr);
+            ro = new Role(ro, dfs);
+            if (dt.name != "") // it should be ..
+                ATree<string, long?>.Add(ref ro.names, pt.name.ident, rr.name.defpos);
+            ATree<long, SqlDataType>.Add(ref ro.types, pt.defpos, dt);
+            BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            Change(t, TAction.NoOp, null);
+            if (t.under != null)
+                CheckPermissions(GetObject(t.underdefpos), Grant.Privilege.Under);
+            if (dt.kind != Sqlx.CHECK && el != null) // check is used for column constraints
+                CheckPermissions(el, Grant.Privilege.References);
+            if (dt.iri != null && dt.iri != "")
+            {
+                var at = typeuris[dt.iri];
+                if (at == null)
+                    BTree<string, ATree<long, bool>>.Add(ref typeuris, dt.iri, new BTree<long, bool>(pt.defpos, true));
+                else
+                {
+                    BTree<long, bool>.Add(ref at, pt.defpos, true);
+                    BTree<string, ATree<long, bool>>.Update(ref typeuris, dt.iri, at);
+                }
+            }
+            pb.SetType(pt.defpos, dt, false);
+            if (dt.DomainDefPos(this, -1) > 0)
+                pb.Uses(pt, t.defpos, dt.DomainDefPos(this, -1), -2);
+            lastSchemaPos = pt.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a User
+        /// </summary>
+        /// <param name="pu">the PUser</param>
+        void Install(PUser pu)
+        {
+            User u = new User(pu, role, transuserid, null);
+            int x = u.name.IndexOf("\\");
+            if (x > 0)
+                u.name = u.name.Substring(0, x).ToUpper() + u.name.Substring(x);
+            if (owner == 0L || u.name == ((PUser)pb.Get(owner)).name)
+            {
+                owner = pu.ppos;
+                var sr = GetObject(defRole) as Role;
+                var rs = sr.roles;
+                ATree<long, Grant.Privilege>.Add(ref rs, pu.defpos, Grant.Privilege.UseRole | Grant.Privilege.AdminRole);
+                ATree<long, DBObject>.Add(ref objects, defRole, sr.NewRoles(rs));
+            }
+            ATree<string, long?>.Add(ref users, u.name, u.defpos);
+            Change(u, TAction.NoOp, null);
+            if (baseDb == null || pu.trans > 0)
+                lastSchemaPos = pu.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a View
+        /// </summary>
+        /// <param name="pv">the PView</param>
+        void Install(PView pv)
+        {
+            Role ro = SessionRole;
+            View v = new View(pv, ro, transuserid, new BTree<long, Grant.Privilege>(ro.ppos,
+                Grant.Privilege.Select | Grant.Privilege.GrantSelect));
+            var str = DisplaySql(v.viewdef);
+            var ptr = new Transaction(pb, ro.defpos, user.defpos);
+            ptr.parse = ExecuteStatus.Parse;
+            var cs = new Parser(ptr).ParseCursorSpecification(str).cs;
+            cs.PreAnalyse(context);
+            pb.SetType(v.defpos, cs.nominalDataType, false);
+            var dfs = ro.defs;
+            var tbs = ro.names;
+            var rr = new RoleObject(pv.ppos, pv.name);
+            BTree<long, RoleObject>.Add(ref dfs, v.defpos, rr);
+            BTree<string, long?>.Add(ref tbs, pv.name.ident, v.defpos);
+            ro = new Role(ro, dfs);
+            ATree<long, SqlDataType>.Add(ref ro.types, pv.defpos, cs.nominalDataType);
+            ro.names = tbs;
+            BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            Change(v, TAction.NoOp, null);
+            lastSchemaPos = pv.ppos;
+        }
+        /// <summary>
+        /// Install a Rest-View rcord
+        /// </summary>
+        /// <param name="pv">The RestView definition to install</param>
+        void Install(PRestView pv)
+        {
+            Role ro = SessionRole;
+            var v = new RestView(pv, ro, transuserid, new BTree<long, Grant.Privilege>(ro.ppos,
+                Grant.Privilege.Select | Grant.Privilege.GrantSelect));
+            var dt = pb.dataTypes[pv.structpos].typeInOwner;
+            pb.SetType(v.defpos, dt, false);
+            var dfs = ro.defs;
+            var tbs = ro.names;
+            var rr = new RoleObject(pv.ppos, pv.name);
+            BTree<long, RoleObject>.Add(ref dfs, v.defpos, rr);
+            BTree<string, long?>.Add(ref tbs, pv.name.ident, v.defpos);
+            ro = new Role(ro, dfs);
+            ATree<long, SqlDataType>.Add(ref ro.types, pv.defpos, dt);
+            ro.names = tbs;
+            BTree<long, DBObject>.Update(ref objects, ro.defpos, ro);
+            Change(v, TAction.NoOp, null);
+            lastSchemaPos = pv.ppos;
+        }
+        /// <summary>
+        /// Mutator: Install a Role
+        /// </summary>
+        /// <param name="r">the PRole</param>
+        void Install(PRole r)
+        {
+            ATree<long, Grant.Privilege> rs = new BTree<long, Grant.Privilege>(transuserid, Grant.Privilege.UseRole | Grant.Privilege.AdminRole);
+            if (r.ppos == defRole)
+            {
+                owner = 0;
+                ATree<long, Grant.Privilege>.Add(ref rs, -1, Grant.Privilege.UseRole | Grant.Privilege.AdminRole);
+            }
+            else if (roles.Contains(r.name))
+                throw new DBException("42104", r.name).Mix();
+            Role ro = new Role(r, role, transuserid, rs);
+            var srole = objects[defRole] as Role;
+            if (srole != null)
+            {
+                if (srole.name == r.name)
+                    defRole = r.ppos;
+                CheckAdminPermission();
+            }
+            BTree<string, long?>.Add(ref roles, ro.name, ro.defpos);
+            // check the database has the guest machinery
+            if (objects[-1] == null)
+            {
+                var g = new User(this, "guest", Physical.Type.PUser);
+                ATree<long, DBObject>.Add(ref objects, -1, g);
+                ATree<string, long?>.Add(ref roles, g.name, -1);
+            }
+            for (var rx = guestRole.defs.First(); rx != null; rx = rx.Next())
+            {
+                var ob = GetObject(rx.value().name.defpos);
+                BTree<long, RoleObject>.Add(ref ro.defs, ob.defpos, rx.value());
+                ro = ob.AddToRole(this, ro, rx.value());
+            }
+            BTree<long, DBObject>.Add(ref objects, ro.ppos, ro);
+            if (r.ppos == pb.startData && r.name != name)
+                baseDb = r.name;
+            if (baseDb == null || r.trans > 0)
+                lastSchemaPos = r.ppos;
+        }
+        /// <summary>
+        /// Install a Reference
+        /// </summary>
+        /// <param name="rf">The Reference to install</param>
+        void Install(Reference rf)
+        {
+            Index x = GetObject(rf.index) as Index;
+            Record r = GetD(rf.recpos) as Record;
+            PRow kc = null;
+            for (int j = x.cols.Length - 1; j >= 0; j--)
+                kc = new PRow(rf.fields[x.cols[j]], kc);
+            BTree<long, PRow>.Add(ref x.references, rf.recpos, kc);
+            AddRecord(x, r, kc);
+            lastSchemaPos = rf.ppos;
+        }
+        internal long ptdefpos = 0L;
+        internal long pttime = 0L;
+        /// <summary>
+        /// Mutator: Install a Transaction
+        /// </summary>
+        /// <param name="t">the PTransaction</param>
+        internal virtual void Install(PTransaction t)
+        {
+            if (owner == 0)
+                owner = t.user;
+            ptdefpos = t.ppos;
+            pttime = t.time;
+        }
+        /// <summary>
+        /// Mutator: Install a Transaction2
+        /// </summary>
+        /// <param name="t">the PTransaction2</param>
+        internal void Install(PTransaction2 t)
+        {
+            for (var ot = t.others.First(); ot != null; ot = ot.Next())
+                CheckTransactionParticipant(t, ot.key(), ot.value().Value);
+            Install((PTransaction)t);
+#if !EMBEDDED
+            Level2.Recover.Remove(pb.name + "+" + t.OthersToString());
+#endif
+        }
+        /// <summary>
+        /// Install a Namespace
+        /// </summary>
+        /// <param name="p">The Namespace definition to install</param>
+        void Install(Namespace p)
+        {
+            ATree<string, string>.AddNN(ref pb.namespaces, p.prefix, p.uri);
+            lastSchemaPos = p.ppos;
+        }
+        /// <summary>
+        /// Install Metadata
+        /// </summary>
+        /// <param name="p">The Metadata information to add</param>
+        void Install(PMetadata p)
+        {
+            var r = SessionRole;
+            var dfs = r.defs;
+            DBObject ob = GetObject(p.defpos);
+            TableColumn tc = ob as TableColumn;
+            Table tb = ob as Table;
+            if (tc != null)
+            {
+                var rt = r.defs[tc.tabledefpos];
+                var e = r.defs[tc.defpos];
+                var ee = new RoleObject(p.ppos, e, p.metadata);
+                ATree<long, RoleObject>.Update(ref dfs, p.defpos, ee);
+                r = new Role(r, dfs);
+                Change(r, TAction.NoOp, null);
+            }
+            else if (tb != null)
+            {
+                var rt = r.defs[tb.defpos];
+                var ee = new RoleObject(p.ppos, rt, p.metadata);
+                ATree<long, RoleObject>.Update(ref dfs, p.defpos, ee);
+                r = new Role(r, dfs);
+                Change(r, TAction.NoOp, null);
+            }
+            else
+            {
+                var rt = r.defs[ob.defpos];
+                RoleObject ee = null;
+                if (p.seq < 0)
+                    ee = new RoleObject(p.ppos, rt, p.metadata);
+                else
+                {
+                    ee = new RoleObject(p.ppos, rt);
+                    ATree<int, long?>.Add(ref ee.subs, (int)p.seq, p.ppos);
+                }
+                ATree<long, RoleObject>.Update(ref dfs, p.defpos, ee);
+                r = new Role(r, dfs);
+                Change(r, TAction.NoOp, null);
+            }
+            lastSchemaPos = p.ppos;
+        }
+        /// <summary>
+        /// Add a new Period Def to a table
+        /// </summary>
+        /// <param name="pd">The period def</param>
+        void Install(PPeriodDef pd)
+        {
+            var tb = GetObject(pd.tabledefpos) as Table;
+            if (tb != null)
+                tb.AddPeriodDef(this, pd);
+            lastSchemaPos = pd.ppos;
+        }
+        /// <summary>
+        /// Add versioing to a table
+        /// </summary>
+        /// <param name="v">The versioning def</param>
+        void Install(Versioning v)
+        {
+            var pd = GetS(v.perioddefpos) as PPeriodDef;
+            if (pd == null)
+                return;
+            var tb = GetObject(pd.tabledefpos) as Table;
+            if (tb != null)
+                tb.AddVersioning(this, v);
+            lastSchemaPos = v.ppos;
+        }
+        /// <summary>
+        /// Add schema information to a Partition
+        /// </summary>
+        /// <param name="p"></param>
+        internal void Install(Partition p)
+        {
+            if (lastSchemaPos < p.basecurpos)
+            {
+                context.PushRole(this, defRole, owner);
+                for (var se = p.schema.First(); se != null; se = se.Next())
+                    Install(new BaseBuffer(pb, se.key(), se.value()).Create());
+                lastSchemaPos = p.basecurpos;
+            }
+        }
+        /// <summary>
+        /// Add a cross-partition reference to the database
+        /// </summary>
+        /// <param name="p"></param>
+        internal void Install(Reference1 p)
+        {
+            if (p.index != 0)
+            {
+                var x = objects[p.index] as Index;
+                var m = new Record(x.tabledefpos, p.fields, this).MakeKey(x.cols);
+                if (m == null)
+                    return;
+                MTree rows = x.rows;
+                MTree.Add(context, ref rows, m, p.ppos);
+                Change(new Index(context, x, rows, x.subTypes), TAction.NoOp, null);
+            }
+            ATree<long, Reference>.Add(ref references, p.ppos, p);
+        }
+        /// <summary>
+        /// Mutator: Add a new Physical
+        /// Occurs only in Participant
+        /// </summary>
+        /// <param name="ph">The Physical to add</param>
+        public virtual void Add(Physical ph)
+        {
+            Install(ph);
+        }
+        /// <summary>
+        /// Accessor: a database object by defining position
+        /// </summary>
+        /// <param name="defpos">a defining position</param>
+        /// <returns>the database object</returns>
+        public Role GetRole(long defpos)
+        {
+            return objects[defpos] as Role;
+        }
+        /// <summary>
+        /// Accessor: a user by identifier
+        /// </summary>
+        /// <param name="nm">the name (an identifier)</param>
+        /// <returns>The User</returns>
+        public virtual User GetUser(string nm)
+        {
+            var p = users[nm];
+            if (p == null || !p.HasValue)
+                p = GetUser1(nm);
+            if (p == null || !p.HasValue)
+                return objects[-1] as User;
+            var u = GetUser(p.Value);
+#if !EMBEDDED
+            if (u == null && name == "_" && nm == PyrrhoStart.user)
+                u = objects[Configuration.User] as User;
+            if (u == null)
+            {
+                var ss = nm.Split('\\');
+                if (ss.Length == 2)
+                {
+                    if (ss[0] == PyrrhoStart.domain)
+                    {
+                        p = users[ss[1]];
+                        if (p.HasValue)
+                            u = GetUser(p.Value);
+                    }
+
+                }
+                else
+                {
+                    p = users[PyrrhoStart.domain + "\\" + nm];
+                    if (p.HasValue)
+                        u = objects[p.Value] as User;
+                }
+            }
+#endif
+            return u;
+        }
+        long? GetUser1(string nm)
+        {
+            if (role == null)
+                return null;
+            var ip = role.names["User"];
+            if (!ip.HasValue)
+                return null;
+            var tb = objects[ip.Value] as Table;
+            if (tb == null)
+                return null;
+            var ix = FindPrimaryIndex(tb);
+            if (ix == null)
+                return null;
+            var nn = nm.Split('\\');
+            PRow pr = null;
+            for (int i = nn.Length - 1; i >= 0; i--)
+                pr = new PRow(new TChar(nn[i]), pr);
+            return ix.rows[pr];
+        }
+        /// <summary>
+        /// v.5.3 authentication support: Get a User by user defpos.
+        /// If we don't immediately recognise the user, try the
+        /// authentication machinery (if the "User" table is available to us)
+        /// </summary>
+        /// <param name="defpos">The user defpos for this database or the User table</param>
+        /// <returns>A User object for this database</returns>
+        public User GetUser(long defpos)
+        {
+            if (objects.Contains(defpos))
+                return objects[defpos] as User;
+            ATree<long, TypedValue> fields = null;
+            long up = defpos;
+            if (references.Contains(defpos))
+            {
+                var rf = references[defpos] as Reference1;
+                if (rf != null)
+                    fields = rf.fields;
+            }
+            if (fields == null)
+            {
+                var rc = GetD(defpos) as Record;
+                if (rc == null)
+                    return null;
+                fields = rc.fields;
+                up = rc.defpos;
+            }
+            var ip = role.names["User"];
+            if (!ip.HasValue)
+                return null;
+            var tb = objects[ip.Value] as Table;
+            if (tb == null)
+                return null;
+            var ix = FindPrimaryIndex(tb);
+            var sb = new StringBuilder();
+            var cm = "";
+            for (var i = 0; i < ix.cols.Length; i++)
+            {
+                sb.Append(cm); cm = "_";
+                sb.Append(fields[ix.cols[i]].ToString());
+            }
+            var us = new User(this, sb.ToString(), Physical.Type.ClientUser, up, null);
+            ATree<long, DBObject>.Add(ref objects, defpos, us); // temporarily
+            return us;
+        }
+        /// <summary>
+        /// Get a reified role's datatype. Changes to roles only happen when they are the session role!
+        /// </summary>
+        /// <param name="p"></param>
+        /// <returns>The SqlDataType object</returns>
+        public SqlDataType GetDataType(long p)
+        {
+            if (p < 0)
+                return null;
+            var dt = role.types[p];
+            if (dt == null)
+            {
+                var ob = GetObject(p);
+                var r = new Role(role);
+                switch (ob.type)
+                {
+                    case DBTree.Tables: r = ob.AddToRole(this, role, role.defs[p]); break;
+                    case DBTree.Procedures:
+                    case DBTree.Indexes:
+                    case DBTree.Periods:
+                    case DBTree.Columns:
+                        ATree<long, SqlDataType>.Add(ref r.types, p, pb.dataTypes[p].typeInOwner);
+                        break;
+                }
+                Change(r, TAction.NoOp, null);
+                dt = role.types[p];
+                if (dt == null)
+                    throw new PEException("PE896");
+            }
+            return dt;
+        }
+        /// <summary>
+        /// Get the current data type for this database and a domain
+        /// </summary>
+        /// <param name="t">the possibly unreified SqlDataType</param>
+        /// <returns>the reified version if available, or the current unreified version</returns>
+        public SqlDataType GetDataType(SqlDataType t)
+        {
+            if (pb.types.Contains(t)) // reified for the current database
+            {
+                if (t.owner == role.defpos) // for the current role?
+                    return t;
+                var rt = role.types[pb.types[t].Value];
+                if (rt != null && t.kind != Sqlx.ROW) // because ROW types can have possible later outputflags alterations
+                    return rt;
+            }
+            return t;
+        }
+        /// <summary>
+        /// Mutator: Add a newly created Index
+        /// </summary>
+        /// <param name="x">The Index to add</param>
+        public void AddIndex(Index x)
+        {
+            if ((x.flags & PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.SystemTimeIndex | PIndex.ConstraintType.ApplicationTimeIndex) == PIndex.ConstraintType.PrimaryKey)
+            {
+                // we shouldn't already have one: if we have (historical) make it a unique index
+                Index ox = FindPrimaryIndex(x.table(this));
+                if (ox != null)
+                    ox.flags = (ox.flags & ~PIndex.ConstraintType.PrimaryKey) | PIndex.ConstraintType.Unique;
+            }
+            BTree<long, bool>.Add(ref indexes, x.defpos, true);
+            BTree<long, DBObject>.Add(ref objects, x.defpos, x);
+        }
+        /// <summary>
+        /// Accessor: An Index by key specification
+        /// </summary>
+        /// <param name="cols">A list of defining positions for TableColumns</param>
+        /// <returns>The Index</returns>
+        public Index FindIndex(long[] cols)
+        {
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = GetObject(p.key()) as Index;
+                for (int j = 0; j < cols.Length; j++)
+                    if (cols[j] != x.cols[j])
+                        goto skip;
+                return x;
+                skip:;
+            }
+            return null;
+        }
+        /// <summary>
+        /// Accessor: the primary Index for a table
+        /// </summary>
+        /// <param name="t">The Table</param>
+        /// <returns>The Primary Index</returns>
+        public Index FindPrimaryIndex(DBObject t)
+        {
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.tabledefpos != t.defpos)
+                    continue;
+                if ((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.SystemTimeIndex | PIndex.ConstraintType.ApplicationTimeIndex)) == PIndex.ConstraintType.PrimaryKey)
+                    return x;
+            }
+            return null;
+        }
+        /// <summary>
+        /// Mutator: Add a newly created Record to a table. Cascade the
+        /// changes to indexes.
+        /// </summary>
+        /// <param name="t">A Table</param>
+        /// <param name="r">A new Record</param>
+        public void AddRecord(Table t, Record r)
+        {
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.tabledefpos != t.defpos)
+                    continue;
+                PRow m = null;
+                if (x.adapter == "")
+                    m = r.MakeKey(x.cols);
+                else
+                {
+                    Context cx = new From(context.transaction, t);
+                    var dt = pb.dataTypes[x.defpos].typeInOwner;
+                    var fk = new Parser(cx.transaction).ParseSqlValueList(this, x.adapter, dt);
+                    SqlValue.Setup(fk, SqlDataType.Null);
+                    var rw = fk.Eval(cx) as TRow;
+                    m = new PRow(rw);
+                }
+                if (m != null)
+                    AddRecord(x, r, m);
+            }
+        }
+        /// <summary>
+        /// Mutator: Add a newly created Record to an Index
+        /// Called from AddRecord to table
+        /// </summary>
+        /// <param name="x">An Index</param>
+        /// <param name="r">A new Record</param>
+        /// <param name="m">The foreign key</param>
+        public virtual void AddRecord(Index x, Record r, PRow m)
+        {
+            if (m == null)
+                return;
+            long st = r.subType;
+            ATree<long, ATree<long, bool>> pr = x.subTypes;
+            MTree rows = x.rows;
+            MTree.Add(context, ref rows, m, r.ppos);
+            if (st > 0L)
+            {
+                ATree<long, bool> at = pr[st];
+                if (at == null)
+                {
+                    at = new BTree<long, bool>(r.defpos, true);
+                    BTree<long, ATree<long, bool>>.Add(ref pr, st, at);
+                }
+                else if (!at.Contains(r.defpos))
+                {
+                    BTree<long, bool>.Add(ref at, r.defpos, true);
+                    BTree<long, ATree<long, bool>>.Add(ref pr, st, at);
+                }
+            }
+#if TRACKRELATEDDATA
+            if (x.refindexdefpos > 0 && m!=null)
+                TrackChanges(x.refindexdefpos, m, r.trans);
+#endif
+            Change(new Index(context, x, rows, pr), TAction.NoOp, null);
+        }
+#if TRACKRELATEDDATA
+        /// <summary>
+        /// Change versions information for related records
+        /// </summary>
+        /// <param name="ri">Referenced index position</param>
+        /// <param name="m">Foreign Key</param>
+        /// <param name="tr">Transaction</param>
+        void TrackChanges(long ri,PRow m,long tr)
+        {
+            if (m == null)
+                return;
+            var rx = objects[ri] as Index;
+            var iq = rx.rows[m];
+            if (iq==null || !iq.HasValue)
+                return;
+            var rp = iq.Value;
+            var rr = GetD(rp) as Record;
+            if (TrackChanges(rp, tr)) // avoid infinite recursion
+                return;
+            for(var p = indexes.First();p!= null;p=p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.tabledefpos != rr.tabledefpos)
+                    continue;
+                var fk = rr.MakeKey(x.cols);
+                if (x.refindexdefpos > 0 && fk!=null)
+                    TrackChanges(x.refindexdefpos, fk, tr);
+            }
+        }
+#endif
+        /// <summary>
+        /// Mutator: Delete a record from a table.
+        /// Cascade the changes to relevant indexes and perform
+        /// refential integrity checks
+        /// </summary>
+        /// <param name="t">The table</param>
+        /// <param name="r">The record being deleted</param>
+        /// <param name="q">The delete request</param>
+        public void DeleteRecord(Table t, Record r, Delete d)
+        {
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.tabledefpos == t.defpos)
+                    DeleteRecord(x, r, d);
+            }
+        }
+        /// <summary>
+        /// Mutator: Delete a record from an index.
+        /// Called from DeleteRecord for table
+        /// </summary>
+        /// <param name="x">The index</param>
+        /// <param name="r">The record being deleted</param>
+        /// <param name="d">The Delete physical record</param>
+        protected virtual void DeleteRecord(Index x, Record r, Delete d)
+        {
+            var m = r.MakeKey(x.cols);
+            if (m != null && ((x.flags & (PIndex.ConstraintType.SystemTimeIndex | PIndex.ConstraintType.ApplicationTimeIndex)) == 0))
+            {
+                x.DeleteRef(this, m, r.ppos);
+                MTree rows = x.rows;
+                MTree.Remove(context, ref rows, m, r.ppos);
+                Change(new Index(context, x, rows, x.subTypes), TAction.NoOp, null);
+            }
+#if TRACKRELATEDDATA
+            if (x.refindexdefpos > 0 && m!=null)
+                TrackChanges(x.refindexdefpos, m, r.trans);
+#endif
+        }
+        /// <summary>
+        /// Mutator: Update a Record in a Table.
+        /// Cascade the changes to indexes and check referential integrity
+        /// </summary>
+        /// <param name="t">The Table</param>
+        /// <param name="u">The UpdatePost being installed</param>
+        public void UpdateRecord(Table t, Update u)
+        {
+#if MONGO
+            for (var f = u.fields.First();f!= null;f=f.Next())
+            {
+                var tv = f.value();
+                var dt = tv?.dataType??SqlDataType.Null;
+                if (dt.kind == Sqlx.DOCUMENT)
+                    pb.CacheDocument(f.key(), u.ppos, tv as TDocument);
+            }
+#endif
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.tabledefpos == t.defpos)
+                    UpdateRecord(x, u);
+            }
+        }
+        /// <summary>
+        /// Mutator: Update a record in an Index
+        /// </summary>
+        /// <param name="x">The Index</param>
+        /// <param name="u">The Update record being installed</param>
+        protected virtual void UpdateRecord(Index x, Update u)
+        {
+            Record r = (Record)GetD(u.reRow);
+            var oldKey = r.MakeKey(x.cols);
+            var newKey = u.MakeKey(x.cols);
+            MTree rows = x.rows;
+            if (oldKey != null && ((x.flags & (PIndex.ConstraintType.SystemTimeIndex | PIndex.ConstraintType.ApplicationTimeIndex)) == (PIndex.ConstraintType)0))
+                MTree.Remove(context, ref rows, oldKey, r.ppos);
+            if (newKey != null)
+                MTree.Add(context, ref rows, newKey, u.ppos);
+            TrackChanges(r.defpos, u.trans);
+#if TRACKRELATEDDATA
+            if (x.refindexdefpos > 0)
+            {
+                if (oldKey != null)
+                    TrackChanges(x.refindexdefpos, oldKey, u.trans);
+                if (newKey != null)
+                    TrackChanges(x.refindexdefpos, newKey, u.trans);
+            }
+#endif
+            Change(new Index(context, x, rows, x.subTypes), TAction.NoOp, null);
+        }
+        /// <summary>
+        /// For checking distributed transactions we maintain a list of
+        /// PTransaction2s we haven't been able to check yet, indexed by ot.path
+        /// </summary>
+        internal static List<PTransaction2> deferredTransactionChecks = null;
+        /// <summary>
+        /// Distributed Transaction Checking (paranoia)
+        /// If the referenced databases are loaded, check them now
+        /// Otherwise save them for later
+        /// </summary>
+        /// <param name="t">The Transaction details</param>
+        /// <param name="pn">The physbase name</param>
+        /// <param name="pp">The participant to check</param>
+        private void CheckTransactionParticipant(PTransaction2 t, string pn, long pp)
+        {
+            PhysBase b = PhysBase.physBases[pn];
+            if (b == null)
+                return;
+#if !LOCAL
+            if (!PyrrhoServer.HasServerRole(transName, ServerRole.Query, true))
+                return;
+#endif
+            if (b == null)
+            {
+                deferredTransactionChecks.Add(t);
+                return;
+            }
+            Physical ph = b.Get(pp);
+            PTransaction2 bp = b.Get(pp) as PTransaction2;
+            if (bp == null || (!bp.others.Contains(transName)) || bp.others[transName] != t.ppos)
+            {
+#if !EMBEDDED
+                if (PyrrhoStart.RepairMode)
+                    Console.WriteLine("Could not find Transaction at " + pn + "=" + pp);
+                else
+#endif
+                    throw new DBException("3D000", pn).Mix();
+            }
+        }
+        /// <summary>
+        /// Mutator: Install a list of Physicals
+        /// Called at end of Commit.
+        /// Locks the database (Consistency lock)
+        /// </summary>
+        /// <param name="ar">The list of Physicals</param>
+        public virtual void Install(List<Physical> ar)
+        {
+            lock (pb.df.dslock) // (consistency)
+            {
+                var lk = pb.df.dslock.OnLock(true, "Install Physicals", context.transaction);
+                foreach (Physical p in ar)
+                {
+                    Install(p);
+                }
+                if (curpos > uid)
+                    uid = curpos;
+                pb.df.dslock.Unlock(lk);
+            }
+        }
+
+        internal virtual void Execute(Role r, string[] path, int p, string etag)
+        { }
+        internal virtual void Post(RowSet r, string s)
+        { }
+        internal virtual void Put(RowSet r, string s)
+        { }
+        internal virtual void Delete(RowSet r)
+        { }
+        ///<summary>
+        /// Implemented in Participant: a new insert
+        /// </summary>
+        /// <param name="r">The new record</param>
+        public virtual void AddRecord(Record r)
+        {
+            throw new DBException("2E104").Mix();
+        }
+        /// <summary>
+        /// Implemented in Participant: a new Update
+        /// </summary>
+        /// <param name="r">The record</param>
+        public virtual void AddUpdate(Update r)
+        {
+            throw new DBException("2E104").Mix();
+        }
+        /// <summary>
+        /// Implemented in Participant: a new Delete
+        /// </summary>
+        /// <param name="d">The Delete record</param>
+        public virtual void AddDelete(Delete d)
+        {
+            throw new DBException("2E104").Mix();
+        }
+        /// <summary>
+        /// Synchronise with a remote database
+        /// </summary>
+        /// <param name="cd">The remote connection</param>
+        /// <returns>The current state of the Database</returns>
+        internal virtual Database Sync(Connected cd)
+        {
+#if !EMBEDDED
+            if (name == "_")
+                return this;
+            var config = databases["_"];
+            if (config == null)
+                return this;
+            var d = this;
+            if (baseDb == null)
+            {
+
+                var px = config.objects[Configuration.PartitionIndex] as Index;
+                if (px != null)
+                    for (var sp = px.rows.First(); sp != null; sp = sp.Next())
+                    {
+                        var k = sp.key()._head.ToString();
+                        if (k != name)
+                            continue;
+                        var r = config.GetD(sp.Value().Value) as Record;
+                        if (r.ppos <= partitionsHwm)
+                            continue;
+                        partitionsHwm = r.ppos;
+                        d.ConnectPartition(cd, r);
+                        d = d.Info(r);
+                    }
+                d.pb?.df.Flush();
+            }
+            else
+            {
+                var rs = pb.prole.details;
+                var bCd = PyrrhoStart.cfg.configCds[rs];
+                Record cr = null;
+                if (bCd == null)
+                {
+                    var dx = config.objects[Configuration.DatabaseIndex] as Index;
+                    if (dx != null)
+                        for (var dp = dx.rows.First(); dp != null; dp = dp.Next())
+                        {
+                            var k = dp.key()._head.ToString();
+                            if (k != name)
+                                continue;
+                            cr = config.GetD(dp.Value().Value) as Record;
+                            break;
+                        }
+                    if (cr == null)
+                        return d;
+                    bCd = new Connected(cd.tr, "_", "_@" + rs, rs, cd.serverRole, cr.String(context, Configuration.DatabaseRemoteUser),
+                        cr.String(context, Configuration.DatabaseRemotePassword),
+                        cr.String(context, Configuration.DatabaseName));
+                    ATree<string, Connected>.Add(ref PyrrhoStart.cfg.configCds, rs, bCd);
+                    var bCf = new Connected(bCd,cd.trans, (int)cd.trans.databases.Count).Configure();
+                    ATree<string, Database>.Add(ref PyrrhoStart.cfg.configs, rs, bCf);
+                }
+                var asy = bCd.async;
+                asy.Write(Protocol.IndexLookup);
+                asy.PutLong(Configuration.PartitionIndex);
+                asy.PutLong(1);
+                asy.PutLong(Configuration.PartitionName);
+                asy.PutCell(context, SqlDataType.Char, new TChar(name));
+                asy.Flush();
+                asy.ReadResponse();
+                var cu = asy.GetLong();
+                for (;;)
+                {
+                    asy.Write(Protocol.IndexNext);
+                    asy.PutLong(-cu); // just the records
+                    asy.Flush();
+                    if (asy.ReadResponse() == Responses.IndexDone)
+                        break;
+                    var r = asy.GetRecord(config.pb);
+                    if (r.ppos < partitionsHwm)
+                        continue;
+                    partitionsHwm = r.ppos;
+                    d = d.Info(r);
+                }
+                d.pb?.df.Flush();
+            }
+            return d;
+#else
+            return this;
+#endif
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Connect to a Partition
+        /// </summary>
+        /// <param name="cd">The Connected information</param>
+        /// <param name="r">A configuration record</param>
+        void ConnectPartition(Connected cd, Record r)
+        {
+            switch (r.tabledefpos)
+            {
+                case Configuration.Partition:
+                    {
+                        var pn = r.String(context, Configuration.PartitionName);
+                        var ps = r.String(context, Configuration.PartitionPartitionServer);
+                        var sr = ServerRole.Client;
+                        if (ps == PyrrhoStart.cfg.hp.ToString())
+                        {
+                            ps = null;
+                            sr = (ServerRole)15;
+                        }
+                        var d = New(pn, pn, ps, cd.user, "", sr);
+                        d.baseDb = name;
+                        break;
+                    }
+            }
+        }
+#endif
+        /// <summary>
+        /// Prepare for a CONTINUE condition handler (implemented in Participant)
+        /// </summary>
+        /// <returns>The updated Participant</returns>
+        internal virtual Participant Mark()
+        {
+            return null;
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// A remote database from a configuration entry
+        /// </summary>
+        /// <param name="record">the configuration entry</param>
+        internal static Database RemoteDb(Transaction tr, Record record)
+        {
+            string name = null;
+            switch (record.tabledefpos)
+            {
+                case Configuration.Database:
+                    {
+                        if (!record.fields.Contains(Configuration.DatabaseRemote))
+                            return null;
+                        name = record.String(tr.context, Configuration.DatabaseName);
+                        // in all cases where name is not _ we need a local level 3 database entry
+                        // with this name. 
+                        // If there is a remote master database we will deal with this at level 2, as
+                        // the remote database is never a separate transaction participant
+                        return New(name, name, record.String(tr.context, Configuration.DatabaseRemote),
+                            record.String(tr.context, Configuration.DatabaseRemoteUser),
+                            record.String(tr.context, Configuration.DatabaseRemotePassword),
+                            (ServerRole)record.Long(tr.context, Configuration.DatabaseServerRole));
+                    }
+                case Configuration.Partition:
+                    {
+                        name = record.String(tr.context, Configuration.PartitionName);
+                        var d = New(name, name, record.String(tr.context, Configuration.PartitionPartitionServer),
+                            record.String(tr.context, Configuration.PartitionServerConfigUser),
+                            record.String(tr.context, Configuration.PartitionServerConfigPassword), ServerRole.Client);
+                        d.baseDb = record.String(tr.context, Configuration.PartitionBase);
+                        return d;
+                    }
+                default: return null;
+            }
+        }
+        /// <summary>
+        /// A remote configuration database from a configuration entry
+        /// </summary>
+        /// <param name="tr">The transaction</param>
+        /// <param name="record">the configuration entry</param>
+        internal static Database ConfigFor(Transaction tr, Record record)
+        {
+            switch (record.tabledefpos)
+            {
+                case Configuration.Database:
+                    {
+                        var remote = record.String(tr.context, Configuration.DatabaseRemote);
+                        var rs = remote.Replace(":", "-");
+                        return Database.New("_", "_@" + rs, remote,
+                            PyrrhoStart.user, record.String(tr.context, Configuration.DatabaseRemotePassword), ServerRole.Client);
+                    }
+                case Configuration.Partition:
+                    {
+                        var remote = record.String(tr.context, Configuration.PartitionPartitionServer);
+                        var rs = remote.Replace(":", "-");
+                        return Database.New("_", "_@" + rs, remote, record.String(tr.context, Configuration.PartitionServerConfigUser),
+                            record.String(tr.context, Configuration.PartitionServerConfigPassword), ServerRole.Client);
+                    }
+            }
+            return null;
+        }
+#endif
+        internal Database(string n, string tn
+#if !EMBEDDED
+            , string sv, string cr, string pw, ServerRole sr
+#endif
+) 
+        {
+            name = n;
+            transName = tn;
+#if !EMBEDDED
+            server = sv;
+            creator = cr;
+            password = pw;
+
+            if (sr != ServerRole.Undefined)
+                PyrrhoServer.SetServerRole(tn, sr); 
+#endif
+        }
+        protected Database(Database d,Connected c) : this(d)
+        {
+            cd = c;
+        }
+        /// <summary>
+        /// Constructor: create a copy to modify
+        /// </summary>
+        /// <param name="d">The database</param>
+        internal Database(Database d)
+        {
+            backups = d.backups;
+            baseDb = d.baseDb;
+            defRole = d.defRole;
+            domains = d.domains;
+            indexes = d.indexes;
+            lastSchemaPos = d.lastSchemaPos;
+            loadpos = d.loadpos;
+            name = d.name;
+            transName = d.transName;
+            objects = d.objects;
+            owner = d.owner;
+            pb = d.pb;
+            profile = d.profile;
+#if !EMBEDDED
+            partitionedTables = d.partitionedTables;
+            server = d.server;
+            creator = d.creator;
+            password = d.password;
+#endif
+            roles = d.roles;
+            typeuris = d.typeuris;
+            uid = d.uid;
+            versions = d.versions;
+            users = d.users;
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Constructor: Add a new tablepartition to a Database,
+        /// and update the databases list
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="ps"></param>
+        internal Database(Database d, ATree<long, TablePartition> ps) : this(d)
+        {
+            partitionedTables = ps;
+            ATree<string, Database>.Add(ref databases, transName, this);
+        }
+#endif
+        /// <summary>
+        /// Find or Create a database with a given name
+        /// </summary>
+        /// <param name="n">The database name</param>
+        /// <param name="tn">The transaction version of the name</param>
+        /// <param name="sv">A remote server if defined</param>
+        /// <param name="cr">A configuration file user name</param>
+        /// <param name="pw">A configuartion file use password</param>
+        /// <param name="sr">The server role</param>
+        /// <returns>The current version of the named database</returns>
+        internal static Database New(
+#if EMBEDDED
+string tn
+#else
+            string n, string tn, string sv, string cr, string pw, ServerRole sr
+#endif
+)
+        {
+            var d = databases[tn];
+            if (d != null)
+                return d;
+            lock (databaselist)
+            {
+                d = databases[tn];
+                if (d != null)
+                    return d;
+                d = new Database(
+#if EMBEDDED
+tn, tn
+#else
+                    n, tn, sv, cr, pw, sr
+#endif
+);
+            }
+            if (
+#if !EMBEDDED
+                n=="_" ||
+#endif
+                tn=="SYSTEM$" || (d.pb!=null && !((DbStorage)d.pb.df.dbStorage).creating))
+                    ATree<string, Database>.Add(ref databases, tn, d);
+            return d;
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Create a new database
+        /// </summary>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        internal static Database New(string n)
+        {
+            return New(n, n, null, null, null, ServerRole.Master | ServerRole.Query | ServerRole.Storage);
+        }
+#endif
+        /// <summary>
+        /// Create a new shared database (so we do not fill in the cd field)
+        /// </summary>
+        /// <param name="cc">the connected information</param>
+        /// <returns></returns>
+        internal static Database New(Connected cc)
+        {
+            var d = New(cc.name
+#if !EMBEDDED
+                , cc.transName, cc.remoteServer, cc.user, null, ServerRole.Master | ServerRole.Query | ServerRole.Storage
+#endif
+);
+            if (d.pb!=null && ((DbStorage)d.pb.df.dbStorage).creating)
+                cc.tr.creating = d;
+            return d;
+        }
+        /// <summary>
+        /// Get the user and role information for the transaction.
+        /// This will be null for a shared or read-only database
+        /// </summary>
+        /// <param name="t">the transaction</param>
+        /// <returns>null (for the base class)</returns>
+        internal virtual Authority GetUserAndRole(Transaction t)
+        {
+            return null;
+        }
+        /// <summary>
+        /// Commit the physical layers
+        /// </summary>
+        internal virtual void Commit()
+        {
+            pb.df.Commit();
+            ATree<string, Database>.Add(ref databases, transName, this);
+            ATree<string, PhysBase>.Add(ref PhysBase.physBases, pb.name, pb);
+        }
+        /// <summary>
+        /// Add a private database (a Participant) for a transaction
+        /// </summary>
+        /// <param name="cd">The connected information</param>
+        /// <param name="tr">The transaction</param>
+        internal void Add(Connected cd, Transaction tr)
+        {
+            // check it isn't there already
+            for (int i = 0; i < tr.databases.Count; i++)
+                if (tr.databases[i].transName == transName)
+                    return;
+            // it isn't: create the required participant
+            var pc = Add(cd);
+            pc.GetUserAndRole(tr);
+            pc.dbix = tr.databases.Count;
+            // and add it
+            tr.databases.Add(pc);
+            ATree<string, Database>.Add(ref tr.databaseList, transName, pc);
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// This method is for Reconfigure and partition management
+        /// </summary>
+        /// <param name="tr">the Transaction</param>
+        /// <returns>a non-shared version of this database</returns>
+        internal Database Add(Transaction tr)
+        {
+            // we probably have it already
+            for (int i = 0; i < tr.databases.Count; i++)
+                if (tr.databases[i].transName == transName)
+                    return tr.databases[i];
+            var role = tr.context?.GetRole(this) ?? null;
+            var ro = role?.name ?? tr.role;
+            var us = user?.name ?? creator;
+            var cd = new Connected(tr, tr.databases.Count, name, transName, 
+                server, ServerRole.Undefined,
+                us, ro, BTree<string,string>.Empty);
+            var lt = cd.Configure().Add(cd);
+            lt.GetUserAndRole(tr);
+            lt.dbix = tr.databases.Count;
+            tr.databases.Add(lt);
+            ATree<string, Database>.Add(ref tr.databaseList, transName, lt);
+            return lt;
+        }
+#endif
+        /// <summary>
+        /// Prepare for the start of any transaction: create a Participant version of
+        /// this database to hold and try out the changes.
+        /// If we get here we must have ServerRole.Query.
+        /// </summary>
+        /// <param name="cd">The connected information</param>
+        /// <returns>The new Database </returns>
+        internal virtual Database Add(Connected cd)
+        {
+#if !EMBEDDED
+            if (cd.serverRole.HasFlag(ServerRole.Query))
+#endif
+                Load();
+#if !EMBEDDED
+            if (name != transName)
+                return new ProxyParticipant(cd, this);
+            var sr = PyrrhoServer.GetServerRole(transName);
+            if ((sr & ServerRole.Master) != ServerRole.Master)
+            {
+                if ((sr & ServerRole.Storage)==ServerRole.Storage || baseDb!=null)
+                    return new LocalSlave(cd, this);
+                if ((sr & ServerRole.Query)==ServerRole.Query)
+                    return new FrontSlave(cd, this);
+                return new LocalSlave(cd, this);
+            }
+            if (transName == "_")
+            {
+                if (cd.details.Contains("Coordinator"))
+                    return new RemoteConfiguration(cd, this);
+                else
+                    return new Reconfigure(cd, this);
+            }
+#endif
+            if (cd.details["Modify"]?.CompareTo("false") == 0)
+                return this;
+            return new Participant(cd, this);
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Get the base partition on this local server
+        /// </summary>
+        /// <param name="r">The configuration record</param>
+        /// <returns>the base partition</returns>
+        public static Database GetShell(Record r)
+        {
+            string n = null;
+            switch (r.tabledefpos)
+            {
+                case Configuration.Database:
+                    n = r.String(r.database.ctx,Configuration.DatabaseName); break;
+                case Configuration.Partition:
+                    n= r.String(r.database.ctx,Configuration.PartitionBase); break;
+            }
+            if (n != null)
+                return New(n);
+            throw new DBException("3D000", n).ISO();
+        }
+        /// <summary>
+        /// Add partition Info
+        /// </summary>
+        /// <param name="record"></param>
+        internal virtual Database Info(Record record)
+        {
+            var ps = partitionedTables;
+            var tb = record.Defpos(context,Configuration.PartitionTable);
+            if (!ps.Contains(tb))
+                ATree<long,TablePartition>.Add(ref ps, tb, new TablePartition(tb));
+            ATree<long,  TablePartition>.Update(ref ps, tb, Info(ps[tb], record));
+            return Use(ps);
+        }
+        /// <summary>
+        /// Gather the tablepartition information for this database
+        /// </summary>
+        /// <param name="tp">The tablepartition information so far</param>
+        /// <param name="record">A partition record from the configuration file</param>
+        /// <returns>the updated tablepartition information</returns>
+        protected TablePartition Info(TablePartition tp, Record record)
+        {
+            var tc = record.Defpos(context,Configuration.PartitionColumn);
+            var tb = objects[tp.tabledefpos] as Table;
+            var sn = record.String(context,Configuration.PartitionSegmentName);
+            var ss = tp.segments;
+            if (!ss.Contains(sn))
+                ATree<string, TableSegment>.Add(ref ss, sn, 
+                    new TableSegment(sn,record.String(context,Configuration.PartitionName),name));
+            var sg = ss[sn];
+            ATree<string, TableSegment>.Update(ref ss, sn, sg.Info(tc, record));
+            return new TablePartition(tp, ss);
+        }
+        /// <summary>
+        /// Validate the partitioning information. For each table, the set of tablesegments should be pairwise disjoint. 
+        /// We should repeat this validation step at commit of any Reconfigure transaction.
+        /// (Important to wrap multiple partition changes in a transaction!)
+        /// We also discover which indexes will require broadcasting.
+        /// </summary>
+        internal void Validate()
+        {
+            for (var t = partitionedTables.First(); t!= null;t=t.Next())
+                for (var a = t.value().segments.First();a!= null;a=a.Next())
+                    for (var b = t.value().segments.First();b!= null;b=b.Next())
+                    {
+                        var av = a.value();
+                        var bv = b.value();
+                        if (av.basename==av.partname||bv.basename==bv.partname|| av.basename != bv.basename)
+                            continue;
+                        if (string.Compare(a.key(), b.key()) < 0 && av.Overlaps(context.transaction,pb, bv))
+                            throw new DBException("2E215").Mix();
+                    }
+            for (var xp =indexes.First();xp!= null;xp=xp.Next())
+            {
+                var x = GetObject(xp.key()) as Index;
+                var tp = partitionedTables[x.tabledefpos];
+                if (tp == null)
+                    continue;
+                for (var s = tp.segments.First();s!= null;s=s.Next())
+                    for (var c = s.value().conditions.First();c!= null;c=c.Next())
+                    {
+                        foreach (var cp in x.cols)
+                            if (c.key() == cp)
+                                goto skip;
+                        throw new DBException("2E218",x.name).Mix();
+                    skip: ;
+                    }
+            }
+        }
+        /// <summary>
+        /// A line in the _Partition table has been deleted: tidy up the DatabaseInfo,
+        /// </summary>
+        /// <param name="pos">the record being deleted</param>
+        /// <returns>the updated database</returns>
+        internal Database Del(long pos)
+        {
+            var ps = partitionedTables;
+            for(var p = partitionedTables.First();p!= null;p=p.Next())
+            {
+                var ss = p.value().segments;
+                for (var s =p.value().segments.First();s!= null;s=s.Next())
+                {
+                    var ts = s.value().conditions;
+                    for (var t = s.value().conditions.First();t!= null;t=t.Next())
+                        if (t.value().defpos == pos)
+                        {
+                            ATree<long, ValueBounds>.Remove(ref ts, t.key());
+                            ATree<string, TableSegment>.Update(ref ss, s.key(), new TableSegment(s.value(), ts));
+                            break;
+                        }
+                    if (s.value().conditions.Count == 0)
+                        ATree<string, TableSegment>.Remove(ref ss, s.key());
+                }
+            }
+            return Use(ps);
+        }
+        /// <summary>
+        /// Creator: Install the tablepartition information
+        /// </summary>
+        /// <param name="pt">the partition information</param>
+        /// <returns>the updated Database</returns>
+        protected virtual Database Use(ATree<long, TablePartition> pt)
+        {
+            return new Database(this, pt);
+        }
+#endif
+        /// <summary>
+        /// Mutator: Occurs in Install 
+        /// </summary>
+        /// <param name="ob">A new or modified object</param>
+        /// <param name="act">A subsidiary action</param>
+        /// <param name="tb">A subsidiary object</param>
+        public virtual void Change(DBObject ob, TAction act, DBObject db)
+        {
+            switch (ob.type)
+            {
+                case DBTree.Indexes:
+                    {
+                        if (!indexes.Contains(ob.defpos))
+                            BTree<long, bool>.Add(ref indexes, ob.defpos, true);
+                        break;
+                    }
+                case DBTree.Roles:
+                    {
+                        var r = GetObject(ob.defpos) as Role; // do not use GetRole here!
+                        var nr = ob as Role;
+                        if (r != null)
+                        {
+                            if (nr.name != r.name || !roles.Contains(r.name))
+                            {
+                                BTree<string, long?>.Remove(ref roles, r.name);
+                                BTree<string, long?>.Add(ref roles, nr.name, nr.defpos);
+                            }
+                        }
+                        break;
+                    }
+                case DBTree.Users:
+                    {
+                        var r = GetObject(ob.defpos) as User;
+                        var nr = ob as User;
+                        if (r != null)
+                        {
+                            if (nr.name != r.name || !users.Contains(r.name))
+                            {
+                                BTree<string, long?>.Remove(ref users, r.name);
+                                BTree<string, long?>.Add(ref users, nr.name, nr.defpos);
+                            }
+                        }
+                        break;
+                    }
+            }
+            if (objects.Contains(ob.defpos))
+                BTree<long, DBObject>.Update(ref objects, ob.defpos, ob);
+            else
+                BTree<long, DBObject>.Add(ref objects, ob.defpos, ob);
+            if (db == ob)
+                throw new PEException("PE43");
+            switch (act)
+            {
+                case TAction.NoOp: break;
+                case TAction.New:
+                    BTree<long, DBObject>.AddNN(ref objects, db.defpos, db);
+                    break;
+                case TAction.Change:
+                    BTree<long, DBObject>.Update(ref objects, db.defpos, db);
+                    break;
+                case TAction.Remove:
+                    DropFromRoles(db);
+                    BTree<long, DBObject>.Remove(ref objects, db.defpos);
+                    break;
+            }
+        }
+        /// <summary>
+        /// Update roles following drop of an object
+        /// </summary>
+        /// <param name="ob"></param>
+        internal void DropFromRoles(DBObject ob)
+        {
+            for (var r = ob.roles.First();r!= null;r=r.Next())
+                ob.DropFromRole(this, objects[r.key()] as Role);
+        }
+        /// <summary>
+        /// The Participant should be able to Send or Drop a Reference, Record, Update, Delete
+        /// for the case that this is a partition
+        /// </summary>
+        /// <param name="ob"></param>
+        public virtual void Drop(DBObject ob)
+        {
+        }
+        /// <summary>
+        /// The Update request 
+        /// Implemented in Participant
+        /// </summary>
+        /// <param name="ro">the role</param>
+        /// <param name="tn">the table name</param>
+        /// <param name="w">a document whose conditions indicate a location</param>
+        /// <param name="u">a replacement document for the selected node</param>
+        internal virtual void Update(Role ro,string tn,TDocument w,TDocument u)
+        {
+        }
+        /// <summary>
+        /// Send a physical to a remote server
+        /// </summary>
+        /// <param name="ph">the physical record</param>
+        internal virtual void SendPhysical(Physical ph)
+        {
+        }
+        /// <summary>
+        /// Check the physical database is synchronised
+        /// </summary>
+        /// <returns>whether we are up to date</returns>
+        internal virtual bool Prepare()
+        {
+            return loadpos < curpos;
+        }
+        /// <summary>
+        /// Mutator: Install a Checkpoint
+        /// </summary>
+        /// <param name="b">The Checkpoint</param>
+        void Install(Checkpoint b)
+        {
+#if APPEND
+            BTree<long, bool>.Add(ref backups, b.ppos, true);
+#else
+            BTree<long, long?>.Add(ref backups, b.ppos, pb.df.check);
+#endif
+        }
+        /// <summary>
+        /// Mutator: Install Grant or Revoke
+        /// </summary>
+        /// <param name="g">Grant or Revoke to install</param>
+        void Install(Grant g) // or Revoke !
+        {
+            if (transuserid == owner && g.obj == 0L) // grant database owner role
+            {
+                owner = g.grantee;
+                //             schemaRole.Access(this, true, Grant.Privilege.Owner | Grant.Privilege.GrantOwner, owner);
+                return;
+            }
+            DBObject obj = GetObject(g.obj);
+            bool grant = (g.type == Physical.Type.Grant);
+            if (g.priv == Grant.Privilege.Owner) // ownership of objects
+            {
+                g.priv = Grant.Privilege.Owner | Grant.Privilege.GrantOwner;
+                obj = obj.NewOwner(objects[g.grantee] as Role);
+                Change(obj, TAction.NoOp, null);
+            }
+            DoGrantRevoke(obj, grant, g.priv, g.grantee);
+        }
+        /// <summary>
+        /// If we grant permissions to an object, we need to grant permissions on the types it uses
+        /// and ensure its parent is visible
+        /// Do not cascade permissions from tables to columns or types to methods at this level
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <param name="gt"></param>
+        DBObject DoGrantRevoke(DBObject obj, bool grant, Grant.Privilege p, long u)
+        {
+            if (obj == null)
+                return null;
+            var pp = p;
+            switch (obj.type)
+            {
+                case DBTree.Columns:
+                    {
+                        var tc = obj as TableColumn;
+                        pp = p & (Grant.Privilege.Select | Grant.Privilege.Insert | Grant.Privilege.Update |
+                            Grant.Privilege.GrantSelect | Grant.Privilege.GrantUpdate | Grant.Privilege.GrantInsert);
+                        if (pp == Grant.Privilege.NoPrivilege)
+                            return obj;
+                        // ensure we have the rights we need on the column type
+                        if (grant)
+                            DoGrantRevoke(GetObject(tc.domaindefpos), true, Grant.Privilege.Usage, u);
+                        // ensure the table is visible but don't change its permissions
+                        var tb = GetObject(tc.tabledefpos);
+                        var r = GetObject(u) as Role; // not GetRole
+                        r.Show(this, tb);
+                        break;
+                    }
+                case DBTree.Procedures:
+                    {
+                        var pr = obj as Procedure;
+                        pp = p & Grant.Privilege.Execute;
+                        if (pp == Grant.Privilege.NoPrivilege)
+                            return obj;
+                        // ensure we have the rights we need on the return type
+                        if (grant)
+                        {
+                            var pdt = pb.dataTypes[pr.defpos].typeInOwner;
+                            var rdt = GetDataType(pr.defpos);
+                            if (rdt != null && pdt != SqlDataType.Null)
+                                DoGrantRevoke(GetObject(rdt.DomainDefPos(this, -1)), true, Grant.Privilege.Usage, u);
+                        }
+                        break;
+                    }
+                case DBTree.Methods:
+                    {
+                        var mt = obj as Method;
+                        pp = p & Grant.Privilege.Execute;
+                        if (pp == Grant.Privilege.NoPrivilege)
+                            return obj;
+                        // ensure we have the rights we need on the return type
+                        if (grant)
+                        {
+                            var pdt = pb.dataTypes[mt.defpos].typeInOwner;
+                            var rdt = GetDataType(mt.defpos);
+                            if (rdt != null || pdt == SqlDataType.Null)
+                                DoGrantRevoke(GetObject(rdt.DomainDefPos(this, -1)), true, Grant.Privilege.Usage, u);
+                            // ensure the type is visible but don't change its permissions
+                            var ut = GetObject(mt.typedefpos);
+                            var r = GetObject(u) as Role; // not GetRole
+                            r.Show(this, ut);
+                        }
+                        break;
+                    }
+                case DBTree.Domains:
+                    {
+                        var dm = obj as Domain;
+                        pp = p & Grant.Privilege.Usage;
+                        if (p == Grant.Privilege.NoPrivilege)
+                            return obj;
+                        var dt = GetDataType(dm.defpos);
+                        if (grant && dt.elType != null)
+                        {
+                            var tb = GetObject(dt.elType.DomainDefPos(this, -1)) as Table;
+                            if (tb != null)
+                                for (var cp = role.defs[tb.defpos].props.First();cp!= null;cp=cp.Next())
+                                    if (cp.value().HasValue)
+                                        DoGrantRevoke(GetObject((long)cp.value()), true, Grant.Privilege.Select | Grant.Privilege.Update, u);
+                        }
+                        break;
+                    }
+                case DBTree.Tables:
+                    {
+                        obj = obj.Access(this, grant, pp, u);
+                        Change(obj, TAction.NoOp, null);
+                        var tb = obj as Table;
+                        pp = p & Grant.Privilege.Usage;
+                        if (p == Grant.Privilege.NoPrivilege)
+                            return obj;
+                        var dt = GetDataType(tb.defpos);
+                        for(var cp = role.defs[tb.defpos].props.First();cp!= null;cp=cp.Next())
+                            if (cp.value().HasValue)
+                                DoGrantRevoke(GetObject((long)cp.value()), true, p, u);
+                        return objects[tb.defpos];
+                    }
+            }
+            obj = obj.Access(this, grant, pp, u);
+            Change(obj, TAction.NoOp, null);
+            return obj;
+        }
+        /// <summary>
+        /// Build a ReadConstraint object
+        /// </summary>
+        /// <param name="q">The database object concerned</param>
+        /// <returns></returns>
+        internal virtual ReadConstraint readConstraint(DBObject d)
+        {
+            return new ReadConstraint(context, d.defpos);
+        }
+        /// <summary>
+        /// Mutator: Perform actions for Drop of a database object
+        /// Side effects depend on action and CheckDependent
+        /// </summary>
+        /// <param name="ob">The database object to drop</param>
+        /// <param name="act">CASCADE or RESTRICT</param>
+        internal virtual void OnDrop(DBObject ob, Sqlx act)
+        {
+        }
+
+        /// <summary>
+        /// Renaming support: replace identifiers in source SQL by current definitions.
+        /// It is possible that the current user is not allowed to see the code,
+        /// and in that case the exception handler provides a suitable ellipsis
+        /// </summary>
+        /// <param name="sql"></param>
+        /// <returns>the expanded string</returns>
+        internal string DisplaySql(string sql)
+        {
+            var ss = sql.Split('"');
+            var sb = new StringBuilder();
+            bool inquotes = true;
+            foreach (var s in ss)
+            {
+                long p;
+                inquotes = !inquotes;
+                if (inquotes)
+                {
+                    if (long.TryParse(s, out p))
+                    {
+                        sb.Append('"');
+                        sb.Append(objects[p].NameInSession(this));
+                        sb.Append('"');
+                    }
+                    else
+                    {
+                        bool quotesneeded = false;
+                        for (int i = 0; i < s.Length; i++)
+                        {
+                            var ch = s[i];
+                            if (!(Char.IsUpper(ch) || Char.IsDigit(ch)))
+                                quotesneeded = true;
+                        }
+                        if (quotesneeded)
+                            sb.Append("\"");
+                        sb.Append(s);
+                        if (quotesneeded)
+                            sb.Append("\"");
+                    }
+                }
+                else
+                    sb.Append(s);
+            }
+            return sb.ToString();
+        }
+        /// <summary>
+        /// Check the permissions exist on the given object.
+        /// Throws an exception is the permissions are not held.
+        /// Handled by Participant
+        /// </summary>
+        /// <param name="ob">A database object</param>
+        /// <param name="priv"></param>
+        internal virtual void CheckPermissions(DBObject ob, Grant.Privilege priv)
+        {
+            if (SessionRole == null)
+                throw new DBException("42105", "Guest").Mix();
+        }
+        /// <summary>
+        /// Check we have owner permission
+        /// </summary>
+        /// <param name="ob">the object</param>
+        internal virtual void CheckOwnerPermission(DBObject ob)
+        {
+            if (user == null || ob.owner != user.defpos)
+                throw new DBException("42105", "Not owner").Mix();
+        }
+        /// <summary>
+        /// Check we have admin permission (for updating schema)
+        /// </summary>
+        internal void CheckAdminPermission()
+        {
+            var ro = SessionRole;
+            if (ro == null)
+                throw new DBException("42105", "Guest").Mix();
+            CheckPermissions(ro, Grant.Privilege.AdminRole);
+        }
+        /// <summary>
+        /// Generate a new unique identifier
+        /// </summary>
+        /// <returns>a string of form U(nnn)</returns>
+        public string genuid() { return "U(" + (++uid) + ")"; }
+
+        /// <summary>
+        /// Temporal file control
+        /// </summary>
+        /// <param name="q">The forget date</param>
+        /// <param name="sv">The forgetColumn value</param>
+        /// <returns>whether to forget</returns>
+        bool ShouldForget(DateTime d, TypedValue tv)
+        {
+            var o = tv?.Val() ?? null;
+            if (o is DateTime)
+                return d > (DateTime)o;
+            if (o is Integer)
+                o = (long)(Integer)o;
+            if (o is long)
+                return d > new DateTime((long)o);
+            throw new PEException("PE81");
+        }
+
+        internal static void TryTransactionChecks()
+        {
+            lock (databaselist)
+            {
+                foreach (var pt in deferredTransactionChecks)
+                    DoDeferredTransactionChecks(pt);
+                deferredTransactionChecks.Clear();
+            }
+        }
+        /// <summary>
+        /// Distributed Transaction Checking paranoia
+        /// See Database.CheckTransactionParticipant
+        /// </summary>
+        /// <param name="p">The transaction</param>
+        /// <param name="tb">The database</param>
+        private static void DoDeferredTransactionChecks(PTransaction2 p)
+        {
+            for(var ot = p.others.First();ot!= null;ot=ot.Next())
+            {
+                PhysBase pb = PhysBase.physBases[ot.key()];
+                if (pb == null)
+                    goto bad;
+                PTransaction2 bp = pb.Get(ot.value().Value) as PTransaction2;
+                if (bp == null || (!bp.others.Contains(p.database.name)) || bp.others[p.database.name] != p.ppos)
+                {
+#if !EMBEDDED
+                    if (PyrrhoStart.RepairMode)
+                        Console.WriteLine("Could not find transaction " + ot.key() + "=" + ot.value());
+                    else
+#endif
+                    goto bad;
+                }
+            }
+            return;
+        bad:
+            throw new DBException("3D000", p.database.name).ISO()
+                .Add(Sqlx.CATALOG_NAME, p.database.name);
+        }
+        /// <summary>
+        /// Lookup a record using a primary key
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal virtual Record IndexLookup(Index x, PRow m)
+        {
+            if ((x.flags & PIndex.ConstraintType.ForeignKey) != 0)
+                throw new PEException("PE541");
+            if (
+#if !EMBEDDED
+                server != null || 
+#endif
+x.cols.Length != m.Length)
+                return null; // fail
+            if (!x.rows.Contains(m))
+                return null;
+            return pb.Get(x.rows[m].Value) as Record;
+        }
+
+        public override string ToString()
+        {
+            return "Database " + transName;
+        }
+        public virtual string RdC()
+        {
+            return "";
+        }
+        public bool ValidateETag(string etag)
+        {
+            var ss = etag.Split(',');
+            foreach (var s in ss)
+                CheckRvv(Rvv.From(s));
+            return false;
+        }
+        public virtual bool CheckRvv(Rvv rv)
+        {
+            return false;
+        }
+        public virtual bool CheckRdC(string rdc)
+        {
+            return false;
+        }
+        /// <summary>
+        /// Clever AutoKeys for Post etc, called from TransitionRowSet.MoveNext()
+        /// </summary>
+        /// <param name="f"></param>
+        /// <param name="ix"></param>
+        internal void CheckPrimaryKey(ref ATree<long, TypedValue> f, ref Index ix)
+        {
+            var change = false;
+            var fakeRec = new Record(ix.tabledefpos, f, this);
+            var ks = new TypedValue[ix.cols.Length];
+            for (int j = 0; j < ix.cols.Length; j++)
+            {
+                var v = fakeRec.Field(ix.cols[j]);
+                if (v == null || v.IsNull)
+                {
+                    v = ix.rows.NextKey(ks, 0, j);
+                    ATree<long, TypedValue>.Add(ref f, ix.cols[j], v);
+                    change = true;
+                }
+                ks[j] = v;
+            }
+            var m = new PRow(0, ks);
+            if (change)
+            {
+                var rs = ix.rows;
+                MTree.Add(context, ref rs, m, 0);
+                ix = new Index(context, ix, rs, ix.subTypes);
+            }
+        }
+#if !EMBEDDED
+        internal void SyncSchema(Connected cd)
+        {
+            pb.df.checking = false;
+            // check Schema information
+            var proxy = cd.async;
+            proxy.Write(Protocol.GetSchema);
+            proxy.PutLong(lastSchemaPos);
+            proxy.Flush();
+            if (proxy.ReadResponse() != Responses.SchemaSegment)
+                throw new DBException("08006").ISO();
+            var n = (int)proxy.GetLong();
+            Authority au = null;
+            for (int i = 0; i < n; i++)
+            {
+                var p = proxy.GetLong();
+                var m = proxy.GetInt();
+                var bf = new BaseBuffer(pb, p, new byte[m]);
+                proxy.Read(bf.buffer, 0, m);
+                ATree<long, byte[]>.Add(ref pb.schema, p, bf.buffer);
+                var ph = bf.Create();
+                if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2 ||
+                    ph.type == Physical.Type.PImportTransaction)
+                {
+                    var pt = (PTransaction)ph;
+                    if (au != null)
+                        context.PopTo(au);
+                    au = context.PushRole(this, pt.role, pt.user);
+                }
+                Install(ph);
+                lastSchemaPos = p;
+            }
+            if (au != null)
+                context.PopTo(au);
+        }
+#endif
+        /// <summary>
+        /// Accessor: a Table by name
+        /// </summary>
+        /// <param name="name">the name of the table</param>
+        /// <returns>the Table</returns>
+        public Table GetTable(long name)
+        {
+            if (name.defpos != 0)
+                return GetObject(name.defpos) as Table;
+            if (role == null)
+                return null;
+            var rx = role.names[name.ident];
+            if (rx == null || !rx.HasValue)
+                return null;
+            var t = GetObject((long)rx) as Table;
+            if (t != null)
+                name.Set(dbix, t.defpos, long.IDType.Table);
+            return t;
+        }
+
+        /// <summary>
+        /// Accessor: a View by name
+        /// </summary>
+        /// <param name="name">a name</param>
+        /// <returns>The View</returns>
+        public View GetView(long name)
+        {
+            if (name.defpos != 0)
+                return GetObject(name.defpos) as View;
+            if (role == null)
+                return null;
+            var rr = role.names[name.ident];
+            if (rr == null || !rr.HasValue)
+                return null;
+            var v = GetObject((long)rr) as View;
+            if (v != null)
+                name.Set(dbix, v.defpos, long.IDType.Table);
+            return v;
+        }
+        /// <summary>
+        /// Accessor: a Domain by name
+        /// </summary>
+        /// <param name="name">the name of the domain</param>
+        /// <returns>the Domain</returns>
+        public virtual Domain GetDomain(long name)
+        {
+            if (name.defpos != 0)
+                return GetObject(name.defpos) as Domain;
+            var ro = role;
+            var rx = ro.names[name.ident];
+            if (rx == null || !rx.HasValue)
+                return null;
+            var d = GetObject((long)rx) as Domain;
+            if (d != null)
+                name.Set(dbix, d.defpos, long.IDType.Type);
+            return d;
+        }
+        /// <summary>
+        /// Accessor: a Trigger by name
+        /// </summary>
+        /// <param name="name">the name of the Trigger</param>
+        /// <returns>the Trigger</returns>
+        public virtual Trigger GetTrigger(long name)
+        {
+            if (name.defpos != 0)
+                return GetObject(name.defpos) as Trigger;
+            var ro = role;
+            var rx = ro.names[name.ident];
+            if (rx == null || !rx.HasValue)
+                return null;
+            var d = GetObject((long)rx) as Trigger;
+            if (d != null)
+                name.Set(dbix, d.defpos, long.IDType.Trigger);
+            return d;
+        }
+        /// <summary>
+        /// Accessor: an Index by name
+        /// </summary>
+        /// <param name="name">the name of the index</param>
+        /// <returns>the Index</returns>
+        public Index GetIndex(string name)
+        {
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = objects[p.key()] as Index;
+                if (x.name == name)
+                    return x;
+            }
+            return null;
+        }
+        /// <summary>
+        /// Accessor: a Procedure or Function by name and arity
+        /// </summary>
+        /// <param name="name">the name of the proc/func</param>
+        /// <param name="n">the arity</param>
+        /// <returns>th Procedure or Function</returns>
+        public Procedure GetProcedure(long name)
+        {
+            if (name.defpos != 0)
+                return GetObject(name.defpos) as Procedure;
+            var ro = role;
+            var rx = ro.names[name.ident];
+            if (rx == null || !rx.HasValue)
+                return null;
+            var p = GetObject((long)rx) as Procedure;
+            if (p != null)
+                name.Set(dbix, p.defpos, long.IDType.Procedure);
+            return p;
+        }
+        /// <summary>
+        /// Accessor: a Method for a user-defined type
+        /// </summary>
+        /// <param name="tname">The name of the user defined type</param>
+        /// <param name="mname">The method name</param>
+        /// <param name="n">The arity</param>
+        /// <returns>The Method</returns>
+        public Method GetMethod(long tname, long mname)
+        {
+            return (GetDomain(tname) as UDType)?.GetMethod(this, mname) ?? null;
+        }
+        /// <summary>
+        /// Accessor: a Role by name
+        /// </summary>
+        /// <param name="name">The name</param>
+        /// <returns>The Role</returns>
+        public virtual Role GetRole(string name)
+        {
+            var iq = roles[name];
+            if (!iq.HasValue)
+                return null;
+            return objects[iq.Value] as Role;
+        }
+        public virtual Participant asParticipant
+        {
+            get { throw new DBException("2E104", name); }
+        }
+        public virtual Connected master { get { return cd; } }
+    }
+    internal class FakeParticipant : Participant
+    {
+        internal FakeParticipant(Transaction tr,Database d): base(tr,d)
+        {
+            if (pb != null)
+                pb = pb.Virt(this);
+        }
+        public override void Add(Physical ph)
+        {
+            // no action
+        }
+        public override void LockConflicts()
+        {
+            locked = true;
+        }
+        public override void ConflictsDone()
+        {
+            locked = false;
+        }
+        public override void AddDelete(Delete d)
+        {
+            throw new PEException("PE772");
+        }
+        public override void AddRecord(Record r)
+        {
+            throw new PEException("PE772");
+        }
+        public override void AddUpdate(Update r)
+        {
+            throw new PEException("PE772");
+        }
+    }
+ }
+

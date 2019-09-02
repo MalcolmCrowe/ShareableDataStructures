@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2027
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EmbeddedPyrrho", "EmbeddedPyrrho.csproj", "{1401335A-AD1A-4B3C-9AD3-44CDDC3F2460}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1401335A-AD1A-4B3C-9AD3-44CDDC3F2460}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1401335A-AD1A-4B3C-9AD3-44CDDC3F2460}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1401335A-AD1A-4B3C-9AD3-44CDDC3F2460}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1401335A-AD1A-4B3C-9AD3-44CDDC3F2460}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0AAAEEDC-4D5F-4711-ABAE-B5506BED0925}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0AAAEEDC-4D5F-4711-ABAE-B5506BED0925}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0AAAEEDC-4D5F-4711-ABAE-B5506BED0925}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0AAAEEDC-4D5F-4711-ABAE-B5506BED0925}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20FB6AF3-31B6-4596-A70B-F1B6E8CD82A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20FB6AF3-31B6-4596-A70B-F1B6E8CD82A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20FB6AF3-31B6-4596-A70B-F1B6E8CD82A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20FB6AF3-31B6-4596-A70B-F1B6E8CD82A3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2BC8EBB1-4BFA-45E1-B36B-ADAB3B34813E}
+	EndGlobalSection
+EndGlobal

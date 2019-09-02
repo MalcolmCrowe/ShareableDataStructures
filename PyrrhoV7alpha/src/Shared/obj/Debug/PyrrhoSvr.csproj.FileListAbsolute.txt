@@ -1,0 +1,16 @@
+E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csproj.CoreCompileInputs.cache
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csproj.CoreCompileInputs.cache
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csproj.CoreCompileInputs.cache
+F:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe.config
+F:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
+F:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
+E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe.config
+E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
+E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
+E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
+E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
+E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache

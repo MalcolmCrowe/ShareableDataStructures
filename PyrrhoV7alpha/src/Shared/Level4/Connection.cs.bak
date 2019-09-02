@@ -1,0 +1,1536 @@
+using System;
+using System.Net.Sockets;
+using System.Collections.Generic;
+#if WINDOWS && !OSP
+using System.Security.Principal;
+#endif
+using PyrrhoBase;
+using Pyrrho.Common;
+using Pyrrho.Level1;
+using Pyrrho.Level2;
+using Pyrrho.Level3;
+// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2017
+//
+// This software is without support and no liability for damage consequential to use
+// You can view and test this code
+// All other use or distribution or the construction of any product incorporating this technology 
+// requires a license from the University of the West of Scotland
+
+namespace Pyrrho.Level4
+{
+    /// <summary>
+    /// Connection maintains a list of connection strings, to enable Transaction to build
+    /// its list of databases. Note that Transaction is a subclass of Connection.
+    /// We ensure that all of the databases mentioned are in the server's list of databses
+    /// (including remote databases!). User and password information is used to create a
+    /// new database or connect to a remote database that is not configured.
+    /// </summary>
+    internal class Connection : IConnection
+    {
+        /// <summary>
+        /// The connection string unpacked by database (database->{key->value}). 
+        /// We use a List because the order is important.
+        /// </summary>
+        internal List<Connected> connectionList;
+        /// <summary>
+        /// The user name for the connection. needs to work with all the databases in the connection
+        /// </summary>
+        internal string user,role;
+        internal bool authenticated = true;
+        /// <summary>
+        /// Try to track the number of rows affected by a transaction
+        /// </summary>
+        internal int commits = 0, rollbacks = 0;
+        /// <summary>
+        /// Keep track of row versions affected in this connection
+        /// </summary>
+        internal List<Rvv> affected = new List<Rvv>();
+        /// <summary>
+        /// The context gathers tables, TableColumns etc for interpreting identifiers in SQL.
+        /// Activations and UDT instances are subclasses of Context.
+        /// </summary>
+        internal Context context;
+        /// <summary>
+        /// We may be monitoring transaction conflict information
+        /// </summary>
+        internal TransactionProfile profile = null;
+        /// <summary>
+        /// Index of remote transaction coordinator in coinnectionList if >=0
+        /// </summary>
+        internal int coordinator = -1;
+        internal List<Lock> locks = new List<Lock>();
+        /// <summary>
+        /// Record the transaction results here
+        /// </summary>
+        internal RowSet result;
+        internal bool lookAheadDone = true, more = true;
+        internal RowBookmark resultbmk;
+        internal ATree<string,DBException> warnings = BTree<string,DBException>.Empty;
+        static long _cid = 0;
+        internal long cid = ++_cid;
+        /// <summary>
+        /// Whether this Connection is being used for push/pull
+        /// </summary>
+        internal bool subscribed = false;
+        /// <summary>
+        /// Whether this Connection is creating a new database on the next Commit
+        /// </summary>
+        internal Database creating = null;
+        /// <summary>
+        /// Constructor: a new single database connection, eg embedded, configuration, REST.
+        /// </summary>
+        /// <param name="n">The database name</param>
+        internal Connection (string n) :this(n,BTree<string,string>.Empty)
+        {
+        }
+        /// <summary>
+        /// Constructor: a new database connection, with a given parsed connectionstring
+        /// </summary>
+        /// <param name="n">the (first)database in the connection</param>
+        /// <param name="d">the name/value pairs from the connection string</param>
+        internal Connection(string n,ATree<string,string> d)
+        {
+            connectionList = new List<Connected>();
+            if (n != "")
+            {
+#if !EMBEDDED
+                string sv, pw;
+                Connected.Parse(n, d, ref n, out sv, out user, out pw, out role);
+                user = (n == "_") ? "" : PyrrhoStart.user;
+#endif
+                connectionList.Add(new Connected(this, n, n,
+#if EMBEDDED
+                d
+#else
+ sv, ServerRole.Undefined, user, pw, role
+#endif
+));
+            }
+            context = new Context(this);
+            result = null;
+        }
+        /// <summary>
+        /// Constructor: called for a new Transaction
+        /// </summary>
+        /// <param name="c">The connection</param>
+        protected Connection(Connection c)
+        {
+            connectionList = c.connectionList;
+            user = c.user;
+            authenticated = c.authenticated;
+            affected = c.affected;
+            commits = c.commits;
+            rollbacks = c.rollbacks;
+            context = c.context;
+            profile = c.profile;
+            coordinator = c.coordinator;
+            result = c.result;
+            cid = c.cid;
+        }
+#if EMBEDDED
+        /// <summary>
+        /// This constructor is used when connecting to the server
+        /// </summary>
+        /// <param name="cs">The parsed connection string</param>
+        public Connection(string us, string cns, bool auth)
+        {
+            user = us;
+            authenticated = auth;
+            connectionList = new List<Connected>();
+            Connected.Parse(this, cns, connectionList);
+            if (connectionList.Count > 0)
+            {
+                int k = user.IndexOf("/");
+                if (k < 0)
+                    k = user.IndexOf("\\");
+                if (k > 0)
+                    user = user.Substring(0, k).ToUpper() + "\\" + user.Substring(k + 1);
+            }
+            context = new Context(this);
+        }
+#else
+        /// <summary>
+        /// Constructor: A server-based connection
+        /// </summary>
+        /// <param name="asy">The connection stream</param>
+        /// <param name="us">The user identity (will be filled in from connection string)</param>
+        public Connection(AsyncStream asy,ref string us)
+        {
+            connectionList = GetConnectionString(this, asy, ref us);
+            if (connectionList!=null && connectionList.Count > 0)
+            {
+                int k = us.IndexOf("/");
+                if (k < 0)
+                    k = us.IndexOf("\\");
+                if (k > 0)
+                    us = us.Substring(0, k).ToUpper() + "\\" + us.Substring(k + 1);
+            }
+            user = us;
+            context = new Context(this);
+        }
+#endif
+        /// <summary>
+        /// In a Transaction, the front participant is the first named modifiable database.
+        /// </summary>
+        internal virtual Participant front
+        {
+            get { throw new NotImplementedException(); }
+        }
+        /// <summary>
+        /// The number of databases in the connection
+        /// </summary>
+        internal int Count
+        {
+            get { return connectionList.Count; }
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Receive the connection string: encryption is used in the production version
+        /// </summary>
+        /// <param name="crypt">The encryption engine</param>
+        /// <returns>a parsed connection string (Detail structure)</returns>
+        List<Connected> GetConnectionString(Connection tr, AsyncStream asy, ref string us)
+        {
+            var rv = new List<Connected>();
+            ATree<string, string> dets = BTree<string, string>.Empty;
+            long t = DateTime.Now.Ticks; // nonce
+            try
+            {
+                asy.PutLong(t);
+
+                asy.crypt.key = t;
+                int n = asy.ReadByte(); // should be 0
+                if (n != 0)
+                    return rv;
+                for (; ; )
+                {
+                    string str = null;
+                    int b = asy.crypt.ReadByte();
+                    if (b < (int)Connecting.Password || b > (int)Connecting.Modify)
+                        return null;
+                    switch ((Connecting)b)
+                    {
+                        case Connecting.Password: str = "Password"; break;
+                        case Connecting.User:
+                            us = asy.crypt.GetString();
+                            // this slight weirdness is because user identity gets added by client library so
+                            // may not fit with a multi-connectionstring syntax
+                            ATree<string, string>.Add(ref dets, "User", us);
+                            continue;
+                        case Connecting.Files: str = "Files"; break;
+                        case Connecting.Role: str = "Role"; break;
+                        case Connecting.Done: return Unpack(dets);
+                        case Connecting.Stop: str = "Stop"; break;
+                        case Connecting.Host: str = "Host"; break;
+                        case Connecting.Key: str = "Key"; break;
+                        case Connecting.Details: Add(rv, dets); break;
+                        case Connecting.Base: str = "Base"; break;
+                        case Connecting.Coordinator: str = "Coordinator"; break;
+                        case Connecting.BaseServer: str = "BaseServer"; break;
+                        case Connecting.Modify: str = "Modify"; break;
+                        case Connecting.Length: str = "Length"; break;
+                        default:
+                            return null;
+                    }
+                    ATree<string, string>.Add(ref dets, str, asy.crypt.GetString());
+#if WINDOWS && !OSP
+                    if (str == "Password")
+                        try
+                        {
+                            PyrrhoServer.ValidateCredentials(WindowsIdentity.GetCurrent().Name, dets["Password"]);
+                        }
+                        catch { }
+#endif
+                }
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("Only OSP clients can connect to this server. A Pyrho DBMS client tried to do so!");
+            }
+            return rv;
+        }
+        /// <summary>
+        /// In a client-server connection the connection string's Files element may specify several databases.
+        /// By default the first of these is set to be modifiable.
+        /// </summary>
+        /// <param name="t">The Connection string's name-value pairs</param>
+        /// <returns>A list of connectedConfigurations</returns>
+        List<Connected> Unpack(ATree<string, string> t)
+        {
+            var r = new List<Connected>();
+            var f = t["Files"];
+            if (f == null)
+                f = "";
+            var fs = f.Split(',');
+            foreach (var n in fs)
+            {
+                var u = t;
+                if (n == "")
+                    continue;
+                ATree<string, string>.Update(ref u, "Files", n);
+                var sr = Configuration.defaultServerRole;
+                if (PyrrhoServer.serverRoles.Contains(n))
+                    sr = PyrrhoServer.serverRoles[n];
+                r.Add(new Connected(this, n, n, sr, u));
+            }
+            return r;
+        }
+        /// <summary>
+        /// Retrieve the connectedconfigurations from the connection string's name-value pairs
+        /// </summary>
+        /// <param name="r">The list of connected configurations to be populated</param>
+        /// <param name="t">The connection string's name-value pairs</param>
+        void Add(List<Connected> r, ATree<string, string> t)
+        {
+            var tt = Unpack(t);
+            foreach (var s in tt)
+                r.Add(s);
+        }
+#endif
+        /// <summary>
+        /// The connection must be opened before it can be used. 
+        /// (Includes server-server connections.)
+        /// If local databases are referred to in the connection and don't exist,
+        /// we will try to create then using the connection credentials
+        /// </summary>
+        internal void Open()
+        {
+            var defaultModify = "true";
+            var ndbs = connectionList.Count;
+            ATree<string, bool> names = BTree<string, bool>.Empty;
+            for (int i = 0; i < ndbs; i++)
+            {
+                var c = connectionList[i];
+                if (names.Contains(c.Name))
+                    throw new DBException("08002", c.Name).ISO();
+                ATree<string, bool>.Add(ref names, c.Name, true);
+                c.Open(ref defaultModify);
+            }
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// For each participant, check that we have a suitable role to connect
+        /// </summary>
+        internal void CheckServerRoleForQuery()
+        {
+            affected.Clear();
+            foreach(Connected cd in connectionList)
+            {
+                var local = cd.remoteServer == null;
+                if ((!PyrrhoServer.HasServerRole(cd.transName, ServerRole.Query,local))
+                    && !PyrrhoServer.HasServerRole(cd.transName, ServerRole.Client,local))
+                    throw new DBException("2E217", cd.transName).Mix();
+            }
+        }
+#endif
+        /// <summary>
+        /// Lowest-level Pyrrho protocol has a concept of primitive type
+        /// </summary>
+        /// <param name="kind">One of the primitive types</param>
+        /// <returns>The Typecode used in the data file</returns>
+        internal static int Typecode(Sqlx kind)
+        {
+            switch (kind)
+            {
+                case Sqlx.NULL: return 0;
+                case Sqlx.INTEGER: return 1;
+                case Sqlx.NUMERIC: return 2;
+                case Sqlx.REAL: return 8;
+                case Sqlx.NCHAR: return 3;
+                case Sqlx.CHAR: return 3;
+                case Sqlx.DOCUMENT: return 5;
+                case Sqlx.DOCARRAY: return 5;
+                case Sqlx.OBJECT: return 3;
+                case Sqlx.PASSWORD: return 3;
+                case Sqlx.TIMESTAMP: return 4;
+                case Sqlx.DATE: return 13;
+                case Sqlx.BLOB: return 5;
+                case Sqlx.REF:
+                case Sqlx.ROW: return 6;
+                case Sqlx.ARRAY: return 7;
+                case Sqlx.MULTISET: return 15;
+                case Sqlx.TABLE: return 14;
+                case Sqlx.TYPE: return 12;
+                case Sqlx.BOOLEAN: return 9;
+                case Sqlx.INTERVAL: return 10;
+                case Sqlx.TIME: return 11;
+                case Sqlx.UNION: return 1; // only happens with INTEGER
+                case Sqlx.XML: return 3;
+            }
+            return 0;
+        }
+        /// <summary>
+        /// Allow client to reset a DataReader
+        /// </summary>
+        internal void ResetReader()
+        {
+            resultbmk=result.First();
+        }
+        /// <summary>
+        /// A Secondary connection is to a fixed physbase image
+        /// </summary>
+        public bool secondary = false;
+        /// <summary>
+        /// Obey the given command (called from various places)
+        /// </summary>
+        /// <param name="cmd">The command to execute</param>
+        /// <returns>The transaction with its results</returns>
+        internal Connection Execute(string sql)
+        {
+            Connection tr = RequireTransaction();
+            Context cx = new Context(tr);
+            if (cx.Push())
+            {
+                new Parser(tr).ParseSql(sql);
+                if (cx.result != null)
+                {
+                    tr.result = cx.result;
+                    tr.resultbmk = tr.result.First();
+                }
+                result = tr.result;
+                resultbmk = tr.resultbmk;
+                cx.Pop();
+            }
+            return tr;
+        }
+        /// <summary>
+        /// For REST service: do what we should according to the path, mime type and posted data
+        /// </summary>
+        /// <param name="method">GET/PUT/POST/DELETE</param>
+        /// <param name="path">The URL</param>
+        /// <param name="mime">The mime type in the header</param>
+        /// <param name="data">The posted data if any</param>
+        internal Connection Execute(string method, string[] path, string mime, string data, string etag)
+        {
+            var tr = RequireTransaction();
+            Context cx = new Context(tr);
+            if (cx.Push())
+            {
+                var db = tr.front;
+                if (etag != null)
+                {
+                    var ss = etag.Split(';');
+                    if (ss.Length > 1)
+                        db.CheckRdC(ss[1]);
+                }
+                string rn = path[2]; // the role
+                var ro = db.GetRole(rn);
+                if (ro == null)
+                    throw tr.context.Exception("28000", rn).Pyrrho();
+                var au = db.context.PushRole(db, ro.defpos, -1);
+                if (path.Length > 3)
+                {
+                    switch (method)
+                    {
+                        case "GET":
+                            db.Execute(ro, path, 3, etag);
+                            break;
+                        case "DELETE":
+                            db.Execute(ro, path, 3, etag);
+                            db.Delete(cx.result);
+                            break;
+                        case "PUT":
+                            db.Execute(ro, path, 3, etag);
+                            db.Put(cx.result, data);
+                            break;
+                        case "POST":
+                            db.Execute(ro, path, 3, etag);
+                            db.Post(cx.result, data);
+                            break;
+                    }
+                    tr.result = cx.result;
+                }
+                else
+                {
+                    switch (method)
+                    {
+                        case "GET":
+                            var f = new From(cx.transaction, new Ident("Role$Class"), null, Grant.Privilege.Select);
+                            f.Analyse(cx);
+                            result = f.rowSet;
+                            break;
+                    }
+                    tr.result = result;
+                }
+                if (db.context.result!=null)
+                    tr.result = db.context.result;
+                db.context.PopTo(au);
+            }
+            return tr;
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Get a DumpTable cursor
+        /// </summary>
+        /// <param name="tbdefpos">The table to dump</param>
+        /// <param name="match">A set of equality conditions</param>
+        internal long Execute(long tbdefpos, ATree<long,  TypedValue> match)
+        {
+            var tr = this as Transaction;
+            new Context(tr);
+            var db = tr.front as Participant;
+            return db.DumpTableCursor(tbdefpos, match);
+        }
+        /// <summary>
+        /// PartitionedIndex lookup
+        /// </summary>
+        /// <param name="indexpos"></param>
+        /// <param name="data"></param>
+        internal long Execute(ATree<long,  TypedValue> match, long indexpos)
+        {
+            var tr = this as Transaction;
+            new Context(tr);
+            var db = tr.front as Participant;
+            return db.PartitionedIndexCursor(indexpos, match);
+        }
+#endif
+        /// <summary>
+        /// Start a transaction (from client), join a transaction (from server)
+        /// </summary>
+        /// <returns>The Transaction</returns>
+        internal virtual Connection BeginTransaction()
+        {
+            var tr = new Transaction(this);
+            tr.autoCommit = false;
+            //          Console.WriteLine("Explicit transaction " + tr.tid);
+            return tr;
+        }
+        /// <summary>
+        /// Commit a transaction
+        /// </summary>
+        /// <returns>The underlying connection</returns>
+        internal virtual Connection Commit()
+        {
+            return this;
+        }
+        /// <summary>
+        /// Roll back a transaction
+        /// </summary>
+        /// <param name="ex">The exception condition</param>
+        /// <returns>The underlying connection</returns>
+        internal virtual Connection Rollback(DBException ex)
+        {
+            return this;
+        }
+        /// <summary>
+        /// Convenience function: lookup a domain
+        /// </summary>
+        /// <param name="s">The name of the domain</param>
+        /// <returns>The Domain</returns>
+        internal Domain GetDomain(Ident s)
+        {
+            return new Transaction(this).front.GetDomain(s);
+        }
+        /// <summary>
+        /// Ensure we have a Transaction
+        /// </summary>
+        /// <returns>The transaction</returns>
+        internal virtual Transaction RequireTransaction()
+        {
+            return new Transaction(this);
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Connect up the REST service
+        /// </summary>
+        /// <param name="host">The hostname</param>
+        /// <param name="port">The TCP port</param>
+        /// <param name="db">The database name</param>
+        /// <param name="us">The user name</param>
+        /// <param name="pw">The password</param>
+        /// <param name="rl">The role</param>
+        /// <returns></returns>
+        internal Connected ConnectionFor(string host, int port, string db, string us, string pw, string rl)
+        {
+            var sv = host + ":" + port;
+            foreach (var cc in connectionList)
+                if (cc.remoteServer == sv && cc.Name == db)
+                {
+                    if (cc.user != us)
+                        throw new DBException("2E105", db).Mix();
+                    return cc;
+                }
+            var c = new Connected(this, db, db, sv, ServerRole.Undefined, us, pw, rl);
+            try
+            {
+                var s = "";
+                c.Open(ref s);
+                var asy = c.async;
+                asy.Write(Protocol.GetMaster);
+                switch (asy.ReadResponse())
+                {
+                    default: return null;
+                    case Responses.NoMaster: return c; //??
+                    case Responses.Master:
+                        asy.GetString();
+                        asy.GetString();
+                        asy.GetString();
+                        return c;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+#endif
+#if MONGO
+#if !EMBEDDED
+        /// <summary>
+        /// For MongoDB, the collection name may be the name of a database,
+        /// or have .$cmd appended. 
+        /// Here we ensure that we place the database at databases[0], before we
+        /// start a transaction. Otherwise we get our bearings by finding or
+        /// creating suitable table and column for the service.
+        /// </summary>
+        /// <param name="databaseNameAndSuffix"></param>
+        /// <returns></returns>
+        internal void MongoConnect(MongoService ms, string databaseNameAndSuffix)
+        {
+            Console.WriteLine("For Collection " + databaseNameAndSuffix);
+            var ss = databaseNameAndSuffix.Split('.');
+            var ssn = ss.Length;
+            var cmdmode = false;
+            if (ssn > 0 && ss[ssn - 1] == "$cmd")
+            {
+                cmdmode = true;
+                ssn--;
+            }
+            if (ssn == 0)
+                throw new DBException("3D001", "not specified");
+            // first see if we have the database and move it to position 0
+            int ix;
+            for (ix = 0; ix < connectionList.Count; ix++)
+                if (connectionList[ix].name == ss[0])
+                    break;
+            if (ix < connectionList.Count)
+            {
+                if (ix != 0)
+                {
+                    var t = connectionList[0];
+                    connectionList[0] = connectionList[ix];
+                    connectionList[ix] = t;
+                }
+            }
+            else
+            {
+                var cs = new ConnectedConfiguration(this, ss[0], ss[0], BTree<string, string>.Empty);
+                cs.user = user;
+                if (connectionList.Count > 0)
+                {
+                    connectionList.Add(connectionList[0]);
+                    connectionList[0] = cs;
+                }
+                else
+                    connectionList.Add(cs);
+                var dfm = "true";
+                cs.Open(ref dfm);
+            }
+            ms.tr = new Transaction(this);
+            ms.ctx.transaction = ms.tr;
+            // see what table we will be using
+            ms.tabname = "tbl";
+            if (ssn > 1)
+                ms.tabname = ss[1];
+            // see what column we will be using
+            ms.colname = "doc";
+            ms.tr.mongocmd = cmdmode;
+        }
+#endif
+#endif
+        /// <summary>
+        /// Close a DataReader
+        /// </summary>
+        internal virtual Connection RdrClose()
+        {
+            result = null;
+            if (context != null)
+                context.transaction = null;
+            context = null;
+            affected.Clear();
+            return this;
+        }
+        /// <summary>
+        /// Check for Transaction conflicts
+        /// </summary>
+        /// <value>Whether a conflict has occurred</value>
+        internal virtual bool Conflict { get { return false; } }
+        /// <summary>
+        /// Check ReadConstraints on request from Client
+        /// </summary>
+        /// <param name="rcs">A list of readConstraint strings</param>
+        /// <returns>Whether a conflict has occurred</returns>
+        internal virtual bool ReadConstraints(string[] rcs) // ReadConstraint info is in rcs[1]..
+        {
+            return false;
+        }
+        /// <summary>
+        /// Supply a list of ReadConstraints
+        /// </summary>
+        /// <returns>The accumulated read constraint strings</returns>
+        internal virtual string Rdc()
+        {
+            return "";
+        }
+    }
+    /// <summary>
+    /// The server manages multiple databases in memory. These can be connected to
+    /// concurrently by different Connections (different users/roles).
+    /// There are three sorts of Connections to individual databases: by server for
+    /// configuration purposes (using the credentials in configuration databases),
+    /// as part of transactions (using credentials from connection strings),
+    /// and to advise clients of a new master database length.
+    /// We try to ensure these don't proliferate: server-server comms are handled by
+    /// this level.
+    /// </summary>
+    internal class Connected :IConnected
+    {
+        /// <summary>
+        /// The name of the database being connected to
+        /// </summary>
+        public string name;
+        public string Name { get { return name; } }
+        /// <summary>
+        /// A variant of name to distinguish between configuration files on different servers
+        /// </summary>
+        public string transName;
+        /// <summary>
+        /// The parent connection
+        /// </summary>
+        internal Connection tr = null; 
+        /// <summary>
+        /// Do not include User, Host or Port in details
+        /// </summary>
+        public ATree<string, string> details = BTree<string, string>.Empty;
+        /// <summary>
+        /// The status of the connection
+        /// </summary>
+        public TransactionStatus status = TransactionStatus.NotStarted;
+        /// <summary>
+        /// the selected role
+        /// </summary>
+        public string role;
+        /// <summary>
+        /// whether any changes have been made to the role
+        /// </summary>
+        public bool roleChanged = false;
+        /// <summary>
+        /// the user name
+        /// </summary>
+        public string user = "";
+#if !EMBEDDED
+        /// <summary>
+        /// the server name
+        /// </summary>
+        public string remoteServer = null;
+        /// <summary>
+        /// This server's role for this database
+        /// </summary>
+        public ServerRole serverRole;
+        /// <summary>
+        /// the connection stream for remote databases
+        /// </summary>
+        AsyncStream _async = null;
+        /// <summary>
+        /// distributed transaction control
+        /// </summary>
+        internal long _length = 0, _lastSchema = 0;
+        /// <summary>
+        /// The start of the data we have read
+        /// </summary>
+        internal long _start = 0;
+        /// <summary>
+        /// the connection string
+        /// </summary>
+        protected string _cs = null;
+        /// <summary>
+        /// for server-server connections we need a password
+        /// </summary>
+        internal string password;
+#endif
+        static int _uid = 0;
+        protected int uid = ++_uid;
+#if EMBEDDED
+        public long GetLength() { return 0L; }
+        public void Close() { }
+        public AsyncStreamBase Async { get { return null; } }
+#endif
+        public Transaction trans { get { return tr as Transaction; } }
+        public int trix = 0;
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="t">the connection</param>
+        /// <param name="n">the name</param>
+        /// <param name="tn">the transName</param>
+        /// <param name="sv">the server name</param>
+        /// <param name="us">the user name</param>
+        /// <param name="ro">the role name</param>
+        /// <param name="d">connection string details</param>
+        Connected(Connection t, string n, string tn,
+#if !EMBEDDED
+            string sv, ServerRole sr,
+#endif
+            string us, string ro, ATree<string, string> d)
+        {
+            tr = t;  name = n; transName = tn; 
+#if !EMBEDDED
+            remoteServer = sv;
+            if (sr == ServerRole.Undefined)
+                sr = PyrrhoServer.GetServerRole(tn);
+            serverRole = sr;
+#endif
+            user = us; 
+            role = ro;
+            details = d; 
+#if !EMBEDDED
+            if (n == "_")
+            {
+                user = "";
+                ATree<string, string>.Add(ref details, "User", "");
+            }
+#endif
+        }
+        /// <summary>
+        /// Constructor: for a local database
+        /// </summary>
+        /// <param name="tr">The connection</param>
+        /// <param name="n">the name</param>
+        /// <param name="tn">the transName</param>
+        /// <param name="d">connection string details</param>
+        internal Connected(Connection tr, string n, string tn,
+#if !EMBEDDED
+            ServerRole sr, 
+#endif
+            ATree<string, string> d)
+            : this(tr, n, tn,
+#if !EMBEDDED
+            null, sr, d["User"],  // remoteserver, serverRole, user
+#else
+            "Me",
+#endif
+            n, d)
+        {
+#if !EMBEDDED
+            var p = d["Port"];
+            var h = d["Host"];
+            var host = h ?? PyrrhoStart.cfg.hp.host;
+            var port = (p != null) ? int.Parse(p) : PyrrhoStart.cfg.hp.port;
+            if ((h != null && host != PyrrhoStart.cfg.hp.host)
+                || (p != null && port != PyrrhoStart.cfg.hp.port))
+            {
+                remoteServer = host + ":" + port;
+                serverRole = ServerRole.Client;
+            }
+#endif
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Constructor: for server-server use (configuration database)
+        /// </summary>
+        /// <param name="tr">the connection</param>
+        /// <param name="n">the name</param>
+        /// <param name="tn">the transName</param>
+        /// <param name="sv">the server</param>
+        /// <param name="sr">our role for this database</param>
+        /// <param name="us">the user</param>
+        /// <param name="pw">the password</param>
+        /// <param name="rl">the role</param>
+        internal Connected(Connection tr, string n, string tn, string sv, ServerRole sr, string us, string pw, string rl)
+            : this(tr, n, tn, sv, sr, us, rl, BTree<string, string>.Empty)
+        {
+            password = pw;
+        }
+#endif
+        /// <summary>
+        /// Constructor: preparing to start a transaction for this Connected.
+        /// usually followed by Configure to set up a suitable Database instance for the transaction
+        /// </summary>
+        /// <param name="tr">the transaction</param>
+        /// <param name="ix">the position of this database in the transaction</param>
+        /// <param name="n">the name</param>
+        /// <param name="tn">the transName</param>
+        /// <param name="server">the server name</param>
+        /// <param name="user">the user</param>
+        /// <param name="role">the role</param>
+        /// <param name="dt">connection string details</param>
+        internal Connected(Transaction tr, int ix, string n, string tn,
+#if !EMBEDDED
+            string server,ServerRole sr,
+#endif
+            string user, string role, ATree<string, string> dt)
+            : this(tr, n, tn,
+#if !EMBEDDED
+            server,sr,
+#endif
+            user, role, dt)
+        {
+            trix = ix;
+        }
+        /// <summary>
+        /// Constructor: a fresh copy of the Connected at the start of a transaction
+        /// </summary>
+        /// <param name="tr">The Transaction</param>
+        /// <param name="i">A position in the transaction</param>
+        internal Connected(Connected c, Transaction tr, int i) : this(tr, i, c.name, c.transName,
+#if !EMBEDDED
+                c.remoteServer,c.serverRole,
+#endif
+                c.user, c.role, c.details)
+        { }
+        /// <summary>
+        /// Parse a connection string. There are three formats, see notes below
+        /// </summary>
+        /// <param name="tr">The Connection</param>
+        /// <param name="s">The connection string</param>
+        /// <param name="r">The list of connected configurations</param>
+        internal static void Parse(Connection tr, string s, List<Connected> r)
+        {
+            // Advanced format: '[{' Basic {'},{' Basic } ']]
+            if (s.Substring(0, 2) == "[{")
+            {
+                var ss = s.Substring(2, s.Length - 4).Split(new string[] { "},{" }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var a in ss)
+                    Parse(tr, a, r);
+                return;
+            }
+            ATree<string, string> d = BTree<string, string>.Empty;
+            var i = s.IndexOf('=');
+            // Compatibility format: DB { ',' DB }
+            if (i <= 0)
+            {
+                var fs = s.Split(',');
+                foreach (var f in fs)
+                    r.Add(new Connected(tr, f,f,
+#if !EMBEDDED
+                        Configuration.defaultServerRole,
+#endif
+                        BTree<string, string>.Empty));
+                return;
+            }
+            // Basic format: Name '=' Value { ';' Name '=' Value }
+            var split = s.Split(';');
+            foreach (var b in split)
+            {
+                var pair = b.Split('=');
+                ATree<string, string>.AddNN(ref d, pair[0], pair[1]);
+            }
+            var ff = d["Files"];
+            ATree<string, string>.Remove(ref d, "Files");
+            if (ff != null)
+            {
+                var files = ff.Split(',');
+                foreach (var file in files)
+                    r.Add(new Connected(tr, file,file,
+#if !EMBEDDED
+                        Configuration.defaultServerRole,
+#endif
+                        d));
+            }
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// Preserved for compatibility: this is just the same as async
+        /// </summary>
+        public AsyncStreamBase Async { get { return async;  } }
+        /// <summary>
+        /// (Re)connect to a remote server if necessary
+        /// </summary>
+        internal AsyncStream async
+        {
+            get
+            {
+                if (_async != null)
+                    return _async;
+                if (remoteServer == null)
+                    return null;
+                try
+                {
+                    var hp = new HostPort(remoteServer);
+                    var tcp = new TcpClient(hp.host, hp.port);
+                    if (PyrrhoStart.TutorialMode||PyrrhoStart.FileMode)
+                        Console.WriteLine("Connecting " + this + " " + hp.ToString());
+                    _async = new AsyncStream();
+                    _async.client = tcp.Client;
+                    var cs = connectionString();
+                    _async.crypt.SendConnectionString(cs, user);
+                    _async.Flush();
+                    var b = _async.ReadResponse();
+                    if (b != Responses.Secondary)
+                        throw new DBException("3D001", cs, b.ToString()).Mix();
+                    _start = _async.GetLong();
+                    _length = _async.GetLong();
+                    _lastSchema = _async.GetLong();
+                    if (PyrrhoStart.TutorialMode || PyrrhoStart.FileMode)
+                        Console.WriteLine(""+_start+" "+_length+" "+_lastSchema);
+                    if (tr.coordinator>=0) // we are not the coordinator!
+                    {
+                        // advise coordinator of the new third-party connection
+                        var _ct = tr as Transaction;
+                        var _ccd = _ct.databases[tr.coordinator].cd;
+                        var _ca = _ccd.async;
+                        _ca.Write(Protocol.RemoteBegin);
+                        _ca.PutString(remoteServer);
+                        _ca.PutString(name);
+                        _ca.PutLong(_length);
+                        _ca.Flush();
+                        var _cb = _ca.ReadResponse();
+                        if (_cb != Responses.Begin)
+                            throw new DBException("40083", name);
+                    }
+                    status = TransactionStatus.Started;
+                }
+                catch (Exception) // defer may be okay
+                {
+                    Push.Unsubscribe(remoteServer);
+                }
+                return _async;
+            }
+        }
+        /// <summary>
+        /// We are a Coordinator. Send the Physical marker
+        /// </summary>
+        /// <returns>the connection stream</returns>
+        internal AsyncStream Physical()
+        {
+            if (remoteServer == null)
+                return null;
+            if (status != TransactionStatus.Started)
+            {
+                if (PyrrhoStart.TutorialMode)
+                {
+                    Console.Write("About to Begin " + this + ", Enter to Continue");
+                    Console.ReadLine();
+                }
+                async.rcount = 0;
+            }
+            _async.Write(Protocol.Physical);
+            status = TransactionStatus.Started;
+            return _async;
+        }
+        /// <summary>
+        /// We are the Coordinator. Send the Prepare request
+        /// </summary>
+        /// <returns>the connection stream</returns>
+        internal AsyncStream Prepare()
+        {
+            if (remoteServer == null)
+                return null;
+            if (status != TransactionStatus.Started)
+            {
+                if (PyrrhoStart.TutorialMode)
+                    Console.Write("Begin and ");
+                async.rcount = 0;
+            }
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("About to Prepare " + this + ", Enter to Continue");
+                Console.ReadLine();
+            }
+            async.Write(Protocol.Prepare);
+            status = TransactionStatus.StartCommit;
+            return _async;
+        }
+        /// <summary>
+        /// We are the coordinator. Request CheckSerialisation
+        /// </summary>
+        /// <returns>the connection stream</returns>
+        internal AsyncStream CheckSerialisation()
+        {
+            if (remoteServer == null)
+                return null;
+            if (_async == null || (status != TransactionStatus.Checked && status != TransactionStatus.StartCommit))
+                throw new PEException("PE334");
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("About to CheckSerialisation " + this + ", Enter to Continue");
+                Console.ReadLine();
+            }
+            _async.rcount = 0;
+            _async.Write(Protocol.CheckSerialisation);
+            status = TransactionStatus.Checked;
+            return _async;
+        }
+        /// <summary>
+        /// We are the Coordinator. Send a Request Commit.
+        /// </summary>
+        /// <returns>the connection stream</returns>
+        internal AsyncStream Request()
+        {
+            if (remoteServer == null)
+                return null;
+            if (_async == null || status != TransactionStatus.Checked)
+                throw new PEException("PE335");
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("About to Request " + this + ", Enter to Continue");
+                Console.ReadLine();
+            }
+            _async.rcount = 0;
+            _async.Write(Protocol.Request);
+            status = TransactionStatus.RequestCommit;
+            _async.Flush();
+            return _async;
+        }
+        /// <summary>
+        /// We are the Coordinator. Send a RemoteCommit.
+        /// </summary>
+        /// <returns>the connection stream</returns>
+        internal AsyncStream Commit()
+        {
+            if (_async == null)
+                return null;
+            if (remoteServer == null)
+                return null;
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("About to Commit " + this+ ", Enter to Continue");
+                Console.ReadLine();
+            }
+            _async.rcount = 0;
+            var obs = tr.affected;
+            _async.Write((obs!=null)?Protocol.RemoteCommitAndReport:Protocol.RemoteCommit);
+            status = TransactionStatus.Committed;
+            _async.Flush();
+            if (obs!=null && _async.ReadResponse() == Responses.RemoteTransactionReport)
+            {
+                var lsp = _async.GetLong();
+                var n = _async.GetInt();
+                for (int i = 0; i < n; i++)
+                    if (obs[i].name == name)
+                    {
+                        obs[i].def = _async.GetLong();
+                        obs[i].off = _async.GetLong();
+                    }
+            }
+            return _async;
+        }
+        /// <summary>
+        /// Rollback and close the connection
+        /// </summary>
+        internal void Rollback()
+        {
+            if (_async == null)
+                return;
+            if (remoteServer == null)
+                return;
+            if (PyrrhoStart.FileMode)
+                Console.WriteLine("Closing " + this);
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("About to Close " + this + ", Enter to Continue");
+                Console.ReadLine();
+            }
+            if (!tr.subscribed)
+            {
+                _async.Write(Protocol.CloseConnection); // Rollback
+                status = TransactionStatus.Aborted;
+                _async.Flush();
+            }
+            Close();
+        }
+        /// <summary>
+        /// Close the connection gracefully
+        /// </summary>
+        public void Close()
+        {
+            if (_async == null)
+                return;
+            if (remoteServer == null)
+                return;
+            if (tr.subscribed)
+                return;
+            try
+            {
+                _async.Write(Protocol.CloseConnection);
+                _async.Flush();
+            }
+            catch { }
+            _async.Close();
+            _async = null;
+            if (PyrrhoStart.TutorialMode)
+            {
+                Console.Write("Closed " + this + ", Enter to Continue");
+                Console.ReadLine();
+            }
+        }
+        /// <summary>
+        /// Get the connected database length
+        /// </summary>
+        /// <returns>the length</returns>
+        public long GetLength()
+        {
+            if (_length != 0)
+                return _length;
+            if (remoteServer == null)// || PyrrhoServer.HasServerRole(transName,ServerRole.BaseIsRemote))
+            {
+                var db = Database.databases[transName];
+                if (db == null)
+                    throw new PEException("PE218 " + transName + " on " + remoteServer);
+                var pb = db.pb;
+                _start = pb.startData;
+                _length = pb.df.Length;
+                return _length;
+            }
+            if (!Pull.pullConnections.Contains(remoteServer))
+            {
+                async.Write(Protocol.Subscribe);
+                Pull.Add(remoteServer, tr);
+                _async.subscribed = tr.subscribed;
+            }
+            return _length;
+        }
+        /// <summary>
+        /// Get the last schema position
+        /// </summary>
+        /// <returns>the transaction log position of the last schema change</returns>
+        public long GetLastSchemaPos()
+        {
+            if (_lastSchema != 0)
+                return _lastSchema;
+            if (remoteServer == null)
+            {
+                var d = Database.databases[transName];
+                return d.lastSchemaPos;
+            }
+            if (async == null) // else sets _lastSchema as side effect
+                throw new PEException("PE217");
+            return _lastSchema;
+        }
+        /// <summary>
+        /// Construct a connection string for an outgoing connection
+        /// </summary>
+        /// <returns>the connection string</returns>
+        internal string connectionString()
+        {
+            if (_cs != null)
+                return _cs;
+            if (name.Contains(":"))
+                name = "_"; // transName gives the "real database name" used in the engine
+            var co = PyrrhoStart.cfg.hp.ToString();
+            if (trans != null && trans.coordinator >=0)
+                co = trans.databases[trans.coordinator].cd.remoteServer;
+            _cs = "Files=" + name + ";User=" + user + ";Password=" + password +
+                ";Role=" + role+";Coordinator="+co;
+            for (var d = details.First();d!= null;d=d.Next())
+                switch (d.key())
+                {
+                    case "Files": break;
+                    case "User": break;
+                    case "Password": break;
+                    case "Role": break;
+                    case "Coordinator": break;
+                    default:
+                        _cs += ";" + d.key() + "=" + d.value();
+                        break;
+                }
+            return _cs;
+        }
+#endif
+        /// <summary>
+        /// The connection must be opened before it can be used. 
+        /// (Includes server-server connections.)
+        /// If local databases are referred to in the connection and don't exist,
+        /// we will try to create then using the connection credentials
+        /// </summary>
+        /// <param name="defaultModify">if true, only the front database is modifiable</param>
+        internal void Open(ref string defaultModify)
+        {
+            // by default the first database is modifiable
+            if (details["Modify"] == null)
+                ATree<string, string>.AddNN(ref details, "Modify", defaultModify);
+            defaultModify = "false";
+            string dbname = details["Files"]; // at most 1 by now
+            var d = Database.databases[transName];
+            if (d == null)
+            {
+                d = Database.New(this);
+                if (d.pb!=null && ((DbStorage)d.pb.df.dbStorage).creating)
+                    tr.creating = d;
+            }
+            if (d == null)
+                throw new DBException("08003", dbname).ISO()
+                    .Add(Sqlx.CATALOG_NAME, dbname);
+#if !EMBEDDED
+            remoteServer = d.server;
+#endif
+        }
+        public override string ToString()
+        {
+            return transName + "(" + uid + " " + status + ")";
+        }
+        /// <summary>
+        /// Set up a Database for this connection information
+        /// </summary>
+        /// <returns>a (shared) database</returns>
+        internal Database Configure()
+        {
+            // the database must already be in the set of shareable base databases (or being created)
+            var db = Database.databases[transName];
+            if (db == null)
+            {
+                var c = (tr as Transaction).parent ?? tr;
+                if (c.creating?.transName != transName)
+                    throw new DBException("3D001", transName).Mix();
+                db = c.creating;
+            }
+            db.pb = PhysBase.GetPhysBase(db, this);
+            if (db.pb != null)
+            {
+                db.context = db.pb.ctx;
+#if !EMBEDDED
+                if (db.pb is PartitionBase)
+                {
+                    var pr = db.pb.prole;
+                    var n = pr.name;
+                    db.baseDb = n;
+                    Database.New(n, n, pr.details, user, db.password, ServerRole.Client);
+                }
+                if (db.loadpos<db.pb.startData)
+                    db.loadpos = db.pb.startData;
+#if NET2_0
+            if ((PyrrhoServer.GetServerRole(db.transName) & ServerRole.Query) == ServerRole.Query) // hmm?
+#else
+                if (PyrrhoServer.GetServerRole(db.transName).HasFlag(ServerRole.Query))
+#endif
+#endif
+                    try
+                    {
+                        db.Load();
+                    }
+                    catch (Exception ex)
+                    {
+                        if (db.pb != null && db.pb.df != null)
+                            db.pb.df.Close();
+                        db.pb = null;
+                        lock (Database.databaselist)
+                            BTree<string, Database>.Remove(ref Database.databases, transName);
+                        throw ex;
+                    }
+#if !EMBEDDED
+                else
+                {
+                    if (!PyrrhoServer.HasServerRole(db.transName, ServerRole.Client,false))
+                        db.pb.Load(db);
+                    db.loadpos = db.pb.remotehwm;
+                }
+#endif
+            }
+            db = db.Sync(this);
+            lock (Database.databaselist)
+                BTree<string, Database>.Add(ref Database.databases, transName, db);
+#if !EMBEDDED
+            if (PyrrhoStart.cfg.newConfigFile)
+                PyrrhoStart.cfg.InitialiseConfigDb();
+            if (Database.deferredTransactionChecks != null)
+                Database.TryTransactionChecks();
+            _length = db.loadpos;
+            _start = db.pb.startData;
+            _lastSchema = db.lastSchemaPos;
+#endif
+            return db;
+        }
+#if !EMBEDDED
+        /// <summary>
+        /// only used during connection string processing
+        /// </summary>
+        /// <param name="n">The name</param>
+        /// <param name="d">The connection string details</param>
+        /// <param name="tn">(ref) The database name in this transaction (transName)</param>
+        /// <param name="sv">(out) the server name</param>
+        /// <param name="us">(out) the user name</param>
+        /// <param name="pw">(out) the password</param>
+        /// <param name="ro">(out) the role</param>
+        internal static void Parse(string n, ATree<string,string>d, ref string tn, out string sv, out string us, out string pw, out string ro)
+        {
+            sv = PyrrhoStart.cfg.hp.ToString();
+            us = d["User"];
+            pw = d["Password"];
+            ro = d["Role"];
+            int ix = tn.IndexOf('@');
+            if (ix > 0)
+            {
+                string[] hostpart;
+                if (tn[ix + 1] == '[')
+                {
+                    var jx = tn.IndexOf(']');
+                    if (tn[jx + 1] == ':')
+                    {
+                        hostpart = new string[2];
+                        hostpart[1] = tn.Substring(jx + 2);
+                    }
+                    else
+                        hostpart = new string[1];
+                    hostpart[0] = tn.Substring(ix + 2, jx - ix - 3);
+                }
+                else
+                    hostpart = tn.Substring(ix + 1).Split(':');
+                var pcps = tn.Split('/', '\\');
+                n = pcps[pcps.Length - 1];
+                var port = (hostpart.Length > 1) ? int.Parse(hostpart[1]) : d.Contains("Port") ? int.Parse(d["Port"]) : 5433;
+                if (hostpart.Length > 3)
+                    ro = hostpart[3];
+                if (ro == null)
+                    ro = n;
+                sv = hostpart[0] + ":" + port;
+                if (sv == PyrrhoStart.cfg.hp.ToString())
+                    sv = null;
+                ATree<string, string>.Add(ref d, "Role", ro);
+            }
+            else
+            {
+                var hp = PyrrhoStart.cfg.hp;
+                var change = false;
+                if (d.Contains("Host"))
+                {
+                    hp.host = d["Host"];
+                    change = true;
+                }
+                if (d.Contains("Port"))
+                {
+                    hp.port = int.Parse(d["Port"]);
+                    change = true;
+                }
+                if (change)
+                {
+                    tn = tn + "@" + hp.ToString();
+                    sv = hp.ToString();
+                }
+            }
+        }
+        /// <summary>
+        /// If we are a Coordinator, make sure all other participants are opened
+        /// </summary>
+        internal virtual void OpenOthers()
+        {
+            if (details["Coordinator"] != null)
+                return;
+            var d = trans.databases[trix];
+            if (d.baseDb != null)
+            {
+                var bd = trans.databaseList[d.baseDb];
+                if (bd == null)
+                {
+                    string tn = d.baseDb, pw;
+                    Parse(d.baseDb, details, ref tn, out remoteServer, out user, out pw, out role);
+                    var cd = Database.databases["_"];
+                    if (cd == null)
+                        throw new DBException("3D000", d.baseDb).Mix();
+                    var ix = cd.objects[Configuration.DatabaseIndex] as Index;
+                    var rp = ix.rows[new PRow(new TChar(PyrrhoStart.cfg.hp.ToString()), new PRow(new TChar(d.name)))];
+                    var rec = cd.GetD(rp.Value) as Record;
+                    bd = Database.New(d.baseDb, d.baseDb, rec.String(trans.context, Configuration.DatabaseRemote),
+                        rec.String(trans.context, Configuration.DatabaseRemoteUser),
+                        rec.String(trans.context, Configuration.DatabaseRemotePassword), ServerRole.Client).Add(trans);
+                    bd.pb.dataTypes = d.pb.dataTypes;
+                    bd.objects = d.objects;
+                    ((Participant)bd).database.pb.dataTypes = d.pb.dataTypes;
+                    ATree<string, Database>.Update(ref Database.databases, d.baseDb, bd);
+                }
+                else
+                {
+                    bd.objects = d.objects;
+                    var lt = bd.Add(trans);
+                    lt.pb.dataTypes = d.pb.dataTypes;
+                }
+            }
+            else
+                for (var pt = d.partitionedTables.First(); pt != null; pt = pt.Next())
+                    for (var ps = pt.value().segments.First();ps!=null;ps=ps.Next())
+                        Database.databases[ps.value().partname].Add(trans);
+            if (d.name == "_" && !PyrrhoStart.RepairMode)
+                for (var sa = Database.databases.First();sa!= null;sa=sa.Next())
+                    if (sa.key().Contains("_@"))
+                    {
+                        var hp = new HostPort(sa.value().server);
+                        var dt = details;
+                        ATree<string, string>.Add(ref dt, "Host", hp.host);
+                        ATree<string, string>.Add(ref dt, "Port", ""+hp.port);
+                        trans.Transact("_",sa.key(),dt);
+                    }
+        }
+#endif
+    }
+#if !LOCAL
+    /// <summary>
+    /// The actual Push is done by Participant.Commit3. 
+    /// Here we record the pushto information as it happens during Configuration.
+    /// Clients connect to us to collect initial database lengths, and we record
+    /// who they are so we can advise of changes
+    /// </summary>
+    internal static class Push
+    {
+        /// <summary>
+        /// pushto[database][server] = true
+        /// </summary>
+        internal static ATree<string, ATree<string, bool>> pushto = BTree<string, ATree<string, bool>>.Empty;
+        internal static ATree<string, Connection> pushConnections = BTree<string, Connection>.Empty;
+        static internal void Add(string db,string sv,Connection cn)
+        {
+            if (db == "_")
+                return;
+            var a = pushto[db] ?? BTree<string, bool>.Empty;
+            ATree<string, bool>.Add(ref a, sv, true);
+            ATree<string, ATree<string, bool>>.Add(ref pushto, db, a);
+            Subscribe(sv,cn);
+        }
+        static internal void Subscribe(string sv,Connection cn)
+        {
+            if (sv==null || pushConnections[sv] != null)
+                return;
+            ATree<string, Connection>.Add(ref pushConnections, sv, cn);
+            cn.subscribed = true;
+        }
+        static internal void Remove(string db,string sv)
+        {
+            var a = pushto[db];
+            if (a == null)
+                return;
+            ATree<string, bool>.Remove(ref a, sv);
+            if (a.Count == 0)
+                ATree<string, ATree<string, bool>>.Remove(ref pushto, db);
+            else
+                ATree<string, ATree<string, bool>>.Add(ref pushto, db, a);
+        }
+        static internal void Unsubscribe(string sv)
+        {
+            ATree<string, Connection>.Remove(ref pushConnections, sv);
+        }
+    }
+    /// <summary>
+    /// 1. We want to minimise the number of connections: 
+    /// at most 1 Pull connection joining any server to each of the different provider servers 
+    /// (shared between the different databases involved).
+    /// 2. We use the normal PyrrhoServer implementation for the Pull connection, 
+    /// If notified of a new commit by our provider, it needs to record the new length, so that
+    /// it can pull the new data before the start of any new transaction for each database involved.
+    /// 3. The synchronisation operation will not have special privilges 
+    /// (remember that any updates will be done remotely to the master). 
+    /// However, the user id and password in the configuration file will need 
+    /// sufficient privileges to perform the synchronisation.
+    /// 4. We open the Pull connection during configuration. 
+    /// This connection should remain open - note that not all providers are the master server 
+    /// itself. The Pull request is answered by the next notification (it should not timeout).
+    /// </summary>
+    static internal class Pull
+    {
+        internal static ATree<string, Connection> pullConnections = BTree<string, Connection>.Empty;
+        /// <summary>
+        /// Note: At this point none of the pullConnections are open. At the end of the configuration stage, open them
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="rc"></param>
+        /// <returns>whether this connection should be closed at end of configuration</returns>
+        static internal void Add(string sv,Connection tr)
+        {
+            var cd = pullConnections[sv];
+            if (cd == null)
+            {
+                ATree<string, Connection>.Add(ref pullConnections, sv, tr);
+                tr.subscribed = true;
+            }
+        }
+    }
+#endif
+}

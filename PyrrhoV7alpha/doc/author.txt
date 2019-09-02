@@ -1,0 +1,16 @@
+create table author(id int primary key,aname char)
+create table book(id int primary key,authid int references author,title char)
+insert into author values (1,'Dickens'),(2,'Conrad')
+insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')
+[create function booksby(auth char) returns table(title char) return table 
+(select title from author inner join book b on author.id=b.authid where  aname=booksby.auth)]
+select title from author inner join book b on author.id=b.authid where aname='Dickens'
+select * from table(booksby('Dickens'))
+select count(*) from table(booksby('Dickens'))
+
+0         1         2         3         4         5         6         7         8         9         10        11        12
+0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
+(auth char) returns "538"return table (select "295" from "73" inner join "190" b on "73"."98"=b."245" where  "150"="591".auth)
+select title from author inner join book b on author.id=b.authid where aname='Dickens'
+select "295" from "73" inner join "190" b on "73"."98"=b."245" where "150"='Dickens'
+
