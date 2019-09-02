@@ -94,11 +94,12 @@ public class STransaction extends SDatabase {
         /// If there are concurrent transactions there will be more code here.
         /// </summary>
         /// <returns>the steps as modified by the commit process</returns>
-        public SDatabase Commit() throws Exception
+        public SSlot<SDatabase,Long> Commit() throws Exception
         {
             SDatabase db = databases.Lookup(name);
+            var ts = db.curpos;
             var f = new Writer(dbfiles.get(name));
-            var rdr = new Reader(db,curpos);
+            var rdr = new Reader(this);
             var tb = objects.PositionAt(_uid); // start of the work we want to commit
             var since = rdr.GetAll(f.length());
             for (SDbObject since1 : since) {
@@ -110,27 +111,23 @@ public class STransaction extends SDatabase {
                     }
                 }
             }
-            if (tb!=null)
-            synchronized (f)
+            synchronized (f.file)
             {
-                db = databases.Lookup(name);
+                db = databases.get(name).Load();
+                ts = db.curpos;
                 for (var b = tb; b != null; b = b.Next())
                 {
-                    var ob = b.getValue().val;
-                    switch (ob.type)
+                    var ov = b.getValue().val;
+                    if (ov instanceof SRecord)
                     {
-                        case Types.SUpdate:
-                        case Types.SRecord:
-                        {
-                            var sr = (SRecord) ob;
-                            sr.CheckConstraints(db, (STable)objects.Lookup(sr.table));
-                        }
-                        case Types.SDelete:
-                        {
-                            var sd = (SDelete)ob;
-                            sd.CheckConstraints(db, (STable)objects.Lookup(sd.table));
-                        }
-                    }                       
+                        var sr = (SRecord)ov;
+                        sr.CheckConstraints(db, (STable)objects.get(sr.table));
+                    }
+                    else if (ov instanceof SDelete)
+                    {
+                        var sd = (SDelete)ov;
+                        sd.CheckConstraints(db, (STable)objects.get(sd.table));
+                    }
                 }
                 since = rdr.GetAll(f.length());
                 for (SDbObject since1 : since) {
@@ -144,9 +141,9 @@ public class STransaction extends SDatabase {
                 }
                 db = f.Commit(db,this);
                 f.CommitDone();
+                Install(db);
             }
-            Install(db);
-            return db;
+            return new SSlot(db,ts);
         }
         @Override
         public STransaction Transact(ReaderBase rdr,boolean auto)
@@ -154,9 +151,9 @@ public class STransaction extends SDatabase {
             rdr.db = this;
             return this; // ignore the parameter
         }
-        public SDatabase MaybeCommit() throws Exception
+        public SSlot<SDatabase,Long> MaybeCommit() throws Exception
         {
-            return autoCommit? Commit():this;
+            return autoCommit? Commit(): new SSlot(this,curpos);
         }
         @Override
         public SDatabase Rollback()

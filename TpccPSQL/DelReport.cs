@@ -2,9 +2,8 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Drawing;
-using System.Data.SqlClient;
-using System.Windows.Forms;
 using Npgsql;
+using System.Windows.Forms;
 
 namespace Tpcc
 {
@@ -17,33 +16,40 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public NpgsqlConnection db;
+		public Form1 form;
 		public Label status;
 		public int wid = 1;
 		public int carid;
         public int fid, tid;
-        private NpgsqlConnection pGconn;
-        private int v;
-
         public bool FetchCarrier(ref string mess)
         {
-            var cmd = db.CreateCommand();
+            var cmd = form.conn.CreateCommand();
             cmd.CommandText = "select DL_DONE,DK_SKIPPED from DELIVERY where DL_W_ID=" + wid + " and DL_CARRIER_ID=" + carid + " order by DL_ID desc";
             Form1.RecordRequest(cmd, fid, tid);
             var s = cmd.ExecuteReader();
-            var r = s.Read();
-            if (r)
+            try
             {
-                Set(3, (int)(long)s[0]);
-                Set(4, (int)(long)s[1]);
+                var r = s.Read();
+                if (r)
+                {
+                    Set(3, (int)s[0]);
+                    Set(4, (int)s[1]);
+                }
+                return !r;
             }
-            s.Close();
-            return !r;
+            catch (Exception)
+            {
+                form.Rollback();
+            } finally
+            {
+                s.Close();
+            }
+            return false;
         }
 
-		public DelReport(NpgsqlConnection c,int w)
+		public DelReport(Form1 fm,int w)
 		{
-            db = c;
+            form = fm;
             wid = w;
 			// This call is required by the Windows.Forms Form Designer.
 			InitializeComponent();
@@ -59,11 +65,10 @@ namespace Tpcc
 			AddField(26,7,4);
 		}
 
-       
-        /// <summary> 
-        /// Clean up any resources being used.
-        /// </summary>
-        protected override void Dispose( bool disposing )
+		/// <summary> 
+		/// Clean up any resources being used.
+		/// </summary>
+		protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{

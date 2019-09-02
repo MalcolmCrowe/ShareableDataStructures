@@ -5,9 +5,9 @@ using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
 using System.Threading;
-using System.Data.SqlClient;
-using System.Net.Sockets;
+using System.Data;
 using Npgsql;
+using System.Net.Sockets;
 
 namespace Tpcc
 {
@@ -40,8 +40,7 @@ namespace Tpcc
         decimal total;
         bool allhome = true;
         public int activewh = 1;
-        public NpgsqlConnection db;
-        private NpgsqlTransaction tr = null;
+        public Form1 form;
         public Button btn;
         public TextBox txtBox;
         public int fid, tid;
@@ -62,6 +61,7 @@ namespace Tpcc
         public void Multiple()
         {
             int Tcount = 0;
+            Console.WriteLine(DateTime.Now.ToString());
             while (Tcount++ < 2000)
             {
                 try
@@ -75,79 +75,86 @@ namespace Tpcc
                 }
                 catch (Exception)
                 {
-                    if (tr!=null)
-                        tr.Rollback();
+                    form.Rollback();
                     Form1.wconflicts++;
                 }
             }
-        }
-        bool ExecNQ(string sql)
-        {
-            try
-            {
-                var cmd = db.CreateCommand();
-                cmd.Transaction = tr;
-                cmd.CommandText = sql;
-                Form1.RecordRequest(cmd, fid, tid);
-                cmd.ExecuteNonQuery();
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Form1.RecordResponse(ex, fid, tid);
-                Form1.wconflicts++;
-            }
-            return true;
+            Console.WriteLine(DateTime.Now.ToString());
         }
         bool FetchCustomer(ref string mess)
         {
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select C_DISCOUNT,C_LAST,C_CREDIT from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                mess = "No customer " + cid;
-                s.Close();
-                return true;
+            try { 
+                if (!s.Read())
+                {
+                    mess = "No customer " + cid;
+                    s.Close();
+                    return true;
+                }
+                Set(3, (string)s[1]);
+                Set(4, (string)s[2]);
+                c_discount = util.GetDecimal(s[0]);
+                Set(5, c_discount.ToString("F4").Substring(1));
             }
-            Set(3, (string)s[1]);
-            Set(4, (string)s[2]);
-            c_discount = util.GetDecimal(s[0]);
-            Set(5, c_discount.ToString("F4").Substring(1));
-            s.Close();
-			return false;
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
+            return false;
 		}
         bool FetchDistrict(ref string mess)
         {
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select D_TAX,D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                mess = "No District " + did;
-                s.Close();
-                return true;
+            try { 
+                if (!s.Read())
+                {
+                    mess = "No District " + did;
+                    s.Close();
+                    return true;
+                }
+                d_tax = (decimal)s[0];
+                o_id = (int)s[1];
+                Set(6, o_id);
+                Set(132, DateTime.Now.ToString());
             }
-            d_tax = (decimal)s[0];
-            //var o = s[1];
-            o_id = (int)s[1];
-            Set(6, o_id);
-            Set(132, DateTime.Now.ToString());
-            s.Close();
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             cmd.CommandText = "select W_TAX from WAREHOUSE where W_ID=" + wid;
             s = cmd.ExecuteReader();
-            if (!s.Read())
-            {
-                mess = "No warehouse " + wid;
-                s.Close();
-                return true;
+            try {
+                if (!s.Read())
+                {
+                    mess = "No warehouse " + wid;
+                    return true;
+                }
+                w_tax = (decimal)s[0];
+                Set(8, w_tax.ToString("F4").Substring(1));
+                Set(9, d_tax.ToString("F4").Substring(1));
             }
-            w_tax = (decimal)s[0];
-            Set(8, w_tax.ToString("F4").Substring(1));
-            Set(9, d_tax.ToString("F4").Substring(1));
-            s.Close();
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             cmd.CommandText = "update DISTRICT set D_NEXT_O_ID=" + (o_id + 1) + " where D_W_ID=" + wid + " and D_ID=" + did;
             Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
@@ -157,11 +164,11 @@ namespace Tpcc
 		bool DoOLCount(ref string mess)
 		{
 			Set(7,ol_cnt);
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "insert into \"ORDER\"(O_ID,O_D_ID,O_W_ID,O_C_ID,O_ENTRY_D,O_OL_CNT,O_ALL_LOCAL)"+
                     "values(" + o_id + "," + did + "," + wid + "," + cid + ",'" + 
-                    DateTime.Now.ToString("o") + "'," + ol_cnt + "," + (allhome ? "1" : "0") + ")";
+                    DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? "1" : "0") + ")";
             Form1.RecordRequest(cmd, fid, tid);
             cmd.ExecuteNonQuery();
 			cmd.CommandText = "insert into NEW_ORDER(NO_O_ID,NO_D_ID,NO_W_ID)values("+o_id+","+did+","+wid+")";
@@ -179,22 +186,29 @@ namespace Tpcc
         {
             OrderLine a = ols[j];
             int k = 10 + j * 8;
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select I_PRICE,I_NAME,I_DATA from ITEM where I_ID=" + a.oliid;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                {
+                    mess = "No such item " + a.oliid;
+                    return true;
+                }
+                i_price = (decimal)s[0];
+                a.ol_price = i_price;
+                i_name = (string)s[1];
+                i_data = (string)s[2];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                tr.Rollback();
-                mess = "No such item " + a.oliid;
-                return true;
             }
-            i_price = (decimal)s[0];
-            a.ol_price = i_price;
-            i_name = (string)s[1];
-            i_data = (string)s[2];
-            s.Close();
             Set(k, a.ol_supply_w_id);
             Set(k + 1, String.Format("{0,6}", a.oliid));
             return false;
@@ -206,24 +220,30 @@ namespace Tpcc
             string ds = "0" + did;
             if (ds.Length > 2)
                 ds = ds.Substring(1);
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select S_QUANTITY,S_DIST_" + ds + ",S_DATA from STOCK where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                {
+                    mess = "no such stock item " + a.oliid + " in " + a.ol_supply_w_id;
+                    return true;
+                }
+                Set(k + 2, i_name);
+                s_quantity = (int)(decimal)s[0];
+                Set(k + 4, s_quantity);
+                a.s_quantity = s_quantity;
+                sdata = (string)s[2];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                tr.Rollback();
-                mess = "no such stock item " + a.oliid + " in " + a.ol_supply_w_id;
-                return true;
             }
-            Set(k + 2, i_name);
-            //var o = s[0];
-            s_quantity = (int)(decimal)s[0];
-            Set(k + 4, s_quantity);
-            a.s_quantity = s_quantity;
-            sdata = (string)s[2];
-            s.Close();
             bg = "G";
             if (sdata.IndexOf("ORIGINAL") >= 0 && i_data.IndexOf("ORIGINAL") >= 0)
                 bg = "B";
@@ -267,8 +287,8 @@ namespace Tpcc
                     s_quantity = a.s_quantity - a.ol_quantity;
                     if (s_quantity < 10)
                         s_quantity += 91;
-                    var cmd = db.CreateCommand();
-                    cmd.Transaction = tr;
+                    var cmd = form.conn.CreateCommand();
+                    cmd.Transaction = form.trans;
                     cmd.CommandText = "update STOCK set S_QUANTITY=" + s_quantity +" where S_I_ID=" + a.oliid + " and S_W_ID=" + a.ol_supply_w_id;
                     Form1.RecordRequest(cmd, fid, tid);
                     cmd.ExecuteNonQuery();
@@ -281,15 +301,14 @@ namespace Tpcc
                 int rbk = util.random(1, 100);
                 if (rbk == 1)
                 {
-                    tr.Rollback();
-                    tr = null;
+                    form.Rollback();
                     done = true;
                 }
                 else
                 {
-                    tr.Commit();
+                    form.Commit();
                     Form1.commits++;
-                    tr = null;
+                    form.trans = null;
                 }
                 // Phase 3 display the results
                 Set(130, "OKAY");
@@ -298,9 +317,7 @@ namespace Tpcc
             catch (Exception ex)
             {
                 Set(130, ex.Message);
-                Form1.RecordResponse(ex, fid, tid);
-                tr.Rollback();
-                Form1.wconflicts++;
+                throw ex;
             }
             return done;
         }
@@ -337,8 +354,7 @@ namespace Tpcc
 			GetData();
 			count = 0;
 			mess = "OKAY";
-            if (tr==null)
-            tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            form.BeginTransaction();
             tid = ++Form1._tid;
 			//		Invalidate(true);
 			//		Thread.Sleep(1000);
@@ -363,10 +379,9 @@ namespace Tpcc
 				if (DoCommit(ref mess))
 					break;
                 bad:
-                tr.Rollback();
-                tr = null;
-                Set(130,mess);
-				Invalidate(true);
+                    form.Rollback();
+                    Set(130,mess);
+				    Invalidate(true);
 			}
 			Invalidate(true);
 			if (btn!=null)
@@ -385,8 +400,7 @@ namespace Tpcc
 				mess = "OKAY";
                 if (stage == 0)
                     stage++;
-                if (tr==null)
-                tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                form.BeginTransaction();
                 tid = ++Form1._tid;
             }
         //		Invalidate(true);
@@ -478,16 +492,16 @@ namespace Tpcc
 				btn.Enabled = true;
 			return;
 			bad:
-            tr.Rollback();
+                form.Rollback();
             Set(130,mess);
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
 		}
 
-		public NewOrder(NpgsqlConnection c,int w)
+		public NewOrder(Form1 fm,int w)
 		{
-            db = c;
+            form = fm;
             wid = w;
 			//
 			// Required for Windows Form Designer support
@@ -535,11 +549,10 @@ namespace Tpcc
 			vt1.PutBlanks();
 		}
 
-       
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        protected override void Dispose( bool disposing )
+		/// <summary>
+		/// Clean up any resources being used.
+		/// </summary>
+		protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{
@@ -618,17 +631,12 @@ namespace Tpcc
 			}
 			catch(Exception ex) {
 				status.Text = ex.Message;
-                Form1.RecordResponse(ex, fid, tid);
-                tr.Rollback();
-                Form1.wconflicts++;
+                throw ex;
             }
 			Invalidate(true);
 		}
 
         public int step = 0,line = 0;
-        private NpgsqlConnection pGconn;
-        private int v;
-
         internal void Step()
         {
             switch (step)

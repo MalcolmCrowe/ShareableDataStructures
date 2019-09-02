@@ -7,7 +7,6 @@ using System.Data;
 using Npgsql;
 using System.Threading;
 using System.Threading.Tasks;
-using Npgsql;
 
 namespace Tpcc
 {
@@ -32,7 +31,8 @@ namespace Tpcc
 		private Tpcc.StockLevel stockLevel1;
         private Tpcc.Delivery delivery1;
 		private System.ComponentModel.IContainer components;
-		public NpgsqlConnection PGconn;
+		public NpgsqlConnection conn;
+        public NpgsqlTransaction trans;
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
@@ -42,7 +42,7 @@ namespace Tpcc
 		private System.Windows.Forms.TextBox textBox3;
 		public int activewh;
 		private System.Windows.Forms.Button AutoRun;
-        private System.Windows.Forms.Button Commit;
+        private System.Windows.Forms.Button CommitBtn;
 		private System.Windows.Forms.TabPage tabPage7;
 		private DelReport delReport1;
 		Thread thread = null;
@@ -62,30 +62,52 @@ namespace Tpcc
         public static string host;
         public static int commits, rconflicts, wconflicts;
         public static int _tid = 0, _req = 0;
+        static DateTime start_time = DateTime.Now;
         static System.IO.StreamWriter reqs = null;
         public Form1()
 		{
-			PGconn = new NpgsqlConnection("Server=127.0.0.1; Port=5432; User Id=postgres; Password=Admin:1;Database=Tpcc");
-            PGconn.Open();
-			//
-			// Required for Windows Form Designer support
-			//
-			InitializeComponent();
+			conn = new NpgsqlConnection("Host=localhost;Port=5432;Database=Tpcc;Username=postgres;Password=adminadmin");
+            conn.Open();
+            //
+            // Required for Windows Form Designer support
+            //
+            InitializeComponent();
             CheckForIllegalCrossThreadCalls = false;
 		}
+        public void BeginTransaction()
+        {
+            trans = conn.BeginTransaction(IsolationLevel.Serializable);
+        }
+        public void Rollback()
+        {
+            if (trans != null && !trans.IsCompleted)
+                trans.Rollback();
+            trans = null;
+        }
+        public void Commit()
+        {
+            if (trans != null && !trans.IsCompleted)
+                trans.Commit();
+            trans = null;
+        }
         public static void RecordRequest(NpgsqlCommand cmd,int cid,int tid)
         {
             if (reqs == null)
                 return;
             lock (reqs)
-                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; " + cmd.CommandText);
+                reqs.WriteLine(Seconds()+";" + (++_req) + ";" + cid + ";" + tid + "; " + cmd.CommandText);
         }
         public static void RecordResponse(Exception e,int cid,int tid)
         {
             if (reqs == null)
                 return;
             lock (reqs)
-                reqs.WriteLine("" + (++_req) + ";" + cid + ";" + tid + "; Exception: "+ e.Message);
+                reqs.WriteLine(Seconds()+";" + (++_req) + ";" + cid + ";" + tid + "; Exception: "+ e.Message);
+        }
+        static string Seconds()
+        {
+            var t = DateTime.Now - start_time;
+            return t.ToString();
         }
         public static void OpenRequests()
         {
@@ -94,11 +116,11 @@ namespace Tpcc
         }
         public static void CloseRequests()
         {
-            if (reqs != null)
-            {
-                var PGconn = new NpgsqlConnection("Server=127.0.0.1; Port=5432; User Id=postgres; Password=Admin:1;Database=Tpcc");
-                PGconn.Open();
-                var cmd = PGconn.CreateCommand();
+            if (reqs == null)
+                return;
+                var conn = new NpgsqlConnection("Host=localhost;Port=5432;Database=Tpcc;Username=postgres;Password=adminadmin");
+                conn.Open();
+                var cmd = conn.CreateCommand();
                 int orders, neworders, orderlines, deliveries;
                 cmd.CommandText = "select count(*) from \"ORDER\"";
                 var rdr = cmd.ExecuteReader();
@@ -120,6 +142,10 @@ namespace Tpcc
                 rdr.Read();
                 deliveries = rdr.GetInt32(0);
                 rdr.Close();
+            if (reqs == null)
+                Console.WriteLine("" + commits + "; " + (rconflicts + wconflicts) + "; " + orders + "; " + neworders + "; " + orderlines + "; " + deliveries);
+            else
+            {
                 reqs.WriteLine("" +commits + "; "+(rconflicts+wconflicts)+"; "+ orders + "; " + neworders + "; " + orderlines + "; " + deliveries);
                 reqs.Close();
             }
@@ -229,20 +255,20 @@ namespace Tpcc
             this.button1 = new System.Windows.Forms.Button();
             this.tabPage2 = new System.Windows.Forms.TabPage();
             this.Step = new System.Windows.Forms.Button();
-            this.Commit = new System.Windows.Forms.Button();
+            this.CommitBtn = new System.Windows.Forms.Button();
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.button2 = new System.Windows.Forms.Button();
-            this.newOrder1 = new Tpcc.NewOrder(PGconn,1);
+            this.newOrder1 = new Tpcc.NewOrder(this,1);
             this.tabPage3 = new System.Windows.Forms.TabPage();
-            this.orderStatus1 = new Tpcc.OrderStatus(PGconn,1);
+            this.orderStatus1 = new Tpcc.OrderStatus(this,1);
             this.tabPage4 = new System.Windows.Forms.TabPage();
-            this.payment1 = new Tpcc.Payment(PGconn,1);
+            this.payment1 = new Tpcc.Payment(this,1);
             this.tabPage5 = new System.Windows.Forms.TabPage();
-            this.stockLevel1 = new Tpcc.StockLevel(PGconn,1);
+            this.stockLevel1 = new Tpcc.StockLevel(this,1);
             this.tabPage6 = new System.Windows.Forms.TabPage();
-            this.delivery1 = new Tpcc.Delivery(PGconn,1);
+            this.delivery1 = new Tpcc.Delivery(this,1);
             this.tabPage7 = new System.Windows.Forms.TabPage();
-            this.delReport1 = new Tpcc.DelReport(PGconn,1);
+            this.delReport1 = new Tpcc.DelReport(this,1);
             this.label1 = new System.Windows.Forms.Label();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
             this.timer2 = new System.Windows.Forms.Timer(this.components);
@@ -414,7 +440,7 @@ namespace Tpcc
             // tabPage2
             // 
             this.tabPage2.Controls.Add(this.Step);
-            this.tabPage2.Controls.Add(this.Commit);
+            this.tabPage2.Controls.Add(this.CommitBtn);
             this.tabPage2.Controls.Add(this.textBox3);
             this.tabPage2.Controls.Add(this.button2);
             this.tabPage2.Controls.Add(this.newOrder1);
@@ -435,12 +461,12 @@ namespace Tpcc
             // 
             // Commit
             // 
-            this.Commit.Location = new System.Drawing.Point(304, 336);
-            this.Commit.Name = "Commit";
-            this.Commit.Size = new System.Drawing.Size(64, 24);
-            this.Commit.TabIndex = 3;
-            this.Commit.Text = "Commit";
-            this.Commit.Click += new System.EventHandler(this.Commit_Click);
+            this.CommitBtn.Location = new System.Drawing.Point(304, 336);
+            this.CommitBtn.Name = "Commit";
+            this.CommitBtn.Size = new System.Drawing.Size(64, 24);
+            this.CommitBtn.TabIndex = 3;
+            this.CommitBtn.Text = "Commit";
+            this.CommitBtn.Click += new System.EventHandler(this.Commit_Click);
             // 
             // textBox3
             // 
@@ -596,40 +622,49 @@ namespace Tpcc
 
         private void Form1_Load(object sender, System.EventArgs e)
         {
+            NpgsqlDataReader s = null;
             if (fid!=1)
                 UserChoice();
             else
                 try
                 {
-                    OpenRequests();
-                    var cmd = PGconn.CreateCommand();
+       //             OpenRequests();
+                    var cmd = conn.CreateCommand();
                     cmd.CommandText = "select count(W_ID) from WAREHOUSE";
                     RecordRequest(cmd, fid, 0);
-                    var s = cmd.ExecuteReader();
-                    s.Read();
-                    var o = s[0];
-                    activewh = (int)(long)s[0];
-                    s.Close();
+                    s = cmd.ExecuteReader();
+                    try { 
+                        s.Read();
+                        activewh = (int)(long)s[0];
+                    }
+                    catch (Exception)
+                    {
+                        Rollback();
+                    }
+                    finally
+                    {
+                        s.Close();
+                    }
                     textBox1.Text = "" + activewh;
-                    //			deferred = new Thread(new ThreadStart(new Deferred(db,wid).Run));
+                    //			deferred = new Thread(new ThreadStart(new Deferred(form.conn,wid).Run));
                     //          deferred.Name = "Deferred";
                     //			deferred.Start();
                 }
                 catch (Exception ex)
                 {
                     RecordResponse(ex, fid, 0);
+                    if (s != null)
+                        s.Close();
+                    s = null;
                 }
         }
-
-        
-
         private void Form1_Closing(object sender,System.EventArgs e)
         {
             CloseRequests();
         }
 		private void button1_Click(object sender, System.EventArgs e)
 		{
-            var g = new GenBase(PGconn);
+            var g = new GenBase(this);
     	    g.BuildTpcc();
 		}
 
@@ -696,12 +731,13 @@ namespace Tpcc
 		private void button2_Click(object sender, System.EventArgs e) // Run button for New Order
 		{
 			NewOrder n = newOrder1;
-			n.db = PGconn;
+			n.form.conn = conn;
             n.oneDistrict = checkBox1.Checked;
             if (checkBox1.Checked)
             {
                 n.did = int.Parse(textBox4.Text);
-                n.db = new NpgsqlConnection("Server=127.0.0.1; Port=5432; User Id=postgres; Password=Admin:1;Database=Tpcc");
+                n.form.conn = new NpgsqlConnection("Host=localhost;Port=5432;Database=Tpcc;Username=postgres;Password=adminadmin");
+                n.form.conn.Open();
             }
 			n.btn = button2;
 			n.txtBox = textBox3;
@@ -735,6 +771,7 @@ namespace Tpcc
         void Report_Click(object sender,EventArgs e)
         {
             Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            Application.Exit();
         }
 
 		int action = -1;
@@ -848,6 +885,7 @@ namespace Tpcc
                 {
                     RecordResponse(ex, fid, 0);
                     wconflicts++;
+                    Rollback();
                 }
                 action = 0;
 			}
@@ -865,7 +903,7 @@ namespace Tpcc
 
         private void button3_Click(object sender, EventArgs e)
         {
-            var g = new GenBase(PGconn);
+            var g = new GenBase(this);
             g.FillWarehouse(int.Parse(textBox1.Text));
         }
 
@@ -874,11 +912,12 @@ namespace Tpcc
             if (checkBox1.Checked)
             {
                 int d = int.Parse(textBox4.Text);
-                PGconn = new NpgsqlConnection("Server=127.0.0.1; Port=5432; User Id=postgres; Password=Admin:1;Database=Tpcc");
-                new GenBase(PGconn).FillDistrict(int.Parse(textBox1.Text),d);
+                conn = new NpgsqlConnection("Host=localhost;Port=5432;Database=Tpcc;Username=postgres;Password=adminadmin");
+                conn.Open();
+                new GenBase(this).FillDistrict(int.Parse(textBox1.Text),d);
             }
             else
-                new GenBase(PGconn).FillDistricts(int.Parse(textBox1.Text));
+                new GenBase(this).FillDistricts(int.Parse(textBox1.Text));
         }
 
         private void textBox2_TextChanged(object sender, EventArgs e)

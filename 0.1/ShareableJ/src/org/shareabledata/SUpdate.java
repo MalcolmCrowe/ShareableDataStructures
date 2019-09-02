@@ -10,7 +10,7 @@ package org.shareabledata;
  */
 public class SUpdate extends SRecord {
         public final long defpos;
-        public final SRecord oldrec;
+        public final SDict<Long,Serialisable> oldfields; // old key fields if different
         @Override
         public long Defpos() { return defpos; }
         public SUpdate(STransaction tr,SRecord r,SDict<Long,Serialisable> u)
@@ -18,20 +18,50 @@ public class SUpdate extends SRecord {
         {
             super(Types.SUpdate,tr,r.table,_Merge(tr,r,u));
             defpos = r.Defpos();
-            oldrec = r;
+            var tb = (STable)tr.objects.get(r.table);
+            SDict<Long,Serialisable> ofs = null;
+            if (tb.indexes!=null)
+              for (var b = tb.indexes.First(); b != null; b = b.Next())
+                for (var c = ((SIndex)tr.objects.get(b.getValue().key)).cols.First(); 
+                        c != null; c = c.Next())
+                {
+                    var ov = r.fields.get(c.getValue());
+                    var nv = fields.get(c.getValue());
+                    if (ov.compareTo(nv)!=0)
+                        ofs = (ofs==null)?new SDict(c.getValue(), ov):
+                                ofs.Add(c.getValue(), ov);
+                }          
+            oldfields = ofs;
         }
         public SUpdate(SDatabase db,SUpdate r, Writer f)throws Exception
         {
             super(db,r,f);
-            defpos = r.defpos;
-            oldrec = r.oldrec;
+            defpos = f.Fix(r.defpos);
+            oldfields = r.oldfields;
             f.PutLong(defpos);
+            f.PutInt(oldfields.Length);
+            for (var b=oldfields.First();b!=null;b=b.Next())
+            {
+                f.PutLong(b.getValue().key);
+                b.getValue().val.Put(f);
+            }
         }
         SUpdate(ReaderBase f) throws Exception
         {
             super(Types.SUpdate,f);
             defpos = f.GetLong();
-            oldrec = (f instanceof Reader)?f.db.Get(defpos):null;
+            SDict<Long, Serialisable> ofs = null;
+            if (!(f instanceof SocketReader))
+            {
+                var n = f.GetInt();
+                for (var i = 0; i < n; i++)
+                {
+                    var u = f.GetLong();
+                    var s = f._Get();
+                    ofs = (ofs==null)?new SDict(u,s):ofs.Add(u,s);
+                }
+            }
+            oldfields = ofs;
         }
         static SDict<Long,Serialisable> _Merge(STransaction tr,SRecord r,
             SDict<Long,Serialisable> us)
@@ -60,7 +90,8 @@ public class SUpdate extends SRecord {
         {
             var cx = Context.New(fields,Context.Empty);
             for (var b = st.cols.First(); b != null; b = b.Next())
-                for (var c = b.getValue().val.constraints.First(); c != null; c = c.Next())
+                for (var c = b.getValue().val.constraints.First(); c != null; 
+                        c = c.Next())
                     switch (c.getValue().key)
                     {
                         case "CHECK":
@@ -68,12 +99,21 @@ public class SUpdate extends SRecord {
                                 throw new Exception("Check condition fails");
                             break;
                     }
-            for (var b = st.indexes.First(); b != null; b = b.Next())
+            if (oldfields != null)
             {
-                var x = (SIndex)db.objects.get(b.getValue().key);
-                var ok = x.Key(oldrec, x.cols);
-                var uk = x.Key(this, x.cols);
-                x.Check(db, this, ok.compareTo(uk) == 0);
+                // Make a full list of all old key fields
+                var ofs = fields; // start with the new ones
+                // replace the old fields that were different
+                for (var b = oldfields.First(); b != null; b = b.Next())
+                    ofs = ofs.Add(b.getValue().key,b.getValue().val);
+                // Now use ofs to compute the old keys
+                for (var b = st.indexes.First(); b != null; b = b.Next())
+                {
+                    var x = (SIndex)db.objects.get(b.getValue().key);
+                    var ok = x.Key(ofs, x.cols);
+                    var uk = x.Key(this, x.cols);
+                    x.Check(db, this, ok.compareTo(uk) == 0);
+                }
             }
         }
         @Override

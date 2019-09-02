@@ -17,8 +17,7 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public NpgsqlConnection db;
-        NpgsqlTransaction tr;
+		public Form1 form;
         int wid;
         public int did;
 		decimal c_balance;
@@ -29,9 +28,6 @@ namespace Tpcc
 		public Label status;
 		Encoding enc = new ASCIIEncoding();
         public int fid, tid;
-        private NpgsqlConnection pGconn;
-        private int v;
-
         bool Check(string c)
 		{
 			if (c!="")
@@ -51,47 +47,68 @@ namespace Tpcc
 		}
         bool FetchCustFromId(ref string mess)
         {
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText="select C_BALANCE,C_FIRST,C_MIDDLE,C_LAST from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                    return true;
+                clast = (string)s[3];
+                c_balance = util.GetDecimal(s[0]);
+                c_first = (string)s[1];
+                c_middle = (string)s[2];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                return true;
             }
-            clast = (string)s[3];
-            c_balance = util.GetDecimal(s[0]);
-            c_first = (string)s[1];
-            c_middle = (string)s[2];
-            s.Close();
             return false;
         }
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList cids = new ArrayList();
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select C_ID from CUSTOMER where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_LAST='" + clast + "' order by C_FIRST";
             var s = cmd.ExecuteReader();
-            while (s.Read())
-                cids.Add((long)s[0]);
-            s.Close();
+            try { 
+                while (s.Read())
+                    cids.Add((long)s[0]);
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             if (cids.Count == 0)
                 cid = 1;
             else
                 cid = (int)cids[(cids.Count + 1) / 2];
             cmd.CommandText = "select C_BALANCE,C_FIRST,C_MIDDLE from CUSTOMER  where C_W_ID=" + wid + " and C_D_ID=" + did + " and C_ID=" + cid;
             s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                    return true;
+                c_balance = (decimal)s[0];
+                c_first = (string)s[1];
+                c_middle = (string)s[2];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                return true;
             }
-            c_balance = (decimal)s[0];
-            c_first = (string)s[1];
-            c_middle = (string)s[2];
-            s.Close();
             return false;
         }
         bool DoDisplay(ref string mess)
@@ -102,49 +119,67 @@ namespace Tpcc
             Set(5, clast);
             Set(6, "$" + c_balance.ToString("F2"));
             int oid = -1;
-            var cmd = db.CreateCommand();
-            cmd.Transaction = tr;
+            var cmd = form.conn.CreateCommand();
+            cmd.Transaction = form.trans;
             cmd.CommandText = "select max(O_ID) from \"ORDER\" where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_C_ID=" + cid;
             var s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                    return true;
+                oid = (int)s[0];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                return true;
             }
-            //var o = s[0];
-            oid = (int)s[0];
-            s.Close();
             cmd.CommandText = "select O_ENTRY_D,O_CARRIER_ID from \"ORDER\" where O_W_ID=" + wid + " and O_D_ID=" + did + " and O_ID=" + oid;
             s = cmd.ExecuteReader();
-            if (!s.Read())
+            try { 
+                if (!s.Read())
+                    return true;
+                Set(7, oid);
+                var str = ((DateTime)s[0]).ToShortDateString();
+                Set(8, str);
+                if (!(s[1] == DBNull.Value))
+                    Set(9, (int)s[1]);
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
             {
                 s.Close();
-                return true;
             }
-            Set(7, oid);
-            var str = ((DateTime)s[0]).ToShortDateString();
-            Set(8, str);
-            //var o = s[1];
-            if (!(s[1] == DBNull.Value))
-                Set(9, (int)s[1]);
-            s.Close();
             int k = 10;
             cmd.CommandText = "select OL_I_ID,OL_SUPPLY_W_ID,OL_QUANTITY,OL_AMOUNT,OL_DELIVERY_D from ORDER_LINE where OL_W_ID="
                 + wid + " and OL_D_ID=" + did + " and OL_O_ID=" + oid;
             s = cmd.ExecuteReader();
-            //var o = s[2];
-            while(s.Read())
-            {
-                Set(k++, (int)s[1]);
-                Set(k++, (int)s[0]);
-                Set(k++, (int)(decimal)s[2]);
-                Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[3])));
-                if (s[4] != DBNull.Value)
-                    Set(k++, ((DateTime)s[4]).ToShortDateString());
-                else
-                    k++;
+            try { 
+                while(s.Read())
+                {
+                    Set(k++, (int)s[1]);
+                    Set(k++, (int)s[0]);
+                    Set(k++, (int)(decimal)s[2]);
+                    Set(k++, String.Format("${0,8:F2}", util.GetDecimal(s[3])));
+                    if (s[4] != DBNull.Value)
+                        Set(k++, ((DateTime)s[4]).ToShortDateString());
+                    else
+                        k++;
+                }
             }
-            s.Close();
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             return false;
         }
 		public void Single()
@@ -161,8 +196,7 @@ namespace Tpcc
 			string mess = "";
 			while (!done && count++<1000)
 			{
-                if (tr==null)
-				tr = db.BeginTransaction(System.Data.IsolationLevel.Serializable);
+				form.BeginTransaction();
                 tid = ++Form1._tid;
                 if (cid>0)
 				{
@@ -177,16 +211,15 @@ namespace Tpcc
 				DoDisplay(ref mess);
 				Invalidate(true);
 				done = true;
-                tr.Commit();
-               // Form1.commits++;
-                tr = null;
+                form.Commit();
+                form.trans = null;
 			}
 			bad:;
 		}
 
-		public OrderStatus(NpgsqlConnection c, int w)
+		public OrderStatus(Form1 fm, int w)
         {
-            db = c;
+            form = fm;
             wid = w;
             //
             // Required for Windows Form Designer support
@@ -223,11 +256,10 @@ namespace Tpcc
 			vt1.PutBlanks();
 		}
 
-       
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        protected override void Dispose( bool disposing )
+		/// <summary>
+		/// Clean up any resources being used.
+		/// </summary>
+		protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{
@@ -270,8 +302,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Form1.RecordResponse(ex, fid, tid);
-                Form1.wconflicts++;
+                throw ex;
 			}
 			SetCurField(curField);
 			status.Text = s;

@@ -29,7 +29,7 @@ namespace StrongLink
         }
         void RecordResponse(long ts,long te)
         {
-            if (reqs == null)
+            if (reqs == null || ts==te)
                 return;
             var t = DateTime.Now - start;
             lock (reqs)

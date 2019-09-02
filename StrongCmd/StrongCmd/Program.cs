@@ -96,7 +96,7 @@ namespace StrongCmd
                         }
                         else
                         {
-                            if (db.inTransaction!=0)
+                            if (db.inTransaction>0)
                                 Console.Write("SQL-T>");
                             else
                                 Console.Write("SQL> ");
@@ -170,7 +170,7 @@ namespace StrongCmd
                         switch (strlow)
                         {
                             case "begin":
-                                if (db.inTransaction!=0)
+                                if (db.inTransaction>0)
                                 {
                                     Console.WriteLine("Transaction already started");
                                     continue;
@@ -202,7 +202,7 @@ namespace StrongCmd
                     catch (ServerException e)
                     {
                         Console.WriteLine(e.Message);
-                        if (db.inTransaction!=0)
+                        if (db.inTransaction>0)
                             Console.WriteLine("Transaction aborted by server exception");
                         db.inTransaction = 0;
                         lasterr = e;

@@ -1,10 +1,9 @@
 using System;
 using System.Drawing;
-using System.Data.SqlClient;
+using Npgsql;
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
-using Npgsql;
 
 namespace Tpcc
 {
@@ -17,31 +16,45 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		public NpgsqlConnection db;
-        NpgsqlTransaction tr;
+        public Form1 form;
 		public Label status;
 		public int wid,fid,tid;
 		public int did;
 		public int thresh;
-        private NpgsqlConnection pGconn;
-        private int v;
-
         bool DoThresh(ref string mess)
         {
             int nextoid = 0;
-            var cmd = db.CreateCommand();
+            var cmd = form.conn.CreateCommand();
             cmd.CommandText = "select D_NEXT_O_ID from DISTRICT where D_W_ID=" + wid + " and D_ID=" + did;
             var s = cmd.ExecuteReader();
-            s.Read();
-            nextoid = (int)s[0];
-            s.Close();
+            try { 
+                s.Read();
+                nextoid = (int)s[0];
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             cmd.CommandText = "select count(S_I_ID) from STOCK where S_W_ID=" + wid + " and S_I_ID in (select distinct OL_I_ID from ORDER_LINE where OL_W_ID=" + wid + " and OL_D_ID=" + did + " and OL_O_ID>=" + (nextoid - 20) + ") and S_QUANTITY<" + thresh;
             s = cmd.ExecuteReader();
-            s.Read();
-            //var o = s[0];
-            int n = (int)(long)s[0];
-            Set(4, n);
-            s.Close();
+            try { 
+                s.Read();
+                var o = s[0];
+                int n = (int)(long)s[0];
+                Set(4, n);
+            }
+            catch (Exception)
+            {
+                form.Rollback();
+            }
+            finally
+            {
+                s.Close();
+            }
             return false;
         }
 
@@ -53,9 +66,9 @@ namespace Tpcc
 			status.Text = mess;
 		}
 
-		public StockLevel(NpgsqlConnection c, int w)
+		public StockLevel(Form1 fm, int w)
         {
-            db = c;
+            form = fm;
             wid = w;
             //
             // Required for Windows Form Designer support
@@ -72,10 +85,10 @@ namespace Tpcc
 			AddField(18,6,1,true);
 		}
 
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        protected override void Dispose( bool disposing )
+		/// <summary>
+		/// Clean up any resources being used.
+		/// </summary>
+		protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{
@@ -109,8 +122,7 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				s = ex.Message;
-                Form1.RecordResponse(ex, fid, tid);
-                Form1.rconflicts++;
+                throw ex;
 			}
 			SetCurField(curField);
 			status.Text = s;

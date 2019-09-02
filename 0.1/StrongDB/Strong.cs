@@ -135,7 +135,7 @@ namespace StrongDB
                                     }
                                 sb.Append(']');
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(rs._tr);
+                                (db,ts) = rs._tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -168,7 +168,7 @@ namespace StrongDB
                                     CreateIndex(rdr);
                                 }
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                (db,ts) = rdr.db.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -181,7 +181,7 @@ namespace StrongDB
                                 rdr.db = tr;
                                 CreateColumn(rdr);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                (db,ts) = rdr.db.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -203,7 +203,7 @@ namespace StrongDB
                                 var ins = new SInsert(tb.uid, c, rdr);
                                 tr = ins.Prepare(tr,tb.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -251,7 +251,7 @@ namespace StrongDB
                                 if (ex != null)
                                     throw ex;
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -267,7 +267,7 @@ namespace StrongDB
                                 tr = at.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -280,7 +280,7 @@ namespace StrongDB
                                 var dr = SDrop.Get(rdr).Prepare(tr,SDict<long,long>.Empty);
                                 tr = dr.Obey(tr, Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -293,7 +293,7 @@ namespace StrongDB
                                 rdr.db = tr;
                                 CreateIndex(rdr);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                (db,ts) = rdr.db.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -309,7 +309,7 @@ namespace StrongDB
                                 tr = dr.Prepare(tr, SDict<long, long>.Empty)
                                     .Obey(tr, Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -331,7 +331,7 @@ namespace StrongDB
                                 var u = SUpdateSearch.Get(rdr);
                                 tr = u.Prepare(tr,u.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -353,7 +353,7 @@ namespace StrongDB
                                 }
                                 tr = (STransaction)tr.Install(new SUpdate(tr, rc, f),tr.curpos);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit((STransaction)rdr.db);
+                                (db,ts) = rdr.db.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -366,7 +366,7 @@ namespace StrongDB
                                 var dr = SDeleteSearch.Get(rdr);
                                 tr = dr.Prepare(tr,dr.qry.Names(tr,SDict<long,long>.Empty)).Obey(tr,Context.Empty);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -379,9 +379,9 @@ namespace StrongDB
                                 var id = rdr.GetLong();
                                 var rc = db.Get(id) as SRecord ??
                                     throw new StrongException("Record " + id + " not found");
-                                tr = (STransaction)tr.Install(new SDelete(tr, rc.table,rc.uid),rc,tr.curpos);
+                                tr = (STransaction)tr.Install(new SDelete(tr, rc),tr.curpos);
                                 var ts = db.curpos;
-                                db = db.MaybeAutoCommit(tr);
+                                (db,ts) = tr.MaybeAutoCommit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -407,7 +407,7 @@ namespace StrongDB
                                 var tr = db as STransaction ??
                                     throw new StrongException("No transaction to commit");
                                 var ts = db.curpos;
-                                db = tr.Commit();
+                                (db,ts) = tr.Commit(cid);
                                 wtr.Write(Types.Done);
                                 wtr.PutLong(ts);
                                 wtr.PutLong(db.curpos);
@@ -589,7 +589,7 @@ namespace StrongDB
  		internal static string[] Version = new string[]
 {
     "Strong DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-    "0.1"," (5 May 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
+    "0.1"," (30 May 2019)", " github.com/MalcolmCrowe/ShareableDataStructures"
 };
     }
     public class ServerStream :Stream
@@ -598,7 +598,6 @@ namespace StrongDB
         internal int rx = 0;
         internal ServerReader rdr;
         internal ServerWriter wtr;
-        bool exception = false;
         public override bool CanRead => throw new NotImplementedException();
 
         public override bool CanSeek => throw new NotImplementedException();

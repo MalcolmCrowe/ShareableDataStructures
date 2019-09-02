@@ -66,6 +66,7 @@ public class Program {
     //        Test10(test);
             Test11(test);
             Test12(test);
+            Test13(test);
         }
         void Test1(int t) throws Exception
         {
@@ -78,7 +79,11 @@ public class Program {
             CheckResults(1,1,"select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             conn.ExecuteNonQuery("update A where C=9 set C=19");
             CheckResults(1,2, "select from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
-            Rollback();
+            CheckResults(1,3, "select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            conn.ExecuteNonQuery("delete A where C=19");
+            CheckResults(1, 3, "select from A", "[{B:2,C:3,D:'TwentyThree'}]");
+            CheckExceptionNonQuery(1, 4, "insert A values(2,3,'What?')","Duplicate Key constraint violation");
+           Rollback();
             if (!commit)
             {
                 Begin();
@@ -89,8 +94,8 @@ public class Program {
                 conn.CreateIndex("A", IndexType.Primary, null, "B", "C");
                 conn.Insert("A", new String[0], new Serialisable[] { new SInteger(2), new SInteger(3), new SString("TwentyThree") },
                     new Serialisable[] { new SInteger(1), new SInteger(9), new SString("Nineteen") });
-                CheckResults(1,3, "select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
-                Rollback();
+               CheckResults(1,5, "select from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+               Rollback();
             }
         }
         void Test2(int t) throws Exception
@@ -156,6 +161,12 @@ public class Program {
             conn.ExecuteNonQuery("insert e values(23,'XC')");
             conn.ExecuteNonQuery("insert e values(45,'DE')");
             CheckResults(4, 1,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+            conn.ExecuteNonQuery("insert e(g) values('DE')");
+            CheckResults(4, 2, "select from e",
+                "[{f:45,g:'DE'},{f:46,g:'DE'},{f:23,g:'XC'}]");
+            // the EvalRowSet loop in the next test should execute only once
+            CheckResults(4, 3, "select count(f) from e where g='DE' and f<=45",
+                "[{col1:1}]");
             Rollback();
             if (!commit)
             {
@@ -166,7 +177,7 @@ public class Program {
                 conn.CreateIndex("e", IndexType.Primary, null, "f", "g");
                 conn.Insert("e", new String[0], new Serialisable[] { new SInteger(23), new SString("XC") },
                     new Serialisable[] { new SInteger(45), new SString("DE") });
-                CheckResults(4,2,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
+                CheckResults(4,4,"select from e", "[{f:23,g:'XC'},{f:45,g:'DE'}]");
                 Rollback();
             }
         }
@@ -400,8 +411,118 @@ public class Program {
                 "[{a:12},{a:14}]");
             CheckResults(12, 3, "select from dst where c in select a from sce where b='Bakers'",
                 "[{c:13}]");
+            conn.ExecuteNonQuery("insert dst(c) select max(x.a)+4 from sce x where x.b<'H'");
+            CheckResults(12, 4, "select from dst", "[{c:13},{c:14},{c:18}]");
+            conn.ExecuteNonQuery("insert dst select min(x.c)-3 from dst x");
+            CheckResults(12, 5, "select from dst", "[{c:13},{c:14},{c:18},{c:10}]");
             Rollback();
         }
+        void Test13(int t) throws Exception
+        {
+            if (t > 0 && t != 13)
+                return;
+            Begin();
+            conn.ExecuteNonQuery("create table ad(a integer,b string)");
+            conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+            if (qry == 0 || qry == 1)
+            {
+                CheckExceptionNonQuery(13, 1, "alter ad add c string notnull", "Table is not empty");
+                if (!commit)
+                {
+                    Begin();
+                    conn.ExecuteNonQuery("create table ad(a integer,b string)");
+                    conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+                }
+            }
+            conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+            CheckResults(13, 2, "select from ad", "[{a:20,b:'Twenty',c:'XX'}]");
+            conn.ExecuteNonQuery("alter ad drop b");
+            CheckResults(13,3,"select from ad", "[{a:20,c:'XX'}]");
+            conn.ExecuteNonQuery("alter ad add primary key(a)");
+            conn.ExecuteNonQuery("insert ad values(21,'AB')");
+            conn.ExecuteNonQuery("create table de (d integer references ad)");
+            if (qry == 0 || qry == 4)
+            {
+                CheckExceptionNonQuery(13, 4, "insert de values(14)", "Referential constraint violation");
+                if (!commit)
+                {
+                    Begin();
+                    conn.ExecuteNonQuery("create table ad(a integer,b string)");
+                    conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+                    conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+                    conn.ExecuteNonQuery("alter ad drop b");
+                    conn.ExecuteNonQuery("alter ad add primary key(a)");
+                    conn.ExecuteNonQuery("insert ad values(21,'AB')");
+                    conn.ExecuteNonQuery("create table de (d integer references ad)");
+                }
+            }
+            conn.ExecuteNonQuery("insert de values(21)");
+            if (qry == 0 || qry == 5)
+            {
+                CheckExceptionNonQuery(13, 5, "delete ad where c='AB'", "Referential constraint: illegal delete");
+                if (!commit)
+                {
+                    Begin();
+                    conn.ExecuteNonQuery("create table ad(a integer,b string)");
+                    conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+                    conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+                    conn.ExecuteNonQuery("alter ad drop b");
+                    conn.ExecuteNonQuery("alter ad add primary key(a)");
+                    conn.ExecuteNonQuery("insert ad values(21,'AB')");
+                    conn.ExecuteNonQuery("create table de (d integer references ad)");
+                    conn.ExecuteNonQuery("insert de values(21)");
+                }
+            }
+            if (qry == 0 || qry == 6)
+            {
+                CheckExceptionNonQuery(13, 6, "drop ad", "Restricted by reference");
+                if (!commit)
+                {
+                    Begin();
+                    conn.ExecuteNonQuery("create table ad(a integer,b string)");
+                    conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+                    conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+                    conn.ExecuteNonQuery("alter ad drop b");
+                    conn.ExecuteNonQuery("alter ad add primary key(a)");
+                    conn.ExecuteNonQuery("insert ad values(21,'AB')");
+                    conn.ExecuteNonQuery("create table de (d integer references ad)");
+                    conn.ExecuteNonQuery("insert de values(21)");
+                }
+            }
+            conn.ExecuteNonQuery("alter ad column c drop default");
+            CheckResults(13,7,"select from ad", "[{a:20},{a:21,c:'AB'}]");
+            if (qry == 0 || qry == 8)
+            {
+                CheckExceptionNonQuery(13, 8, "alter ad drop key(a)", "Restricted by reference");
+                if (!commit)
+                {
+                    Begin();
+                    conn.ExecuteNonQuery("create table ad(a integer,b string)");
+                    conn.ExecuteNonQuery("insert ad values(20,'Twenty')");
+                    conn.ExecuteNonQuery("alter ad add c string default 'XX'");
+                    conn.ExecuteNonQuery("alter ad drop b");
+                    conn.ExecuteNonQuery("alter ad add primary key(a)");
+                    conn.ExecuteNonQuery("insert ad values(21,'AB')");
+                    conn.ExecuteNonQuery("create table de (d integer references ad)");
+                    conn.ExecuteNonQuery("insert de values(21)");
+                    conn.ExecuteNonQuery("alter ad column c drop default");
+                }
+            }
+            conn.ExecuteNonQuery("drop de");
+            conn.ExecuteNonQuery("alter ad drop key(a)");
+            // we don't get 'XX' here because the DEFAULT was not used inm an INSERT ??
+            CheckResults(13,9, "select from ad", "[{a:20},{a:21,c:'AB'}]");
+            conn.ExecuteNonQuery("insert ad(a) values(13)");
+            CheckResults(13, 10, "select from ad", "[{a:20},{a:21,c:'AB'},{a:13}]");
+            conn.ExecuteNonQuery("drop ad");
+            if (qry == 0 || qry == 11)
+            {
+                CheckExceptionQuery(13, 11, "select from ad", "No table ad");
+                Begin();
+            }
+            Rollback();
+        }
+
         void CheckExceptionQuery(int t, int q, String c, String m)
         {
             if (qry > 0 && qry != q)

@@ -125,7 +125,9 @@ public class StrongServer implements Runnable {
                         }
                         sb.append(']');
                         var ts = db.curpos;
-                        db = rs._tr.MaybeAutoCommit();
+                        var ss = rs._tr.MaybeAutoCommit();
+                        db = ss.key;
+                        ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -159,8 +161,9 @@ public class StrongServer implements Runnable {
                             rdr.ReadByte();
                             CreateIndex(rdr);
                         }
-                        var ts = db.curpos;
-                        db = rdr.db.MaybeAutoCommit();
+                        var ss = rdr.db.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -172,8 +175,9 @@ public class StrongServer implements Runnable {
                         var tr = db.Transact(rdr,true);
                         rdr.db = tr;
                         CreateColumn(rdr);
-                        var ts = db.curpos;
-                        db = rdr.db.MaybeAutoCommit();
+                        var ss = rdr.db.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -191,8 +195,9 @@ public class StrongServer implements Runnable {
                                     c.InsertAt(rdr.GetLong(),i);
                         tr = new SInsert(t,c,rdr._Get()).Prepare(tr,null)
                                 .Obey(tr,null);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -245,8 +250,9 @@ public class StrongServer implements Runnable {
                         if (ex != null) {
                             throw ex;
                         }
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -260,7 +266,8 @@ public class StrongServer implements Runnable {
                         tr = (STransaction)rdr.db;
                         tr = at.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
                         wtr.WriteByte((byte)Types.Done);
                         asy.Flush();
                         break;
@@ -269,8 +276,9 @@ public class StrongServer implements Runnable {
                         var tr = db.Transact(rdr,true);
                         var dr = SDrop.Get(rdr).Prepare(tr,null);
                         tr = dr.Obey(tr,Context.Empty);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -282,8 +290,9 @@ public class StrongServer implements Runnable {
                         rdr.db = tr;
                         CreateIndex(rdr);
                         tr = (STransaction)rdr.db;
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -298,8 +307,9 @@ public class StrongServer implements Runnable {
                         tr = (STransaction)rdr.db;
                         tr = dr.Prepare(tr, null)
                             .Obey(tr, Context.Empty);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -321,8 +331,9 @@ public class StrongServer implements Runnable {
                         tr = (STransaction)rdr.db;
                         u = (SUpdateSearch)u.Prepare(tr,u.qry.Names(tr,null));
                         tr = u.Obey(tr,Context.Empty);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss .key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -348,8 +359,9 @@ public class StrongServer implements Runnable {
                         if (ex != null) {
                             throw (ex);
                         }
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -362,8 +374,9 @@ public class StrongServer implements Runnable {
                         var dr = SDeleteSearch.Get(rdr);
                         tr = dr.Prepare(tr,dr.qry.Names(tr,null))
                                 .Obey(tr,Context.Empty);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -379,8 +392,9 @@ public class StrongServer implements Runnable {
                         }
                         tr = (STransaction)tr.Install(new SDelete(tr, rc),
                                 tr.curpos);
-                        var ts = db.curpos;
-                        db = tr.MaybeAutoCommit();
+                        var ss = tr.MaybeAutoCommit();
+                        db = ss.key;
+                        var ts = ss.val;
                         wtr.Write(Types.Done);
                         wtr.PutLong(ts);
                         wtr.PutLong(db.curpos);
@@ -412,8 +426,9 @@ public class StrongServer implements Runnable {
                             if (!(db instanceof STransaction))
                                 throw new Exception("No transaction to commit");
                             var tr = (STransaction)db; 
-                            var ts = db.curpos;
-                            db = tr.Commit();
+                            var ss = tr.Commit();
+                            db = ss.key;
+                            var ts = ss.val;
                             wtr.WriteByte((byte)Types.Done);
                             wtr.PutLong(ts);
                             wtr.PutLong(db.curpos);
