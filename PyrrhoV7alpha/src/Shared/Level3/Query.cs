@@ -144,8 +144,12 @@ namespace Pyrrho.Level3
             var cs = cols;
             var r = this;
             for (var b = cs.First(); b != null; b = b.Next())
-                if (b.value() == was)
-                    cs += (b.key(), (SqlValue)now);
+            {
+                var x = b.value();
+                var bv = x.Replace(cx, was, now).WithA(x.alias);
+                if (bv!=x)
+                    cs += (b.key(), bv);
+            }
             if (cs!=cols)
             {
                 r += (Cols, cs);
@@ -155,42 +159,54 @@ namespace Pyrrho.Level3
             {
                 var ts = rowType.columns;
                 for (var b = ts.First(); b != null; b = b.Next())
-                    if (b.value() == was)
-                        ts += (b.key(), (Selector)now);
+                {
+                    var x = b.value();
+                    var bv = (Selector)x.Replace(cx, was, now).WithA(x.alias);
+                    if (bv!=x)
+                        ts += (b.key(), bv);
+                }
                 if (ts != rowType.columns)
                     r += (SqlValue.NominalType, new Domain(ts));
             }
             var w = r.where;
             for (var b = w.First(); b != null; b = b.Next())
             {
-                var v = (SqlValue)b.value().Replace(cx, was, now);
+                var v = (SqlValue) b.value().Replace(cx, was, now);
                 if (v != b.value())
                     w += (b.key(), v);
             }
             if (w!=r.where)
                 r += (Where, w);
             var ss = r.scols;
-            for (var b = ss.First(); b != null; b = b.Next())
-                if (b.key() == was)
-                    ss += ((SqlValue)now, b.value());
+            for (var b = r.scols.First();b!=null;b=b.Next())
+            {
+                var x = b.key();
+                var bk = x.Replace(cx, was, now).WithA(x.alias);
+                if (bk != b.key())
+                    ss += (bk, b.value());
+            }
             if (ss!=r.scols)
                 r += (SCols, ss);
             var ms = r.matches;
-            for (var b = matches.First(); b != null; b = b.Next())
-                if (b.key() == was)
-                    ms += ((SqlValue)now, b.value());
+            for (var b=ms.First();b!=null;b=b.Next())
+            {
+                var bk = (SqlValue)b.key().Replace(cx, was, now);
+                if (bk != b.key())
+                    ms += (bk, b.value());
+            }
             if (ms!=r.matches)
                 r += (Matches, ms);
             var mg = r.matching;
             for (var b = mg.First(); b != null; b = b.Next())
             {
-                var bk = b.key();
+                var bk = (SqlValue)b.key().Replace(cx,was,now);
                 var bv = b.value();
-                for (var c = bv.First(); c != null; c = c.Next())
-                    if (c.key() == was)
-                        bv += ((SqlValue)now, c.value());
-                if (bk == was)
-                    bk = (SqlValue)now;
+                for (var c = bv.First();c!=null;c=c.Next())
+                {
+                    var ck = (SqlValue)c.key().Replace(cx,was,now);
+                    if (ck != c.key())
+                        bv += (ck, c.value());
+                }
                 if (bk!=b.key() || bv!=b.value())
                     mg += (bk, bv);
             }
@@ -200,28 +216,29 @@ namespace Pyrrho.Level3
             for (var b = os?.items.First(); b != null; b = b.Next())
             {
                 var oi = b.value();
-                if (oi.what == was)
-                    os += (b.key(), oi + (OrderItem.What, now));
+                var ow = (SqlValue)oi.what.Replace(cx,was,now);
+                if (oi.what!=ow)
+                    os += (b.key(), oi + (OrderItem.What, ow));
             }
             if (os!=r.ordSpec)
                 r += (OrdSpec, os);
             var im = r.import;
             for (var b=im.First();b!=null;b=b.Next())
             {
-                var ik = b.key().Replace(cx, was, now);
-                var iv = b.value().Replace(cx, was, now);
+                var ik = (SqlValue)b.key().Replace(cx,was,now);
+                var iv = (SqlValue)b.value().Replace(cx,was,now);
                 if (ik != b.key() || iv != b.value())
-                    im += ((SqlValue)ik, (SqlValue)iv);
+                    im += (ik, iv);
             }
             if (im != r.import)
                 r += (_Import, im);
             var ag = r.assig;
             for (var b = ag.First(); b != null; b = b.Next())
             {
-                var aa = b.key().val.Replace(cx, was, now);
-                var ab = b.key().vbl.Replace(cx, was, now);
+                var aa = (SqlValue)b.key().val.Replace(cx,was,now);
+                var ab = (SqlValue)b.key().vbl.Replace(cx,was,now);
                 if (aa != b.key().val || ab != b.key().vbl)
-                    ag += (new UpdateAssignment((SqlValue)ab, (SqlValue)aa), b.value());
+                    ag += (new UpdateAssignment(ab,aa), b.value());
             }
             if (ag != r.assig)
                 r += (Assig, ag);
@@ -658,7 +675,8 @@ namespace Pyrrho.Level3
     : base(u, (m ?? BTree<long, object>.Empty) + (SqlValue.NominalType, dt) + (Name, n))
         { }
         protected SelectQuery(SelectQuery q, SqlValue s) : base(q.defpos, q.mem + (Cols, q.cols + s)
-            + (SqlValue.NominalType, q.rowType + new Selector(s.name, s.defpos, s.nominalDataType, q.rowType.Length))
+            + (SqlValue.NominalType, q.rowType + 
+            new Selector(s.alias??s.name, s.defpos, s.nominalDataType, q.rowType.Length))
             + (Display,q.display+1)+(Dependents,q.dependents+s.defpos)+(Depth,_Max(q.depth,1+s.depth)))
         { }
         public static SelectQuery operator +(SelectQuery q, (long, object) x)
@@ -685,8 +703,12 @@ namespace Pyrrho.Level3
             var rr = r;
             var ds = r.defs1;
             for (var b = defs1.First(); b != null; b = b.Next())
-                if (b.value() == was)
-                    ds += (b.key(), (SqlValue)now);
+            {
+                var x = b.value();
+                var bv = x.Replace(cx,was,now).WithA(x.alias);
+                if (bv!=b.value())
+                    ds += (b.key(), bv);
+            }
             if (ds != r.defs1)
                 r += (Defs1, ds);
             if (rr != r)
@@ -1137,9 +1159,13 @@ namespace Pyrrho.Level3
                     ha -= k;
                 }
             }
-            cx.Replace(q, q + (Where, qw));
-            cx.Replace(this,this+(Having,ha));
-            return (TableExpression)cx.done[defpos];
+            if (ha != having)
+            {
+                cx.Replace(q, q + (Where, qw));
+                cx.Replace(this, this + (Having, ha));
+                return (TableExpression)cx.done[defpos];
+            }
+            return this;
         }
         internal override Query Orders(Transaction tr,Context cx,OrderSpec ord)
         {

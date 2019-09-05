@@ -235,8 +235,19 @@ namespace Pyrrho.Level3
             var i = 0;
             for (var b = cols.First(); b != null; b = b.Next())
             {
-                var c = b.value() + (Selector.Seq, i++);
-                r += (Selector)c;
+                if (b.value() is Selector s)
+                {
+                    s += (Selector.Seq, i++);
+                    if (s.alias != null)
+                        s += (Name, s.alias);
+                    r += s;
+                }
+                else
+                {
+                    var x = b.value();
+                    r += new Selector(x.alias ?? x.name, x.defpos, 
+                        x.nominalDataType, i++);
+                }
             }
             return r;
         }

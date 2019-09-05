@@ -35,7 +35,7 @@ namespace Pyrrho.Level3
             (BTree<Sqlx,TypedValue>)mem[Diagnostics]??BTree<Sqlx, TypedValue>.Empty;
         public BList<System.Exception> warnings =>
             (BList<System.Exception>)mem[Warnings]??BList<System.Exception>.Empty;
-        internal readonly long tid;
+        long tid;
         internal override long uid => tid;
         public override long lexeroffset => tid;
         internal Transaction mark => (Transaction)mem[_Mark];
@@ -47,16 +47,19 @@ namespace Pyrrho.Level3
         /// will use virtual positions above this mark (see PyrrhoServer.nextTid)
         /// </summary>
         public const long TransPos = 0x4000000000000000;
+        readonly Database parent;
         internal Transaction(Database db,long t,bool auto) :base(db.roles,db.loadpos,db.mem
             +(Role,db.role.defpos)+(User,db.user.defpos)+(StartTime,System.DateTime.Now.Ticks)
             +(NextTid,t+1)+(AutoCommit,auto))
         {
             tid = t;
+            parent = db;
         }
         protected Transaction(Transaction t,BTree<long, Role> r, long p, BTree<long, object> m)
             : base(r, p, m)
         {
             tid = t.uid;
+            parent = t.parent;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -72,7 +75,11 @@ namespace Pyrrho.Level3
         }
         public override Transaction Transact(long t,bool? auto=null)
         {
-            return new Transaction(this,t,auto??autoCommit);
+            var r = this;
+            if (auto == false && autoCommit)
+                r += (AutoCommit, false);
+            tid = t;
+            return r + (NextTid,t+1);
         }
         public override Database RdrClose(Context cx)
         {
@@ -148,6 +155,10 @@ namespace Pyrrho.Level3
                 cx.rdC+=(d.defpos, r);
             }
             return r;
+        }
+        internal override Database Rollback(object e)
+        {
+            return parent;
         }
         internal override Database Commit(Context cx)
         {
@@ -294,7 +305,7 @@ namespace Pyrrho.Level3
         //                tr.SetResults(rvr._rs);
                         break;
                     case "POST":
-                        db.Execute(cx,ro, id + ".", path, 2, etag);
+                        db.Execute(cx,ro, Table._static,id + ".", path, 2, etag);
         //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
         //                db.Post(tr.result?.rowSet, sdata);
                         break;
@@ -322,15 +333,12 @@ namespace Pyrrho.Level3
         /// <param name="ro"></param>
         /// <param name="path"></param>
         /// <param name="p"></param>
-        internal void Execute(Context cx, Role ro, string id, string[] path, int p, string etag)
+        internal void Execute(Context cx, Role ro, Query f,string id, string[] path, int p, string etag)
         {
             if (p >= path.Length || path[p] == "")
             {
-                if (cx.cur is Query f)
-                {
-                    //               f.Validate(etag);
-                    cx.rb = f.RowSets(this, cx).First(cx);
-                }
+                //               f.Validate(etag);
+                cx.rb = f.RowSets(this, cx).First(cx);
                 return;
             }
             string cp = path[p];
@@ -346,9 +354,8 @@ namespace Pyrrho.Level3
                         var tbs = cp.Substring(6 + off);
                         tbs = WebUtility.UrlDecode(tbs);
                         var tbn = new Ident(tbs, 0);
-                        var f = new Query(uid+4+off, Domain.Null, tbn.ident);
-                        if (f == null)
-                            throw new DBException("42107", tbn).Mix();
+                        f = new Query(uid+4+off, Domain.Null, tbn.ident)
+                            ?? throw new DBException("42107", tbn).Mix();
                         //       if (schemaKey != 0 && schemaKey != ro.defs[f.target.defpos].lastChange)
                         //           throw new DBException("2E307", tbn).Mix();
                         //       f.PreAnalyse(transaction);
@@ -371,41 +378,38 @@ namespace Pyrrho.Level3
                     }
                 case "key":
                     {
-                        if (cx.cur is Query f)
+                        var ix = (f as Table)?.FindPrimaryIndex();
+                        if (ix != null)
                         {
-                            var ix = (f as Table)?.FindPrimaryIndex();
-                            if (ix != null)
+                            var kn = 0;
+                            while (kn < ix.cols.Count && p < path.Length)
                             {
-                                var kn = 0;
-                                while (kn < ix.cols.Count && p < path.Length)
-                                {
-                                    var sk = path[p];
-                                    if (kn == 0)
-                                        sk = sk.Substring(4 + off);
+                                var sk = path[p];
+                                if (kn == 0)
+                                    sk = sk.Substring(4 + off);
 #if (!SILVERLIGHT) && (!ANDROID)
-                                    sk = WebUtility.UrlDecode(sk);
+                                sk = WebUtility.UrlDecode(sk);
 #endif
-                                    var tc = ix.cols[kn] as TableColumn;
-                                    TypedValue kv = null;
-                                    var ft = tc.domain;
-                                    try
-                                    {
-                                        kv = ft.Parse(sk);
-                                    }
-                                    catch (System.Exception)
-                                    {
-                                        break;
-                                    }
-                                    kn++;
-                                    p++;
-                                    var cond = new SqlValueExpr(1, Sqlx.EQL,
-                                        new Selector(tc.name, 2, tc.domain, 0),
-                                        new SqlLiteral(3, kv), Sqlx.NO);
-                                    f += (Query.Where, f.where + (cond.defpos, cond));
+                                var tc = ix.cols[kn] as TableColumn;
+                                TypedValue kv = null;
+                                var ft = tc.domain;
+                                try
+                                {
+                                    kv = ft.Parse(sk);
                                 }
-                                cx.rb = f.RowSets(this, cx).First(cx);
-                                break;
+                                catch (System.Exception)
+                                {
+                                    break;
+                                }
+                                kn++;
+                                p++;
+                                var cond = new SqlValueExpr(1, Sqlx.EQL,
+                                    new Selector(tc.name, 2, tc.domain, 0),
+                                    new SqlLiteral(3, kv), Sqlx.NO);
+                                f += (Query.Where, f.where + (cond.defpos, cond));
                             }
+                            cx.rb = f.RowSets(this, cx).First(cx);
+                            break;
                         }
                         string ks = cp.Substring(4 + off);
 #if (!SILVERLIGHT) && (!ANDROID)
@@ -427,7 +431,6 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                         ks = WebUtility.UrlDecode(ks);
 #endif
-                        var f = cx.cur as Query;
                         if (f == null)
                             throw new DBException("42000", ks).ISO();
                         string[] sk = null;
@@ -464,8 +467,7 @@ namespace Pyrrho.Level3
                         string[] sk = cp.Split(',');
                         int n = sk.Length;
                         var qout = new Query(uid+4+off, Domain.TableType);
-                        if (cx.cur is Query f)
-                            cx.rb = f.RowSets(this, cx).First(cx);
+                        cx.rb = f.RowSets(this, cx).First(cx);
                         var qin = cx.rb?._rs.qry;
                         for (int j = 0; j < n; j++)
                         {
@@ -478,7 +480,7 @@ namespace Pyrrho.Level3
                     }
                 case "distinct":
                     {
-                        if (cx.cur is Query f && cx.rb == null)
+                        if (cx.rb == null)
                             cx.rb = f.RowSets(this, cx).First(cx);
                         if (cp.Length < 10)
                         {
@@ -491,7 +493,7 @@ namespace Pyrrho.Level3
                     }
                 case "ascending":
                     {
-                        if (cx.cur is Query f && cx.rb == null)
+                        if (cx.rb == null)
                             cx.rb = f.RowSets(this, cx).First(cx);
                         if (cp.Length < 10)
                             throw new DBException("42161", "Column(s)", cp).Mix();
@@ -501,7 +503,7 @@ namespace Pyrrho.Level3
                     }
                 case "descending":
                     {
-                        if (cx.cur is Query f && cx.rb == null)
+                        if (cx.rb == null)
                             cx.rb = f.RowSets(this, cx).First(cx);
                         if (cp.Length < 10)
                             throw new DBException("42161", "Column(s)", cp).Mix();
@@ -512,14 +514,14 @@ namespace Pyrrho.Level3
                     }
                 case "skip":
                     {
-                        if (cx.cur is Query f && cx.rb == null)
+                        if (cx.rb == null)
                             cx.rb = f.RowSets(this, cx).First(cx);
                         //                transaction.SetResults(new RowSetSection(transaction.result.rowSet, int.Parse(cp.Substring(5)), int.MaxValue));
                         break;
                     }
                 case "count":
                     {
-                        if (cx.cur is Query f && cx.rb == null)
+                        if (cx.rb == null)
                             cx.rb = f.RowSets(this, cx).First(cx);
                         //                transaction.SetResults(new RowSetSection(transaction.result.rowSet, 0, int.Parse(cp.Substring(6))));
                         break;
@@ -575,7 +577,7 @@ namespace Pyrrho.Level3
                                 goto case "procedure";
                             }
                         }
-                        if (cx.cur is Table ta)
+                        if (f is Table ta)
                         {
                             var ix = ta.FindPrimaryIndex();
                             if (ix != null)
@@ -584,7 +586,7 @@ namespace Pyrrho.Level3
                                 goto case "key";
                             }
                         }
-                        if (ro.dbobjects[cn] != null)
+                        if (ro.GetObject(cn) != null)
                         {
                             off = -7;
                             goto case "select";

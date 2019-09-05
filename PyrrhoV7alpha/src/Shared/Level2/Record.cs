@@ -215,7 +215,16 @@ namespace Pyrrho.Level2
         internal override Database Install(Database db, Role ro, long p)
         {
             var tb = db.schemaRole.objects[tabledefpos] as Table;
-            tb += new TableRow(this, db);
+            try
+            {
+                tb += new TableRow(this, db);
+            }
+            catch (DBException e)
+            {
+                if (e.signal == "23000")
+                    throw new DBException(e.signal, e.objects[0].ToString() + tb.name + e.objects[1].ToString());
+                throw e;
+            }
             if (db.schemaRole != db.role)
                 db += (db.schemaRole, tb);
             return db += (db.role, tb);

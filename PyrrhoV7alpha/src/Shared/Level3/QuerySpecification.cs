@@ -78,7 +78,7 @@ namespace Pyrrho.Level3
                 if (tableExp.group != null)
                     r = new GroupingRowSet(cx,this, r, tableExp.group, tableExp.having);
                 else
-                    r = new EvalRowSet(tr, cx, r.qry, r, tableExp.having);
+                    r = new EvalRowSet(tr, cx, this, r, tableExp.having);
             }
             else
                 r = new SelectedRowSet(tr, cx, this, r);

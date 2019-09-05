@@ -49,10 +49,6 @@ namespace Pyrrho.Level4
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty; 
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
-        /// <summary>
-        /// The query currently being parsed or analysed if any
-        /// </summary>
-        internal Query cur = null;
         internal BTree<Ident, Context> contexts = BTree<Ident,Context>.Empty;
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by Query
@@ -122,8 +118,8 @@ namespace Pyrrho.Level4
         {
             if (q!=null)
                 values += (q.defpos, r.row);
-            for (var b = r.row.values?.First(); b != null; b = b.Next())
-                values += (b.key(), b.value());
+            for (var b = r.row.dataType.columns.First(); b != null; b = b.Next())
+                values += (b.value().defpos, r.row[b.value().seq]);
             row = r.row;
             rb = r;
             return this;
@@ -154,8 +150,17 @@ namespace Pyrrho.Level4
             done = new BTree<long, DBObject>(was.defpos, now);
             // scan by depth to perform the replacement
             for (var b = depths.Last(); b != null; b = b.Previous())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    c.value().Replace(this, was, now); // may update done, depths and obs
+            {
+                var bv = b.value();
+                for (var c = bv.First(); c != null; c = c.Next())
+                {
+                    var cv = c.value().Replace(this, was, now); // may update done
+                    if (cv != c.value())
+                        bv += (c.key(), cv);
+                }
+                if (bv != b.value())
+                    depths += (b.key(), bv);
+            }
             // now use the done list to update defs
             for (var b = defs.First(); b != null; b = b.Next())
             {
@@ -163,12 +168,8 @@ namespace Pyrrho.Level4
                 if (done[v.defpos] is DBObject ob && ob != v)
                     defs += (b.key(), ob);
             }
-            // finally remove the replaced object
-            if (was.defpos != now.defpos)
-            {
-                obs -= was.defpos;
-                depths += (was.depth, depths[was.depth] - was.defpos);
-            }
+            for (var b = done.First(); b != null; b = b.Next())
+                obs += (b.key(), b.value());
         }
         /// <summary>
         /// Update a variable in this context

@@ -1,0 +1,10 @@
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\bin\Debug\PyrrhoTest.exe.config
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\bin\Debug\PyrrhoTest.exe
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\bin\Debug\PyrrhoTest.pdb
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\bin\Debug\PyrrhoLink.dll
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\bin\Debug\PyrrhoLink.pdb
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csprojAssemblyReference.cache
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csproj.CoreCompileInputs.cache
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csproj.CopyComplete
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.exe
+E:\PyrrhoDB7\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.pdb

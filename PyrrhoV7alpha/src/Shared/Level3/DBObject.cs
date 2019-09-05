@@ -95,6 +95,13 @@ namespace Pyrrho.Level3
                     r = b.value().depth;
             return r;
         }
+        internal SqlValue WithA(string a)
+        {
+            var r = (SqlValue)this;
+            if (a != null)
+                return r + (SqlValue._Alias, a);
+            return r;
+        }
         /// <summary>
         /// Check to see if the current role has the given privilege on this (except Admin)
         /// For ADMIN and classified objects we check the current user has this privilege
@@ -320,7 +327,7 @@ namespace Pyrrho.Level3
         {
             if (DoAudit(tr, cols, key))
                 tr.Audit(new Audit(tr.user, defpos,
-                    cols, key,System.DateTime.Now.Ticks, tr.tid, tr));
+                    cols, key,System.DateTime.Now.Ticks, tr.uid, tr));
         }
         /// <summary>
         /// Issues here: This object may not have been committed yet

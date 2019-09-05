@@ -584,7 +584,8 @@ namespace Pyrrho.Level4
                     valueInProgress = id;
                     if (_rs.qry is SelectQuery qs && i < qs.Size) // always will be
                         v = qs.cols[i].Eval(_rs._tr, _cx);
-                    r += (id,v);
+                    if (v!=null)
+                        r += (id,v);
                 }
                 return r;
             }
@@ -593,7 +594,8 @@ namespace Pyrrho.Level4
                 for (var bmk = srs.rIn.First(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
                     var rb = new SelectedRowBookmark(_cx,srs, bmk, 0);
-                    if (rb.Matches() && Query.Eval(srs.qry.where,srs._tr,_cx))
+                    if (rb.row.values!=BTree<long,TypedValue>.Empty &&
+                        rb.Matches() && Query.Eval(srs.qry.where,srs._tr,_cx))
                         return rb;
                 }
                 return null;
@@ -605,7 +607,8 @@ namespace Pyrrho.Level4
                     var rb = new SelectedRowBookmark(_cx,_srs, bmk, _pos + 1);
                     for (var b = _rs.qry.cols.First(); b != null; b = b.Next())
                         b.value().OnRow(rb);
-                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                    if (rb.row.values != BTree<long, TypedValue>.Empty && 
+                        rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr,_cx))
                         return rb;
                 }
                 return null;
@@ -663,6 +666,11 @@ namespace Pyrrho.Level4
             }
             base._Strategy(sb, indent);
             source.Strategy(indent);
+        }
+        public override RowBookmark First(Context _cx)
+        {
+            Build(_cx);
+            return _First(_cx);
         }
         protected override RowBookmark _First(Context _cx)
         {

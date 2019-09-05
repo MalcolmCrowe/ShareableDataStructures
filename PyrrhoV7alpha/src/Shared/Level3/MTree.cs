@@ -203,7 +203,8 @@ namespace Pyrrho.Level3
         }
         public static MTree operator+(MTree mt,(PRow,long) v)
         {
-            Add(ref mt, v.Item1, v.Item2);
+            if (Add(ref mt, v.Item1, v.Item2) != TreeBehaviour.Allow)
+                throw new DBException("23000","duplicate key ",v.Item1);
             return mt;
         }
         public static MTree operator-(MTree mt,PRow k)
@@ -288,11 +289,14 @@ namespace Pyrrho.Level3
                         MTree mt = tv.Val() as MTree;
                         long c = mt.Count;
                         Remove(ref mt, k._tail);
-                        nc -= c - mt.Count;
-                        if (mt.Count == 0)
+                        if (mt == null)
+                        {
+                            nc -= c; ;
                             SqlTree.Remove(ref st, k0);
+                        }
                         else
                         {
+                            nc -= c - mt.Count;
                             TypedValue nv = new TMTree(mt);
                             SqlTree.Update(ref st, k0, nv);
                         }
@@ -310,7 +314,7 @@ namespace Pyrrho.Level3
                     SqlTree.Remove(ref st, k0);
                     break;
             }
-            t = new MTree(t.info, st, nc);
+            t = (st==null)?null:new MTree(t.info, st, nc);
         }
         /// <summary>
         /// The partial-ordering Remove: remove a particular association

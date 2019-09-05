@@ -196,7 +196,7 @@ namespace Pyrrho
                                 var tr = db.Transact(nextTid,false);
                                 db = tr;
                                 if (PyrrhoStart.DebugMode)
-                                    Console.WriteLine("Begin Transaction " + (db as Transaction).tid);
+                                    Console.WriteLine("Begin Transaction " + (db as Transaction).uid);
                                 break;
                             }
                         // commit
@@ -208,7 +208,7 @@ namespace Pyrrho
                                     throw new DBException("25000").Mix();
                                 db = db.Commit(cx);
                                 if (PyrrhoStart.DebugMode)
-                                    Console.WriteLine("Commit Transaction " + tr.tid);
+                                    Console.WriteLine("Commit Transaction " + tr.uid);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
@@ -218,7 +218,7 @@ namespace Pyrrho
                         // rollback
                         case Protocol.Rollback: 
                             if (PyrrhoStart.DebugMode)
-                                Console.WriteLine("Rollback on Request " + (db as Transaction).tid);
+                                Console.WriteLine("Rollback on Request " + (db as Transaction).uid);
                             db = db.Rollback(new DBException("40000").ISO());
                             tcp.Write(Responses.Done);
                             break;
@@ -1078,7 +1078,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[] 
 {
 	"Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-	"7.0 alpha"," (2 September 2019)", " www.pyrrhodb.com"
+	"7.0 alpha"," (5 September 2019)", " www.pyrrhodb.com"
 #if OSP
     , "Open Source Edition"
 #endif

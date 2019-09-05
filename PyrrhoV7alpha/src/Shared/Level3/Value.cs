@@ -174,8 +174,10 @@ namespace Pyrrho.Level3
         internal virtual void StartCounter(Context _cx,RowSet rs)
         {
         }
-        internal virtual void AddIn(Context _cx,RowBookmark rb)
+        internal void AddIn(Context _cx,RowBookmark rb)
         {
+            var aggsDone = BTree<long, bool?>.Empty;
+            _AddIn(_cx,rb, ref aggsDone);
         }
         /// <summary>
         /// If the value contains aggregates we need to accumulate them. 
@@ -596,8 +598,8 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlTreatExpr)base.Replace(cx, so, sv);
-            var v = r.val.Replace(cx,so,sv);
+            var r = (SqlTreatExpr)base.Replace(cx,so,sv).WithA(alias);
+            var v = (SqlValue)r.val.Replace(cx,so,sv);
             if (v != r.val)
                 r += (TreatExpr, v);
             cx.done += (defpos, r);
@@ -716,11 +718,11 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlValueExpr)base.Replace(cx, so, sv);
-            var lf = r.left.Replace(cx, so, sv);
+            var r = (SqlValueExpr)base.Replace(cx,so,sv).WithA(alias);
+            var lf = (SqlValue)r.left.Replace(cx,so,sv);
             if (lf != r.left)
                 r += (Left, lf);
-            var rg = r.right.Replace(cx, so, sv);
+            var rg = (SqlValue)r.right.Replace(cx,so,sv);
             if (rg != r.right)
                 r += (Right, rg);
             cx.done += (defpos, r);
@@ -2225,8 +2227,8 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="r">the row</param>
         public SqlRow(long dp, Domain t, BList<SqlValue> r)
-            : base(dp, BTree<long,object>.Empty
-                  +(NominalType,t)+(Columns,r)+(Dependents,_Deps(r))+(Depth,1+_Depth(r)))
+            : base(dp, BTree<long, object>.Empty
+                  + (NominalType, t) + (Columns, r) + (Dependents, _Deps(r)) + (Depth, 1 + _Depth(r)))
         {
             if ((int)r.Count != t.Length)
                 throw new DBException("22207");
@@ -2245,11 +2247,11 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlRow)base.Replace(cx, so, sv);
+            var r = (SqlRow)base.Replace(cx,so,sv).WithA(alias);
             var cs = r.columns;
             for (var b=cs.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so, sv);
+                var v = (SqlValue)b.value().Replace(cx,so,sv);
                 if (v != b.value())
                     cs += (b.key(), (SqlValue)v);
             }
@@ -2342,11 +2344,11 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlRowArray)base.Replace(cx, so, sv);
+            var r = (SqlRowArray)base.Replace(cx,so,sv).WithA(alias);
             var rws = r.rows;
             for (var b=r.rows.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so, sv);
+                var v = (SqlValue)b.value().Replace(cx,so,sv);
                 if (v != b.value())
                     rws += (b.key(), (SqlRow)v);
             }
@@ -2481,13 +2483,13 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlDocument)base.Replace(cx, so, sv);
+            var r = (SqlDocument)base.Replace(cx,so,sv).WithA(alias);
             var doc = r.document;
             for (var b=doc.First();b!=null;b=b.Next())
             {
-                var v = b.value().Item2.Replace(cx, so, sv);
+                var v = (SqlValue)b.value().Item2.Replace(cx,so,sv);
                 if (v != b.value().Item2)
-                    doc += (b.key(), (b.value().Item1,(SqlValue)v));
+                    doc += (b.key(), (b.value().Item1,v));
             }
             if (doc != r.document)
                 r += (Document, doc);
@@ -2546,11 +2548,11 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlDocArray)base.Replace(cx, so, sv);
+            var r = (SqlDocArray)base.Replace(cx,so,sv).WithA(alias);
             var ds = r.docs;
             for (var b=ds.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so,sv);
+                var v = (SqlValue)b.value().Replace(cx, so,sv);
                 if (v != b.value())
                     ds += (b.key(), (SqlDocument)v);
             }
@@ -2617,23 +2619,23 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlXmlValue)base.Replace(cx, so, sv);
+            var r = (SqlXmlValue)base.Replace(cx,so,sv).WithA(alias);
             var at = r.attrs;
             for (var b=at.First();b!=null;b=b.Next())
             {
-                var v = b.value().Item2.Replace(cx, so, sv);
+                var v = (SqlValue)b.value().Item2.Replace(cx,so,sv);
                 if (v != b.value().Item2)
                     at += (b.key(), (b.value().Item1, (SqlValue)v));
             }
             if (at != r.attrs)
                 r += (Attrs, at);
-            var co = r.content.Replace(cx,so,sv);
+            var co = (SqlValue)r.content.Replace(cx,so,sv);
             if (co != r.content)
                 r += (Content, co);
             var ch = r.children;
             for(var b=ch.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx,so,sv);
+                var v = (SqlValue)b.value().Replace(cx,so,sv);
                 if (v != b.value())
                     ch += (b.key(), (SqlXmlValue)v);
             }
@@ -2717,7 +2719,7 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlSelectArray)base.Replace(cx, so, sv);
+            var r = (SqlSelectArray)base.Replace(cx,so,sv).WithA(alias);
             var ae = r.aqe.Replace(cx,so,sv);
             if (ae != r.aqe)
                 r += (ArrayValuedQE, ae);
@@ -2832,17 +2834,17 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlValueArray)base.Replace(cx, so, sv);
+            var r = (SqlValueArray)base.Replace(cx,so,sv);
             var ar = r.array;
             for (var b=ar.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so, sv);
+                var v = (SqlValue)b.value().Replace(cx,so,sv);
                 if (v != b.value())
-                    ar += (b.key(), (SqlValue)v);
+                    ar += (b.key(), v);
             }
             if (ar != r.array)
                 r += (Array, ar);
-            var ss = r.svs.Replace(cx,so,sv);
+            var ss = (SqlValue)r.svs.Replace(cx,so,sv);
             if (ss != r.svs)
                 r += (Svs, ss);
             cx.done += (defpos, r);
@@ -2968,7 +2970,7 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlValueSelect)base.Replace(cx, so, sv);
+            var r = (SqlValueSelect)base.Replace(cx,so,sv).WithA(alias);
             var ex = r.expr.Replace(cx,so,sv);
             if (ex != r.expr)
                 r += (Expr, ex);
@@ -3099,7 +3101,7 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlCursor)base.Replace(cx, so, sv);
+            var r = (SqlCursor)base.Replace(cx,so,sv).WithA(alias);
             var sp = r.spec.Replace(cx,so,sv);
             if (sp != r.spec)
                 r += (Spec, sp);
@@ -3138,7 +3140,7 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlCall)base.Replace(cx, so, sv);
+            var r = (SqlCall)base.Replace(cx,so,sv).WithA(alias);
             var ca = r.call.Replace(cx,so,sv);
             if (ca != r.call)
                 r += (Call, ca);
@@ -3369,8 +3371,8 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlConstructor)base.Replace(cx, so, sv);
-            var sc = r.sce.Replace(cx, so, sv);
+            var r = (SqlConstructor)base.Replace(cx,so,sv).WithA(alias);
+            var sc = r.sce.Replace(cx,so,sv);
             if (sc != r.sce)
                 r += (Sce, sc);
             cx.done += (defpos, r);
@@ -3434,8 +3436,8 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlDefaultConstructor)base.Replace(cx, so, sv);
-            var sc = r.sce.Replace(cx, so, sv);
+            var r = (SqlDefaultConstructor)base.Replace(cx,so,sv).WithA(alias);
+            var sc = r.sce.Replace(cx,so,sv);
             if (sc != r.sce)
                 r += (SqlConstructor.Sce, sc);
             cx.done += (defpos, r);
@@ -3554,17 +3556,17 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlFunction)base.Replace(cx, so, sv);
-            var fi = r.filter?.Replace(cx, so, sv);
+            var r = (SqlFunction)base.Replace(cx,so,sv).WithA(alias);
+            var fi = r.filter?.Replace(cx,so,sv);
             if (fi != r.filter)
                 r += (Filter, fi);
-            var o1 = r.op1?.Replace(cx, so, sv);
+            var o1 = r.op1?.Replace(cx,so,sv);
             if (o1 != r.op1)
                 r += (Op1, o1);
-            var o2 = r.op2?.Replace(cx, so, sv);
+            var o2 = r.op2?.Replace(cx,so,sv);
             if (o2 != r.op2)
                 r += (Op2, o2);
-            var vl = r.val?.Replace(cx, so, sv);
+            var vl = r.val?.Replace(cx,so,sv);
             if (vl != r.val)
                 r += (_Val, vl);
             var qr = r.query?.Replace(cx, so, sv);
@@ -3598,8 +3600,6 @@ namespace Pyrrho.Level3
                     throw new DBException("42161", windowId).Mix();
                 r += (Window,tx.window[windowId]);
             }
-            if (query == null && cx.cur is Query qu)
-                r += (Query,qu);
             switch (kind)
             {
                 case Sqlx.ABS:
@@ -4515,7 +4515,7 @@ namespace Pyrrho.Level3
         {
             var fd = _cx.func[defpos];
             if (fd == null)
-                _cx.func += (defpos, new FunctionData());
+                _cx.func += (defpos, fd = new FunctionData());
             fd.cur.acc1 = 0.0;
             fd.cur.mset = null;
             switch (kind)
@@ -5325,7 +5325,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QuantifiedPredicate)base.Replace(cx, so, sv);
-            var wh = r.what.Replace(cx, so, sv);
+            var wh = (SqlValue)r.what.Replace(cx,so,sv);
             if (wh != r.what)
                 r += (What, wh);
             var se = r.select.Replace(cx, so, sv);
@@ -5458,13 +5458,13 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (BetweenPredicate)base.Replace(cx, so, sv);
-            var wh = r.what.Replace(cx, so, sv);
+            var wh = (SqlValue)r.what.Replace(cx,so,sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
-            var lw = r.low.Replace(cx, so, sv);
+            var lw = (SqlValue)r.low.Replace(cx,so,sv);
             if (lw != r.low)
                 r += (QuantifiedPredicate.Low, lw);
-            var hg = r.high.Replace(cx, so, sv);
+            var hg = (SqlValue)r.high.Replace(cx,so,sv);
             if (hg != r.high)
                 r += (QuantifiedPredicate.High, hg);
             cx.done += (defpos, r);
@@ -5602,7 +5602,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (LikePredicate)base.Replace(cx, so, sv);
-            var wh = r.what.Replace(cx, so, sv);
+            var wh = r.what.Replace(cx,so,sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
             var esc = r.escape.Replace(cx, so, sv);
@@ -5739,7 +5739,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (InPredicate)base.Replace(cx, so, sv);
-            var wh = r.what.Replace(cx, so, sv);
+            var wh = r.what.Replace(cx,so,sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
             var wr = r.where.Replace(cx, so, sv);
@@ -5748,7 +5748,7 @@ namespace Pyrrho.Level3
             var vs = r.vals;
             for (var b=vs.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so, sv);
+                var v = b.value().Replace(cx,so,sv);
                 if (v != b.value())
                     vs += (b.key(), (SqlValue)v);
             }
@@ -5884,10 +5884,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (MemberPredicate)base.Replace(cx, so, sv);
-            var lf = r.left.Replace(cx, so, sv);
+            var lf = r.left.Replace(cx,so,sv);
             if (lf != r.left)
                 r += (Lhs,lf);
-            var rg = r.rhs.Replace(cx, so, sv);
+            var rg = r.rhs.Replace(cx,so,sv);
             if (rg != r.rhs)
                 r += (Rhs,rg);
             cx.done += (defpos, r);
@@ -6071,10 +6071,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (PeriodPredicate)base.Replace(cx, so, sv);
-            var a = r.left.Replace(cx, so, sv);
+            var a = r.left.Replace(cx,so,sv);
             if (a != r.left)
                 r += (Left,a);
-            var b = r.right.Replace(cx, so, sv);
+            var b = r.right.Replace(cx,so,sv);
             if (b != r.right)
                 r += (Right,b);
             cx.done += (defpos, r);
@@ -6279,7 +6279,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (NullPredicate)base.Replace(cx, so, sv);
-            var vl = r.val.Replace(cx, so, sv);
+            var vl = r.val.Replace(cx,so,sv);
             if (vl != r.val)
                 r += (NVal, vl);
             cx.done += (defpos, r);
@@ -6343,14 +6343,14 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlHttpBase)base.Replace(cx, so, sv);
+            var r = (SqlHttpBase)base.Replace(cx,so,sv).WithA(alias);
             var gf = r.globalFrom.Replace(cx, so, sv);
             if (gf != r.globalFrom)
                 r += (GlobalFrom, gf);
             var wh = r.where;
             for (var b=wh.First();b!=null;b=b.Next())
             {
-                var v = b.value().Replace(cx, so, sv);
+                var v = b.value().Replace(cx,so,sv);
                 if (v != b.value())
                     wh += (b.key(), (SqlValue)v);
             }
@@ -6421,8 +6421,8 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlHttp)base.Replace(cx, so, sv);
-            var u = r.expr.Replace(cx, so, sv);
+            var r = (SqlHttp)base.Replace(cx,so,sv).WithA(alias);
+            var u = r.expr.Replace(cx,so,sv);
             if (u != r.expr)
                 r += (Url, u);
             cx.done += (defpos, r);

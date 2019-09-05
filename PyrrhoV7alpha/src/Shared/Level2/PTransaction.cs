@@ -58,7 +58,7 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PTransaction(Type tp, int nr, long usr, long rl, Transaction tr)
-			: base (tp,tr.tid, tr)
+			: base (tp,tr.uid, tr)
 		{
 			nrecs = nr;
 			ptuser = usr;

@@ -117,11 +117,12 @@ namespace Pyrrho.Level3
         {
             var rs = schema.tableRows + (row.defpos, row);
             var xs = schema.indexes;
+
             for (var b = xs.First(); b != null; b = b.Next())
             {
                 var x = b.value();
-                if (row.prevKeys?[x.defpos] is PRow key)
-                    x -= key;
+                if (row.prevKeys[x.defpos] is PRow ok)
+                    x -= ok;
                 xs += (x.defpos,x + row);
             }
             var se = schema.sensitive || row.classification!=Level.D;

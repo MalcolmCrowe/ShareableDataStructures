@@ -159,12 +159,33 @@ namespace Pyrrho.Level4
                 c += cs[i].ident;
             cols = c;
         }
+        internal Domain Pick(Domain d)
+        {
+            var cs = d.columns;
+            if (cols != BList<string>.Empty)
+            {
+                cs = BList<Selector>.Empty;
+                for (var b = cols.First(); b != null; b = b.Next())
+                    if (d.names[b.value()] is Selector s)
+                        cs += s+(Selector.Seq,b.key());
+                    else
+                        throw new DBException("42112", b.value());
+            }
+            if (tablealias != null)
+                d += (Basis.Name, tablealias);
+            return d + (Domain.Columns, cs);
+        }
         internal Domain Apply(Domain d)
         {
             var cs = d.columns;
-            for (var b = cs.First(); b != null; b = b.Next())
-                if (cols.Contains(b.key()))
-                    cs += (b.key(), b.value() + (Basis.Name, cols[b.key()]));
+            if (cols != BList<string>.Empty)
+            {
+                if (cols.Count != cs.Count)
+                    throw new DBException("22207");
+                for (var b = cs.First(); b != null; b = b.Next())
+                    if (cols.Contains(b.key()))
+                        cs += (b.key(), b.value() + (Basis.Name, cols[b.key()]));
+            }
             if (tablealias != null)
                 d += (Basis.Name, tablealias);
             return d + (Domain.Columns, cs);

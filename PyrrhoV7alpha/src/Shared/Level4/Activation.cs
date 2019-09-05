@@ -138,7 +138,6 @@ namespace Pyrrho.Level4
             _trig = tg;
             var fm = trs.qry;
             var tr = trs._tr;
-            cur = fm;
             var t = fm as Table;
             nominalDataType = t.rowType;
         }
@@ -151,7 +150,7 @@ namespace Pyrrho.Level4
             bool r = false;
             var cx = new Context(ox, tr.role, tr.user);
             var trig = _trig;
-            tr+=new Level2.TriggeredAction(_trig.defpos,tr.tid,tr);
+            tr+=new Level2.TriggeredAction(_trig.defpos,tr.uid,tr);
             var ta = _trig.action;
             tr = ta.First().value().Obey(tr,cx);
             return tr;

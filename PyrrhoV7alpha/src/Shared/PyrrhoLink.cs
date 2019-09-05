@@ -37,7 +37,7 @@ namespace Pyrrho
 #if EMBEDDED
         internal Connection db;
 #else
-        internal string hostName = "127.0.0.1";
+        internal string hostName = "::1";
         internal Socket socket = null;
         internal Crypt crypt;
         public Stream stream;

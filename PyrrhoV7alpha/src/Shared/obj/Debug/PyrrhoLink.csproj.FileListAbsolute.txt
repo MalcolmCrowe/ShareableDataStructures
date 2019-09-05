@@ -3,4 +3,3 @@ E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.dll
 E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.pdb
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.dll
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.pdb
-E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.csprojAssemblyReference.cache

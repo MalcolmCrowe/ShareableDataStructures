@@ -59,7 +59,7 @@ namespace Pyrrho.Level3
             var tb = tr.role.GetObject(name.ident) as Table ??
                 throw new DBException("42107", name.ident);
             if (cr!=null)
-                tb += (SqlValue.NominalType, cr.Apply(tb.rowType.For(tr, tb, Grant.Privilege.Insert)));
+                tb += (SqlValue.NominalType, cr.Pick(tb.rowType.For(tr, tb, Grant.Privilege.Insert)));
             tb = (Table)tb.AddCols(tb);
             return BTree<long, object>.Empty + (_Table, tb) + (ValuesDataType, tb.rowType);
         }
@@ -106,7 +106,7 @@ namespace Pyrrho.Level3
                 throw new DBException("42107", name.ident);
             var dt = tb.rowType.For(tr, tb, Grant.Privilege.Insert);
             if (cr != null)
-                dt = cr.Apply(dt);
+                dt = cr.Pick(dt);
             tb += (SqlValue.NominalType, dt);
             return BTree<long, object>.Empty + (SqlInsert._Table, tb);
         }

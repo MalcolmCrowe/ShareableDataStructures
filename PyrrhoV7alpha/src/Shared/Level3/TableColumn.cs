@@ -102,7 +102,7 @@ namespace Pyrrho.Level3
         }
         internal override Query Resolve(Context cx, Query f)
         {
-            if (nominalDataType != Domain.Content)
+            if (nominalDataType != Domain.Null)
                 return f;
             for (var b = f.rowType.columns.First(); b != null; b = b.Next())
             {
@@ -114,6 +114,12 @@ namespace Pyrrho.Level3
                 }
             }
             return f;
+        }
+        internal override DBObject Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = base.Replace(cx, so, sv);
+            var ra = r.WithA(alias);
+            return (ra != r)?(SqlValue)cx.Add(ra):ra;
         }
         public override string ToString()
         {
@@ -380,6 +386,8 @@ namespace Pyrrho.Level3
                     if (!fl.Contains(b.key()))
                         fl += (b.key(), b.value());
                 pk = BTree<long, PRow>.Empty;
+                // keep a record of keys that now need to be removed from indexes
+                // (now is not the time to update imdexes)
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                 {
                     var x = b.value();
