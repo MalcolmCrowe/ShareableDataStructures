@@ -83,20 +83,24 @@ namespace Pyrrho
                 var cs = GetConnectionString(tcp);
                 var fn = cs["Files"];
                 user = cs["User"];
-                var fp = PyrrhoStart.path + fn;
-                if (!File.Exists(fp))
+                db = Database.Get(fn);
+                if (db == null)
                 {
-                    var fs = new FileStream(fp,
-                    FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-                    var wr = new Writer(null, fs);
-                    wr.PutInt(777);
-                    wr.PutInt(50);
-                    wr.PutBuf();
-                    fs.Close();
-  //                  File.SetAccessControl(fp, PyrrhoStart.arule);
+                    var fp = PyrrhoStart.path + fn;
+                    if (!File.Exists(fp))
+                    {
+                        var fs = new FileStream(fp,
+                        FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                        var wr = new Writer(null, fs);
+                        wr.PutInt(777);
+                        wr.PutInt(50);
+                        wr.PutBuf();
+                        fs.Close();
+                        //                  File.SetAccessControl(fp, PyrrhoStart.arule);
+                    }
+                    db = new Database(fn, new FileStream(fp,
+                        FileMode.Open, FileAccess.ReadWrite, FileShare.None));
                 }
-                db = new Database(fn, new FileStream(fp,
-                    FileMode.Open, FileAccess.ReadWrite, FileShare.None));
                 db = db.Load();
                 tcp.Write(Responses.Primary);
                 tcp.Flush();
@@ -1080,7 +1084,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[] 
 {
 	"Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-	"7.0 alpha"," (7 September 2019)", " www.pyrrhodb.com"
+	"7.0 alpha"," (7 September 2019 1400 GMT)", " www.pyrrhodb.com"
 #if OSP
     , "Open Source Edition"
 #endif

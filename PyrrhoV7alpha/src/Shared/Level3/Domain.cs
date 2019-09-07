@@ -1732,7 +1732,7 @@ namespace Pyrrho.Level3
             if (ke < 0)
                 ke = ks + 1;
             var st = lx.pos;
-            string[] parts = GetParts(lx, ke - ks, st);
+            string[] parts = GetParts(lx, ke - ks+1, st);
             if (ks <= 1)
             {
                 if (ks == 0)
@@ -1793,6 +1793,8 @@ namespace Pyrrho.Level3
                 if (lx.pos > lx.len)
                     throw new DBException("22007", Diag(lx, st)).Mix();
                 r[j] = GetPart(lx, st);
+                if (j < n - 1)
+                    lx.Advance();
             }
             return r;
         }

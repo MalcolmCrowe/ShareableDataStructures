@@ -13,4 +13,3 @@ E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
 E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
-E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache

@@ -5,6 +5,7 @@ using System.IO;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
+using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2019
 //
@@ -229,6 +230,24 @@ namespace Pyrrho.Level3
             return d.New(d.roles, d.loadpos, 
                 d.mem+(Levels,d.levels + (x.Item1, x.Item2))+
                 (LevelUids,d.cache + (x.Item2, x.Item1)));
+        }
+        public static Database Get(string fn)
+        {
+            var f = dbfiles[fn];
+            if (f == null)
+                    return null;
+            for (; ; )
+            {
+                var r = databases[fn];
+                if (r != null)
+                {
+                    if (f.Length > r.loadpos)
+                        r.Load();
+                    return r;
+                }
+                // otherwise the database is loading
+                Thread.Sleep(1000);
+            }
         }
         internal FileStream File()
         {

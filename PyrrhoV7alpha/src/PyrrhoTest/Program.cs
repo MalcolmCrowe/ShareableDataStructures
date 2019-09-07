@@ -162,9 +162,9 @@ namespace Test
             if (t > 0 && t != 6)
                 return;
             Begin();
-            conn.Act("create table ta(b date,c timespan,d boolean)");
-            conn.Act("insert into ta values(date'2019-01-06T12:30:00',timespan'02:00:00',false)");
-            CheckResults(6, 1, "select * from ta", "[{B:\"2019-01-06T12:30:00\",C:\"02:00:00\",D:\"false\"}]");
+            conn.Act("create table ta(b date,c interval hour to second,d boolean)");
+            conn.Act("insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)");
+            CheckResults(6, 1, "select * from ta", "[{B:\"06/01/2019\",C:\"2h\",D:\"False\"}]");
             Rollback();
         }
         void Test7(int t)
