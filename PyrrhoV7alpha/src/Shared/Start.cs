@@ -213,6 +213,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
                                 cx.affected = BList<Rvv>.Empty;
+                                nextTid = Transaction.TransPos;
                                 break;
                             }
                         // rollback
@@ -221,6 +222,7 @@ namespace Pyrrho
                                 Console.WriteLine("Rollback on Request " + (db as Transaction).uid);
                             db = db.Rollback(new DBException("40000").ISO());
                             tcp.Write(Responses.Done);
+                            nextTid = Transaction.TransPos;
                             break;
                         // close the connection
                         case Protocol.CloseConnection: 
@@ -1078,7 +1080,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[] 
 {
 	"Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-	"7.0 alpha"," (5 September 2019)", " www.pyrrhodb.com"
+	"7.0 alpha"," (7 September 2019)", " www.pyrrhodb.com"
 #if OSP
     , "Open Source Edition"
 #endif

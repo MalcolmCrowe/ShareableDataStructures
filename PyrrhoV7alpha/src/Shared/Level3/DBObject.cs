@@ -175,9 +175,8 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The existing RowSet may be explicit</param>
         /// <param name="cl">The classification sought</param>
-        /// <param name="autokey">Whether to use autokey</param>
         internal virtual Transaction Insert(Transaction tr,Context _cx, Table f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl, bool autokey = false)
+            Level cl)
         {
             return tr;
         }

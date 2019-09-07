@@ -267,6 +267,14 @@ namespace Pyrrho.Level3
             if (md.iri != "") m += (Iri, md.iri);
             return (Domain)d.New(m);
         }
+        public static Domain operator+(Domain d,(Sqlx,Sqlx)o)
+        {
+            if (d.AscDesc != o.Item1)
+                d += (Descending, o.Item1);
+            if (d.Nulls != o.Item2)
+                d += (NullsFirst, o.Item2);
+            return d;
+        }
         internal override DBObject Add(Check ck, Database db)
         {
             return new Domain(kind,defpos,mem+(Constraints,constraints+(ck.defpos,ck)));
@@ -810,13 +818,22 @@ namespace Pyrrho.Level3
         /// <returns>-1,0,1 according as a LT,EQ,GT b</returns>
         public virtual int Compare(TypedValue a, TypedValue b)
         {
+            var an = a == null || a == TNull.Value;
+            var bn = b == null || b == TNull.Value;
+            if (an && bn)
+                return 0;
+            if (an)
+                return (Nulls == Sqlx.FIRST) ? 1 : -1;
+            if (bn)
+                return (Nulls == Sqlx.FIRST) ? -1 : 1;
+            int c;
             if (kind == Sqlx.SENSITIVE)
             {
                 a = (a is TSensitive sa) ? sa.value : a;
                 b = (b is TSensitive sb) ? sb.value : b;
-                return elType.Compare(a, b);
+                c = elType.Compare(a, b);
+                goto ret;
             }
-            int c;
             if (orderflags != Common.OrderCategory.None)
             {
                 var n = orderFunc.name;
@@ -827,13 +844,15 @@ namespace Pyrrho.Level3
                 {
 
                     orderFunc.Exec(null, cx, new BList<SqlValue>(sa) + sb);
-                    return cx.ret.ToInt().Value;
+                    c = cx.ret.ToInt().Value;
+                    goto ret;
                 }
                 orderFunc.Exec(null,cx,new BList<SqlValue>(sa));
                 a = cx.ret;
                 orderFunc.Exec(null,cx,new BList<SqlValue>(sb));
                 b = cx.ret;
-                return a.dataType.Compare(a, b);
+                c = a.dataType.Compare(a, b);
+                goto ret;
             }
             switch (Equivalent(kind))
             {
@@ -878,7 +897,8 @@ namespace Pyrrho.Level3
                 case Sqlx.DOCUMENT:
                     {
                         var dcb = a as TDocument;
-                        return dcb.Query(b);
+                        c = dcb.Query(b);
+                        break;
                     }
                 case Sqlx.CONTENT: c = a.ToString().CompareTo(b.ToString()); break;
                 case Sqlx.TIME: c = ((TimeSpan)a.Val()).CompareTo(b.Val()); break;
@@ -914,7 +934,10 @@ namespace Pyrrho.Level3
                         int n = x.Length;
                         int m = y.Length;
                         if (n != m)
-                            return (n < m) ? -1 : 1;
+                        {
+                            c = (n < m) ? -1 : 1;
+                            break;
+                        }
                         c = 0;
                         for (int j = 0; j < n; j++)
                         {
@@ -945,10 +968,10 @@ namespace Pyrrho.Level3
                                 break;
                             c = elType.Compare(e.key(), f.key());
                             if (c != 0)
-                                return c;
+                                goto ret;
                             c = e.value().Value.CompareTo(f.value().Value);
                             if (c != 0)
-                                return c;
+                                goto ret;
                             break;
                         }
                         while (e != null && !e.value().HasValue)
@@ -999,7 +1022,8 @@ namespace Pyrrho.Level3
                     throw new DBException("22202").ISO();
                 default: c = a.ToString().CompareTo(b.ToString()); break;
             }
-            return c;
+            ret:
+            return (AscDesc==Sqlx.DESC)?-c:c;
         }
         /// <summary>
         /// Creator: Add the given array at the end of this
@@ -2027,6 +2051,8 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public TypedValue Coerce(TypedValue v)
         {
+            if (this == Null || this==Content)
+                return v;
             for (var b = constraints?.First(); b != null; b = b.Next())
                 if (b.value().Eval(null,null) != TBool.True)
                     throw new DBException("22211",name);

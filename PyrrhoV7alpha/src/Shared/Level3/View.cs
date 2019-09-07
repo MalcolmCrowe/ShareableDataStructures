@@ -50,7 +50,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the rowsets affected</param>
         internal override Transaction Insert(Transaction tr,Context _cx, Table f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl,bool autokey = false)
+            Level cl)
         {
             f.source.AddCondition(data._tr,_cx,f.where, null, data);
             return f.source.Insert(data._tr,_cx,prov, data, eqs, rs, cl);

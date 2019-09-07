@@ -241,6 +241,26 @@ namespace Pyrrho.Level3
             }
             return this+(Tree,rs);
         }
+        internal PRow MakeAutoKey(BTree<long, TypedValue> fl)
+        {
+            var r = BList<TypedValue>.Empty;
+            for (var i = 0; i < (int)cols.Count; i++)
+            {
+                var v = fl[cols[i].defpos];
+                if (v != null)
+                    r += v;
+                else
+                {
+                    if (cols[i].domain.kind != Sqlx.INTEGER)
+                        throw new DBException("22004");
+                    v = rows.NextKey(r, 0, i);
+                    if (v == TNull.Value)
+                        v = new TInt(0);
+                    r += v;
+                }
+            }
+            return new PRow(r);
+        }
         /// <summary>
         /// Check referential integrity
         /// </summary>

@@ -127,6 +127,10 @@ namespace Pyrrho.Level3
         {
             return q.scols[this] ?? -1;
         }
+        internal override TypedValue Eval(Transaction tr, Context cx)
+        {
+            return nominalDataType.Coerce(cx.values[defpos]);
+        }
         internal virtual TypedValue Eval(Context _cx, RowBookmark bmk)
         {
             return Eval(bmk._rs._tr,_cx); // obviously we aim to do better than this
@@ -3739,8 +3743,8 @@ namespace Pyrrho.Level3
             // for the moment we just use the whole source row
             // We build all of the WRS's at this stage for saving in f
             return this+(Window,window
-            +(WindowSpecification.OrdType, window.order.KeyType(q.rowType, window.partition))
-            +(WindowSpecification.PartitionType,window.order.KeyType(q.rowType, 0, window.partition)));
+            +(WindowSpecification.OrdType, window.order.keyType)
+            +(WindowSpecification.PartitionType,window.order.keyType));
         }
         internal override void Build(Context _cx,RowSet rs)
         {
@@ -3754,15 +3758,15 @@ namespace Pyrrho.Level3
             {
                 PRow ks = null;
                 for (var i = window.partition - 1;i>=0; i--)
-                    ks = new PRow(window.order.items[i].what.Eval(_cx,b),ks);
+                    ks = new PRow(window.order.items[i].Eval(_cx,b),ks);
                 var pkey = new TRow(window.partitionType, ks);
                 fd.cur = fd.regs[pkey];
                 ks = null;
                 for (var i = (int)window.order.items.Count - 1; i >= window.partition; i--)
-                    ks = new PRow(window.order.items[i].what.Eval(_cx,b), ks);
+                    ks = new PRow(window.order.items[i].Eval(_cx,b), ks);
                 var okey = new TRow(window.ordType, ks);
                 var worder = OrderSpec.Empty;
-                var its = BTree<int, OrderItem>.Empty;
+                var its = BTree<int, SqlValue>.Empty;
                 for (var i = window.partition; i < window.order.items.Count; i++)
                     its+=((int)its.Count,window.order.items[i]);
                 worder = worder+ (OrderSpec.Items, its) + (OrderSpec._KeyType,window.ordType);
@@ -3895,13 +3899,13 @@ namespace Pyrrho.Level3
                 fd.valueInProgress = true;
                 PRow ks = null;
                 for (var i = window.partition - 1; i >= 0; i--)
-                    ks = new PRow(window.order.items[i].what.Eval(cx,rb), ks);
+                    ks = new PRow(window.order.items[i].Eval(cx,rb), ks);
                 fd.cur = fd.regs[new TRow(window.partitionType,ks)];
                 fd.cur.Clear();
                 fd.cur.wrs.building = false; // ? why should it be different?
                 ks = null;
                 for (var i = (int)window.order.items.Count - 1; i >= window.partition; i--)
-                    ks = new PRow(window.order.items[i].what.Eval(cx,rb), ks);
+                    ks = new PRow(window.order.items[i].Eval(cx,rb), ks);
                 var dt = rb._rs.qry.rowType;
                 for (var b = firstTie = fd.cur.wrs.PositionAt(cx,ks); b != null; b = b.Next(cx))
                 {
@@ -4992,7 +4996,7 @@ namespace Pyrrho.Level3
             for (var i = window.partition; i < window.order.items.Count; i++)
             {
                 var oi = window.order.items[i];
-                var n = oi.what.defpos;
+                var n = oi.defpos;
                 var av = a.row[n];
                 var bv = b.row[n];
                 if (av==bv)

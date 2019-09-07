@@ -159,6 +159,11 @@ namespace Pyrrho.Level4
                 c += cs[i].ident;
             cols = c;
         }
+        /// <summary>
+        /// Select columns from a type.
+        /// </summary>
+        /// <param name="d"></param>
+        /// <returns></returns>
         internal Domain Pick(Domain d)
         {
             var cs = d.columns;

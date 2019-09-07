@@ -216,9 +216,9 @@ namespace Pyrrho.Level3
             for (var b = os?.items.First(); b != null; b = b.Next())
             {
                 var oi = b.value();
-                var ow = (SqlValue)oi.what.Replace(cx,was,now);
-                if (oi.what!=ow)
-                    os += (b.key(), oi + (OrderItem.What, ow));
+                var ow = (SqlValue)oi.Replace(cx,was,now);
+                if (oi!=ow)
+                    os += (b.key(), ow);
             }
             if (os!=r.ordSpec)
                 r += (OrdSpec, os);
@@ -343,7 +343,7 @@ namespace Pyrrho.Level3
             var ndt = rowType;
             for (var i = 0; i < ord.items.Count; i++)
             {
-                var w = ord.items[i].what;
+                var w = ord.items[i];
                 if (ndt.names[w.name] == null)
                     return this;
             }
@@ -448,7 +448,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs"the rowsets affected></param>
         internal virtual Transaction Insert(Transaction tr, Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl, bool autokey = false)
+            Level cl)
         {
             return tr;
         }
@@ -947,9 +947,9 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs"the rowsets affected></param>
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs, 
-            Level cl,bool autokey=false)
+            Level cl)
         {
-            return union.Insert(tr,_cx,prov, data, eqs, rs, cl, autokey);
+            return union.Insert(tr,_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// propagate the Update operation 
@@ -1079,9 +1079,9 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl,bool autokey = false)
+            Level cl)
         {
-            return from.Insert(tr,_cx,prov, data, eqs, rs,cl,autokey);
+            return from.Insert(tr,_cx,prov, data, eqs, rs,cl);
         }
         /// <summary>
         /// propagate Delete operation
@@ -1380,22 +1380,22 @@ namespace Pyrrho.Level3
                     lf = lf.Orders(tr,cx,
                         lf.ordSpec+(OrderSpec.Items,
                         lf.ordSpec.items+((int)lf.ordSpec.items.Count,
-                        new OrderItem(se.left,Sqlx.ASC,Sqlx.NULLS))));
+                        se.left)));
                     rg = rg.Orders(tr,cx,
                         rg.ordSpec+(OrderSpec.Items,
                         rg.ordSpec.items+((int)rg.ordSpec.items.Count,
-                        new OrderItem(se.right,Sqlx.ASC,Sqlx.NULLS))));
+                        se.right)));
                 }
             if (joinCond.Count == 0)
                 for(var b=ord.items.First(); b!=null; b=b.Next()) // test all of these 
                 {
                     var oi = b.value();
-                    if (r.left.HasColumn(oi.what)// && !(left.rowSet is IndexRowSet))
-                        && !lf.ordSpec.HasItem(oi.what))
+                    if (r.left.HasColumn(oi)// && !(left.rowSet is IndexRowSet))
+                        && !lf.ordSpec.HasItem(oi))
                         lf = lf.Orders(tr,cx, 
                             lf.ordSpec+(OrderSpec.Items,lf.ordSpec.items+((int)lf.ordSpec.items.Count, oi)));
-                    if (r.right.HasColumn(oi.what)// && !(right.rowSet is IndexRowSet))
-                        && !rg.ordSpec.HasItem(oi.what))
+                    if (r.right.HasColumn(oi)// && !(right.rowSet is IndexRowSet))
+                        && !rg.ordSpec.HasItem(oi))
                         rg = rg.Orders(tr,cx,
                             rg.ordSpec + (OrderSpec.Items, rg.ordSpec.items + oi));
                 }
@@ -1503,11 +1503,11 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl,bool autokey=false)
+            Level cl)
         {
             Eqs(data._tr,_cx,joinCond,ref eqs); // add in equality columns
-            tr = left.Insert(tr,_cx, prov, data, eqs, rs, cl, autokey); // careful: data has extra columns!
-            return right.Insert(tr,_cx,prov, data, eqs, rs,cl,autokey);
+            tr = left.Insert(tr,_cx, prov, data, eqs, rs, cl); // careful: data has extra columns!
+            return right.Insert(tr,_cx,prov, data, eqs, rs,cl);
         }
         /// <summary>
         /// propagate an update operation

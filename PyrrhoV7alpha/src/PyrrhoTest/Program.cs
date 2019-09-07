@@ -146,14 +146,14 @@ namespace Test
             conn.Act("insert into a values(23,6)");
             CheckResults(5, 1,"select * from a", "[{B:17,C:15},{B:23,C:6}]");
             CheckResults(5, 2,"select b-3 as f,22 as g from a", "[{F:14,G:22},{F:20,G:22}]");
-            CheckResults(5, 3,"select (a.b) as f,(c) from a", "[{F:17,col2:15},{F:23,col2:6}]");
-            CheckResults(5, 4,"select b+3,d.c from a d", "[{col1:20,C:15},{col1:26,C:6}]");
-            CheckResults(5, 5,"select (b as d,c) from a", "[{col1:{D:17,C:15}},{col1:{D:23,C:6}}]");
+            CheckResults(5, 3,"select (a.b) as f,(c) from a", "[{F:17,C:15},{F:23,C:6}]");
+            CheckResults(5, 4,"select b+3,d.c from a d", "[{Col0:20,C:15},{Col0:26,C:6}]");
+            CheckResults(5, 5,"select (b as d,c) from a", "[{Col0:(D=17,C=15)},{Col0:(D=23,C=6)}]");
             CheckResults(5, 6,"select * from a order by c", "[{B:23,C:6},{B:17,C:15}]");
             CheckResults(5, 7,"select * from a order by b desc", "[{B:23,C:6},{B:17,C:15}]");
             CheckResults(5, 8,"select * from a order by b+c desc", "[{B:17,C:15},{B:23,C:6}]");
-            CheckResults(5, 9,"select sum(b) from a", "[{col1:40}]");
-            CheckResults(5, 10,"select max(c),min(b) from a", "[{col1:15,col2:17}]");
+            CheckResults(5, 9,"select sum(b) from a", "[{SUM:40}]");
+            CheckResults(5, 10,"select max(c),min(b) from a", "[{MAX:15,MIN:17}]");
             CheckResults(5, 11,"select count(c) as d from a where b<20", "[{D:1}]");
             Rollback();
         }

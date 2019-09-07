@@ -14,76 +14,30 @@ using Pyrrho.Level4;
 
 namespace Pyrrho.Level3
 {
-    /// <summary>
-    /// An OrderItem has a value and some ordering flags
-    /// </summary>
-    internal class OrderItem :Basis
-    {
-        internal const long
-            AscDesc = -229, // Sqlx
-            Nulls = -230, // Sqlx
-            What = -231; // SqlValue
-        /// <summary>
-        /// What to order: NB: may be a row
-        /// </summary>
-        public SqlValue what=>(SqlValue)mem[What];
-        /// <summary>
-        /// ASC or DESC
-        /// </summary>
-        public Sqlx ascDesc => (Sqlx)(mem[AscDesc]??Sqlx.ASC);
-        /// <summary>
-        /// nulls FIRST or LAST
-        /// </summary>
-        public Sqlx nulls => (Sqlx)(mem[Nulls]??Sqlx.FIRST);
-        /// <summary>
-        /// Constructor: a window OrderItem from the Parser
-        /// </summary>
-        /// <param name="cx">The contextn</param>
-        /// <param name="cn">The ident name</param>
-        internal OrderItem(SqlValue w,Sqlx a,Sqlx n):base(BTree<long,object>.Empty
-            +(What,w)+(AscDesc,a)+(Nulls,n))
-        { }
-        protected OrderItem(BTree<long, object> m) : base(m) { }
-        public static OrderItem operator+(OrderItem o,(long,object)m)
-        {
-            return new OrderItem(o.mem + m);
-        }
-        public override string ToString()
-        {
-            var s = what.ToString();
-            if (ascDesc == Sqlx.DESC)
-                s += " DESC ";
-            return s;
-        }
-
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new OrderItem(m);
-        }
-    }
     internal class OrderSpec :Basis
     {
         internal const long
-            Items = -232, // BList<OrderItem>
+            Items = -232, // BList<SqlValue>
             _KeyType = -233; // Domain
-        internal BList<OrderItem> items => 
-            (BList<OrderItem>)mem[Items]?? BList<OrderItem>.Empty;
+        internal BList<SqlValue> items => 
+            (BList<SqlValue>)mem[Items]?? BList<SqlValue>.Empty;
         internal Domain keyType => (Domain)mem[_KeyType]??Domain.Null;
         internal static readonly OrderSpec Empty = new OrderSpec();
         OrderSpec():base(BTree<long,object>.Empty) { }
-        public OrderSpec(Domain k)
-            :base(new BTree<long, object>(Items, _Items(k))) { }
-        static BList<OrderItem> _Items(Domain k)
-        {
-            var ts = BList<OrderItem>.Empty;
-            for (var b = k.columns.First(); b != null; b = b.Next())
-                ts += (b.key(), new OrderItem(b.value(), Sqlx.ASC, Sqlx.NULLS));
-            return ts;
-        }
+        internal OrderSpec(BList<SqlValue> ois) 
+            :base((Items,ois),(_KeyType,new Domain(ois))) { }
+        public OrderSpec(Domain k):base((Items, _Items(k)),(_KeyType,k)) { }
         protected OrderSpec(BTree<long, object> m) : base(m) { }
         public static OrderSpec operator+(OrderSpec o,(long,object)x)
         {
             return new OrderSpec(o.mem + x);
+        }
+        static BList<SqlValue> _Items(Domain k)
+        {
+            var ts = BList<SqlValue>.Empty;
+            for (var b = k.columns.First(); b != null; b = b.Next())
+                ts += (b.key(), b.value());
+            return ts;
         }
         /// <summary>
         /// Check that two OrderSpecs for the same dataType have the same ordering.
@@ -97,36 +51,16 @@ namespace Pyrrho.Level3
             if (items.Count != that.items.Count)
                 return false;
             for (var i = 0; i < items.Count; i++)
-                if (!items[i].what.MatchExpr(q,that.items[i].what))
+                if (!items[i].MatchExpr(q,that.items[i]))
                     return false;
             return true;
         }
         internal bool HasItem(SqlValue sv)
         {
             for (var b = items.First(); b != null; b = b.Next())
-                if (b.value().what == sv)
+                if (b.value() == sv)
                     return true;
             return false;
-        }
-        public Domain KeyType(Domain dt, int off = 0, int lim = -2)
-        {
-            if (lim == -2)
-                lim = (int)items.Count;
-            var n = lim - off;
-            if (n <= 0)
-                return Domain.Null;
-            var cs = BList<Selector>.Empty;
-            for (int j = 0; j < n; j++)
-            {
-                var s = items[j + off];
-                var t = s.what.nominalDataType + (Domain.NullsFirst, s.nulls)
-                    +(Domain.Descending,s.ascDesc);
-                var sel = dt.names[s.what.alias ?? s.what.name];
-                if (sel == null)
-                    return null;
-                cs += (j, sel);
-            }
-            return new Domain(cs);
         }
         public override string ToString()
         {
@@ -263,17 +197,9 @@ namespace Pyrrho.Level3
             {
                 if (order == null || w.order == null || order.items.Count!=w.order.items.Count)
                     return false;
-                for (int i = 0; i < order.items.Count;i++)
-                {
-                    OrderItem ai = order.items[i];
-                    OrderItem bi = w.order.items[i];
-                    if (ai.nulls != bi.nulls)
+                for (int i = 0; i < order.items.Count; i++)
+                    if (!order.items[i].MatchExpr(query, w.order.items[i]))
                         return false;
-                    if (ai.ascDesc != bi.ascDesc)
-                        return false;
-                    if (ai.what != bi.what) // probably need something more careful for comparing these SqlValues
-                        return false;
-                }
             }
             return partition == w.partition;
         }

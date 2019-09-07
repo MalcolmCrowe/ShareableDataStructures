@@ -29,22 +29,20 @@ namespace Pyrrho.Level3
         internal const long
             _Table = -157, // Table
             Provenance = -158, //string
-            ValuesDataType = -159, // Domain
-            Autokey = -160; // bool
+            ValuesDataType = -159; // Domain
         internal Table table => (Table)mem[_Table];
         /// <summary>
         /// Provenance information if supplied
         /// </summary>
         public string provenance => (string)mem[Provenance];
         internal Domain valuesDataType => (Domain)mem[ValuesDataType];
-        internal bool autokey => (bool)(mem[Autokey]??false);
         /// <summary>
         /// Constructor: an INSERT statement from the parser.
         /// </summary>
         /// <param name="cx">The parsing context</param>
         /// <param name="name">The name of the table to insert into</param>
-        public SqlInsert(Transaction tr,Lexer lx, Ident name, Correlation cr, string prov,bool ak)
-            : base(lx,_Mem(tr,name,cr)+ (Provenance, prov) +(Autokey,ak))
+        public SqlInsert(Transaction tr,Lexer lx, Ident name, Correlation cr, string prov)
+            : base(lx,_Mem(tr,name,cr)+ (Provenance, prov))
         {
             if (table.rowType.Length == 0)
                 throw new DBException("2E111", tr.user, name.ident).Mix();

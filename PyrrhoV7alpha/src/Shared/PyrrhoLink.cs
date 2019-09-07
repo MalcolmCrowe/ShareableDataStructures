@@ -2791,6 +2791,16 @@ CallingConventions.HasThis, new Type[0], null);
         {
             TableName = n;
         }
+        internal PyrrhoTable(PyrrhoTable t,string n)
+        {
+            for (var i = 0; i < t.Columns.Count; i++)
+            {
+                Columns.Add(t.Columns[i]);
+                columns.Add(t.Columns[i].Caption, i);
+            }
+            Columns.Add(new PyrrhoColumn(n,"", 0));
+            columns.Add(n, t.Columns.Count);
+        }
         internal PyrrhoTable(PyrrhoConnect c, string n)
         {
             ConnectString = c.ConnectionString;
@@ -3010,6 +3020,19 @@ CallingConventions.HasThis, new Type[0], null);
             check = c;
             row = new CellValue[t.Columns.Count];
         }
+        internal PyrrhoRow(params CellValue[] r)
+        {
+            schema = new PyrrhoTable();
+            row = r;
+        }
+        protected PyrrhoRow(PyrrhoRow r,(string,CellValue) c)
+        {
+            schema = new PyrrhoTable(r.schema, c.Item1);
+            row = new CellValue[r.row.Length + 1];
+            for (var i = 0; i < r.row.Length; i++)
+                row[i] = r.row[i];
+            row[r.row.Length] = c.Item2;
+        }
         public PyrrhoRowState RowState { get { return state; } }
         public PyrrhoTable Table { get { return schema; } }
         public object this[string s]
@@ -3021,7 +3044,10 @@ CallingConventions.HasThis, new Type[0], null);
                 row[i] = new CellValue { val = value };
             }
         }
-
+        public static PyrrhoRow operator+(PyrrhoRow r,(string,CellValue) c)
+        {
+            return new PyrrhoRow(r, c);
+        }
         public CellValue this[PyrrhoColumn c]
         {
             get { return row[(int)schema.columns[c.ColumnName]]; }

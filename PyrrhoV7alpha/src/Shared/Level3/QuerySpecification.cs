@@ -137,11 +137,11 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl,bool autokey = false)
+            Level cl)
         {
             for (var i=0;i<cols.Count;i++)
                 cols[i].Eqs(data._tr,_cx,ref eqs);
-            return tableExp.Insert(tr,_cx,prov, data, eqs, rs, cl,autokey);
+            return tableExp.Insert(tr,_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// propagate a delete operation
@@ -210,7 +210,6 @@ namespace Pyrrho.Level3
             _Distinct = -259, // bool
             _Left = -260,// Query
             Op = -261, // Sqlx
-            Order = -262, // OrderSpec
             _Right = -263, // QueryExpression
             SimpleTableQuery = -264; //bool
         /// <summary>
@@ -229,10 +228,6 @@ namespace Pyrrho.Level3
         /// whether distinct has been specified
         /// </summary>
         internal bool distinct => (bool)(mem[_Distinct]??false);
-        /// <summary>
-        /// The order by clause
-        /// </summary>
-        internal OrderSpec order => (OrderSpec)mem[Order];
         /// <summary>
         /// Whether we have a simple table query
         /// </summary>
@@ -317,11 +312,11 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl,bool autokey=false)
+            Level cl)
         {
-            tr = left.Insert(tr, _cx, prov, data, eqs, rs, cl, autokey);
+            tr = left.Insert(tr, _cx, prov, data, eqs, rs, cl);
             if (right!=null)
-                tr = right.Insert(tr,_cx,prov, data, eqs, rs,cl,autokey);
+                tr = right.Insert(tr,_cx,prov, data, eqs, rs,cl);
             return tr;
         }
         /// <summary>
@@ -444,10 +439,12 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Transaction tr,Context cx)
         {
             var lr = left.RowSets(tr,cx);
-            if (right == null)
-                return lr;
-            var rr = right.RowSets(tr,cx);
-            return new MergeRowSet(cx,this, lr, rr, distinct, op);
+            if (right != null)
+            {
+                var rr = right.RowSets(tr, cx);
+                lr = new MergeRowSet(cx, this, lr, rr, distinct, op);
+            }
+            return Ordering(cx, lr, false);
         }
          public override string ToString()
         {
@@ -463,10 +460,10 @@ namespace Pyrrho.Level3
                 sb.Append("Right: ");
                 sb.Append(right); sb.Append(") ");
             }
-            if (order != null && order.items.Count!=0)
+            if (ordSpec != null && ordSpec.items.Count!=0)
             {
                 sb.Append(" order by (");
-                sb.Append(order.items);
+                sb.Append(ordSpec.items);
                 sb.Append(')');
             }
             return sb.ToString();

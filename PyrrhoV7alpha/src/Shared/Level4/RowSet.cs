@@ -54,7 +54,7 @@ namespace Pyrrho.Level4
         /// Try to discourage use of qry.cols once the rowSet is Built.
         /// </summary>
         internal bool building = true;
-        protected new virtual void Build(Context _cx)
+        protected virtual void Build(Context _cx)
         { }
         /// <summary>
         /// Constructor
@@ -1172,7 +1172,7 @@ namespace Pyrrho.Level4
         internal RowSet source;
         readonly bool distinct;
         public OrderedRowSet(Context _cx,Query q,RowSet r,OrderSpec os,bool dct)
-            :base(r._tr,_cx,q,r.rowType,os.KeyType(r.rowType),os)
+            :base(r._tr,_cx,q,r.rowType,os.keyType,os)
         {
             source = r;
             distinct = dct;
@@ -1198,7 +1198,7 @@ namespace Pyrrho.Level4
                     var ks = new TypedValue[keyType.Length];
                     var rw = e.row;
                     for (int j = (int)rowOrder.items.Count - 1; j >= 0; j--)
-                        ks[j] = rowOrder.items[j].what.Eval(source._tr,_cx);
+                        ks[j] = rowOrder.items[j].Eval(source._tr,_cx);
                     RTree.Add(ref tree, new TRow(keyType, ks), rw);
                 }
                 building = false;
@@ -1396,6 +1396,8 @@ namespace Pyrrho.Level4
     /// Deal with execution of Triggers. The main complication here is that triggers execute in definer's role
     /// so the column names and data types will be different for different triggers.
     /// (Of course many trigger actions will be to different tables.)
+    /// Another nuisance is that we need to manage our own copies of autokeys, as we may be preparing
+    /// many new rows for a table.
     /// </summary>
     internal class TransitionRowSet : RowSet
     {
@@ -1407,23 +1409,15 @@ namespace Pyrrho.Level4
         internal readonly Query table; // will be a SqlInsert, QuerySearch or UpdateSearch
         readonly PTrigger.TrigType _tgt;
         internal readonly BTree<long, TriggerActivation> tb, ti, ta;
-        internal readonly Selector pkauto;
         internal readonly Index index;
         internal readonly Adapters _eqs;
-        internal readonly bool autokey;
-        internal TransitionRowSet(Transaction tr,Context cx,Query q, PTrigger.TrigType tg, Adapters eqs,bool autokey)
-            : base(tr,cx,q)
+        internal TransitionRowSet(Transaction tr,Context cx,Query q, PTrigger.TrigType tg, Adapters eqs)
+            : base(tr,cx,q,q.rowType,(q as Table)?.FindPrimaryIndex()?.keyType??q.rowType)
         {
             table = q;
             _eqs = eqs;
             var t = table as Table ?? table.simpleQuery as Table;
-            // Lookup the autoidentity if any (since we allow override for this)
             index = t.FindPrimaryIndex();
-            pkauto = null;
-            var tx0 = index?.cols[0] as Selector;
-            if (index != null && index.cols.Count == 1 && 
-                index.cols[0].domain.kind == Sqlx.INTEGER)
-                pkauto = tx0;
             // check now about conflict with generated columns
             if (q.Denied(tr,Grant.Privilege.Insert))
                 throw new DBException("42105",q);
@@ -1431,10 +1425,10 @@ namespace Pyrrho.Level4
             for (int i = 0; i < dt.Length; i++) // at this point q is the insert statement, simpleQuery is the base table
                 if (dt.columns[i] is TableColumn tc)
                 {
-                    if (tc != pkauto && tc.generated != PColumn.GenerationRule.No)
+                    if (tc.generated != PColumn.GenerationRule.No)
                         throw (tr as Transaction).Exception("0U000", tc.name).Mix();
                     var df = tc.domain.defaultValue;
-                    if (tc != pkauto && tc.generated == PColumn.GenerationRule.No)
+                    if (tc.generated == PColumn.GenerationRule.No)
                         defaults += (tc.defpos, df);
                 }
             _tgt = tg;
@@ -1494,6 +1488,7 @@ namespace Pyrrho.Level4
             readonly TransitionRowSet _trs;
             readonly RowBookmark _fbm;
             readonly TRow _row, _key;
+            readonly Index _index;
             /// <summary>
             /// There may be several triggers of any type, so we manage a set of transitition activations for each.
             /// These are for table before, table instead, table after, row before, row instead, row after.
@@ -1503,7 +1498,7 @@ namespace Pyrrho.Level4
             internal readonly BTree<long, TypedValue> newRow = BTree<long, TypedValue>.Empty; // computed from Session role
             public override TRow row => _row;
             public override TRow key => _key;
-            TransitionRowBookmark(Context _cx,TransitionRowSet trs, int pos, RowBookmark fbm) 
+            TransitionRowBookmark(Context _cx,TransitionRowSet trs, int pos, RowBookmark fbm, Index ix) 
                 : base(_cx,trs, pos, fbm._defpos)
             {
                 _trs = trs;
@@ -1541,8 +1536,8 @@ namespace Pyrrho.Level4
                         oldRow += (sl.defpos, tv);
                     }
                 }
-      //          if (trs.index != null)
-      //              trs._tr.CheckPrimaryKey(trs._tr,ref oldRow, trs.index,trs.autokey);
+                if (ix!=null)
+                    (oldRow,_index) = CheckPrimaryKey(oldRow, ix);
                 newRow = oldRow;
                 _row = new TRow(dt, oldRow);
                 _key = new TRow(trs.keyType, oldRow);
@@ -1553,13 +1548,48 @@ namespace Pyrrho.Level4
                 ri = Setup(trs._tr,q, q.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
                 ra = Setup(trs._tr,q, q.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
             }
+            /// <summary>
+            /// Implement the autokey feature: if a key column is an integer type,
+            /// the engine will pick a suitable unused value. 
+            /// The works cleverly for multi-column indexes. 
+            /// The transition rowset adds to a private copy of the index as there may
+            /// be several rows to add, and the null column(s!) might not be the first key column.
+            /// </summary>
+            /// <param name="fl"></param>
+            /// <param name="ix"></param>
+            /// <returns></returns>
+            static (BTree<long,TypedValue>,Index) CheckPrimaryKey(BTree<long,TypedValue> fl,Index ix)
+            {
+                var r = BList<TypedValue>.Empty;
+                var changed = false;
+                for (var i = 0; i < (int)ix.cols.Count; i++)
+                {
+                    var sc = ix.cols[i];
+                    var v = fl[sc.defpos];
+                    if (v != null)
+                        r += v;
+                    else
+                    {
+                        if (sc.domain.kind != Sqlx.INTEGER)
+                            throw new DBException("22004");
+                        v = ix.rows.NextKey(r, 0, i);
+                        if (v == TNull.Value)
+                            v = new TInt(0);
+                        fl += (sc.defpos, v);
+                        r += v;
+                    }
+                }
+                if (changed)
+                    ix += (Index.Tree, ix.rows + (new PRow(r), -1));
+                return (fl, ix);
+            }
             internal static TransitionRowBookmark New(Context _cx,TransitionRowSet trs)
             {
                 var from = trs.qry;
                 for (var fbm = _cx.rb; fbm != null; fbm = fbm.Next(_cx))
                 {
                     if (fbm.Matches() && Query.Eval(from.where,trs._tr,_cx))
-                        return new TransitionRowBookmark(_cx,trs, 0, fbm);
+                        return new TransitionRowBookmark(_cx,trs, 0, fbm,trs.index);
                 }
                 return null;
             }
@@ -1589,7 +1619,7 @@ namespace Pyrrho.Level4
                         return null;
                 for (var fbm = _fbm.Next(_cx); fbm != null; fbm = fbm.Next(_cx))
                 {
-                    var ret = new TransitionRowBookmark(_cx,_trs, 0, fbm);
+                    var ret = new TransitionRowBookmark(_cx,_trs, 0, fbm,_index);
                     for (var b = from.where.First(); b != null; b = b.Next())
                         if (b.value().Eval(_trs._tr, _cx) != TBool.True)
                             goto skip;

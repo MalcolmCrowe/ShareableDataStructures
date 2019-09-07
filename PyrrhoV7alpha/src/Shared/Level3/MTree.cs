@@ -98,11 +98,14 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal TypedValue NextKey(BList<TypedValue> key, int off, int cur)
         {
-            if (off<cur)
+            if (off < cur)
             {
                 var mt = Ensure(key, off);
-                return mt.NextKey(key, off+1, cur);
+                return mt.NextKey(key, off + 1, cur);
             }
+            var v = impl.Last().key();
+            if (v.dataType.kind==Sqlx.INTEGER)
+                return new TInt(v.ToInt()+1);
             return info.headType.defaultValue;
         }
         /// <summary>

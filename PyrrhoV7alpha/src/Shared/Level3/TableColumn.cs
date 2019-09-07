@@ -406,15 +406,13 @@ namespace Pyrrho.Level3
         public static PRow MakeKey(Index x,BTree<long,TypedValue> fl)
         {
             PRow r = null;
-            for (var i = (int)x.cols.Count-1; i >=0; i--)
-                r = new PRow(fl[x.cols[i].defpos],r);
-            return r;
-        }
-        public static PRow MakeKey(Index x, params TypedValue[] v)
-        {
-            PRow r = null;
-            for (var i = (int)x.cols.Count-1; i>=0; i--)
-                r = new PRow(v[i],r);
+            for (var i = (int)x.cols.Count - 1; i >= 0; i--)
+            {
+                var v = fl[x.cols[i].defpos];
+                if (v==null)
+                    return x.MakeAutoKey(fl);
+                r = new PRow(v, r);
+            }
             return r;
         }
         public PRow MakeKey(Index x)

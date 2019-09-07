@@ -200,7 +200,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The target rowset may be explicit</param>
         internal override Transaction Insert(Transaction tr, Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl, bool autokey = false)
+            Level cl)
         {
             int count = 0;
             if (Denied(tr, Grant.Privilege.Insert))
@@ -224,7 +224,7 @@ namespace Pyrrho.Level3
                 // (a subset of the user’s references)
                 cl = uc.ForInsert(classification);
             }
-            var trs = new TransitionRowSet(tr, _cx, this, PTrigger.TrigType.Insert, eqs, autokey);
+            var trs = new TransitionRowSet(tr, _cx, this, PTrigger.TrigType.Insert, eqs);
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
             tr = trs.InsertSA(tr, _cx);
@@ -294,7 +294,7 @@ namespace Pyrrho.Level3
             var count = 0;
             if (Denied(tr, Grant.Privilege.Delete))
                 throw new DBException("42105", name);
-            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Delete, eqs, false);
+            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Delete, eqs);
             var cl = tr.user.clearance;
             tr = trs.DeleteSB(tr, cx);
             var nr = tr.nextTid;
@@ -333,7 +333,7 @@ namespace Pyrrho.Level3
                 return tr;
             if (Denied(tr, Grant.Privilege.Insert))
                 throw new DBException("42105", name);
-            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Update, eqs, false);
+            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Update, eqs);
             var updates = BTree<long, UpdateAssignment>.Empty;
             SqlValue level = null;
             for (var ass=assigns.First();ass!=null;ass=ass.Next())
@@ -476,8 +476,8 @@ namespace Pyrrho.Level3
                         if (ordSpec != null && n < ordSpec.items.Count)
                         {
                             var ok = ordSpec.items[n];
-                            var sr = ValFor(ok.what);
-                            if (ok != null && ok.what.MatchExpr(this, sr))
+                            var sr = ValFor(ok);
+                            if (ok != null && ok.MatchExpr(this, sr))
                             {
                                 n++;
                                 sb *= 10;
