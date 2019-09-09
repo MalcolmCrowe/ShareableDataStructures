@@ -431,7 +431,7 @@ namespace Pyrrho.Level3
             if (names[n.ident] is Selector s)
             {
                 sub = n.sub;
-                n = new Ident(n,s.segpos);
+                n = new Ident(n,s.defpos);
                 return s.seq;
             }
             sub = null;

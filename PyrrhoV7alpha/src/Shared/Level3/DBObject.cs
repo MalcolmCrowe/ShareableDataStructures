@@ -158,13 +158,6 @@ namespace Pyrrho.Level3
             return Sqlx.NO;
 		}
         /// <summary>
-        /// Set the accessible columns for a Table, view, restview
-        /// </summary>
-        /// <param name="f">A query</param>
-        /// <param name="how">The privilege sought</param>
-        internal virtual void Setup(Transaction tr,Query f, Grant.Privilege how)
-        { }
-        /// <summary>
         /// Execute an Insert operation for a Table, View, RestView.
         /// The new or existing Rowsets may be explicit or in the physical database.
         /// Deal with triggers.

@@ -272,12 +272,6 @@ namespace Pyrrho.Level3
             if (next != null)
                 next.Obey(tr);
         }
-        internal override void SetupValues(Context cx)
-        {
-            var.SetupValues(cx);
-            if (next != null)
-                next.SetupValues(cx);
-        }
     }
 #endif
     /// <summary>

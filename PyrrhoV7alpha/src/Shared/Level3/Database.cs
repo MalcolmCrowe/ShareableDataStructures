@@ -240,11 +240,7 @@ namespace Pyrrho.Level3
             {
                 var r = databases[fn];
                 if (r != null)
-                {
-                    if (f.Length > r.loadpos)
-                        r.Load();
                     return r;
-                }
                 // otherwise the database is loading
                 Thread.Sleep(1000);
             }
@@ -255,7 +251,9 @@ namespace Pyrrho.Level3
         }
         public virtual Transaction Transact(long t,bool? auto=null)
         {
-            return new Transaction(this,t,auto??autoCommit);
+            // if not new, this database may be out of date: ensure we get the latest
+            var r = databases[name] ?? this;
+            return new Transaction(r,t,auto??autoCommit);
         }
         /// <summary>
         /// Build a ReadConstraint object

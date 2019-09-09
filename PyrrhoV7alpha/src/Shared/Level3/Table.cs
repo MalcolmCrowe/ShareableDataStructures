@@ -589,7 +589,6 @@ namespace Pyrrho.Level3
             var cx = new Context(tr);
             var f = this;
             SqlValue bt = new Parser(tr).ParseSqlValue(c.check, Domain.Bool);
-            bt = SqlValue.Setup(tr, cx, f, bt, Domain.Bool);
             f += (Where,bt);
             if (f.RowSets(tr,cx).First(cx) != null)
                 throw new DBException("44000", c.check).ISO();

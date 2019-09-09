@@ -347,7 +347,6 @@ namespace Pyrrho.Level3
             var oq = q.Push(tr);
             try
             {
-                SqlValue.Setup(tr,q,adp, Domain.Bool);
                 q.Conditions(tr, q);
                 for (var a = tr.context.refs.First(); a != null; a = a.Next())
                     if (a.value() == tr.refObj.defpos)

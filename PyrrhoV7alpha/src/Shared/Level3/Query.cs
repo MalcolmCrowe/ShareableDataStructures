@@ -411,10 +411,10 @@ namespace Pyrrho.Level3
         internal virtual void AddIn(Context _cx, RowBookmark rb)
         {
         }
-        internal virtual void SetReg(RowBookmark rb)
+        internal virtual void SetReg(Context _cx,TRow k)
         {
             for (var b = where.First(); b != null; b = b.Next())
-                b.value().SetReg(rb);
+                b.value().SetReg(_cx,k);
         }
         public static void Eqs(Transaction tr,Context cx, BTree<long, SqlValue> svs, ref Adapters eqs)
         {
@@ -1118,7 +1118,7 @@ namespace Pyrrho.Level3
             r = r.MoveHavings(tr, cx, fm);
             fm = (Query)cx.obs[fm.defpos];
             r = (TableExpression)r.AddPairs(fm);
-            var h = r.having;
+/*            var h = r.having;
             var w = r.where;
             if (r.group != null && r.group.sets.Count > 0)
             {
@@ -1141,7 +1141,7 @@ namespace Pyrrho.Level3
                     }
                 cx.Add(r + (Having, h));
                 cx.Add(qs + (Where, w));
-            }
+            } */
             return Refresh(cx);
         }
         internal TableExpression MoveHavings(Transaction tr,Context cx, Query q)
@@ -1428,8 +1428,8 @@ namespace Pyrrho.Level3
                             var found = false;
                             for (var bj = joinCond.First(); bj != null; bj = bj.Next())
                                 if (bj.value() is SqlValueExpr se
-                                    && (left ? se.left : se.right) is Selector sc && sc.defpos == bc.value().segpos
-                                    && (left ? se.right : se.left) is Selector sd && sd.defpos == br.value().segpos)
+                                    && (left ? se.left : se.right) is Selector sc && sc.defpos == bc.value().defpos
+                                    && (left ? se.right : se.left) is Selector sd && sd.defpos == br.value().defpos)
                                 {
                                     cs +=(bc.key(), se);
                                     found = true;
@@ -1467,7 +1467,7 @@ namespace Pyrrho.Level3
                             for (var bj = jc.First(); bj != null; bj = bj.Next())
                                 if (bj.value() is SqlValueExpr se
                                     && (left ? se.left : se.right) is Selector sc
-                                    && sc.defpos == bc.value().segpos)
+                                    && sc.defpos == bc.value().defpos)
                                 {
                                     cs +=(bc.key(), se);
                                     found = true;

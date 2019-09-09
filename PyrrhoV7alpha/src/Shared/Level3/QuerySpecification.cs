@@ -103,14 +103,6 @@ namespace Pyrrho.Level3
             //      q.CheckKnown(where,tr);
             r = (QuerySpecification)q.MoveConditions(cx, tableExp);
             r += (TableExp,tableExp.Conditions(tr,cx, q));
-            if (r.tableExp.having.Count > 0)
-            {
-                var h = BTree<long, SqlValue>.Empty;
-                for (var b=r.tableExp.having.First();b!=null;b=b.Next())
-                    h += (b.key(),SqlValue.Setup(tr, cx, q, b.value(), Domain.Bool));
-                q = q.Conditions(tr,cx,q);
-                r = (QuerySpecification)cx.obs[defpos];
-            }
             return AddPairs(r.tableExp);
         }
         internal override Query Orders(Transaction tr,Context cx,OrderSpec ord)

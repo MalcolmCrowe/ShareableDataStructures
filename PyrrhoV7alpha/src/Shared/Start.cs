@@ -1084,7 +1084,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[] 
 {
 	"Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-	"7.0 alpha"," (7 September 2019 1400 GMT)", " www.pyrrhodb.com"
+	"7.0 alpha"," (9 September 2019 0700 GMT)", " www.pyrrhodb.com"
 #if OSP
     , "Open Source Edition"
 #endif

@@ -21,7 +21,6 @@ namespace Pyrrho.Level3
             Axis = -280, // Sqlx
             Caption = -281, // string (C)
             ColumnPaths = -282, // BTree<long,bool>
-            Segpos = -284, // long
             Seq = -285, // int  
             Table = -286, // long
             UpdateRule = -287, // BList<UpdateAssignment>
@@ -33,7 +32,6 @@ namespace Pyrrho.Level3
         /// The defining position of the associated Table or -1 if none
         /// </summary>
         public long tabledefpos=>(long)mem[Table];
-        public long segpos => (long)mem[Segpos];
         /// <summary>
         /// The position in the default select list
         /// </summary>

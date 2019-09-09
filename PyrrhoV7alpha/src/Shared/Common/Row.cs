@@ -1259,10 +1259,10 @@ namespace Pyrrho.Common
                 if (dataType.names.Contains(n))
                 {
                     var s = dataType.names[n];
-                    return columns?[s.seq] ?? values?[s.segpos];
+                    return columns?[s.seq] ?? values?[s.defpos];
                 }
                 if (docCol >= 0)
-                    return columns?[docCol][n] ?? values?[dataType.columns[docCol].segpos][n];
+                    return columns?[docCol][n] ?? values?[dataType.columns[docCol].defpos][n];
                 return null;
             }
         }
@@ -1276,7 +1276,7 @@ namespace Pyrrho.Common
                     return columns[i];
                 for (var b = dataType.names.First(); b != null; b = b.Next())
                     if (b.value().seq == i)
-                        return values[b.value().segpos];
+                        return values[b.value().defpos];
                 return TNull.Value;
             }
         }

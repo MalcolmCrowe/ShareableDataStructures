@@ -211,7 +211,6 @@ namespace Pyrrho.Level4
         {
             Conds(sb, qry.where, " where ");
             Matches(sb);
-            Console.WriteLine(sb.ToString());
         }
         internal void Cols(StringBuilder sb,Index x)
         {

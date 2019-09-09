@@ -362,23 +362,6 @@ namespace Pyrrho.Level4
         /// The second point in time specified
         /// </summary>
         public SqlValue time2 = null;
-        /// <summary>
-        /// Whether we have set this up
-        /// </summary>
-        bool setupDone = false;
-        /// <summary>
-        /// Set up the specification expressions
-        /// </summary>
-        public void Setup(Transaction tr,Context cx,Query q)
-        {
-            if (setupDone)
-                return;
-            SqlValue.Setup(tr,cx,q,time1,Domain.UnionDate);
-            SqlValue.Setup(tr,cx,q,time2,Domain.UnionDate);
-            if (time2==null)
-                time2 = time1;
-            setupDone = true;
-        }
     }
     /// <summary>
     /// A Period Version class

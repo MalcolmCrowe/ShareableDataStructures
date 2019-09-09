@@ -5281,8 +5281,8 @@ namespace Pyrrho.Level4
             var ds = (r.from is SelectQuery sq) ? sq.display : r.from.rowType.Length;
             r+=(Query.Display,ds);
             r = (TableExpression)cx.Add(r);
-            return(TableExpression)r.Conditions(tr, cx, r);
-		}
+            return (TableExpression)r.Conditions(tr, cx, r);
+        }
         /// <summary>
 		/// FromClause = 	FROM TableReference { ',' TableReference } .
         /// </summary>

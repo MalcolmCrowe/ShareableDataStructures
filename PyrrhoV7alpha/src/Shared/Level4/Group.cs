@@ -46,10 +46,7 @@ namespace Pyrrho.Level4
                 qry = q;  grs = r; group = g;
      //           if (q.Check(g) is Ident nm) // needs more thought for views with passed-in where
      //               throw new DBException("42170",nm.ToString());
-                var len = (int)g.members.Count;
                 BList<Selector> ss = BList<Selector>.Empty; 
-                var dts = new List<Domain>();
-                var cns = new List<string>();
                 for (var b=g.members.First();b!=null;b=b.Next())
                 {
                     var sv = b.key();
@@ -71,12 +68,11 @@ namespace Pyrrho.Level4
                 for (var b = gb._grs.having.First(); b != null; b = b.Next())
                     if (b.value()?.Eval(gb._rs._tr,_cx) != TBool.True)
                         return;
-                var key = gb.key;
-                var aggsDone = BTree<long, bool?>.Empty;
+                var key = new TRow(nominalKeyType,gb.row.values);
                 GroupRow r = grs.g_rows[key] 
                     ?? new GroupRow(_cx,group.defpos,this, gb,nominalRowType, key);
                 for (int j = 0; j < nominalRowType.Length; j++)
-                    r.columns[j]?.SetReg(gb)?.AddIn(_cx,gb);
+                    r.columns[j]?.SetReg(_cx,key)?.AddIn(_cx,gb);
             }
             /// <summary>
             /// Construct the group key for the current row
@@ -154,7 +150,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The group information: gid->groupinfo
         /// </summary>
-        internal List<GroupInfo> info = new List<GroupInfo>();
+        internal BTree<long, GroupInfo> info = BTree<long, GroupInfo>.Empty;
         /// <summary>
         /// Constructor: called from QuerySpecification
         /// </summary>
@@ -163,14 +159,32 @@ namespace Pyrrho.Level4
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
         public GroupingRowSet(Context _cx, QuerySpecification q, RowSet rs, GroupSpecification gr, BTree<long,SqlValue> h)
-            : base(rs._tr,_cx,q)
+            : base(rs._tr,_cx,q,q.rowType,_Type(q,gr))
         {
             source = rs;
             having = h;
             groups = gr;
             for (var g = gr.sets.First();g!=null;g=g.Next())
-                info.Add(new GroupInfo(q, this, g.value()));
+                info+=(g.value().defpos,new GroupInfo(q, this, g.value()));
             building = true;
+        }
+        static Domain _Type(Query q,GroupSpecification gr)
+        {
+            var ss = BList<Selector>.Empty;
+            var ns = BTree<long, Selector>.Empty;
+            var i = 0;
+            for (var b=gr.sets.First();b!=null;b=b.Next())
+                for (var c=b.value().members.First();c!=null;c=c.Next())
+                {
+                    var s = c.key();
+                    if (!ns.Contains(s.defpos))
+                    {
+                        var se = new Selector(s.name, s.defpos, s.nominalDataType, i++);
+                        ss += se;
+                        ns += (s.defpos, se);
+                    }
+                }
+            return new Domain(ss);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -208,20 +222,23 @@ namespace Pyrrho.Level4
             g_rows = new CTree<TRow, GroupRow>(source.keyType);
             for (var rb = _First(_cx) as GroupingBookmark; rb != null; 
                 rb = rb.Next(_cx) as GroupingBookmark)
-                foreach (var gi in info)
-                    gi.AddIn(_cx,rb);
+                for(var gi=info.First();gi!=null;gi=gi.Next())
+                    gi.value().AddIn(_cx, rb);
             building = false;
             rows = new CTree<TRow, TRow>(source.keyType);
             for (var rg = g_rows.First(); rg != null; rg = rg.Next())
             {
                 var rw = rg.value();
-                PRow v = null;
+                for (var i=0;i< rowType.Length;i++)
+                    if (_cx.func[rw[i].defpos] is FunctionData fd)
+                        fd.cur = fd.regs[rg.key()];
+                var vs = BTree<long, TypedValue>.Empty;
                 for (var i = rowType.Length - 1; i >= 0; i--)
                     if (rw[i] is SqlValue sv)
-                        v = new PRow(sv.Eval(_tr,_cx), v);
-                rows +=(rg.key(), new TRow(rowType, v));
+                        vs += (sv.defpos, sv.Eval(_tr, _cx));
+                rows +=(rg.key(), new TRow(rowType, vs));
             }
-            g_rows = null;
+            g_rows = null; 
         }
         /// <summary>
         /// Bookmark implementation
@@ -249,41 +266,25 @@ namespace Pyrrho.Level4
 
             public override TRow key => _key;
 
-            GroupingBookmark(Context _cx,GroupingRowSet grs, RowBookmark bbm,
+            GroupingBookmark(Context _cx, GroupingRowSet grs, RowBookmark bbm,
                 ABookmark<TRow, TRow> ebm, int pos)
-                : base(_cx,grs, pos, (bbm != null) ? bbm._defpos : 0)
+                : base(_cx, grs, pos, (bbm != null) ? bbm._defpos : 0)
             {
                 _grs = grs;
                 _bbm = bbm;
                 _ebm = ebm;
-                var v = _Value(_cx,ebm);
-                _row = new TRow(grs.rowType, v);
-                _key = new TRow(grs.keyType, v);
-            }
-            static BTree<long,TypedValue> _Value(Context _cx, ABookmark<TRow,TRow> rb)
-            {
-                var v = BTree<long, TypedValue>.Empty;
-                var r = rb.key();
-                for (var b = r.dataType.columns.First(); b != null; b = b.Next())
+                if (ebm == null) // during building
                 {
-                    var c = b.value().defpos;
-                    v += (c, r[c]);
+                    var vs = _cx.values;
+                    _row = new TRow(grs.source.rowType, vs);
+                    _key = new TRow(grs.source.keyType, vs);
                 }
-                r = rb.value();
-                for (var b = r.dataType.columns.First(); b != null; b = b.Next())
-                {
-                    var c = b.value().defpos;
-                    v += (c, r[c]);
+                else {
+                    var vs = ebm.value().values;
+                    _row = new TRow(grs.qry.rowType, vs);
+                    _key = new TRow(grs.keyType, vs);
+                    _cx.Add(grs.qry, this);
                 }
-                return v;
-            }
-            bool needed(Transaction tr,int i)
-            {
-                if (i >= _rs.qry.display)
-                    return false;
-                if (_rs.qry.cols[i].Check(tr,_grs.groups))
-                    return true;
-                return false;
             }
             internal static GroupingBookmark New(Context _cx,GroupingRowSet grs)
             {
@@ -342,7 +343,7 @@ namespace Pyrrho.Level4
 
             internal override TableRow Rec()
             {
-                throw new System.NotImplementedException();
+                return null;
             }
         }
     }

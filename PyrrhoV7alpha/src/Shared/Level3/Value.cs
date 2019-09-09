@@ -45,7 +45,6 @@ namespace Pyrrho.Level3
         internal const long
             _Alias = -315, // string
             _From = -316, // Query
-            IsSetup = -317, // bool
             Left = -318, // SqlValue
             NominalType = -319, // Domain
             Right = -320, // SqlValue
@@ -56,7 +55,6 @@ namespace Pyrrho.Level3
         internal SqlValue right => (SqlValue)mem[Right];
         internal SqlValue sub => (SqlValue)mem[Sub];
         internal string alias => (string)mem[_Alias];
-        internal bool isSetup => (bool)(mem[IsSetup]??false);
         internal Query from => (Query)mem[_From];
         protected SqlValue(long dp,BTree<long,object> m):base(dp,m)
         { }
@@ -207,28 +205,6 @@ namespace Pyrrho.Level3
             if (group.Has(this))
                 return false;
             return false;
-        }
-        /// <summary>
-        /// analysis stage Sources() and Selects(): setup SqlValue operands
-        /// </summary>
-        /// <param name="d">The required data type or null</param>
-        internal virtual SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            return (nominalDataType==Domain.Null)?this+(NominalType,d):this;
-        }
-        internal static SqlValue Setup(Transaction tr,Context cx,Query q,SqlValue v,Domain d)
-        {
-            if (v == null)
-                return null;
-            if (v is Selector sn)
-                throw new PEException("PE425");
-            d = d.LimitBy(v.nominalDataType);
-            return (SqlValue)v.New(v._Setup(tr, cx, q, d).mem+(IsSetup,true));
-        }
-        internal static void Setup(Transaction tr, Context cx, Query q, BTree<long,SqlValue>t, Domain d)
-        {
-            for (var b = t.First(); b != null; b = b.Next())
-                Setup(tr, cx, q, b.value(), d);
         }
         /// <summary>
         /// analysis stage Conditions(). See if q can fully evaluate this.
@@ -513,12 +489,12 @@ namespace Pyrrho.Level3
             return gs?.Has(this)==true;
         }
         /// <summary>
-        /// If this value contains an aggregator, set the regiser for it.
+        /// If this value contains an aggregator, set the register for it.
         /// If not, return null and the caller will make a Literal.
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
-        internal virtual SqlValue SetReg(RowBookmark rb)
+        internal virtual SqlValue SetReg(Context _cx,TRow k)
         {
             return null;
         }
@@ -593,10 +569,6 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlTreatExpr(defpos,m);
-        }
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            return Setup(tr,cx,q,val,nominalDataType);
         }
         internal override DBObject Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -737,186 +709,7 @@ namespace Pyrrho.Level3
         { // parsing guarantees right associativity
             return (kind == Sqlx.AND)? right.Disjoin()+(left.defpos, left):base.Disjoin();
         }
-        /// <summary>
-        /// analysis stage Selects(): setup the operands
-        /// </summary>
-        /// <param name="q">The required data type</param>
-        /// <param name="s">a default value</param>
-        internal override SqlValue _Setup(Transaction tr, Context cx, Query q, Domain d)
-        {
-            var m = mem;
-            switch (kind)
-            {
-                case Sqlx.AND:
-                    CheckType(d, Domain.Bool);
-                    m = m + (Left, left._Setup(tr, cx, q, d)) + (Right, right._Setup(tr, cx, q, d));
-                    break;
-                case Sqlx.ASC:
-                    CheckType(d, Domain.UnionNumeric);
-                    m += (Left, left._Setup(tr, cx, q, d)); break;// JavaScript;
-                case Sqlx.ASSIGNMENT:
-                    {
-                        m = m + (Left, left._Setup(tr, cx, q, Domain.Content));
-                        var r = right._Setup(tr, cx, q, left.nominalDataType);
-                        m += (Right, r);
-                        d = _Type(d, r);
-                        break;
-                    }
-                case Sqlx.BOOLEAN:
-                    CheckType(d, Domain.Bool);
-                    m += (Left, left._Setup(tr, cx, q, Domain.Bool)); break;
-                case Sqlx.CALL:
-                    CheckType(Domain.JavaScript, Domain.ArgList);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.JavaScript))
-                    + (Right, right._Setup(tr, cx, q, Domain.ArgList));
-                    break;
-                case Sqlx.COLLATE:
-                    CheckType(d, Domain.Char);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Char))
-                    + (Right, right._Setup(tr, cx, q, Domain.Char));
-                    break;
-                case Sqlx.COLON: // JavaScript
-                    {
-                        var lf = left._Setup(tr, cx, q, Domain.Content);
-                        m = m + (Left, lf)
-                        + (Right, right._Setup(tr, cx, q, left.nominalDataType));
-                        d = _Type(d, lf);
-                        break;
-                    }
-                case Sqlx.COMMA: // JavaScript
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Char))
-                    + (Right, right._Setup(tr, cx, q, Domain.Content));
-                    break;
-                case Sqlx.CONCATENATE: goto case Sqlx.COLLATE;
-                case Sqlx.CONTAINS:
-                    CheckType(d, Domain.Bool);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Period))
-                    + (Right, right._Setup(tr, cx, q, Domain.Content)); // Can be UnionDate or left.nominalDataType
-                    break;
-                case Sqlx.DESC: goto case Sqlx.ASC;
-                case Sqlx.DIVIDE: goto case Sqlx.TIMES;
-                case Sqlx.DOT:
-                    d = right.nominalDataType;
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Content))
-                        + (Right, right._Setup(tr, cx, q, d));
-                    break;
-                case Sqlx.EQL:
-                    CheckType(d, Domain.Bool);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Content))
-                    + (Right, right._Setup(tr, cx, q, left.nominalDataType));
-                    break;
-                case Sqlx.EQUALS: goto case Sqlx.OVERLAPS;
-                case Sqlx.EXCEPT: goto case Sqlx.UNION;
-                case Sqlx.GEQ: goto case Sqlx.EQL;
-                case Sqlx.GTR: goto case Sqlx.EQL;
-                case Sqlx.INTERSECT: goto case Sqlx.UNION;
-                case Sqlx.LBRACK:
-                    {
-                        var lf = left._Setup(tr, cx, q, Domain.Array);
-                        CheckType(d, left.nominalDataType.elType);
-                        d = left.nominalDataType.elType;
-                        m = m + (Left, lf) + (Right, right._Setup(tr, cx, q, Domain.Int));
-                        break;
-                    }
-                case Sqlx.LEQ: goto case Sqlx.EQL;
-                case Sqlx.LOWER: goto case Sqlx.UPPER; //JavaScript >>
-                case Sqlx.LSS: goto case Sqlx.EQL;
-                case Sqlx.MINUS:
-                    if (left == null)
-                    {
-                        m += (Right, right._Setup(tr, cx, q, d));
-                        d = right.nominalDataType;
-                        break;
-                    }
-                    goto case Sqlx.PLUS;
-                case Sqlx.NEQ: goto case Sqlx.EQL;
-                case Sqlx.NO:
-                    m += (Left, left._Setup(tr, cx, q, d));
-                    d = _Type(d, left);
-                    break;
-                case Sqlx.NOT:
-                    CheckType(d, Domain.Bool);
-                    m += (Left, left._Setup(tr, cx, q, d)); break;
-                case Sqlx.OR: goto case Sqlx.AND;
-                case Sqlx.OVERLAPS:
-                    CheckType(d, Domain.Bool);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.UnionDate))
-                    + (Right, right._Setup(tr, cx, q, left.nominalDataType));
-                    break;
-                case Sqlx.PERIOD:
-                    if (d == Domain.Content || d == Domain.Value)
-                        d = Domain.UnionDate;
-                    m = m + (Left, left._Setup(tr, cx, q, d))
-                    + (Right, right._Setup(tr, cx, q, left.nominalDataType));
-                    break;
-                case Sqlx.PLUS:
-                    {
-                        Domain nt = FindType(Domain.UnionDateNumeric);
-                        if (nt.kind == Sqlx.INTERVAL)
-                        {
-                            m = m + (Left, left._Setup(tr, cx, q, left.nominalDataType))
-                            + (Right, right._Setup(tr, cx, q, right.nominalDataType));
-                        }
-                        else if (nt.kind == Sqlx.DATE || nt.kind == Sqlx.TIME || nt.kind == Sqlx.TIMESTAMP)
-                        {
-                            m = m + (Left, left._Setup(tr, cx, q, left.nominalDataType))
-                            + (Right, right._Setup(tr, cx, q, Domain.Interval));
-                        }
-                        else
-                        {
-                            CheckType(d, nt);
-                            m = m + (Left, left._Setup(tr, cx, q, nt))
-                            + (Right, right._Setup(tr, cx, q, nt));
-                            d = nt;
-                        }
-                    }
-                    break;
-                case Sqlx.PRECEDES: goto case Sqlx.OVERLAPS;
-                case Sqlx.QMARK: // JavaScript
-                    {
-                        m += (Left, left._Setup(tr, cx, q, Domain.Bool));
-                        var r = right._Setup(tr, cx, q, Domain.Content);
-                        m += (Right, r);
-                        d = _Type(d, r);
-                        break;
-                    }
-                case Sqlx.RBRACK:
-                    m = m + (Left, left._Setup(tr, cx, q, new Domain(Sqlx.ARRAY, d)))
-                    + (Right, right._Setup(tr, cx, q, Domain.Int));
-                    break;
-                case Sqlx.SET:
-                    d = _Type(d, left);
-                    break;
-                case Sqlx.SUCCEEDS: goto case Sqlx.OVERLAPS;
-                case Sqlx.TIMES:
-                    d = Domain.UnionNumeric;
-                    CheckType(d, Domain.UnionNumeric);
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.UnionNumeric))
-                    + (Right, right._Setup(tr, cx, q, Domain.UnionNumeric));
-                    break;
-                case Sqlx.UNION:
-                    {
-                        var lf = left._Setup(tr, cx, q, Domain.Collection);
-                        m = m + (Left, lf)
-                        + (Right, right._Setup(tr, cx, q, left.nominalDataType));
-                        d = _Type(d, lf);
-                        break;
-                    }
-                case Sqlx.UPPER:
-                    CheckType(Domain.Int, Domain.Int); // JvaScript shift <<
-                    m = m + (Left, left._Setup(tr, cx, q, Domain.Int))
-                    + (Right, right._Setup(tr, cx, q, Domain.Int));
-                    break;
-                case Sqlx.XMLATTRIBUTES: goto case Sqlx.COLLATE;
-                case Sqlx.XMLCONCAT: goto case Sqlx.COLLATE;
-                default:
-                    throw new DBException("22005V", d.ToString(),
-                        (q.rowType ?? Domain.Content).ToString()).ISO()
-                        .AddType(d);
-            }
-            return new SqlValueExpr(defpos, m + (NominalType, d));
-        }
-        internal override SqlValue Import(Query q)
+         internal override SqlValue Import(Query q)
         {
             if (left.Import(q) is SqlValue a)
             {
@@ -1214,10 +1007,10 @@ namespace Pyrrho.Level3
             left?._AddIn(_cx,rb, ref aggsDone);
             right?._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            left?.SetReg(rb);
-            right?.SetReg(rb);
+            left?.SetReg(_cx,k);
+            right?.SetReg(_cx,k);
             return this;
         }
         internal override void OnRow(RowBookmark bmk)
@@ -2130,12 +1923,6 @@ namespace Pyrrho.Level3
         {
             return val ?? nominalDataType.defaultValue;
         }
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            if (d.kind != Sqlx.Null && (val == null || !val.dataType.EqualOrStrongSubtypeOf(d)))
-                return this+ (_Val, d.Coerce(val));
-            return this;
-        }
         public override int CompareTo(object obj)
         {
             var that = obj as SqlLiteral;
@@ -2300,11 +2087,11 @@ namespace Pyrrho.Level3
             for (var i = 0; i < columns.Count; i++)
                 columns[i]._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
             var nulls = true;
             for (var i = 0; i < columns.Count; i++)
-                if (columns[i].SetReg(rb) != null)
+                if (columns[i].SetReg(_cx,k) != null)
                     nulls = false;
             return nulls ? null : this;
         }
@@ -2401,11 +2188,11 @@ namespace Pyrrho.Level3
             for (var i = 0; i < rows.Count; i++)
                 rows[i]._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
             var nulls = true;
             for (var i = 0; i < rows.Count; i++)
-                if (rows[i].SetReg(rb) != null)
+                if (rows[i].SetReg(_cx,k) != null)
                     nulls = false;
             return nulls ? null : this;
         }
@@ -2423,8 +2210,11 @@ namespace Pyrrho.Level3
             GroupingRowSet.GroupingBookmark gb, Domain gt, TRow key)
             : base(dp, BTree<long, object>.Empty
                   + (Info, gi.group.members) + (NominalType, gt)
-                  + (Columns, _Columns(_cx,dp,gi,gb, key))) { }
-        static BList<SqlValue> _Columns(Context _cx, long dp,GroupingRowSet.GroupInfo gi,
+                  + (Columns, _Columns(_cx,gi,gb, key)))
+        {
+            gb._grs.g_rows += (key, this);
+        }
+        static BList<SqlValue> _Columns(Context _cx, GroupingRowSet.GroupInfo gi,
             GroupingRowSet.GroupingBookmark gb,TRow key)
         {
             var dt = ((GroupingRowSet)gb._rs).qry.rowType;
@@ -2433,13 +2223,12 @@ namespace Pyrrho.Level3
             {
                 var c = dt.columns[j];
                 var sc = gi.grs.qry.cols[j];
-                columns += (key[c.name] is TypedValue tv) ? new SqlLiteral(dp,tv)
-                        : sc.SetReg(gb) ?? new SqlLiteral(dp,sc.Eval(_cx,gb) ?? TNull.Value);
+                columns += (key[c.defpos] is TypedValue tv) ? new SqlLiteral(c.defpos,tv)
+                        : sc.SetReg(_cx,key) ?? new SqlLiteral(-1,_cx.values[sc.defpos] ?? TNull.Value);
             }
             return columns;
 /*            for (var b = gi.grs.having.First(); b != null; b = b.Next())
-                b.value().AddIn(gi.grs);
-            gi.grs.g_rows+=(key, this); */
+                b.value().AddIn(gi.grs); */
         }
         /// <summary>
         /// the value
@@ -2767,9 +2556,9 @@ namespace Pyrrho.Level3
         {
             aqe.AddIn(_cx,rb);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            aqe.SetReg(rb);
+            aqe.SetReg(_cx,k);
             return this;
         }
         public override string ToString()
@@ -2812,27 +2601,6 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlValueArray(defpos,m);
-        }
-        /// <summary>
-        /// analysis stage Selects(): Setup the array elements
-        /// </summary>
-        /// <param name="q">The required data type or null</param>
-        /// <param name="s">the defaullt select</param>
-        /// <returns>the possibly new SqlValue</returns>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            var t = nominalDataType.elType ?? Domain.Value;
-            if (svs != null)
-                return this+(Svs,svs._Setup(tr, cx, q, d));
-            var r = this;
-            for (int j = 0; j < array.Count; j++)
-            {
-                r = (SqlValueArray)Setup(tr,cx,q,array[j], t);
-                t = t.LimitBy(array[j].nominalDataType);
-            }
-            if (t!=nominalDataType.elType)
-                r += (NominalType,new Domain(Sqlx.ARRAY,t));
-            return r;
         }
         internal override DBObject Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -2919,14 +2687,14 @@ namespace Pyrrho.Level3
             svs?.AddIn(_cx,rb);
             base._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
             var nulls = true;
             if (array != null)
                 for (var i = 0; i < array.Count; i++)
-                    if (array[i].SetReg(rb) != null)
+                    if (array[i].SetReg(_cx,k) != null)
                         nulls = false;
-            if (svs?.SetReg(rb) != null)
+            if (svs?.SetReg(_cx,k) != null)
                 nulls = false;
             return nulls ? null : this;
         }
@@ -2999,14 +2767,6 @@ namespace Pyrrho.Level3
                 tv = targetType.Coerce(tv);
             return tv;
         }
-        /// <summary>
-        /// analysis stage Selects(): setup the results of the subquery
-        /// </summary>
-        /// <param name="q">The required data type or null</param>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            return this+(IsSetup,true)+(TargetType,targetType ?? d);
-        }
         internal override bool aggregates()
         {
             return expr.aggregates();
@@ -3027,9 +2787,9 @@ namespace Pyrrho.Level3
         {
             expr.AddIn(_cx,rb);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            expr.SetReg(rb);
+            expr.SetReg(_cx,k);
             return this;
         }
         public override string ToString()
@@ -3176,11 +2936,11 @@ namespace Pyrrho.Level3
                 if (call.parms[i].IsFrom(rb._rs.qry))
                     call.parms[i]._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
             var nulls = true;
             for (var i = 0; i < call.parms.Count; i++)
-                if (call.parms[i].SetReg(rb) != null)
+                if (call.parms[i].SetReg(_cx,k) != null)
                     nulls = false;
             return nulls ? null : this;
         }
@@ -3209,34 +2969,7 @@ namespace Pyrrho.Level3
         {
             return new SqlProcedureCall(defpos, m);
         }
-        /// <summary>
-        /// analysis stage Selects(): set up the operands
-        /// </summary>
-        /// <param name="q">The required data type or null</param>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            var r = this;
-            if (call.proc == null)
-            {
-                r += (Call,call+(CallStatement.Proc,tr.role.procedures[call.name]?[(int)call.parms.Count]));
-                if (r.call.proc == null)
-                {
-                    UDType ut = call.var.nominalDataType as UDType;
-                    if (ut == null)
-                        throw new DBException("42108", ((Selector)call.var).name).Mix();
-                    r += (Call,call+(CallStatement.RetType, d)
-                        +(CallStatement.Proc,ut.methods[call.name]?[(int)call.parms.Count]));
-                }
-            }
-            if (r.call.proc != null)
-            {
-                //              if (call.proc.Returns(call.database) == null)
-                //              new Parser(transaction).ReparseFormals(call.database,call.proc);
-                r +=(NominalType,call.proc.retType);
-            }
-            return r;
-        }
-        /// <summary>
+         /// <summary>
         /// evaluate the procedure call
         /// </summary>
         internal override TypedValue Eval(Transaction tr,Context cx)
@@ -3296,36 +3029,6 @@ namespace Pyrrho.Level3
             return new SqlMethodCall(defpos,m);
         }
         /// <summary>
-        /// analysis stage Selects(): setup the method call so it can be evaluated
-        /// </summary>
-        /// <param name="q">The required data type or null</param>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            var r = this;
-   //         if (call.var != null && call.var is Selector)
-   //             call.var = (call.var.name.scope as Query)?.defs[call.var.name];
-            if (call.proc == null)
-            {
-                var v = call.var;
-                if (v != null)
-                {
-                    var ut = v.nominalDataType as UDType;
-                    if (ut == null)
-                        throw new DBException("42108", v.nominalDataType.name).Mix();
-                    r += (Call,call+(CallStatement.Proc,ut.methods[call.name]?[(int)call.parms.Count]));
-                }
-            }
-            if (r.call.proc != null)
-            {
-                var rk = call.proc.retType;
-                if (rk.Constrain(d) == null)
-                    throw new DBException("42161", d, rk).Mix();
-                r +=(Call,call+(CallStatement.RetType,rk));
-                r += (NominalType,rk);
-            }
-            return r;
-        }
-        /// <summary>
         /// Evaluate the method call and return the result
         /// </summary>
         internal override TypedValue Eval(Transaction tr,Context cx)
@@ -3381,17 +3084,6 @@ namespace Pyrrho.Level3
                 r += (Sce, sc);
             cx.done += (defpos, r);
             return r;
-        }
-        /// <summary>
-        /// Analysis stage Selects(): setup the constructor call so that we can call it
-        /// </summary>
-        /// <param name="q">the context</param>
-        /// <param name="q">The required data type or null</param>
-        /// <param name="s">a default select to use</param>
-        /// <returns></returns>
-        internal override SqlValue _Setup(Transaction t, Context cx,Query q, Domain d)
-        {
-            return this+(Sce,new SqlRow(defpos,d,BList<SqlValue>.Empty));
         }
         /// <summary>
         /// evaluate the constructor and return the new object
@@ -3586,151 +3278,6 @@ namespace Pyrrho.Level3
             return val?.Operand();
         }
         /// <summary>
-        /// analysis stage Selects(): set up operands
-        /// </summary>
-        /// <param name="d">The required data type or null</param>
-        /// <param name="s">a default select</param>
-        /// <returns></returns>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            var r = this;
-            var tx = query as TableExpression;
-            var qs = query as QuerySpecification;
-            if (qs != null)
-                tx = qs.tableExp;
-            if (tx != null && mem.Contains(WindowId))
-            {
-                if (tx.window[windowId] == null)
-                    throw new DBException("42161", windowId).Mix();
-                r += (Window,tx.window[windowId]);
-            }
-            switch (kind)
-            {
-                case Sqlx.ABS:
-                    return r+(_Val,Setup(tr,cx,q,val,FindType(Domain.UnionNumeric))); 
-                case Sqlx.ANY:
-                    return r+(_Val,Setup(tr, cx,q, val, Domain.Bool));
-                case Sqlx.AVG:
-                    return r+(_Val,Setup(tr, cx, q, val, FindType(Domain.UnionNumeric)));
-                case Sqlx.ARRAY:
-                    return r+(_Val,Setup(tr, cx, q, val, Domain.Collection));  // Mongo $push
-                case Sqlx.CARDINALITY:
-                    return r+(_Val,Setup(tr, cx, q, val, Domain.Int)); ;
-                case Sqlx.CASE:
-                    return r+(_Val,Setup(tr, cx, q, val, d))
-                    +(Op1,Setup(tr, cx, q, op1,val.nominalDataType))
-                    +(Op2,Setup(tr, cx, q, op2,val.nominalDataType)); 
-                case Sqlx.CAST:
-                    return r +(_Val,Setup(tr, cx, q, val,val.nominalDataType))
-                    +(Monotonic,((SqlTypeExpr)op1).type.kind != Sqlx.CHAR 
-                    && val.nominalDataType.kind != Sqlx.CHAR);
-                case Sqlx.CEIL: goto case Sqlx.CEILING;
-                case Sqlx.CEILING:
-                    return r+(_Val,Setup(tr, cx, q, val,FindType(Domain.UnionNumeric)));
-                case Sqlx.CHAR_LENGTH:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Char)); 
-                case Sqlx.CHARACTER_LENGTH: goto case Sqlx.CHAR_LENGTH;
-                case Sqlx.CHECK: break;
-                case Sqlx.COLLECT:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Collection));
-                case Sqlx.COUNT:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Int));
-                case Sqlx.CURRENT_DATE: 
-                case Sqlx.CURRENT_TIME: 
-                case Sqlx.CURRENT_TIMESTAMP: return r + (Monotonic, true);
-                case Sqlx.ELEMENT:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Collection));
-                case Sqlx.EXP:
-                    return r+(_Val,Setup(tr, cx, q, val, Domain.Real))+(Monotonic,true);
-                case Sqlx.EVERY: goto case Sqlx.ANY;
-                case Sqlx.EXTRACT:
-                    return r+(_Val,Setup(tr,cx,q,val,Domain.UnionDate))
-                        +(Monotonic,mod == Sqlx.YEAR);
-                case Sqlx.FLOOR: goto case Sqlx.CEIL;
-                case Sqlx.FIRST:
-                    return r+(_Val,Setup(tr, cx, q, val, Domain.Content)); // Mongo
-                case Sqlx.FUSION: goto case Sqlx.COLLECT;
-                case Sqlx.INTERSECTION: goto case Sqlx.COLLECT;
-                case Sqlx.LAST: goto case Sqlx.FIRST;
-                case Sqlx.SECURITY:
-                    if (cx.user.defpos != tr.owner)
-                        throw new DBException("42105", this);
-                    return r+(_Val,Setup(tr, cx, q, val, Domain._Level));
-                case Sqlx.LN: goto case Sqlx.EXP;
-                case Sqlx.LOCALTIME: goto case Sqlx.CURRENT_TIME;
-                case Sqlx.LOCALTIMESTAMP: goto case Sqlx.CURRENT_TIMESTAMP;
-                case Sqlx.LOWER:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Char));
-                case Sqlx.MAX:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Content));
-                case Sqlx.MIN: goto case Sqlx.MAX;
-                case Sqlx.MOD:
-                    return r+(Op1,Setup(tr, cx, q, op1,FindType(Domain.UnionNumeric)))
-                    +(Op2,Setup(tr, cx, q, op2,op1.nominalDataType));
-                case Sqlx.NEXT: break;
-                case Sqlx.NORMALIZE:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Char));
-                case Sqlx.NULLIF:
-                    return r+(Op1,Setup(tr, cx, q, op1,Domain.Content))
-                    +(Op2,Setup(tr, cx, q, op2,op1.nominalDataType));
-                case Sqlx.OCTET_LENGTH: goto case Sqlx.CHAR_LENGTH;
-                case Sqlx.OVERLAY: goto case Sqlx.NORMALIZE;
-                case Sqlx.POSITION:
-                    r+=(Op1,Setup(tr,cx, q, op1, Domain.Char));
-                    if (op1!=null)
-                        r+=(Op2,Setup(tr, cx, q, op2, op1.nominalDataType));
-                    return r;
-                case Sqlx.POWER: goto case Sqlx.EXP;
-                case Sqlx.PROVENANCE: break;
-                case Sqlx.RANK: 
-                    return r+(_Val,Setup(tr,cx,q,val,FindType(Domain.UnionNumeric)));
-                case Sqlx.ROW_NUMBER: break;
-                case Sqlx.SET: goto case Sqlx.COLLECT;
-                case Sqlx.SOME: goto case Sqlx.ANY;
-                case Sqlx.STDDEV_POP:
-                    return r+(_Val,Setup(tr,cx,q,val, Domain.Real));
-                case Sqlx.STDDEV_SAMP: goto case Sqlx.STDDEV_POP;
-                case Sqlx.SUBSTRING:
-                    return r+(_Val,Setup(tr,cx, q, val,Domain.Char))
-                    +(Op1,Setup(tr, cx,q, op1,Domain.Int))
-                    +(Op2,Setup(tr,cx, q, op2,Domain.Int));
-                case Sqlx.SUM:
-                    return r+(_Val,Setup(tr,cx, q, val,FindType(Domain.UnionNumeric)));
-                case Sqlx.TRANSLATE:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Char));
-                case Sqlx.TRIM:
-                    return r+(_Val,Setup(tr, cx, q, val,Domain.Char))
-                    +(Op1,Setup(tr,cx, q, op1,val.nominalDataType));
-                case Sqlx.TYPE_URI:
-                    return r+(Op1,Setup(tr, cx,q, op1,Domain.Content));
-                case Sqlx.UPPER: goto case Sqlx.LOWER;
-                case Sqlx.WHEN:
-                    return r+(_Val,Setup(tr, cx, q, val,d))
-                    +(Op1,Setup(tr, cx, q, op1,Domain.Bool))
-                    +(Op2,Setup(tr, cx, q, op2,val.nominalDataType));
-                case Sqlx.XMLCAST: goto case Sqlx.CAST;
-                case Sqlx.XMLAGG: goto case Sqlx.LOWER;
-                case Sqlx.XMLCOMMENT: goto case Sqlx.LOWER;
-                case Sqlx.XMLPI: goto case Sqlx.LOWER;
-                //      case Sqlx.XMLROOT: goto case Sqlx.LOWER;
-                case Sqlx.XMLQUERY:
-                    return r+(Op1,Setup(tr,cx, q, op1,Domain.Char))
-                    +(Op2,Setup(tr,cx, q, op2,op1.nominalDataType));
-            }
-            return this;
-        }
-        /// <summary>
-        /// conditions processing
-        /// </summary>
-        /// <param name="q">the context</param>
-        internal override Query Conditions(Transaction tr,Context cx, Query q, bool disj,out bool move)
-        {
-            move = false;
-            var f = Setup(tr,cx, q, this, Domain.Bool);
-            cx.Replace(this,f);
-            return (Query)cx.done[defpos];
-        }
-        /// <summary>
         /// Prepare Window Function evaluation
         /// </summary>
         /// <param name="tr"></param>
@@ -3888,10 +3435,10 @@ namespace Pyrrho.Level3
             RowBookmark firstTie = null;
             if (rb==null || fd.building == true)
                 return null;
-  /*          if (query is Query q0 && tr.Ctx(q0.blockid) is Query q 
-                && ((q.rowSet is GroupingRowSet g && !g.building 
-                && g.g_rows == null) || q.rowSet is ExportedRowSet))
-                    return q.row?.Get(alias ?? name); */
+            /*          if (query is Query q0 && tr.Ctx(q0.blockid) is Query q 
+                          && ((q.rowSet is GroupingRowSet g && !g.building 
+                          && g.g_rows == null) || q.rowSet is ExportedRowSet))
+                              return q.row?.Get(alias ?? name); */
             if (window != null)
             {
                 if (fd.valueInProgress)
@@ -3899,41 +3446,41 @@ namespace Pyrrho.Level3
                 fd.valueInProgress = true;
                 PRow ks = null;
                 for (var i = window.partition - 1; i >= 0; i--)
-                    ks = new PRow(window.order.items[i].Eval(cx,rb), ks);
-                fd.cur = fd.regs[new TRow(window.partitionType,ks)];
+                    ks = new PRow(window.order.items[i].Eval(cx, rb), ks);
+                fd.cur = fd.regs[new TRow(window.partitionType, ks)];
                 fd.cur.Clear();
                 fd.cur.wrs.building = false; // ? why should it be different?
                 ks = null;
                 for (var i = (int)window.order.items.Count - 1; i >= window.partition; i--)
-                    ks = new PRow(window.order.items[i].Eval(cx,rb), ks);
+                    ks = new PRow(window.order.items[i].Eval(cx, rb), ks);
                 var dt = rb._rs.qry.rowType;
-                for (var b = firstTie = fd.cur.wrs.PositionAt(cx,ks); b != null; b = b.Next(cx))
+                for (var b = firstTie = fd.cur.wrs.PositionAt(cx, ks); b != null; b = b.Next(cx))
                 {
-                    for (var i=0;i<dt.Length;i++)
+                    for (var i = 0; i < dt.Length; i++)
                     {
                         var c = dt.columns[i];
                         var n = c.name;
-                        if (rb.row[i] is TypedValue tv && c.domain.Compare(tv,b.row[i]) != 0)
+                        if (rb.row[i] is TypedValue tv && c.domain.Compare(tv, b.row[i]) != 0)
                             goto skip;
                     }
                     fd.cur.wrb = b;
                     break;
-                    skip:;
+                skip:;
                 }
                 for (var b = fd.cur.wrs.First(cx); b != null; b = b.Next(cx))
-                    if (InWindow(cx,b))
+                    if (InWindow(cx, b))
                         switch (window.exclude)
                         {
                             case Sqlx.NO:
-                                AddIn(cx,b);
+                                AddIn(cx, b);
                                 break;
                             case Sqlx.CURRENT:
                                 if (b._pos != fd.cur.wrb._pos)
-                                    AddIn(cx,b);
+                                    AddIn(cx, b);
                                 break;
                             case Sqlx.TIES:
                                 if (!Ties(fd.cur.wrb, b))
-                                    AddIn(cx,b);
+                                    AddIn(cx, b);
                                 break;
                         }
                 fd.valueInProgress = false;
@@ -4491,27 +4038,30 @@ namespace Pyrrho.Level3
         string XmlEnc(object a)
         {
             return a.ToString().Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\r", "&#x0d;");
-        }
-        internal override SqlValue SetReg(RowBookmark rb)
+        } */
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
+            var fd = _cx.func[defpos];
+            if (fd == null)
+                _cx.func += (defpos, fd = new FunctionData());
             if ((window!=null || aggregates0()))
             {
-                cur = regs?[rb.key];
-                if (cur == null)
+                fd.cur = fd.regs?[k];
+                if (fd.cur == null)
                 {
-                    cur = new Register() { profile = rb.key };
-                    if (regs == null)
-                        regs = new CTree<TRow, Register>(rb.key.dataType);
-                    regs+=(rb.key, cur);
+                    fd.cur = new FunctionData.Register() { profile = k };
+                    if (fd.regs == null)
+                        fd.regs = new CTree<TRow, FunctionData.Register>(k.dataType);
+                    fd.regs+=(k, fd.cur);
                 }
             } else
             {
-                val.SetReg(rb);
-                op1.SetReg(rb);
-                op2.SetReg(rb);
+                val.SetReg(_cx,k);
+                op1.SetReg(_cx,k);
+                op2.SetReg(_cx,k);
             }
             return this;
-        } */
+        } 
         /// <summary>
         /// for aggregates and window functions we need to implement StartCounter
         /// </summary>
@@ -5222,12 +4772,6 @@ namespace Pyrrho.Level3
         {
             return new SqlCoalesce(s.defpos, s.mem + x);
         }
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            var r = this + (Op1, Setup(tr, cx, q, op1, d));
-            r += (NominalType, r.op1.nominalDataType); // don't combine these!
-            return r+(Op2,Setup(tr,cx,q,op2, nominalDataType));
-        }
         internal override TypedValue Eval(Transaction tr,Context cx)
         {
             return (op1.Eval(tr,cx) is TypedValue lf) ? 
@@ -5357,13 +4901,6 @@ namespace Pyrrho.Level3
             }
         }
         /// <summary>
-        /// Analysis stage Selects: setup the operands
-        /// </summary>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            return this+(What,Setup(tr,cx,q,what,d));
-        }
-        /// <summary>
         /// Analysis stage Conditions: process conditions
         /// </summary>
         internal override Query Conditions(Transaction tr,Context cx, Query q,bool disj,out bool move)
@@ -5410,10 +4947,10 @@ namespace Pyrrho.Level3
             what._AddIn(_cx,rb, ref aggsDone);
             select.AddIn(_cx,rb);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            select.SetReg(rb);
-            return (what.SetReg(rb)!=null)?this:null;
+            select.SetReg(_cx,k);
+            return (what.SetReg(_cx,k)!=null)?this:null;
         }
         public override string ToString()
         {
@@ -5510,24 +5047,12 @@ namespace Pyrrho.Level3
             low.OnRow(bmk);
             high.OnRow(bmk);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            var a = what.SetReg(rb) != null;
-            var b = low.SetReg(rb) != null;
-            var c = high.SetReg(rb) != null;
+            var a = what.SetReg(_cx,k) != null;
+            var b = low.SetReg(_cx,k) != null;
+            var c = high.SetReg(_cx,k) != null;
             return (a || b || c) ? this : null; // avoid shortcut evaluation
-        }
-        /// <summary>
-        /// Analysis stage Selects: setup operands
-        /// </summary>
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            Domain dl = low.nominalDataType;
-            if (dl == Domain.Int)
-                dl = what.nominalDataType;
-            return this+(QuantifiedPredicate.Low,Setup(tr, cx, q, low, dl))
-            +(QuantifiedPredicate.High,Setup(tr, cx,q, high, dl))
-            +(QuantifiedPredicate.Low,Setup(tr,cx,q,what, dl));
         }
         /// <summary>
         /// Analysis stage Conditions: support distribution of conditions to froms etc
@@ -5701,9 +5226,9 @@ namespace Pyrrho.Level3
             left._AddIn(_cx,rb, ref aggsDone);
             right._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            return (left.SetReg(rb) != null || right.SetReg(rb) != null) ? this : null;
+            return (left.SetReg(_cx,k) != null || right.SetReg(_cx,k) != null) ? this : null;
         }
         public override string ToString()
         {
@@ -5833,13 +5358,13 @@ namespace Pyrrho.Level3
             what._AddIn(_cx,rb, ref aggsDone);
             base._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
             bool nulls = true;
             for (var v = vals?.First(); v != null; v = v.Next())
-                if (v.value().SetReg(rb) != null)
+                if (v.value().SetReg(_cx,k) != null)
                     nulls = false;
-            return (what.SetReg(rb) == null && nulls) ? null : this;
+            return (what.SetReg(_cx,k) == null && nulls) ? null : this;
         }
         public override string ToString()
         {
@@ -5951,9 +5476,9 @@ namespace Pyrrho.Level3
             lhs._AddIn(_cx,rb, ref aggsDone);
             rhs._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            return (lhs.SetReg(rb) != null || rhs.SetReg(rb) != null) ? this : null;
+            return (lhs.SetReg(_cx,k) != null || rhs.SetReg(_cx,k) != null) ? this : null;
         }
         public override string ToString()
         {
@@ -6103,9 +5628,9 @@ namespace Pyrrho.Level3
             left?._AddIn(_cx,rb, ref aggsDone);
             right?._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            return (left?.SetReg(rb) != null || right?.SetReg(rb) != null) ? this : null;
+            return (left?.SetReg(_cx,k) != null || right?.SetReg(_cx,k) != null) ? this : null;
         }
         public override string ToString()
         {
@@ -6165,10 +5690,10 @@ namespace Pyrrho.Level3
             expr.AddIn(_cx,rb);
             base._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            expr.SetReg(rb);
-            return base.SetReg(rb);
+            expr.SetReg(_cx,k);
+            return base.SetReg(_cx,k);
         }
     }
     /// <summary>
@@ -6312,9 +5837,9 @@ namespace Pyrrho.Level3
         {
             val._AddIn(_cx,rb, ref aggsDone);
         }
-        internal override SqlValue SetReg(RowBookmark rb)
+        internal override SqlValue SetReg(Context _cx,TRow k)
         {
-            return (val.SetReg(rb) != null) ? this : null;
+            return (val.SetReg(_cx,k) != null) ? this : null;
         }
         public override string ToString()
         {
@@ -6773,10 +6298,6 @@ namespace Pyrrho.Level3
         public static SqlHttpUsing operator+(SqlHttpUsing s,(long,object) x)
         {
             return new SqlHttpUsing(s.defpos, s.mem + x);
-        }
-        internal override SqlValue _Setup(Transaction tr,Context cx,Query q,Domain d)
-        {
-            return this+(NominalType,d); // this value is overwritten later
         }
         internal override SqlHttpBase AddCondition(SqlValue wh)
         {

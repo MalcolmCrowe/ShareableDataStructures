@@ -380,10 +380,6 @@ namespace Pyrrho.Level3
         {
             return new UpdateAssignment(u.mem + x);
         }
-        public void SetupValues(Transaction tr, Context cx,Query q)
-        {
-            val._Setup(tr,cx,q, vbl.nominalDataType);
-        }
         public TypedValue Eval(Transaction tr,Context cx)
         {
             var v = val.Eval(tr,cx);
