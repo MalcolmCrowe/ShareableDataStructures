@@ -2933,7 +2933,7 @@ namespace Pyrrho.Level4
             SqlValue r = null;
             if (ic != null)
             {
-                r = cx.defs[ic] as SqlValue;
+                r = cx.Lookup(ic) as SqlValue;
                 if (r == null)
                 {
                     var ar = BList<(long,SqlValue)>.Empty;
@@ -5274,7 +5274,7 @@ namespace Pyrrho.Level4
             // we build the tablexpression after the context has settled down
             var r = new TableExpression(lp, new BTree<long, object>(SqlValue.NominalType, t)
             + (TableExpression.From, fm)
-            + (Query.Where,wh)
+            + (Query.Where,wh) + (SqlValue.NominalType,fm.rowType) +(Query.Cols,fm.cols)
             + (TableExpression.Group, gp)
             + (TableExpression.Having, ha)
             + (TableExpression.Windows, wi));
@@ -5339,7 +5339,7 @@ namespace Pyrrho.Level4
         /// <returns>the table expression</returns>
 		Query ParseTableReferenceItem()
 		{
-            Query rf = null;
+            Query rf;
             if (tok == Sqlx.ROWS) // Pyrrho specific
             {
                 Next();
@@ -5363,8 +5363,9 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.ID);
                 }
                 if (w != null)
-                    return (Query)cx.Add(new LogRowColTable(tr, (long)v.Val(), (long)w.Val(), a.ident));
-                return (Query)cx.Add(new LogRowTable(tr, (long)v.Val(), a?.ident ?? ""));
+                    rf = (Query)cx.Add(new LogRowColTable(tr, (long)v.Val(), (long)w.Val(), a.ident));
+                else
+                    rf = (Query)cx.Add(new LogRowTable(tr, (long)v.Val(), a?.ident ?? ""));
             }
             else if (tok == Sqlx.UNNEST)
             {
@@ -5416,7 +5417,7 @@ namespace Pyrrho.Level4
                 var proc = tr.role.GetProcedure(n.ident, (int)r.Count)
                     ?? throw new DBException("42108", n.ident + "$" + r.Count).Mix();
                 proc.Exec(tr, cx, r);
-                return (Query)cx.Add(new SelectQuery(n.iix, BTree<long, object>.Empty
+                rf = (Query)cx.Add(new SelectQuery(n.iix, BTree<long, object>.Empty
                     + (Basis.Name, cr.tablealias) + (SqlValue.NominalType, cr.Apply(cx.ret.dataType))
                     + (Query.Data, cx.ret)));
             }
@@ -5463,7 +5464,12 @@ namespace Pyrrho.Level4
                         throw new DBException("42162", ps.periodname).Mix();
                     rf += (Query.Periods, rf.periods + (tb.defpos, ps));
                 }
+                cx.defs += (ic, rf);
+                if (r?.tablealias != null)
+                    cx.defs += (new Ident(r.tablealias, rf.defpos), rf);
             }
+            if (rf.cols==BList<SqlValue>.Empty)
+                rf = rf.Selects(cx);
             rf = (Query)cx.Add(rf);
             rf.Resolve(cx); // probably won't change rf itself
             var dt = rf.rowType;
@@ -5547,22 +5553,19 @@ namespace Pyrrho.Level4
 		/// JoinType = 	INNER | ( LEFT | RIGHT | FULL ) [OUTER] .
         /// </summary>
         /// <param name="v">The JoinPart being parsed</param>
-		JoinPart ParseJoinType(JoinPart v)
+		Sqlx ParseJoinType()
 		{
+            Sqlx r = Sqlx.INNER;
 			if (tok==Sqlx.INNER)
-			{
-				v+=(JoinPart.JoinKind,tok); // redundant since this is the default
 				Next();
-				return (JoinPart)cx.Add(v);
-			}
-			if (tok==Sqlx.LEFT||tok==Sqlx.RIGHT||tok==Sqlx.FULL)
+			else if (tok==Sqlx.LEFT||tok==Sqlx.RIGHT||tok==Sqlx.FULL)
 			{
-                v += (JoinPart.JoinKind, tok);
+                r = tok;
                 Next();
 			}
-			if (tok==Sqlx.OUTER)
+			if (r!=Sqlx.INNER && tok==Sqlx.OUTER)
 				Next();
-            return (JoinPart)cx.Add(v);
+            return r;
 		}
         /// <summary>
 		/// JoinedTable = 	TableReference CROSS JOIN TableFactor 
@@ -5571,46 +5574,84 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">The Query so far</param>
         /// <returns>the updated query</returns>
-        SelectQuery ParseJoinPart(Query r,int st)
+        SelectQuery ParseJoinPart(Query q,int st)
         {
-            JoinPart v = new JoinPart(tr.uid+st,BTree<long, object>.Empty
-                + (JoinPart.JoinKind, Sqlx.INNER) + (JoinPart.LeftOperand, r));
+            var left = q;
+            var jkind = Sqlx.INNER;
+            Query right;
+            JoinPart v = new JoinPart(tr.uid + st, BTree<long, object>.Empty);
             if (Match(Sqlx.CROSS))
             {
-                v+=(JoinPart.JoinKind,tok);
+                jkind = tok;
                 Next();
                 Mustbe(Sqlx.JOIN);
-                v+=(JoinPart.RightOperand, ParseTableReferenceItem());
-                return (SelectQuery)cx.Add(v);
+                right = ParseTableReferenceItem();
             }
-            if (Match(Sqlx.NATURAL))
-            {
-                v+=(JoinPart.Natural,tok);
-                Next();
-                v = ParseJoinType(v);
-                Mustbe(Sqlx.JOIN);
-                v += (JoinPart.RightOperand, ParseTableReferenceItem());
-                return (SelectQuery)cx.Add(v);
-            }
-            v = ParseJoinType(v);
-            Mustbe(Sqlx.JOIN);
-            v += (JoinPart.RightOperand, ParseTableReferenceItem());
-            if (tok == Sqlx.USING)
+            else if (Match(Sqlx.NATURAL))
             {
                 v += (JoinPart.Natural, tok);
                 Next();
-                var cs = BList<long>.Empty;
-                var ids = ParseIDList();
-                for (var i = 0; i < ids.Length; i++)
-                    cs += ids[i].segpos;
-                v += (JoinPart.NamedCols,cs);
-                return (SelectQuery)cx.Add(v);
+                jkind = ParseJoinType();
+                Mustbe(Sqlx.JOIN);
+                right = ParseTableReferenceItem();
             }
-            Mustbe(Sqlx.ON);
-            v+=(JoinPart.JoinCond,ParseSqlValue(v,Domain.Bool).Disjoin());
+            else
+            {
+                jkind = ParseJoinType();
+                Mustbe(Sqlx.JOIN);
+                right = ParseTableReferenceItem();
+                if (tok == Sqlx.USING)
+                {
+                    v += (JoinPart.Natural, tok);
+                    Next();
+                    var cs = BList<long>.Empty;
+                    var ids = ParseIDList();
+                    for (var i = 0; i < ids.Length; i++)
+                        cs += ids[i].segpos;
+                    v += (JoinPart.NamedCols, cs);
+                }
+                else
+                {
+                    Mustbe(Sqlx.ON);
+                    var lo = BList<SqlValue>.Empty;
+                    var ro = BList<SqlValue>.Empty;
+                    var oc = ParseSqlValue(v, Domain.Bool).Disjoin();
+                    for (var b = oc.First(); b != null; b = b.Next())
+                    {
+                        var se = b.value() as SqlValueExpr;
+                        if (se == null || se.kind != Sqlx.EQL) throw new DBException("42151");
+                        var lf = se.left as TableColumn;
+                        var rg = se.right as TableColumn;
+                        if (lf == null || rg == null) throw new DBException("42151");
+                        var rev = !left.rowType.names.Contains(lf.name);
+                        if (rev)
+                        {
+                            if ((!right.rowType.names.Contains(lf.name))
+                                || (!left.rowType.names.Contains(rg.name)))
+                                throw new DBException("42151");
+                            oc += (b.key(), new SqlValueExpr(se.defpos, Sqlx.EQL, rg, lf, Sqlx.NO));
+                            lo += rg;
+                            ro += lf;
+                        }
+                        else
+                        {
+                            if (!right.rowType.names.Contains(rg.name))
+                                throw new DBException("42151");
+                            lo += lf;
+                            ro += rg;
+                        }
+                    }
+                    v += (JoinPart.JoinCond,oc);
+                    left += (Query.OrdSpec, new OrderSpec(lo));
+                    right += (Query.OrdSpec, new OrderSpec(ro));
+                }
+            }
+            v += (JoinPart.JoinKind, jkind);
+            v += (JoinPart.LeftOperand, left);
+            v += (JoinPart.RightOperand, right);
      //       for (var b = v.joinCond.First(); b != null; b = b.Next())
        //         r.Needs(b.value().alias ?? b.value().name, Query.Need.joined);
-            return (SelectQuery)cx.Add(v);
+            return (SelectQuery)cx.Add(v.Selects(cx));
         }
         /// <summary>
 		/// GroupByClause = GROUP BY [DISTINCT|ALL] GroupingElement { ',' GroupingElement } .

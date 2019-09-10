@@ -4710,13 +4710,13 @@ namespace Pyrrho.Level4
         internal class RoleSubobjectBookmark : SystemBookmark
         {
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int,long> _inner;
+            readonly ABookmark<long,bool> _inner;
             /// <summary>
             /// create the Sys$Procedure enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleSubobjectBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int, long> ix)
+                ABookmark<long,bool> ix)
                 : base(_cx,res,pos,en.key())
             {
                 _outer = en;
@@ -4750,14 +4750,14 @@ namespace Pyrrho.Level4
             public override TRow CurrentValue()
             {
                 var ob = (DBObject)_outer.value();
-                var sb = (DBObject)_rs._tr.role.objects[_inner.value()];
+                var sb = (DBObject)_rs._tr.role.objects[_inner.key()];
                 return new TRow(res.from.rowType,
                     Pos(_defpos),
                     new TChar(ob.GetType().Name),
                     new TChar(ob.name),
                     new TInt(_inner.key()),
                     new TChar(sb.name),
-                    Pos(_inner.value()));
+                    Pos(_inner.key()));
             }
             /// <summary>
             /// Move to the next object

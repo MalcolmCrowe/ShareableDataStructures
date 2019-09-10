@@ -83,7 +83,7 @@ namespace Pyrrho.Level3
         public static Table operator+(Table tb,TableColumn tc)
         {
             var rt = tb.rowType + tc;
-            var ds = tb.dependents + tc.defpos;
+            var ds = tb.dependents + (tc.defpos,true);
             var dp = _Max(tb.depth, 1 + tc.depth);
             return (Table)tb.New(tb.mem+(SqlValue.NominalType, rt)
                 +(Display,(int)rt.columns.Count)
@@ -172,7 +172,13 @@ namespace Pyrrho.Level3
             var t = new Table(defpos, m);
             return new BTree<long, DBObject>(t.defpos, t);
         }
-
+        internal override Query Selects(Context cx)
+        {
+            var ss = BList<SqlValue>.Empty;
+            for (var b = rowType.columns.First(); b != null; b = b.Next())
+                ss += b.value();
+            return this+(Cols,ss);
+        }
         internal override void Resolve(Context cx)
         {
             var ti = new Ident(name, defpos);

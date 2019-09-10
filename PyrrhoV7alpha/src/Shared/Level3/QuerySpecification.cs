@@ -238,7 +238,7 @@ namespace Pyrrho.Level3
         internal QueryExpression(long u, Query a, Sqlx o, QueryExpression b)
             : base(u,BTree<long,object>.Empty+(_Left,a)+(Op,o)+(_Right,b)
                   +(Cols,a.cols)+(Display,a.display)+(SqlValue.NominalType, a.rowType)
-                  +(Dependents,BList<long>.Empty+a.defpos+b.defpos)
+                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth)))
         { }
         internal QueryExpression(long dp, BTree<long, object> m) : base(dp, m) { }

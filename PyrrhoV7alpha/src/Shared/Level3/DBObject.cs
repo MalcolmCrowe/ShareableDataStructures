@@ -53,7 +53,8 @@ namespace Pyrrho.Level3
         internal bool sensitive => (bool)(mem[Sensitive]??false);
         internal Level classification => (Level)mem[Classification]??Level.D;
         internal string desc => (string)mem[Description];
-        internal BList<long> dependents => (BList<long>)mem[Dependents] ?? BList<long>.Empty;
+        internal BTree<long,bool> dependents => 
+            (BTree<long,bool>)mem[Dependents] ?? BTree<long,bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
         /// <summary>
         /// Constructor
@@ -80,11 +81,11 @@ namespace Pyrrho.Level3
                     r = x[i];
             return r;
         }
-        internal static BList<long> _Deps(BList<SqlValue> vs)
+        internal static BTree<long,bool> _Deps(BList<SqlValue> vs)
         {
-            var r = BList<long>.Empty;
+            var r = BTree<long,bool>.Empty;
             for (var b = vs?.First(); b != null; b = b.Next())
-                r += b.value().defpos;
+                r += (b.value().defpos,true);
             return r;
         }
         internal static int _Depth(BList<SqlValue> vs)

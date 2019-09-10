@@ -48,6 +48,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public BTree<long, bool> columnPaths => 
             (BTree<long,bool>)(mem[ColumnPaths]??BTree<long, bool>.Empty);
+        internal Selector(SqlValue s, int i) : this(s.name, s.defpos, s.nominalDataType, i) { }
         /// <summary>
         /// An ad-hoc selector for STATIC
         /// </summary>

@@ -137,6 +137,10 @@ namespace Pyrrho.Level3
         }
         internal virtual void Resolve(Context cx)
         { }
+        internal virtual Query Selects(Context cx)
+        {
+            return this;
+        }
         internal override DBObject Replace(Context cx,DBObject was,DBObject now)
         {
             if (cx.done.Contains(defpos)) // includes the case was==this
@@ -275,7 +279,7 @@ namespace Pyrrho.Level3
             if (v == null)
                 return this;
             var m = (int)cols.Count;
-            var deps = dependents + v.defpos;
+            var deps = dependents + (v.defpos,true);
             var dpt = _Max(depth, 1 + v.depth);
             return this + (Cols, cols + (m, v)) + (SCols,scols+(v,m))
                 + (SqlValue.NominalType, rowType.columns 
@@ -677,7 +681,8 @@ namespace Pyrrho.Level3
         protected SelectQuery(SelectQuery q, SqlValue s) : base(q.defpos, q.mem + (Cols, q.cols + s)
             + (SqlValue.NominalType, q.rowType + 
             new Selector(s.alias??s.name, s.defpos, s.nominalDataType, q.rowType.Length))
-            + (Display,q.display+1)+(Dependents,q.dependents+s.defpos)+(Depth,_Max(q.depth,1+s.depth)))
+            + (Display,q.display+1)+(Dependents,q.dependents+(s.defpos,true))
+            +(Depth,_Max(q.depth,1+s.depth)))
         { }
         public static SelectQuery operator +(SelectQuery q, (long, object) x)
         {
@@ -834,7 +839,7 @@ namespace Pyrrho.Level3
         /// <param name="t">The transaction</param>
         /// <param name="dt">the expected data type</param>
         internal CursorSpecification(long u,BTree<long,object>m)
-            : base(u, m+(Dependents,BList<long>.Empty+(((Query)m[Union])?.defpos??-1))
+            : base(u, m+(Dependents,new BTree<long,bool>(((Query)m[Union])?.defpos??-1,true))
                   +(Depth,1+((Query)m[Union])?.depth??0)) { }
         public static CursorSpecification operator +(CursorSpecification q, (long, object) x)
         {
@@ -1017,7 +1022,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t">the transaction</param>
         internal TableExpression(long u, BTree<long,object> m) 
-            : base(u,m+(Dependents,BList<long>.Empty+(((Query)m[From])?.defpos??-1))
+            : base(u,m+(Dependents,new BTree<long,bool>(((Query)m[From])?.defpos??-1,true))
                   +(Depth,((Query)m[From])?.depth??0))
         { }
         public static TableExpression operator +(TableExpression q, (long, object) x)
@@ -1257,6 +1262,10 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(j.defpos, j.mem + x);
         }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new JoinPart(defpos,m);
+        }
         internal override bool Knows(Selector c)
         {
             return left.Knows(c) || right.Knows(c);
@@ -1286,6 +1295,146 @@ namespace Pyrrho.Level3
                 q = (JoinPart)cx.Add(q+(RightOperand, rg));
             return q;
         }
+        /// <summary>
+        /// Analysis stage Selects: call for left and right.
+        /// </summary>
+        internal override Query Selects(Context cx)
+        {
+            var r = this;
+            int n = left.display;
+            var vs = BList<SqlValue>.Empty;
+            var ss = BList<Selector>.Empty;
+            var lo = BList<SqlValue>.Empty; // left ordering
+            var ro = BList<SqlValue>.Empty; // right
+            var ds = 0;
+            var de = depth;
+            var sb = dependents;
+            if (naturaljoin != Sqlx.NO)
+            {
+                int m = 0; // common.Count
+                int rn = right.display;
+                // which columns are common?
+                bool[] lc = new bool[n];
+                bool[] rc = new bool[rn];
+                for (int i = 0; i < rn; i++)
+                    rc[i] = false;
+                for (int i = 0; i < n; i++)
+                {
+                    var ll = left.cols[i];
+                    for (int j = 0; j < rn; j++)
+                    {
+                        var rr = right.cols[j];
+                        if (ll.name.CompareTo(rr.name) == 0)
+                        {
+                            lc[i] = true;
+                            rc[j] = true;
+                            var cp = new SqlValueExpr(rr.defpos-1, Sqlx.EQL, ll, rr, Sqlx.NULL);
+        //                    cp.left.Needed(tr, Need.joined);
+        //                    cp.right.Needed(tr, Need.joined);
+                            r += (JoinCond,cp.Disjoin());
+                            lo += ll;
+                            ro += rr;
+                            m++;
+                            break;
+                        }
+                    }
+                    if (!lc[i])
+                    {
+                        vs += ll;
+                        ss += new Selector(ll,ds++);
+                        de = _Max(de, 1 + ll.depth);
+                        sb += (ll.defpos, true);
+                    }
+                }
+                for (int i = 0; i < n; i++)
+                    if (lc[i])
+                    {
+                        var ll = left.cols[i];
+                        vs += ll;
+                        ss += new Selector(ll, ds++);
+                        de = _Max(de, 1 + ll.depth);
+                        sb += (ll.defpos, true);
+                    }
+                for (int i = 0; i < rn; i++)
+                    if (!rc[i])
+                    {
+                        var rr = right.cols[i];
+                        vs += rr;
+                        ss += new Selector(rr, ds++);
+                        de = _Max(de, 1 + rr.depth);
+                        sb += (rr.defpos, true);
+                    }
+                if (m == 0)
+                    r += (JoinKind, Sqlx.CROSS);
+                else
+                {
+                    r += (LeftOperand, left + (OrdSpec, new OrderSpec(lo)));
+                    r += (RightOperand, right + (OrdSpec, new OrderSpec(ro)));
+                }
+            }
+            else
+            {
+                for (int j = 0; j < left.display; j++)
+                {
+                    var cl = left.cols[j];
+                    for (var i = 0; i < right.cols.Count; i++)
+                        if (right.rowType.names.Contains(cl.name))
+                            cl = new SqlValueExpr(cl.defpos,Sqlx.DOT,
+                                new SqlValue(left.defpos,left.name),cl,Sqlx.NO,
+                                new BTree<long,object>(Name,left.name+"."+cl.name));
+                    vs += cl;
+                    ss += new Selector(cl, ds++);
+                    de = _Max(de, 1 + cl.depth);
+                    sb += (cl.defpos, true);
+                }
+                for (int j = 0; j < right.display; j++)
+                {
+                    var cr = right.cols[j];
+                    for (var i = 0; i < left.cols.Count; i++)
+                        if (left.rowType.names.Contains(cr.name))
+                            cr = new SqlValueExpr(cr.defpos, Sqlx.DOT,
+                                new SqlValue(right.defpos, right.name), cr, Sqlx.NO,
+                                new BTree<long, object>(Name, right.name + "." + cr.name));
+                vs += cr;
+                    ss += new Selector(cr, ds++);
+                    de = _Max(de, 1 + cr.depth);
+                    sb += (cr.defpos, true);
+                }
+            }
+            /*      // first ensure each joinCondition has the form leftExpr compare rightExpr
+                  // if not, move it to where
+                  for (var b = joinCond.First(); b != null; b = b.Next())
+                  {
+                      if (b.value() is SqlValueExpr se)
+                      {
+                          if (se.left.isConstant || se.right.isConstant)
+                              continue;
+                          if (se.left.IsFrom(tr, left, true) && se.right.IsFrom(tr, right, true))
+                          {
+                              se.left.Needed(tr, Need.joined);
+                              se.right.Needed(tr, Need.joined);
+                              continue;
+                          }
+                          if (se.left.IsFrom(tr, right, true) && se.right.IsFrom(tr, left, true))
+                          {
+                              var ns = new SqlValueExpr(tr, se.kind, se.right, se.left, se.mod);
+                              ATree<long, SqlValue>.Remove(ref joinCond, se.sqid);
+                              ATree<long, SqlValue>.Add(ref joinCond, ns.sqid, ns);
+                              se.left.Needed(tr, Need.joined);
+                              se.right.Needed(tr, Need.joined);
+                              continue;
+                          }
+                      }
+                      ATree<long, SqlValue>.Add(ref where, b.key(), b.value());
+                  } */
+            r += (Display, ds);
+            r += (SqlValue.NominalType,new Domain(ss));
+            r += (Cols, vs);
+            r += (Dependents, sb);
+            r += (Depth, de);
+            return (JoinPart)cx.Add(r);
+        }
+
         /// <summary>
         /// Analysis stage Conditions: call for left and right
         /// Turn the join condition into an ordering request, and set it up
@@ -1573,7 +1722,19 @@ namespace Pyrrho.Level3
                     right.AddMatch(cx, b.key(), b.value());
             }
             var lr = left.RowSets(tr,cx);
+            if (left.ordSpec != null)
+            {
+                var kl = new Domain(left.ordSpec.items);
+                lr = new SortedRowSet(cx, left, lr, kl,
+                    new TreeInfo(kl, TreeBehaviour.Allow, TreeBehaviour.Allow));
+            }
             var rr = right.RowSets(tr,cx);
+            if (right.ordSpec != null)
+            {
+                var kr = new Domain(right.ordSpec.items);
+                rr = new SortedRowSet(cx, right, rr, kr,
+                    new TreeInfo(kr, TreeBehaviour.Allow, TreeBehaviour.Allow));
+            }
             return new JoinRowSet(cx,this,lr,rr);
         }
         internal int Compare(Transaction tr,Context cx)

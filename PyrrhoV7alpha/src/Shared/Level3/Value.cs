@@ -56,6 +56,7 @@ namespace Pyrrho.Level3
         internal SqlValue sub => (SqlValue)mem[Sub];
         internal string alias => (string)mem[_Alias];
         internal Query from => (Query)mem[_From];
+        public SqlValue(long dp, string nm) : base(dp, new BTree<long, object>(Name, nm)) { }
         protected SqlValue(long dp,BTree<long,object> m):base(dp,m)
         { }
         public static SqlValue operator+(SqlValue s,(long,object)x)
@@ -674,7 +675,7 @@ namespace Pyrrho.Level3
             BTree<long, object> mm = null)
             : base(dp, (mm ?? BTree<long, object>.Empty) + (NominalType, _Type(dp, op, m, lf, rg))
                   + (Left, lf) + (Right, rg) + (Modifier, m) + (Kind, op)
-                  +(Dependents,BList<long>.Empty+(lf?.defpos??-1)+(rg?.defpos??-1))
+                  +(Dependents,new BTree<long,bool>(lf?.defpos??-1,true)+(rg?.defpos??-1,true))
                   +(Depth,1+_Max((lf?.depth??0),(rg?.depth??0))))
         { }
         protected SqlValueExpr(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2849,7 +2850,8 @@ namespace Pyrrho.Level3
         internal CursorSpecification spec=>(CursorSpecification)mem[Spec];
         internal SqlCursor(long dp, CursorSpecification cs, string n) 
             : base(dp, BTree<long,object>.Empty+
-                  (NominalType,cs.rowType)+(Name, n)+(Dependents,new BList<long>(cs.defpos))
+                  (NominalType,cs.rowType)+(Name, n)
+                  +(Dependents,new BTree<long,bool>(cs.defpos,true))
                   +(Depth,1+cs.depth))
         { }
         protected SqlCursor(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2888,7 +2890,7 @@ namespace Pyrrho.Level3
         public CallStatement call =>(CallStatement)mem[Call];
         public SqlCall(long dp, CallStatement c, string n, BTree<long,object>m=null)
             : base(dp, m??BTree<long, object>.Empty + (NominalType, c.returnType)
-                  + (Name, n) + (Call, c)+(Dependents,new BList<long>(c.defpos))
+                  + (Name, n) + (Call, c)+(Dependents,new BTree<long,bool>(c.defpos,true))
                   +(Depth,1+c.depth))
         { }
         protected SqlCall(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -3225,8 +3227,8 @@ namespace Pyrrho.Level3
             Domain dt=null,BTree<long,object>mm=null) : 
             base(dp,(mm??BTree<long,object>.Empty)+(NominalType,_Type(f,vl,o1,dt))
                 +(Name,f.ToString())+(Kind,f)+(Mod,m)+(_Val,vl)+(Op1,o1)+(Op2,o2)
-                +(Dependents,BList<long>.Empty+vl.defpos+o1.defpos+o2.defpos)
-                +(Depth,1+_Max(vl.depth,o1.depth,o2.depth)))
+                +(Dependents,new BTree<long,bool>(vl.defpos,true)+(o1.defpos,true)
+                +(o2.defpos,true)) +(Depth,1+_Max(vl.depth,o1.depth,o2.depth)))
         { }
         /// <summary>
         /// Constructor: a function SqlValue from the parser
@@ -4857,7 +4859,7 @@ namespace Pyrrho.Level3
         internal QuantifiedPredicate(long defpos,SqlValue w, Sqlx o, bool a, QuerySpecification s)
             : base(defpos,BTree<long,object>.Empty+(NominalType,Domain.Bool)
             + (What,w)+(Op,o)+(All,a)+(Select,s)
-                  +(Dependents,BList<long>.Empty+w.defpos+s.defpos)
+                  +(Dependents,new BTree<long,bool>(w.defpos,true)+(s.defpos,true))
                   +(Depth,1+_Max(w.depth,s.depth))) {}
         protected QuantifiedPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static QuantifiedPredicate operator+(QuantifiedPredicate s,(long,object)x)
@@ -4986,7 +4988,7 @@ namespace Pyrrho.Level3
             : base(defpos,BTree<long,object>.Empty+(NominalType,Domain.Bool)
                   +(QuantifiedPredicate.What,w)+(QuantifiedPredicate.Between,b)
                   +(QuantifiedPredicate.Low,a)+(QuantifiedPredicate.High,h)
-                  +(Dependents,BList<long>.Empty+w.defpos+a.defpos+h.defpos)
+                  +(Dependents,new BTree<long,bool>(w.defpos,true)+(a.defpos,true)+(h.defpos,true))
                   +(Depth,1+_Max(w.depth,a.depth,h.depth)))
         { }
         protected BetweenPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -5118,7 +5120,7 @@ namespace Pyrrho.Level3
         internal LikePredicate(long dp,SqlValue a, bool k, SqlValue b, SqlValue e)
             : base(dp, new BTree<long,object>(NominalType,Domain.Bool)
                   +(Left,a)+(_Like,k)+(Right,b)+(Escape,e)
-                  +(Dependents,BList<long>.Empty+a.defpos+b.defpos+e.defpos)
+                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true)+(e.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth,e.depth)))
         { }
         protected LikePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -5256,7 +5258,7 @@ namespace Pyrrho.Level3
         public InPredicate(long dp, SqlValue w, BList<SqlValue> vs = null) 
             : base(dp, new BTree<long, object>(NominalType, Domain.Bool)
                   +(QuantifiedPredicate.What,w)+(QuantifiedPredicate.Vals,vs)
-                  +(Dependents,_Deps(vs)+w.defpos)+(Depth,1+_Max(w.depth,_Depth(vs))))
+                  +(Dependents,_Deps(vs)+(w.defpos,true))+(Depth,1+_Max(w.depth,_Depth(vs))))
         {}
         protected InPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static InPredicate operator+(InPredicate s,(long,object)x)
@@ -5401,7 +5403,7 @@ namespace Pyrrho.Level3
         internal MemberPredicate(long dp,SqlValue a, bool f, SqlValue b)
             : base(dp, new BTree<long,object>(NominalType,Domain.Bool)
                   +(Lhs,a)+(Found,f)+(Rhs,b)+(Depth,1+_Max(a.depth,b.depth))
-                  +(Dependents,BList<long>.Empty+a.defpos+b.defpos))
+                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true)))
         { }
         protected MemberPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static MemberPredicate operator+(MemberPredicate s,(long,object)x)
@@ -5587,7 +5589,7 @@ namespace Pyrrho.Level3
         public PeriodPredicate(long dp,SqlValue op1, Sqlx o, SqlValue op2) 
             :base(dp,BTree<long,object>.Empty+(NominalType,Domain.Bool)
                  +(Left,op1)+(Right,op2)+(SqlValueExpr.Kind,op1)
-                 +(Dependents,BList<long>.Empty+op1.defpos+op2.defpos)
+                 +(Dependents,new BTree<long,bool>(op1.defpos,true)+(op2.defpos,true))
                  +(Depth,1+_Max(op1.depth,op2.depth)))
         { }
         protected PeriodPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -5650,7 +5652,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public QueryPredicate(long dp,Query e,BTree<long,object>m=null) 
             : base(dp, (m??BTree<long,object>.Empty)+(NominalType,Domain.Bool)+(QExpr,e)
-                  +(Dependents,new BList<long>(e.defpos))+(Depth,1+e.depth))
+                  +(Dependents,new BTree<long,bool>(e.defpos,true))+(Depth,1+e.depth))
         {  }
         protected QueryPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
@@ -5702,7 +5704,7 @@ namespace Pyrrho.Level3
     internal class ExistsPredicate : QueryPredicate
     {
         public ExistsPredicate(long dp,Query e) : base(dp,e,BTree<long,object>.Empty
-            +(Dependents,new BList<long>(e.defpos))+(Depth,1+e.depth)) { }
+            +(Dependents,new BTree<long,bool>(e.defpos,true))+(Depth,1+e.depth)) { }
         protected ExistsPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ExistsPredicate operator+(ExistsPredicate s,(long,object)x)
         {
@@ -5794,7 +5796,7 @@ namespace Pyrrho.Level3
         /// <param name="b">false for NOT NULL</param>
         internal NullPredicate(long dp,SqlValue v, bool b)
             : base(dp,new BTree<long,object>(NominalType,Domain.Bool)
-                  +(NVal,v)+(NIsNull,b)+(Dependents,BList<long>.Empty+v.defpos)
+                  +(NVal,v)+(NIsNull,b)+(Dependents,new BTree<long,bool>(v.defpos,true))
                   +(Depth,1+v.depth))
         { }
         protected NullPredicate(long dp, BTree<long, object> m) : base(dp, m) { }

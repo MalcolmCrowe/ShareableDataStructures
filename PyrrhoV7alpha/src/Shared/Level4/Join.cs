@@ -285,7 +285,7 @@ namespace Pyrrho.Level4
 
         internal override TableRow Rec()
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
     /// <summary>
@@ -435,6 +435,9 @@ namespace Pyrrho.Level4
             var jp = j.qry as JoinPart;
             hideRight = right;
             var vs = Value(_cx);
+            if (!_useRight)
+                for (var b = j.second.rowType.columns.First(); b != null; b = b.Next())
+                _cx.values -= b.value().defpos;
             _row = new TRow(j.rowType, vs);
             _key = new TRow(j.keyType, vs);
         }
@@ -480,6 +483,8 @@ namespace Pyrrho.Level4
             if ((_left != null && left == null) || (_right != null && right == null))
                 throw new PEException("PE388");
             var join = _jrs.qry as JoinPart;
+            if (right!=null)
+                _cx.Add(join.right, right);
             right = hideRight;
             if (_useRight && right.Mb() is MTreeBookmark mr && mr.hasMore((int)join.joinCond.Count))
             {
@@ -503,6 +508,8 @@ namespace Pyrrho.Level4
             }
             for (;;)
             {
+                if (left == null)
+                    return null;
                 if (right == null)
                     return new LeftJoinBookmark(_cx,_jrs, left, null, false, _pos + 1);
                 var ret = new LeftJoinBookmark(_cx,_jrs, left, right, true, _pos + 1);
@@ -518,7 +525,7 @@ namespace Pyrrho.Level4
 
         internal override TableRow Rec()
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
     internal class RightJoinBookmark : JoinBookmark
@@ -536,6 +543,9 @@ namespace Pyrrho.Level4
             var jp = j.qry as JoinPart;
             hideLeft = left;
             var vs = Value(_cx);
+            if (!_useLeft)
+                for (var b = j.first.rowType.columns.First(); b != null; b = b.Next())
+                    _cx.values -= b.value().defpos;
             _row = new TRow(j.rowType, vs);
             _key = new TRow(j.keyType, vs);
         }
@@ -579,12 +589,16 @@ namespace Pyrrho.Level4
             var left = _left;
             var right = _right;
             var join = _jrs.qry as JoinPart;
-            if (_useLeft && right.Mb() is MTreeBookmark mr && mr.hasMore((int)join.joinCond.Count))
+            if (left!=null)
+                _cx.Add(join.left, left);
+            if (_useLeft && right?.Mb() is MTreeBookmark mr && mr.hasMore((int)join.joinCond.Count))
             {
                 right = right.Next(_cx);
                 return new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
             }
-            right = right.Next(_cx) as RTreeBookmark;
+            right = right.Next(_cx);
+            if (right == null)
+                return null;
             // if both left and right have multiple rows for a join key
             // we need to reset the right bookmark to ensure that all 
             // combinations of these matching rows have been used
@@ -594,11 +608,11 @@ namespace Pyrrho.Level4
                     left.Mb()?.ResetToTiesStart((int)join.joinCond.Count);
                 if (mb != null)
                     right = right.ResetToTiesStart(_cx,mb);
-                else
-                    right = right.Next(_cx);
             }
             for (;;)
             {
+                if (right == null)
+                    return null;
                 if (left == null)
                     return new RightJoinBookmark(_cx,_jrs, null, false, right, _pos + 1);
                 var ret = new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
@@ -606,7 +620,7 @@ namespace Pyrrho.Level4
                 if (c == 0)
                     return ret;
                 if (c < 0)
-                    left = left.Next(_cx) as RTreeBookmark;
+                    left = left.Next(_cx);
                 else
                     return new RightJoinBookmark(_cx,_jrs, left, false, right, _pos + 1);
             }
@@ -614,7 +628,7 @@ namespace Pyrrho.Level4
 
         internal override TableRow Rec()
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
     /// <summary>
@@ -637,6 +651,12 @@ namespace Pyrrho.Level4
             hideLeft = left;
             hideRight = right;
             var vs = Value(_cx);
+            if (!_useRight)
+                for (var b = j.second.rowType.columns.First(); b != null; b = b.Next())
+                    _cx.values -= b.value().defpos;
+            if (!_useLeft)
+                for (var b = j.first.rowType.columns.First(); b != null; b = b.Next())
+                    _cx.values -= b.value().defpos;
             _row = new TRow(j.rowType, vs);
             _key = new TRow(j.keyType, vs);
         }
@@ -674,6 +694,10 @@ namespace Pyrrho.Level4
             var left = _left;
             var right = _right;
             var join = _jrs.qry as JoinPart;
+            if (left!=null)
+                _cx.Add(join.left, left);
+            if (right!=null)
+                _cx.Add(join.right, right);
             if (_useLeft && _useRight && right.Mb() is MTreeBookmark mr 
                 && mr.hasMore((int)join.joinCond.Count))
             {
@@ -712,7 +736,7 @@ namespace Pyrrho.Level4
 
         internal override TableRow Rec()
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
     /// <summary>

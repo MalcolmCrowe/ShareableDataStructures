@@ -66,16 +66,12 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t">A (rename/drop) transaction</param>
         /// <returns>DROP,RESTRICT,or NO ACTION </returns>
-        public override Sqlx Dependent(Transaction t,Context cx)
+        public override Sqlx Dependent(Transaction t, Context cx)
         {
             if (t.refObj.defpos == checkobjpos)
                 return Sqlx.DROP;
-            if (search != null)
-            {
-                for (var a = search.dependents.First(); a != null; a = a.Next())
-                    if (a.value() == t.refObj.defpos)
-                        return Sqlx.RESTRICT;
-            }
+            if (search.dependents.Contains(t.refObj.defpos))
+                return Sqlx.RESTRICT;
             return Sqlx.NO;
         }
         internal override Basis New(BTree<long, object> m)

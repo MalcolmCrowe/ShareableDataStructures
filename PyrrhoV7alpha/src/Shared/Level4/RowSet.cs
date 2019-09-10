@@ -1722,13 +1722,13 @@ namespace Pyrrho.Level4
         TreeInfo info;
         List<TRow> rows = new List<TRow>();
         List<Rvv> rvvs = new List<Rvv>();
-        internal SortedRowSet(Context _cx,Query q, RowSet s, TreeInfo ti)
-            : base(s._tr, _cx, q, s.rowType, ti.headType)
+        internal SortedRowSet(Context _cx,Query q, RowSet s, Domain kt, TreeInfo ti)
+            : base(s._tr, _cx, q, s.rowType, kt)
         {
             tree = new MTree(ti);
             source = s;
             info = ti;
-            Build(q.defpos);
+            Build(_cx);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1761,12 +1761,17 @@ namespace Pyrrho.Level4
         }
         internal class SortedRowBookmark : RowBookmark
         {
+            readonly SortedRowSet _srs;
             readonly MTreeBookmark _mbm;
             readonly TRow _row, _key;
-            SortedRowBookmark(Context _cx, RowSet srs,int pos,MTreeBookmark mbm,long dpos) 
+            SortedRowBookmark(Context _cx, SortedRowSet srs,int pos,MTreeBookmark mbm,long dpos) 
                 :base(_cx,srs,pos,dpos)
             {
+                _srs = srs;
                 _mbm = mbm;
+                _row = srs.rows[(int)mbm.Value().Value];
+                _key = new TRow(srs.keyType, _row.values);
+                _cx.Add(srs.qry, this);
             }
 
             public override TRow row => _row;
@@ -1777,9 +1782,9 @@ namespace Pyrrho.Level4
             {
                 for (MTreeBookmark mbm = srs.tree.First();mbm!=null;mbm=mbm.Next())
                 {
-                    var rvv = srs.rvvs[(int)mbm.Value().Value];
-                    var d = (rvv != null) ? rvv.def : 0;
-                    var rb = new SortedRowBookmark(_cx,srs, 0, mbm, d);
+                    //           var rvv = srs.rvvs[(int)mbm.Value().Value];
+                    //           var d = (rvv != null) ? rvv.def : 0;
+                    var rb = new SortedRowBookmark(_cx, srs, 0, mbm, 0);// d);
                     if (rb.Matches() && Query.Eval(srs.qry.where, srs._tr,_cx))
                         return rb;
                 }
@@ -1790,9 +1795,9 @@ namespace Pyrrho.Level4
                 for (var mbm = srs.tree.PositionAt(key); mbm != null; mbm = mbm.Next())
                     if (mbm.Value().HasValue)
                     {
-                        var rvv = srs.rvvs[(int)mbm.Value().Value];
-                        var d = (rvv != null) ? rvv.def : 0;
-                        return new SortedRowBookmark(_cx,srs, 0, mbm, d);
+                        //            var rvv = srs.rvvs[(int)mbm.Value().Value];
+                        //            var d = (rvv != null) ? rvv.def : 0;
+                        return new SortedRowBookmark(_cx, srs, 0, mbm, 0); // d);
                     }
                 return null;
             }
@@ -1800,9 +1805,9 @@ namespace Pyrrho.Level4
             {
                 for (var mbm = _mbm.Next(); mbm != null; mbm = mbm.Next())
                 {
-                    var rvv = ((SortedRowSet)_rs).rvvs[(int)mbm.Value().Value];
-                    var d = (rvv != null) ? rvv.def : 0;
-                    var rb = new SortedRowBookmark(_cx,_rs, _pos + 1, mbm, d);
+                    //         var rvv = ((SortedRowSet)_rs).rvvs[(int)mbm.Value().Value];
+                    //         var d = (rvv != null) ? rvv.def : 0;
+                    var rb = new SortedRowBookmark(_cx, _srs, _pos + 1, mbm, 0); // d);
                     if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr, _cx))
                         return rb;
                 }
@@ -1811,7 +1816,7 @@ namespace Pyrrho.Level4
 
             internal override TableRow Rec()
             {
-                throw new NotImplementedException();
+                return null;
             }
         }
     }

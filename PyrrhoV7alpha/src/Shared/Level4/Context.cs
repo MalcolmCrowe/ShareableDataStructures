@@ -134,6 +134,28 @@ namespace Pyrrho.Level4
             }
             return ob;
         }
+        internal DBObject Lookup(Ident ic)
+        {
+            if (ic == null)
+                return null;
+            if (defs[ic] is DBObject ob)
+                return ob;
+            if (ic.segpos >= 0 && obs[ic.segpos] is DBObject r)
+            {
+                defs += (ic, r);
+                return r;
+            }
+            var t = ic.sub;
+            if (t == null)
+                return null;
+            var h = new Ident(ic.ident, ic.segpos);
+            if (defs[h] is Table tb && tb.rowType.names[t.ident] is TableColumn c)
+            {
+                defs += (ic, c);
+                return c;
+            }
+            return null;
+        }
         internal DBObject Add(Transaction tr,long p)
         {
             return Add((DBObject)tr.role.objects[p]);
