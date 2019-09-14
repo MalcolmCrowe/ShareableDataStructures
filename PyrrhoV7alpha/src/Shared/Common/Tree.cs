@@ -15,6 +15,7 @@ namespace Pyrrho.Common
     /// The base class for all Trees in Pyrrho
     /// All trees contain KeyValuePairs in key order
     /// </summary>
+ //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
 	public abstract class ATree<K,V>
 	{
         /// <summary>

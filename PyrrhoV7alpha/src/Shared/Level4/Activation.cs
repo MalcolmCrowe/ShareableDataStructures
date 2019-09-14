@@ -136,10 +136,10 @@ namespace Pyrrho.Level4
         {
             _trs = trs;
             _trig = tg;
-            var fm = trs.qry;
+            var fm = trs.qry as From;
             var tr = trs._tr;
-            var t = fm as Table;
-            nominalDataType = t.rowType;
+            var t = fm.target as Table;
+            nominalDataType = t;
         }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's context

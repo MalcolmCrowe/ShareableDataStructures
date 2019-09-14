@@ -108,6 +108,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{ 
 			prev = rdr.GetLong();
+            affects = (long)(rdr.db.mem[prev]??ppos);
 			name = rdr.GetString();
 			base.Deserialise(rdr);
 		}

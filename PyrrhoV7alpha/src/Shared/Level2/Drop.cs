@@ -119,7 +119,7 @@ namespace Pyrrho.Level2
                         break;
                     }
                 case Type.Delete: return (delpos == 
-                        ((Record)db.GetD(((Delete)that).delRow.defpos)).tabledefpos) ? ppos : -1;
+                        ((Record)db.GetD(((Delete)that).delpos)).tabledefpos) ? ppos : -1;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn: return (delpos == ((PColumn)that).tabledefpos) ? ppos : -1;

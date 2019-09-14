@@ -19,10 +19,9 @@ namespace Pyrrho.Level3
     /// to security clearance and classification. Which columns are accessible also depends
     /// on privileges (but columns are not subject to classification).
     /// </summary>
-    internal class Table : Query
+    internal class Table : Domain
     {
         internal const long
-            Assigns = -265, // BList<UpdateAssignment>
             ChartFormat = -266, // Sqlx (T)
             ClientFormat = -267, // Sqlx (T)
             Enforcement = -268, // Grant.Privilege (T)
@@ -36,8 +35,6 @@ namespace Pyrrho.Level3
             TableProperties = -276, //BTree<string,DBObject> (T)
             Triggers = -277,// BTree<PTrigger.TrigType,ATree<long,Trigger>> (T) 
             Versions = -278; // BTree<long,Period> (T) supplied by schemaRole: ppos->Period
-        internal BList<UpdateAssignment> assigns =>
-             (BList<UpdateAssignment>)mem[Assigns] ?? BList<UpdateAssignment>.Empty;
         /// <summary>
         /// The rows of the table with the latest version for each
         /// </summary>
@@ -66,8 +63,6 @@ namespace Pyrrho.Level3
         internal BTree<PTrigger.TrigType, BTree<long, Trigger>> triggers =>
             (BTree<PTrigger.TrigType, BTree<long, Trigger>>)mem[Triggers]
             ??BTree<PTrigger.TrigType, BTree<long, Trigger>>.Empty;
-        internal readonly static Table _static = new Table();
-        Table() : base(Static, Domain.Content) { }
         /// <summary>
         /// Constructor: a new empty table
         /// </summary>
@@ -82,12 +77,11 @@ namespace Pyrrho.Level3
         protected Table(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Table operator+(Table tb,TableColumn tc)
         {
-            var rt = tb.rowType + tc;
+            tb += (Columns, tb.columns + (tc.seq, tc));
+            tb += (Names, tb.names + (tc.name, tc));
             var ds = tb.dependents + (tc.defpos,true);
             var dp = _Max(tb.depth, 1 + tc.depth);
-            return (Table)tb.New(tb.mem+(SqlValue.NominalType, rt)
-                +(Display,(int)rt.columns.Count)
-                +(Dependents,ds)+(Depth,dp));
+            return (Table)tb.New(tb.mem+(Dependents,ds)+(Depth,dp));
         }
         public static Table operator+(Table tb,Metadata md)
         {
@@ -122,8 +116,12 @@ namespace Pyrrho.Level3
             {
                 var x = b.value();
                 if (row.prevKeys[x.defpos] is PRow ok)
+                {
                     x -= ok;
-                xs += (x.defpos,x + row);
+                    xs += (x.defpos, x + row);
+                }
+                else if (row.prev < 0)// for update no change to index if keys match
+                    xs += (x.defpos, x + row);
             }
             var se = schema.sensitive || row.classification!=Level.D;
             var vs = schema.versionedRows;
@@ -172,31 +170,6 @@ namespace Pyrrho.Level3
             var t = new Table(defpos, m);
             return new BTree<long, DBObject>(t.defpos, t);
         }
-        internal override Query Selects(Context cx)
-        {
-            var ss = BList<SqlValue>.Empty;
-            for (var b = rowType.columns.First(); b != null; b = b.Next())
-                ss += b.value();
-            return this+(Cols,ss);
-        }
-        internal override void Resolve(Context cx)
-        {
-            var ti = new Ident(name, defpos);
-            var ai = new Ident(rowType.name, defpos);
-            for (var b=rowType.columns.First();b!=null;b=b.Next())
-            {
-                var sc = b.value();
-                var ci = new Ident(sc.name, 0);
-                if (cx.defs[ci] is SqlValue t && t.nominalDataType == Domain.Null)
-                    cx.Replace(t, sc);
-                var cj = new Ident(ti, ci);
-                if (cx.defs[cj] is SqlValue u && u.nominalDataType == Domain.Null)
-                    cx.Replace(u, sc);
-                var ck = new Ident(ai, ci);
-                if (cx.defs[ck] is SqlValue v && v.nominalDataType == Domain.Null)
-                    cx.Replace(v, sc);
-            }
-        }
         /// <summary>
         /// Execute an Insert on the table including trigger operation.
         /// </summary>
@@ -205,7 +178,7 @@ namespace Pyrrho.Level3
         /// <param name="data">The insert data may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The target rowset may be explicit</param>
-        internal override Transaction Insert(Transaction tr, Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Transaction Insert(Transaction tr, Context _cx, From f,string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
             int count = 0;
@@ -213,9 +186,9 @@ namespace Pyrrho.Level3
                 throw new DBException("42105", name);
             long st = 0;
             var ot = data.rowType;
-            if (rowType.Length == ot.Length && (!rowType.Equals(ot))
-                && rowType.EqualOrStrongSubtypeOf(ot))
-                st = rowType.defpos;
+            if (f.rowType.Length == ot.Length && (!f.rowType.Equals(ot))
+                && EqualOrStrongSubtypeOf(ot))
+                st = f.rowType.defpos;
             // parameter cl is only supplied when d_User.defpos==d.owner
             // otherwise check if we should compute it
             if (tr.user.defpos != tr.owner && enforcement.HasFlag(Grant.Privilege.Insert))
@@ -230,7 +203,7 @@ namespace Pyrrho.Level3
                 // (a subset of the user’s references)
                 cl = uc.ForInsert(classification);
             }
-            var trs = new TransitionRowSet(tr, _cx, this, PTrigger.TrigType.Insert, eqs);
+            var trs = new TransitionRowSet(tr, _cx, f, PTrigger.TrigType.Insert, eqs);
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
             tr = trs.InsertSA(tr, _cx);
@@ -295,16 +268,16 @@ namespace Pyrrho.Level3
         /// <param name="f">The Delete operation</param>
         /// <param name="ds">A set of delete strings may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Transaction Delete(Transaction tr, Context cx, BTree<string, bool> ds, Adapters eqs)
+        internal override Transaction Delete(Transaction tr, Context cx, From f,BTree<string, bool> ds, Adapters eqs)
         {
             var count = 0;
             if (Denied(tr, Grant.Privilege.Delete))
                 throw new DBException("42105", name);
-            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Delete, eqs);
+            var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Delete, eqs);
             var cl = tr.user.clearance;
             tr = trs.DeleteSB(tr, cx);
             var nr = tr.nextTid;
-            cx.rb = RowSets(tr, cx).First(cx);
+            cx.rb = f.RowSets(tr, cx).First(cx);
             for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark; trb != null;
                 trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
             {
@@ -332,17 +305,17 @@ namespace Pyrrho.Level3
         /// <param name="ur">The update row identifiers may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The target rowset may be explicit</param>
-        internal override Transaction Update(Transaction tr,Context cx,BTree<string, bool> ur, 
+        internal override Transaction Update(Transaction tr,Context cx,From f,BTree<string, bool> ur, 
             Adapters eqs,List<RowSet>rs)
         {
-            if (assigns == null)
+            if (f.assigns == null)
                 return tr;
             if (Denied(tr, Grant.Privilege.Insert))
                 throw new DBException("42105", name);
-            var trs = new TransitionRowSet(tr, cx, this, PTrigger.TrigType.Update, eqs);
+            var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Update, eqs);
             var updates = BTree<long, UpdateAssignment>.Empty;
             SqlValue level = null;
-            for (var ass=assigns.First();ass!=null;ass=ass.Next())
+            for (var ass=f.assigns.First();ass!=null;ass=ass.Next())
             {
                 var c = ass.value().vbl as TableColumn ??
                     throw new DBException("42112", ass.value().vbl.name);
@@ -356,7 +329,7 @@ namespace Pyrrho.Level3
             }
       //      bool nodata = true;
             var cl = tr.user.clearance;
-            cx.rb = RowSets(tr, cx).First(cx);
+            cx.rb = f.RowSets(tr, cx).First(cx);
             if ((level != null || updates.Count > 0))
             {
                 tr = trs.UpdateSB(tr, cx);
@@ -402,138 +375,6 @@ namespace Pyrrho.Level3
             return tr;
         }
         /// <summary>
-        /// Optimise retrievals
-        /// </summary>
-        /// <param name="rec"></param>
-        /// <returns></returns>
-        internal bool CheckMatch(Transaction tr, Context cx, TableRow rec)
-        {
-            if (rec != null)
-                for (var e = matches?.First(); e != null; e = e.Next())
-                {
-                    var v = rec.fields[e.key().defpos];
-                    var m = e.value();
-                    if (v != null && m != null && m.dataType.Compare(m, v) != 0)
-                        return false;
-                }
-            return true;
-        }
-        internal override RowSet RowSets(Transaction tr, Context cx)
-        {
-            if (defpos == Query.Static)
-                return new TrivialRowSet(tr, cx, this, new TRow(rowType,cx.values));
-            RowSet rowSet = null;
- //           if (target == null)
- //               return new TrivialRowSet(tr, cx, this, Eval(tr, cx) as TRow ?? TRow.Empty);
-            //         if (target is View vw)
-            //             return vw.RowSets(tr, cx, this);
-            ReadConstraint readC = tr._ReadConstraint(cx, target);
-            int matches = 0;
-            PRow match = null;
-            Index index = null;
-            // At this point we have a table/alias, 
-            // we want to find the Index best meeting our needs
-            // Score: Add 10^n for n ordType cols occurring in order, 
-            // add n+1 for each filter column occurring in position k-n 
-            // in an index with k cols.
-            // Find the index with highest score, then set up
-            // the match Link for it
-            if (periods.Contains(target.defpos))
-            {
-                // a periodspecification has been supplied for this table.
-                var ps = periods[target.defpos];
-                if (ps.kind == Sqlx.NO)
-                {
-                    // simply use the appropriate time versioning index for this table
-                    var tb = (Table)target;
-                    var ix = (ps.periodname == "SYSTEM_TIME") ? Sqlx.SYSTEM_TIME : Sqlx.APPLICATION;
-                    var pd = tb.FindPeriodDef(ix);
-                    if (pd != null)
-                        index = tb.indexes[pd.indexdefpos];
-                }
-            }
-            else
-            {
-                int bs = 0;      // score for best index
-                for (var p = indexes.First(); p != null; p = p.Next())
-                {
-                    var x = p.value();
-                    if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey || x.tabledefpos != target.defpos)
-                        continue;
-                    var dt = x.keyType;
-                    int sc = 0;
-                    int nm = 0;
-                    int n = 0;
-                    PRow pr = null;
-                    int sb = 1;
-                    for (int j = (int)x.cols.Count - 1; j >= 0; j--)
-                    {
-                        /*                  for (var fd = filter.First(); fd != null; fd = fd.Next())
-                                          {
-                                              if (x.cols[j] == fd.key())
-                                              {
-                                                  sc += 9 - j;
-                                                  nm++;
-                                                  pr = new PRow(fd.value(), pr);
-                                                  goto nextj;
-                                              }
-                                          } */
-                        var ob = x.cols[j];
-                        if (ordSpec != null && n < ordSpec.items.Count)
-                        {
-                            var ok = ordSpec.items[n];
-                            var sr = ValFor(ok);
-                            if (ok != null && ok.MatchExpr(this, sr))
-                            {
-                                n++;
-                                sb *= 10;
-                            }
-                        }
-                        pr = new PRow(TNull.Value, pr);
-                        //           nextj:;
-                    }
-                    sc += sb;
-                    if (sc > bs)
-                    {
-                        index = x;
-                        matches = nm;
-                        match = pr;
-                        bs = sc;
-                    }
-                }
-            }
-            var svo = ordSpec;
-            if (index != null && index.rows != null)
-            {
-                rowSet = new IndexRowSet(tr, cx, this, index, match);
-                if (readC != null)
-                {
-                    if (matches == (int)index.cols.Count &&
-                        (index.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != PIndex.ConstraintType.NoType)
-                        readC.Singleton(index, match);
-                    else
-                        readC.Block();
-                }
-            }
-            else
-            {
-                if (target is Table tb)
-                {
-                    if (tb.tableRows != null)
-                        rowSet = new TableRowSet(tr, cx, this);
-                    else
-                    {
-                        index = tb.FindPrimaryIndex();
-                        if (index != null && index.rows != null)
-                            rowSet = new IndexRowSet(tr, cx, this, index, null);
-                    }
-                }
-                if (readC != null)
-                    readC.Block();
-            }
-            return rowSet;
-        }
-        /// <summary>
         /// See if we already have an audit covering an access in the current transaction
         /// </summary>
         /// <param name="tr"></param>
@@ -545,34 +386,6 @@ namespace Pyrrho.Level3
             return true;
         }
         /// <summary>
-        /// Build a period window
-        /// </summary>
-        /// <param name="fm">The query</param>
-        /// <param name="ps">The period spec</param>
-        /// <returns>The ATree of row positions</returns>
-        public BTree<long, bool> Build(Transaction tr, Context cx, Table fm, PeriodSpec ps)
-        {
-            var r = BTree<long, bool>.Empty;
-            for (var e = versionedRows.First(); e != null; e = e.Next())
-            {
-                var ts = e.value();
-                var dt = ts.start.dataType;
-                var time1 = ps.time1.Eval(tr, cx);
-                var time2 = ps.time2.Eval(tr, cx);
-                switch (ps.kind)
-                {
-                    case Sqlx.AS: if (!(dt.Compare(ts.start,time1) <= 0 
-                            && dt.Compare(ts.end, time1) > 0)) continue; break;
-                    case Sqlx.BETWEEN: if (!(dt.Compare(ts.start, time2) <= 0 
-                            && dt.Compare(ts.end, time1) > 0)) continue; break;
-                    case Sqlx.FROM: if (!(dt.Compare(ts.start, time2) < 0 
-                            && dt.Compare(ts.end, time1) > 0)) continue; break;
-                }
-                r +=(e.key(), true);
-            }
-            return r;
-        }
-        /// <summary>
         /// Accessor: get a period definition for this table
         /// </summary>
         /// <param name="db">The database</param>
@@ -580,28 +393,10 @@ namespace Pyrrho.Level3
         /// <returns>the period definition or null</returns>
         internal PeriodDef FindPeriodDef(Sqlx ix)
         {
-            for (var c = rowType.columns.First(); c != null; c = c.Next())
+            for (var c = columns.First(); c != null; c = c.Next())
                     if (c.value() is PeriodDef pd && pd.versionKind == ix)
                         return pd;
             return null;
-        }
-        /// <summary>
-        /// Accessor: Check a new table check constraint
-        /// </summary>
-        /// <param name="tr">Transaction</param>
-        /// <param name="c">The new Check constraint</param>
-        internal void TableCheck(Transaction tr,PCheck c)
-        {
-            var cx = new Context(tr);
-            var f = this;
-            SqlValue bt = new Parser(tr).ParseSqlValue(c.check, Domain.Bool);
-            f += (Where,bt);
-            if (f.RowSets(tr,cx).First(cx) != null)
-                throw new DBException("44000", c.check).ISO();
-        }
-        internal override SqlValue ValFor(SqlValue sv)
-        {
-            return sv;
         }
         /// <summary>
         /// A readable version of the Table
@@ -646,7 +441,7 @@ namespace Pyrrho.Level3
                 sb.Append("/// " + md.desc + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " : Versioned" : "") + " {\r\n");
-            for (var b = rowType.columns.First();b!=null;b=b.Next())
+            for (var b = columns.First();b!=null;b=b.Next())
             {
                 var cv = b.value();
                 var dt = cv.domain;
@@ -675,7 +470,7 @@ namespace Pyrrho.Level3
         /// <param name="from">The query</param>
         /// <param name="_enu">The object enumerator</param>
         /// <returns></returns>
-        internal override TRow RoleJavaValue(Transaction tr, Table from, 
+        internal override TRow RoleJavaValue(Transaction tr, From from, 
             ABookmark<long, object> _enu)
         {
             var md = (DBObject)_enu.value();
@@ -692,7 +487,7 @@ namespace Pyrrho.Level3
             if (md.desc != "")
                 sb.Append("/* " + md.desc + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
-            for(var b = rowType.columns.First();b!=null;b=b.Next())
+            for(var b = columns.First();b!=null;b=b.Next())
             {
                 var cd = b.value();
                 var dt = cd.domain;
@@ -721,7 +516,7 @@ namespace Pyrrho.Level3
         /// <param name="from">The query</param>
         /// <param name="_enu">The object enumerator</param>
         /// <returns></returns>
-        internal override TRow RolePythonValue(Transaction tr, Table from, ABookmark<long, object> _enu)
+        internal override TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
             var md = (Table)_enu.value();
             var ro = tr.role;
@@ -737,7 +532,7 @@ namespace Pyrrho.Level3
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");
-            for(var b = rowType.columns.First();b!=null;b=b.Next())
+            for(var b = columns.First();b!=null;b=b.Next())
             {
                 var cd = b.value();
                 var dt = cd.domain;

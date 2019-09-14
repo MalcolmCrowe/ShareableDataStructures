@@ -44,7 +44,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Alias = -315, // string
-            _From = -316, // Query
+            _From = -316, // From
             Left = -318, // SqlValue
             NominalType = -319, // Domain
             Right = -320, // SqlValue
@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
         internal SqlValue right => (SqlValue)mem[Right];
         internal SqlValue sub => (SqlValue)mem[Sub];
         internal string alias => (string)mem[_Alias];
-        internal Query from => (Query)mem[_From];
+        internal From from => (From)mem[_From];
         public SqlValue(long dp, string nm) : base(dp, new BTree<long, object>(Name, nm)) { }
         protected SqlValue(long dp,BTree<long,object> m):base(dp,m)
         { }
@@ -277,8 +277,8 @@ namespace Pyrrho.Level3
         /// <param name="where">See if where contains any suitable joincoditions and move them if so</param>
         internal virtual Query JoinCondition(Context cx, JoinPart j, ref BTree<long, SqlValue> joinCond, ref BTree<long, SqlValue> where)
         {
-            j += (JoinPart.LeftOperand, j.left + (Query.Where, j.left.where + (defpos, this)));
-            j += (JoinPart.RightOperand, j.right + (Query.Where, j.right.where + (defpos, this)));
+            j += (JoinPart.LeftOperand, j.left.AddCondition(Query.Where, this));
+            j += (JoinPart.RightOperand, j.right.AddCondition(Query.Where,this));
             return j;
         }
         /// <summary>
@@ -414,7 +414,7 @@ namespace Pyrrho.Level3
         /// <param name="rem">the proposed columns for the remote query</param>
         /// <param name="reg">the proposed groups for the remote query</param>
         /// <returns>the column to use in the global QuerySpecification</returns>
-        internal virtual SqlValue _ColsForRestView(long dp, Query gf, GroupSpecification gs,  
+        internal virtual SqlValue _ColsForRestView(long dp, From gf, GroupSpecification gs,  
             ref BTree<SqlValue,string> gfc, ref BTree<SqlValue,string> rem, ref BTree<string,bool?> reg,
             ref BTree<long,SqlValue> map)
         {
@@ -434,7 +434,7 @@ namespace Pyrrho.Level3
         /// <param name="gf"></param>
         /// <param name="gs"></param>
         /// <returns>the column to use in the global QuerySpecification</returns>
-        internal SqlValue ColsForRestView(Transaction tr, long dp, Context cx, Query gf,GroupSpecification gs, ref BTree<long,SqlValue> map)
+        internal SqlValue ColsForRestView(Transaction tr, long dp, Context cx, From gf,GroupSpecification gs, ref BTree<long,SqlValue> map)
         {
             if (map[defpos] is SqlValue sr)
                 return sr;
@@ -457,17 +457,17 @@ namespace Pyrrho.Level3
                 an = sv.alias ?? sv.name;
             }
             for (var b = gfc.First(); b != null; b = b.Next())
-                gf = gf.Add(b.key(), b.value());
+                gf = (From)gf.Add(b.key(), b.value());
             if ((!isConstant) || gf.QuerySpec()?.tableExp.group?.Has(sv) == true)
                 for (var b=rem.First();b!=null;b=b.Next())
-                    gf+=(Query.Source, gf.source+(b.key(),b.value()));
+                    gf+=(From.Source, gf.source+(b.key(),b.value()));
             var cs = gf.source as CursorSpecification;
             var rg = cs.restGroups;
             for (var b = reg.First(); b != null; b = b.Next())
                 if (!rg.Contains(b.key()))
                     rg += (b.key(), (int)rg.Count);
             cs += (CursorSpecification.RestGroups, rg);
-            gf += (Query.Source, cs);
+            gf += (From.Source, cs);
             return sv;
         }
         internal bool IsNeeded(Lexer cx,Query q)
@@ -814,7 +814,7 @@ namespace Pyrrho.Level3
         }
         const int ea = 1, eg = 2, la = 4, lr = 8, lg = 16, ra = 32, rr = 64, rg = 128;
         internal override SqlValue _ColsForRestView(long dp,
-            Query gf, GroupSpecification gs, ref BTree<SqlValue, string> gfc, 
+            From gf, GroupSpecification gs, ref BTree<SqlValue, string> gfc, 
             ref BTree<SqlValue, string> rem, ref BTree<string, bool?> reg, 
             ref BTree<long, SqlValue> map)
         {
@@ -1799,7 +1799,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder("(");
-            sb.Append(left.ToString());
+            if (left!=null)
+                sb.Append(left.ToString());
             switch (kind)
             {
                 case Sqlx.ASSIGNMENT: sb.Append(":="); break;
@@ -1878,6 +1879,7 @@ namespace Pyrrho.Level3
         internal const long
             _Val = -326;// TypedValue
         internal TypedValue val=>(TypedValue)mem[_Val];
+        internal readonly static SqlLiteral Null = new SqlLiteral(-1,TNull.Value);
         /// <summary>
         /// Constructor: a Literal
         /// </summary>
@@ -1985,7 +1987,7 @@ namespace Pyrrho.Level3
     internal class SqlTableRowStart : SqlValue
     {
         internal TableRow rec => (TableRow)mem[TableRow];
-        public SqlTableRowStart(long dp, Query f, TableRow r) : base(dp,BTree<long,object>.Empty
+        public SqlTableRowStart(long dp, From f, TableRow r) : base(dp,BTree<long,object>.Empty
             +(NominalType,f.rowType)+(_From,f)+(TableRow,r))
         { }
         protected SqlTableRowStart(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -1999,7 +2001,7 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue Eval(Transaction tr,Context cx)
         {
-            var table = from as Table;
+            var table = from.target as Table;
             return table.versionedRows[rec.ppos].start ?? TNull.Value;
         }
     }
@@ -4607,7 +4609,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="gf">The query: From with a RestView target</param>
         /// <returns></returns>
-        internal override SqlValue _ColsForRestView(long dp, Query gf, GroupSpecification gs, 
+        internal override SqlValue _ColsForRestView(long dp, From gf, GroupSpecification gs, 
             ref BTree<SqlValue, string> gfc, ref BTree<SqlValue, string> rem, 
             ref BTree<string, bool?> reg,ref BTree<long,SqlValue>map)
         {
@@ -5851,11 +5853,11 @@ namespace Pyrrho.Level3
     internal abstract class SqlHttpBase : SqlValue
     {
         internal const long
-            GlobalFrom = -366, // Query
+            GlobalFrom = -366, // From
             HttpWhere = -367, // BTree<long,SqlValue>
             HttpMatches = -368, // BTree<SqlValue,TypedValue>
             HttpRows = -369; // RowSet
-        internal Query globalFrom => (Query)mem[GlobalFrom];
+        internal From globalFrom => (From)mem[GlobalFrom];
         public BTree<long,SqlValue> where => 
             (BTree<long,SqlValue>)mem[HttpWhere]??BTree<long,SqlValue>.Empty;
         public BTree<SqlValue, TypedValue> matches=>
@@ -6312,10 +6314,10 @@ namespace Pyrrho.Level3
             cs.MoveConditions(cx,cs.usingFrom); // probably updates all the queries
             qs = globalFrom.QuerySpec();
             cs = globalFrom.source as CursorSpecification;
-            var uf = cs.usingFrom as Table;
-            var usingTable = tr.role.objects[usingtablepos] as Table;
+            var uf = cs.usingFrom;
+            var usingTable = uf.target as Table;
             var usingIndex = usingTable.FindPrimaryIndex();
-            var usingTableColumns = usingTable.rowType.columns;
+            var usingTableColumns = usingTable.columns;
             var urs = new IndexRowSet(tr, cx, uf, usingIndex, null) { matches = uf.matches };
             var ers = new ExplicitRowSet(tr, cx, cs);
             for (var b = urs.First(cx); b != null; b = b.Next(cx))

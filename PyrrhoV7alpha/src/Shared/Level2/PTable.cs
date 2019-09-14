@@ -145,7 +145,7 @@ namespace Pyrrho.Level2
 
         internal override Database Install(Database db, Role ro, long p)
         {
-            return db + (ro, new Table(this));
+            return db + (ro, new Table(this),p);
         }
     }
     internal class PTable1 : PTable

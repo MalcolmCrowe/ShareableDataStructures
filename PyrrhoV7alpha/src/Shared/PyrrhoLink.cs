@@ -536,29 +536,21 @@ namespace Pyrrho
                 case 1:
                     {
                         string s = GetString();
-                        try
-                        {
-                            cell.val = long.Parse(s);
-                        }
-                        catch (Exception)
-                        {
+                        if (long.TryParse(s, out long lg))
+                            cell.val = lg;
+                        else
                             cell.val = s;
-                        }
                     }
                     break;
                 case 2:
                     {
                         string s = GetString();
-                        try
-                        {
-                            cell.val = decimal.Parse(s, CultureInfo.InvariantCulture);
-                        }
-                        catch (Exception)
-                        {
+                        if (decimal.TryParse(s, out decimal de))
+                            cell.val = de;
+                        else
                             cell.val = s;
-                        }
-                        break;
                     }
+                    break;
                 case 3: cell.val = GetString(); break;
                 case 4: cell.val = GetDateTime(); break;
                 case 5:

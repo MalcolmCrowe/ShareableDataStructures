@@ -44,7 +44,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The definer of the object.
         /// </summary>
-        public long definer =>(long)mem[Definer];
+        public long definer =>(long)(mem[Definer]??-1L);
         public string description => (string)mem[Description] ?? "";
         internal long lastChange => (long)(mem[LastChange] ?? defpos);
         /// <summary>
@@ -127,6 +127,7 @@ namespace Pyrrho.Level3
         {
             return BTree<long,DBObject>.Empty;
         }
+        internal virtual bool AddNameToRole => name != "";
         internal virtual DBObject Replace(Context cx, DBObject so, DBObject sv)
         {
             return this;
@@ -169,7 +170,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The existing RowSet may be explicit</param>
         /// <param name="cl">The classification sought</param>
-        internal virtual Transaction Insert(Transaction tr,Context _cx, Table f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal virtual Transaction Insert(Transaction tr,Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
             return tr;
@@ -182,7 +183,7 @@ namespace Pyrrho.Level3
         /// <param name="f">A query</param>
         /// <param name="dr">A possible explicit set of row references</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal virtual Transaction Delete(Transaction tr,Context cx,Table f, BTree<string,bool> dr, Adapters eqs)
+        internal virtual Transaction Delete(Transaction tr,Context cx,From f, BTree<string,bool> dr, Adapters eqs)
         {
             return tr;
         }
@@ -195,7 +196,7 @@ namespace Pyrrho.Level3
         /// <param name="ur">The rows to update may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The existing rowset may be explicit</param>
-        internal virtual Transaction Update(Transaction tr,Context cx,Table f,BTree<string,bool> ur,Adapters eqs, List<RowSet> rs)
+        internal virtual Transaction Update(Transaction tr,Context cx,From f,BTree<string,bool> ur,Adapters eqs, List<RowSet> rs)
         {
             return tr;
         }
@@ -205,7 +206,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleClassValue(Transaction tr,Table from, 
+        internal virtual TRow RoleClassValue(Transaction tr,From from, 
             ABookmark<long, object> _enu)
         {
             return null;
@@ -216,7 +217,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleJavaValue(Transaction tr, Table from, ABookmark<long, object> _enu)
+        internal virtual TRow RoleJavaValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
             return null;
         }
@@ -226,7 +227,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RolePythonValue(Transaction tr, Table from, ABookmark<long, object> _enu)
+        internal virtual TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
             return null;
         }

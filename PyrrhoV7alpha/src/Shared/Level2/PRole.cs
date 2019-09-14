@@ -102,14 +102,14 @@ namespace Pyrrho.Level2
                 if (!(b.value() is User))
                     first = false;
             var nr = new Role(this, db, first);
-            db += nr;
+            db += (nr,p);
             if (first)
             { // install as the new schema role and drop the old one
                 var sr = db.schemaRole;
                 db += (Database.Schema, nr.defpos);
             }
             // The new Role can be seen publicly but usage is controlled
-            return db + (db.schemaRole, nr);
+            return db + (db.schemaRole, nr,p);
         }
     }
      internal class PMetadata : Physical
@@ -269,7 +269,7 @@ namespace Pyrrho.Level2
         {
             var ob = (DBObject)ro.objects[defpos];
             for (var b = ob.Add(this, db).First(); b != null; b = b.Next())
-                db += (ro,b.value());
+                db += (ro,b.value(),p);
             return db;
         }
     }

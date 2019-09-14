@@ -54,7 +54,7 @@ namespace Pyrrho.Level3
             if (ob.defpos < 0 && ob.name == "")
                 ob += (Name, ob.ToString());
             var m = r.mem + (ob.defpos, ob);
-            if (ob.name != "")
+            if (ob.AddNameToRole)
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
             return new Role(r.defpos,m);
         }

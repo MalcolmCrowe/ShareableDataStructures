@@ -729,7 +729,7 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema1);
 #endif
-            if (result.qry is Table fm) // compute the schemakey
+            if (result.qry is From fm) // compute the schemakey
                 PutLong(fm.lastChange);
             else
                 PutLong(0);

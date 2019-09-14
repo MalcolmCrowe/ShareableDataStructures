@@ -73,6 +73,7 @@ namespace Pyrrho.Level3
             if (md.description != "") m += (Description, md);
             return (Selector)s.New(m);
         }
+        internal override bool AddNameToRole => false;
         internal override DBObject Relocate(long dp)
         {
             return new Selector(dp,mem);
@@ -118,7 +119,7 @@ namespace Pyrrho.Level3
         {
             var r = base.Replace(cx, so, sv);
             var ra = r.WithA(alias);
-            return (ra != r)?(SqlValue)cx.Add(ra):ra;
+            return (ra != this)?(SqlValue)cx.Add(ra):ra;
         }
         public override string ToString()
         {
@@ -150,8 +151,9 @@ namespace Pyrrho.Level3
     {
         internal const long
             Checks = -289,  // BTree<long,Check>
-            ColumnProperties = -290, // BTree<string,SqlValue>
+            ColumnProperties = -290, // BTree<string,DBObject>
             Generated = -291, // PColumn.GenerationRule (C)
+            GeneratedAs = -114, // string
             NotNull = -292; // true (C)
         /// <summary>
         /// A set of column constraints
@@ -205,8 +207,9 @@ namespace Pyrrho.Level3
             var tb = tr.role.objects[tabledefpos] as Table;
             if (tb == null)
                 return;
-            var n = tb.rowType.columns[seq].name;
-            for (var rb = tb.RowSets(tr,cx).First(cx); 
+            var n = tb.columns[seq].name;
+            var fm = new From(tr.uid, tb);
+            for (var rb = fm.RowSets(tr,cx).First(cx); 
                 rb != null; rb = rb.Next(cx))
             {
                 var v = rb.row[seq];
@@ -230,7 +233,7 @@ namespace Pyrrho.Level3
                 return;
             var needed = BTree<SqlValue, long>.Empty;
             var cx = new Level4.Context(tr);
-            Query nf = tb+(Query.Where,c);
+            Query nf = new From(tr.uid,tb).AddCondition(cx,c.search.Disjoin());
             nf = c.search.Conditions(tr, cx, nf, false, out _);
             if (nf.RowSets(tr,cx).First(cx) != null)
                 throw new DBException(signal, c.name, this, tb).ISO()
@@ -304,7 +307,7 @@ namespace Pyrrho.Level3
         /// <param name="i">An index into this path</param>
         /// <param name="v">the new value</param>
         /// <returns>the updated Document</returns>
-         TypedValue Set(TDocument d, string[] ss, int i,  TypedValue v)
+        TypedValue Set(TDocument d, string[] ss, int i,  TypedValue v)
         {
             var s = ss[i];
             var nd = new TDocument();
@@ -351,10 +354,10 @@ namespace Pyrrho.Level3
         public TableRow(Record rc, Database db) : this(rc, db, _Fields(rc, db)) { }
         public TableRow(Record rc,Database db,(BTree<long,TypedValue>,BTree<long,PRow>)x) 
             :base(rc.ppos,
-                 (rc is Update up)?up.oldRow.defpos:rc.defpos,
+                 (rc is Update up)?up._defpos:rc.defpos,
                  db.role.defpos,BTree<long,object>.Empty
                  +(Selector.Table,rc.tabledefpos)+(Prev,_Prev(rc))
-                 +(SqlValue.NominalType,_Type(rc,db))
+                 +(SqlValue.NominalType,_Type(rc,db))+(Ppos,rc.ppos)
                  +(Domain.Provenance,rc.provenance)+(Time,rc.time)
                  +(Fields,x.Item1)+(PrevKeys,x.Item2))
         { }
@@ -366,11 +369,11 @@ namespace Pyrrho.Level3
         static Domain _Type(Record rc, Database db)
         {
             return (rc.subType >= 0) ? (Domain)db.role.objects[rc.subType]
-                : ((Table)db.role.objects[rc.tabledefpos]).rowType;
+                : ((Table)db.role.objects[rc.tabledefpos]);
         }
         static long _Prev(Record rc)
         {
-            return (rc is Update up) ? up.oldRow.ppos : -1;
+            return (rc is Update up) ? up.prev : -1;
         }
         static (BTree<long,TypedValue>,BTree<long,PRow>) _Fields(Record rc,Database db)
         {
@@ -380,7 +383,7 @@ namespace Pyrrho.Level3
             if (rc is Update up)
             {
                 // add unchanged fields
-                var old = up.oldRow;
+                var old = tb.tableRows[up._defpos];
                 for (var b = old.fields.First(); b != null; b = b.Next())
                     if (!fl.Contains(b.key()))
                         fl += (b.key(), b.value());

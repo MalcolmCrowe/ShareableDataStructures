@@ -130,7 +130,7 @@ namespace Pyrrho.Level2
             var ut = (UDType)ro.objects[typedefpos];
             var mt = new Method(this,Sqlx.CREATE,db);
             ut += mt;
-            db += ut;
+            db += (ut,p);
             return db;
         }
     }

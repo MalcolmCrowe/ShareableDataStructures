@@ -3,4 +3,14 @@ E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.dll
 E:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.pdb
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.dll
 E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.pdb
-E:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.csprojAssemblyReference.cache
+C:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.dll
+C:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.pdb
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.csprojAssemblyReference.cache
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.csproj.CoreCompileInputs.cache
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.dll
+C:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.pdb
+F:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.dll
+F:\PyrrhoDB7\Pyrrho\src\Shared\bin\Debug\PyrrhoLink.pdb
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.csproj.CoreCompileInputs.cache
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.dll
+F:\PyrrhoDB7\Pyrrho\src\Shared\obj\Debug\PyrrhoLink.pdb

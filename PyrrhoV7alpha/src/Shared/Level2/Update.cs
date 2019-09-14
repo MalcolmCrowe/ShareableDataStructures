@@ -21,10 +21,8 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class Update : Record
 	{
-        /// <summary>
-        /// The old TableRow (immutable)
-        /// </summary>
-        public TableRow oldRow;
+        public long _defpos;
+        public long prev;
         /// <summary>
         /// Constructor: an UPDATE from the Parser
         /// </summary>
@@ -40,13 +38,15 @@ namespace Pyrrho.Level2
             long u,Transaction db)
             : base(t,tb,fl,u,db)
         {
-            oldRow = old;
+            _defpos = old.defpos;
+            prev = old.ppos;
         }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, Reader rdr) : base(t, rdr) { }
         protected Update(Update x, Writer wr) : base(x, wr)
         {
-            oldRow = x.oldRow;
+            _defpos = wr.Fix(x._defpos);
+            prev = wr.Fix(x.prev);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -58,8 +58,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(wr.Fix(oldRow.ppos));
-            wr.PutLong(wr.Fix(oldRow.defpos));
+            wr.PutLong(_defpos);
+            wr.PutLong(prev);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -68,11 +68,9 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            rdr.GetLong();
-            var dp = rdr.GetLong();
+            _defpos = rdr.GetLong();
+            prev = rdr.GetLong();
             base.Deserialise(rdr);
-            var tb = (Table)rdr.role.objects[tabledefpos];
-            oldRow = tb.tableRows[dp];
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -89,7 +87,7 @@ namespace Pyrrho.Level2
                         break;
                     }
                 case Type.Delete:
-                    return (((Delete)that).delRow.defpos == defpos) ? ppos : -1;
+                    return (((Delete)that).delpos == defpos) ? ppos : -1;
                 case Type.Update1:
                 case Type.Update:
                     return (((Update)that).defpos == defpos) ? ppos : -1;
@@ -108,8 +106,10 @@ namespace Pyrrho.Level2
         {
             var tb = (Table)db.role.objects[tabledefpos];
             tb += new TableRow(this, db);
-            return db + (db.schemaRole, tb);
+            return db + (db.schemaRole, tb,p);
         }
+        public override long Affects => _defpos;
+        public override long defpos => _defpos;
     }
     internal class Update1 : Update
     {

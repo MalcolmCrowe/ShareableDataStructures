@@ -19,7 +19,7 @@ namespace Pyrrho.Level3
     /// so that this transaction will conflict with a transaction that changes any of them.
     /// However, for records in a table, we allow specific non-conflicting updates, as follows:
     ///	(a) (CheckUpdate) If unique selection of specific records cannot be guaranteed, then 
-    ///	we should report conflict if any read ident is updated by another transaction. 
+    ///	we should report conflict if any column read is updated by another transaction. 
     ///	(b) (CheckSpecific) If we are sure the transaction has seen a small number of records of tb, 
     ///	selected by specific values of the primary or other unique key, then 
     ///	we can limit the conflict check to updates of the selected records (if any), 
@@ -69,7 +69,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public void Block()
         {
-            check = new BlockUpdate(cnx);
+            check = new BlockUpdate(cnx,defpos);
         }
         /// <summary>
         /// Examine the consequences of changes to the object
@@ -80,38 +80,24 @@ namespace Pyrrho.Level3
         {
             if (check == null)
                 return p.ReadCheck(defpos);
-            if (p is Delete)
-                return check.Check(((Delete)p).delRow);
-            return check.Check((Record)p);
+            if (p is Record r)
+                return check.Check((p.role.objects[r.tabledefpos] as Table).tableRows[r.defpos]);
+            return null;
         }
-#if !LOCAL
-        /// <summary>
-        /// ReadConstraints can be serialised to a remote transaction master
-        /// </summary>
-        /// <param name="pb">The Physical database</param>
-        public void Serialise(PhysBase pb) //LOCKED
-        {
-            Domain.PutLong(pb, defpos);
-            if (check != null)
-                check.Serialise(pb);
-            else
-                pb.WriteByte(0);
-        }
-#endif
         /// <summary>
         /// We are a transaction master parsing a readconstraint from a remote server
         /// </summary>
         /// <param name="db">The local database</param>
         /// <param name="s">The string received</param>
         /// <returns>A readconstraint</returns>
-        internal static ReadConstraint From(Context cnx,Database db, string s)
+        internal static ReadConstraint From(Context cnx,Database db, long tb, string s)
         {
             var ss = s.Split('-');
             if (ss.Length == 0)
                 return null;
             return new ReadConstraint(cnx, long.Parse(ss[0]))
             {
-                check = CheckUpdate.From(cnx,db, ss)
+                check = CheckUpdate.From(cnx,db, tb, ss)
             };
         }
         /// <summary>
@@ -131,34 +117,24 @@ namespace Pyrrho.Level3
 	internal class CheckUpdate
     {
         internal readonly Context cnx;
+        public long tabledefpos;
         /// <summary>
         /// a list of ReadColumn
         /// </summary>
 		public BTree<long, bool> rdcols = null;
         /// <summary>
+        /// a specific key
+        /// </summary>
+        public PRow rdkey = null;
+        /// <summary>
         /// Constructor: a read operation involving the readConstraint's database object
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckUpdate(Context cx)
+        public CheckUpdate(Context cx,long tb)
         {
             cnx = cx;
+            tabledefpos = tb;
         }
-#if (!EMBEDDED)
-        /// <summary>
-        /// Constructor: a read operation of a local object by a remote server
-        /// </summary>
-        /// <param name="cx">The context</param>
-        /// <param name="svr">The server</param>
-        public CheckUpdate(Context cx, PyrrhoServer svr) : this(cx)
-        {
-            int n = svr.tcp.GetInt();
-            for (int j = 0; j < n; j++)
-            {
-                long d = svr.tcp.GetLong();
-                rdcols +=(d, true);
-            }
-        }
-#endif
         /// <summary>
         /// Add a Selector to this CheckUpdate
         /// </summary>
@@ -180,41 +156,19 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Check an insert/update/deletion against the ReadConstraint
         /// </summary>
-        /// <param name="r">the Record</param>
+        /// <param name="r">the TableRow</param>
         /// <returns>conflict if any of the read TableColumns are changed</returns>
-		public virtual DBException Check(Record r)
+		public virtual DBException Check(TableRow r)
         {
             for (var c = rdcols.First(); c != null; c = c.Next())
                 if (r.fields[c.key()] != null)
                     return new DBException("40006", c.key()).Mix();
             return null;
         }
-        public virtual DBException Check(TableRow r)
+        public DBException Check(Delete r)
         {
-            for (var c = rdcols.First(); c != null; c = c.Next())
-                if (r.fields[c.key()] != null)
-                    return new DBException("40006", c.key()).Mix();
-            return null;
+            return (tabledefpos == r.tabledefpos) ? new DBException("40006", tabledefpos).Mix() : null;
         }
-#if !LOCAL
-        /// <summary>
-        /// Serialise this readconstraint to a remote transaction master
-        /// </summary>
-        /// <param name="pb">The Physical database</param>
-        internal virtual void Serialise(PhysBase pb) //LOCKED
-        {
-
-            pb.WriteByte(0x01);
-            if (rdcols == null)
-                Domain.PutLong(pb, 0);
-            else
-            {
-                Domain.PutLong(pb, rdcols.Count);
-                for (var c = rdcols.First(); c != null; c = c.Next())
-                    Domain.PutLong(pb, c.key());
-            }
-        }
-#endif
         /// <summary>
         /// Add this readConstraint to the transaction profile
         /// </summary>
@@ -234,9 +188,9 @@ namespace Pyrrho.Level3
         /// <param name="db">the local database</param>
         /// <param name="ss">a list of strings</param>
         /// <returns>the CheckUpdate, CheckSpecific, BlockUpdate</returns>
-        internal static CheckUpdate From(Context cnx, Database db, string[] ss)
+        internal static CheckUpdate From(Context cnx, Database db, long tb, string[] ss)
         {
-            var r = new CheckUpdate(cnx);
+            var r = new CheckUpdate(cnx,tb);
             if (ss.Length > 1)
             {
                 var ks = ss[1].Split(' ');
@@ -300,14 +254,14 @@ namespace Pyrrho.Level3
         /// Constructor
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckSpecific(Context cx) : base(cx) { }
+        public CheckSpecific(Context cx,long tb) : base(cx,tb) { }
         /// <summary>
         /// Constructor: CheckUpdate builds this on receipt of Singleton information
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="x">the Index</param>
         /// <param name="m">the key</param>
-		public CheckSpecific(Context cx, Index x, PRow m) : this(cx)
+		public CheckSpecific(Context cx, Index x, PRow m) : this(cx,x.tabledefpos)
         {
             index = x;
             recs.Add(m); // recs is initially empty here
@@ -330,36 +284,16 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="r">the insert/update</param>
         /// <returns>whether conflict has occurred</returns>
-		public override DBException Check(Record r)
+		public override DBException Check(TableRow r)
         {
-            if (r is Update)
-            {
-                var c = Check(((Update)r).oldRow);
-                if (c != null)
-                    return c;
-            }
             // check for insertion (or key update) conflicting with an empty query
-            var m = r.MakeKey(index.cols);
+            var m = r.MakeKey(index);
             if (m != null)
                 foreach (var rr in recs)
                     if (m._CompareTo(rr) == 0)
                         return new DBException("40005", r.defpos).Mix();
             return null;
         }
-#if !LOCAL
-        /// <summary>
-        /// Serialise this CheckUpdate to a remote transaction master
-        /// </summary>
-        /// <param name="pb">The PhysBase</param>
-        internal override void Serialise(PhysBase pb) //LOCKED
-        {
-            pb.WriteByte(0x2);
-            Domain.PutLong(pb, index.defpos);
-            Domain.PutInt(pb, recs.Count);
-            foreach (var rr in recs)
-                Domain.PutLong(pb, (long)index.rows.Get(pb.cnx as Transaction,rr));
-        }
-#endif
         /// <summary>
         /// Add this CheckUpdate to a transactio profile
         /// </summary>
@@ -384,98 +318,24 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-#if (!EMBEDDED)
-    /// <summary>
-    /// Low-level version of CheckSpecific for use with transaction masters
-    /// </summary>
-    internal class MasterSpecific : CheckUpdate
-    {
-        /// <summary>
-        /// The defining position of the index (not the index itself!)
-        /// </summary>
-        public long indexDefPos;
-        /// <summary>
-        /// Defining positions of the records
-        /// </summary>
-        public long[] recs;
-        /// <summary>
-        /// Constructor: a CheckSpecific from a remote master
-        /// </summary>
-        /// <param name="cx">The context</param>
-        /// <param name="svr">The remote server</param>
-        public MasterSpecific(Context cx, PyrrhoServer svr) : base(cx)
-        {
-            indexDefPos = svr.tcp.GetLong();
-            int n = svr.tcp.GetInt();
-            recs = new long[n];
-            for (int j = 0; j < n; j++)
-                recs[j] = svr.tcp.GetLong();
-        }
-        /// <summary>
-        /// Test for conflict against a given insert/update/deletion
-        /// </summary>
-        /// <param name="r">the insert/update</param>
-        /// <returns>whether conflict has occurred</returns>
-        public override DBException Check(Record r)
-        {
-            if (r is Update)
-            {
-                var c = Check(((Update)r).oldRow);
-                if (c != null)
-                    return c;
-            }
-            // check for insertion (or key update) conflicting with an empty query
-            int n = recs.Length;
-            for (int j = 0; j < n; j++)
-                if (r.defpos == recs[j])
-                    return new DBException("40005", r.defpos).Mix();
-            return null;
-        }
-    }
-#endif
     /// <summary>
     /// The readConstraint blocks Updates for a database object
     /// </summary>
 	internal class BlockUpdate : CheckUpdate
     {
         /// <summary>
-        /// the table we are dealing with
-        /// </summary>
-        public long defpos;
-        /// <summary>
         /// Constructor for a local database
         /// </summary>
         /// <param name="cx">The context</param>
-        public BlockUpdate(Context cx) : base(cx) { }
+        public BlockUpdate(Context cx,long tb) : base(cx,tb) { }
         /// <summary>
         /// Constructor: all updates for the specified TableColumns of this table should now be blocked
         /// </summary>
         /// <param name="cu">the checkupdate</param>
-		public BlockUpdate(CheckSpecific cu) : this(cu.cnx)
+		public BlockUpdate(CheckSpecific cu) : this(cu.cnx,cu.index.tabledefpos)
         {
-            defpos = cu.index.tabledefpos;
             rdcols = cu.rdcols;
         }
-#if (!EMBEDDED)
-        /// <summary>
-        /// Constructor: a blockUpdate from a remote server
-        /// </summary>
-        /// <param name="cx">The context</param>
-        /// <param name="svr">The remote server</param>
-        public BlockUpdate(Context cx, PyrrhoServer svr) : this(cx)
-        {
-            defpos = svr.tcp.GetLong();
-            int rp = svr.tcp.ReadByte();
-            if (rp < 0)
-                throw new PEException("PE822");
-            int n = svr.tcp.GetInt();
-            for (int j = 0; j < n; j++)
-            {
-                long d = svr.tcp.GetLong();
-                rdcols +=(d, true);
-            }
-        }
-#endif
         /// <summary>
         /// No-op on singleton (updates are already blocked)
         /// </summary>
@@ -492,24 +352,12 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="r">A Record to check</param>
         /// <returns>An exception (null means no problem)</returns>
-        public override DBException Check(Record r)
+        public override DBException Check(TableRow r)
         {
             if (rdcols != null)
                 return base.Check(r);
-            return (defpos == r.tabledefpos) ? new DBException("40008", defpos).Mix() : null;
+            return (tabledefpos==r.tabledefpos)? new DBException("40008", tabledefpos).Mix():null;
         }
-#if !LOCAL
-        /// <summary>
-        /// Serialise ourselves to a remote transaction master
-        /// </summary>
-        /// <param name="pb">The Physical database</param>
-        internal override void Serialise(PhysBase pb) //LOCKED
-        {
-            pb.WriteByte(0x3);
-            Domain.PutLong(pb, defpos);
-            base.Serialise(pb);
-        }
-#endif
         /// <summary>
         /// Add this readConstraint to the transaction profile
         /// </summary>
@@ -526,78 +374,8 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            return "-" + defpos;
+            return "-" + tabledefpos;
         }
     }
-#if !LOCAL && !EMBEDDED
-    /// <summary>
-    /// We are a transaction master. This class is a collection of remote read constraints
-    /// </summary>
-    internal class ReadConstraintInfo
-    {
-        /// <summary>
-        /// The connection
-        /// </summary>
-        public string conn;
-        /// <summary>
-        /// The database highwatermark
-        /// </summary>
-        public long dbpos;
-        /// <summary>
-        /// The list of readConstraints
-        /// </summary>
-        public BTree<long, ReadConstraint> rdc = BTree<long, ReadConstraint>.Empty;
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="c">The connection name</param>
-        /// <param name="d">The database highwatermark</param>
-        public ReadConstraintInfo(string c, long d) { conn = c; dbpos = d; }
-        /// <summary>
-        /// Parse a string of readconstraints from a remote server
-        /// </summary>
-        /// <param name="db">the local database</param>
-        /// <param name="s"></param>
-        /// <returns></returns>
-        internal static ReadConstraintInfo From(Database db, string s)
-        {
-            var ix = s.IndexOf(' ');
-            var c = s.Substring(1, ix - 1);
-            var ss = s.Substring(ix + 1).Split('|');
-            var d = long.Parse(ss[0]);
-            var r = new ReadConstraintInfo(c, d);
-            for (int i = 1; i < ss.Length; i++)
-            {
-                var p = ss[i];
-                ix = p.IndexOf(' ');
-                d = long.Parse(p.Substring(0, ix));
-                r.rdc+=(d, ReadConstraint.From(db, p.Substring(ix + 1)));
-            }
-            return r;
-        }
-        /// <summary>
-        /// Check this list of readconstraints
-        /// </summary>
-        /// <param name="db">the local database</param>
-        /// <returns>Whether a conflict has occurred</returns>
-        internal bool Check(Database db)
-        {
-            return db.pb.Check(this);
-        }
-        /// <summary>
-        /// A parsable version of the ReadConstraintInfo
-        /// </summary>
-        /// <returns>a string</returns>
-        public override string ToString()
-        {
-            var sb = new StringBuilder(";");
-            sb.Append(conn);
-            sb.Append(" ");
-            sb.Append(dbpos);
-            for (var a = rdc.First(); a != null; a = a.Next())
-                sb.Append("|" + a.value().ToString());
-            return sb.ToString();
-        }
-    }
-#endif
+
 }

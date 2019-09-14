@@ -45,7 +45,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
-            defpos = ((DBObject)rdr.db.role.objects[prev]).defpos;
+            defpos = (long)(rdr.db.mem[prev] ?? ppos);
             base.Deserialise(rdr);
         }
         /// <summary>

@@ -94,17 +94,8 @@ namespace Pyrrho.Level3
             Column = 219,
             Period = 220,
             Rename = 223,
-            When = 230
-#if MONGO|| JAVASCRIPT
-            ,Function = 224, // JavaScript
-            For = 225, // JavaScript
-            Continue = 226, // JavaScript
-            With = 227, // JavaScript
-            Expression = 228 // JavaScript
-#endif
-#if MONGO
-            ,MongoIndex = 229 // Mongo
-#endif
+            When = 230,
+            Commit = 231
         }
 
         internal const long
@@ -179,6 +170,10 @@ namespace Pyrrho.Level3
         {
             return new Executable(defpos,m);
         }
+    }
+    internal class CommitStatement : Executable
+    {
+        public CommitStatement(Lexer lx) : base(lx, Type.Commit) { }
     }
     /// <summary>
     /// A Select Statement can be used in a stored procedure so is a subclass of Executable

@@ -241,8 +241,8 @@ namespace Pyrrho.Level2
             var tb = (Table)db.mem[tabledefpos];
             var tg = new Trigger(this, db);
             tb = tb.AddTrigger(tg, db);
-            db += tb;
-            db += tg;
+            db += (tb,p);
+            db += (tg,p);
             return db;
         }
     }

@@ -176,7 +176,7 @@ namespace Test
             conn.Act("insert into TB values('Glasgow',2,43)");
             conn.Act("insert into TB values('Paisley',3,82)");
             conn.Act("insert into TB values('Glasgow',4,29)");
-            CheckResults(7, 1, "select S,count(C) as occ,sum(C) as total from TB groupby S",
+            CheckResults(7, 1, "select S,count(C) as occ,sum(C) as total from TB group by S",
                 "[{S:\"Glasgow\",OCC:2,TOTAL:72},{S:\"Paisley\",OCC:1,TOTAL:82}]");
             Rollback();
         }
@@ -194,7 +194,7 @@ namespace Test
             conn.Act("insert into JE values(11,4,10)");
             conn.Act("insert into JE values(7,2,31)");
             CheckResults(8, 1, "select * from JA natural join JE" ,
-                "[{B:4,C:2,D:43,F:7,G:31},{B:8,C:3,D:82,F:4,G:22},{B:7,C:4,D:29,F:11,G:10}]");
+                "[{B:4,D:43,C:2,F:7,G:31},{B:8,D:82,C:3,F:4,G:22},{B:7,D:29,C:4,F:11,G:10}]");
             CheckResults(8, 2, "select D,G from JA cross join JE where D<G",
                 "[{D:29,G:31}]");
             CheckResults(8, 3, "select B,D,G from JA, JE where B=F",
@@ -220,14 +220,15 @@ namespace Test
             if (t > 0 && t != 9)
                 return;
             Begin();
-            conn.Act("create table ba(b int,c numeric)");
-            conn.Act("insert into ba values(12345678901234567890123456789,123.4567)");
-            conn.Act("insert into ba values(0,123.4567e-15)");
-            conn.Act("insert into ba values(12,1234)");
-            conn.Act("insert into ba values(34,0.5678e9)");
+            conn.Act("create table ba(b int,c real,d numeric)");
+            conn.Act("insert into ba values(12345678901234567890123456789,123.4567,0.1234)");
+            conn.Act("insert into ba values(0,123.4567e-15,1234)");
+            conn.Act("insert into ba values(12,1234.0,0.00045)");
+            conn.Act("insert into ba values(34,0.5678e9,0)");
             CheckResults(9, 1, "select * from ba", 
-                "[{B: 12345678901234567890123456789, C: 123.4567},{B: 0, C: 1.234567E-13},"
-                +"{B: 12, C: 1234},{B: 34, C: 567800000}]");
+                "[{B: \"12345678901234567890123456789\", C: 123.4567, D: 0.1234}," +
+                "{B: 0, C: 1.234567E-13, D: 1234},{B: 12, C: 1234,D: 0.00045}," +
+                "{B: 34, C: 567800000, D: 0}]");
             Rollback();
         }
 
@@ -255,7 +256,7 @@ namespace Test
             r.Close();
             var task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict");
+            CheckExceptionNonQuery(10, 1, "Commit", "Transaction rollback - new key conflict with empty query");
             Begin();
             cmd.CommandText = "select * from RDC where A=52";
             r = cmd.ExecuteReader();
@@ -289,20 +290,20 @@ namespace Test
             if (qry == 0 || qry == 1)
             {
                 Begin();
-                conn.Act("create table cs(b int notnull,c int default 4,d int generated b+c)");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Value of b cannot be null");
             }
             if (qry == 0 || qry == 2)
             {
                 Begin();
-                conn.Act("create table cs(b int notnull,c int default 4,d int generated b+c)");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 conn.Act("insert into cs(b) values(3)");
                 CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Illegal value for generated column");
             }
             if (qry == 0 || qry == 3)
             {
                 Begin();
-                conn.Act("create table cs(b int notnull,c int default 4,d int generated b+c)");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 conn.Act("insert into cs(b) values(3)");
                 CheckResults(11, 3, "select * from cs", "[{B:3,C:4,D:7}]");
             }
@@ -461,7 +462,10 @@ namespace Test
                 return;
             try
             {
-                conn.Act(c);
+                if (c.ToUpper() == "COMMIT")
+                    tr.Commit();
+                else
+                    conn.Act(c);
             }
             catch (Exception e)
             {

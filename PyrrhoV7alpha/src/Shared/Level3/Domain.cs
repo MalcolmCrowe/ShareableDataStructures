@@ -145,7 +145,7 @@ namespace Pyrrho.Level3
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
         public Domain elType => (Domain)(mem[Element] ?? StandardDataType.Null);
-        public TypedValue defaultValue => Parse((string)mem[Default]);
+        public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
         public string abbrev => (string)mem[Abbreviation]??"";
         public BTree<long, Check> constraints => (BTree<long, Check>)mem[Constraints];
         public string provenance => (string)mem[Provenance];
@@ -189,7 +189,7 @@ namespace Pyrrho.Level3
         public Domain(Sqlx t, BTree<long, object> u)
             : base(-1, --_uid, -1, u + (Kind,t))
         {
-            Database._system += (Database._system.schemaRole, this);
+            Database._system += (Database._system.schemaRole, this,0);
         }
         // unusually in this framework, it is okay to have many Domains with the default -1 defpos
         protected Domain(long dp,BTree<long, object> m) : base(dp,m)
@@ -315,7 +315,7 @@ namespace Pyrrho.Level3
             { sb.Append(" CharSet="); sb.Append(charSet); }
             if (mem.Contains(Culture) && culture != CultureInfo.InvariantCulture)
             { sb.Append(" Culture="); sb.Append(culture.Name); }
-            if (mem.Contains(Default) && defaultValue!=TNull.Value)
+            if (defaultValue!=TNull.Value)
             { sb.Append(" Default="); sb.Append(defaultValue); }
             if (mem.Contains(Description)) { sb.Append(' '); sb.Append(desc); }
             if (mem.Contains(Element) && elType!=Null)
@@ -682,7 +682,7 @@ namespace Pyrrho.Level3
                         if (n == null)
                             wr.PutLong(tv.ToLong().Value);
                         else
-                            wr.PutBytes(n.ivalue.bytes);
+                            wr.PutBytes0(n.ivalue.bytes);
                         break;
                     }
                 case Sqlx.NUMERIC:
@@ -692,7 +692,7 @@ namespace Pyrrho.Level3
                             d = new Numeric(tv.ToLong().Value);
                         if (tv is TInteger)
                             d = new Numeric((Integer)tv.Val(), 0);
-                        wr.PutBytes(d.mantissa.bytes);
+                        wr.PutBytes0(d.mantissa.bytes);
                         wr.PutInt(d.scale);
                         break;
                     }
@@ -705,7 +705,7 @@ namespace Pyrrho.Level3
                             d = new Numeric(tv.ToDouble());
                         else
                             d = (Numeric)tv.Val();
-                        wr.PutBytes(d.mantissa.bytes);
+                        wr.PutBytes0(d.mantissa.bytes);
                         wr.PutInt(d.scale);
                         break;
                     }
@@ -3327,13 +3327,17 @@ namespace Pyrrho.Level3
         }
         static BTree<long, object> _Mem(Domain o, string c, BTree<long, object> u)
         {
-            if (u == null)
+            if (u == null || o==null)
                 u = BTree<long, object>.Empty;
             if (o != null)
                 u += (Element, o);
             if (c != null)
                 u += (Search, c);
             return u;
+        }
+        public override string ToString()
+        {
+            return kind.ToString();
         }
     }
     /// <summary>

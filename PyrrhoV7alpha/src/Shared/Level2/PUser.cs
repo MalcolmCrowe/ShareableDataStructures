@@ -96,8 +96,8 @@ namespace Pyrrho.Level2
             for (var b = db.roles.PositionAt(0); first && b != null; b = b.Next())
                 if ((b.value() is User))
                     first = false;
-            db += (db.schemaRole,nu);
-            db += nu;
+            db += (db.schemaRole,nu,p);
+            db += (nu,p);
             if (first)
                 db += (Database.Owner, nu.defpos);
             return db;

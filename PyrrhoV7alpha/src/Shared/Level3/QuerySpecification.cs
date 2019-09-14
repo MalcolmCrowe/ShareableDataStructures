@@ -186,7 +186,7 @@ namespace Pyrrho.Level3
                     comma = ",";
                 }
             sb.Append(" from ");
-            sb.Append(tableExp);
+            sb.Append((tableExp==null)?"?":Uid(tableExp.defpos));
             return sb.ToString();
         }
     }
@@ -441,7 +441,7 @@ namespace Pyrrho.Level3
          public override string ToString()
         {
             var sb = new StringBuilder("QueryExpression (Left: ");
-            sb.Append(left);
+            sb.Append(Uid(left.defpos));
             sb.Append(") ");
             sb.Append(op);
             sb.Append(" ");
@@ -450,7 +450,7 @@ namespace Pyrrho.Level3
             if (right != null)
             {
                 sb.Append("Right: ");
-                sb.Append(right); sb.Append(") ");
+                sb.Append(Uid(right.defpos)); sb.Append(") ");
             }
             if (ordSpec != null && ordSpec.items.Count!=0)
             {

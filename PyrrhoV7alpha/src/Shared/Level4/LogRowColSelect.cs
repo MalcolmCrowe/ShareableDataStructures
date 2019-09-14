@@ -35,7 +35,7 @@ namespace Pyrrho.Level4
         /// <param name="c">the ident</param>
         /// <param name="t">the table</param>
         /// <param name="e">An enumerator for the Log</param>
-        public LogRowColSelect(Transaction tr,Context cx,Table q, long d, TableColumn c, Table t) 
+        public LogRowColSelect(Transaction tr,Context cx,From q, long d, TableColumn c, Table t) 
             :base(tr,cx,q)
         {
             tcol = c;
@@ -145,7 +145,7 @@ namespace Pyrrho.Level4
                     case Physical.Type.Delete:
                         {
                             Delete d = (Delete)ph;
-                            if (d.delRow.defpos == _rcs.rowpos)
+                            if (d.delpos == _rcs.rowpos)
                             {
                                 del = true;
                                 goto done;

@@ -220,7 +220,8 @@ namespace Pyrrho
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
             var rs = cx?.rb?._rs;
-            var om = rs?.qry as Table;
+            var fm = rs?.qry as From;
+            var om = fm.target;
             if (om!=null && om.defpos > 0)
             {
                 chartType.flags = om.Meta().flags;
@@ -563,7 +564,9 @@ namespace Pyrrho
             var rc = new TypedValue[dt.Length];
             for (int i = 0; i < dt.Length; i++)
                 rc[i] = e.row[dt.columns[i].defpos];
-            sbuild.Append(dt.Xml(tp._tr,_cx,(tp.qry as Table)?.defpos??-1, new TRow(dt, rc)));
+            var fm = tp.qry as From;
+            var tb = fm.target as Table;
+            sbuild.Append(dt.Xml(tp._tr,_cx,tb?.defpos??-1, new TRow(dt, rc)));
         }
     }
     /// <summary>

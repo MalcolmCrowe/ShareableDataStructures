@@ -321,13 +321,13 @@ namespace PyrrhoCmd
                     Console.WriteLine(e.Message);
                     if (transaction != null)
                     {
-                        if (e.info.ContainsKey("TRANSACTION_ACTIVE")
+/*                        if (e.info.ContainsKey("TRANSACTION_ACTIVE")
                             && ((string)e.info["TRANSACTION_ACTIVE"]) == "0") // v5.0
                         {
 #if !MONO1
                             while (Console.KeyAvailable)
                                 Console.ReadKey(true);
-#endif
+#endif*/
                             Console.WriteLine("The transaction has been rolled back");
 #if MONO1
                             for (; ; )
@@ -339,7 +339,7 @@ namespace PyrrhoCmd
                             }
 #endif
                             transaction = null;
-                        }
+  /*                      } */
                     }
                     file?.Close();
                     file = null;

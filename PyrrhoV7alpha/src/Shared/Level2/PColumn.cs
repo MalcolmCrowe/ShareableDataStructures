@@ -170,8 +170,8 @@ namespace Pyrrho.Level2
             var dt = db.GetDomain(domdefpos);
             var tc = new TableColumn(t, this, dt);
             t += tc;
-            db += (ro, tc);
-            return db+(db.role,t);
+            db += (tc,p);
+            return db+(db.role,t,p);
         }
     }
     /// <summary>

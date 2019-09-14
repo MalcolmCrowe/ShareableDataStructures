@@ -120,10 +120,11 @@ namespace Pyrrho.Level4
             bool addFlags = true;
             var adds = new int[flags.Length];
             // see if we are going to add index flags stuff
-            var fm = qry as Table;
+            var fm = qry as From;
+            var ta = fm?.target as Table;
             if (fm != null)
             {
-                var ix = fm.FindPrimaryIndex();
+                var ix = ta.FindPrimaryIndex();
                 if (ix != null)
                     for (int i = 0; i < ix.cols.Count; i++)
                     {
@@ -731,25 +732,25 @@ namespace Pyrrho.Level4
         {
             return " Table ";
         }
-        readonly Table table;
+        readonly From from;
         /// <summary>
         /// Constructor: a rowset defined by a base table without a primary key
         /// </summary>
         /// <param name="f">the from</param>
-        internal TableRowSet(Transaction tr, Context cx,Table f) : base(tr,cx,f)
+        internal TableRowSet(Transaction tr, Context cx,From f) : base(tr,cx,f)
         {
-            table = f;
+            from = f;
             f.Audit(tr,f);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Table ");
-            sb.Append(table.ToString());
+            sb.Append(from.ToString());
             sb.Append(' ');
-            sb.Append(table);
+            sb.Append(from);
             base._Strategy(sb, indent);
         }
-        internal override int? Count => (int?)table.tableRows.Count;
+        internal override int? Count => (int?)(from.target as Table).tableRows.Count;
         protected override RowBookmark _First(Context _cx)
         {
             return TableRowBookmark.New(_cx,this);
@@ -770,7 +771,8 @@ namespace Pyrrho.Level4
             }
             internal static TableRowBookmark New(Context _cx, TableRowSet trs)
             {
-                var table = trs.qry as Table;
+                var fm = trs.qry as From;
+                var table = fm.target as Table;
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
                 {
                     var rec = b.value();
@@ -778,11 +780,11 @@ namespace Pyrrho.Level4
                         trs._tr.user.defpos != table.definer 
                         && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    if (table.CheckMatch(trs._tr, _cx,rec))
+                    if (fm.CheckMatch(trs._tr, _cx,rec))
                     {
                         var bm = new TableRowBookmark(_cx,trs, 0, b);
                         // because where won't evaluate correctly until we have a bookmark for the query
-                        if (Query.Eval(table.where,trs._tr, _cx))
+                        if (Query.Eval(fm.where,trs._tr, _cx))
                             return bm;
                     }
                 }
@@ -792,7 +794,8 @@ namespace Pyrrho.Level4
             {
                 var bmk = _bmk;
                 var rec = _bmk.value();
-                var table = _rs.qry as Table;
+                var fm = _rs.qry as From;
+                var table = fm.target as Table;
                 TableRowBookmark ret = null;
                 for (;;) // loop until we find a local or remote match record or we give up
                 {
@@ -805,8 +808,8 @@ namespace Pyrrho.Level4
                         && !_rs._tr.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     ret = new TableRowBookmark(_cx,_rs, _pos + 1, bmk);
-                    if ((!table.CheckMatch(_rs._tr,_cx,rec)) 
-                        || !Query.Eval(table.where,_rs._tr,_cx))
+                    if ((!fm.CheckMatch(_rs._tr,_cx,rec)) 
+                        || !Query.Eval(fm.where,_rs._tr,_cx))
                         continue;
                     break;  // got a local row
                 }
@@ -929,7 +932,8 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The From part
         /// </summary>
-        readonly Table from;
+        readonly From from;
+        readonly Table table;
         /// <summary>
         /// The Index to use
         /// </summary>
@@ -940,10 +944,11 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal IndexRowSet(Transaction tr, Context cx, Table f, Index x, PRow m)
+        internal IndexRowSet(Transaction tr, Context cx, From f, Index x, PRow m)
             : base(tr, cx, f, f.rowType, x.rows.info.keyType, new OrderSpec(x.rows.info.keyType))
         {
             from = f;
+            table = f.target as Table;
             index = x;
             filter = m;
             f.Audit(tr, x, m);
@@ -990,7 +995,7 @@ namespace Pyrrho.Level4
                 : base(_cx,irs, pos, bmk.Value().Value)
             {
                 _bmk = bmk; _irs = irs;
-                _rec = irs.from.tableRows[_defpos];
+                _rec = irs.table.tableRows[_defpos];
                 _row = new TRow(_rs.rowType, _rec.fields);
                 _key = new TRow(_rs.keyType, _rec.fields);
                 _cx.Add(irs.qry, this);
@@ -1015,8 +1020,8 @@ namespace Pyrrho.Level4
                     var iq = bmk.Value();
                     if (!iq.HasValue)
                         continue;
-                    var rec = irs.from.tableRows[iq.Value];
-                    if (rec == null || (irs.from.enforcement.HasFlag(Grant.Privilege.Select)
+                    var rec = irs.table.tableRows[iq.Value];
+                    if (rec == null || (irs.table.enforcement.HasFlag(Grant.Privilege.Select)
                         && irs._tr.user.defpos != irs.from.definer
                         && !irs._tr.user.clearance.ClearanceAllows(rec.classification)))
                         continue;
@@ -1040,7 +1045,8 @@ namespace Pyrrho.Level4
             {
                 var bmk = _bmk;
                 var rec = _rec;
-                var table = _rs.qry as Table;
+                var fm = _rs.qry as From;
+                var table = fm.target as Table;
                 for (; ; )
                 {
                     bmk = bmk.Next();
@@ -1058,11 +1064,11 @@ namespace Pyrrho.Level4
                         if (rec.fields.Contains(m.key().defpos)
                             && m.value().CompareTo(rec.fields[m.key().defpos]) != 0)
                             goto skip;
-                    if (table.CheckMatch(_rs._tr, _cx, rec))
+                    if (fm.CheckMatch(_rs._tr, _cx, rec))
                     {
                         var bm = new IndexRowBookmark(_cx,_irs, _pos + 1, bmk);
                         // because where won't evaluate correctly until we update the bookmark for the query
-                        if (Query.Eval(table.where, _rs._tr, _cx))
+                        if (Query.Eval(fm.where, _rs._tr, _cx))
                             return bm;
                     }
                 skip:;
@@ -1405,17 +1411,17 @@ namespace Pyrrho.Level4
             return " Transition ";
         }
         internal readonly BTree<long, TypedValue> defaults = BTree<long, TypedValue>.Empty; 
-        internal readonly Query table; // will be a SqlInsert, QuerySearch or UpdateSearch
+        internal readonly From from; // will be a SqlInsert, QuerySearch or UpdateSearch
         readonly PTrigger.TrigType _tgt;
         internal readonly BTree<long, TriggerActivation> tb, ti, ta;
         internal readonly Index index;
         internal readonly Adapters _eqs;
-        internal TransitionRowSet(Transaction tr,Context cx,Query q, PTrigger.TrigType tg, Adapters eqs)
-            : base(tr,cx,q,q.rowType,(q as Table)?.FindPrimaryIndex()?.keyType??q.rowType)
+        internal TransitionRowSet(Transaction tr,Context cx,From q, PTrigger.TrigType tg, Adapters eqs)
+            : base(tr,cx,q,q.rowType,(q.target as Table)?.FindPrimaryIndex()?.keyType??q.rowType)
         {
-            table = q;
+            from = q;
             _eqs = eqs;
-            var t = table as Table ?? table.simpleQuery as Table;
+            var t = from.target as Table ?? from.simpleQuery as Table;
             index = t.FindPrimaryIndex();
             // check now about conflict with generated columns
             if (q.Denied(tr,Grant.Privilege.Insert))
@@ -1541,11 +1547,12 @@ namespace Pyrrho.Level4
                 _row = new TRow(dt, oldRow);
                 _key = new TRow(trs.keyType, oldRow);
                 _cx.Add(trs.qry,this);
-                var q = trs.table as Table;
+                var q = trs.qry as From;
+                var tb = q.target as Table;
                 // Get the trigger sets and set up the activations
-                rb = Setup(trs._tr,q, q.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
-                ri = Setup(trs._tr,q, q.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
-                ra = Setup(trs._tr,q, q.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
+                rb = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
+                ri = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
+                ra = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
             }
             /// <summary>
             /// Implement the autokey feature: if a key column is an integer type,

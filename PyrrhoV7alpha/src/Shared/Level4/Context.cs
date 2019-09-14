@@ -58,6 +58,7 @@ namespace Pyrrho.Level4
         /// Information gathered from view definitions: corresponding identifiers, equality conditions
         /// </summary>
         internal Ident.PosTree<BTree<Ident,bool>> matching = Ident.PosTree<BTree<Ident,bool>>.Empty;
+        internal BTree<long,BTree<long, TypedValue>> matches = BTree<long,BTree<long, TypedValue>>.Empty;
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -93,6 +94,7 @@ namespace Pyrrho.Level4
             role = db.role;
             user = db.user;
             cxid = db.lexeroffset;
+            rdC = (db as Transaction)?.rdC;
         }
         internal Context(Context cx)
         {
@@ -149,7 +151,7 @@ namespace Pyrrho.Level4
             if (t == null)
                 return null;
             var h = new Ident(ic.ident, ic.segpos);
-            if (defs[h] is Table tb && tb.rowType.names[t.ident] is TableColumn c)
+            if (defs[h] is From fm && fm.rowType.names[t.ident] is Selector c)
             {
                 defs += (ic, c);
                 return c;

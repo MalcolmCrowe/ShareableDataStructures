@@ -22,10 +22,10 @@ namespace Pyrrho.Level4
         /// Constructor: Build a rowset of log information about table records
         /// </summary>
         /// <param name="q">The From</param>
-        public LogTableSelect(Transaction tr,Context cx,Table q)
+        public LogTableSelect(Transaction tr,Context cx,From q)
             : base(tr,cx,q)
         {
-            tb = q;
+            tb = q.target as Table;
         }
         public override RowBookmark First(Context _cx)
         {
@@ -89,9 +89,9 @@ namespace Pyrrho.Level4
                     break;
                 case Physical.Type.Delete:
                     Delete d = (Delete)ph;
-                    pr = db.GetD(d.delRow.defpos);
+                    pr = db.GetD(d.delpos);
                     s = "Delete";
-                    df = d.delRow.defpos;
+                    df = d.delpos;
                     break;
             }
             var rc = pr as Record;
@@ -126,7 +126,7 @@ namespace Pyrrho.Level4
             var ppos1 = _ph.ppos;
             var next = _next;
             var pt1 = _pt;
-            var from = res.qry as Table;
+            var from = res.qry as From;
             for (; ; )
             {
                 if (ppos1 == db.loadpos)
@@ -159,7 +159,7 @@ namespace Pyrrho.Level4
                     case Physical.Type.Delete:
                         {
                             Delete d = (Delete)ph;
-                            Physical pr = db.GetD(d.delRow.defpos);
+                            Physical pr = db.GetD(d.delpos);
                             Record r = (Record)pr;
                             if (r.tabledefpos != from.defpos)
                                 continue;

@@ -168,20 +168,19 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// A DBObject added to Database goes into mem by default
-        /// but will go into current role for Transactiom
         /// </summary>
         /// <param name="ob"></param>
         /// <param name="rs"></param>
         /// <param name="c"></param>
         /// <param name="m"></param>
         /// <returns></returns>
-        public virtual Database New(DBObject ob)
+        public virtual Database New(DBObject ob,long p)
         {
-            return new Database(roles, loadpos, mem+(ob.defpos,ob));
+            return new Database(roles + (role.defpos, role + ob),p, mem);
         }
-        public static Database operator+(Database d,Role r)
+        public static Database operator+(Database d,(Role,long)x)
         {
-            return d.New(d.roles + (r.defpos, r), d.loadpos, d.mem);
+            return d.New(d.roles + (x.Item1.defpos, x.Item1), x.Item2, d.mem);
         }
         /// <summary>
         /// Add an object to a role
@@ -189,10 +188,17 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         /// <param name="x"></param>
         /// <returns></returns>
-        public static Database operator +(Database d, (Role,DBObject) x)
+        public static Database operator +(Database d, (Role,DBObject,long) x)
         {
-            return d.New(d.roles + (x.Item1.defpos, x.Item1 + x.Item2), d.loadpos, d.mem);
+            return d.New(d.roles + (x.Item1.defpos, x.Item1 + x.Item2), x.Item3, d.mem);
         }
+        /// <summary>
+        /// If x.Item1 <0, store a property object.
+        /// If x.Item1 >=0, store the affected defpos.
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="x"></param>
+        /// <returns></returns>
         public static Database operator+(Database d,(long,object)x)
         {
             return d.New(d.roles, d.loadpos, d.mem + x);
@@ -201,11 +207,11 @@ namespace Pyrrho.Level3
         /// Default action for adding a DBObject
         /// </summary>
         /// <param name="d"></param>
-        /// <param name="ob"></param>
+        /// <param name="x"></param>
         /// <returns></returns>
-        public static Database operator+(Database d,DBObject ob)
+        public static Database operator+(Database d,(DBObject,long) x)
         {
-            return d.New(ob);
+            return d.New(x.Item1,x.Item2);
         }
         public static Database operator- (Database d,Role r)
         {
@@ -217,9 +223,9 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         /// <param name="x"></param>
         /// <returns></returns>
-        public static Database operator -(Database d, (Role,DBObject) x)
+        public static Database operator -(Database d, (Role,DBObject,long) x)
         {
-            return d.New(d.roles + (x.Item1.defpos, x.Item1-x.Item2), d.loadpos, d.mem);
+            return d.New(d.roles + (x.Item1.defpos, x.Item1-x.Item2), x.Item3, d.mem);
         }
         public static Database operator-(Database d,DBObject ob)
         {
@@ -256,7 +262,7 @@ namespace Pyrrho.Level3
             return new Transaction(r,t,auto??autoCommit);
         }
         /// <summary>
-        /// Build a ReadConstraint object
+        /// Build a ReadConstraint object.
         /// </summary>
         /// <param name="q">The database object concerned</param>
         /// <returns></returns>
@@ -273,9 +279,9 @@ namespace Pyrrho.Level3
         internal virtual void OnDrop(DBObject ob, Sqlx act)
         {
         }
-        public virtual Database RdrClose(Context cx)
+        public virtual (Database,long) RdrClose(Context cx)
         {
-            return this;
+            return (this,Transaction.TransPos);
         }
         /// <summary>
         /// Load the database
@@ -339,8 +345,6 @@ namespace Pyrrho.Level3
             var ob = (DBObject)role.objects[pos];
             if (ob is Domain dm)
                 return dm;
-            else if (ob is Table tb)
-                return tb.rowType;
             else if (ob is Index ix)
                 return ix.keyType;
             throw new PEException("PE284");
@@ -364,20 +368,20 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Commit the physical data
         /// </summary>
-        internal virtual Database Commit(Context cx)
+        internal virtual (Database,long) Commit(Context cx)
         {
-            return this;
+            return (this,Transaction.TransPos);
         }
 
-        internal Database Install()
+        internal (Database,long) Install()
         {
             var db = new Database(roles, df.Length, mem);
             databases += (name, db);
-            return db;
+            return (db,Transaction.TransPos);
         }
-        internal virtual Database Rollback(object e)
+        internal virtual (Database,long) Rollback(object e)
         {
-            return this;
+            return (this,Transaction.TransPos);
         }
 
         internal override Basis New(BTree<long, object> m)

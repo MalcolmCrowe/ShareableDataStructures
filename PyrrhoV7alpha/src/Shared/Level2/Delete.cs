@@ -22,11 +22,11 @@ namespace Pyrrho.Level2
         /// The reference deletion constraint allows us to check if the record is referred to by a foreign key
         /// </summary>
         public ReferenceDeletionConstraint delC = null;
-        public TableRow delRow = null;
+        public long delpos;
         public long tabledefpos;
         public override long Dependent(Writer wr)
         {
-            var dp = wr.Fix(delRow.defpos);
+            var dp = wr.Fix(delpos);
             if (!Committed(wr,dp)) return dp;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             return -1;
@@ -40,7 +40,7 @@ namespace Pyrrho.Level2
             : base(Type.Delete, u, tr)
 		{
             tabledefpos = rw.tabledefpos;
-            delRow = rw;
+            delpos = rw.defpos;
 		}
         /// <summary>
         /// Constructor: a new Delete request from the buffer
@@ -51,7 +51,7 @@ namespace Pyrrho.Level2
         protected Delete(Delete x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
-            delRow = (TableRow)x.delRow.Relocate(wr.Fix(x.delRow.defpos));
+            delpos = wr.Fix(x.delpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
 		{
 			get
 			{
-				return delRow.defpos;
+				return delpos;
 			}
 		}
         /// <summary>
@@ -73,7 +73,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
 		{
-            wr.PutLong(wr.Fix(delRow.defpos));
+            wr.PutLong(wr.Fix(delpos));
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -84,8 +84,7 @@ namespace Pyrrho.Level2
         {
             var dp = rdr.GetLong();
             base.Deserialise(rdr);
-            var tb = rdr.db.schemaRole.objects[dp] as Table;
-            delRow = tb.tableRows[dp];
+            delpos= dp;
         }
         /// <summary>
         /// A readable version of the Delete
@@ -93,17 +92,16 @@ namespace Pyrrho.Level2
         /// <returns>The string representation</returns>
 		public override string ToString()
         {
-            return "Delete Record ["+Pos(delRow.defpos)+"]";
+            return "Delete Record ["+Pos(delpos)+"]";
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
-            var delpos = delRow.defpos;
             switch (that.type)
             {
                 case Type.Delete:
-                    return (((Delete)that).delRow.defpos == delpos) ? ppos : -1;
+                    return (((Delete)that).delpos == delpos) ? ppos : -1;
                 case Type.Update:
-                    return (((Update)that).oldRow.defpos == delpos) ? ppos : -1;
+                    return (((Update)that)._defpos == delpos) ? ppos : -1;
             }
             return -1;
         }
@@ -111,15 +109,19 @@ namespace Pyrrho.Level2
         internal override Database Install(Database db, Role ro, long p)
         {
             var tb = db.schemaRole.objects[tabledefpos] as Table;
-            tb += (Table.Rows, tb.tableRows - delRow.defpos);
+            var delRow = tb.tableRows[delpos];
             for (var b=tb.indexes.First();b!=null;b=b.Next())
             {
                 var ix = b.value();
+                var inf = ix.rows.info;
                 var key = delRow.MakeKey(ix);
                 ix -= key;
+                if (ix.rows == null)
+                    ix+=(Index.Tree,new MTree(inf));
                 tb += (Table.Indexes, tb.indexes + (b.key(), ix));
             }
-            return db+ (db.schemaRole, tb);
+            tb += (Table.Rows, tb.tableRows - delpos);
+            return db+ (db.schemaRole, tb, p);
         }
     }
 }

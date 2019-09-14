@@ -223,7 +223,7 @@ namespace Pyrrho.Level2
             var x = new Index(this, db).Build(db);
             var tb = (Table)db.schemaRole.objects[tabledefpos];
             tb += (Table.Indexes,tb.indexes+(x.defpos,x));
-            return db + (db.role,tb);
+            return db + (db.role,tb,p);
         }
     }
     /// <summary>

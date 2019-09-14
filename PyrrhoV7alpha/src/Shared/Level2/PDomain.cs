@@ -246,7 +246,7 @@ namespace Pyrrho.Level2
         internal override Database Install(Database db, Role ro, long p)
         {
             var dt = new Domain(this);
-            db += (ro,dt);
+            db += (ro,dt,p);
             if (dt.name=="")
                 db+= (Database.Types, db.types + (dt, dt));
             return db;

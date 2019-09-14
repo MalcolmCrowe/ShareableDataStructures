@@ -8,3 +8,13 @@ E:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoLink.pdb
 E:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csproj.CopyComplete
 E:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd.exe
 E:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd.pdb
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.exe.config
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.exe
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.pdb
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoLink.dll
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoLink.pdb
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csprojAssemblyReference.cache
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csproj.CoreCompileInputs.cache
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csproj.CopyComplete
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd.exe
+F:\PyrrhoDB7\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd.pdb

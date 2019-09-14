@@ -146,7 +146,7 @@ namespace Pyrrho.Level2
         internal override Database Install(Database db, Role ro, long p)
         {
             var pr = new Procedure(this, db, false, Sqlx.CREATE, BTree<long, object>.Empty);
-            return db + (ro,pr);
+            return db + (ro,pr,p);
         }
     }
 }

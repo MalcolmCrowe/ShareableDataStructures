@@ -149,15 +149,15 @@ namespace Pyrrho.Level2
             var tb = (Table)db.mem[tabledefpos];
             var sc = (TableColumn)db.mem[startcol];
             var dt = new Domain(Sqlx.PERIOD, sc.domain);
-            db += dt;
-            db += (ro, dt);
+            db += (dt,p);
+            db += (ro, dt,p);
             var pd = new PeriodDef(this, dt, ro);
             var rt = (Table)ro.objects[tabledefpos];
             rt += (DBObject.Properties, rt.properties + (pd.name, pd.defpos));
-            db += (ro,rt);
-            db += (ro,pd);
+            db += (ro,rt,p);
+            db += (ro,pd,p);
             tb += (Table.SystemTime, pd);
-            db += tb;
+            db += (tb,p);
             return db;
         }
     }

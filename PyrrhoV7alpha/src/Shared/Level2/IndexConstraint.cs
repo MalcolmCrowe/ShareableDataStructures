@@ -125,18 +125,18 @@ namespace Pyrrho.Level2
 			newKey = k;
 			next = n;
 		}
-        /// <summary>
+/*        /// <summary>
         /// A constraint will conflict with Delete for the same key
         /// </summary>
         /// <param name="q">The Delete</param>
         /// <returns>Whether a conflict has occurred</returns>
 		public DBException Conflict(Delete d)
 		{
-			if (d.tabledefpos==reftable && newKey!=null && d.delRow.MakeKey(cols)._CompareTo(newKey)==0)
+			if (d.tabledefpos==reftable && newKey!=null && d.delpos._CompareTo(newKey)==0)
 				return new DBException("40014", newKey).Mix(); // this localTransaction has inserted a reference to the key deleted by q
 			return next?.Conflict(d);
 		}
-        /// <summary>
+ /*       /// <summary>
         /// A constraint will conflict with Update for the same key
         /// </summary>
         /// <param name="u">The update</param>
@@ -152,7 +152,7 @@ namespace Pyrrho.Level2
 					return new DBException("40027", newKey).Mix();
 			}
 			return next?.Conflict(u);
-		}
+		} */
 	}
     /// <summary>
     /// Level 2 information for checking referential integrity for deletion

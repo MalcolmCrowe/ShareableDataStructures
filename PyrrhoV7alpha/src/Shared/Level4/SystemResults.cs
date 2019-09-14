@@ -19,16 +19,17 @@ namespace Pyrrho.Level4
         internal SystemTable(string n)
             : base(--_uid,new BTree<long,object>(Name,n)+(SqlValue.NominalType, Domain.TableType))
         {
-            Database._system += (Database._system.schemaRole,this);
+            Database._system += (Database._system.schemaRole,this,0);
         }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTable operator+(SystemTable s,(long,object)x)
         {
             return new SystemTable(s.defpos, s.mem + x);
         }
-        public static SystemTable operator +(SystemTable tb, TableColumn tc)
+        public static SystemTable operator +(SystemTable d, Selector s)
         {
-            return (SystemTable)tb.New(tb.mem + (SqlValue.NominalType, tb.rowType + tc));
+            d += (Columns, d.columns + (s.seq, s));
+            return d + (Names, d.names + (s.name, s));
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -50,14 +51,10 @@ namespace Pyrrho.Level4
         }
         public Database Add(Database d)
         {
-            d += (d.schemaRole, this);
-            for (var b = rowType.columns.First(); b != null; b = b.Next())
-                d += (d.schemaRole, b.value());
+            d += (d.schemaRole, this,0);
+            for (var b = columns.First(); b != null; b = b.Next())
+                d += (d.schemaRole, b.value(),0);
             return d;
-        }
-        internal override RowSet RowSets(Transaction tr, Context cx)
-        {
-            return new SystemRowSet(tr,cx,this);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -75,7 +72,7 @@ namespace Pyrrho.Level4
         /// <param name="sq">the ordinal position</param>
         /// <param name="t">the dataType</param>
         internal SystemTableColumn(Table t, string n, int sq, Domain dt)
-            : base(--_uid, BTree<long, object>.Empty + (Name, n) + (Table, t) + (NominalType, dt)
+            : base(--_uid, BTree<long, object>.Empty + (Name, n) + (Table, t.defpos) + (NominalType, dt)
                   + (Seq, sq))
         { }
         protected SystemTableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -113,12 +110,12 @@ namespace Pyrrho.Level4
         {
             return " System ";
         }
-        protected Table from;
+        protected From from;
         /// <summary>
         /// Construct results for a system table
         /// </summary>
         /// <param name="f">the from part</param>
-        internal SystemRowSet(Transaction tr,Context cx,Table f)
+        internal SystemRowSet(Transaction tr,Context cx,From f)
             : base(tr,new Context(cx),f,f.rowType)
         {
             from = f;
@@ -232,7 +229,7 @@ namespace Pyrrho.Level4
             var res = this;
             if (res.from == null) // for kludge
                 return null;
-            SystemTable st = res.from as SystemTable;
+            SystemTable st = res.from.target as SystemTable;
             switch (st.name)
             {
                 // level 2 stuff
@@ -624,7 +621,7 @@ namespace Pyrrho.Level4
                 Delete d = (Delete)ph;
                 return new TRow(res.from.rowType,
                     Pos(d.ppos),
-                    Pos(d.delRow.defpos));
+                    Pos(d.delpos));
             }
             public override RowBookmark Next(Context _cx)
             {
@@ -3767,7 +3764,7 @@ namespace Pyrrho.Level4
                 for (var outer = res._tr.role.objects.PositionAt(0); outer != null;
                     outer = outer.Next())
                     if (outer.value() is Table rt)
-                        for (var inner = rt.rowType.names.First(); inner != null;
+                        for (var inner = rt.names.First(); inner != null;
                                 inner = inner.Next())
                             if (inner.value() is TableColumn)
                             {
@@ -3814,7 +3811,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is Table rt)
                     {
                         if (inner == null)
-                            inner = ((outer.value() as Table).rowType.names.First());
+                            inner = ((outer.value() as Table).names.First());
                         else
                             inner = inner.Next();
                         for (; inner != null; inner = inner.Next())
@@ -3929,7 +3926,7 @@ namespace Pyrrho.Level4
                 for (var outer = res._tr.role.objects.PositionAt(0); outer != null;
                     outer = outer.Next())
                     if (outer.value() is Table tb)
-                        for (var middle = tb.rowType.names.First(); middle != null;
+                        for (var middle = tb.names.First(); middle != null;
                                 middle = middle.Next())
                             if (middle.value() is TableColumn tc)
                                 for (var inner = tc.constraints.First(); inner != null;
@@ -3995,7 +3992,7 @@ namespace Pyrrho.Level4
                     var tb = outer.value() as Table;
                     if (tb == null)
                         continue;
-                    middle = tb.rowType.names.First();
+                    middle = tb.names.First();
                     if (inner != null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx,res, _pos + 1, outer, middle, inner);
@@ -4846,12 +4843,12 @@ namespace Pyrrho.Level4
                 return new TRow(res.from.rowType,
                     Pos(_defpos),
                     new TChar(t.name),
-                    new TInt(t.rowType.Length),
+                    new TInt(t.Length),
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
                     new TInt(t.properties.Count),
-                    new TChar(t.rowType.iri));
+                    new TChar(t.iri));
             }
             /// <summary>
             /// Move to next Table

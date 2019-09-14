@@ -49,7 +49,7 @@ namespace Pyrrho.Level3
         /// <param name="data">the data to insert</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the rowsets affected</param>
-        internal override Transaction Insert(Transaction tr,Context _cx, Table f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Transaction Insert(Transaction tr,Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
             f.source.AddCondition(data._tr,_cx,f.where, null, data);
@@ -61,7 +61,7 @@ namespace Pyrrho.Level3
         /// <param name="f">the From</param>
         /// <param name="dr">the items to delete</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Transaction Delete(Transaction tr,Context cx,Table f, BTree<string, bool> dr, Adapters eqs)
+        internal override Transaction Delete(Transaction tr,Context cx,From f, BTree<string, bool> dr, Adapters eqs)
         {
             f.source.AddCondition(tr,cx, f.where, f.assigns, null);
             return f.source.Delete(tr,cx,dr,eqs);
@@ -73,7 +73,7 @@ namespace Pyrrho.Level3
         /// <param name="ur">the items to Update</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the affected rowsets</param>
-        internal override Transaction Update(Transaction tr,Context cx,Table f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
+        internal override Transaction Update(Transaction tr,Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
             f.source.AddCondition(tr,cx,f.where, f.assigns, null);
             return f.source.Update(tr,cx,ur, eqs, rs);
@@ -92,7 +92,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleClassValue(Transaction tr,Table from, ABookmark<long, object> _enu)
+        internal override TRow RoleClassValue(Transaction tr,From from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
             var ro = tr.role;
@@ -159,7 +159,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleJavaValue(Transaction tr, Table from, ABookmark<long, object> _enu)
+        internal override TRow RoleJavaValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
             var ro = tr.role;
@@ -186,7 +186,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RolePythonValue(Transaction tr, Table from, ABookmark<long, object> _enu)
+        internal override TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
             var ro = tr.role;

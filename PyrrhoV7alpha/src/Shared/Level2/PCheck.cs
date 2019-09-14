@@ -113,9 +113,9 @@ namespace Pyrrho.Level2
         internal override Database Install(Database db, Role ro, long p)
         {
             var ck = new Check(this, db);
-            db += ((DBObject)db.mem[ck.checkobjpos]).Add(ck, db); // add the check to the schema role and add the updated object
+            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p); // add the check to the schema role and add the updated object
             var ob = ro.objects[ck.checkobjpos];
-            db = db + ck + (ro,ck); // add the check itself to both roles
+            db = db + (ck,p) + (ro,ck,p); // add the check itself to both roles
             return db;
         }
     }

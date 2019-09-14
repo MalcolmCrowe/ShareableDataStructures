@@ -226,8 +226,8 @@ namespace Pyrrho.Level2
                 throw e;
             }
             if (db.schemaRole != db.role)
-                db += (db.schemaRole, tb);
-            return db += (db.role, tb);
+                db += (db.schemaRole, tb,p);
+            return db += (db.role, tb,p);
         }
 
         internal class ColumnValue

@@ -86,6 +86,12 @@ namespace Pyrrho.Level2
             for (var i = 0; i < b.Length; i++)
                 WriteByte(b[i]);
         }
+        public void PutBytes0(byte[] b)
+        {
+            WriteByte((byte)b.Length);
+            for (var i = 0; i < b.Length; i++)
+                WriteByte(b[i]);
+        }
     }
     public class Writer : WriterBase
     {

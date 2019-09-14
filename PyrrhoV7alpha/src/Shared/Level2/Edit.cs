@@ -69,8 +69,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			var prev = rdr.GetLong();
-            // this relies on Install() not removing previous versions
-            _defpos = ((DBObject)rdr.db.role.objects[prev]).defpos;
+            _defpos = (long)(rdr.db.mem[prev]??ppos);
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -90,6 +89,7 @@ namespace Pyrrho.Level2
 		{
 			return (pos==defpos)?new DBException("40009", pos).Mix() :null;
 		}
+        public override long Affects => _defpos;
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
             switch (that.type)

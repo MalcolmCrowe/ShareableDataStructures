@@ -95,7 +95,7 @@ namespace Pyrrho.Level2
         /// </summary>
         public virtual long Affects
         {
-            get { return 0L; }
+            get { return ppos; }
         }
         public static bool Committed(Writer wr,long pos)
         {
@@ -278,7 +278,7 @@ namespace Pyrrho.Level2
         {
             var pd = (PeriodDef)db.mem[perioddefpos];
             var tb = (Table)db.mem[pd.tabledefpos]+(Table.SystemTime,pd);
-            return db + tb;
+            return db + (tb,p);
         }
     }
  
@@ -387,7 +387,7 @@ namespace Pyrrho.Level2
             if (ro.defpos != ob.definer && ro.defpos != Database.Schema)
                 throw new DBException("42105");
             var nb = ob+ (DBObject.Classification,classification);
-            return db + nb;
+            return db + (nb,p);
         }
     }
 }
