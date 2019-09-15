@@ -6067,8 +6067,10 @@ namespace Pyrrho.Level4
                 cx.defs += (new Ident(co.name, co.defpos), co);
                 cx.obs += (co.defpos, co);
             }
-            r +=(SqlInsert._Table,fm.AddCols(fm)+(From.Assigns,ParseAssignments(fm))
-                +(Query.Where, ParseWhereClause(fm)));
+            fm = (From)fm.AddCols(fm);
+            fm += (From.Assigns, ParseAssignments(fm));
+            fm = (From)fm.AddCondition(Query.Where, ParseWhereClause(fm));
+            r += (SqlInsert._Table, fm);
             if (tr.parse == ExecuteStatus.Obey)
                 tr = r.table.Update(tr, cx, BTree<string, bool>.Empty, new Adapters(), new List<RowSet>());
             return (Executable)cx.Add(r);

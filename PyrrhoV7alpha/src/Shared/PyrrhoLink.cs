@@ -50,6 +50,38 @@ namespace Pyrrho
         internal List<DatabaseError> warnings = new List<DatabaseError>();
         Thread transaction = null; // if both are non-null they will be equal
         Thread execution = null;
+        static int _cid = 0, _tid = 0, _req = 0;
+        int cid = ++_cid;
+        static StreamWriter reqs = null;
+        static DateTime start = DateTime.Now;
+        public void RecordRequest(string sql)
+        {
+            if (reqs == null)
+                return;
+            var t = DateTime.Now - start;
+            lock (reqs)
+                reqs.WriteLine("" + t.TotalMilliseconds + ";" + (++_req) + ";" + cid + ";" + inTransaction + "; " + sql);
+        }
+        public void RecordResponse(long ts, long te)
+        {
+            if (reqs == null || ts == te)
+                return;
+            var t = DateTime.Now - start;
+            lock (reqs)
+                reqs.WriteLine("" + t.TotalMilliseconds + ";" + (++_req) + ";" + cid + ";" + inTransaction + ";" + ts + ";" + te);
+        }
+        public static void OpenRequests()
+        {
+            if (reqs == null)
+                reqs = new StreamWriter("requests.txt");
+        }
+        public static void CloseRequests()
+        {
+            if (reqs != null)
+                reqs.Close();
+            reqs = null;
+        }
+        public int inTransaction = 0;
         internal void AcquireTransaction()
         {
             retry:
@@ -136,6 +168,14 @@ namespace Pyrrho
             var cmd = (PyrrhoCommand)CreateCommand();
             cmd.CommandText = sql;
             return cmd.ExecuteNonQuery(ob);
+        }
+        public int ActTrace(string sql, Versioned ob = null)
+        {
+            if (!isOpen)
+                Open();
+            var cmd = (PyrrhoCommand)CreateCommand();
+            cmd.CommandText = sql;
+            return cmd.ExecuteNonQueryTrace(ob);
         }
 #if !MONO1
         /// <summary>
@@ -1226,6 +1266,51 @@ CallingConventions.HasThis, new Type[0], null);
                 conn.ReleaseExecution();
             }
         }
+        public int ExecuteNonQueryTrace(Versioned ob)
+        {
+            if (!conn.isOpen)
+                throw new DatabaseError("2E201");
+            if (thread != Thread.CurrentThread)
+                throw new DatabaseError("08C01");
+            conn.AcquireExecution();
+            try
+            {
+#if (EMBEDDED)
+                try
+                {
+                    conn.db = conn.db.Execute(CommandTextWithParams());
+                    var ret = conn.db.affected;
+                    if (conn.db is Transaction && ((Transaction)conn.db).autoCommit)
+                    {
+                        conn.db.RdrClose();
+                        if (ret.Count == 1 && ob != null)
+                            ob.version = ret[0].ToString();
+                        conn.db = ((Transaction)conn.db).parent;
+                    }
+                    var r = conn.db.rowCount;
+                    ret.Clear();
+                    return r;
+                }
+                catch (DBException e)
+                {
+                    throw new DatabaseError(e);
+                }
+#else
+                conn.RecordRequest(CommandText);
+                conn.Send(Protocol.ExecuteNonQueryTrace, CommandTextWithParams());
+                var p = conn.Receive();
+                if (p!= Responses.DoneTrace)
+                    throw new DatabaseError("2E203");
+                var ts = conn.GetLong();
+                conn.RecordResponse(ts, conn.GetLong());
+                return conn.GetInt();
+#endif
+            }
+            finally
+            {
+                conn.ReleaseExecution();
+            }
+        }
 #if !EMBEDDED
         public int ExecuteNonQueryCrypt()
         {
@@ -1622,7 +1707,7 @@ CallingConventions.HasThis, new Type[0], null);
         }
         public void Commit()
         {
-            Commit(new Versioned[0]);
+            CommitTrace(new Versioned[0]);
         }
 
         public void Commit(params Versioned[] obs)
@@ -1656,6 +1741,60 @@ CallingConventions.HasThis, new Type[0], null);
                 var p = conn.Receive();
                 if (p == Responses.TransactionReport)
                 {
+                    conn.GetLong(); // schemaKey
+                    conn.GetInt(); // obs.Length
+                    for (int i = 0; i < obs.Length; i++)
+                    {
+                        var pa = conn.GetString();
+                        var d = conn.GetLong();
+                        var o = conn.GetLong();
+                        obs[i].version = pa + ":" + Pos(d) + ":" + Pos(o);
+                    }
+                }
+#endif
+            }
+            finally
+            {
+                conn.ReleaseTransaction();
+            }
+        }
+        public void CommitTrace(params Versioned[] obs)
+        {
+            try
+            {
+#if (EMBEDDED)
+            for(int i=0;i<obs.Length;i++)
+            { 
+                var ss = obs[i].version.Split(':');
+                conn.db.affected.Add(Rvv.For(new Ident(ss[0],0), Pos(ss[1]), Pos(ss[2])));
+            }
+            conn.db = conn.db.Commit();
+            for (int i = 0; i < obs.Length;i++)
+            {
+                var v = conn.db.affected[i];
+                obs[i].version = v.name + ":" + Pos(v.def) + ":" + Pos(v.off);
+            }
+            active = false;
+#else
+                conn.RecordRequest("Commit");
+                conn.Send(Protocol.CommitAndReportTrace);
+                conn.PutInt(obs.Length);
+                for (int i = 0; i < obs.Length; i++)
+                {
+                    var ss = obs[i].version.Split(':');
+                    conn.PutString(ss[0]);
+                    conn.PutLong(Pos(ss[1]));
+                    conn.PutLong(Pos(ss[2]));
+                }
+                active = false;
+                var ts = 0L;
+                var te = 0L;
+                var p = conn.Receive();
+                if (p == Responses.TransactionReportTrace)
+                {
+                    ts = conn.GetLong();
+                    te = conn.GetLong();
+                    conn.RecordResponse(ts, te);
                     conn.GetLong(); // schemaKey
                     conn.GetInt(); // obs.Length
                     for (int i = 0; i < obs.Length; i++)

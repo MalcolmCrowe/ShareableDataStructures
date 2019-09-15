@@ -14,7 +14,8 @@
         CheckSchema = 36, GetTable = 37, IndexNext = 38, ExecuteNonQueryCrypt = 39, TableNext = 40,
         Mongo = 41, Check = 42, CommitAndReport = 43, RemoteCommitAndReport = 44, Post = 45, Put = 46,
         Get1 = 47, Delete = 48, Update = 49, Rest = 50, Subscribe = 51, Synchronise = 52, SetMaster = 53,
-        GetInfo = 54, Execute = 55, Get2 = 56
+        GetInfo = 54, Execute = 55, Get2 = 56, ExecuteNonQueryTrace = 73, CommitTrace = 74,
+        CommitAndReportTrace =75
     }
     /// <summary>
     /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.9
@@ -28,7 +29,7 @@
         TableData = 53, TableDone = 54, Prepare = 55, Request = 56, Committed = 57, Serialisable = 58,
         Primary = 60, Secondary = 61, Begin = 62, Valid = 63, Invalid = 64, TransactionReport = 65,
         RemoteTransactionReport = 66, PostReport = 67, Warning = 68, TransactionReason = 69,
-        DataLength = 70, Columns = 71, Schema1 = 72
+        DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77
     }
     /// <summary>
     /// Transaction strings are sent using a binary encrypted format. 

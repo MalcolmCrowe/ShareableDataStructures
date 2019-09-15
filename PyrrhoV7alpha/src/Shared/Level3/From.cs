@@ -81,7 +81,9 @@ namespace Pyrrho.Level3
             //               return new TrivialRowSet(tr, cx, this, Eval(tr, cx) as TRow ?? TRow.Empty);
             //         if (target is View vw)
             //             return vw.RowSets(tr, cx, this);
-            ReadConstraint readC = tr._ReadConstraint(cx, target);
+
+            // ReadConstraints only apply in explicit transactions 
+            ReadConstraint readC = tr.autoCommit?null:tr._ReadConstraint(cx, target);
             int matches = 0;
             PRow match = null;
             Index index = null;

@@ -341,14 +341,14 @@ namespace Pyrrho.Level3
                 qf += (b.key(),b.value());
             var oq = q;
             if (qw!=q.where)
-                q += (Where, qw);
+                q=q.AddCondition(Where, qw);
             if (qf != q.filter)
                 q += (Filter, qf);
             if (q != oq)
                 cx.Add(q);
             var r = this;
             if (wh != where)
-                r += (Where, wh);
+                r=r.AddCondition(Where, wh);
             if (fi != filter)
                 r += (Filter, fi);
             if (r != this)
@@ -1196,7 +1196,7 @@ namespace Pyrrho.Level3
             }
             if (ha != having)
             {
-                cx.Replace(q, q + (Where, qw));
+                cx.Replace(q, q.AddCondition(Where, qw));
                 cx.Replace(this, this + (Having, ha));
                 return (TableExpression)cx.done[defpos];
             }

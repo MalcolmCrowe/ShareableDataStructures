@@ -167,7 +167,7 @@ namespace Pyrrho.Level3
         internal override (Database,long) Commit(Context cx)
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
-                return (parent,TransPos); 
+                return (parent,TransPos);
             // important: both rdr and wr access the database - not the transaction information
             var wr = new Writer(databases[name], dbfiles[name]);
             var rdr = new Reader(databases[name], loadpos);
@@ -794,7 +794,7 @@ namespace Pyrrho.Level3
         {
             var r = this;
             Index rx = null;
-            if (refs == null)
+            if (refs == null || refs.Count==0)
                 rx = rt.FindPrimaryIndex();
             else
                 rx = rt.FindIndex(refs);

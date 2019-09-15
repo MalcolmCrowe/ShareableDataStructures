@@ -179,6 +179,30 @@ namespace Pyrrho
                                 tcp.PutInt((int)cx.affected.Count);
                                 break;
                             }
+                        case Protocol.ExecuteNonQueryTrace: //  SQL service with trace
+                            {
+                                var cmd = tcp.GetString();
+                                db = db.Transact(nextTid);
+                                long t = 0;
+                                cx = new Context(db);
+                                var ts = db.loadpos;
+                                (db, nextTid) = new Parser(db).ParseSql(cmd);
+                                var tn = DateTime.Now.Ticks;
+                                if (PyrrhoStart.DebugMode && tn > t)
+                                    Console.WriteLine("" + (tn - t));
+                                cx.rb = null;
+                                if (db is Transaction tr) // the SQL might have been a Commit
+                                {
+                                    db = tr + (Transaction.ReadConstraint, cx.rdC);
+                                    tcp.PutWarnings(tr);
+                                }
+                                (db, nextTid) = db.RdrClose(cx);
+                                tcp.Write(Responses.DoneTrace);
+                                tcp.PutLong(ts);
+                                tcp.PutLong(db.loadpos);
+                                tcp.PutInt((int)cx.affected.Count);
+                                break;
+                            }
                         case Protocol.SkipRows: // part of client API
                             {
                                 int n = tcp.GetInt();
@@ -217,6 +241,25 @@ namespace Pyrrho
                                     Console.WriteLine("Commit Transaction " + tr.uid);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.Done);
+                                tcp.Flush();
+                                cx.affected = BList<Rvv>.Empty;
+                                nextTid = Transaction.TransPos;
+                                break;
+                            }
+                        case Protocol.CommitTrace:
+                            {
+                                //             WaitForState(ServerStatus.Server);
+                                var tr = db as Transaction;
+                                var ts = db.loadpos;
+                                if (tr == null)
+                                    throw new DBException("25000").Mix();
+                                (db, nextTid) = db.Commit(cx);
+                                if (PyrrhoStart.DebugMode)
+                                    Console.WriteLine("Commit Transaction " + tr.uid);
+                                tcp.PutWarnings(tr);
+                                tcp.Write(Responses.DoneTrace);
+                                tcp.PutLong(ts);
+                                tcp.PutLong(db.loadpos);
                                 tcp.Flush();
                                 cx.affected = BList<Rvv>.Empty;
                                 nextTid = Transaction.TransPos;
@@ -373,6 +416,29 @@ namespace Pyrrho
                                 (db, nextTid) = db.Commit(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.TransactionReport);
+                                PutReport(tr);
+                                cx.affected = BList<Rvv>.Empty;
+                                break;
+                            }
+                        case Protocol.CommitAndReportTrace:
+                            {
+                                var tr = db as Transaction;
+                                if (tr == null)
+                                    throw new DBException("25000").Mix();
+                                var ts = db.loadpos;
+                                var n = tcp.GetInt();
+                                for (int i = 0; i < n; i++)
+                                {
+                                    var pa = tcp.GetString();
+                                    var d = tcp.GetLong();
+                                    var o = tcp.GetLong();
+                                    cx.affected += (Rvv.For(tr, d, o));
+                                }
+                                (db, nextTid) = db.Commit(cx);
+                                tcp.PutWarnings(tr);
+                                tcp.Write(Responses.TransactionReportTrace);
+                                tcp.PutLong(ts);
+                                tcp.PutLong(db.loadpos);
                                 PutReport(tr);
                                 cx.affected = BList<Rvv>.Empty;
                                 break;
