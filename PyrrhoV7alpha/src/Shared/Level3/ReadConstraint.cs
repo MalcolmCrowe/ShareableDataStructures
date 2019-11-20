@@ -81,24 +81,8 @@ namespace Pyrrho.Level3
             if (check == null)
                 return p.ReadCheck(defpos);
             if (p is Record r)
-                return check.Check((p.role.objects[r.tabledefpos] as Table).tableRows[r.defpos]);
+                return check.Check((p.db.objects[r.tabledefpos] as Table).tableRows[r.defpos] as TableRow);
             return null;
-        }
-        /// <summary>
-        /// We are a transaction master parsing a readconstraint from a remote server
-        /// </summary>
-        /// <param name="db">The local database</param>
-        /// <param name="s">The string received</param>
-        /// <returns>A readconstraint</returns>
-        internal static ReadConstraint From(Context cnx,Database db, long tb, string s)
-        {
-            var ss = s.Split('-');
-            if (ss.Length == 0)
-                return null;
-            return new ReadConstraint(cnx, long.Parse(ss[0]))
-            {
-                check = CheckUpdate.From(cnx,db, tb, ss)
-            };
         }
         /// <summary>
         /// A parsable version of the read constraint
@@ -178,49 +162,9 @@ namespace Pyrrho.Level3
         {
             for (var v = rdcols.First(); v != null; v = v.Next())
             {
-                var tc = db.role.objects[v.key()] as TableColumn;
+                var tc = db.objects[v.key()] as TableColumn;
                 tableProfile.read +=(tc.defpos, true);
             }
-        }
-        /// <summary>
-        /// Parse a checkupdate from a set of strings
-        /// </summary>
-        /// <param name="db">the local database</param>
-        /// <param name="ss">a list of strings</param>
-        /// <returns>the CheckUpdate, CheckSpecific, BlockUpdate</returns>
-        internal static CheckUpdate From(Context cnx, Database db, long tb, string[] ss)
-        {
-            var r = new CheckUpdate(cnx,tb);
-            if (ss.Length > 1)
-            {
-                var ks = ss[1].Split(' ');
-                foreach (var k in ks)
-                {
-                    var p = long.Parse(k);
-                    if (db.role.objects[p] as Selector == null)
-                        return null;
-                    r.AddSelect(p);
-                }
-            }
-            if (ss.Length == 2)
-                return r;
-            var s = ss[2];
-            var ix = s.IndexOf('(');
-            var rs = (ix < 0) ? s : s.Substring(0, ix - 1);
-            var xd = long.Parse(rs);
-            var rx = db.role.objects[xd] as Index;
-            if (rx == null)
-                return null;
-            var dt = rx.keyType;
-            var cs = s.Substring(ix).ToCharArray();
-            var sc = new Scanner(cs, 0);
-            r = new CheckSpecific(cnx, rx, new PRow(dt.Parse(sc)));
-            while (sc.pos < cs.Length)
-                r = r.Singleton(rx, new PRow(dt.Parse(sc)));
-            if (ss.Length == 3)
-                return r;
-            var d = long.Parse(ss[3]);
-            return new BlockUpdate(r as CheckSpecific);
         }
         /// <summary>
         /// Return a parsable version of the CheckUpdate
@@ -291,7 +235,7 @@ namespace Pyrrho.Level3
             if (m != null)
                 foreach (var rr in recs)
                     if (m._CompareTo(rr) == 0)
-                        return new DBException("40005", r.defpos).Mix();
+                        return new DBException("40009", r.defpos).Mix();
             return null;
         }
         /// <summary>

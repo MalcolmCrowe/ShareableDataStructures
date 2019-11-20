@@ -20,13 +20,13 @@ namespace Pyrrho.Level3
 	internal class Procedure : DBObject
 	{
         internal const long
-            Arity = -176, // int
-            Body = -177, // Executable
-            Clause = -178,// string
-            Inverse = -179, // long
-            Monotonic = -180, // bool
-            Params = -181, // BList<ProcParameter>
-            RetType = -182; // Domain
+            Arity = -167, // int
+            Body = -168, // Executable
+            Clause = -169,// string
+            Inverse = -170, // long
+            Monotonic = -171, // bool
+            Params = -172, // BList<ProcParameter>
+            RetType = -173; // Domain
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
             (BList<ProcParameter>)mem[Params]?? BList<ProcParameter>.Empty;
         public Domain retType => (Domain)mem[RetType];
         public string clause => (string)mem[Clause];
-        public long inverse => (long)(mem[Inverse]??-1);
+        public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
         /// <summary>
         /// Constructor: Build a level 3 procedure from a level 2 procedure
@@ -48,7 +48,7 @@ namespace Pyrrho.Level3
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Database db,bool mth,Sqlx create,BTree<long,object> m)
             : base( p.ppos, p.defpos, db.role.defpos, m
-                  + (Arity, p.arity) + (RetType, db.GetDomain(p.retdefpos))
+                  + (Arity, p.arity) + (RetType, db.role.obinfos[p.retdefpos])
                   + (Body,new Parser(db,new Context(db)).ParseProcedureClause(mth,create))
                   + (Clause, p.proc_clause))
         { }
@@ -57,23 +57,6 @@ namespace Pyrrho.Level3
         {
             return new Procedure(p.defpos, p.mem + v);
         }
-        public override string ToString()
-		{
-			var sb = new StringBuilder(base.ToString());
-            sb.Append(" Arity=");sb.Append(arity);
-            sb.Append(" RetType:"); sb.Append(retType);
-            sb.Append(" Params");
-            var cm = '(';
-            for (var i=0;i<(int)ins.Count;i++)
-            {
-                sb.Append(cm); cm = ','; sb.Append(ins[i]);
-            }
-            sb.Append(") Body:");sb.Append(body);
-            sb.Append(" Clause{");sb.Append(clause);sb.Append('}');
-            if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(inverse); }
-            if (mem.Contains(Monotonic)) { sb.Append(" Monotonic"); }
-            return sb.ToString();
-		}
         /// <summary>
         /// Execute a Procedure/function
         /// </summary>
@@ -98,10 +81,11 @@ namespace Pyrrho.Level3
             for (int i = 0; i < n; i++)
             {
                 var p = ins[i];
+                var v = act.row.values[p.defpos];
                 if (p.paramMode == Sqlx.INOUT || p.paramMode == Sqlx.OUT)
-                    acts[i] = act.row.values[p.defpos];
+                    acts[i] = v;
                 if (p.paramMode == Sqlx.RESULT)
-                    r = act.row.values[p.defpos];
+                    r = v;
             }
             if (cx != null)
             {
@@ -115,41 +99,66 @@ namespace Pyrrho.Level3
             }
             return tr;
         }
-        /// <summary>
-        /// Check dependents for a rename/drop transaction
-        /// </summary>
-        /// <param name="t">The rename/drop transaction</param>
-        /// <returns>the sort of dependency concerned</returns>
-        public override Sqlx Dependent(Transaction t,Context cx)
+        internal virtual bool Uses(long t)
         {
-            return body.Dependent(t,cx);
+            return false;
         }
-        internal override BTree<long,DBObject> Add(PMetadata p,Database db)
+        internal override Database Modify(Database db, DBObject now, long p)
         {
-            var r = BTree<long, DBObject>.Empty;
-            var idp = inverse;
-            var me = this;
-            if (p.refpos > 0 && p.Has(Sqlx.INVERTS))
-            {
-                // establish a pair of mutually inverse functions
-                idp = p.refpos;
-                if (db.role.objects[idp] is Procedure pi)
-                {
-                    pi += (Inverse, defpos);
-                    me += (Inverse, pi.defpos);
-                    r += (pi.defpos, pi);
-                }
-            }
-            var mon = p.Has(Sqlx.MONOTONIC);
-            me += (Monotonic, mon);
-            if (p.seq >= 0)
-                me += (Selector.Seq, p.seq);
-            r += (me.defpos,me);
-            return r;
+            return db + (this+(Body,now),p);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new Procedure(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new Procedure(dp, mem);
+        }
+        internal override Basis Relocate(Writer wr)
+        {
+            var r = this;
+            var d = wr.Fix(defpos);
+            if (d != defpos)
+                r = (Procedure)Relocate(d);
+            var rt = (Domain)retType?.Relocate(wr);
+            if (rt != retType)
+                r += (RetType, rt);
+            return r;
+        }
+        internal override (Database,Role) Cascade(Database d, Database nd,Role ro, 
+            Drop.DropAction a = 0, BTree<long, TypedValue> u = null)
+        {
+            if (a != 0)
+                nd += (Database.Cascade, true);
+            for (var b = d.role.dbobjects.First(); b != null; b = b.Next())
+            {
+                var ob = (DBObject)d.objects[b.value()];
+                if (ob.Calls(defpos, d))
+                    (nd,ro) = ob.Cascade(d,nd,ro,a,u);
+            }
+            return base.Cascade(d, nd,ro,a,u);
+        }
+        internal override bool Calls(long defpos, Database db)
+        {
+            return body.Calls(defpos, db);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Arity="); sb.Append(arity);
+            sb.Append(" RetType:"); sb.Append(retType);
+            sb.Append(" Params");
+            var cm = '(';
+            for (var i = 0; i < (int)ins.Count; i++)
+            {
+                sb.Append(cm); cm = ','; sb.Append(ins[i]);
+            }
+            sb.Append(") Body:"); sb.Append(body);
+            sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');
+            if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(inverse); }
+            if (mem.Contains(Monotonic)) { sb.Append(" Monotonic"); }
+            return sb.ToString();
         }
     }
 }

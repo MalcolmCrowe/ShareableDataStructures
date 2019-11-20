@@ -33,17 +33,6 @@ namespace Pyrrho.Level4
                 _ident = value;
             }
         }
-        long _segpos = 0;
-        internal long segpos
-        {
-            get => _segpos;
-            set
-            {
-                //      if (segindexed)
-                //         throw new PEException("PE726");
-                _segpos = value;
-            }
-        }
         /// <summary>
         /// the start position in the lexer
         /// </summary>
@@ -56,17 +45,6 @@ namespace Pyrrho.Level4
         /// The lexer responsible
         /// </summary>
         internal Lexer lexer = null;
-        /// <summary>
-        /// position in list of requested columns
-        /// </summary>
-        internal int reqpos = -1;
-        internal Ident(Ident n, long sp)
-        {
-            iix = n.iix;
-            ident = n.ident;
-            sub = n.sub;
-            _segpos = sp;
-        }
         internal Ident(Lexer lx, string s = null)
         {
             ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString());
@@ -74,84 +52,55 @@ namespace Pyrrho.Level4
             lxrstt = lx.start;
             iix = lx.Position;
             lxrpos = lx.pos;
-            if (lx.tok == Sqlx.ID)
-            {
-                lx.idents += (lx.Position, this);
-                if (lx.lookup.Contains(this))
-                    segpos = lx.lookup[this];
-                else
-                {
-                    segpos = lx.Position;
-                    lx.lookup += (this, segpos);
-                }
-            }
         }
-        internal Ident(Lexer lx, int st, int pos, long dp, Ident sb = null)
+        internal Ident(Lexer lx, int st, int pos, Ident sb = null)
         {
             iix = lx.Position;
             ident = new string(lx.input, st, pos - st);
             lexer = lx;
             lxrstt = st;
             lxrpos = pos;
-            segpos = dp;
             sub = sb;
         }
         internal Ident(Ident lf, Ident sb)
         {
             ident = lf.ident;
-            iix = lf.iix + ident.Length;
-            reqpos = lf.reqpos;
+            iix = lf.iix;
             lexer = lf.lexer;
             lxrstt = lf.lxrstt;
             lxrpos = lf.lxrpos;
-            long sg = 0;
-            if (ident.Length > 0)
-            {
-                //          if (ident[0] == '\'' && long.TryParse(ident.Substring(1), out sg)) // this is very unlikely
-                //              sg  += Transaction.TransPos;
-                //          else
-                long.TryParse(ident, out sg);
-            }
-            segpos = (sg > 0) ? sg : lf.segpos;
-            //      if (_segpos > 0 && Renamable() && lexer!=null)
-            //          lexer.ctx.refs +=(this, segpos);
             sub = sb;
+        }
+        internal Ident(Ident pr,string s)
+        {
+            if (pr == null)
+                ident = s;
+            else
+            {
+                ident = pr.ident;
+                sub = new Ident(pr.sub, s);
+            }
         }
         internal Ident(string s, long dp)
         {
             iix = dp;
-            ident = s; _segpos = dp;
+            ident = s;
         }
         internal int Length()
         {
             return 1 + (sub?.Length() ?? 0);
         }
-        public void Set(long dp)
-        {
-            if (dp == 0)
-                return;
-            var fi = Final();
-            if (fi.segpos != 0)
-                return;
-            fi.segpos = dp;
-        }
         internal Ident Final()
         {
             return sub?.Final() ?? this;
-        }
-        public Ident Target()
-        {
-            if (sub == null)
-                return null;
-            return new Ident(lexer, lxrstt, lxrpos, segpos, sub.Target()) { ident = ident};
         }
         public bool HeadsMatch(Ident a)
         {
             if (a == null)
                 return false;
-            if (segpos != 0 && segpos == a.segpos)
+            if (iix != 0 && iix == a.iix)
                 return true;
-            if (((segpos == 0 || segpos == a.segpos) && ident == a.ident))
+            if (((iix == 0 || iix == a.iix) && ident == a.ident))
                 return true;
             return false;
         }
@@ -167,10 +116,6 @@ namespace Pyrrho.Level4
                 return null;
             return sub.Suffix(pre.sub);
         }
-        public long Defpos()
-        {
-            return iix;
-        }
         /// <summary>
         /// Instead of this, use a new Ident that has $arity appended if necessary.
         /// Check Metdata $seq usage. XXX
@@ -178,13 +123,8 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal Ident Suffix(int x)
         {
-            if (segpos > 0 || ident.Contains("$"))
+            if (ident.Contains("$"))
                 return this;
-            if (ident != "" && Char.IsDigit(ident[0]))
-            {
-                segpos = long.Parse(ident);
-                return this;
-            }
             return new Ident(ident + "$" + x, 0);
         }
         /// <summary>
@@ -202,8 +142,6 @@ namespace Pyrrho.Level4
             var sb = new StringBuilder();
             if (ident != null)
                 sb.Append(ident);
-            else if (segpos > 0)
-                sb.Append("\"" + segpos + "\"");
             else
                 sb.Append("??");
             if (sub != null)
@@ -216,27 +154,12 @@ namespace Pyrrho.Level4
         internal void ToString1(StringBuilder sb, Context cx, string eflag)
         {
             sb.Append(ident);
-            if (segpos > 0 && eflag != null)
-            {
-                sb.Append(' ');
-                sb.Append(segpos);
-            }
             if (sub != null)
             {
                 sb.Append('.');
                 sub.ToString1(sb, cx, eflag);
             }
         }
-        /// <summary>
-        /// When a Domain is placed in the PhysBase we need to remove context information from names
-        /// </summary>
-        internal void Clean()
-        {
-            lexer = null;
-            lxrpos = 0;
-            reqpos = 0;
-        }
-
         public int CompareTo(object obj)
         {
             if (obj == null)
@@ -245,290 +168,96 @@ namespace Pyrrho.Level4
             var c = ident.CompareTo(that.ident);
             if (c != 0)
                 return c;
+            if (sub != null)
+                return sub.CompareTo(that.sub);
+            if (that.sub != null)
+                return -1;
             return 0;
         }
-        /// <summary>
-        /// Wraps a structure for managing Idents distinguished by segpos or ident string
-        /// </summary>
-        /// <typeparam name="V"></typeparam>
-        internal class Tree<V>
+        internal class Idents : BTree<string,(DBObject,Idents)>
         {
-            BTree<long, BTree<Ident, V>> bTree;
-            BTree<Ident, V> idTree;
-            Tree(BTree<long, BTree<Ident, V>> bT, BTree<Ident, V> idT) { bTree = bT; idTree = idT; }
-            public Tree(Ident k, V v)
-                : this(new BTree<long, BTree<Ident, V>>(k.Defpos(), new BTree<Ident, V>(k, v)),
-                     (k.ident != null && k.ident != "") ? new IdTree<V>(k, v) : IdTree<V>.Empty)
-            { }
-
-            public static readonly Tree<V> Empty = new Tree<V>(BTree<long, BTree<Ident, V>>.Empty, IdTree<V>.Empty);
-            public static void Add(ref Tree<V> t, Ident k, V v)
+            public new static Idents Empty = new Idents();
+            Idents() : base() { }
+            Idents(BTree<string, (DBObject, Idents)> b) : base(b.root) { }
+            public static Idents operator +(Idents t, (Ident, DBObject) x)
             {
-                var bT = t.bTree;
-                var idT = t.idTree;
-                if (k.Defpos() != 0)
+                var (id, ob) = x;
+                if (t.Contains(id.ident))
                 {
-                    var tb = bT[k.Defpos()];
-                    if (tb == null)
-                        tb = new BTree<Ident, V>(k, v);
+                    var (to, ts) = t[id.ident];
+                    if (id.sub != null)
+                        return new Idents(t + (id.ident, (to, ts + (id.sub, ob))));
                     else
-                        tb +=(k, v);
-                    bT +=(k.Defpos(), tb);
+                        return new Idents(t + (id.ident, (ob, ts)));
                 }
-                if (k.ident != null && k.ident != "")
-                {
-                    if (idT.Contains(k))
-                    {
-                        var b = idT.PositionAt(k);
-                        if (b.key().Defpos() == 0 && k.Defpos() > 0)
-                            idT -=k;
-                    }
-                    idT +=(k, v);
-                }
-                t = new Tree<V>(bT, idT);
+                else if (id.sub != null)
+                    return new Idents(t + (id.ident, (ob, Empty + (id.sub, ob))));
+                else
+                    return new Idents(t + (id.ident, (ob, Empty)));
             }
-            public static Tree<V> operator +(Tree<V> t, (Ident, V) v)
+            public DBObject this[Ident ic] => 
+                Contains(ic.ident)?
+                    (ic.sub==null)?this[ic.ident].Item1
+                        :this[ic.ident].Item2[ic.sub]
+                :null;
+            public IdBookmark First(int p,Ident pr=null)
             {
-                Add(ref t, v.Item1, v.Item2);
-                return t;
+                var b = base.First();
+                return (b==null)?null:new IdBookmark(b, pr, p);
             }
-            public static Tree<V> operator -(Tree<V> t, Ident id)
+            public IdBookmark PositionAt(Ident id)
             {
-                Remove(ref t, id);
-                return t;
-            }
-            public static void AddNN(ref Tree<V> tree, Ident k, V v)
-            {
-                if (v == null)
-                    throw new Exception("PE000");
-                Add(ref tree, k, v);
-            }
-            public static void Update(ref Tree<V> t, Ident k, V v)
-            {
-                var bT = t.bTree;
-                var idT = t.idTree;
-                if (bT[k.Defpos()] is BTree<Ident, V> tb)
-                {
-                    tb +=(k, v);
-                    bT +=(k.Defpos(), tb);
-                }
-                if (idT.Contains(k))
-                    idT +=(k, v);
-                t = new Tree<V>(bT, idT);
-            }
-            public static void Remove(ref Tree<V> t, Ident k)
-            {
-                var bT = t.bTree;
-                var idT = t.idTree;
-                bool done = false;
-                if (bT[k.Defpos()] is BTree<Ident, V> tb)
-                {
-                    tb -= k;
-                    if (tb == null || tb.Count == 0)
-                        bT -= k.Defpos();
-                    else
-                        bT +=(k.Defpos(), tb);
-                    done = true;
-                }
-                if (idT.Contains(k))
-                {
-                    idT -= k;
-                    done = true;
-                }
-                if (done)
-                    t = (idT.Count == 0) ? Empty : new Tree<V>(bT, idT);
-            }
-            public int Count { get { return (int)idTree.Count; } }
-            public bool Contains(Ident k)
-            {
-                return bContains(k) || idTree.Contains(k);
-            }
-            public bool bContains(Ident k)
-            {
-                return (bTree[k.Defpos()] is BTree<Ident, V> tb) ? tb.Contains(k) : false;
-            }
-            public V this[Ident k]
-            {
-                get
-                {
-                    if (k == null)
-                        return default(V);
-                    return (bTree.Contains(k.segpos)) ? bTree[k.segpos].First().value() : idTree[k];
-                }
-            }
-            public Bookmark First()
-            {
-                return Bookmark.New(this);
-            }
-
-            internal Tree<V> Add(Tree<V> tree)
-            {
-                var r = this;
-                for (var b = tree.First(); b != null; b = b.Next())
-                    Add(ref r, b.key(), b.value());
-                return r;
-            }
-
-            internal class Bookmark
-            {
-                readonly Tree<V> _t;
-                readonly ABookmark<long, BTree<Ident, V>> _bB;
-                readonly ABookmark<Ident, V> _idB;
-                Bookmark(Tree<V> t, ABookmark<long, BTree<Ident, V>> b, ABookmark<Ident, V> id)
-                {
-                    _t = t; _bB = b; _idB = id;
-                }
-                internal static Bookmark New(Tree<V> t)
-                {
-                    if (t.bTree.Count == 0 && t.idTree.Count == 0)
+                Ident pr = null;
+                for (var t = this; t!=null && id != null; id = id.sub)
+                { 
+                    var bm = t.PositionAt(id.ident);
+                    if (bm == null)
                         return null;
-                    return (t.bTree.Count > t.idTree.Count) ? new Bookmark(t, t.bTree.First(), null) : new Bookmark(t, null, t.idTree.First());
+                    if (bm.value().Item1 is DBObject && id.sub==null)
+                        return new IdBookmark(bm, pr, 0);
+                    pr = new Ident(pr, bm.key());
+                    t = bm.value().Item2;
                 }
-                internal Bookmark Next()
+                return null;
+            }
+        }
+        internal class IdBookmark
+        {
+            internal readonly ABookmark<string, (DBObject, Idents)> _bmk;
+            internal readonly Ident _parent,_key;
+            internal readonly int _pos;
+            internal IdBookmark(ABookmark<string,(DBObject,Idents)> bmk,
+                Ident parent, int pos)
+            {
+                _bmk = bmk; _parent = parent;  _pos = pos;
+                _key = new Ident(_parent,_bmk.key());
+            }
+            public Ident key()
+            {
+                return _key;
+            }
+            public DBObject value()
+            {
+                return _bmk.value().Item1;
+            }
+            public int Position => _pos;
+            public IdBookmark Next()
+            {
+                var bmk = _bmk;
+                var (ob, id) = bmk.value(); // assert: ob!=null (it's value())
+                for (; ; )
                 {
-                    if (_bB != null) return (_bB.Next() is ABookmark<long, BTree<Ident, V>> b) ? new Bookmark(_t, b, null) : null;
-                    return (_idB.Next() is ABookmark<Ident, V> c) ? new Bookmark(_t, null, c) : null;
+                    if (id?.First(_pos + 1) is IdBookmark ib)
+                        return ib;
+                    bmk = bmk.Next();
+                    if (bmk == null)
+                        return null;
+                    (ob, id) = bmk.value();
+                    if (ob != null)
+                        return new IdBookmark(bmk, _parent, _pos + 1);
+                    if (id == null) // shouldn't happen
+                        return null;
                 }
-                public Ident key() { return _bB?.value()?.First().key() ?? _idB.key(); }
-                public V value() { return (_bB?.value() is BTree<Ident, V> tb) ? tb.First().value() : _idB.value(); }
-            }
-        }
-        /// <summary>
-        /// Define an ordering based on identifier, dbix, segpos
-        /// </summary>
-        /// <typeparam name="V"></typeparam>
-        internal class PosTree<V> : BTree<Ident, V>
-        {
-            public readonly new static PosTree<V> Empty = new PosTree<V>();
-            public PosTree() : base(null) { }
-            public PosTree(Ident k, V v) : base(new Leaf<Ident, V>(new KeyValuePair<Ident, V>(k, v))) { }
-            protected PosTree(Bucket<Ident, V> b) : base(b) { }
-            public override int Compare(Ident a, Ident b)
-            {
-                int c = a.ident.CompareTo(b.ident);
-                if (c != 0)
-                    return c;
-                return a.segpos.CompareTo(b.segpos);
-            }
-            public static void Add(ref PosTree<V> t, Ident k, V v)
-            {
-                t = (PosTree<V>)t.Add(k, v);
-            }
-            public static PosTree<V> operator +(PosTree<V> t, (Ident, V) v)
-            {
-                return (PosTree<V>)t.Add(v.Item1, v.Item2);
-            }
-            public static void Remove(ref PosTree<V> t, Ident k)
-            {
-                t.Remove(k);
-            }
-            protected override ATree<Ident, V> Add(Ident k, V v)
-            {
-                if (Contains(k))
-                    return new PosTree<V>(root.Update(this, k, v));
-                return Insert(k, v);
-            }
-
-            protected override ATree<Ident, V> Insert(Ident k, V v)
-            {
-                if (root == null || root.total == 0)  // empty BTree
-                    return new PosTree<V>(k, v);
-                if (root.count == Size)
-                    return new PosTree<V>(root.Split()).Add(k, v);
-                return new PosTree<V>(root.Add(this, k, v));
-            }
-
-            protected override ATree<Ident, V> Remove(Ident k)
-            {
-                if (k == null)
-                    return this;
-                k.indexed = false;
-                if (!Contains(k))
-                    return this;
-                if (root.total == 1) // empty index
-                    return Empty;
-                // note: we allow root to have 1 entry
-                return new PosTree<V>(root.Remove(this, k));
-            }
-
-            protected override ATree<Ident, V> Update(Ident k, V v)
-            {
-                if (!Contains(k))
-                    throw new Exception("PE01");
-                return new PosTree<V>(root.Update(this, k, v));
-            }
-        }
-        /// <summary>
-        /// Define a tree using an ordering based on the identifier chain
-        /// </summary>
-        /// <typeparam name="V"></typeparam>
-        internal class IdTree<V> : BTree<Ident, V>
-        {
-            public new readonly static IdTree<V> Empty = new IdTree<V>();
-            public IdTree() : base(null) { }
-            public IdTree(Ident k, V v) : base(new Leaf<Ident, V>(new KeyValuePair<Ident, V>(k, v))) { }
-            protected IdTree(Bucket<Ident, V> b) : base(b) { }
-            public override int Compare(Ident a, Ident b)
-            {
-                int c = a.ident.CompareTo(b.ident);
-                if (c != 0)
-                    return c;
-                if (a.sub == null)
-                    return (b.sub == null) ? 0 : -1;
-                if (b.sub == null)
-                    return 1;
-                return Compare(a.sub, b.sub);
-            }
-            public static void Add(ref IdTree<V> t, Ident k, V v)
-            {
-                t = (IdTree<V>)t.Add(k, v);
-            }
-            public static IdTree<V> operator +(IdTree<V> t, (Ident, V) v)
-            {
-                return (IdTree<V>)t.Add(v.Item1, v.Item2);
-            }
-            protected override ATree<Ident, V> Add(Ident k, V v)
-            {
-                if (Contains(k))
-                    return new IdTree<V>(root.Update(this, k, v));
-                return Insert(k, v);
-            }
-
-            protected override ATree<Ident, V> Insert(Ident k, V v)
-            {
-                k.indexed = true;
-                if (root == null || root.total == 0)  // empty BTree
-                    return new IdTree<V>(k, v);
-                if (root.count == Size)
-                    return new IdTree<V>(root.Split()).Add(k, v);
-                return new IdTree<V>(root.Add(this, k, v));
-            }
-
-            protected override ATree<Ident, V> Remove(Ident k)
-            {
-                if (k == null)
-                    return this;
-                k.indexed = false;
-                if (!Contains(k))
-                    return this;
-                if (root.total == 1) // empty index
-                    return Empty;
-                // note: we allow root to have 1 entry
-                return new IdTree<V>(root.Remove(this, k));
-            }
-            public static void Remove(ref IdTree<V> t, Ident k)
-            {
-                t.Remove(k);
-            }
-            protected override ATree<Ident, V> Update(Ident k, V v)
-            {
-                if (!Contains(k))
-                    throw new Exception("PE01");
-                return new IdTree<V>(root.Update(this, k, v));
-            }
-            public static IdTree<V> operator -(IdTree<V>t,Ident v)
-            {
-                return (IdTree<V>)t.Remove(v);
             }
         }
     }
@@ -559,8 +288,6 @@ namespace Pyrrho.Level4
 		public Sqlx tok;
         public Sqlx pushBack = Sqlx.Null;
         public Query cur = null;
-        internal BTree<long, Ident> idents = BTree<long, Ident>.Empty;
-        internal BTree<Ident, long> lookup = BTree<Ident, long>.Empty;
         public long offset;
         public long Position => offset + start;
         /// <summary>

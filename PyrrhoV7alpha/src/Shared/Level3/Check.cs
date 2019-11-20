@@ -20,13 +20,13 @@ namespace Pyrrho.Level3
     internal class Check : DBObject
     {
         internal const long
-            CheckObj = -51, // long
-            Condition = -52, // SqlValue
-            Source = -53; // string
+            Condition = -51, // SqlValue
+            Source = -52; // string
         /// <summary>
         /// The object to which the check applies
         /// </summary>
-        internal long checkobjpos => (long)mem[CheckObj];
+        internal long checkobjpos => (long)mem[From.Target];
+        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The source SQL for the check constraint
         /// </summary>
@@ -40,9 +40,17 @@ namespace Pyrrho.Level3
         /// <param name="owner">the owner</param>
 		public Check(PCheck c, Database db) 
             : base(c.name, c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
-                  + (CheckObj,c.ckobjdefpos)+(Source,c.check)
-                  + (Condition, new Parser(db).ParseSqlValue(c.check, Domain.Content)))
+                  + (From.Target,c.ckobjdefpos)+(Source,c.check)
+                  + (Condition, c.test) +(Dependents,c.test.dependents))
         { }
+        /// <summary>
+        /// for system types
+        /// </summary>
+        /// <param name="dp"></param>
+        /// <param name="s"></param>
+        public Check(long dp,string s)
+            : base(dp,new BTree<long,object>(Source,s)+(Condition,
+                  new Parser(Database._system).ParseSqlValue(s))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -50,6 +58,10 @@ namespace Pyrrho.Level3
         /// <param name="us">The new list of grantees (including ownership)</param>
         /// <param name="ow">the owner</param>
         protected Check(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static Check operator+(Check c,(long,object)x)
+        {
+            return (Check)c.New(c.mem + x);
+        }
         /// <summary>
         /// a readable version of the object
         /// </summary>
@@ -57,26 +69,28 @@ namespace Pyrrho.Level3
 		public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" CheckObj="); sb.Append(Uid(checkobjpos));
+            sb.Append(" From.Target="); sb.Append(Uid(checkobjpos));
             sb.Append(" Source="); sb.Append(source);
             return sb.ToString();
-        }
-        /// <summary>
-        /// Used in renaming/drop transactions
-        /// </summary>
-        /// <param name="t">A (rename/drop) transaction</param>
-        /// <returns>DROP,RESTRICT,or NO ACTION </returns>
-        public override Sqlx Dependent(Transaction t, Context cx)
-        {
-            if (t.refObj.defpos == checkobjpos)
-                return Sqlx.DROP;
-            if (search.dependents.Contains(t.refObj.defpos))
-                return Sqlx.RESTRICT;
-            return Sqlx.NO;
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new Check(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new Check(dp, mem);
+        }
+        internal override Basis Relocate(Writer wr)
+        {
+            var r = this;
+            var d = wr.Fix(defpos);
+            if (d != defpos)
+                r = (Check)Relocate(d);
+            var s = (SqlValue)search.Relocate(wr);
+            if (s != search)
+                r += (Condition, s);
+            return r;
         }
     }
 }

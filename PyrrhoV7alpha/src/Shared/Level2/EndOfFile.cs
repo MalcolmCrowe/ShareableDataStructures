@@ -23,7 +23,6 @@ namespace Pyrrho.Level2
     /// </summary>
 	internal class EndOfFile : Physical
 	{
-        long chk;
         public override long Dependent(Writer wr)
         {
             return -1;
@@ -48,7 +47,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
         {
-            return "End of File: " + chk;
+            return "End of File: ";
         }
 
         protected override Physical Relocate(Writer wr)
@@ -56,7 +55,7 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }

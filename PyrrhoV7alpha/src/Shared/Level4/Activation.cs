@@ -21,7 +21,7 @@ namespace Pyrrho.Level4
     internal class Activation : Context
     {
         internal string label;
-        internal Domain nominalDataType;
+        internal Domain domain;
         /// <summary>
         /// Exception handlers defined for this block
         /// </summary>
@@ -58,13 +58,13 @@ namespace Pyrrho.Level4
         /// <param name="pr">The procedure</param>
         /// <param name="n">The headlabel</param>
         protected Activation(Transaction tr,Context cx,Procedure pr, string n)
-            : base(cx,tr.roles[pr.definer],cx.user)
+            : base(cx,tr.objects[pr.definer] as Role,cx.user)
         {
             label = n;
-            nominalDataType = pr.retType;
+            domain = pr.retType;
         }
         protected Activation(Transaction tr,Context cx,long definer,string n)
-            :base(cx,tr.roles[definer],cx.user)
+            :base(cx,tr.objects[definer] as Role,cx.user)
         {
             label = n;
         }
@@ -99,11 +99,11 @@ namespace Pyrrho.Level4
         internal Procedure proc = null;
         internal Domain owningType = null;
         public CalledActivation(Transaction tr, Context cx, Procedure p,Domain ot)
-            : base(tr, cx, p, p.name)
+            : base(tr, cx, p, ((ObInfo)tr.role.obinfos[p.defpos]).name)
         { proc = p; owningType = ot; }
         public override string ToString()
         {
-            return "CalledActivation " + proc.name + " "+cxid;
+            return "CalledActivation " + proc.defpos;
         }
     }
     /// <summary>
@@ -123,10 +123,6 @@ namespace Pyrrho.Level4
         /// </summary>
         internal readonly Trigger _trig;
         /// <summary>
-        /// The names of properties etc as seen by the definer of this trigger
-        /// </summary>
-        internal readonly BTree<Ident,long?> _props;
-        /// <summary>
         /// Prepare for multiple executions of this trigger
         /// </summary>
         /// <param name="trs">The transition row set</param>
@@ -137,9 +133,8 @@ namespace Pyrrho.Level4
             _trs = trs;
             _trig = tg;
             var fm = trs.qry as From;
-            var tr = trs._tr;
             var t = fm.target as Table;
-            nominalDataType = t;
+            domain = trs._tr.role.obinfos[t.defpos] as Domain;
         }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's context
@@ -147,7 +142,6 @@ namespace Pyrrho.Level4
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
         internal Transaction Exec(Transaction tr, Context ox)
         {
-            bool r = false;
             var cx = new Context(ox, tr.role, tr.user);
             var trig = _trig;
             tr+=new Level2.TriggeredAction(_trig.defpos,tr.uid,tr);

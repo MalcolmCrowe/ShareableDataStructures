@@ -93,23 +93,23 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() { return "PRole "+name; }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             // If this is the first Role to be defined, 
-            // it is given all the SchemaRole's objects
+            // it becomes the schema role
             var first = true;
-            for (var b = db.roles.PositionAt(0); first && b != null; b = b.Next())
-                if (!(b.value() is User))
+            for (var b = db.roles.First(); first && b != null; b = b.Next())
+                if (b.value()>0 && !(db.objects[b.value()] is User))
                     first = false;
             var nr = new Role(this, db, first);
             db += (nr,p);
             if (first)
-            { // install as the new schema role and drop the old one
+            { // install as the new schema role
                 var sr = db.schemaRole;
-                db += (Database.Schema, nr.defpos);
+                db += (DBObject.Definer, nr.defpos);
             }
             // The new Role can be seen publicly but usage is controlled
-            return db + (db.schemaRole, nr,p);
+            return (db,ro); // + (db.schemaRole, nr,p);
         }
     }
      internal class PMetadata : Physical
@@ -265,12 +265,9 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var ob = (DBObject)ro.objects[defpos];
-            for (var b = ob.Add(this, db).First(); b != null; b = b.Next())
-                db += (ro,b.value(),p);
-            return db;
+            return (((DBObject)db.objects[defpos]).Add(db, ro, this, p),ro);
         }
     }
      internal class PMetadata2 : PMetadata

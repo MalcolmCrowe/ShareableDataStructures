@@ -40,6 +40,7 @@ namespace Pyrrho
             dict.Add("08C04", "A reader is already open in this thread and connection");
             dict.Add("08C05", "Conflict with an open reader in this thread and connection");
             dict.Add("08C06", "Cannot change connection properties during a transaction");
+            dict.Add("0U000", "Attempt to assign to a non-updatable column");
             dict.Add("21000", "Cardinality violation");
             dict.Add("22000", "Data and incompatible type errors");
             dict.Add("22003", "Out of bounds value");
@@ -235,6 +236,7 @@ namespace Pyrrho
             dict.Add("42127", "Table expected");
             dict.Add("42128", "Illegal aggregation operation");
             dict.Add("42129", "WHEN expected");
+            dict.Add("42130", "Table is not empty");
             dict.Add("42131", "Invalid POSITION {0}");
             dict.Add("42132", "Method {0} not found in type {1}");
             dict.Add("42133", "Type {0} not found");

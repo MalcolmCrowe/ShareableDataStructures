@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
                 var mt = Ensure(key, off);
                 return mt.NextKey(key, off + 1, cur);
             }
-            var v = impl.Last().key();
+            var v = impl?.Last().key() ?? new TInt(0);
             if (v.dataType.kind==Sqlx.INTEGER)
                 return new TInt(v.ToInt()+1);
             return info.headType.defaultValue;
@@ -213,6 +213,12 @@ namespace Pyrrho.Level3
         public static MTree operator-(MTree mt,PRow k)
         {
             Remove(ref mt, k);
+            return mt;
+        }
+        public static MTree operator -(MTree mt, (PRow,long) x)
+        {
+            var (k, p) = x;
+            Remove(ref mt, k, p);
             return mt;
         }
         /// <summary>
@@ -649,11 +655,7 @@ namespace Pyrrho.Level3
         internal readonly long head;
         internal readonly Domain headType;
         internal readonly TreeBehaviour onDuplicate, onNullKey; // onDuplicate effective only if tail is null
-#if MONGO
-        internal bool reverse; 
-#endif
         internal readonly TreeInfo tail;
-        internal readonly Domain keyType;
         /// <summary>
         /// Set up Tree information for a simple result set
         /// </summary>
@@ -661,7 +663,7 @@ namespace Pyrrho.Level3
         /// <param name="d">Whether duplicates are allowed at this level</param>
         /// <param name="n">Whether nulls are allowed at this level</param>
         /// <param name="off">the offset of the current level in multi</param>
-        internal TreeInfo(Domain multi,TreeBehaviour d, TreeBehaviour n, int off=0)
+        internal TreeInfo(ObInfo multi,TreeBehaviour d, TreeBehaviour n, int off=0)
         {
             if (off < multi.Length)
             {
@@ -670,11 +672,26 @@ namespace Pyrrho.Level3
             }
             onDuplicate = d;
             onNullKey = n;
-#if MONGO
-            reverse = false;
-#endif
             tail = (off+1 < multi.Length)?new TreeInfo(multi, d,n, off+1):null;
-            keyType = multi;
+        }
+        internal TreeInfo(BList<TableColumn> cols, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        {
+            if (off < (int)cols.Count)
+            {
+                head = cols[off].defpos;
+                headType = cols[off].domain;
+            }
+            onDuplicate = d;
+            onNullKey = n;
+            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, d, n, off + 1) : null;
+        }
+        internal TreeInfo(TreeInfo ti, TreeBehaviour d, TreeBehaviour n)
+        {
+            head = ti.head;
+            headType = ti.headType;
+            onDuplicate = d;
+            onNullKey = n;
+            tail = ti.tail;
         }
     }
 

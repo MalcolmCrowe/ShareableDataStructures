@@ -34,25 +34,25 @@ namespace Pyrrho.Level4
             /// The grouping of this group
             /// </summary>
             internal Grouping group;
-            internal Domain nominalKeyType, nominalRowType;
+            internal ObInfo nominalKeyType, nominalRowType;
             /// <summary>
             /// The information for a group
             /// </summary>
             /// <param name="q">the query</param>
             /// <param name="r">The parent grouping row set (may be null)</param>
             /// <param name="g">The grouping required</param>
-            internal GroupInfo(Query q,GroupingRowSet r, Grouping g)
+            internal GroupInfo(Context cx, Query q,GroupingRowSet r, Grouping g)
             {
                 qry = q;  grs = r; group = g;
      //           if (q.Check(g) is Ident nm) // needs more thought for views with passed-in where
      //               throw new DBException("42170",nm.ToString());
-                BList<Selector> ss = BList<Selector>.Empty; 
+                var ss = BList<SqlValue>.Empty; 
                 for (var b=g.members.First();b!=null;b=b.Next())
                 {
                     var sv = b.key();
-                    ss += new Selector(sv.name,sv.defpos,sv.nominalDataType,b.value());
+                    ss += new SqlValue(sv.defpos,sv.name);
                 }
-                nominalKeyType = new Domain(ss);
+                nominalKeyType = new ObInfo(r.groups.defpos, Domain.Row, ss); //Domain.For(cx,ss);
                 if (grs != null)
                 {
                     nominalRowType = q.rowType;
@@ -72,7 +72,7 @@ namespace Pyrrho.Level4
                 GroupRow r = grs.g_rows[key] 
                     ?? new GroupRow(_cx,group.defpos,this, gb,nominalRowType, key);
                 for (int j = 0; j < nominalRowType.Length; j++)
-                    r.columns[j]?.SetReg(_cx,key)?.AddIn(_cx,gb);
+                    r.groupInfo[j]?.SetReg(_cx,key)?.AddIn(_cx,gb);
             }
             /// <summary>
             /// Construct the group key for the current row
@@ -116,7 +116,7 @@ namespace Pyrrho.Level4
             internal GroupValueEntry(GroupingRowSet rs, Ident n, int? x) : base(rs, n, x) { }
             internal override TypedValue Eval(Context _cx, ABookmark<TRow, GroupRow> bm)
             {
-                return bm.value().columns[ix.Value].Eval(grs._tr,_cx);
+                return bm.value().groupInfo[ix.Value].Eval(grs._tr,_cx);
             }
         }
         /// <summary>
@@ -138,7 +138,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The collection of rows in the GroupedRowSet during construction
         /// </summary>
-        internal CTree<TRow, GroupRow> g_rows = null;
+        internal BTree<TRow, GroupRow> g_rows = null;
         /// <summary>
         /// A helper for simplifying grouping operations
         /// </summary>
@@ -146,11 +146,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// If !building we have a simple indexed collection of values
         /// </summary>
-        internal CTree<TRow, TRow> rows = null;
+        internal BTree<TRow, BTree<long,TypedValue>> rows = null;
         /// <summary>
         /// The group information: gid->groupinfo
         /// </summary>
-        internal BTree<long, GroupInfo> info = BTree<long, GroupInfo>.Empty;
+        internal BTree<long, GroupInfo> groupInfo = BTree<long, GroupInfo>.Empty;
         /// <summary>
         /// Constructor: called from QuerySpecification
         /// </summary>
@@ -159,32 +159,31 @@ namespace Pyrrho.Level4
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
         public GroupingRowSet(Context _cx, QuerySpecification q, RowSet rs, GroupSpecification gr, BTree<long,SqlValue> h)
-            : base(rs._tr,_cx,q,q.rowType,_Type(q,gr))
+            : base(rs._tr,_cx,q,q.rowType,_Type(_cx,q,gr))
         {
             source = rs;
             having = h;
             groups = gr;
             for (var g = gr.sets.First();g!=null;g=g.Next())
-                info+=(g.value().defpos,new GroupInfo(q, this, g.value()));
+                groupInfo+=(g.value().defpos,new GroupInfo(_cx, q, this, g.value()));
             building = true;
         }
-        static Domain _Type(Query q,GroupSpecification gr)
+        static ObInfo _Type(Context cx,Query q,GroupSpecification gr)
         {
-            var ss = BList<Selector>.Empty;
-            var ns = BTree<long, Selector>.Empty;
-            var i = 0;
+            var ss = BList<SqlValue>.Empty;
+            var ns = BTree<long, SqlValue>.Empty;
             for (var b=gr.sets.First();b!=null;b=b.Next())
                 for (var c=b.value().members.First();c!=null;c=c.Next())
                 {
                     var s = c.key();
                     if (!ns.Contains(s.defpos))
                     {
-                        var se = new Selector(s.name, s.defpos, s.nominalDataType, i++);
+                        var se = new SqlValue(s.defpos,s.name);
                         ss += se;
                         ns += (s.defpos, se);
                     }
                 }
-            return new Domain(ss);
+            return new ObInfo(gr.defpos, Domain.TableType, ss); 
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -213,19 +212,19 @@ namespace Pyrrho.Level4
             base.AddMatch(v, typedValue);
             source.AddMatch(v, typedValue);
         }
-        internal GroupRowEntry Lookup(Selector stc)
+        internal GroupRowEntry Lookup(SqlValue stc)
         {
             return ges[stc.defpos];
         }
         protected override void Build(Context _cx)
         {
-            g_rows = new CTree<TRow, GroupRow>(source.keyType);
+            g_rows = BTree<TRow, GroupRow>.Empty;
             for (var rb = _First(_cx) as GroupingBookmark; rb != null; 
                 rb = rb.Next(_cx) as GroupingBookmark)
-                for(var gi=info.First();gi!=null;gi=gi.Next())
+                for(var gi=groupInfo.First();gi!=null;gi=gi.Next())
                     gi.value().AddIn(_cx, rb);
             building = false;
-            rows = new CTree<TRow, TRow>(source.keyType);
+            rows = BTree<TRow, BTree<long,TypedValue>>.Empty;
             for (var rg = g_rows.First(); rg != null; rg = rg.Next())
             {
                 var rw = rg.value();
@@ -236,7 +235,10 @@ namespace Pyrrho.Level4
                 for (var i = rowType.Length - 1; i >= 0; i--)
                     if (rw[i] is SqlValue sv)
                         vs += (sv.defpos, sv.Eval(_tr, _cx));
-                rows +=(rg.key(), new TRow(rowType, vs));
+                var key = rg.key();
+                for (var b = key.values.First(); b != null; b = b.Next())
+                    vs += (b.key(), b.value());
+                rows +=(key, vs);
             }
             g_rows = null; 
         }
@@ -260,14 +262,14 @@ namespace Pyrrho.Level4
         {
             public readonly GroupingRowSet _grs;
             public readonly RowBookmark _bbm;
-            public readonly ABookmark<TRow, TRow> _ebm;
+            public readonly ABookmark<TRow, BTree<long,TypedValue>> _ebm;
             readonly TRow _row, _key;
             public override TRow row => _row;
 
             public override TRow key => _key;
 
             GroupingBookmark(Context _cx, GroupingRowSet grs, RowBookmark bbm,
-                ABookmark<TRow, TRow> ebm, int pos)
+                ABookmark<TRow, BTree<long,TypedValue>> ebm, int pos)
                 : base(_cx, grs, pos, (bbm != null) ? bbm._defpos : 0)
             {
                 _grs = grs;
@@ -280,7 +282,7 @@ namespace Pyrrho.Level4
                     _key = new TRow(grs.source.keyType, vs);
                 }
                 else {
-                    var vs = ebm.value().values;
+                    var vs = ebm.value();
                     _row = new TRow(grs.qry.rowType, vs);
                     _key = new TRow(grs.keyType, vs);
                     _cx.Add(grs.qry, this);
@@ -332,8 +334,8 @@ namespace Pyrrho.Level4
                     for (var ebm = _ebm.Next(); ebm != null; ebm = ebm.Next())
                     {
                         var r = new GroupingBookmark(_cx,_grs, _bbm, ebm, _pos + 1);
-                        for (var b = _rs.qry.cols.First(); b != null; b = b.Next())
-                            b.value().OnRow(r);
+                        for (var b = _rs.qry.rowType.columns.First(); b != null; b = b.Next())
+                            ((SqlValue)b.value()).OnRow(r);
                         if (r.Matches() && Query.Eval(_rs.qry.where, _rs._tr, _cx))
                             return r;
                     }

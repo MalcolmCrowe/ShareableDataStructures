@@ -45,7 +45,7 @@ namespace Pyrrho.Level4
             var fr = j.FDInfo?.reverse;
             var rx = j.FDInfo?.rindexDefPos;
             var ft = (rx!=null)? " foreign " : " primary ";
-            var index = _tr.schemaRole.objects[j.FDInfo.indexDefPos] as Index;
+            var index = _tr.objects[j.FDInfo.indexDefPos] as Index;
             if (rx!=null)
             {
                 if (fr==true)
@@ -154,12 +154,12 @@ namespace Pyrrho.Level4
             if (_useLeft)
             {
                 var t = _jrs.first.rowType;
-                var s = t.names[n];
-                var j = s.seq;
+                var j = t.map[n]??-1;
                 if (j >= 0)
                 {
-                    if (_left._rs.qry is SelectQuery qs && j < qs.cols.Count)
-                        v = qs.cols[j].Eval(_rs._tr, _cx);
+                    var s = t.columns[j];
+                    if (_left._rs.qry is Query qs && j < qs.rowType.columns.Count)
+                        v = qs.rowType.columns[j].Eval(_rs._tr, _cx);
                     if (v == null)
                         v = _left?.row[s.defpos] ?? TNull.Value; // allow for outer joins
                 }
@@ -167,12 +167,12 @@ namespace Pyrrho.Level4
             if (v == null && _useRight)
             {
                 var t = _jrs.second.rowType;
-                var s = t.names[n];
-                var j = s.seq;
+                var j = t.map[n] ?? -1;
                 if (j >= 0)
                 {
-                    if (_right._rs.qry is SelectQuery qs && j < qs.cols.Count)
-                        v = qs.cols[j].Eval(_rs._tr, _cx);
+                    var s = t.columns[j];
+                    if (_right._rs.qry is Query qs && j < qs.rowType.columns.Count)
+                        v = qs.rowType.columns[j].Eval(_rs._tr, _cx);
                     if (v == null)
                         v = _right?.row[s.defpos] ?? TNull.Value;
                 }
@@ -335,7 +335,7 @@ namespace Pyrrho.Level4
             if (info.reverse)
                 for (left = j.first.First(_cx); left != null; left = left.Next(_cx))
                 {
-                    if (j._tr.role.objects[info.rindexDefPos] is Index rx && !(left.Matches() &&
+                    if (j._tr.objects[info.rindexDefPos] is Index rx && !(left.Matches() &&
                             Query.Eval(join.left.where, j._tr,_cx)))
                         continue;
                     PRow key = null;
@@ -350,7 +350,7 @@ namespace Pyrrho.Level4
             else
                 for (right = j.second.First(_cx); right != null; right = right.Next(_cx))
                 {
-                    if (j._tr.role.objects[info.rindexDefPos] is Index rx && !(right.Matches() &&
+                    if (j._tr.objects[info.rindexDefPos] is Index rx && !(right.Matches() &&
                             Query.Eval(join.right.where, j._tr, _cx)))
                         continue;
                     PRow key = null;
@@ -373,7 +373,7 @@ namespace Pyrrho.Level4
             var left = _left;
             var right = _right;
             var join = _jrs.qry as JoinPart;
-            var rindex = _jrs._tr.role.objects[info.rindexDefPos] as Index;
+            var rindex = _jrs._tr.objects[info.rindexDefPos] as Index;
             if (info.reverse)
             {
                 for (left = left.Next(_cx); left != null; left = left.Next(_cx))
@@ -414,7 +414,7 @@ namespace Pyrrho.Level4
 
         internal override TableRow Rec()
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
     /// <summary>

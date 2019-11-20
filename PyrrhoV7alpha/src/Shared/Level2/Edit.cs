@@ -33,10 +33,10 @@ namespace Pyrrho.Level2
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long u,Transaction db)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
-                  dt.culture.Name,dt.defaultValue.ToString(),dt.super.defpos, u, db)
+                  dt.culture.Name,dt.defaultString,dt.super.defpos, u, db)
         {
             _defpos = old.defpos;
-            prev = old.ppos;
+            prev = old.lastChange;
         }
         /// <summary>
         /// Constructor: an Edit request from the buffer
@@ -102,9 +102,9 @@ namespace Pyrrho.Level2
                 case Type.Update:
                     {
                         var t = (Record)that;
-                        for (var cp = t.fields.First(); cp != null; cp = cp.Next())
+                        for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
                         {
-                            var c = (Selector)db.role.objects[cp.key()];
+                            var c = (DBObject)db.objects[cp.key()];
                             if (c.domain.defpos == defpos)
                                 return ppos;
                         }

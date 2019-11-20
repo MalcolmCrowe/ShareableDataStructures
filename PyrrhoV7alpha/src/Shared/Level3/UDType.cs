@@ -20,16 +20,16 @@ namespace Pyrrho.Level3
     internal class UDType : Domain
     {
         internal static long
-            Methods = --_uid, // BTree<string,BList<Method>>
-            TableDefPos = --_uid, // long
-            UnderDefPos = --_uid, // long
-            WithUri = --_uid; // string
+            Methods = -299, // BTree<string, BTree<int,Method>>
+            TableDefPos = -300, // long
+            UnderDefPos = -301, // long
+            WithUri = -302; // string
         /// <summary>
         /// The set of Methods for this Type
         /// </summary>
-        public BTree<string, BList<Method>> methods => (BTree<string, BList<Method>>)mem[Methods];
-        public long tabledefpos => (long)(mem[TableDefPos] ?? -1);
-        public long underdefpos => (long)(mem[UnderDefPos]?? -1);
+        public BTree<string, BTree<int,Method>> methods => (BTree<string, BTree<int,Method>>)mem[Methods];
+        public long tabledefpos => (long)(mem[TableDefPos] ?? -1L);
+        public long underdefpos => (long)(mem[UnderDefPos]?? -1L);
         /// <summary>
         /// The WITH uri if specified
         /// </summary>
@@ -42,10 +42,10 @@ namespace Pyrrho.Level3
             + (UnderDefPos, t.underdefpos) + (Methods, BTree<string, BList<Method>>.Empty))
         { }
         public UDType(long defpos, BTree<long, object> m) : base(Sqlx.TYPE, defpos, m) { }
-        public static UDType operator+(UDType ut,Method m)
+        public static UDType operator+(UDType ut,(Method,string) m)
         {
-            var ms = ut.methods[m.name] ?? BTree<int, Method>.Empty;
-            ms += (m.arity, m);
+            var ms = ut.methods[m.Item2] ?? BTree<int,Method>.Empty;
+            ms += (m.Item1.arity, m.Item1);
             return new UDType(ut.defpos, ut.mem + (Methods, ms));
         }
         public static UDType operator+(UDType ut,(long,object)x)
@@ -55,17 +55,6 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new UDType(defpos,m);
-        }
-        /// <summary>
-        /// Check for dependency between type definitions
-        /// </summary>
-        /// <param name="t">A rename/drop transaction</param>
-        /// <returns>whether this type depends on the type being renamed or dropped</returns>
-        public override Sqlx Dependent(Transaction t,Context cx)
-        {
-            if (t.refObj.defpos == underdefpos)
-                return Sqlx.RESTRICT;
-            return base.Dependent(t,cx);
         }
         public override string ToString()
         {

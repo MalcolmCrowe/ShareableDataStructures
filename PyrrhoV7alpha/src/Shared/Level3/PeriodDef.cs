@@ -53,6 +53,13 @@ namespace Pyrrho.Level3
         {
             return new PeriodDef(s.defpos, s.mem + x);
         }
+        internal override Database Drop(Database db, Role ro, long p)
+        {
+            var tb = db.objects[tabledefpos] as Table;
+            tb += (Versioning, 0);
+            db += (tb,p);
+            return base.Drop(db, ro, p);
+        }
         /// <summary>
         /// A readable version of the PeriodDef
         /// </summary>

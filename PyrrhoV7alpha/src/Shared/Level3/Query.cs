@@ -32,36 +32,23 @@ namespace Pyrrho.Level3
     internal class Query : DBObject
     {
         internal const long
-            Assig = -183, // BTree<UpdateAssignment,bool>
-            Cols = -184, // BList<SqlValue>
-            Data = -185, // RowSet
-            Display = -186, // int
-            Enc = -187, // Query
-            FetchFirst = -188, // int
-            Filter = -283, // BTree<long,TypedValue>
-            _Import = -189, // BTree<SqlValue,SqlValue>
-            Matches = -190, // BTree<SqlValue,TypedValue>
-            Matching = -191, // BTree<SqlValue,ATree<SqlValue,bool>>
-            OrdSpec = -192, // OrderSpec
-            Periods = -193, // BTree<long,PeriodSpec>
-            _Replace = -194, // BTree<string,string>
-            SCols = -195, // BTree<SqlValue,int?>
-            SimpleQuery = -197, // From
-            Where = -200; // BTree<long,SqlValue>
-        /// <summary>
-        /// Supplied for QuerySpecification; constructed for FROM items during Sources().
-        /// What happens for other forms of Query is more debatable: so we provide a careful API.
-        /// void Add(SqlValue v, Ident n, Ident a=null) will add a new column to the associated result RowSet.
-        /// int Size will give cols.Count=selects.Count (display.LEQ.Size).
-        /// defs can have extra entries to help with Selector aliasing.
-        /// SqlValue ValAt(int i) returns cols[i] or null if out of range
-        /// SqlValue ValFor(string a) returns v such that v.name==a or null if not found
-        /// int ColFor(SqlValue v) returns i such that cols[i]==v or -1 if not found
-        /// int ColFor(string a) returns i such that cols[i].name==a or -1 if not found
-        /// </summary>
-        internal BList<SqlValue> cols => (BList<SqlValue>)mem[Cols]?? BList<SqlValue>.Empty;
-        internal BTree<SqlValue,int?> scols => 
-            (BTree<SqlValue,int?>)mem[SCols]??BTree<SqlValue,int?>.Empty;
+            _Aggregates = -191, // bool
+            Assig = -174, // BTree<UpdateAssignment,bool>
+            Display = -177, // int
+            Enc = -178, // Query
+            FetchFirst = -179, // int
+            Filter = -180, // BTree<long,TypedValue>
+            _Import = -181, // BTree<SqlValue,SqlValue>
+            Matches = -182, // BTree<SqlValue,TypedValue>
+            Matching = -183, // BTree<SqlValue,ATree<SqlValue,bool>>
+            OrdSpec = -184, // OrderSpec
+            Periods = -185, // BTree<long,PeriodSpec>
+            _Replace = -186, // BTree<string,string>
+            RowType = -187,  // ObInfo
+            SimpleQuery = -189, // From
+            Where = -190; // BTree<long,SqlValue>
+        public bool _aggregates => (bool)(mem[_Aggregates] ?? false);
+        public string name => (string)mem[Name] ?? "";
         internal Table simpleQuery => (Table)mem[SimpleQuery]; // will be non-null for simple queries and insertable views
         internal BTree<SqlValue, TypedValue> matches =>
              (BTree<SqlValue, TypedValue>)mem[Matches] ?? BTree<SqlValue, TypedValue>.Empty; // guaranteed constants
@@ -73,12 +60,10 @@ namespace Pyrrho.Level3
         internal Query enc => (Query)mem[Enc]; // not used after preAnalyse except for RestViews
         internal BTree<SqlValue, SqlValue> import =>
             (BTree<SqlValue,SqlValue>)mem[_Import]??BTree<SqlValue, SqlValue>.Empty; // cache Imported SqlValues
-        /// <summary>
-        /// ordering to use, initialised during Selects(), constructed during Orders() 
-        /// </summary>
-        internal OrderSpec ordSpec => (OrderSpec)mem[OrdSpec];
+        internal OrderSpec ordSpec => (OrderSpec)mem[OrdSpec]??OrderSpec.Empty;
         internal BTree<long, PeriodSpec> periods =>
             (BTree<long, PeriodSpec>)mem[Periods] ?? BTree<long, PeriodSpec>.Empty;
+        internal ObInfo rowType => (ObInfo)mem[RowType] ?? ObInfo.Any;
         /// <summary>
         /// where clause, may be updated during Conditions() analysis.
         /// This is a disjunction of filters.
@@ -97,79 +82,174 @@ namespace Pyrrho.Level3
         /// The Fetch First Clause (-1 if not specified)
         /// </summary>
         internal int fetchFirst => (int)(mem[FetchFirst]??-1);
-        internal RowSet data => (RowSet)mem[Data];
-        /// <summary>
-        /// results: constructed during RowSets() analysis
-        /// </summary>
-        internal Domain rowType => (Domain)mem[SqlValue.NominalType];
         /// <summary>
         /// Constructor: a query object
         /// </summary>
         /// <param name="cx">the query context</param>
         /// <param name="k">the expected data type</param>
-        internal Query(long u,Domain dt,BTree<long,object>m=null)
-            : base(u,(m??BTree<long,object>.Empty)+(SqlValue.NominalType, dt))
-        { }
-        internal Query(long u, Domain dt, string n,BTree<long, object> m = null)
-            : base(u, (m ?? BTree<long, object>.Empty) + (SqlValue.NominalType, dt)+(Name,n))
+        internal Query(long u,Context cx,ObInfo dt,BTree<long,object>m=null)
+            : base(u,(m??BTree<long,object>.Empty)+(RowType,dt))
         { }
         internal Query(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Query operator+(Query q,(long,object)x)
         {
             return (Query)q.New(q.mem + x);
         }
-        public static Query operator+(Query q,(SqlValue,string) x)
+        public static Query operator+(Query q,SqlValue x)
         {
-            return q.Add(x.Item1,x.Item2);
+            return q.Add(x);
+        }
+        public static Query operator -(Query q, SqlValue x)
+        {
+            return q.Remove(x);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new Query(defpos,m);
         }
-        internal virtual SqlValue ValFor(SqlValue sv)
+        internal override DBObject Relocate(long dp)
         {
-            var iq = scols?[sv];
-            if (iq == null)
-                return null;
-            return cols[iq.Value];
+            return new Query(dp, mem);
         }
-        internal virtual void Resolve(Context cx)
-        { }
-        internal virtual Query Selects(Context cx)
+        internal override Basis Relocate(Writer wr)
         {
-            return this;
+            var r = this;
+            var d = wr.Fix(defpos);
+            if (d != defpos)
+                r = (Query)Relocate(d);
+            var ua = BTree<UpdateAssignment, bool>.Empty;
+            var ch = false;
+            for (var b=assig?.First();b!=null;b=b.Next())
+            {
+                var u = (UpdateAssignment)b.key().Relocate(wr);
+                ch = ch || (u != b.key());
+                ua += (u, b.value());
+            }
+            if (ch)
+                r += (Assig, ua);
+            var cs = BList<SqlValue>.Empty;
+            ch = false;
+            for (var b=rowType.columns.First();b!=null;b=b.Next())
+            {
+                var c = (SqlValue)b.value().Relocate(wr);
+                ch = ch || c != b.value();
+                cs += c;
+            }
+            if (ch)
+                wr.db += (wr.db.role+new ObInfo(defpos,Domain.TableType,cs),wr.Length);
+            var ec = (Query)enc?.Relocate(wr);
+            if (ec != enc)
+                r += (Enc, ec);
+            var fi = BTree<long, TypedValue>.Empty;
+            ch = false;
+            for (var b=filter?.First();b!=null;b=b.Next())
+            {
+                var k = wr.Fix(b.key());
+                ch = ch || (k != b.key());
+                fi += (k, b.value());
+            }
+            if (ch)
+                r += (Filter, fi);
+            var im = BTree<SqlValue, SqlValue>.Empty;
+            ch = false;
+            for (var b=import?.First();b!=null;b=b.Next())
+            {
+                var ik = (SqlValue)b.key().Relocate(wr);
+                var iv = (SqlValue)b.value().Relocate(wr);
+                ch = ch || (ik != b.key() || iv != b.value());
+                im += (ik, iv);
+            }
+            if (ch)
+                r += (_Import, im);
+            var ma = BTree<SqlValue, TypedValue>.Empty;
+            ch = false;
+            for (var b = matches?.First(); b != null; b = b.Next())
+            {
+                var mk = (SqlValue)b.key().Relocate(wr);
+                ch = ch || (mk != b.key());
+                ma += (mk, b.value());
+            }
+            if (ch)
+                r += (Matches,ma);
+            var mg = BTree<SqlValue, BTree<SqlValue, bool>>.Empty;
+            ch = false;
+            for (var b=matching?.First();b!=null;b=b.Next())
+            {
+                var k = (SqlValue)b.key().Relocate(wr);
+                ch = ch || k != b.key();
+                var mm = BTree<SqlValue, bool>.Empty;
+                for (var mb=b.value()?.First();mb!=null;mb=mb.Next())
+                {
+                    var mk = (SqlValue)mb.key().Relocate(wr);
+                    ch = ch || mk != mb.key();
+                    mm += (mk, mb.value());
+                }
+                mg += (k, mm);
+            }
+            if (ch)
+                r += (Matching, mg);
+            var ord = (OrderSpec)ordSpec.Relocate(wr);
+            if (ord != ordSpec)
+                r += (OrdSpec, ord);
+            var wh = BTree<long, SqlValue>.Empty;
+            ch = false;
+            for (var b=where.First();b!=null;b=b.Next())
+            {
+                var k = wr.Fix(b.key());
+                var v = (SqlValue)b.value().Relocate(wr);
+                ch = ch || (b.key() != k || b.value() != v);
+                wh += (k, v);
+            }
+            if (ch)
+                r += (Where, wh);
+            return r;
+        }
+        internal override bool Calls(long defpos, Database db)
+        {
+            for (var b = where?.First(); b != null; b = b.Next())
+                if (b.value().Calls(defpos, db))
+                    return true;
+            return Calls(rowType.columns,defpos, db);
+        }
+        internal virtual SqlValue ValFor(Context cx,SqlValue sv)
+        {
+            if (sv is SqlCopy sc)
+                sv = sc.copyFrom;
+            var rt = rowType.columns;
+            for (var i = 0; i < rt.Count; i++)
+            {
+                var v = rt[i];
+                if (v.defpos == sv.defpos && sv.defpos != -1)
+                    return v;
+            }
+            return null;
+        }
+        internal virtual SqlValue ValFor(Context cx,string s)
+        {
+            var rt = rowType;
+            var iq = rt.map[s];
+            if (iq!=null)
+                 return rt.columns[iq.Value] as SqlValue;
+            return null;
         }
         internal override DBObject Replace(Context cx,DBObject was,DBObject now)
         {
             if (cx.done.Contains(defpos)) // includes the case was==this
                 return cx.done[defpos];
-            var cs = cols;
+            if (now is SqlCol sc)
+                cx.undef -= now.defpos;
+            var rt = rowType;
+            var cs = rt.columns;
             var r = this;
             for (var b = cs.First(); b != null; b = b.Next())
             {
                 var x = b.value();
-                var bv = x.Replace(cx, was, now).WithA(x.alias);
+                var bv = (SqlValue)x.Replace(cx, was, now);
                 if (bv!=x)
                     cs += (b.key(), bv);
             }
-            if (cs!=cols)
-            {
-                r += (Cols, cs);
-                r += (SqlValue.NominalType, new Domain(cs));
-            }
-            if (cols==BList<SqlValue>.Empty)
-            {
-                var ts = rowType.columns;
-                for (var b = ts.First(); b != null; b = b.Next())
-                {
-                    var x = b.value();
-                    var bv = (Selector)x.Replace(cx, was, now).WithA(x.alias);
-                    if (bv!=x)
-                        ts += (b.key(), bv);
-                }
-                if (ts != rowType.columns)
-                    r += (SqlValue.NominalType, new Domain(ts));
-            }
+            if (cs!=rt.columns)
+                r += (RowType,new ObInfo(defpos, Domain.TableType, cs));
             var w = r.where;
             for (var b = w.First(); b != null; b = b.Next())
             {
@@ -178,17 +258,7 @@ namespace Pyrrho.Level3
                     w += (b.key(), v);
             }
             if (w!=r.where)
-                r = r.AddCondition(Where,w);
-            var ss = r.scols;
-            for (var b = r.scols.First();b!=null;b=b.Next())
-            {
-                var x = b.key();
-                var bk = x.Replace(cx, was, now).WithA(x.alias);
-                if (bk != b.key())
-                    ss += (bk, b.value());
-            }
-            if (ss!=r.scols)
-                r += (SCols, ss);
+                r = r.AddCondition(cx,Where,w);
             var ms = r.matches;
             for (var b=ms.First();b!=null;b=b.Next())
             {
@@ -217,9 +287,9 @@ namespace Pyrrho.Level3
             var os = r.ordSpec;
             for (var b = os?.items.First(); b != null; b = b.Next())
             {
-                var oi = b.value();
-                var ow = (SqlValue)oi.Replace(cx,was,now);
-                if (oi!=ow)
+                var it = b.value();
+                var ow = (SqlValue)it.Replace(cx,was,now);
+                if (it!=ow)
                     os += (b.key(), ow);
             }
             if (os!=r.ordSpec)
@@ -251,6 +321,89 @@ namespace Pyrrho.Level3
         {
             return (Query)cx.obs[defpos];
         }
+        internal override DBObject TableRef(Context cx, From f)
+        {
+            if (cx.done.Contains(defpos)) 
+                return cx.done[defpos];
+            var rt = rowType;
+            var cs = rt.columns;
+            var r = this;
+            for (var b = cs.First(); b != null; b = b.Next())
+            {
+                var x = b.value();
+                var bv = (SqlValue)x?.TableRef(cx, f);
+                if (bv != x && bv!=null)
+                    cs += (b.key(), bv);
+            }
+            if (cs != rt.columns)
+                r += (RowType, new ObInfo(defpos, Domain.TableType, cs));
+            var w = r.where;
+            for (var b = w.First(); b != null; b = b.Next())
+            {
+                var v = (SqlValue)b.value().TableRef(cx, f);
+                if (v != b.value())
+                    w += (b.key(), v);
+            }
+            if (w != r.where)
+                r = r.AddCondition(cx,Where, w);
+            var ms = r.matches;
+            for (var b = ms.First(); b != null; b = b.Next())
+            {
+                var bk = (SqlValue)b.key().TableRef(cx, f);
+                if (bk != b.key())
+                    ms += (bk, b.value());
+            }
+            if (ms != r.matches)
+                r += (Matches, ms);
+            var mg = r.matching;
+            for (var b = mg.First(); b != null; b = b.Next())
+            {
+                var bk = (SqlValue)b.key().TableRef(cx, f);
+                var bv = b.value();
+                for (var c = bv.First(); c != null; c = c.Next())
+                {
+                    var ck = (SqlValue)c.key().TableRef(cx, f);
+                    if (ck != c.key())
+                        bv += (ck, c.value());
+                }
+                if (bk != b.key() || bv != b.value())
+                    mg += (bk, bv);
+            }
+            if (mg != r.matching)
+                r += (Matching, mg);
+            var os = r.ordSpec;
+            for (var b = os?.items.First(); b != null; b = b.Next())
+            {
+                var it = b.value();
+                var ow = (SqlValue)it.TableRef(cx, f);
+                if (it != ow)
+                    os += (b.key(), ow);
+            }
+            if (os != r.ordSpec)
+                r += (OrdSpec, os);
+            var im = r.import;
+            for (var b = im.First(); b != null; b = b.Next())
+            {
+                var ik = (SqlValue)b.key().TableRef(cx, f);
+                var iv = (SqlValue)b.value().TableRef(cx, f);
+                if (ik != b.key() || iv != b.value())
+                    im += (ik, iv);
+            }
+            if (im != r.import)
+                r += (_Import, im);
+            var ag = r.assig;
+            for (var b = ag.First(); b != null; b = b.Next())
+            {
+                var aa = (SqlValue)b.key().val.TableRef(cx, f);
+                var ab = (SqlValue)b.key().vbl.TableRef(cx, f);
+                if (aa != b.key().val || ab != b.key().vbl)
+                    ag += (new UpdateAssignment(ab, aa), b.value());
+            }
+            if (ag != r.assig)
+                r += (Assig, ag);
+            cx.done += (defpos, r);
+            return (r == this) ? this : (Query)cx.Add(r);
+        }
         internal virtual CursorSpecification CursorSpec()
         {
             return enc?.CursorSpec();
@@ -269,19 +422,68 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="n"></param>
         /// <returns></returns>
-        internal virtual Query Add(SqlValue v,string n)
+        internal virtual Query Add(SqlValue v)
         {
             if (v == null)
                 return this;
-            var m = (int)cols.Count;
             var deps = dependents + (v.defpos,true);
             var dpt = _Max(depth, 1 + v.depth);
-            return this + (Cols, cols + (m, v)) + (SCols,scols+(v,m))
-                + (SqlValue.NominalType, rowType.columns 
-                + (m,new Selector(n, v.defpos, v.nominalDataType, m)))
-                +(Dependents,deps)+(Depth,dpt);
+            var r = this +(Dependents,deps)+(Depth,dpt)
+                +(RowType,rowType + v);
+            var a = v.aggregates();
+            if (a)
+                r += (_Aggregates, a);
+            return r;
         }
-
+        /// <summary>
+        /// Remove a column from the query, and update the row type
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        internal virtual Query Remove(SqlValue v)
+        {
+            var r = this;
+            if (v == null)
+                return this;
+            var i = rowType.map[v.name];
+            if (i == null)
+                return this;
+            if (i.Value<display)
+                r += (Display, display - 1);
+            var rt = rowType - v;
+            return r + (RowType,rt) + (Dependents, _Deps(rt.columns)) 
+                + (Depth,  _Max(rt.columns))
+                + (_Aggregates, _Aggs(rt.columns));
+        }
+        internal virtual Query Remove(long col)
+        {
+            var r = this;
+            SqlValue v = null;
+            var i = 0;
+            for (var b = rowType.columns.First(); v == null && b != null; b = b.Next(), i++)
+            {
+                var sc = b.value();
+                if (sc.defpos == col)
+                    v = sc;
+            }
+            if (v == null)
+                return this;
+            if (i < display)
+                r += (Display, display - 1);
+            var rt = rowType - v;
+            return r + (RowType, rt) + (Dependents, _Deps(rt.columns))
+                + (Depth, _Max(rt.columns))
+                + (_Aggregates, _Aggs(rt.columns));
+        }
+        static bool _Aggs(BList<SqlValue>ss)
+        {
+            var r = false;
+            for (var b = ss.First(); b != null; b = b.Next())
+                if (b.value().aggregates())
+                    r = true;
+            return r;
+        }
         /// <summary>
         /// Item1 of the return value of this method is always this.
         /// AddMatches modifies the parameter q so we get this from Item2.
@@ -301,13 +503,13 @@ namespace Pyrrho.Level3
         {
             cx.row.values -= sv.defpos;
         }
-        internal virtual Query Conditions(Transaction tr,Context cx,Query q)
+        internal virtual Query Conditions(Context cx)
         {
             var svs = where;
             var r = this;
             for (var b = svs.First(); b != null; b = b.Next())
             {
-                r = b.value().Conditions(tr,cx, r, true, out bool mv);
+                r = b.value().Conditions(cx, r, true, out bool mv);
                 if (mv)
                     svs -=b.key();
             }
@@ -317,38 +519,38 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="svs">A list of where conditions</param>
         /// <param name="tr"></param>
-        /// <param name="q"></param>
+        /// <param name="q">A source query</param>
         /// <returns></returns>
         internal Query MoveConditions(Context cx, Query q)
         {
             var wh = where;
             var fi = filter;
-            var qw = q.where;
-            var qf = q.filter;
-            var s = cx.depths.ToString();
-            for (var b = where.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                var v = b.value();
-                if (v is SqlValue w) 
+            var qw = q?.where;
+            var qf = q?.filter;
+            if (q != null)
+                for (var b = where.First(); b != null; b = b.Next())
                 {
-                    if (!q.where.Contains(k))
-                        qw+=(k, w);
-                    wh -= k;
+                    var k = b.key();
+                    var v = b.value();
+                    if (v is SqlValue w)
+                    {
+                        if (!q.where.Contains(k))
+                            qw += (k, w);
+                        wh -= k;
+                    }
                 }
-            }
             for (var b = fi.First(); b != null; b = b.Next())
                 qf += (b.key(),b.value());
             var oq = q;
-            if (qw!=q.where)
-                q=q.AddCondition(Where, qw);
-            if (qf != q.filter)
+            if (qw!=q?.where)
+                q=q.AddCondition(cx,Where, qw);
+            if (qf != q?.filter)
                 q += (Filter, qf);
             if (q != oq)
                 cx.Add(q);
             var r = this;
             if (wh != where)
-                r=r.AddCondition(Where, wh);
+                r=r.AddCondition(cx,Where, wh);
             if (fi != filter)
                 r += (Filter, fi);
             if (r != this)
@@ -357,11 +559,10 @@ namespace Pyrrho.Level3
         }
         internal virtual Query Orders(Transaction tr,Context cx, OrderSpec ord)
         {
-            var ndt = rowType;
             for (var i = 0; i < ord.items.Count; i++)
             {
-                var w = ord.items[i];
-                if (ndt.names[w.name] == null)
+                var w = ValFor(cx,ord.items[i]);
+                if (w == null)
                     return this;
             }
             return this+(OrdSpec,ord);
@@ -382,29 +583,29 @@ namespace Pyrrho.Level3
         /// <param name="rqC">SqlValues requested from possibly remote contributors</param>
         /// <param name="needed">SqlValues that remote contributors will need to be told</param>
         /// <returns>an updated querywhere, now containing typedvalues for the condition</returns>
-        internal virtual Query AddCondition(Transaction tr,Context cx, BTree<long, SqlValue> cond,
+        internal virtual Query AddCondition(Context cx, BTree<long, SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
             return this;
         }
         internal Query AddCondition(Context cx, SqlValue cond)
         {
-            cx.Replace(this,AddCondition(Where, cond));
-            return (Query)cx.done[defpos];
+            cx.Replace(this,AddCondition(cx,Where, cond));
+            return Refresh(cx);
         }
         internal Query AddCondition(Context cx, BTree<long,SqlValue> conds)
         {
-            cx.Replace(this, AddCondition(Where, conds));
-            return (Query)cx.done[defpos];
+            cx.Replace(this, AddCondition(cx,Where, conds));
+            return Refresh(cx);
         }
-        internal Query AddCondition(long prop,BTree<long,SqlValue> conds)
+        internal Query AddCondition(Context cx,long prop,BTree<long,SqlValue> conds)
         {
             var q = this;
             for (var b = conds.First(); b != null; b = b.Next())
-                q = q.AddCondition(prop, b.value());
+                q = q.AddCondition(cx, prop, b.value());
             return q;
         }
-        internal Query AddCondition(long prop, SqlValue cond)
+        internal Query AddCondition(Context cx,long prop, SqlValue cond)
         {
             if (where.Contains(cond.defpos))
                 return this;
@@ -412,9 +613,9 @@ namespace Pyrrho.Level3
             var q = this;
             if (cond is SqlValueExpr se && se.kind == Sqlx.EQL)
             {
-                if (se.left is TableColumn cl && se.right is SqlLiteral ll)
+                if (se.left.target is DBObject cl && se.right is SqlLiteral ll)
                     filt += (cl.defpos, ll.val);
-                else if (se.right is TableColumn cr && se.left is SqlLiteral lr)
+                else if (se.right.target is DBObject cr && se.left is SqlLiteral lr)
                     filt += (cr.defpos, lr.val);
             }
             if (filt != filter)
@@ -423,7 +624,9 @@ namespace Pyrrho.Level3
                 q += (Where, q.where + (cond.defpos, cond));
             else if (q is TableExpression te)
                 q = te + (TableExpression.Having, te.having + (cond.defpos, cond));
-            return q;
+            if (cond.depth >= q.depth)
+                q += (Depth, cond.depth + 1);
+            return (Query)cx.Add(q);
         }
         /// <summary>
         /// We are a view or subquery source. 
@@ -443,20 +646,26 @@ namespace Pyrrho.Level3
         {
             return this;
         }
-        internal virtual bool Knows(Selector c)
+        internal virtual bool Knows(SqlValue c)
         {
             return false;
         }
-        internal virtual void Build(Context _cx, RowSet rs)
+        internal override void Build(Context _cx, RowSet rs)
         {
+            for (var b = rowType.columns.First(); b != null; b = b.Next())
+                b.value().Build(_cx, rs);
         }
-        internal virtual void StartCounter(Context _cx, RowSet rs)
+        internal override void StartCounter(Context _cx, RowSet rs)
         {
+            for (var b = rowType.columns.First(); b != null; b = b.Next())
+                b.value().StartCounter(_cx, rs);
         }
-        internal virtual void AddIn(Context _cx, RowBookmark rb)
+        internal new virtual void AddIn(Context _cx, RowBookmark rb)
         {
+            for (var b = rowType.columns.First(); b != null; b = b.Next())
+                b.value().AddIn(_cx, rb);
         }
-        internal virtual void SetReg(Context _cx,TRow k)
+        internal new virtual void SetReg(Context _cx,TRow k)
         {
             for (var b = where.First(); b != null; b = b.Next())
                 b.value().SetReg(_cx,k);
@@ -519,7 +728,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The number of columns in the query (not the same as the result length)
         /// </summary>
-        internal int Size { get { return (int)cols.Count; } }
+        internal int Size(Context cx) { return rowType.Length; }
         internal Query AddPairs(Query q)
         {
             var r = this;
@@ -535,7 +744,7 @@ namespace Pyrrho.Level3
         /// <param name="b"></param>
         Query _AddMatchedPair(SqlValue a, SqlValue b)
         {
-            if (!matching[a].Contains(b))
+            if (matching[a]?.Contains(b)==false)
             {
                 var c = matching[a] ?? BTree<SqlValue, bool>.Empty;
                 c +=(b, true);
@@ -580,20 +789,34 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="i">the position</param>
         /// <returns>the value expression</returns>
-        internal SqlValue ValAt(int i)
+        internal SqlValue ValAt(Context cx,int i)
         {
+            var cols = rowType.columns;
             if (i >= 0 && i < cols.Count)
                 return cols[i];
             throw new PEException("PE335");
         }
-        internal virtual bool aggregates()
+        internal virtual bool Uses(long t)
         {
+            return false;
+        }
+        internal static bool Uses(BTree<long,SqlValue> x,long t)
+        {
+            for (var b = x.First(); b != null; b = b.Next())
+                if (b.value().Uses(t))
+                    return true;
+            return false;
+        }
+        internal override bool aggregates()
+        {
+            if (_aggregates)
+                return true;
             for (var b = where.First(); b != null; b = b.Next())
                 if (b.value().aggregates())
                     return true;
             return false;
         }
-        internal Query AddCols(Query from)
+        internal Query AddCols(Context cx,Query from)
         {
             var r = this;
             var sl = BList<SqlValue>.Empty;
@@ -602,17 +825,13 @@ namespace Pyrrho.Level3
             {
                 var c = b.value();
                 sl += c;
-                sc += (c, c.seq);
+                sc += (c,(int)sc.Count);
             }
-            r += (Cols, sl);
-            r += (SCols, sc);
-            r += (Display, (int)sl.Count);
-            r += (SqlValue.NominalType, from.rowType);
-            return r;
+            return r+(Display, (int)sl.Count)+(RowType,from.rowType.Relocate(defpos));
         }
         [Flags]
         internal enum Need { noNeed = 0, selected = 1, joined = 2, condition = 4, grouped = 8 }
-        internal virtual SelectQuery SelQuery()
+        internal virtual Query SelQuery()
         {
             return enc?.SelQuery();
         }
@@ -671,144 +890,41 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" RowType:");sb.Append(rowType);
+            if (mem.Contains(SqlStar.Prefix)) 
+            {   sb.Append(" Star="); 
+                if (mem[SqlStar.Prefix] is Query pq)
+                    sb.Append(Uid(pq.defpos)); 
+            }
             if (mem.Contains(Assig)) { sb.Append(" Assigs:"); sb.Append(assig); }
-            if (mem.Contains(Cols)) { sb.Append(" Cols:"); sb.Append(cols); }
             if (mem.Contains(Display)) { sb.Append(" Display="); sb.Append(display); }
-    //        if (mem.Contains(Enc) && enc!=null) { sb.Append(" Enc="); sb.Append(enc.blockid); }
             if (mem.Contains(FetchFirst)) { sb.Append(" FetchFirst="); sb.Append(fetchFirst); }
             if (mem.Contains(Filter)) { sb.Append(" Filter:"); sb.Append(filter); }
             if (mem.Contains(_Import)) { sb.Append(" Import:"); sb.Append(import); }
             if (mem.Contains(Matches)) { sb.Append(" Matches:"); sb.Append(matches); }
-    //        if (mem.Contains(_Needs)) { sb.Append(" Needs:"); sb.Append(needs); }
             if (mem.Contains(OrdSpec)) { sb.Append(" OrdSpec:"); sb.Append(ordSpec); }
             if (mem.Contains(_Replace)) { sb.Append(" Replace:"); sb.Append(replace); }
-            if (mem.Contains(SqlValue.NominalType)) { sb.Append(" RowType:");
-                var cm = "(";
-                for (var b=rowType?.columns.First();b!=null;b=b.Next())
-                {
-                    sb.Append(cm); cm = ","; sb.Append(b.value().name);
-                }
-                sb.Append(")");
-            }
-            if (mem.Contains(SCols)) { sb.Append(" SCols:"); sb.Append(scols); }
-     //       if (mem.Contains(SimpleQuery)) { sb.Append(" SimpleQuery="); sb.Append(simpleQuery.blockid); }
             if (mem.Contains(Where)) { sb.Append(" Where:"); sb.Append(where); }
             return sb.ToString();
         }
     }
 
-    /// <summary>
-    /// Most query classes require name resolution.
-    /// </summary>
-    internal class SelectQuery : Query
-    {
-        internal const long
-            Unknown = -201, // MethodCall
-            _Aggregates = -202, // bool
-            Defs1 = -203; // BTree<long,SqlValue>
-        internal SqlMethodCall unknown => (SqlMethodCall)mem[Unknown];
-        /// <summary>
-        /// whether the list of cols contains aggregates
-        /// </summary>
-        internal bool _aggregates => (bool)(mem[_Aggregates]??false);
-        public ATree<long,SqlValue> defs1 => (ATree<long,SqlValue>)mem[Defs1]??BTree<long,SqlValue>.Empty; // for Views
-        internal SelectQuery(long u,BTree<long,object>m) 
-            : base(u, m) { }
-        internal SelectQuery(long u, Domain dt, BTree<long, object> m = null)
-    : base(u, (m ?? BTree<long, object>.Empty) + (SqlValue.NominalType, dt))
-        { }
-        internal SelectQuery(long u, Domain dt, string n, BTree<long, object> m = null)
-    : base(u, (m ?? BTree<long, object>.Empty) + (SqlValue.NominalType, dt) + (Name, n))
-        { }
-        protected SelectQuery(SelectQuery q, SqlValue s) : base(q.defpos, q.mem + (Cols, q.cols + s)
-            + (SqlValue.NominalType, q.rowType + 
-            new Selector(s.alias??s.name, s.defpos, s.nominalDataType, q.rowType.Length))
-            + (Display,q.display+1)+(Dependents,q.dependents+(s.defpos,true))
-            +(Depth,_Max(q.depth,1+s.depth)))
-        { }
-        public static SelectQuery operator +(SelectQuery q, (long, object) x)
-        {
-            return (SelectQuery)q.New(q.mem + x);
-        }
-        public static SelectQuery operator+(SelectQuery q,SqlValue v)
-        {
-            return new SelectQuery(q, v);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new SelectQuery(defpos, m);
-        }
-        internal override SelectQuery SelQuery()
-        {
-            return this;
-        }
-        internal override DBObject Replace(Context cx, DBObject was, DBObject now)
-        {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
-            var r = (SelectQuery)base.Replace(cx,was,now);
-            var ds = r.defs1;
-            for (var b = defs1.First(); b != null; b = b.Next())
-            {
-                var x = b.value();
-                var bv = x.Replace(cx,was,now).WithA(x.alias);
-                if (bv!=b.value())
-                    ds += (b.key(), bv);
-            }
-            if (ds != r.defs1)
-                r += (Defs1, ds);
-            if (r != this)
-                cx.Add(r);
-            cx.done += (defpos, r);
-            return r;
-        }
-        internal override bool aggregates()
-        {
-            return _aggregates || base.aggregates();
-        }
-        internal override void Build(Context _cx, RowSet rs)
-        {
-            for (var b = cols.First(); b != null; b = b.Next())
-                    b.value().Build(_cx,rs);
-            base.Build(_cx,rs);
-        }
-        internal override void StartCounter(Context _cx, RowSet rs)
-        {
-            for (var b = cols.First(); b != null; b = b.Next())
-                    b.value().StartCounter(_cx,rs);
-            base.StartCounter(_cx,rs);
-        }
-        internal override void AddIn(Context _cx, RowBookmark rs)
-        {
-            for (var b = cols.First(); b != null; b = b.Next())
-                    b.value().AddIn(_cx,rs);
-            base.AddIn(_cx,rs);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (mem.Contains(Unknown)) { sb.Append(" Unknown:"); sb.Append(unknown); }
-            if (mem.Contains(_Aggregates)) { sb.Append(" Aggregates="); sb.Append(_aggregates); }
-            if (mem.Contains(Defs1)) { sb.Append(" defs1:"); sb.Append(defs1); }
-            return sb.ToString();
-        }
-    }
     // An ad-hoc SystemTable for a row history: the work is mostly done by
     // LogTableSelectBookmark
-    internal class LogRowTable :SelectQuery
+    internal class LogRowTable :Query
     {
         public readonly Table st,tb;
         public LogRowTable(Transaction tr, long td, string ta) 
             :base(tr.uid,BTree<long,object>.Empty)
         {
-            tb = tr.role.objects[td] as Table ??
+            tb = tr.objects[td] as Table ??
                 throw new DBException("42131", "" + td).Mix();
             var tt = new SystemTable("" + td);
-            new SystemTableColumn(tt, "Pos", 0, Domain.Int);
-            new SystemTableColumn(tt, "Action", 1, Domain.Char);
-            new SystemTableColumn(tt, "DefPos", 2, Domain.Int);
-            new SystemTableColumn(tt, "Transaction", 3, Domain.Int);
-            new SystemTableColumn(tt, "Timestamp", 4, Domain.Timestamp);
+            new SystemTableColumn(tt, "Pos", Domain.Int);
+            new SystemTableColumn(tt, "Action", Domain.Char);
+            new SystemTableColumn(tt, "DefPos", Domain.Int);
+            new SystemTableColumn(tt, "Transaction", Domain.Int);
+            new SystemTableColumn(tt, "Timestamp", Domain.Timestamp);
             st = tt;
         }
     }
@@ -816,25 +932,25 @@ namespace Pyrrho.Level3
     /// An Ad-hoc SystemTable for a row,column history: the work is mostly done by
     /// LogRowColSelectBookmark
     /// </summary>
-    internal class LogRowColTable : SelectQuery
+    internal class LogRowColTable : Query
     {
         public readonly Table st,tb;
         public readonly long rd, cd;
         public LogRowColTable(Transaction tr, long r, long c, string ta)
         : base(tr.uid, BTree<long, object>.Empty)
         {
-            var tc = tr.role.objects[cd] as TableColumn ??
+            var tc = tr.objects[cd] as TableColumn ??
                 throw new DBException("42131", "" + cd).Mix();
             rd = r;
             cd = c;
-            tb = tr.role.objects[tc.tabledefpos] as Table;
+            tb = tr.objects[tc.tabledefpos] as Table;
             var tt = new SystemTable("" + rd + ":" + cd);
-            new SystemTableColumn(tt, "Pos", 0, Domain.Int);
-            new SystemTableColumn(tt, "Value", 1, Domain.Char);
-            new SystemTableColumn(tt, "StartTransaction", 2, Domain.Int);
-            new SystemTableColumn(tt, "StartTimestamp", 3, Domain.Timestamp);
-            new SystemTableColumn(tt, "EndTransaction", 4, Domain.Int);
-            new SystemTableColumn(tt, "EndTimestamp", 5, Domain.Timestamp);
+            new SystemTableColumn(tt, "Pos", Domain.Int);
+            new SystemTableColumn(tt, "Value", Domain.Char);
+            new SystemTableColumn(tt, "StartTransaction", Domain.Int);
+            new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp);
+            new SystemTableColumn(tt, "EndTransaction", Domain.Int);
+            new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp);
             st = tt;
         }
     }
@@ -844,12 +960,12 @@ namespace Pyrrho.Level3
     internal class CursorSpecification : Query
     {
         internal const long
-            _Source = -204, // string
-            Union = -205, // QueryExpression
-            UsingFrom = -206, // Query
-            RVQSpecs = -207, // BList<QuerySpecification>
-            RestGroups = -208, // BTree<string,int>
-            RestViews = -209; // BTree<long,RestView>
+            RVQSpecs = -192, // BList<QuerySpecification>
+            RestGroups = -193, // BTree<string,int>
+            RestViews = -194, // BTree<long,RestView>
+            _Source = -195, // string
+            Union = -196, // QueryExpression
+            UsingFrom = -197; // Query
         /// <summary>
         /// The source string
         /// </summary>
@@ -880,7 +996,7 @@ namespace Pyrrho.Level3
         /// <param name="t">The transaction</param>
         /// <param name="dt">the expected data type</param>
         internal CursorSpecification(long u,BTree<long,object>m)
-            : base(u, m+(Dependents,new BTree<long,bool>(((Query)m[Union])?.defpos??-1,true))
+            : base(u, m+(Dependents,new BTree<long,bool>(((Query)m[Union])?.defpos??-1L,true))
                   +(Depth,1+((Query)m[Union])?.depth??0)) { }
         public static CursorSpecification operator +(CursorSpecification q, (long, object) x)
         {
@@ -901,19 +1017,29 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override Query Refresh(Context cx)
+        {
+            var r = (CursorSpecification)base.Refresh(cx);
+            var un = r.union?.Refresh(cx);
+            return (un == r.union) ? r : (CursorSpecification)cx.Add(r + (Union, un));
+        }
         internal override CursorSpecification CursorSpec()
         {
             return this;
         }
+        internal override bool Uses(long t)
+        {
+            return union.Uses(t) || base.Uses(t);
+        }
         /// <summary>
         /// Analysis stage Conditions: do Conditions on the union.
         /// </summary>
-        internal override Query Conditions(Transaction tr,Context cx,Query q)
+        internal override Query Conditions(Context cx)
         {
             var u = union;
             var r = MoveConditions(cx, u);
-            u = (QueryExpression)((Query)cx.obs[u.defpos]).Conditions(tr,cx, r);
-            return new CursorSpecification(defpos, r.mem + (Union, cx.obs[u.defpos]));
+            u = (QueryExpression)Refresh(cx).Conditions(cx);
+            return new CursorSpecification(defpos, r.mem + (Union, u.Refresh(cx)));
         }
         internal override Query Orders(Transaction tr,Context cx, OrderSpec ord)
         {
@@ -932,13 +1058,13 @@ namespace Pyrrho.Level3
         /// <param name="rqC">SqlValues requested from possibly remote contributors</param>
         /// <param name="needed">SqlValues that remote contributors will need to be told</param>
         /// <returns>an updated querywhere, now containing typedvalues for the condition</returns>
-        internal override Query AddCondition(Transaction tr,Context cx,BTree<long,SqlValue> cond,
+        internal override Query AddCondition(Context cx,BTree<long,SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
-            var cs = new CursorSpecification(defpos,base.AddCondition(tr,cx,cond, assigns, data).mem);
-            return cs+(Union,cs.union.AddCondition(tr,cx,cond, assigns, data));
+            var cs = new CursorSpecification(defpos,base.AddCondition(cx,cond, assigns, data).mem);
+            return cs+(Union,cs.union.AddCondition(cx,cond, assigns, data));
         }
-        internal override bool Knows(Selector c)
+        internal override bool Knows(SqlValue c)
         {
             return base.Knows(c) || (union?.Knows(c) ?? usingFrom?.Knows(c) ?? false);
         }
@@ -1025,10 +1151,10 @@ namespace Pyrrho.Level3
     internal class TableExpression : Query
     {
         internal const long
-            From = -210, // Query
-            Group = -211, // GroupSpecification
-            Having = -212, // BTree<long,SqlValue>
-            Windows = -213; // BTree<long,WindowSpecification>
+            From = -198, // Query
+            Group = -199, // GroupSpecification
+            Having = -200, // BTree<long,SqlValue>
+            Windows = -201; // BTree<long,WindowSpecification>
         /// <summary>
         /// The from clause of the tableexpression
         /// </summary>
@@ -1052,8 +1178,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t">the transaction</param>
         internal TableExpression(long u, BTree<long,object> m) 
-            : base(u,m+(Dependents,new BTree<long,bool>(((Query)m[From])?.defpos??-1,true))
-                  +(Depth,((Query)m[From])?.depth??0))
+            : base(u,m+(Dependents,new BTree<long,bool>(((Query)m[From])?.defpos??-1L,true))
+                  +(Depth,1+((Query)m[From])?.depth??0))
         { }
         public static TableExpression operator +(TableExpression q, (long, object) x)
         {
@@ -1063,13 +1189,26 @@ namespace Pyrrho.Level3
         {
             return new TableExpression(defpos,m);
         }
+        internal override DBObject Replace(Context cx, DBObject was, DBObject now)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (TableExpression)base.Replace(cx, was, now);
+            var fm = from?.Replace(cx, was, now);
+            if (fm != from)
+                r += (From, fm);
+            cx.done += (defpos, r);
+            return r;
+        }
         internal override Query Refresh(Context cx)
         {
-            var q = (TableExpression)base.Refresh(cx);
-            var fm = (Query)cx.obs[from.defpos];
-            if (fm != q.from)
-                q = (TableExpression)cx.Add(q+(From, fm));
-            return q;
+            var r = (TableExpression)base.Refresh(cx);
+            var fm = r.from?.Refresh(cx);
+            return (fm == r.from) ? r : (TableExpression)cx.Add(r + (From, fm));
+        }
+        internal override bool Uses(long t)
+        {
+            return from.Uses(t);
         }
         internal override bool aggregates()
         {
@@ -1102,7 +1241,7 @@ namespace Pyrrho.Level3
             from.AddIn(_cx,rs);
             base.AddIn(_cx,rs);
         }
-        internal override bool Knows(Selector c)
+        internal override bool Knows(SqlValue c)
         {
             return from.Knows(c);
         }
@@ -1144,14 +1283,13 @@ namespace Pyrrho.Level3
                 q = b.value().AddMatches(q);
             q = from.AddMatches(cx, q);
             cx.Replace(this,q);
-            return (Query)cx.done[defpos];
+            return Refresh(cx);
         }
-        internal override Query Conditions(Transaction tr,Context cx, Query q)
+        internal override Query Conditions(Context cx)
         {
-            var r = (TableExpression)MoveConditions(cx, from);
-            var fm = (Query)cx.obs[from.defpos];
-            r = r.MoveHavings(tr, cx, fm);
-            fm = (Query)cx.obs[fm.defpos];
+            var r = (TableExpression)MoveConditions(cx, from).Refresh(cx);
+            r = r.MoveHavings(cx, r.from);
+            var fm = r.from.Refresh(cx);
             r = (TableExpression)r.AddPairs(fm);
 /*            var h = r.having;
             var w = r.where;
@@ -1165,7 +1303,7 @@ namespace Pyrrho.Level3
                 }
                 r = (TableExpression)cx.Add(r + (Where, w));
                 // but avoid having-conditions that depend on aggregations
-                var qs = (QuerySpecification)cx.obs[QuerySpec().defpos];
+                var qs = (QuerySpecification)QuerySpec().Refresh(cx);
                 w = qs.where;
                 for (var b=h.First();b!=null;b=b.Next())
                     if (b.value().Import(this)==null)
@@ -1177,9 +1315,9 @@ namespace Pyrrho.Level3
                 cx.Add(r + (Having, h));
                 cx.Add(qs + (Where, w));
             } */
-            return Refresh(cx);
+            return (Query)cx.Add(r);
         }
-        internal TableExpression MoveHavings(Transaction tr,Context cx, Query q)
+        internal TableExpression MoveHavings(Context cx, Query q)
         {
             var ha = having;
             var qw = q.where;
@@ -1196,9 +1334,9 @@ namespace Pyrrho.Level3
             }
             if (ha != having)
             {
-                cx.Replace(q, q.AddCondition(Where, qw));
+                cx.Replace(q, q.AddCondition(cx,Where, qw));
                 cx.Replace(this, this + (Having, ha));
-                return (TableExpression)cx.done[defpos];
+                return (TableExpression)Refresh(cx);
             }
             return this;
         }
@@ -1216,11 +1354,11 @@ namespace Pyrrho.Level3
         /// <param name="cond">a condition</param>
         /// <param name="assigns">some update assignments</param>
         /// <param name="data">some insert data</param>
-        internal override Query AddCondition(Transaction tr,Context cx,BTree<long,SqlValue> cond,
+        internal override Query AddCondition(Context cx,BTree<long,SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
-            return (TableExpression)(base.AddCondition(tr,cx,cond, assigns, data)+
-            (From,from.AddCondition(tr,cx,cond, assigns, data)));
+            return (TableExpression)(base.AddCondition(cx,cond, assigns, data)+
+            (From,from.AddCondition(cx,cond, assigns, data)));
         }
         public override string ToString()
         {
@@ -1235,18 +1373,18 @@ namespace Pyrrho.Level3
     /// <summary>
     /// A Join is implemented as a subclass of Query
     /// </summary>
-    internal class JoinPart : SelectQuery
+    internal class JoinPart : Query
     {
         internal const long
-            _FDInfo = -214, // FDJoinPart
-            JoinCond = -215, // BTree<long,SqlValue>
-            JoinKind = -216, // Sqlx
-            LeftInfo = -217, // OrderSpec
-            LeftOperand = -218, // Query
-            Natural = -219, // Sqlx
-            NamedCols = -220, // BList<long>
-            RightInfo = -221, // OrderSpec
-            RightOperand = -222; //Query
+            _FDInfo = -202, // FDJoinPart
+            JoinCond = -203, // BTree<long,SqlValue>
+            JoinKind = -204, // Sqlx
+            LeftInfo = -205, // OrderSpec
+            LeftOperand = -206, // Query
+            Natural = -207, // Sqlx
+            NamedCols = -208, // BList<long>
+            RightInfo = -209, // OrderSpec
+            RightOperand = -210; //Query
         /// <summary>
         /// NATURAL or USING or NO (the default)
         /// </summary>
@@ -1263,7 +1401,7 @@ namespace Pyrrho.Level3
         /// The join condition is implemented by ordering, using any available indexes.
         /// Rows in the join will use left/rightInfo.Keys() for ordering and theta-operation.
         /// </summary>
-        internal OrderSpec leftInfo => (OrderSpec)mem[LeftInfo]; // initialised once nominalDataType is known
+        internal OrderSpec leftInfo => (OrderSpec)mem[LeftInfo]; // initialised once domain is known
         internal OrderSpec rightInfo => (OrderSpec)mem[RightInfo];
         /// <summary>
         /// During analysis, we collect requirements for the join conditions.
@@ -1292,13 +1430,25 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(j.defpos, j.mem + x);
         }
+        public static JoinPart operator+ (JoinPart j,SqlValue v)
+        {
+            return (JoinPart)j.Add(v);
+        }
+        public static JoinPart operator -(JoinPart j, SqlValue v)
+        {
+            return (JoinPart)j.Remove(v);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new JoinPart(defpos,m);
         }
-        internal override bool Knows(Selector c)
+        internal override bool Knows(SqlValue c)
         {
             return left.Knows(c) || right.Knows(c);
+        }
+        internal override bool Uses(long t)
+        {
+            return left.Uses(t) || right.Uses(t) || Uses(joinCond,t);
         }
         internal override bool aggregates()
         {
@@ -1316,28 +1466,26 @@ namespace Pyrrho.Level3
         }
         internal override Query Refresh(Context cx)
         {
-            var q = (JoinPart)base.Refresh(cx);
-            var lf = cx.obs[left.defpos];
-            if (lf != left)
-                q = (JoinPart)cx.Add(q+(LeftOperand, lf));
-            var rg = cx.obs[right.defpos];
-            if (rg != right)
-                q = (JoinPart)cx.Add(q+(RightOperand, rg));
-            return q;
+            var r = (JoinPart)base.Refresh(cx);
+            var rr = r;
+            var lf = r.left.Refresh(cx);
+            if (lf != r.left)
+                r += (LeftOperand, lf);
+            var rg = r.right.Refresh(cx);
+            if (rg != r.right)
+                r += (RightOperand, rg);
+            return (r == rr) ? rr : (JoinPart)cx.Add(r);
         }
         /// <summary>
         /// Analysis stage Selects: call for left and right.
         /// </summary>
-        internal override Query Selects(Context cx)
+        internal Query Selects(Context cx, QuerySpecification qs)
         {
             var r = this;
             int n = left.display;
-            var vs = BList<SqlValue>.Empty;
-            var ss = BList<Selector>.Empty;
             var lo = BList<SqlValue>.Empty; // left ordering
             var ro = BList<SqlValue>.Empty; // right
-            var ds = 0;
-            var de = depth;
+            var de = qs.depth;
             var sb = dependents;
             if (naturaljoin != Sqlx.NO)
             {
@@ -1348,49 +1496,48 @@ namespace Pyrrho.Level3
                 bool[] rc = new bool[rn];
                 for (int i = 0; i < rn; i++)
                     rc[i] = false;
+                var lt = left.rowType;
+                var rt = right.rowType;
+                var oq = qs;
                 for (int i = 0; i < n; i++)
                 {
-                    var ll = left.cols[i];
+                    var ll = lt.columns[i];
                     for (int j = 0; j < rn; j++)
                     {
-                        var rr = right.cols[j];
+                        var rr = rt.columns[j];
                         if (ll.name.CompareTo(rr.name) == 0)
                         {
                             lc[i] = true;
                             rc[j] = true;
-                            var cp = new SqlValueExpr(rr.defpos-1, Sqlx.EQL, ll, rr, Sqlx.NULL);
-        //                    cp.left.Needed(tr, Need.joined);
-        //                    cp.right.Needed(tr, Need.joined);
-                            r += (JoinCond,cp.Disjoin());
+                            var cp = new SqlValueExpr(rr.defpos - 1, Sqlx.EQL, ll, rr, Sqlx.NULL);
+                            r += (JoinCond, cp.Disjoin());
                             lo += ll;
                             ro += rr;
+                            r -= rr;
+                            qs -= rr.defpos;
                             m++;
                             break;
                         }
                     }
-                    if (!lc[i])
+                    if (lc[i])
                     {
-                        vs += ll;
-                        ss += new Selector(ll,ds++);
                         de = _Max(de, 1 + ll.depth);
                         sb += (ll.defpos, true);
                     }
                 }
+                if (oq != qs)
+                    cx.Add(qs);
                 for (int i = 0; i < n; i++)
-                    if (lc[i])
+                    if (!lc[i])
                     {
-                        var ll = left.cols[i];
-                        vs += ll;
-                        ss += new Selector(ll, ds++);
+                        var ll = left.rowType.columns[i];
                         de = _Max(de, 1 + ll.depth);
                         sb += (ll.defpos, true);
                     }
                 for (int i = 0; i < rn; i++)
                     if (!rc[i])
                     {
-                        var rr = right.cols[i];
-                        vs += rr;
-                        ss += new Selector(rr, ds++);
+                        var rr = right.rowType.columns[i];
                         de = _Max(de, 1 + rr.depth);
                         sb += (rr.defpos, true);
                     }
@@ -1398,87 +1545,97 @@ namespace Pyrrho.Level3
                     r += (JoinKind, Sqlx.CROSS);
                 else
                 {
-                    r += (LeftOperand, left + (OrdSpec, new OrderSpec(lo)));
-                    r += (RightOperand, right + (OrdSpec, new OrderSpec(ro)));
+                    r += (LeftOperand, cx.Add(left + (OrdSpec, new OrderSpec(lo))));
+                    r += (RightOperand, cx.Add(right + (OrdSpec, new OrderSpec(ro))));
                 }
             }
             else
             {
                 for (int j = 0; j < left.display; j++)
                 {
-                    var cl = left.cols[j];
-                    for (var i = 0; i < right.cols.Count; i++)
-                        if (right.rowType.names.Contains(cl.name))
-                            cl = new SqlValueExpr(cl.defpos,Sqlx.DOT,
-                                new SqlValue(left.defpos,left.name),cl,Sqlx.NO,
-                                new BTree<long,object>(Name,left.name+"."+cl.name));
-                    vs += cl;
-                    ss += new Selector(cl, ds++);
+                    var cl = left.rowType.columns[j];
+                    for (var i = 0; i < right.rowType.columns.Count; i++)
+                        if (right.rowType.map.Contains(cl.name))
+                        {
+                            cl = (SqlValue)cx.Add((cl is SqlCol lc) ? (SqlValue)
+                                new SqlCol(cl.defpos,
+                                    (left.alias ?? left.name) + "." + cl.name,
+                                    lc.tableCol) :
+                                new SqlValueExpr(-cl.dbg, Sqlx.DOT,
+                                new SqlTable(left.defpos, left.alias ?? left.name),
+                                    cl, Sqlx.NO, new BTree<long, object>(Name,
+                                    (left.alias ?? left.name) + "." + cl.name)));
+                            break;
+                        }
+                    r += cl;
                     de = _Max(de, 1 + cl.depth);
                     sb += (cl.defpos, true);
                 }
                 for (int j = 0; j < right.display; j++)
                 {
-                    var cr = right.cols[j];
-                    for (var i = 0; i < left.cols.Count; i++)
-                        if (left.rowType.names.Contains(cr.name))
-                            cr = new SqlValueExpr(cr.defpos, Sqlx.DOT,
-                                new SqlValue(right.defpos, right.name), cr, Sqlx.NO,
-                                new BTree<long, object>(Name, right.name + "." + cr.name));
-                vs += cr;
-                    ss += new Selector(cr, ds++);
+                    var cr = right.rowType.columns[j];
+                    for (var i = 0; i < left.rowType.columns.Count; i++)
+                        if (left.rowType.map.Contains(cr.name))
+                        {
+                            cr = (SqlValue)cx.Add((cr is SqlCol rc) ? (SqlValue)
+                                new SqlCol(cr.defpos,
+                                    (right.alias ?? right.name) + "." + cr.name,
+                                    rc.tableCol) : new SqlValueExpr(-cr.dbg, Sqlx.DOT,
+                                new SqlTable(right.defpos, right.alias ?? right.name),
+                                    cr, Sqlx.NO, new BTree<long, object>(Name,
+                                    (right.alias ?? right.name) + "." + cr.name)));
+                            break;
+                        }
+                    r += cr;
                     de = _Max(de, 1 + cr.depth);
                     sb += (cr.defpos, true);
                 }
             }
-            /*      // first ensure each joinCondition has the form leftExpr compare rightExpr
-                  // if not, move it to where
-                  for (var b = joinCond.First(); b != null; b = b.Next())
-                  {
-                      if (b.value() is SqlValueExpr se)
-                      {
-                          if (se.left.isConstant || se.right.isConstant)
-                              continue;
-                          if (se.left.IsFrom(tr, left, true) && se.right.IsFrom(tr, right, true))
-                          {
-                              se.left.Needed(tr, Need.joined);
-                              se.right.Needed(tr, Need.joined);
-                              continue;
-                          }
-                          if (se.left.IsFrom(tr, right, true) && se.right.IsFrom(tr, left, true))
-                          {
-                              var ns = new SqlValueExpr(tr, se.kind, se.right, se.left, se.mod);
-                              ATree<long, SqlValue>.Remove(ref joinCond, se.sqid);
-                              ATree<long, SqlValue>.Add(ref joinCond, ns.sqid, ns);
-                              se.left.Needed(tr, Need.joined);
-                              se.right.Needed(tr, Need.joined);
-                              continue;
-                          }
-                      }
-                      ATree<long, SqlValue>.Add(ref where, b.key(), b.value());
-                  } */
-            r += (Display, ds);
-            r += (SqlValue.NominalType,new Domain(ss));
-            r += (Cols, vs);
-            r += (Dependents, sb);
+            // first ensure each joinCondition has the form leftExpr compare rightExpr
+            // if not, move it to where
+            var jcond = r.joinCond;
+            var wh = where;
+            for (var b = r.joinCond.First(); b != null; b = b.Next())
+            {
+                if (b.value() is SqlValueExpr se)
+                {
+                    de = _Max(de, 1 + se.depth);
+                    if (se.left.isConstant || se.right.isConstant)
+                        continue;
+                    if (se.left.IsFrom(left, true) && se.right.IsFrom(right, true))
+                    {
+               //         se.left.Needed(tr, Need.joined);
+               //         se.right.Needed(tr, Need.joined);
+                        continue;
+                    }
+                    if (se.left.IsFrom(right, true) && se.right.IsFrom(left, true))
+                    {
+                        jcond += (se.defpos,
+                            new SqlValueExpr(se.defpos,se.kind, se.right, se.left, se.mod));
+               //         se.left.Needed(tr, Need.joined);
+               //         se.right.Needed(tr, Need.joined);
+                        continue;
+                    }
+                }
+                wh += (b.key(), b.value());
+            }
             r += (Depth, de);
-            return (JoinPart)cx.Add(r);
+            return (JoinPart)cx.Add(r+(JoinCond,jcond)+(RowType,qs.rowType));
         }
 
         /// <summary>
         /// Analysis stage Conditions: call for left and right
         /// Turn the join condition into an ordering request, and set it up
         /// </summary>
-        internal override Query Conditions(Transaction tr,Context cx,Query q)
+        internal override Query Conditions(Context cx)
         {
-            var r = (JoinPart)base.Conditions(tr,cx,q);
-            q = (Query)cx.obs[q.defpos];
+            var r = (JoinPart)base.Conditions(cx);
             var k = kind;
             if (k==Sqlx.CROSS)
                 k = Sqlx.INNER;
             for (var b = joinCond.First(); b != null; b = b.Next())
-                if (b.value() is SqlValueExpr se)
-                    r = (JoinPart)r.AddMatchedPair(se.left, se.right);
+                if (b.value() is SqlValueExpr se && se.kind==Sqlx.EQL)
+                    r = (JoinPart)r.AddMatchedPair((SqlValue)se.left, se.right);
             r = r +(LeftOperand,r.left.AddPairs(r))+(RightOperand,r.right.AddPairs(r));
             var w = where;
             var jc = joinCond;
@@ -1493,12 +1650,11 @@ namespace Pyrrho.Level3
             }
             if (jc.Count == 0)
                 k = Sqlx.CROSS;
-            var lf = r.left.Conditions(tr,cx,q);
-            q = (Query)cx.obs[q.defpos];
-            var rg = r.right.Conditions(tr,cx,q);
+            var lf = r.left.Conditions(cx);
+            var rg = r.right.Conditions(cx);
             r = (JoinPart)r.New(r.mem + (LeftOperand, lf) + (RightOperand, rg)
                 + (JoinCond, jc) + (JoinKind, k));
-            return r.AddCondition(Where,w);
+            return r.AddCondition(cx,Where,w);
         }
         /// <summary>
         /// Now is the right time to optimise join conditions. 
@@ -1546,7 +1702,7 @@ namespace Pyrrho.Level3
                 }
                 if (n > 0) //we will use the selected index instead of its From rowset: and order the other side for its rowset to be used
                 {
-                    for (var b = FDInfo.conds.First(); b != null; b = b.Next())
+                    for (var b = r.FDInfo.conds.First(); b != null; b = b.Next())
                         jc -=b.value().defpos;
                     k = Sqlx.NO;
                 }
@@ -1557,29 +1713,23 @@ namespace Pyrrho.Level3
             for (var b = jc.First(); b != null; b = b.Next())
                 if (b.value() is SqlValueExpr se) // we already know these have the right form
                 {
-                    lf = lf.Orders(tr,cx,
-                        lf.ordSpec+(OrderSpec.Items,
-                        lf.ordSpec.items+((int)lf.ordSpec.items.Count,
-                        se.left)));
-                    rg = rg.Orders(tr,cx,
-                        rg.ordSpec+(OrderSpec.Items,
-                        rg.ordSpec.items+((int)rg.ordSpec.items.Count,
-                        se.right)));
+                    lf = lf.Orders(tr,cx,lf.ordSpec+(OrderSpec.Items,lf.ordSpec.items+se.left));
+                    rg = rg.Orders(tr,cx,rg.ordSpec+(OrderSpec.Items,rg.ordSpec.items+se.right));
                 }
             if (joinCond.Count == 0)
                 for(var b=ord.items.First(); b!=null; b=b.Next()) // test all of these 
                 {
-                    var oi = b.value();
+                    var oi = (SqlValue)b.value();
                     if (r.left.HasColumn(oi)// && !(left.rowSet is IndexRowSet))
                         && !lf.ordSpec.HasItem(oi))
-                        lf = lf.Orders(tr,cx, 
-                            lf.ordSpec+(OrderSpec.Items,lf.ordSpec.items+((int)lf.ordSpec.items.Count, oi)));
+                        lf = lf.Orders(tr,cx,lf.ordSpec+(OrderSpec.Items,lf.ordSpec.items+oi));
                     if (r.right.HasColumn(oi)// && !(right.rowSet is IndexRowSet))
                         && !rg.ordSpec.HasItem(oi))
-                        rg = rg.Orders(tr,cx,
-                            rg.ordSpec + (OrderSpec.Items, rg.ordSpec.items + oi));
+                        rg = rg.Orders(tr,cx,rg.ordSpec + (OrderSpec.Items, rg.ordSpec.items+oi));
                 }
-            return r + (LeftOperand, lf) + (RightOperand, rg) + (JoinKind, k) + (JoinCond, jc);
+            cx.Add(lf);
+            cx.Add(rg);
+            return (Query)cx.Add(r + (LeftOperand, lf) + (RightOperand, rg) + (JoinKind, k) + (JoinCond, jc));
         }
         /// <summary>
         /// See if there is a ForeignKey Index whose foreign key is taken from the one side of joinCond,
@@ -1596,20 +1746,20 @@ namespace Pyrrho.Level3
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
-                    var x = bx.value();
+                    var x = (Index)tr.objects[bx.value()];
                     if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey)
                     && x.tabledefpos == ta.defpos && x.reftabledefpos == tb.defpos)
                     {
-                        var cs = BList<SqlValue>.Empty;
-                        var rx = tb.indexes[x.refindexdefpos];
-                        var br = rx.cols.First();
-                        for (var bc=x.cols.First();bc!=null&&br!=null;bc=bc.Next(),br=br.Next())
+                        var cs = BTree<long,SqlValue>.Empty;
+                        var rx = (Index)tr.objects[x.refindexdefpos];
+                        var br = rx.keys.First();
+                        for (var bc=x.keys.First();bc!=null&&br!=null;bc=bc.Next(),br=br.Next())
                         {
                             var found = false;
                             for (var bj = joinCond.First(); bj != null; bj = bj.Next())
                                 if (bj.value() is SqlValueExpr se
-                                    && (left ? se.left : se.right) is Selector sc && sc.defpos == bc.value().defpos
-                                    && (left ? se.right : se.left) is Selector sd && sd.defpos == br.value().defpos)
+                                    && (left ? se.left : se.right) is SqlValue sc && sc.defpos == bc.value().defpos
+                                    && (left ? se.right : se.left) is SqlValue sd && sd.defpos == br.value().defpos)
                                 {
                                     cs +=(bc.key(), se);
                                     found = true;
@@ -1634,19 +1784,19 @@ namespace Pyrrho.Level3
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
-                    var x = bx.value();
+                    var x = (Index)tr.objects[bx.value()];
                     if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                         x.flags.HasFlag(PIndex.ConstraintType.Unique))
                     && x.tabledefpos == ta.defpos)
                     {
-                        var cs = BList<SqlValue>.Empty;
+                        var cs = BTree<long,SqlValue>.Empty;
                         var jc = joinCond;
-                        for (var bc=x.cols.First();bc!=null;bc=bc.Next())
+                        for (var bc=x.keys.First();bc!=null;bc=bc.Next())
                         {
                             var found = false;
                             for (var bj = jc.First(); bj != null; bj = bj.Next())
                                 if (bj.value() is SqlValueExpr se
-                                    && (left ? se.left : se.right) is Selector sc
+                                    && (left ? se.left : se.right) is SqlValue sc
                                     && sc.defpos == bc.value().defpos)
                                 {
                                     cs +=(bc.key(), se);
@@ -1723,22 +1873,22 @@ namespace Pyrrho.Level3
         /// <param name="cond">the condition to add</param>
         /// <param name="assigns">some update assignments</param>
         /// <param name="data">the insert data</param>
-        internal override Query AddCondition(Transaction tr,Context cx,BTree<long,SqlValue> cond,
+        internal override Query AddCondition(Context cx,BTree<long,SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
             var leftrepl = BTree<SqlValue, SqlValue>.Empty;
             var rightrepl = BTree<SqlValue, SqlValue>.Empty;
             for (var b = joinCond.First(); b != null; b = b.Next())
                 b.value().BuildRepl(left, ref leftrepl, ref rightrepl);
-            var r = (JoinPart)base.AddCondition(tr,cx,cond, assigns, data);
+            var r = (JoinPart)base.AddCondition(cx,cond, assigns, data);
             for (var b = cond.First(); b != null; b = b.Next())
             {
-                cx.Replace(left, b.value().DistributeConditions(tr, cx, left, leftrepl));
-                cx.Replace(right,b.value().DistributeConditions(tr, cx, right, rightrepl));
+                cx.Replace(left, b.value().DistributeConditions(cx, left, leftrepl));
+                cx.Replace(right,b.value().DistributeConditions(cx, right, rightrepl));
             }
             cx.Replace(left, left.DistributeAssigns(assig)); 
             cx.Replace(right,right?.DistributeAssigns(assig));
-            return (JoinPart)cx.obs[defpos];
+            return (JoinPart)Refresh(cx);
         }
         /// <summary>
         /// Analysis stage RowSets: build the join rowset
@@ -1753,20 +1903,28 @@ namespace Pyrrho.Level3
                     right.AddMatch(cx, b.key(), b.value());
             }
             var lr = left.RowSets(tr,cx);
-            if (left.ordSpec != null)
+            if (left.ordSpec.items != BList<SqlValue>.Empty)
             {
-                var kl = new Domain(left.ordSpec.items);
+                var kl = _ObInfo(cx,left,left.ordSpec.items);
                 lr = new SortedRowSet(cx, left, lr, kl,
                     new TreeInfo(kl, TreeBehaviour.Allow, TreeBehaviour.Allow));
             }
             var rr = right.RowSets(tr,cx);
-            if (right.ordSpec != null)
+            if (right.ordSpec.items != BList<SqlValue>.Empty)
             {
-                var kr = new Domain(right.ordSpec.items);
+                var kr = _ObInfo(cx,right,right.ordSpec.items);
                 rr = new SortedRowSet(cx, right, rr, kr,
                     new TreeInfo(kr, TreeBehaviour.Allow, TreeBehaviour.Allow));
             }
             return new JoinRowSet(cx,this,lr,rr);
+        }
+        static ObInfo _ObInfo(Context cx,Query q,BList<SqlValue> its)
+        {
+            var ss = BList<SqlValue>.Empty;
+            for (var b = its.First(); b != null; b = b.Next())
+                ss += q.ValFor(cx,b.value()) 
+                    ?? throw new PEException("PE849");
+            return new ObInfo(-1, Domain.TableType, ss);
         }
         internal int Compare(Transaction tr,Context cx)
         {
@@ -1815,22 +1973,22 @@ namespace Pyrrho.Level3
     internal class FDJoinPart : Basis
     {
         internal const long
-            FDConds = -223, // BTree<long,SqlValue>
-            FDIndexDefPos = -224, // long
-            FDRefIndexDefPos = -225, // long
-            FDRefTableDefPos = -226, // long
-            FDTableDefPos = -227, // long
-            Reverse = -228; // bool
+            FDConds = -211, // BTree<long,SqlValue>
+            FDIndexDefPos = -212, // long
+            FDRefIndexDefPos = -213, // long
+            FDRefTableDefPos = -214, // long
+            FDTableDefPos = -215, // long
+            Reverse = -216; // bool
         /// <summary>
         /// The primary key Index giving the functional dependency
         /// </summary>
-        public long indexDefPos => (long)(mem[FDIndexDefPos]??-1);
-        public long tableDefPos => (long)(mem[FDTableDefPos] ?? -1);
+        public long indexDefPos => (long)(mem[FDIndexDefPos]??-1L);
+        public long tableDefPos => (long)(mem[FDTableDefPos] ?? -1L);
         /// <summary>
         /// The foreign key index if any
         /// </summary>
-        public long rindexDefPos => (long)(mem[FDRefIndexDefPos]??-1);
-        public long rtableDefPos => (long)(mem[FDRefTableDefPos] ?? -1);
+        public long rindexDefPos => (long)(mem[FDRefIndexDefPos]??-1L);
+        public long rtableDefPos => (long)(mem[FDRefTableDefPos] ?? -1L);
         /// <summary>
         /// The joinCond entries moved to this FDJoinPart: the indexing is hierarchical: 0, then 1 etc.
         /// </summary>
@@ -1846,10 +2004,10 @@ namespace Pyrrho.Level3
         /// <param name="ix">an index</param>
         /// <param name="s">the source expressions</param>
         /// <param name="d">the destination expressions</param>
-        public FDJoinPart(Index ix, Index rx, BList<SqlValue> c, bool r)
+        public FDJoinPart(Index ix, Index rx, BTree<long,SqlValue> c, bool r)
             :base(BTree<long,object>.Empty
                  +(FDIndexDefPos,ix.defpos)+(FDTableDefPos,ix.tabledefpos)
-                 +(FDRefIndexDefPos,rx.defpos)+(FDRefTableDefPos,rx.tabledefpos)
+                 +(FDRefIndexDefPos,rx?.defpos??-1L)+(FDRefTableDefPos,rx?.tabledefpos??-1)
                  +(FDConds,c)+(Reverse,r))
         { }
         protected FDJoinPart(BTree<long, object> m) : base(m) { }

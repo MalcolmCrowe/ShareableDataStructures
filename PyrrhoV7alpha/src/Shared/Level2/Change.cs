@@ -160,9 +160,11 @@ namespace Pyrrho.Level2
 			return (pos==Affects)?new DBException("40005",pos).Mix():null;
 		}
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database,Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var oi = ro.obinfos[affects] as ObInfo;
+            ro = ro + new ObInfo(affects, name, oi.domain, oi.priv, oi.mem);
+            return (db + (ro, p),ro);
         }
     }
 }

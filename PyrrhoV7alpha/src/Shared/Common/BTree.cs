@@ -765,7 +765,7 @@ namespace Pyrrho.Common
     internal class BList<V> : BTree<int, V>
     {
         public new static readonly BList<V> Empty = new BList<V>();
-        protected BList() :base() {}
+        protected BList() : base() { }
         public BList(V v) : base(0, v) { }
         protected BList(Bucket<int, V> r) : base(r) { }
         protected override ATree<int, V> Add(int k, V v)
@@ -778,13 +778,13 @@ namespace Pyrrho.Common
         }
         public static BList<V> operator +(BList<V> b, (int, V) v)
         {
-            return (BList<V>)b.Add(v.Item1,v.Item2);
+            return (BList<V>)b.Add(v.Item1, v.Item2);
         }
-        public static BList<V> operator+(BList<V> b,V v)
+        public static BList<V> operator +(BList<V> b, V v)
         {
             return (BList<V>)b.Add((int)b.Count, v);
         }
-        public static BList<V> operator-(BList<V> b, int i)
+        public static BList<V> operator -(BList<V> b, int i)
         {
             return (BList<V>)b.Remove(i);
         }

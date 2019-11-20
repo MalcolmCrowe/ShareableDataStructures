@@ -19,19 +19,21 @@ namespace Pyrrho.Level3
 	internal class Trigger : DBObject
 	{
         internal const long
-            Action = -303, // BList<Executable>
-            Def = -304, // string
-            NewRow = -305, // string
-            NewTable = -306, // string
-            OldRow = -307, // string
-            OldTable = -308, // string
-            Table = -309, // long
-            TrigType = -310, // PTrigger.TrigType
-            UpdateCols = -311; // BList<long>
+            Action = -290, // BList<Executable>
+            Def = -291, // string
+            NewRow = -292, // string
+            NewTable = -293, // string
+            OldRow = -294, // string
+            OldTable = -295, // string
+            Table = -296, // long
+            TrigType = -297, // PTrigger.TrigType
+            UpdateCols = -298; // BList<long>
         /// <summary>
         /// The defining position of the associated table
         /// </summary>
 		public long tabledefpos => (long)mem[Table];
+        public string def => (string)mem[Def];
+        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The trigger type (flags)
         /// </summary>
@@ -58,17 +60,11 @@ namespace Pyrrho.Level3
 		public string newTable => (string)mem[NewTable];
         public BList<Executable> action => (BList<Executable>)mem[Action];
         /// <summary>
-        /// the SQL body of the trigger (including the when part) in case we need to reparse
-        /// in a multi-database connection
-        /// </summary>
-		public string def=> (string)mem[Def];
-        /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
 		public Trigger(PTrigger p,Database db)
             : base(p.name,p.ppos,p.defpos,db.role.defpos,BTree<long,object>.Empty
-                  +(Action,new Parser(db).ParseTriggerDefinition(p.def))
-                  +(Def,p.def)+(Table,p.tabledefpos)+(TrigType,p.tgtype)
+                  +(Action,p.def)+(Table,p.tabledefpos)+(TrigType,p.tgtype)
                   +(UpdateCols,p.cols)+(OldRow,p.oldRow)+(NewRow,p.newRow)
                   +(OldTable,p.oldTable)+(NewTable,p.newTable))
 		{ }
@@ -79,6 +75,10 @@ namespace Pyrrho.Level3
                   + (OldTable, ot) + (NewTable, nt))
         { }
         public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) { }
+        public static Trigger operator+(Trigger tg,(long,object)x)
+        {
+            return new Trigger(tg.defpos, tg.mem + x);
+        }
         /// <summary>
         /// a string representation of the trigger
         /// </summary>
@@ -88,7 +88,6 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" TrigType=");sb.Append(tgType);
             sb.Append(" On=");sb.Append(Uid(tabledefpos));
-            sb.Append(" Def={");sb.Append(def);sb.Append('}');
             sb.Append(" Action:");sb.Append(action);
             if (cols != null)
             {
@@ -107,6 +106,41 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new Trigger(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new Trigger(dp, mem);
+        }
+        internal override Basis Relocate(Writer wr)
+        {
+            var r = this;
+            var d = wr.Fix(defpos);
+            if (d != defpos)
+                r = (Trigger)Relocate(wr);
+            var ac = BList<Executable>.Empty;
+            var ch = false;
+            for (var b=action.First();b!=null;b=b.Next())
+            {
+                var a = (Executable)b.value().Relocate(wr);
+                ch = ch || (a != b.value());
+                ac += a;
+            }
+            if (ch)
+                r += (Action, ac);
+            var ta = wr.Fix(tabledefpos);
+            if (ta != tabledefpos)
+                r += (Table, ta);
+            var uc = BList<long>.Empty;
+            ch = false;
+            for (var b=cols.First();b!=null;b=b.Next())
+            {
+                var c = wr.Fix(b.value());
+                ch = ch || (c != b.value());
+                uc += c;
+            }
+            if (ch)
+                r += (UpdateCols, uc);
+            return r;
         }
     }
 }

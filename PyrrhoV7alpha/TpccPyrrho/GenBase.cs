@@ -157,7 +157,7 @@ namespace Tpcc
         }
         public void FillDistrict(int wid, int did)
         {
-            Console.WriteLine("Filling District " + did + " " + DateTime.Now);
+            Console.WriteLine("Filling District " + did + " warehouse "+wid+ " " + DateTime.Now);
             util us = new util(10, 20);
             util un = new util(6, 10);
             string s = "insert into district(d_id,d_w_id,d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_tax,d_ytd,d_next_o_id)values(" +

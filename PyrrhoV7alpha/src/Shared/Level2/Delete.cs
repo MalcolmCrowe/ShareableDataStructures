@@ -14,14 +14,11 @@ using Pyrrho.Common;
 namespace Pyrrho.Level2
 {
 	/// <summary>
-	/// A Delete entry notes a base table record to delete
+	/// A Delete entry notes a base table record to delete.
+    /// Deprecated: Delete1 is much faster since v7
 	/// </summary>
 	internal class Delete : Physical
 	{
-        /// <summary>
-        /// The reference deletion constraint allows us to check if the record is referred to by a foreign key
-        /// </summary>
-        public ReferenceDeletionConstraint delC = null;
         public long delpos;
         public long tabledefpos;
         public override long Dependent(Writer wr)
@@ -42,12 +39,19 @@ namespace Pyrrho.Level2
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
 		}
+        protected Delete(Type t,TableRow rw, long u, Transaction tr)
+    : base(t, u, tr)
+        {
+            tabledefpos = rw.tabledefpos;
+            delpos = rw.defpos;
+        }
         /// <summary>
         /// Constructor: a new Delete request from the buffer
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
 		public Delete(Reader rdr) : base(Type.Delete, rdr) { }
+        protected Delete(Type t,Reader rdr) : base(t, rdr) { }
         protected Delete(Delete x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
@@ -73,6 +77,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
 		{
+  //          wr.PutLong(wr.Fix(tabledefpos));
             wr.PutLong(wr.Fix(delpos));
 			base.Serialise(wr);
 		}
@@ -82,8 +87,10 @@ namespace Pyrrho.Level2
         /// <param name="buf">The buffer</param>
         public override void Deserialise(Reader rdr)
         {
+  //          var tb = rdr.GetLong();
             var dp = rdr.GetLong();
             base.Deserialise(rdr);
+  //          tabledefpos = tb;
             delpos= dp;
         }
         /// <summary>
@@ -92,7 +99,7 @@ namespace Pyrrho.Level2
         /// <returns>The string representation</returns>
 		public override string ToString()
         {
-            return "Delete Record ["+Pos(delpos)+"]";
+            return "Delete Record "+Pos(delpos);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -105,23 +112,105 @@ namespace Pyrrho.Level2
             }
             return -1;
         }
-
-        internal override Database Install(Database db, Role ro, long p)
+        /// <summary>
+        /// Provided for legacy database files.
+        /// Delete1 knows the right table to find the record in
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="ro"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var tb = db.schemaRole.objects[tabledefpos] as Table;
-            var delRow = tb.tableRows[delpos];
-            for (var b=tb.indexes.First();b!=null;b=b.Next())
+            for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
+                if (db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
+                {
+                    var delRow = tb.tableRows[delpos] as TableRow;
+                    (db, ro) = delRow.Cascade(db, db, ro);
+                    for (var b = tb.indexes.First(); b != null; b = b.Next())
+                    {
+                        var ix = (Index)db.objects[b.value()];
+                        var inf = ix.rows.info;
+                        var key = delRow.MakeKey(ix);
+                        ix -= key;
+                        if (ix.rows == null)
+                            ix += (Index.Tree, new MTree(inf));
+                        db += (ix,p);
+                    }
+                    tb -= delpos;
+                    return (db + (tb, p), ro);
+                }
+            return (db, ro);
+        }
+    }
+    internal class Delete1 : Delete
+    {
+        /// <summary>
+        /// Constructor: a new Delete request from the engine
+        /// </summary>
+        /// <param name="rc">The defining position of the record</param>
+        /// <param name="tb">The local database</param>
+        public Delete1(TableRow rw, long u, Transaction tr)
+            : base(Type.Delete1, rw, u, tr)
+        {
+            tabledefpos = rw.tabledefpos;
+            delpos = rw.defpos;
+        }
+        /// <summary>
+        /// Constructor: a new Delete request from the buffer
+        /// </summary>
+        /// <param name="bp">the buffer</param>
+        /// <param name="pos">a defining position</param>
+		public Delete1(Reader rdr) : base(Type.Delete1, rdr) { }
+        protected Delete1(Delete1 x, Writer wr) : base(x, wr)
+        {
+            tabledefpos = wr.Fix(x.tabledefpos);
+            delpos = wr.Fix(x.delpos);
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new Delete1(this, wr);
+        }
+        /// <summary>
+        /// Serialise the Delete to the PhysBase
+        /// </summary>
+        /// <param name="r">Reclocation of position information</param>
+        public override void Serialise(Writer wr)
+        {
+            wr.PutLong(wr.Fix(tabledefpos));
+            base.Serialise(wr);
+        }
+        /// <summary>
+        /// Deserialise the Delete from the buffer
+        /// </summary>
+        /// <param name="buf">The buffer</param>
+        public override void Deserialise(Reader rdr)
+        {
+            var tb = rdr.GetLong();
+            base.Deserialise(rdr);
+            tabledefpos = tb;
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var tb = db.objects[tabledefpos] as Table;
+            var delRow = tb.tableRows[delpos] as TableRow;
+            (db, ro) = delRow.Cascade(db, db, ro);
+            for (var b = tb.indexes.First(); b != null; b = b.Next())
             {
-                var ix = b.value();
+                var ix = (Index)db.objects[b.value()];
                 var inf = ix.rows.info;
                 var key = delRow.MakeKey(ix);
                 ix -= key;
                 if (ix.rows == null)
-                    ix+=(Index.Tree,new MTree(inf));
-                tb += (Table.Indexes, tb.indexes + (b.key(), ix));
+                    ix += (Index.Tree, new MTree(inf));
+                db += (ix, p);
             }
-            tb += (Table.Rows, tb.tableRows - delpos);
-            return db+ (db.schemaRole, tb, p);
+            tb -= delpos;
+            return (db + (tb, p), ro);
+        }
+        public override string ToString()
+        {
+            return base.ToString()+"["+tabledefpos+"]";
         }
     }
 }

@@ -61,8 +61,9 @@ namespace Tpcc
         private TextBox Clerks;
         public static string host;
         public static int commits, rconflicts, wconflicts;
-		public Form1()
+		public Form1(int w)
 		{
+            wid = w;
 			conn = new PyrrhoConnect("Files=Tpcc");
             conn.Open();
             //
@@ -266,7 +267,7 @@ namespace Tpcc
             // 
             // textBox1
             // 
-            this.textBox1.Location = new System.Drawing.Point(128, 80);
+            this.textBox1.Location = new System.Drawing.Point(148, 80);
             this.textBox1.Name = "textBox1";
             this.textBox1.Size = new System.Drawing.Size(56, 20);
             this.textBox1.TabIndex = 3;
@@ -277,9 +278,9 @@ namespace Tpcc
             // 
             this.label2.Location = new System.Drawing.Point(16, 88);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(112, 16);
+            this.label2.Size = new System.Drawing.Size(140, 16);
             this.label2.TabIndex = 2;
-            this.label2.Text = "This is Warehouse";
+            this.label2.Text = "Number of Warehouses";
             // 
             // button4
             // 
@@ -490,7 +491,7 @@ namespace Tpcc
                 host = args[0];
             try
             {
-                Application.Run(new Form1());
+                Application.Run(new Form1(0));
             } catch (Exception e)
             {
                 Console.WriteLine("Main loop caught exception: " + e.Message);
@@ -601,14 +602,6 @@ namespace Tpcc
 
 		private void textBox1_TextChanged(object sender, System.EventArgs e)
 		{
-			try
-			{
-                textBox1.Text = "1";
-	//			wid = int.Parse(textBox1.Text);
-			} 
-			catch(Exception)
-			{
-			}
 		}
 
 		private void newOrder1_Enter(object sender, System.EventArgs e)
@@ -642,13 +635,15 @@ namespace Tpcc
 
 		private void AutoRun_Click(object sender, System.EventArgs e)
 		{
+            var nw = int.Parse(textBox1.Text);
             var nc = int.Parse(Clerks.Text);
             Form1.maxfid += nc;
             commits = 0; rconflicts = 0; wconflicts = 0;
             Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
+            for (var w =1;w<=nw;w++)
             for (var i = 0; i < nc; i++)
             Task.Run(()=>{
-                var f = new Form1();
+                var f = new Form1(w);
                 f.ShowDialog();
             });
             timer2 = new System.Windows.Forms.Timer();
@@ -673,6 +668,7 @@ namespace Tpcc
                 if (i < 10)
                 {
                     newOrder1.status = label1;
+                    newOrder1.wid = wid;
                     newOrder1.PutBlanks();
                     newOrder1.Activate();
                     tabControl1.SelectedIndex = 1;
@@ -681,6 +677,7 @@ namespace Tpcc
                 }
                 else if (i < 20)
                 {
+                    payment1.wid = wid;
                     payment1.PutBlanks();
                     tabControl1.SelectedIndex = 3;
                     payment1.status = label1;
@@ -690,6 +687,7 @@ namespace Tpcc
                 }
                 else if (i < 21)
                 {
+                    orderStatus1.wid = wid;
                     orderStatus1.PutBlanks();
                     tabControl1.SelectedIndex = 2;
                     orderStatus1.status = label1;
@@ -699,6 +697,7 @@ namespace Tpcc
                 }
                 else if (i < 22)
                 {
+                    delivery1.wid = wid;
                     delivery1.PutBlanks();
                     tabControl1.SelectedIndex = 4;
                     delivery1.status = label1;
@@ -708,6 +707,7 @@ namespace Tpcc
                 }
                 else
                 {
+                    stockLevel1.wid = wid;
                     stockLevel1.PutBlanks();
                     tabControl1.SelectedIndex = 5;
                     stockLevel1.status = label1;
@@ -786,21 +786,30 @@ namespace Tpcc
 
         private void button3_Click(object sender, EventArgs e)
         {
+            var nw = int.Parse(textBox1.Text);
             var g = new GenBase(conn);
-            g.FillWarehouse(int.Parse(textBox1.Text));
+            for (var i=1;i<=nw;i++)
+                g.FillWarehouse(i);
         }
 
         private void button4_Click(object sender, EventArgs e)
         {
+            var nw = int.Parse(textBox1.Text);
             if (checkBox1.Checked)
             {
                 int d = int.Parse(textBox4.Text);
                 conn = new PyrrhoConnect("Files=Tpcc");
                 conn.Open();
-                new GenBase(conn).FillDistrict(int.Parse(textBox1.Text),d);
+                for (var i = 1; i <= nw; i++)
+                    new GenBase(conn).FillDistrict(i, d);
             }
             else
-                new GenBase(conn).FillDistricts(int.Parse(textBox1.Text));
+                for (var i = 1; i <= nw; i++)
+                {
+                    Console.WriteLine("For Warehouse " + i);
+                    new GenBase(conn).FillDistricts(i);
+                    Console.WriteLine("Done warehouse " + i);
+                }
         }
 
         private void textBox2_TextChanged(object sender, EventArgs e)

@@ -15,7 +15,8 @@ using Pyrrho.Level4;
 namespace Pyrrho.Level2
 {
 	/// <summary>
-	/// Modify is used for changes to procs, methods, functions, triggers, views, checks, and indexes
+	/// Modify is used for changes to procs, methods, functions, and views.
+    /// Extend this if the syntax ever allows ALTER for triggers, views, checks, or indexes (!)
 	/// </summary>
 	internal class Modify : Physical
 	{
@@ -31,6 +32,10 @@ namespace Pyrrho.Level2
         /// The new parameters and body of the routine
         /// </summary>
 		public string body;
+        /// <summary>
+        /// The Parsed version of the body for the definer's role
+        /// </summary>
+        public DBObject now;
         public override long Dependent(Writer wr)
         {
             if (!Committed(wr,modifydefpos)) return modifydefpos;
@@ -43,19 +48,20 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(string nm, long dp, string pc, long u, Transaction tr)
+        public Modify(string nm, long dp, string pc, long u, DBObject nw, Transaction tr)
 			:base(Type.Modify,u, tr)
 		{
             modifydefpos = dp;
             name = nm;
             body = pc;
+            now = nw;
         }
         /// <summary>
         /// Constructor: A Modify request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Modify(Reader rdr) : base(Type.Modify,rdr){}
+		public Modify(Reader rdr) : base(Type.Modify,rdr) {}
         protected Modify(Modify x, Writer wr) : base(x, wr)
         {
             modifydefpos = wr.Fix(x.modifydefpos);
@@ -88,6 +94,22 @@ namespace Pyrrho.Level2
 			name = rdr.GetString();
 			body = rdr.GetString();
 			base.Deserialise(rdr);
+            switch (name)
+            {
+                default:
+                    var pp = rdr.db.objects[modifydefpos] as Procedure;
+                    now = new Parser(rdr.db, rdr.context).ParseProcedureClause(pp.retType != Domain.Null, 
+                Sqlx.NO,body);
+                    break;
+                case "Source":
+                    now = new Parser(rdr.db, rdr.context).ParseQueryExpression(body);
+                    break;
+                case "Insert": // we ignore all of these (PView1)
+                case "Update":
+                case "Delete":
+                    now = null;
+                    break;
+            }
 		}
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -117,9 +139,9 @@ namespace Pyrrho.Level2
 			return "Modify "+Pos(modifydefpos)+": "+name+" to "+body;
 		}
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            return (((DBObject)db.objects[modifydefpos]).Modify(db,now,p),ro);
         }
     }
 }

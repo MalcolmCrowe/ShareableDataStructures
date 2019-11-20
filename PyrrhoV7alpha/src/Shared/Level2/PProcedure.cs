@@ -36,6 +36,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The definition of the procedure
         public string proc_clause;
+        public bool mth = false;
+        public Executable body;
         public override long Dependent(Writer wr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
@@ -50,10 +52,9 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure body including parameters</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PProcedure(string nm, long rt, string pc,long u, Transaction tr)
-			:this(Type.PProcedure2,nm,rt,pc,u,tr)
-		{
-		}
+        public PProcedure(string nm, long rt, string pc, long u, Executable b, Transaction tr)
+            : this(Type.PProcedure2, nm, rt, pc, u, b, tr)
+        { }
         /// <summary>
         /// Constructor: a procedure or function definition from the Parser
         /// </summary>
@@ -62,7 +63,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure body including parameters</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, long rt, string pc,long u, Transaction tr)
+        protected PProcedure(Type tp, string nm, long rt, string pc,long u, Executable b,Transaction tr)
 			:base(tp,u,tr)
 		{
             proc_clause = pc;
@@ -71,6 +72,7 @@ namespace Pyrrho.Level2
             nameAndArity = nm;
             name = ss[0];
 			arity = int.Parse(ss[1]);
+            body = b;
 		}
         /// <summary>
         /// Constructor: a procedure or function definition from the buffer
@@ -119,6 +121,8 @@ namespace Pyrrho.Level2
             if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
                 retdefpos = mt.typedefpos;
 			proc_clause=rdr.GetString();
+            body = new Parser(rdr.db, rdr.context).ParseProcedureClause(retdefpos!=-1, 
+                Sqlx.NO,proc_clause);
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -143,10 +147,11 @@ namespace Pyrrho.Level2
             return base.Conflicts(db, tr, that);
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var pr = new Procedure(this, db, false, Sqlx.CREATE, BTree<long, object>.Empty);
-            return db + (ro,pr,p);
+            ro += new ObInfo(pr.defpos,name);
+            return (db + (ro,p)+(pr,p),ro);
         }
     }
 }

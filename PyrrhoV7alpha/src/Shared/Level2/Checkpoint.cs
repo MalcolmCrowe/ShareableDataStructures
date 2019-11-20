@@ -42,9 +42,9 @@ namespace Pyrrho.Level2
         {
             return -1;
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database,Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            return (db,ro);
         }
     }
 }

@@ -43,11 +43,11 @@ namespace Pyrrho.Common
         {
             if (id != null)
                 Add(_id, id);
-            var dt = r.dataType;
+            var dt = r.info;
             for (var b=dt.columns.First();b!=null;b=b.Next())
             {
-                var tc = b.value();
-                Add(tc.name, r[tc.seq]);
+                var tc = (SqlValue)b.value();
+                Add(tc.name, r[b.key()]);
             }
         }
         internal TDocument(TDocument d, params (string, TypedValue)[] vs) : base(Domain.Document)
@@ -108,15 +108,15 @@ namespace Pyrrho.Common
         /// <param name="n"></param>
         /// <param name="i">afterwards will be the position just after the value</param>
         /// <returns></returns>
-        internal static TColumn GetValue(string nm,string s, int n, ref int i)
+        internal static (string,TypedValue) GetValue(string nm,string s, int n, ref int i)
         {
             if (i < n)
             {
                 var c = s[i - 1];
                 if (c == '"' || c == '\'' || c == '$' || char.IsLetter(c))
-                    return new TColumn(nm, new TChar(GetString(c, s, n, ref i)));
+                    return (nm, new TChar(GetString(c, s, n, ref i)));
                 if (i + 3 < n && char.IsDigit(c) && s[i + 1] == '/')
-                    return new TColumn(nm, new TDateTime(DateTime.Parse(GetString(c, s, n, ref i))));
+                    return (nm, new TDateTime(DateTime.Parse(GetString(c, s, n, ref i))));
                 if (c == '{')
                 {
                     var d = new TDocument();
@@ -135,13 +135,13 @@ namespace Pyrrho.Common
                         }
                     }
 #endif
-                    return new TColumn(nm, d);
+                    return (nm, d);
                 }
                 if (c == '[')
                 {
                     var d = new TDocArray();
                     i = d.Fields(s, i, n);
-                    return new TColumn(nm, d);
+                    return (nm, d);
                 }
 #if MONGO
                 if (c == '/')
@@ -151,23 +151,23 @@ namespace Pyrrho.Common
                         i++;
                     while (i < n && s[i] != ',' && s[i] != '}')
                         i++;
-                    return new TColumn(nm, new TChar(SqlDataType.Regex, s.Substring(st, i - st).Trim()));
+                    return (nm, new TChar(SqlDataType.Regex, s.Substring(st, i - st).Trim()));
                 }
 #endif
                 if (i + 4 < n && s.Substring(i - 1, 4) == "true")
                 {
                     i += 3;
-                    return new TColumn(nm, TBool.True);
+                    return (nm, TBool.True);
                 }
                 if (i + 5 < n && s.Substring(i - 1, 5) == "false")
                 {
                     i += 4;
-                    return new TColumn(nm, TBool.False);
+                    return (nm, TBool.False);
                 }
                 if (i + 4 < n && s.Substring(i - 1, 4) == "null")
                 {
                     i += 3;
-                    return null;
+                    return ("null",TNull.Value);
                 }
                 var sg = c == '-';
                 if (sg && i < n)
@@ -183,7 +183,7 @@ namespace Pyrrho.Common
                 else if (c != '0')
                     goto bad;
                 if (i >= n || (s[i] != '.' && s[i] != 'e' && s[i] != 'E'))
-                    return new TColumn(nm, new TInt(sg ? -whole : whole));
+                    return (nm, new TInt(sg ? -whole : whole));
                 int scale = 0;
                 if (s[i] == '.')
                 {
@@ -196,7 +196,7 @@ namespace Pyrrho.Common
                     }
                 }
                 if (i >= n || (s[i] != 'e' && s[i] != 'E'))
-                    return new TColumn(nm, new TNumeric(Domain.Numeric, new Numeric(new Integer(whole), scale)));
+                    return (nm, new TNumeric(Domain.Numeric, new Numeric(new Integer(whole), scale)));
                 if (++i >= n)
                     throw ParseException("exponent part expected");
                 var esg = s[i] == '-';
@@ -207,7 +207,7 @@ namespace Pyrrho.Common
                     exp = exp * 10 + GetHex(s, n, ref i);
                 if (esg)
                     exp = -exp;
-                return new TColumn(nm, new TReal(whole * Math.Pow(10.0, exp - scale)));
+                return (nm, new TReal(whole * Math.Pow(10.0, exp - scale)));
             }
         bad:
             throw ParseException("Value expected at " + (i - 1));
@@ -325,7 +325,7 @@ namespace Pyrrho.Common
                         if (c == ']' && content.Count == 0)
                             return i;
                         var key = kb.ToString();
-                        Add(key, GetValue(key, s, n, ref i).typedValue);
+                        Add(key, GetValue(key, s, n, ref i).Item2);
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
@@ -535,7 +535,7 @@ namespace Pyrrho.Common
             if (v.Item2 == null)
                 sb.Append("<null>");
             else
-                switch (v.Item2.DataType.kind)
+                switch (v.Item2.dataType.kind)
                 {
                     case Sqlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
                     case Sqlx.DOCARRAY: sb.Append("[");
@@ -706,7 +706,7 @@ namespace Pyrrho.Common
         }
         bool IsZero((string,TypedValue) fv)
         {
-            switch (fv.Item2.DataType.kind)
+            switch (fv.Item2.dataType.kind)
             {
                 case Sqlx.INTEGER:
                 case Sqlx.INT:
@@ -855,7 +855,7 @@ namespace Pyrrho.Common
                     {
                         if (n == "_id") // _id field mismatch
                             goto all;
-                        if (v.DataType.kind==Sqlx.DOCUMENT)
+                        if (v.dataType.kind==Sqlx.DOCUMENT)
                             details.Add(new Action(m, Verb.Delta, n,
                                 new Delta(v as TDocument,
                                     ne.value().Item2 as TDocument)));
@@ -1046,7 +1046,7 @@ namespace Pyrrho.Common
                     continue;
                 if (c == ']' && content.Count == 0)
                     return i;
-                Add(TDocument.GetValue("" + Count, s, n, ref i).typedValue);
+                Add(TDocument.GetValue("" + Count, s, n, ref i).Item2);
                 if (i>=n)
                     break;
                 c = s[i++];

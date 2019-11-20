@@ -19,20 +19,21 @@ namespace Pyrrho.Level2
 	internal class Grant : Physical
 	{
         /// <summary>
-        /// The Privilege enumeration. Row of this type are placed in the database so the following values cannot be changed.
+        /// The Privilege enumeration. Values of this type are placed in the database 
+        /// so the following values cannot be changed.
         /// </summary>
 		[Flags]
 		public enum Privilege
 		{
-			NoPrivilege=0x00000, 
-            Select=0x00001, Insert=0x00002, Delete=0x00004, Update=0x00008, 
-			References=0x00010, Execute=0x00020, Owner=0x00040, UseRole=0x00080, 
-            Usage=0x00100, Unused=0x00200, GrantSelect=0x00400, GrantInsert=0x00800,
-            GrantDelete=0x01000, GrantUpdate=0x02000, GrantReferences=0x04000, GrantExecute=0x08000, 
-            GrantOwner=0x10000, AdminRole=0x20000, GrantUsage=0x40000, GrantHandler=0x80000,
-            Under=0x100000, GrantUnder=0x200000
+			NoPrivilege=0x000000, 
+            Select=0x000001, Insert=0x000002, Delete=0x000004, Update=0x000008, 
+			References=0x000010, Execute=0x000020, Owner=0x000040, UseRole=0x000080, 
+            Usage=0x000100, Under=0x000200, Trigger=0x000400, NotUsed=0x000800,
+            GrantSelect=0x001000, GrantInsert=0x002000, GrantDelete=0x004000, GrantUpdate=0x008000, 
+            GrantReferences=0x010000, GrantExecute=0x020000, GrantOwner=0x040000, AdminRole=0x080000, 
+            GrantUsage=0x100000, GrantUnder=0x200000,  GrantTrigger=0x400000
 		};
-		public static Privilege AllPrivileges = (Privilege)0xfffff;
+		public static Privilege AllPrivileges = (Privilege)0x4fffff;
         /// <summary>
         /// The privilege being granted (or revoked)
         /// </summary>
@@ -42,7 +43,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public long obj;
         /// <summary>
-        /// The grentee object
+        /// The grantee object
         /// </summary>
 		public long grantee;
         public override long Dependent(Writer wr)
@@ -141,10 +142,22 @@ namespace Pyrrho.Level2
 		{
 			return "Grant "+priv.ToString()+" on "+Pos(obj)+" to "+((grantee>0)?Pos(grantee):"PUBLIC");
 		}
-
-        internal override Database Install(Database db, Role ro, long p)
+        /// <summary>
+        /// (Proc and View alwyaes use definer's role so no reparsing)
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="ro"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var gee = db.objects[grantee];
+            if (gee is Role r)
+                ro = r;
+            var oi = ro.obinfos[obj] as ObInfo;
+            var pr = oi.priv | priv;
+            ro += new ObInfo(obj, oi.name, oi.domain, pr, oi.mem);
+            return (db + (ro, p),ro);
         }
     }
     internal class Authenticate : Physical
@@ -195,7 +208,7 @@ namespace Pyrrho.Level2
             return "Authenticate [" +userpos+"] "+ pwd + " FOR [" + irolepos+"]";
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }

@@ -48,14 +48,15 @@ namespace Pyrrho.Level2
         /// The culture for a localised string
         /// </summary>
         internal CultureInfo culture = CultureInfo.InvariantCulture;
-        internal string defaultValue = null;
-        internal long structdefpos = -1;
-        internal long elTypedefpos = -1;
+        internal TypedValue defaultValue = null;
+        internal string defaultString = "";
+        internal Domain structdef = null; 
+        internal Domain elType = null; 
         public override long Dependent(Writer wr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
-            if (!Committed(wr,structdefpos)) return structdefpos;
-            if (!Committed(wr,elTypedefpos)) return elTypedefpos;
+            if (!Committed(wr,structdef?.defpos??-1L)) return structdef.defpos;
+            if (!Committed(wr,elType?.defpos??-1L)) return elType.defpos;
             return -1;
         }
         /// <summary>
@@ -80,9 +81,21 @@ namespace Pyrrho.Level2
             scale = sc;
             charSet = ch;
             culture = CultureInfo.GetCultureInfo(co);
-            defaultValue = dv;
+            defaultString = dv;
             NotNull = dv != "";
-            structdefpos = sd;
+            if (dt == Sqlx.CHAR && dv.Length > 0 && dv[0] != '\'')
+                defaultString = "'" + dv + "'";
+            defaultValue = (dv == "") ? null : Domain.For(dt).Parse(tr.uid, defaultString);
+            switch(dt)
+            {
+                default:
+                    structdef = tr.role.obinfos[sd] as Domain;
+                    break;
+                case Sqlx.ARRAY:
+                case Sqlx.MULTISET:
+                    elType = tr.role.obinfos[sd] as Domain;
+                    break;
+            }
             name = nm;
         }
         public PDomain(string nm, Domain dt, long u, Transaction tr)
@@ -95,9 +108,10 @@ namespace Pyrrho.Level2
             scale = dt.scale;
             charSet = dt.charSet;
             culture = dt.culture;
-            defaultValue = (dt.defaultValue==TNull.Value)?"":dt.defaultValue.ToString();
+            defaultString = dt.defaultString;
+            defaultValue = dt.defaultValue;
             NotNull = dt.defaultValue!=TNull.Value;
-            structdefpos = dt.representation?.defpos??0;
+            structdef = dt.representation;
             name = nm;
         }
         /// <summary>
@@ -127,8 +141,8 @@ namespace Pyrrho.Level2
             charSet = x.charSet;
             culture = x.culture;
             defaultValue = x.defaultValue;
-            structdefpos = x.structdefpos;
-            elTypedefpos = x.elTypedefpos;
+            structdef = x.structdef;
+            elType = x.elType;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -148,18 +162,12 @@ namespace Pyrrho.Level2
             wr.PutInt(scale);
             wr.PutInt((int)charSet);
             wr.PutString(culture.Name);
-            wr.PutString(defaultValue);
+            wr.PutString(defaultString);
             var ep = -1L;
-            if (elTypedefpos >=0 && kind!=Sqlx.TYPE)
-            {
-                elTypedefpos = wr.Fix(elTypedefpos);
-                ep = elTypedefpos;
-            }
+            if (elType != null && kind!=Sqlx.TYPE)
+               ep = wr.Fix(elType.defpos);
             else if (kind ==Sqlx.TABLE || kind==Sqlx.ROW || kind==Sqlx.TYPE)
-            {
-                structdefpos = wr.Fix(structdefpos);
-                ep = structdefpos;
-            }
+                ep = wr.Fix(structdef.defpos);
             wr.PutLong(ep);
  			base.Serialise(wr);
 		}
@@ -175,12 +183,30 @@ namespace Pyrrho.Level2
             scale = (byte)rdr.GetInt();
             charSet = (CharSet)rdr.GetInt();
             culture = GetCulture(rdr.GetString());
-            defaultValue = rdr.GetString();
-            if (defaultValue != "" && defaultValue.Length>0 
-                && kind == Sqlx.CHAR && defaultValue[0] != '\'')
-                defaultValue = "'" + defaultValue + "'";
-            NotNull = defaultValue != "";
-            structdefpos = rdr.GetLong(); // might be elementType
+            defaultString = rdr.GetString();
+            if (defaultString.Length>0 
+                && kind == Sqlx.CHAR && defaultString[0] != '\'')
+                defaultString = "'" + defaultString + "'";
+            if (defaultString != "")
+                try
+                {
+                    defaultValue = Domain.For(kind).Parse(rdr.db.uid, defaultString);
+                }catch(Exception)
+                {
+                    defaultValue = TNull.Value;
+                }
+            var sp = rdr.GetLong();
+            if (sp!=-1)
+                switch (kind)
+                {
+                    default:
+                        structdef = rdr.role.obinfos[sp] as Domain;
+                        break;
+                    case Sqlx.ARRAY:
+                    case Sqlx.MULTISET:
+                        elType = rdr.role.obinfos[sp] as Domain;
+                        break;
+                }
             base.Deserialise(rdr);
         }
         CultureInfo GetCulture(string s)
@@ -237,19 +263,26 @@ namespace Pyrrho.Level2
             if (start != Sqlx.NULL) sb.Append(" start " + start);
             if (end != Sqlx.NULL) sb.Append(" end " + end);
             if (charSet != 0) sb.Append(" " + charSet);
-            if (defaultValue != "") sb.Append(" default " + defaultValue);
-            if (structdefpos != -1) sb.Append(" struct=" + Pos(structdefpos));
-            if (elTypedefpos != -1) sb.Append(" el=" + Pos(elTypedefpos));
+            if (defaultValue != null) sb.Append(" default " + defaultValue);
+            if (structdef != null) sb.Append(" struct=" + Pos(structdef.defpos));
+            if (elType != null) sb.Append(" el=" + Pos(elType.defpos));
             return sb.ToString();        
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var dt = new Domain(this);
-            db += (ro,dt,p);
-            if (dt.name=="")
-                db+= (Database.Types, db.types + (dt, dt));
-            return db;
+            var s = dt.ToString();
+            var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+            if (name != "")
+                ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos))
+                    + new ObInfo(ppos, name, null, priv);
+            else
+                ro += new ObInfo(ppos, s, null, priv);
+            db = db + (ro,p) + (dt,p);
+            if (!db.types.Contains(dt))
+                db += (Database.Types, db.types + (dt, dt));
+            return (db,ro);
         }
     }
 

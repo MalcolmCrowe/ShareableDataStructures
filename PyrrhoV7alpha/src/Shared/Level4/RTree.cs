@@ -32,7 +32,7 @@ namespace Pyrrho.Level4
         {
             _rs = rs;
             info = ti;
-            mt = new MTree(new TreeInfo(ti.keyType, ti.onDuplicate, TreeBehaviour.Allow));
+            mt = new MTree(new TreeInfo(ti, ti.onDuplicate, TreeBehaviour.Allow));
         }
         public static TreeBehaviour Add(ref RTree t, TRow k, TRow v)
         {
@@ -57,10 +57,10 @@ namespace Pyrrho.Level4
             {
                 int j = 0;
                 var k = b.key;
-                var dt = k.dataType;
+                var dt = k.info;
                 for (var pk = key; pk != null; j++, pk = pk._tail)
                 {
-                    var c = dt.columns[j].domain.Compare(k[j], pk._head);
+                    var c = ((SqlValue)dt.columns[j]).domain.Compare(k[j], pk._head);
                     if (c > 0)
                         return null;
                     if (c < 0)

@@ -23,7 +23,6 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class PColumn : Physical
 	{
-        internal enum GenerationRule { No, Expression, RowStart, RowEnd, Position };
         /// <summary>
         /// The defining position of the Table
         /// </summary>
@@ -36,14 +35,16 @@ namespace Pyrrho.Level2
         /// The position in the table (this matters for select * from ..)
         /// </summary>
 		public int seq;
+        public virtual long defpos => ppos;
         /// <summary>
         /// The defining position of the domain
         /// </summary>
 		public long domdefpos;
-		public string dfs = ""; // see PColumn2
-        public string upd = ""; // see PColumn3
+		public TypedValue dv = null; // see PColumn2
+        public string dfs,ups;
+        public BList<UpdateAssignment> upd = BList<UpdateAssignment>.Empty; // see PColumn3
 		public bool notNull = false;    // ditto
-		public GenerationRule generated = GenerationRule.No; // ditto
+		public GenerationRule generated = GenerationRule.None; // ditto
         public override long Dependent(Writer wr)
         {
             if (!Committed(wr,tabledefpos)) return tabledefpos;
@@ -152,7 +153,7 @@ namespace Pyrrho.Level2
         {
             get
             {
-                return (notNull ? 0x100 : 0) + ((generated == 0) ? 0 : 0x200);
+                return (notNull ? 0x100 : 0) + ((generated.gen == 0) ? 0 : 0x200);
             }
         }
         /// <summary>
@@ -161,17 +162,26 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
         {
-            return "PColumn " + name + " for " + Pos(tabledefpos) + "(" + seq + ")[" + Pos(domdefpos) + "]";
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(" "); sb.Append(name); sb.Append(" for ");
+            sb.Append(Pos(tabledefpos));
+            sb.Append("("); sb.Append(seq); sb.Append(")[");
+            sb.Append(Pos(domdefpos)); sb.Append("]");
+            return sb.ToString();
         }
-
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var t = (Table)db.role.objects[tabledefpos];
-            var dt = db.GetDomain(domdefpos);
-            var tc = new TableColumn(t, this, dt);
-            t += tc;
-            db += (tc,p);
-            return db+(db.role,t,p);
+            var tb = (Table)db.objects[tabledefpos];
+            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var dt = (Domain)db.objects[domdefpos];
+            var tc = new TableColumn(tb, this, dt);
+            // the given role is the definer
+            var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
+            var se = new SqlCol(ppos,name, tc);
+            ro = ro + (oc.defpos,oc) + (ti + se);
+            tb += tc;
+            return (db+ (ro,p) +(tb,p) +(tc,p),ro);
         }
     }
     /// <summary>
@@ -187,13 +197,13 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the column (may be null)</param>
         /// <param name="sq">The position of the column in the table</param>
         /// <param name="dm">The defining position of the domain</param>
-        /// <param name="ds">The default string</param>
+        /// <param name="dv">The default value</param>
         /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">True if GENERATED ALWAYS</param>
-        /// <param name="tb">The local database</param>
-        public PColumn2(long pr, string nm, int sq, long dm, string ds, bool nn, 
-            GenerationRule ge, long u,Database db)
-			:this(Type.PColumn2,pr,nm,sq,dm,ds,nn,ge,u,db)
+        /// <param name="ge">The generation rule</param>
+        /// <param name="db">The local database</param>
+        public PColumn2(long pr, string nm, int sq, long dm, string ds, TypedValue dv, 
+            bool nn, GenerationRule ge, long u,Database db)
+			:this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,u,db)
 		{
         }
         /// <summary>
@@ -204,16 +214,17 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the ident</param>
         /// <param name="sq">The position of the ident in the table</param>
         /// <param name="dm">The defining position of the domain</param>
-        /// <param name="ds">The default string</param>
+        /// <param name="ds">The default value</param>
         /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">the type of Generation Rule</param>
-        /// <param name="tb">The local database</param>
-        protected PColumn2(Type t, long pr, string nm, int sq, long dm, string ds, 
-            bool nn, GenerationRule ge, long u,Database db)
+        /// <param name="ge">the Generation Rule</param>
+        /// <param name="db">The database</param>
+        protected PColumn2(Type t, long pr, string nm, int sq, long dm, string ds,
+            TypedValue v, bool nn, GenerationRule ge, long u,Database db)
 			:base(t,pr,nm,sq,dm,u,db)
 		{
 			dfs = ds;
-			notNull = nn || ds!="" || (ge!=GenerationRule.No);
+            dv = v;
+			notNull = nn;
 			generated = ge;
 		}
         /// <summary>
@@ -232,8 +243,9 @@ namespace Pyrrho.Level2
         protected PColumn2(PColumn2 x, Writer wr) : base(x, wr)
         {
             dfs = x.dfs;
+            dv = x.dv;
             notNull = x.notNull;
-            generated = x.generated;
+            generated = (GenerationRule)x.generated.Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -245,9 +257,9 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
 		{
-            wr.PutString(dfs);
+            wr.PutString(dfs.ToString());
             wr.PutInt(notNull ? 1 : 0);
-            wr.PutInt((int)generated);
+            wr.PutInt((int)generated.gen);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -257,14 +269,33 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{ 
 			dfs = rdr.GetString();
-			notNull = (rdr.GetInt()!=0) || dfs!="";
-			generated = (GenerationRule)rdr.GetInt();
-            notNull = notNull || generated!=GenerationRule.No;
+            notNull = (rdr.GetInt() != 0);
+			var gn = (Generation)rdr.GetInt();
 			base.Deserialise(rdr);
+            if (dfs != "")
+            {
+                var dt = (Domain)rdr.db.objects[domdefpos];
+                if (gn != Generation.Expression)
+                    dv = dt.Parse(rdr.Position,dfs);
+                else
+                {
+                    var tb = (Table)rdr.db.objects[tabledefpos];
+                    rdr.context.Add(tb);
+                    var rt = rdr.role.obinfos[tb.defpos] as ObInfo;
+                    for (var b = rt.columns?.First(); b != null; b = b.Next())
+                        rdr.context.Add(b.value());
+                    generated = new GenerationRule(Generation.Expression,
+                        dfs, new Parser(rdr.db,rdr.context).ParseSqlValue(dfs));
+                }
+            }
 		}
         public override string ToString()
         {
-            return base.ToString() + ((dfs != "") ? "default=" : "") + dfs + (notNull ? " NOT NULL" : "") + ((generated==GenerationRule.No) ? "" : generated.ToString());
+            var sb = new StringBuilder(base.ToString());
+            if (dfs != "") { sb.Append(" default="); sb.Append(dfs); }
+            if (notNull) sb.Append(" NOT NULL");
+            if (generated.gen != Generation.No) { sb.Append(" Generated="); sb.Append(generated.gen); }
+            return sb.ToString();
         }
 	}
     /// <summary>
@@ -281,14 +312,14 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table column</param>
         /// <param name="sq">The position of the table column in the table</param>
         /// <param name="dm">The defining position of the domain</param>
-        /// <param name="ds">The default string</param>
-        /// <param name="ua">The udate assignment rule</param>
+        /// <param name="dv">The default value</param>
+        /// <param name="ua">The update assignments</param>
         /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">True if GENERATED ALWAYS</param>
+        /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
-        public PColumn3(long pr, string nm, int sq, long dm, string ds, 
-            string ua, bool nn, GenerationRule ge, long u,Database db)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, ua, nn, ge, u,db)
+        public PColumn3(long pr, string nm, int sq, long dm, string ds, TypedValue dv, 
+            string us, BList<UpdateAssignment> ua, bool nn, GenerationRule ge, long u,Database db)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, u,db)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -298,15 +329,17 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the ident</param>
         /// <param name="sq">The position of the ident in the table</param>
         /// <param name="dm">The defining position of the domain</param>
-        /// <param name="ds">The default string</param>
+        /// <param name="dv">The default value</param>
         /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">True if GENERATED ALWAYS</param>
+        /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
-        protected PColumn3(Type t, long pr, string nm, int sq, long dm, string ds,
-            string ua, bool nn, GenerationRule ge, long u,Database db)
-            : base(t, pr, nm, sq, dm, ds, nn, ge, u, db)
+        protected PColumn3(Type t, long pr, string nm, int sq, long dm, string ds, 
+            TypedValue dv, string us,
+            BList<UpdateAssignment> ua, bool nn, GenerationRule ge, long u,Database db)
+            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, u, db)
         {
             upd = ua;
+            ups = us;
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -324,6 +357,7 @@ namespace Pyrrho.Level2
         protected PColumn3(PColumn3 x, Writer wr) : base(x, wr)
         {
             upd = x.upd;
+            ups = x.ups;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -335,7 +369,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutString(upd); 
+            wr.PutString(ups??""); 
             wr.PutLong(-1);// backwards compatibility
             wr.PutLong(-1);
             wr.PutLong(-1);
@@ -347,7 +381,15 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            upd = rdr.GetString();
+            ups = rdr.GetString();
+            if (ups != "")
+                try
+                {
+                    upd = new Parser(rdr.db, rdr.context).ParseAssignments(ups);
+                } catch(Exception)
+                {
+                    upd = BList<UpdateAssignment>.Empty;
+                }
             rdr.GetLong();
             rdr.GetLong();
             rdr.GetLong();
@@ -355,7 +397,9 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return base.ToString() + ((upd!="")?( "Update="+upd):"");
+            var sb = new StringBuilder(base.ToString());
+            if (upd != BList<UpdateAssignment>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -428,7 +472,7 @@ namespace Pyrrho.Level2
             return "ColumnPath [" + coldefpos + "]" + path + "(" + domdefpos + ")";
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }

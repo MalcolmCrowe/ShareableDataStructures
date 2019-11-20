@@ -38,8 +38,8 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure body</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, long rt, MethodType mt, long td, string pc, long u,Transaction tr)
-			:this(Type.PMethod2,nm,rt,mt,td,pc,u,tr)
+        public PMethod(string nm, long rt, MethodType mt, long td, string pc, long u,Executable b,Transaction tr)
+			:this(Type.PMethod2,nm,rt,mt,td,pc,u,b,tr)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -53,8 +53,8 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PMethod(Type tp, string nm, long rt, MethodType mt, long td, string pc, 
-            long u,Transaction tr)
-			:base(tp,nm,rt,pc,u,tr)
+            long u,Executable b,Transaction tr)
+			:base(tp,nm,rt,pc,u,b,tr)
 		{
 			typedefpos = td;
 			methodType = mt;
@@ -125,13 +125,16 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var ut = (UDType)ro.objects[typedefpos];
+            var ut = (UDType)ro.obinfos[typedefpos];
             var mt = new Method(this,Sqlx.CREATE,db);
-            ut += mt;
-            db += (ut,p);
-            return db;
+            var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
+            ut += (mt,name);
+            ro += new ObInfo(ppos, name, (Domain)db.objects[retdefpos], priv);
+            db = db + (ro,p) + (ut,p);
+            return (db,ro);
         }
     }
 }

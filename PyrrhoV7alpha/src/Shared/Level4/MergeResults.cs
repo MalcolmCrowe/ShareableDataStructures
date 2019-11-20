@@ -59,7 +59,6 @@ namespace Pyrrho.Level4
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Merge ");
-            sb.Append(qry.rowType);
             base._Strategy(sb, indent);
             left.Strategy(indent);
             right.Strategy(indent);

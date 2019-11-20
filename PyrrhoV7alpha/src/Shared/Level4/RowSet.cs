@@ -33,10 +33,10 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the key type for the results (default is the row type)
         /// </summary>
-        internal readonly Domain keyType;
-        internal Domain rowType
+        internal readonly ObInfo keyType;
+        internal ObInfo rowType
         {
-            get { return dataType; }
+            get { return info; }
         }
         /// <summary>
         /// ordering information
@@ -62,8 +62,8 @@ namespace Pyrrho.Level4
         /// <param name="q">the hosting query</param>
         /// <param name="n">optional the nominal data type for the rows</param>
         /// <param name="k">optional: a key type</param>
-        protected RowSet(Transaction tr,Context cx,Query q,Domain n=null,Domain k=null,OrderSpec os=null)
-            :base(n ?? q.rowType??Domain.Value)
+        protected RowSet(Transaction tr,Context cx,Query q,ObInfo n=null,ObInfo k=null,OrderSpec os=null)
+            :base(n ?? q.rowType)
         {
             _tr = tr;
             qry = q;
@@ -114,7 +114,7 @@ namespace Pyrrho.Level4
         /// 
         /// </summary>
         /// <param name="flags">The column flags to be filled in</param>
-        internal void Schema(Domain dt, int[] flags)
+        internal void Schema(ObInfo dt, int[] flags)
         {
             int m = dt.Length;
             bool addFlags = true;
@@ -124,36 +124,43 @@ namespace Pyrrho.Level4
             var ta = fm?.target as Table;
             if (fm != null)
             {
-                var ix = ta.FindPrimaryIndex();
+                var ix = ta.FindPrimaryIndex(_tr);
                 if (ix != null)
-                    for (int i = 0; i < ix.cols.Count; i++)
+                    for (int i = 0; i < ix.keys.Count; i++)
                     {
-                        var cp = ix.cols[i].seq;
-                        var rev = cp < 0;
-                        if (rev)
-                            cp = -cp;
-                        var j = dt.columns[cp].seq;
-                        if (j<0)
-                        {
+                        var found = false;
+                        for (var b = dt.columns.First(); b != null; b = b.Next())
+                         if (b.value().defpos==ix.keys[i].defpos)
+                            {
+                                adds[b.key()] = (i + 1) << 4;
+                                found = true;
+                                break;
+                            }
+                        if (!found)
                             addFlags = false;
-                            break;
-                        }
-                        adds[j] = ((i + 1) << 4) + (rev ? 0x400 : 0);
                     }
             }
             for (int i = 0; i < flags.Length; i++)
             {
-                var dc = dt.columns[i].nominalDataType;
-                var tc = (TableColumn)_tr.role.objects[dt.columns[i].defpos];
+                var dc = dt.columns[i].domain;
+                var tc = Col(dt.columns[i]);
                 if (dc.kind == Sqlx.SENSITIVE)
                     dc = dc.elType;
                 flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
                 if (tc!=null)
                 flags[i] += (tc.notNull ? 0x100 : 0) +
-                    ((tc.generated != PColumn.GenerationRule.No) ? 0x200 : 0);
+                    ((tc.generated != GenerationRule.None) ? 0x200 : 0);
             }
         }
-        internal virtual TypedValue Eval(Context _cx,Selector sel)
+        TableColumn Col(SqlValue v)
+        {
+            if (v is SqlCol sc)
+                return sc.tableCol;
+            if (v is SqlValueExpr se && se.kind == Sqlx.DOT)
+                return Col(se.right);
+            return TableColumn.Doc;
+        }
+        internal virtual TypedValue Eval(Context _cx,SqlValue sel)
         {
             return _cx.values[sel.defpos];
         }
@@ -165,7 +172,7 @@ namespace Pyrrho.Level4
         /// <param name="cond"></param>
         internal virtual void AddCondition(Context _cx,BTree<long,SqlValue> cond, long done)
         {
-            qry.AddCondition(_tr,_cx,cond, null, null);
+            qry.AddCondition(_cx,cond, null, null);
         }
         /// <summary>
         /// Bookmarks are used to traverse rowsets
@@ -216,11 +223,13 @@ namespace Pyrrho.Level4
         internal void Cols(StringBuilder sb,Index x)
         {
             var ro = _tr.role;
+            var kt = (ObInfo)ro.obinfos[x.defpos];
             var cm = "(";
-            for (var i=0;i<x.cols.Count;i++)
+            for (var i=0;i<kt.columns.Count;i++)
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(ro.dbobjects[x.cols[i].name]);
+                sb.Append(kt.columns[i].name);
+                sb.Append(' ');sb.Append(DBObject.Uid(kt.columns[i].defpos));
             }
             sb.Append(")");
         }
@@ -322,15 +331,12 @@ namespace Pyrrho.Level4
                 return true;
             var dt = _rs.rowType;
             for (var b = _rs.matches.First(); b != null; b = b.Next())
-            {
                 for (var i = 0; i < dt.Length; i++)
                 {
                     var nm = dt.columns[i].defpos;
                     if (row[nm] is TypedValue tv && tv.CompareTo(b.value()) != 0)
                         return false;
-                    break;
                 }
-            }
             return true;
         }
     }
@@ -342,19 +348,20 @@ namespace Pyrrho.Level4
         }
         readonly TRow row;
         readonly TrivialRowBookmark here;
-        public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow());
+        public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow(-1));
         internal TrivialRowSet(Transaction tr,Context cx, Query q, TRow r, long d=0, long rc=0)  
-            :base(tr,cx, q,q?.rowType??Domain.Null,r.dataType)
+            :base(tr,cx, q,q?.rowType??ObInfo.Any,r.info)
         {
             row = r;
             here = new TrivialRowBookmark(cx,this,d,rc);
             cx?.Add(q, here);
         }
         internal TrivialRowSet(Transaction tr,Context cx, Query fm, Record rec) 
-            : base(tr, cx, fm, fm?.rowType??Domain.Null, null)
+            : base(tr, cx, fm, fm?.rowType??ObInfo.Any, null)
         {
-            row = new TRow(fm.rowType, rec.fields);
-            here = new TrivialRowBookmark(cx,this, 0, rec.defpos);
+            row = new TRow(fm?.rowType??ObInfo.Any, rec?.fields??BTree<long,TypedValue>.Empty);
+            here = new TrivialRowBookmark(cx,this, 0, rec?.defpos??-1);
+            cx.Add(fm, here);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -420,8 +427,8 @@ namespace Pyrrho.Level4
             return " Exported ";
         }
         internal readonly RowSet source;
-        internal readonly Domain rtyp;
-        internal ExportedRowSet(Context _cx,RowSet rs, Domain rt,Domain kt=null) :base(rs._tr,_cx,rs.qry,rt,kt)
+        internal readonly ObInfo rtyp;
+        internal ExportedRowSet(Context _cx,RowSet rs, ObInfo rt,ObInfo kt=null) :base(rs._tr,_cx,rs.qry,rt,kt)
         {
             source = rs;
             rtyp = rt;
@@ -507,7 +514,7 @@ namespace Pyrrho.Level4
         /// So all of the selects in qout are guaranteed to be in qin.
         /// </summary>
         internal SelectedRowSet(Transaction tr,Context cx,Query q,RowSet r)
-            :base(tr,cx,q,q.rowType,_Type(r, q),r.qry.ordSpec)
+            :base(tr,cx,q,q.rowType,_Type(cx,r, q),r.qry.ordSpec)
         {
             rIn = r;
         }
@@ -521,8 +528,8 @@ namespace Pyrrho.Level4
         protected override void Build(Context _cx)
         {
             building = false;
-            for (var b = qry.cols.First(); b != null; b = b.Next())
-                b.value().Build(_cx,this);
+            for (var b = qry.rowType.columns.First(); b != null; b = b.Next())
+                b.value()?.Build(_cx,this);
         }
         public override RowBookmark First(Context _cx)
         {
@@ -534,15 +541,15 @@ namespace Pyrrho.Level4
         {
             return SelectedRowBookmark.New(_cx,this);
         }
-        static Domain _Type(RowSet rin,Query qout)
+        static ObInfo _Type(Context cx,RowSet rin,Query qout)
         {
             var kt = rin.keyType;
             for (int i = 0; i < kt.columns.Count; i++)
-                if (!qout.scols.Contains(kt.columns[i]))
+                if (!qout.rowType.map.Contains(kt.columns[i].name))
                     return null;
             return kt;
         }
-        internal override TypedValue Eval(Context _cx,Selector stc)
+        internal override TypedValue Eval(Context _cx,SqlValue stc)
         {
             return rIn.Eval(_cx,stc);
         }
@@ -578,12 +585,13 @@ namespace Pyrrho.Level4
                 for (int i = 0; i < dt.Length; i++)
                 {
                     TypedValue v = null;
-                    var id = _rs.qry.rowType.columns[i].defpos; // nb
+                    var qt = _rs.qry.rowType;
+                    var id = qt.columns[i].defpos; // nb
                     if (valueInProgress == id && id>0) // avoid infinite recursion!
                         return null;
                     valueInProgress = id;
-                    if (_rs.qry is SelectQuery qs && i < qs.Size) // always will be
-                        v = qs.cols[i].Eval(_rs._tr, _cx);
+                    if (_rs.qry is Query qs && i < qs.Size(_cx)) // always will be
+                        v = qt.columns[i].Eval(_rs._tr, _cx);
                     if (v!=null)
                         r += (id,v);
                 }
@@ -594,7 +602,7 @@ namespace Pyrrho.Level4
                 for (var bmk = srs.rIn.First(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
                     var rb = new SelectedRowBookmark(_cx,srs, bmk, 0);
-                    if (rb.row.values!=BTree<long,TypedValue>.Empty &&
+                    if (rb.row.values!=BTree<long,TypedValue>.Empty && !rb.row.IsNull &&
                         rb.Matches() && Query.Eval(srs.qry.where,srs._tr,_cx))
                         return rb;
                 }
@@ -605,9 +613,9 @@ namespace Pyrrho.Level4
                 for (var bmk = _bmk.Next(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
                     var rb = new SelectedRowBookmark(_cx,_srs, bmk, _pos + 1);
-                    for (var b = _rs.qry.cols.First(); b != null; b = b.Next())
+                    for (var b = _rs.qry.rowType.columns.First(); b != null; b = b.Next())
                         b.value().OnRow(rb);
-                    if (rb.row.values != BTree<long, TypedValue>.Empty && 
+                    if (rb.row.values != BTree<long, TypedValue>.Empty && !rb.row.IsNull &&
                         rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr,_cx))
                         return rb;
                 }
@@ -682,18 +690,19 @@ namespace Pyrrho.Level4
             building = true;
             var vs = BTree<long, TypedValue>.Empty;
             for (int i = 0; i < rowType.Length; i++)
-                qry.ValAt(i).StartCounter(_cx,this);
+                qry.ValAt(_cx,i).StartCounter(_cx,this);
             var ebm = source.First(_cx);
             if (ebm != null)
             {
                 for (; ebm != null; ebm = ebm.Next(_cx))
                     if (Query.Eval(having,_tr,_cx))
                         for (int i = 0; i < rowType.Length; i++)
-                            qry.ValAt(i).AddIn(_cx,ebm);
+                            qry.ValAt(_cx,i).AddIn(_cx,ebm);
             }
-            for (int i = 0; i < rowType.Length; i++)
+            var cols = qry.rowType.columns;
+            for (int i = 0; i < cols.Count; i++)
             {
-                var s = qry.cols[i];
+                var s = cols[i];
                 vs += (s.defpos,s.Eval(_tr, _cx));
             }
             row = new TRow(rowType,vs);
@@ -718,7 +727,7 @@ namespace Pyrrho.Level4
             }
             internal override TableRow Rec()
             {
-                throw new NotImplementedException();
+                return null;
             }
         }
     }
@@ -757,25 +766,26 @@ namespace Pyrrho.Level4
         }
         internal class TableRowBookmark : RowBookmark
         {
-            readonly ABookmark<long, TableRow> _bmk;
+            readonly ABookmark<long, object> _bmk;
             internal readonly TRow _row, _key;
             public override TRow row => _row;
             public override TRow key => _key;
             TableRowBookmark(Context _cx, RowSet trs, int pos,
-                ABookmark<long, TableRow> bmk) : base(_cx,trs, pos, bmk.key())
+                ABookmark<long, object> bmk) : base(_cx,trs, pos, bmk.key())
             {
                 _bmk = bmk;
-                _row = new TRow(_rs.rowType, bmk.value().fields);
-                _key = new TRow(_rs.keyType, bmk.value().fields);
+                var fl = ((TableRow)bmk.value()).fields;
+                _row = new TRow(_rs.rowType, fl);
+                _key = new TRow(_rs.keyType, fl);
                 _cx.Add(trs.qry, this);
             }
             internal static TableRowBookmark New(Context _cx, TableRowSet trs)
             {
                 var fm = trs.qry as From;
                 var table = fm.target as Table;
-                for (var b = table.tableRows.First(); b != null; b = b.Next())
+                for (var b = table.tableRows.PositionAt(0); b != null; b = b.Next())
                 {
-                    var rec = b.value();
+                    var rec = (TableRow)b.value();
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) && 
                         trs._tr.user.defpos != table.definer 
                         && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
@@ -793,7 +803,7 @@ namespace Pyrrho.Level4
             public override RowBookmark Next(Context _cx)
             {
                 var bmk = _bmk;
-                var rec = _bmk.value();
+                var rec = (TableRow)_bmk.value();
                 var fm = _rs.qry as From;
                 var table = fm.target as Table;
                 TableRowBookmark ret = null;
@@ -817,7 +827,7 @@ namespace Pyrrho.Level4
             }
             internal override TableRow Rec()
             {
-                return _bmk.value();
+                return (TableRow)_bmk.value();
             }
         }
 #if !EMBEDDED && !LOCAL
@@ -945,7 +955,8 @@ namespace Pyrrho.Level4
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
         internal IndexRowSet(Transaction tr, Context cx, From f, Index x, PRow m)
-            : base(tr, cx, f, f.rowType, x.rows.info.keyType, new OrderSpec(x.rows.info.keyType))
+            : base(tr, cx, f, f.rowType, (ObInfo)tr.role.obinfos[x.defpos], 
+                  new OrderSpec(((ObInfo)tr.role.obinfos[x.defpos]).columns))
         {
             from = f;
             table = f.target as Table;
@@ -995,7 +1006,7 @@ namespace Pyrrho.Level4
                 : base(_cx,irs, pos, bmk.Value().Value)
             {
                 _bmk = bmk; _irs = irs;
-                _rec = irs.table.tableRows[_defpos];
+                _rec = (TableRow)irs.table.tableRows[_defpos];
                 _row = new TRow(_rs.rowType, _rec.fields);
                 _key = new TRow(_rs.keyType, _rec.fields);
                 _cx.Add(irs.qry, this);
@@ -1020,7 +1031,7 @@ namespace Pyrrho.Level4
                     var iq = bmk.Value();
                     if (!iq.HasValue)
                         continue;
-                    var rec = irs.table.tableRows[iq.Value];
+                    var rec = (TableRow)irs.table.tableRows[iq.Value];
                     if (rec == null || (irs.table.enforcement.HasFlag(Grant.Privilege.Select)
                         && irs._tr.user.defpos != irs.from.definer
                         && !irs._tr.user.clearance.ClearanceAllows(rec.classification)))
@@ -1054,7 +1065,7 @@ namespace Pyrrho.Level4
                         return null;
                     if (!bmk.Value().HasValue)
                         continue;
-                    rec = table.tableRows[bmk.Value().Value];
+                    rec = (TableRow)table.tableRows[bmk.Value().Value];
                     if (table.enforcement.HasFlag(Grant.Privilege.Select)
                         && _rs._tr.user.defpos != table.definer
                         && !_rs._tr.user.clearance.ClearanceAllows(rec.classification))
@@ -1177,7 +1188,7 @@ namespace Pyrrho.Level4
         internal RowSet source;
         readonly bool distinct;
         public OrderedRowSet(Context _cx,Query q,RowSet r,OrderSpec os,bool dct)
-            :base(r._tr,_cx,q,r.rowType,os.keyType,os)
+            :base(r._tr,_cx,q,r.rowType,new ObInfo(q.defpos, Domain.TableType, os.items),os)
         {
             source = r;
             distinct = dct;
@@ -1244,7 +1255,7 @@ namespace Pyrrho.Level4
             return " Sql ";
         }
         internal readonly SqlRow[] rows;
-        internal SqlRowSet(Transaction tr,Context cx,Query q, Domain dt, SqlRow[] rs) 
+        internal SqlRowSet(Transaction tr,Context cx,Query q, ObInfo dt, SqlRow[] rs) 
             : base(tr,cx, q, dt, dt)
         {
             rows = rs;
@@ -1315,7 +1326,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="q">a query</param>
         /// <param name="r">a row type</param>
-        internal ExplicitRowSet(Transaction tr,Context cx,Query q,Domain kT=null)
+        internal ExplicitRowSet(Transaction tr,Context cx,Query q,ObInfo kT=null)
             : base(tr,cx,q,q.rowType,kT)
         {
         }
@@ -1342,7 +1353,7 @@ namespace Pyrrho.Level4
         /// <param name="r">the row to add</param>
         internal void Add((long,TRow) r)
         {
-            rows+=r;
+            rows += r;
         }
 
         protected override RowBookmark _First(Context _cx)
@@ -1412,30 +1423,44 @@ namespace Pyrrho.Level4
         }
         internal readonly BTree<long, TypedValue> defaults = BTree<long, TypedValue>.Empty; 
         internal readonly From from; // will be a SqlInsert, QuerySearch or UpdateSearch
+        internal readonly ObInfo targetInfo;
         readonly PTrigger.TrigType _tgt;
         internal readonly BTree<long, TriggerActivation> tb, ti, ta;
         internal readonly Index index;
         internal readonly Adapters _eqs;
         internal TransitionRowSet(Transaction tr,Context cx,From q, PTrigger.TrigType tg, Adapters eqs)
-            : base(tr,cx,q,q.rowType,(q.target as Table)?.FindPrimaryIndex()?.keyType??q.rowType)
+            : base(tr,cx,q,q.rowType,q.KeyType(tr)??q.rowType)
         {
             from = q;
             _eqs = eqs;
             var t = from.target as Table ?? from.simpleQuery as Table;
-            index = t.FindPrimaryIndex();
+            index = t.FindPrimaryIndex(_tr);
             // check now about conflict with generated columns
-            if (q.Denied(tr,Grant.Privilege.Insert))
+            if (t.Denied(tr,Grant.Privilege.Insert))
                 throw new DBException("42105",q);
-            var dt = q.rowType;
-            for (int i = 0; i < dt.Length; i++) // at this point q is the insert statement, simpleQuery is the base table
-                if (dt.columns[i] is TableColumn tc)
-                {
-                    if (tc.generated != PColumn.GenerationRule.No)
-                        throw (tr as Transaction).Exception("0U000", tc.name).Mix();
-                    var df = tc.domain.defaultValue;
-                    if (tc.generated == PColumn.GenerationRule.No)
-                        defaults += (tc.defpos, df);
-                }
+            var dt = q.rowType; // data rowType
+            if (tg != PTrigger.TrigType.Delete)
+            {
+                for (int i = 0; i < dt.Length; i++) // at this point q is the insert statement, simpleQuery is the base table
+                    if (dt.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                    {
+                        if (tc.generated != GenerationRule.None)
+                            throw new DBException("0U000", dt.columns[i].name).Mix();
+                    }
+                targetInfo = tr.role.obinfos[t.defpos] as ObInfo;
+                for (int i = 0; i < targetInfo.Length; i++)
+                    if (targetInfo.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                    {
+                        var tv = tc.defaultValue ?? tc.domain.defaultValue;
+                        if (tv != TNull.Value)
+                        {
+                            defaults += (tc.defpos, tv);
+                            cx.values += (tc.defpos, tv);
+                        }
+                    }
+            }
+            else
+                targetInfo = ObInfo.Any;
             _tgt = tg;
             tb = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Before]);
             ti = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Instead]);
@@ -1508,16 +1533,22 @@ namespace Pyrrho.Level4
             {
                 _trs = trs;
                 _fbm = fbm;
-                var dt = trs.qry.rowType;
-                var oldRow = BTree<long, TypedValue>.Empty;
-                if (trs.qry.cols == BList<SqlValue>.Empty)
+                var dt = (trs.qry as From)?.rowType??trs.qry.rowType;
+                var ti = trs.targetInfo;
+                var oldRow = trs.defaults;
+                if (dt.columns == BList<SqlValue>.Empty)
+                {
                     oldRow = fbm.row.values;
+                    for (var b = trs.defaults.First(); b != null; b = b.Next())
+                        if (oldRow[b.key()] == null || oldRow[b.key()] == TNull.Value)
+                            oldRow += (b.key(),b.value());
+                }
                 else
                 {
                     for (int i = 0; i < trs.qry.display; i++)
                     {
                         TypedValue tv = fbm.row[i];
-                        var sl = trs.qry.cols[i];
+                        var sl = dt.columns[i];
                         if (sl is SqlProcedureCall sv)
                         {
                             var fp = sv.call.proc.defpos;
@@ -1529,22 +1560,43 @@ namespace Pyrrho.Level4
                                 else // there's an adapter function
                                 {
                                     // tv = fn (fbm[j])
-                                    var pr = trs._tr.role.objects[m.Value] as Procedure;
+                                    var pr = trs._tr.objects[m.Value] as Procedure;
                                     var ac = new CalledActivation(trs._tr, _cx, pr, Domain.Null);
                                     tv = pr.body.Eval(_trs._tr, ac);
                                 }
                             }
                         }
-                        if (tv == null)
-                            tv = trs.defaults[sl.defpos];
-                        tv = sl.nominalDataType.Coerce(tv);
+                        oldRow += (sl.defpos, tv);
+                    }
+                    for (var b = dt.columns.First(); b != null; b = b.Next())
+                    {
+                        var sl = b.value();
+                        var tv = oldRow[sl.defpos];
+                        if (tv == null || tv==TNull.Value)
+                            tv = trs.defaults[sl.defpos] ?? TNull.Value;
                         oldRow += (sl.defpos, tv);
                     }
                 }
                 if (ix!=null)
                     (oldRow,_index) = CheckPrimaryKey(oldRow, ix);
+                if (trs.qry is From fm && fm.target is Table t)
+                {
+                    var rt = dt;
+                    for (int i = 0; i < rt.Length; i++)
+                        if (rt.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                        {
+                            if (tc.notNull && !oldRow.Contains(tc.defpos))
+                                throw new DBException("22206", rt.columns[i].name);
+                            switch (tc.generated.gen)
+                            {
+                                case Generation.Expression:
+                                    oldRow += (tc.defpos, tc.generated.exp.Eval(trs._tr, _cx));
+                                    break;
+                            }
+                        }
+                }
                 newRow = oldRow;
-                _row = new TRow(dt, oldRow);
+                _row = new TRow(ti, oldRow);
                 _key = new TRow(trs.keyType, oldRow);
                 _cx.Add(trs.qry,this);
                 var q = trs.qry as From;
@@ -1564,17 +1616,15 @@ namespace Pyrrho.Level4
             /// <param name="fl"></param>
             /// <param name="ix"></param>
             /// <returns></returns>
-            static (BTree<long,TypedValue>,Index) CheckPrimaryKey(BTree<long,TypedValue> fl,Index ix)
+            static (BTree<long,TypedValue>,Index) CheckPrimaryKey(
+                BTree<long,TypedValue> fl,Index ix)
             {
                 var r = BList<TypedValue>.Empty;
-                var changed = false;
-                for (var i = 0; i < (int)ix.cols.Count; i++)
+                for (var i = 0; i < (int)ix.keys.Count; i++)
                 {
-                    var sc = ix.cols[i];
+                    var sc = ix.keys[i];
                     var v = fl[sc.defpos];
-                    if (v != null)
-                        r += v;
-                    else
+                    if (v == null || v == TNull.Value)
                     {
                         if (sc.domain.kind != Sqlx.INTEGER)
                             throw new DBException("22004");
@@ -1582,11 +1632,9 @@ namespace Pyrrho.Level4
                         if (v == TNull.Value)
                             v = new TInt(0);
                         fl += (sc.defpos, v);
-                        r += v;
                     }
+                    r += v;
                 }
-                if (changed)
-                    ix += (Index.Tree, ix.rows + (new PRow(r), -1));
                 return (fl, ix);
             }
             internal static TransitionRowBookmark New(Context _cx,TransitionRowSet trs)
@@ -1621,7 +1669,7 @@ namespace Pyrrho.Level4
             public override RowBookmark Next(Context _cx)
             {
                 var from = _trs.qry;
-                if(from.where.First()?.value() is SqlValue sv && sv.nominalDataType.kind == Sqlx.CURRENT)
+                if(from.where.First()?.value() is SqlValue sv && sv.domain.kind == Sqlx.CURRENT)
                         return null;
                 for (var fbm = _fbm.Next(_cx); fbm != null; fbm = fbm.Next(_cx))
                 {
@@ -1654,70 +1702,6 @@ namespace Pyrrho.Level4
 
         }
     }
-    internal class SelectedKeyRowSet : RowSet
-    {
-        public override string keywd()
-        {
-            return " SelectedKey ";
-        }
-        readonly RowSet source;
-        readonly TRow key;
-        internal SelectedKeyRowSet(Context _cx,Query q, RowSet r, TRow k)
-            : base(r._tr, _cx, q, r.rowType, r.keyType)
-        {
-            source = r;
-            key = k;
-        }
-        internal override void _Strategy(StringBuilder sb, int indent)
-        {
-            sb.Append("SelectedKey ");
-            sb.Append(key.ToString());
-            base._Strategy(sb, indent);
-            source.Strategy(indent);
-        }
-        protected override RowBookmark _First(Context _cx)
-        {
-            return new SelectedKeyRowBookmark(_cx,this,source.PositionAt(_cx,new PRow(key)));
-        }
-        internal class SelectedKeyRowBookmark : RowBookmark
-        {
-            readonly SelectedKeyRowSet _skr;
-            readonly RowBookmark _bmk;
-            readonly Domain _dt;
-            readonly Domain _qt;
-            readonly TRow _row,_key;
-            internal SelectedKeyRowBookmark(Context _cx,SelectedKeyRowSet rs, RowBookmark bmk) 
-                : base(_cx,rs, bmk._pos, bmk._defpos)
-            {
-                _skr = rs;
-                _bmk = bmk;
-                _qt = rs.rowType;
-                _dt = rs.keyType ?? _qt;
-            }
-
-            public override TRow row => _row;
-
-            public override TRow key => _key;
-
-            public override RowBookmark Next(Context _cx)
-            {
-                var rb = _bmk.Next(_cx);
-                var k = new PRow(_skr.key);
-                for (int i = 0; i < _dt.Length && k != null; i++, k = k._tail)
-                    for (int j = 0; j < _qt.Length; j++)
-                    {
-                        var n = _qt.columns[j].defpos;
-                        if (rb.row[n].CompareTo(k._head) != 0)
-                            return null;
-                    }
-                return new SelectedKeyRowBookmark(_cx,_skr, rb);
-            }
-            internal override TableRow Rec()
-            {
-                throw new NotImplementedException();
-            }
-        }
-    }
     internal class SortedRowSet : RowSet
     {
         public override string keywd()
@@ -1726,16 +1710,15 @@ namespace Pyrrho.Level4
         }
         internal MTree tree;
         RowSet source;
-        TreeInfo info;
+        TreeInfo treeInfo;
         List<TRow> rows = new List<TRow>();
         List<Rvv> rvvs = new List<Rvv>();
-        internal SortedRowSet(Context _cx,Query q, RowSet s, Domain kt, TreeInfo ti)
+        internal SortedRowSet(Context _cx,Query q, RowSet s, ObInfo kt, TreeInfo ti)
             : base(s._tr, _cx, q, s.rowType, kt)
         {
             tree = new MTree(ti);
             source = s;
-            info = ti;
-            Build(_cx);
+            treeInfo = ti;
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1757,7 +1740,11 @@ namespace Pyrrho.Level4
                 rows.Add(v);
             }
         }
-
+        public override RowBookmark First(Context _cx)
+        {
+            Build(_cx);
+            return base.First(_cx);
+        }
         protected override RowBookmark _First(Context _cx)
         {
             return SortedRowBookmark.New(_cx,this);
@@ -1850,7 +1837,7 @@ namespace Pyrrho.Level4
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("RoutineCall ");
-            sb.Append(proc.name);
+            sb.Append(DBObject.Uid(proc.defpos));
             var cm = '(';
             for(var b = actuals.First();b!=null;b=b.Next())
             {
@@ -2116,19 +2103,19 @@ namespace Pyrrho.Level4
         }
         internal BList<SqlValue> vals = BList<SqlValue>.Empty;
         internal Domain dt = Domain.Content;
-        internal DocArrayRowSet(Transaction tr,Context cx,Query q, SqlDocArray d)
+        internal DocArrayRowSet(Transaction tr,Context cx,Query q, SqlRowArray d)
             : base(tr,cx,q)
         {
             if (d != null)
-                for(int i=0;i<d.Length;i++)
-                    Add(d[""+i]);
+                for(int i=0;i<d.rows.Count;i++)
+                    Add(d.rows[i]);
         }
         internal void Add(SqlValue c)
         {
             if (dt.kind == Sqlx.Null)
-                dt = c.nominalDataType;
-            else if (dt.kind != c.nominalDataType.kind)
-                throw new DBException("22005T", dt.kind.ToString(), c.nominalDataType.kind.ToString()).ISO();
+                dt = c.domain;
+            else if (dt.kind != c.domain.kind)
+                throw new DBException("22005T", dt.kind.ToString(), c.domain.kind.ToString()).ISO();
             vals+=c;
         }
         internal override void _Strategy(StringBuilder sb, int indent)
@@ -2160,7 +2147,7 @@ namespace Pyrrho.Level4
                 :base(_cx,drs,bmk.key(),0)
             {
                 _bmk = bmk;
-                _row = new TRow(Domain.Content, bmk.value().Eval(drs._tr, _cx));
+                _row = new TRow(ObInfo.Any, bmk.value().Eval(drs._tr, _cx));
                 _key = _row;
             }
 
@@ -2189,5 +2176,28 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+    }
+    internal class WindowRowSet : RowSet
+    {
+        public override string keywd()
+        {
+            return " Window ";
+        }
+
+        protected override RowBookmark _First(Context _cx)
+        {
+            throw new NotImplementedException();
+        }
+
+        readonly Query from;
+        readonly PeriodSpec pSpec;
+        internal WindowRowSet(Transaction tr,Context cx,Query f,PeriodSpec ps)
+            :base(tr,cx,f)
+        {
+            from = f;
+            f.Audit(tr, f);
+            pSpec = ps;
+        }
+
     }
 }

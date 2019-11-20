@@ -44,7 +44,7 @@ namespace Pyrrho.Level2
             Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1
+            Update1, Delete1, Drop1, RefAction // 71-74
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -55,15 +55,13 @@ namespace Pyrrho.Level2
         /// </summary>
         public readonly long ppos;
         public long trans;
-        public User user;
-        public Role role;
+        public Database db;
         public readonly long time;
-        protected Physical(Type tp, long pp, Database db)
+        protected Physical(Type tp, long pp, Database d)
         {
             type = tp;
             ppos = pp;
-            user = db.user;
-            role = db.role;
+            db = d;
             time = DateTime.Now.Ticks;
         }
         /// <summary>
@@ -76,8 +74,7 @@ namespace Pyrrho.Level2
         {
             type = tp;
             ppos = rdr.Position-1;
-            user = rdr.user;
-            role = rdr.role;
+            db = rdr.db;
             time = rdr.time;
         }
         protected Physical(Physical ph,Writer wr)
@@ -85,8 +82,7 @@ namespace Pyrrho.Level2
             type = ph.type;
             ppos = wr.Length;
             wr.uids += (ph.ppos, ppos);
-            user = wr.db.user;
-            role = wr.db.role;
+            db = wr.db;
             time = ph.time;
         }
         string _Pos => Pos(ppos);
@@ -109,7 +105,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract Database Install(Database db, Role ro, long p);
+        internal abstract (Database,Role) Install(Database db, Role ro, long p);
         /// <summary>
         /// Commit (Serialise) ourselves to the datafile.
         /// Overridden by PTransaction.
@@ -134,7 +130,7 @@ namespace Pyrrho.Level2
             var ph = Relocate(wr);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
-            wr.db = ph.Install(wr.db, wr.db.roles[tr.role.defpos], wr.Length);
+            wr.db = ph.Install(wr.db, wr.db.role, wr.Length).Item1;
         }
         protected abstract Physical Relocate(Writer wr);
         /// <summary>
@@ -211,9 +207,9 @@ namespace Pyrrho.Level2
         {
             return "SET Curated";
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            return db+(Database.Curated,ppos);
+            return (db+(Database.Curated,ppos),ro);
         }
 
     }
@@ -274,11 +270,11 @@ namespace Pyrrho.Level2
             return "Versioning for "+perioddefpos;
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var pd = (PeriodDef)db.mem[perioddefpos];
-            var tb = (Table)db.mem[pd.tabledefpos]+(Table.SystemTime,pd);
-            return db + (tb,p);
+            var tb = (Table)db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
+            return (db + (tb,p),ro);
         }
     }
  
@@ -330,7 +326,7 @@ namespace Pyrrho.Level2
             return (that.type == Type.Namespace) ? ppos : -1;
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }
@@ -381,13 +377,13 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var ob = (DBObject)ro.objects[obj];
-            if (ro.defpos != ob.definer && ro.defpos != Database.Schema)
+            var ob = (DBObject)db.objects[obj];
+            if (ro.defpos != ob.definer && ro.defpos != 0)
                 throw new DBException("42105");
             var nb = ob+ (DBObject.Classification,classification);
-            return db + (nb,p);
+            return (db + (nb,p),ro);
         }
     }
 }

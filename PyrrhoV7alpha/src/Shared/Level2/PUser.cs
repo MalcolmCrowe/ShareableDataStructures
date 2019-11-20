@@ -87,20 +87,20 @@ namespace Pyrrho.Level2
             return "PUser " + name;
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var nu = new User(this, db);
             // If this is the first User to be defined, 
             // it becomes the Owner of the database
             var first = true;
-            for (var b = db.roles.PositionAt(0); first && b != null; b = b.Next())
-                if ((b.value() is User))
+            for (var b = db.roles.First(); first && b != null; b = b.Next())
+                if ((db.objects[b.value()] is User))
                     first = false;
-            db += (db.schemaRole,nu,p);
+            ro += new ObInfo(nu.defpos, nu.name);
             db += (nu,p);
             if (first)
                 db += (Database.Owner, nu.defpos);
-            return db;
+            return (db,ro);
         }
     }
     internal class Clearance : Physical
@@ -149,7 +149,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new System.NotImplementedException();
         }

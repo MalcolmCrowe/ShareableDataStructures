@@ -16,14 +16,17 @@ namespace Pyrrho.Level3
     /// <summary>
     /// QuerySpecification = SELECT [ALL|DISTINCT] SelectList TableExpression .
     /// </summary>
-    internal class QuerySpecification : SelectQuery
+    internal class QuerySpecification : Query
     {
         internal const long
-            Distinct = -255, // bool
-            Star = -256, // bool
-            RVJoinType = -257, // Domain
-            TableExp = -258; // TableExpression
-        internal bool selectStar => (bool)(mem[Star]??false);
+            Distinct = -239, // bool
+            RVJoinType = -241, // Domain
+            TableExp = -242; // TableExpression
+        internal static readonly QuerySpecification Default =
+            new QuerySpecification(Transaction.TransPos,
+                BTree<long, object>.Empty
+                + (RowType, ObInfo.Any + SqlStar.Default) +
+                (Display, 1));
         internal bool distinct => (bool)(mem[Distinct] ?? false);
         /// <summary>
         /// the TableExpression
@@ -41,20 +44,23 @@ namespace Pyrrho.Level3
         internal QuerySpecification(long u,BTree<long, object> m)
             : base(u, m)
         { }
-        protected QuerySpecification(QuerySpecification q, SqlValue s) : base(q, s) { }
         public static QuerySpecification operator +(QuerySpecification q, (long, object) x)
         {
             return (QuerySpecification)q.New(q.mem + x);
         }
-        public static QuerySpecification operator+(QuerySpecification q,SqlValue s)
+        public static QuerySpecification operator +(QuerySpecification q, SqlValue x)
         {
-            return new QuerySpecification(q, s);
+            return (QuerySpecification)q.New((((Query)q) + x).mem);
+        }
+        public static QuerySpecification operator -(QuerySpecification q, long col)
+        {
+            return (QuerySpecification)q.Remove(col);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new QuerySpecification(defpos,m);
         }
-        internal override SelectQuery SelQuery()
+        internal override Query SelQuery()
         {
             return this;
         }
@@ -64,25 +70,24 @@ namespace Pyrrho.Level3
         }
         internal override Query Refresh(Context cx)
         {
-            var q = (QuerySpecification)base.Refresh(cx);
-            var te = cx.obs[tableExp.defpos];
-            if (te != tableExp)
-                q = (QuerySpecification)cx.Add(q + (TableExp, te));
-            return q;
+            var r =(QuerySpecification)base.Refresh(cx);
+            var te = r.tableExp?.Refresh(cx);
+            return (te == r.tableExp) ? r : (QuerySpecification)cx.Add(r + (TableExp, te));
         }
         internal override RowSet RowSets(Transaction tr, Context cx)
         {
-            var r = tableExp.RowSets(tr,cx);
+            var r = tableExp?.RowSets(tr,cx)??new TrivialRowSet(tr,cx,this,null);
             if (aggregates())
             {
-                if (tableExp.group != null)
+                if (tableExp?.group != null)
                     r = new GroupingRowSet(cx,this, r, tableExp.group, tableExp.having);
                 else
                     r = new EvalRowSet(tr, cx, this, r, tableExp.having);
             }
             else
                 r = new SelectedRowSet(tr, cx, this, r);
-            for (int i = 0; i < Size; i++)
+            var cols = rowType.columns;
+            for (int i = 0; i < Size(cx); i++)
                 if (cols[i] is SqlFunction f && f.window != null)
                     f.RowSets(tr, this);
             if (distinct)
@@ -95,20 +100,25 @@ namespace Pyrrho.Level3
         /// Check having in the tableexpression
         /// Remember that conditions in the TE are ineffective (TE has no rowsets)
         /// </summary>
-        internal override Query Conditions(Transaction tr,Context cx,Query q)
+        internal override Query Conditions(Context cx)
         {
             var r = this;
-            for (int i = 0; i < Size; i++)
-                r = (QuerySpecification)cols[i].Conditions(tr,cx, q, false,out _);
+            var cols = rowType.columns;
+            for (int i = 0; i < Size(cx); i++)
+                r = (QuerySpecification)((SqlValue)cols[i]).Conditions(cx,r,false,out _);
             //      q.CheckKnown(where,tr);
-            r = (QuerySpecification)q.MoveConditions(cx, tableExp);
-            r += (TableExp,tableExp.Conditions(tr,cx, q));
+            r = (QuerySpecification)r.MoveConditions(cx, tableExp);
+            r += (TableExp,tableExp.Conditions(cx));
+            r += (Depth, _Max(r.depth, 1 + r.tableExp.depth));
             return AddPairs(r.tableExp);
         }
         internal override Query Orders(Transaction tr,Context cx,OrderSpec ord)
         {
+            var d = 0;
+            for (var b = ord.items.First(); b != null; b = b.Next())
+                d = _Max(d, b.value().depth);
             return (QuerySpecification)base.Orders(tr,cx,ord)
-                +(TableExp,tableExp.Orders(tr,cx,ord));
+                +(TableExp,tableExp.Orders(tr,cx,ord) + (Depth, _Max(depth, 1 + d)));
         }
         /// <summary>
         /// propagate an update operation
@@ -131,6 +141,7 @@ namespace Pyrrho.Level3
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
+            var cols = rowType.columns;
             for (var i=0;i<cols.Count;i++)
                 cols[i].Eqs(data._tr,_cx,ref eqs);
             return tableExp.Insert(tr,_cx,prov, data, eqs, rs, cl);
@@ -155,38 +166,20 @@ namespace Pyrrho.Level3
         /// <param name="assigns">some update assignments</param>
         /// <param name="data">some insert data</param>
         /// <returns>an updated querywhere</returns>
-        internal override Query AddCondition(Transaction tr,Context cx,BTree<long,SqlValue> cond,
+        internal override Query AddCondition(Context cx,BTree<long,SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
-            return (new QuerySpecification(defpos,base.AddCondition(tr,cx,cond,assigns, data).mem+
-            (TableExp,tableExp.AddCondition(tr,cx,cond,assigns, data))));
-        }
-        internal override bool Knows(Selector c)
-        {
-            if (base.Knows(c))
-                return true;
-            if (!aggregates())
-                return tableExp.Knows(c);
-            return tableExp.group?.Has(c) ?? false;
+            return (new QuerySpecification(defpos,base.AddCondition(cx,cond,assigns, data).mem+
+            (TableExp,tableExp.AddCondition(cx,cond,assigns, data))));
         }
         /// <summary>
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            var comma = " ";
             if (distinct)
                 sb.Append(" distinct");
-            if (selectStar)
-                sb.Append(" * ");
-            else
-                for (int j = 0; j < display; j++)
-                {
-                    sb.Append(comma);
-                    sb.Append(cols[j]);
-                    comma = ",";
-                }
             sb.Append(" from ");
-            sb.Append((tableExp==null)?"?":Uid(tableExp.defpos));
+            sb.Append((tableExp == null) ? "?" : Uid(tableExp.defpos));
             return sb.ToString();
         }
     }
@@ -198,12 +191,14 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QueryExpression : Query
     {
+        internal static readonly QueryExpression Get =
+                new QueryExpression(-1, BTree<long, object>.Empty);
         internal const long
-            _Distinct = -259, // bool
-            _Left = -260,// Query
-            Op = -261, // Sqlx
-            _Right = -263, // QueryExpression
-            SimpleTableQuery = -264; //bool
+            _Distinct = -243, // bool
+            _Left = -244,// Query
+            Op = -245, // Sqlx
+            _Right = -246, // QueryExpression
+            SimpleTableQuery = -247; //bool
         /// <summary>
         /// The left Query operand
         /// </summary>
@@ -232,12 +227,12 @@ namespace Pyrrho.Level3
         internal QueryExpression(long u,bool stq, BTree<long, object> m=null)
             : base(u, (m??BTree<long,object>.Empty) + (SimpleTableQuery,stq)) 
         { }
-        internal QueryExpression(long u, Domain rt, bool stq, BTree<long, object> m=null)
-            : base(u, rt, (m ?? BTree<long, object>.Empty) + (SimpleTableQuery, stq))
+        internal QueryExpression(long u, Context cx, ObInfo rt, bool stq, BTree<long, object> m=null)
+            : base(u, cx, rt, (m ?? BTree<long, object>.Empty) + (SimpleTableQuery, stq))
         { }
-        internal QueryExpression(long u, Query a, Sqlx o, QueryExpression b)
+        internal QueryExpression(long u, Context cx, Query a, Sqlx o, QueryExpression b)
             : base(u,BTree<long,object>.Empty+(_Left,a)+(Op,o)+(_Right,b)
-                  +(Cols,a.cols)+(Display,a.display)+(SqlValue.NominalType, a.rowType)
+                  +(Display,a.display)+(RowType,a.rowType.Relocate(u))
                   +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth)))
         { }
@@ -256,14 +251,15 @@ namespace Pyrrho.Level3
         }
         internal override Query Refresh(Context cx)
         {
-            var q =(QueryExpression)base.Refresh(cx);
-            var lf = cx.obs[left.defpos];
-            if (lf != left)
-                q = (QueryExpression)cx.Add(q + (_Left, lf));
-            var rg = cx.obs[right.defpos];
-            if (rg != right)
-                q = (QueryExpression)cx.Add(q + (_Right, rg));
-            return q;
+            var r = (QueryExpression)base.Refresh(cx);
+            var rr = r;
+            var lf = r.left.Refresh(cx);
+            if (lf != r.left)
+                r += (_Left, lf);
+            var rg = r.right.Refresh(cx);
+            if (rg != r.right)
+                r += (_Right, rg);
+            return (r == rr) ? rr : (QueryExpression)cx.Add(r);
         }
         internal override void Build(Context _cx, RowSet rs)
         {
@@ -336,27 +332,23 @@ namespace Pyrrho.Level3
         /// Analysis stage Conditions().
         /// Check left and right
         /// </summary>
-        internal override Query Conditions(Transaction tr,Context cx,Query q)
+        internal override Query Conditions(Context cx)
         {
             var m = mem;
-            var r = (QueryExpression)base.Conditions(tr,cx,q);
+            var r = (QueryExpression)base.Conditions(cx);
             if (right != null)
             {
-                m+=(_Left,left.AddCondition(tr,cx, where, null, null));
-                m+=(_Right,right.AddCondition(tr,cx, where, null, null));
+                m+=(_Left,left.AddCondition(cx, where, null, null));
+                m+=(_Right,right.AddCondition(cx, where, null, null));
                 r = new QueryExpression(defpos, m);
             }
             else
                 r = (QueryExpression)MoveConditions(cx, left);
             var qe = r;
-            qe = (QueryExpression)qe.left.Conditions(tr,cx,q);
-            q = (Query)cx.obs[q.defpos];
+            qe.left.Conditions(cx);
             if (qe.right != null)
-            {
-                r = (QueryExpression)qe.right.Conditions(tr,cx, q);
-                q = (Query)cx.obs[q.defpos];
-            }
-            return q;
+                qe.right.Conditions(cx);
+            return (QueryExpression)Refresh(cx);
         }
         /// <summary>
         /// Add cond and/or data for modification operations
@@ -365,13 +357,13 @@ namespace Pyrrho.Level3
         /// <param name="assigns">update assignments</param>
         /// <param name="data">insert data</param>
         /// <returns>an updated querywhere</returns>
-        internal override Query AddCondition(Transaction tr,Context cx,BTree<long,SqlValue> cond,
+        internal override Query AddCondition(Context cx,BTree<long,SqlValue> cond,
             BList<UpdateAssignment> assigns, RowSet data)
         {
-            var q = new QueryExpression(defpos,base.AddCondition(tr,cx, cond, assigns, data).mem);
-            q = new QueryExpression(defpos,q.mem+(_Left,left.AddCondition(tr,cx,cond, assigns, data)));
+            var q = new QueryExpression(defpos,base.AddCondition(cx, cond, assigns, data).mem);
+            q = new QueryExpression(defpos,q.mem+(_Left,left.AddCondition(cx,cond, assigns, data)));
             if (q.right!=null)
-                q = new QueryExpression(defpos,q.mem+(_Right,right.AddCondition(tr,cx,cond, assigns, data)));
+                q = new QueryExpression(defpos,q.mem+(_Right,right.AddCondition(cx,cond, assigns, data)));
             return q;
         }
         /// <summary>
@@ -386,10 +378,6 @@ namespace Pyrrho.Level3
             if (right != null && right.HasColumn(sv))
                 return true;
             return base.HasColumn(sv);
-        }
-        internal override bool Knows(Selector c)
-        {
-            return left.Knows(c) || (right?.Knows(c) ?? false);
         }
         /// <summary>
         /// Analysis stage Orders().
@@ -440,8 +428,8 @@ namespace Pyrrho.Level3
         }
          public override string ToString()
         {
-            var sb = new StringBuilder("QueryExpression (Left: ");
-            sb.Append(Uid(left.defpos));
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Left: "); sb.Append(Uid(left.defpos));
             sb.Append(") ");
             sb.Append(op);
             sb.Append(" ");

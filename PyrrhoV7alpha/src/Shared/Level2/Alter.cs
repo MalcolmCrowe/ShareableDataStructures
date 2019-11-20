@@ -23,7 +23,8 @@ namespace Pyrrho.Level2
         /// Alter is obsolete: use Alter3.
         /// We remember the previous entry for this table column (the most recent Alter or the definition)
         /// </summary>
-        public long defpos;
+        public long _defpos;
+        public override long defpos =>_defpos;
         /// <summary>
         /// Constructor: a new Alter record from the disk file
         /// </summary>
@@ -32,7 +33,7 @@ namespace Pyrrho.Level2
         public Alter(Reader rdr) : base(Type.Alter, rdr) { }
         protected Alter(Alter x, Writer wr) : base(x, wr)
         {
-            defpos = wr.Fix(x.defpos);
+            _defpos = wr.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -45,8 +46,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
-            defpos = (long)(rdr.db.mem[prev] ?? ppos);
+            _defpos = (long)(rdr.db.mem[prev] ?? ppos);
             base.Deserialise(rdr);
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var tb = (Table)db.objects[tabledefpos];
+            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var dt = (Domain)db.objects[domdefpos];
+            var tc = new TableColumn(tb, this, dt);
+            // the given role is the definer
+            var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
+            var se = new SqlCol(ppos, name, tc);
+            var iq = ti.map[se.name];
+            ro = ro + (oc.defpos, oc) + (ti + (iq.Value,se));
+            tb += tc;
+            return (db + (ro, p) + (tb, p) + (tc, p), ro);
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -65,9 +81,10 @@ namespace Pyrrho.Level2
     {
         /// <summary>
         /// Alter2 is obsolete - use Alter3
-        /// We remember the previous entry for this ident (the most recent Alter or the definition)
+        /// We remember the previous entry for this TableColumn (the most recent Alter or the definition)
         /// </summary>
-        public long defpos;
+        public long _defpos;
+        public override long defpos => _defpos;
         /// <summary>
         /// Constructor: a new Alter2 record from the disk
         /// </summary>
@@ -76,7 +93,7 @@ namespace Pyrrho.Level2
         public Alter2(Reader rdr) : base(Type.Alter2, rdr) { }
         protected Alter2(Alter2 x, Writer wr) : base(x, wr)
         {
-            defpos = wr.Fix(x.defpos);
+            _defpos = wr.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -89,8 +106,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
-            defpos = ((DBObject)rdr.db.role.objects[prev]).defpos;
+            _defpos = ((DBObject)rdr.db.objects[prev])?.defpos??-1;
             base.Deserialise(rdr);
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var tb = (Table)db.objects[tabledefpos];
+            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var dt = (Domain)db.objects[domdefpos];
+            var tc = new TableColumn(tb, this, dt);
+            // the given role is the definer
+            var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
+            var se = new SqlCol(ppos, name, tc);
+            var iq = ti.map[se.name];
+            ro = ro + (oc.defpos, oc) + (ti + (iq.Value, se));
+            tb += tc;
+            return (db + (ro, p) + (tb, p) + (tc, p), ro);
         }
     }
 	/// <summary>
@@ -99,7 +131,8 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class Alter3 : PColumn3
 	{
-		public long defpos;
+		public long _defpos;
+        public override long defpos => _defpos;
         /// <summary>
         /// Constructor: a new Alter record from the Parser
         /// </summary>
@@ -113,11 +146,12 @@ namespace Pyrrho.Level2
         /// <param name="nn">The (new) setting for NOT NULL</param>
         /// <param name="ge">The (new) setting for GENERATED ALWAYS</param>
         /// <param name="db">The local database</param>
-        public Alter3(long co, string nm, int sq, long tb, long dm, 
-            string ds, string ua, bool nn, GenerationRule ge, long u, Transaction tr) :
-            base(Type.Alter3, tb, nm, sq, dm, ds, ua, nn, ge, u, tr)
+        public Alter3(long co, string nm, int sq, long tb, long dm, string ds,
+            TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
+            GenerationRule ge, long u, Transaction tr) :
+            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, u, tr)
 		{
-            defpos = co;
+            _defpos = co;
 		}
         /// <summary>
         /// Constructor: a new Alter record from the disk
@@ -127,7 +161,7 @@ namespace Pyrrho.Level2
 		public Alter3(Reader rdr) : base(Type.Alter3, rdr) { }
         protected Alter3(Alter3 x, Writer wr) : base(x, wr)
         {
-            defpos = wr.Fix(x.defpos);
+            _defpos = wr.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -149,9 +183,24 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{ 
 			var previous = rdr.GetLong();
-            defpos = ((DBObject)rdr.db.role.objects[previous]).defpos;
+            _defpos = ((DBObject)rdr.db.objects[previous]).defpos;
 			base.Deserialise(rdr);
 		}
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var tb = (Table)db.objects[tabledefpos];
+            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var i = ti.map[name].Value; 
+            var dt = (Domain)db.objects[domdefpos];
+            var tc = new TableColumn(tb, this, dt);
+            // the given role is the definer
+            var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
+            var se = new SqlCol(defpos, name, tc);
+            ro = ro + (oc.defpos, oc) + (ti + (i, se));
+            tb += tc;
+            return (db + (ro, p) + (tb, p) + (tc, p), ro);
+        }
         /// <summary>
         /// Provide a string version of the Alter
         /// </summary>
@@ -229,8 +278,8 @@ namespace Pyrrho.Level2
                         var c = (PIndex)that;
                         if (tabledefpos==c.tabledefpos)
                             for (int j = 0; j < c.columns.Count; j++)
-                                if (c.columns[j] == defpos 
-                                    || c.columns[j] == -defpos)
+                                if (c.columns[j].defpos == defpos 
+                                    || c.columns[j].defpos == -defpos)
                                     return ppos;
                         return -1;
                     }

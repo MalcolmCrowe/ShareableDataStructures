@@ -244,9 +244,10 @@ namespace Pyrrho.Level3
         /// <param name="w">the XML writer</param>
         internal void Save(Database db,XmlWriter w)
         {
-            Table tb = db.schemaRole.objects[tab] as Table;
+            Table tb = db.objects[tab] as Table;
+            var ti = db.role.obinfos[tb.defpos] as ObInfo;
             w.WriteStartElement("Table");
-            w.WriteAttributeString("Name", tb.name);
+            w.WriteAttributeString("Name", ti.name);
             w.WriteAttributeString("Pos", tab.ToString());
             w.WriteAttributeString("Schema", schema.ToString());
             w.WriteAttributeString("Dels", dels.ToString());
@@ -255,10 +256,14 @@ namespace Pyrrho.Level3
             w.WriteAttributeString("Blocked", blocked.ToString());
             for (var s = read.First();s!= null;s=s.Next())
             {
-                TableColumn tc = db.schemaRole.objects[s.key()] as TableColumn;
+                TableColumn tc = db.objects[s.key()] as TableColumn;
+                var i = 0;
+                for (; i < ti.Length; i++)
+                    if (ti.columns[i].defpos == s.key())
+                        break;
                 w.WriteStartElement("Read");
                 w.WriteAttributeString("ColPos", s.key().ToString());
-                w.WriteAttributeString("ReadCol", tc.name);
+                w.WriteAttributeString("ReadCol", ti.columns[i].name);
                 w.WriteEndElement();
             }
             foreach (var v in recs)
@@ -388,7 +393,7 @@ namespace Pyrrho.Level3
             if (fields.Count != f.Count)
                 return false;
             var a = f.First();
-            var b = fields.First();
+            var b = fields.PositionAt(0);
             for (;a!=null & b!=null;a=a.Next(),b=b.Next())
                 if (a.key() != b.key())
                     return false;
@@ -416,12 +421,13 @@ namespace Pyrrho.Level3
             w.WriteStartElement("Record");
             w.WriteAttributeString("Id", id.ToString());
             w.WriteAttributeString("Occurrences", num.ToString());
-            for (var s = fields.First();s!= null;s=s.Next())
+            for (var s = fields.PositionAt(0);s!= null;s=s.Next())
             {
-                TableColumn tc = db.schemaRole.objects[s.key()] as TableColumn;
+                TableColumn tc = db.objects[s.key()] as TableColumn;
+                var ci = db.role.obinfos[tc.defpos] as ObInfo;
                 w.WriteStartElement("Field");
                 w.WriteAttributeString("ColPos", s.key().ToString());
-                w.WriteAttributeString("RecCol", tc.name);
+                w.WriteAttributeString("RecCol", ci.name);
                 w.WriteEndElement();
             }
             w.WriteEndElement();

@@ -32,26 +32,38 @@ namespace Pyrrho.Level3
     {
         internal static long _uid = -500;
         internal const long Name = -50; // string
+        static long _dbg = 0;
+        internal long dbg = ++_dbg;
         // negative keys are for system data, positive for user-defined data
         public readonly BTree<long, object> mem;
-        public string name => (string)(mem[Name]??"");
         public virtual long lexeroffset => 0;
-        protected Basis (BTree<long,object> m) { mem = m; }
-        internal Basis (params (long,object)[] m)
+        protected Basis (BTree<long,object> m)
+        {
+            mem = m;
+        }
+        internal Basis(params (long, object)[] m) : this(_Mem(m)) { }
+
+        static BTree<long,object> _Mem((long,object)[] m)
         {
             var mm = BTree<long, object>.Empty;
             foreach (var b in m)
                 mm += b;
-            mem = mm;
+            return mm;
         }
         internal abstract Basis New(BTree<long, object> m);
         public static Basis operator+(Basis b,(long,object)x)
         {
             return b.New(b.mem + x);
         }
+        internal virtual Basis Relocate(Writer wr)
+        {
+            return this;
+        }
         public override string ToString()
         {
-            return GetType().Name + " Name=" + name;
+            var sb = new StringBuilder(GetType().Name);
+            if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append((string)mem[Name]); }
+            return sb.ToString();
         }
     }
     public enum ExecuteStatus { Parse, Obey, Drop,Rename }
@@ -67,20 +79,16 @@ namespace Pyrrho.Level3
     /// Load() there is an instance that represents the committed state of the database.
     /// When a new connection thread is started it is given the latest committed version of the database.
     /// 
-    /// Database objects are almost all accessed from the Role. There are always at least two
-    /// of these called schemaRole and guestRole. During connection, a transaction is created
-    /// by a user with a given role: this is maintained by the transaction context stack.
+    /// Prior to version 7, every Pyrrho database began with user and role records. From version 7 on,
+    /// this is not required: the database user for a new empty database is the account running the engine,
+    /// and this account is initially allowed to use the the schema role (with key 0). 
     /// 
-    /// Prior to version 7, every Pyrrho database began with user and role records. From version 7
-    /// on this, is not required: the database user for a new empty database is the account running the engine,
-    /// and this account is initially allowed to use the the schema role (with key Role.Schema). 
     /// Creation of a new database by a connected user other than the server account can be permitted
     /// using command-line flags (it is not the default), and in that case the creator user is 
     /// written at the start of the database and becomes the owner. Otherwise the server account must
-    /// create the new database and grant ownership to a user.
+    /// create the new database and grant ownership to a user. (Owner is a user, all other privileges
+    /// are for roles.)
     /// 
-    /// The schemaRole is different in several ways from user-defined roles. The system types belong
-    /// to the schemaRole, and any object will therefore be accessible from the schemaRole. 
     /// Data manipulation is always carried out within transactions, and user-defined datatypes
     /// can obviously play their part there. 
     /// 
@@ -93,30 +101,35 @@ namespace Pyrrho.Level3
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
         protected static BTree<string, Database> databases = BTree<string, Database>.Empty;
         internal static Database _system = null;
-        internal readonly BTree<long, Role> roles;
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
-            Curated = -54, // long
-            NextTid = -55, // long:  will be used for next transaction
-            _ExecuteStatus = -56, // ExecuteStatus
-            Guest = -57, // Rolw
-            Levels = -58, // BTree<Level,long>
-            LevelUids = -59, // BTree<long,Level>
-            Owner = -60, // long
-            Schema = -61, // long (used always to be 5)
-            Types = -62;  // BTree<Domain,Domain>
+            Cascade = -390, // bool (only used for Transaction subclass)
+            Curated = -53, // long
+            _ExecuteStatus = -54, // ExecuteStatus
+            Guest = -55, // Role
+            Levels = -56, // BTree<Level,long>
+            LevelUids = -57, // BTree<long,Level>
+            NextTid = -58, // long:  will be used for next transaction
+            Owner = -59, // long
+            Roles = -60, // BTree<string,long>
+            Types = -61;  // BTree<Domain,Domain>
         internal virtual long uid => -1;
+        public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
         internal long owner => (long)(mem[Owner]??-1L);
         internal virtual long nextTid => Transaction.TransPos;
-        internal long schema => (long)mem[Schema];
-        internal Role schemaRole => roles[schema];
-        internal Role guestRole => roles[Guest];
+        internal BTree<string, long> roles =>
+            (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
+        internal Role schemaRole => (mem[DBObject.Definer] is Role r)?r
+            :(Role)mem[(long)mem[DBObject.Definer]];
+        internal Role guestRole => (Role)mem[Guest];
         internal virtual Role role => schemaRole;
-        internal virtual User user => roles[owner] as User;
+        internal virtual User user => (User)mem[owner];
         internal virtual bool autoCommit => true;
+        internal virtual string source => "";
+        internal bool cascade => (bool)(mem[Cascade] ?? false);
         /// <summary>
         /// The type system needs to be able to consider ad-hoc data types, i.e. not reified in
         /// any physical database. When data with any data type is committed to a database this must be
@@ -130,112 +143,81 @@ namespace Pyrrho.Level3
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
         public ExecuteStatus parse => (ExecuteStatus)(mem[_ExecuteStatus]??ExecuteStatus.Obey);
+        public BTree<long, object> objects => mem;
         static Database()
         {
-            var su = new User(-63, new BTree<long, object>(Name,
+            var su = new User(-500, new BTree<long, object>(Name,
                     System.Security.Principal.WindowsIdentity.GetCurrent().Name));
-            var sr = new Role("$Schema", Schema, BTree<long, object>.Empty +
+            var sr = new Role("$Schema", DBObject.Definer, BTree<long, object>.Empty +
                     (su.defpos, su) +
                     (Owner, su.defpos));
-            _system = new Database("System", su, sr);
+            var gu = new Role("$Guest", Guest, BTree<long, object>.Empty);
+            _system = new Database("System", su, sr, gu);
             Domain.StandardTypes();
             SystemRowSet.Kludge();
             Domain.RdfTypes();
         }
-        Database(string n,User su,Role sr) 
+        Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
-                  (Name,n),(Owner,su.defpos),(Schema,sr.defpos),
+                  (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
+                  (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
                   (Types,BTree<Domain,Domain>.Empty))
         {
             loadpos = 0;
-            roles = BTree<long, Role>.Empty + (Schema, sr)+(su.defpos,su)+
-                (Guest, new Role("$Guest", Guest, BTree<long, object>.Empty));
         }
         public Database(string n,FileStream f):base(_system.mem+(Name,n))
         {
             dbfiles += (n, f);
             loadpos = 5;
-            roles = _system.roles;
         }
-        protected Database(BTree<long, Role> rs, long c, BTree<long,object> m):base(m)
+        protected Database(long c, BTree<long,object> m):base(m)
         {
             loadpos = c;
-            roles = rs;
         }
-        public virtual Database New(BTree<long, Role> rs, long c, BTree<long,object> m)
+        public virtual Database New(long c, BTree<long,object> m)
         {
-            return new Database(rs, c, m);
+            return new Database(c, m);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new Database(loadpos, m);
+        }
+        public static Database operator +(Database d, (long, object) x)
+        {
+            return d.New(d.loadpos, d.mem + x);
+        }
+        public static Database operator -(Database d,long x)
+        {
+            return d.New(d.loadpos, d.mem - x);
         }
         /// <summary>
-        /// A DBObject added to Database goes into mem by default
-        /// </summary>
-        /// <param name="ob"></param>
-        /// <param name="rs"></param>
-        /// <param name="c"></param>
-        /// <param name="m"></param>
-        /// <returns></returns>
-        public virtual Database New(DBObject ob,long p)
-        {
-            return new Database(roles + (role.defpos, role + ob),p, mem);
-        }
-        public static Database operator+(Database d,(Role,long)x)
-        {
-            return d.New(d.roles + (x.Item1.defpos, x.Item1), x.Item2, d.mem);
-        }
-        /// <summary>
-        /// Add an object to a role
+        /// Default action for adding a DBObject (goes into mem)
+        /// If it has a Domain, this is the definer's type for the object
         /// </summary>
         /// <param name="d"></param>
         /// <param name="x"></param>
         /// <returns></returns>
-        public static Database operator +(Database d, (Role,DBObject,long) x)
+        public static Database operator +(Database d, (DBObject, long) x)
         {
-            return d.New(d.roles + (x.Item1.defpos, x.Item1 + x.Item2), x.Item3, d.mem);
+            var (ob,curpos) = x;
+            return d.New(curpos,d.mem+(ob.defpos,ob));
         }
-        /// <summary>
-        /// If x.Item1 <0, store a property object.
-        /// If x.Item1 >=0, store the affected defpos.
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="x"></param>
-        /// <returns></returns>
-        public static Database operator+(Database d,(long,object)x)
+        public static Database operator +(Database d, (ObInfo, long) x)
         {
-            return d.New(d.roles, d.loadpos, d.mem + x);
-        }
-        /// <summary>
-        /// Default action for adding a DBObject
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="x"></param>
-        /// <returns></returns>
-        public static Database operator+(Database d,(DBObject,long) x)
-        {
-            return d.New(x.Item1,x.Item2);
-        }
-        public static Database operator- (Database d,Role r)
-        {
-            return d.New(d.roles - r.defpos, d.loadpos, d.mem-r.defpos);
-        }
-        /// <summary>
-        /// Drop an object from a role
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="x"></param>
-        /// <returns></returns>
-        public static Database operator -(Database d, (Role,DBObject,long) x)
-        {
-            return d.New(d.roles + (x.Item1.defpos, x.Item1-x.Item2), x.Item3, d.mem);
-        }
-        public static Database operator-(Database d,DBObject ob)
-        {
-            return d.New(d.roles + (d.role.defpos, d.role - ob), d.loadpos, d.mem);
+            var (ob, curpos) = x;
+            var ro = d.role;
+            return d.New(curpos, d.mem + (ro.defpos,ro+ob));
         }
         public static Database operator +(Database d, (Level, long) x)
         {
-            return d.New(d.roles, d.loadpos, 
+            return d.New(d.loadpos, 
                 d.mem+(Levels,d.levels + (x.Item1, x.Item2))+
                 (LevelUids,d.cache + (x.Item2, x.Item1)));
+        }
+        public static Database operator +(Database d,(Role,long)x)
+        {
+            var (ro, curpos) = x;
+            return d+ (Roles, d.roles + (ro.name, ro.defpos))+(ro.defpos,ro);
         }
         public static Database Get(string fn)
         {
@@ -255,11 +237,20 @@ namespace Pyrrho.Level3
         {
             return dbfiles[name];
         }
-        public virtual Transaction Transact(long t,bool? auto=null)
+        public virtual Transaction Transact(long t,string sce,bool? auto=null)
         {
             // if not new, this database may be out of date: ensure we get the latest
             var r = databases[name] ?? this;
-            return new Transaction(r,t,auto??autoCommit);
+            return new Transaction(r,t,sce,auto??autoCommit);
+        }
+        public DBObject GetObject(string n)
+        {
+            return objects[role.dbobjects[n]] as DBObject;
+        }
+        public Procedure GetProcedure(string n,int a)
+        {
+            return (role.procedures[n] is BTree<int,long> pt &&
+                pt.Contains(a))? objects[pt[a]] as Procedure:null;
         }
         /// <summary>
         /// Build a ReadConstraint object.
@@ -269,15 +260,6 @@ namespace Pyrrho.Level3
         internal virtual ReadConstraint _ReadConstraint(Context cx,DBObject d)
         {
             return null;
-        }
-        /// <summary>
-        /// Mutator: Perform actions for Drop of a database object
-        /// Side effects depend on action and CheckDependent
-        /// </summary>
-        /// <param name="ob">The database object to drop</param>
-        /// <param name="act">CASCADE or RESTRICT</param>
-        internal virtual void OnDrop(DBObject ob, Sqlx act)
-        {
         }
         public virtual (Database,long) RdrClose(Context cx)
         {
@@ -289,6 +271,7 @@ namespace Pyrrho.Level3
         public virtual Database Load()
         {
             var rdr = new Reader(this);
+            rdr.context = new Context(this);
             Physical p;
             lock (df) //(consistency)
             {
@@ -301,11 +284,13 @@ namespace Pyrrho.Level3
                     try
                     {
                         if (p is PTransaction pt)
+                        {
                             rdr.trans = pt;
-                        else if (p is TriggeredAction ta)
-                            rdr._role = rdr.db.roles[((Trigger)rdr._role.objects[ta.trigger]).definer];
+                            rdr.role = (Role)rdr.db.mem[pt.ptrole];
+                            rdr.user = (User)rdr.db.mem[pt.ptuser];
+                        } 
                         else
-                            rdr.db = p.Install(rdr.db, rdr.role, rdr.Position);
+                            (rdr.db,rdr.role) = p.Install(rdr.db, rdr.role, rdr.Position);
                     }
                     catch (Exception) { }
                 }
@@ -340,15 +325,6 @@ namespace Pyrrho.Level3
             pos = rdr.Position;
             return r;
         }
-        public Domain GetDomain(long pos)
-        {
-            var ob = (DBObject)role.objects[pos];
-            if (ob is Domain dm)
-                return dm;
-            else if (ob is Index ix)
-                return ix.keyType;
-            throw new PEException("PE284");
-        }
         internal virtual void Execute(Role r, string id,string[] path, int p, string etag)
         { }
         internal virtual void Post(RowSet r, string s)
@@ -375,18 +351,13 @@ namespace Pyrrho.Level3
 
         internal (Database,long) Install()
         {
-            var db = new Database(roles, df.Length, mem);
+            var db = new Database(df.Length, mem);
             databases += (name, db);
             return (db,Transaction.TransPos);
         }
         internal virtual (Database,long) Rollback(object e)
         {
             return (this,Transaction.TransPos);
-        }
-
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new Database(roles, loadpos, m);
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

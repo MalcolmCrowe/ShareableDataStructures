@@ -42,12 +42,19 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Revoke(Reader rdr) : base(Physical.Type.Revoke,rdr)
+		public Revoke(Reader rdr) : base(Type.Revoke,rdr)
 		{}
         protected Revoke(Revoke x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)
         {
             return new Revoke(this, wr);
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var oi = (ObInfo)ro.obinfos[obj];
+            oi += (ObInfo.Privilege, oi.priv & ~priv);
+            ro += oi;
+            return (db + (ro,p),ro);
         }
         /// <summary>
         /// a readable version of this Physical

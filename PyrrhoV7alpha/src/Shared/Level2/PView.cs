@@ -24,7 +24,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The definition of the view
         /// </summary>
-        public string view;
+        public QueryExpression view;
         public override long Dependent(Writer wr)
         {
             return -1;
@@ -37,9 +37,9 @@ namespace Pyrrho.Level2
         /// <param name="vc">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, string vc, long u, Transaction db) 
+        internal PView(string nm, QueryExpression vc, long u, Transaction db) 
             : this(Type.PView, nm, vc, u, db) { }
-        protected PView(Type pt,string nm,string vc,long u,Transaction db) : base(pt,u,db)
+        protected PView(Type pt,string nm,QueryExpression vc,long u,Transaction db) : base(pt,u,db)
         {
             name = nm;
             view = vc;
@@ -68,7 +68,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             wr.PutString(name.ToString());
-            wr.PutString(view);
+            wr.PutString(view.ToString());
             base.Serialise(wr);
         }
         /// <summary>
@@ -78,7 +78,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            view = rdr.GetString();
+            view = new Parser(rdr.db,rdr.context).ParseQueryExpression(rdr.GetString());
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -108,9 +108,11 @@ namespace Pyrrho.Level2
             return base.Conflicts(db, tr, that);
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var vi = new ObInfo(ppos, name);
+            ro = ro+vi+(ppos,vi);
+            return (db + (ro, p) + (new View(this), p),ro);
         }
     }
     internal class PRestView : PView
@@ -122,7 +124,7 @@ namespace Pyrrho.Level2
         public PRestView(string nm, long tp, long u, Transaction d) 
             : this(Type.RestView, nm, tp, u, d) { }
         protected PRestView(Type t,string nm,long tp,long u,Transaction d) 
-            : base(t,nm,"GET",u,d)
+            : base(t,nm,QueryExpression.Get,u,d)
         {
             structpos = tp;
         }

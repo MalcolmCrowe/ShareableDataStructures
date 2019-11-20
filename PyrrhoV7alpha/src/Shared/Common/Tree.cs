@@ -208,20 +208,32 @@ namespace Pyrrho.Common
             for (var b=First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ',';
+                var k = b.key();
                 if (b.key() is long)
-                    sb.Append(Uid((long)(object)b.key()));
+                    sb.Append(Uid((long)(object)k));
                 else
-                    sb.Append(b.key());
-                sb.Append('=');
-                sb.Append(b.value());
+                    sb.Append(k);
+                var v = b.value();
+                if ((object)k != (object)v)
+                {
+                    sb.Append('=');
+                    sb.Append(b.value());
+                }
             }
-            sb.Append(')');
+            if (sb.Length>0)
+                sb.Append(')');
             return sb.ToString();
-        }
+        } 
         static string Uid(long u)
         {
-            if (u >= 0x4000000000000000)
-                return "'" + (u - 0x4000000000000000);
+            long dompos = 0x2000000000000000;
+            long trapos = 0x4000000000000000;
+            if (u >= trapos + dompos)
+                return "^" + (u - trapos - dompos);
+            if (u >= trapos)
+                return "'" + (u - trapos);
+            if (u >= dompos)
+                Console.WriteLine("DomPos found?");
             if (u == -1)
                 return "_";
             return "" + u;

@@ -22,6 +22,8 @@ namespace Pyrrho.Level2
         /// The defining position of the object to drop
         /// </summary>
 		public long delpos;
+        public enum DropAction { Restrict=0,Null=1,Default=2,Cascade=3}
+        public DropAction dropAction=DropAction.Restrict;
         public override long Dependent(Writer wr)
         {
             if (!Committed(wr,delpos)) return delpos;
@@ -54,6 +56,7 @@ namespace Pyrrho.Level2
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
 		public Drop(Reader rdr) : base (Type.Drop,rdr) {}
+        protected Drop(Type t, Reader rdr) : base(t, rdr) { }
         protected Drop(Drop x, Writer wr) : base(x, wr)
         {
             delpos = wr.Fix(x.delpos);
@@ -96,7 +99,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{ 
-			return "Drop ["+Pos(delpos)+"]"; 
+			return GetType().Name+" ["+Pos(delpos)+"]"; 
 		}
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -113,7 +116,7 @@ namespace Pyrrho.Level2
                         var r = (Record)that;
                         if (delpos == r.tabledefpos)
                             return ppos;
-                        for (var b = r.fields.First(); b != null; b = b.Next())
+                        for (var b = r.fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == delpos)
                                 return ppos;
                         break;
@@ -136,7 +139,7 @@ namespace Pyrrho.Level2
                         if (delpos == c.tabledefpos || delpos == c.defpos || delpos == c.reference)
                             return ppos;
                         for (var i = 0; i < c.columns.Count; i++)
-                            if (delpos == c.columns[i])
+                            if (delpos == c.columns[i].defpos)
                                 return ppos;
                         break;
                     }
@@ -168,9 +171,40 @@ namespace Pyrrho.Level2
 			return (pos==delpos)?new DBException("40073",delpos).Mix():null;
 		}
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var ob = (DBObject)db.objects[delpos];
+            return (ob==null)?(db,ro):ob.Cascade(db,db,ro,dropAction);
+        }
+    }
+    internal class Drop1 : Drop
+    {
+        public Drop1(long dp, Drop.DropAction a, long u, Transaction db) : base(Type.Drop1, dp, u, db) 
+        {
+            dropAction = a;
+        }
+        public Drop1(Reader rdr) : base(Type.Drop1, rdr) { }
+        public Drop1(Drop1 d, Writer wr) : base(d, wr) 
+        {
+            dropAction = d.dropAction;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new Drop1(this, wr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.WriteByte((byte)dropAction);
+            base.Serialise(wr);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            dropAction = (DropAction)rdr.ReadByte();
+            base.Deserialise(rdr);
+        }
+        public override string ToString()
+        {
+            return base.ToString() + " " + dropAction.ToString();
         }
     }
 }

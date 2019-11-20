@@ -67,7 +67,7 @@ namespace Pyrrho.Level2
         /// <param name="k"></param>
         /// <param name="rec"></param>
         /// <returns>-1,0,1 as usual</returns>
-        int Compare(PRow k, ATree<long,  TypedValue> rec)
+        int Compare(PRow k, ATree<long,  object> rec)
         {
             for (int i = 0; i < k.Length;i++ )
             {

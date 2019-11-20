@@ -34,12 +34,12 @@ namespace Pyrrho.Level2
         public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, long u,Transaction db)
             : this(Type.Update, old, tb, fl, u,db)
         { }
-        protected Update(Type t, TableRow old, Table tb,BTree<long,  TypedValue> fl, 
+        protected Update(Type t, TableRow old, Table tb,BTree<long,TypedValue> fl, 
             long u,Transaction db)
             : base(t,tb,fl,u,db)
         {
             _defpos = old.defpos;
-            prev = old.ppos;
+            prev = old.lastChange;
         }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, Reader rdr) : base(t, rdr) { }
@@ -58,8 +58,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(_defpos);
             wr.PutLong(prev);
+            wr.PutLong(_defpos);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -68,8 +68,8 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            _defpos = rdr.GetLong();
             prev = rdr.GetLong();
+            _defpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
@@ -81,7 +81,7 @@ namespace Pyrrho.Level2
                         var d = (Drop)that;
                         if (d.delpos == tabledefpos)
                             return ppos;
-                        for (var b = fields.First(); b != null; b = b.Next())
+                        for (var b = fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == d.delpos)
                                 return ppos;
                         break;
@@ -102,14 +102,54 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override Database Install(Database db, Role ro, long p)
+        /// <summary>
+        /// Add unchanged fields and fix indexes for an Update
+        /// </summary>
+        /// <param name="db"></param>
+        /// <returns></returns>
+        internal override BTree<long, TypedValue> _Fields(BTree<long,TypedValue> fl,
+            ref Database db)
         {
-            var tb = (Table)db.role.objects[tabledefpos];
-            tb += new TableRow(this, db);
-            return db + (db.schemaRole, tb,p);
+            var tb = (Table)db.objects[tabledefpos];
+            var was = ((TableRow)tb.tableRows[defpos]);
+            var ro = db.role;
+            tb = (Table)db.objects[tabledefpos];
+            var now = was.fields;
+            for (var b = fl.First(); b != null; b = b.Next())
+                now += (b.key(), b.value());
+            (db, ro) = was.Cascade(db, db, ro, 0, fl);
+            for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
+            {
+                var x = (Index)db.objects[xb.value()];
+                var ok = x.MakeKey(was.fields);
+                var nk = x.MakeKey(now);
+                if (x.reftabledefpos >= 0)
+                {
+                    var rx = (Index)db.objects[x.refindexdefpos];
+                    if (!rx.rows.Contains(nk))
+                        throw new DBException("23000", "missing foreign key ", nk);
+                }
+                if (ok._CompareTo(nk) != 0)
+                {
+                    x -= (ok,defpos);
+                    x += (nk, defpos);
+                    db += (x,db.loadpos);
+                }
+            }
+            return now;
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            // _Fields does the work of restrict/cascade and fixing indexes
+            var fl = _Fields(fields, ref db);
+            return (db+((Table)db.objects[tabledefpos]+(db,new TableRow(this, db, fl)),p),ro);
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
+        public override string ToString()
+        {
+            return base.ToString() + " Prev:" + Pos(prev);
+        }
     }
     internal class Update1 : Update
     {

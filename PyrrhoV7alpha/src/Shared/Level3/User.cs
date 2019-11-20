@@ -21,9 +21,9 @@ namespace Pyrrho.Level3
 	internal class User : Role
 	{
         internal const long
-            Password = -312, // string (hidden)
-            InitialRole = -313, // long
-            Clearance = -314; // Level
+            Password = -303, // string (hidden)
+            InitialRole = -304, // long
+            Clearance = -305; // Level
         public string pwd => (string)mem[Password]; // if "" will be set on next authentication
         public long initialRole => (long)(mem[InitialRole]??0);
         public Level clearance => (Level)mem[Clearance]??Level.D;

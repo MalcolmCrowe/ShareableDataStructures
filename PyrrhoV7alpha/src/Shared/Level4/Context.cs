@@ -34,13 +34,13 @@ namespace Pyrrho.Level4
     internal class Context 
 	{
         public readonly long cxid;
-        public readonly Role role;
         public readonly User user;
         internal Context next; // contexts form a stack (by nesting or calling)
         /// <summary>
         /// The current set of values of objects in the Context
         /// </summary>
-        internal TRow row =new TRow(); // row.values
+        internal TRow row = null; // row.values
+        internal bool rawCols = false;
         public RowSet data;
         public BList<Rvv> affected = BList<Rvv>.Empty;
         internal RowBookmark rb = null; // 
@@ -49,15 +49,14 @@ namespace Pyrrho.Level4
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty; 
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
-        internal BTree<Ident, Context> contexts = BTree<Ident,Context>.Empty;
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by Query
         /// </summary>
-        internal Ident.IdTree<DBObject> defs = Ident.IdTree<DBObject>.Empty;
-        /// <summary>
-        /// Information gathered from view definitions: corresponding identifiers, equality conditions
-        /// </summary>
-        internal Ident.PosTree<BTree<Ident,bool>> matching = Ident.PosTree<BTree<Ident,bool>>.Empty;
+        internal Ident.Idents defs = Ident.Idents.Empty;
+        // unresolved SqlValues
+        internal BTree<long, SqlValue> undef = BTree<long,SqlValue>.Empty;
+        // used SqlColRefs by From.defpos
+        internal BTree<long,BTree<long,SqlCol>> used = BTree<long, BTree<long, SqlCol>>.Empty;
         internal BTree<long,BTree<long, TypedValue>> matches = BTree<long,BTree<long, TypedValue>>.Empty;
         /// <summary>
         /// Used in Replace cascade
@@ -82,7 +81,9 @@ namespace Pyrrho.Level4
         /// </summary>
         internal BList<Ident> viewAliases = BList<Ident>.Empty;
         internal ExecuteStatus parse = ExecuteStatus.Obey;
-        internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty;
+        internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
+  //      internal BTree<CList<long>, BTree<CList<Domain>,Domain>> domains = 
+  //          BTree<CList<long>,BTree<CList<Domain>,Domain>>.Empty; // copied to and from Transaction
         public int rconflicts =0, wconflicts=0;
         /// <summary>
         /// Create an empty context for the transaction 
@@ -91,15 +92,14 @@ namespace Pyrrho.Level4
         internal Context(Database db)
         {
             next = null;
-            role = db.role;
             user = db.user;
             cxid = db.lexeroffset;
             rdC = (db as Transaction)?.rdC;
+//            domains = (db as Transaction)?.domains;
         }
         internal Context(Context cx)
         {
             next = cx;
-            role = cx.role;
             user = cx.user;
             cxid = cx.cxid;
             values = cx.values;
@@ -113,64 +113,64 @@ namespace Pyrrho.Level4
         }
         internal Context(Context c,Role r,User u) :this(c)
         {
-            role = r;
             user = u;
         }
         internal Context Add(Query q,RowBookmark r)
         {
             if (q!=null)
                 values += (q.defpos, r.row);
-            for (var b = r.row.dataType.columns.First(); b != null; b = b.Next())
-                values += (b.value().defpos, r.row[b.value().seq]);
+            for (var b = r.row.info.columns.First(); b != null; b = b.Next())
+                values += (b.value().defpos, r.row[b.key()]);
             row = r.row;
             rb = r;
             return this;
         }
         internal DBObject Add(DBObject ob)
         {
+            if (ob is ObInfo)
+            {
+                Console.WriteLine("Attempt to add ObInfo to Context");
+                return ob;
+            }
+            if (obs[ob.defpos] is DBObject oo && oo.depth != ob.depth)
+            {
+                var de = depths[oo.depth];
+                depths += (oo.depth, de - ob.defpos);
+            }
             if (ob != null && ob.defpos != -1)
             {
                 obs += (ob.defpos, ob);
+                if (ob.mem.Contains(DBObject._Alias))
+                    defs += (new Ident(ob.alias, 0), ob);
                 var dp = depths[ob.depth] ?? BTree<long, DBObject>.Empty;
                 depths += (ob.depth, dp + (ob.defpos, ob));
             }
             return ob;
         }
-        internal DBObject Lookup(Ident ic)
+        /// <summary>
+        /// Context undef is used for undefined SqlColRefs in QuerySpec
+        /// and incomplete SqlColRefs in From
+        /// </summary>
+        /// <param name="qdef"></param>
+        /// <param name="colpos"></param>
+        internal void Unresolved(SqlValue sc)
         {
-            if (ic == null)
-                return null;
-            if (defs[ic] is DBObject ob)
-                return ob;
-            if (ic.segpos >= 0 && obs[ic.segpos] is DBObject r)
-            {
-                defs += (ic, r);
-                return r;
-            }
-            var t = ic.sub;
-            if (t == null)
-                return null;
-            var h = new Ident(ic.ident, ic.segpos);
-            if (defs[h] is From fm && fm.rowType.names[t.ident] is Selector c)
-            {
-                defs += (ic, c);
-                return c;
-            }
-            return null;
+            undef += (sc.defpos,sc);
         }
         internal DBObject Add(Transaction tr,long p)
         {
-            return Add((DBObject)tr.role.objects[p]);
+            return Add((DBObject)tr.objects[p]);
         }
         /// <summary>
         /// Update the Query processing context in a cascade to implement a single replacement!
         /// </summary>
         /// <param name="was"></param>
         /// <param name="now"></param>
-        internal void Replace(DBObject was, DBObject now)
+        internal DBObject Replace(DBObject was, DBObject now)
         {
+            Add(now);
             if (was == now)
-                return;
+                return now;
             done = new BTree<long, DBObject>(was.defpos, now);
             // scan by depth to perform the replacement
             for (var b = depths.Last(); b != null; b = b.Previous())
@@ -188,9 +188,36 @@ namespace Pyrrho.Level4
             // now use the done list to update defs
             for (var b = defs.First(); b != null; b = b.Next())
             {
-                var v = b.value();
+                var v = b.value().Item1;
                 if (done[v.defpos] is DBObject ob && ob != v)
-                    defs += (b.key(), ob);
+                    defs = defs+(new Ident(b.key(),0),ob);
+            }
+            for (var b = done.First(); b != null; b = b.Next())
+                obs += (b.key(), b.value());
+            return now;
+        }
+        /// <summary>
+        /// We have just constructed a new From. Use it to replace any
+        /// matching unresolved table references.
+        /// </summary>
+        /// <param name="f"></param>
+        internal void TableRef(From f)
+        {
+            done = BTree<long, DBObject>.Empty;
+            if (!defs.Contains(f.name))
+                defs += (new Ident(f.name, 0), f);
+            for (var b = depths.Last(); b != null; b = b.Previous())
+            {
+                var bv = b.value();
+                for (var c = bv.First(); c != null; c = c.Next())
+                {
+                    var co = c.value();
+                    var cv = co?.TableRef(this, f);
+                    if (co!=cv && cv!=null)
+                        bv += (c.key(), cv);
+                }
+                if (bv != b.value())
+                    depths += (b.key(), bv);
             }
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
@@ -275,7 +302,6 @@ namespace Pyrrho.Level4
     }
     internal class FunctionData
     {
-        internal WindowSpecification wspec;
         // all the following data is set (in the Context) during computation of this WindowSpec
         // The base RowSet should be a ValueRowSet to support concurrent enumeration
         /// <summary>

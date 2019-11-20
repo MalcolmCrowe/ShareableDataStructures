@@ -18,7 +18,7 @@ namespace Tpcc
 		/// Required designer variable.
 		/// </summary>
 		private System.ComponentModel.Container components = null;
-		int wid;
+		public int wid;
         Form1 form;
 		public int did,cwid=1,cdid,cid;
 		public string clast;

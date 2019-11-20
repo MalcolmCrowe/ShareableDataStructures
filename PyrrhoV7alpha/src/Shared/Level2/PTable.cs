@@ -97,33 +97,34 @@ namespace Pyrrho.Level2
             name = rdr.GetString();
 			base.Deserialise(rdr);
 		}
-/*        internal override void Install(Database db,Role ro,long p)
-        {
-            var db = rdr.db;
-            var ro = db.role;
-            if (ro == null)
-                throw new DBException("42105", db.name).Mix();
-            if (ro.names.Contains(t.name))
-                throw new DBException("42153", name).Mix();
-            var sr = Grant.Privilege.Insert |
-                Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
-                Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences;
-            var rs = new BTree<long, DataTypeTracker>(ro.defpos,
-                new DataTypeTracker(ppos, TableType.Table, sr, null));
-            Table s = new Table(this, ro, db.user, rs);
-            var dfs = ro.defs;
-            var rr = new RoleObject(ppos, name);
-            BTree<long, RoleObject>.Add(ref dfs, s.defpos, rr);
-            ro = new Role(ro, dfs);
-            name.segpos = defpos;
-            ro += (name, defpos);
-            rdr.db = db.Change(p, ro, s);
-        } */
+        /*        internal override (Database, Role) Install(Database db,Role ro,long p)
+                {
+                    var db = rdr.db;
+                    var ro = db.role;
+                    if (ro == null)
+                        throw new DBException("42105", db.name).Mix();
+                    if (ro.names.Contains(t.name))
+                        throw new DBException("42153", name).Mix();
+                    var sr = Grant.Privilege.Insert |
+                        Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
+                        Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences;
+                    var rs = new BTree<long, DataTypeTracker>(ro.defpos,
+                        new DataTypeTracker(ppos, TableType.Table, sr, null));
+                    Table s = new Table(this, ro, db.user, rs);
+                    var dfs = ro.defs;
+                    var rr = new RoleObject(ppos, name);
+                    BTree<long, RoleObject>.Add(ref dfs, s.defpos, rr);
+                    ro = new Role(ro, dfs);
+                    name.segpos = defpos;
+                    ro += (name, defpos);
+                    rdr.db = db.Change(p, ro, s);
+                    return (rdr.db,ro)
+                } */
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
         /// <returns>the string representation</returns>
-		public override string ToString()
+        public override string ToString()
 		{
 			return "PTable "+name;
 		}
@@ -143,9 +144,19 @@ namespace Pyrrho.Level2
             return base.Conflicts(db, tr, that);
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            return db + (ro, new Table(this),p);
+            // The definer is the given role
+            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
+                Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
+                Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences |
+                Grant.Privilege.References | Grant.Privilege.GrantReferences |
+                Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
+                Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
+            var tb = new Table(this);
+            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            return (db + (ro,p) + (tb,p),ro);
         }
     }
     internal class PTable1 : PTable
@@ -295,7 +306,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }

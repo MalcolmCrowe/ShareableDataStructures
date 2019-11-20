@@ -20,8 +20,8 @@ namespace Pyrrho.Level3
     internal class Method : Procedure
     {
         internal const long
-            TypeDef = -170, // UDType
-            MethodType = -171; // PMethod.MethodType
+            MethodType = -165, // PMethod.MethodType
+            TypeDef = -166; // UDType
         /// <summary>
         /// The owning type definition
         /// </summary>
@@ -71,6 +71,7 @@ namespace Pyrrho.Level3
             var au = new Context(cx,tr.role, tr.user);
             var bd = body;
             var ut = udType;
+            var ui = (ObInfo)tr.role.obinfos[ut.defpos];
             var targ = var.Eval(tr, au);
             var act = new CalledActivation(tr, au, this, ut);
             var acts = new TypedValue[(int)actIns.Count];
@@ -79,9 +80,9 @@ namespace Pyrrho.Level3
             for (int i = 0; i < actIns.Count; i++)
                 act.values+=(ins[i].defpos, acts[i]);
             if (methodType != PMethod.MethodType.Constructor)
-                for (int i = 0; i < ut.Length; i++)
+                for (int i = 0; i < ui.Length; i++)
                 {
-                    var se = ut.columns[i];
+                    var se = ui.columns[i];
                     act.values += (se.defpos,cx.values[se.defpos]);
                 }
             act.proc.body.Obey(tr,cx);
@@ -96,10 +97,10 @@ namespace Pyrrho.Level3
             }
             if (methodType == PMethod.MethodType.Constructor)
             {
-                var ks = new TypedValue[ut.Length];
-                for (int i = 0; i < ut.Length; i++)
-                    ks[i] = act.values[ut.columns[i].defpos];
-                r = new TRow(ut, ks);
+                var ks = new TypedValue[ui.Length];
+                for (int i = 0; i < ui.Length; i++)
+                    ks[i] = act.values[ui.columns[i].defpos];
+                r = new TRow(ui, ks);
             }
             for (int i = 0; i < ins.Count; i++)
             {
@@ -108,17 +109,6 @@ namespace Pyrrho.Level3
                     ac.values+=(actIns[i].defpos, acts[i]);
             } 
             return r;
-        }
-        /// <summary>
-        /// test for depndenccy during drop/rename
-        /// </summary>
-        /// <param name="t">the drop/rename transaction</param>
-        /// <returns>the nature of the depedency</returns>
-        public override Sqlx Dependent(Transaction t,Context cx)
-        {
-            if (t.refObj.defpos == udType.defpos)
-                return Sqlx.DROP;
-            return base.Dependent(t,cx);
         }
     }
 

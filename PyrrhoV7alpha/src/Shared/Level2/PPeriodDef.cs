@@ -144,21 +144,16 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            var tb = (Table)db.mem[tabledefpos];
-            var sc = (TableColumn)db.mem[startcol];
-            var dt = new Domain(Sqlx.PERIOD, sc.domain);
-            db += (dt,p);
-            db += (ro, dt,p);
-            var pd = new PeriodDef(this, dt, ro);
-            var rt = (Table)ro.objects[tabledefpos];
-            rt += (DBObject.Properties, rt.properties + (pd.name, pd.defpos));
-            db += (ro,rt,p);
-            db += (ro,pd,p);
-            tb += (Table.SystemTime, pd);
-            db += (tb,p);
-            return db;
+            var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,db);
+            var tb = (Table)db.objects[tabledefpos];
+            var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
+            var oc = new ObInfo(ppos, periodname, Domain.Period, priv);
+            var oi = (ObInfo)ro.obinfos[tabledefpos];
+            var se = new SqlValue(ppos,periodname);
+            ro = ro + oc + (oi + se);
+            return (db + (ro,p) + (pd,p),ro);
         }
     }
 }

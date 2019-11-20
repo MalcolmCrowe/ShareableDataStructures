@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2019
@@ -137,16 +138,18 @@ namespace Pyrrho.Common
         /// The nominal value type to be used (actual values can be subtypes)
         /// </summary>
         public readonly Domain vType;
+        public readonly Role role;
         /// <summary>
         /// Constructor:
         /// </summary>
         /// <param name="cx">The context for user-defined types etc</param>
         /// <param name="ti">The tree info</param>
         /// <param name="vT">The value type</param>
-        internal SqlTree(TreeInfo ti, Domain vT) : base(ti.headType)
+        internal SqlTree(TreeInfo ti, Role ro, Domain vT) : base(ti.headType)
         {
             info = ti;
             vType = vT;
+            role = ro;
         }
         /// <summary>
         /// private Constructor: for tree operations
@@ -296,5 +299,44 @@ namespace Pyrrho.Common
             return (SqlTree)tree.Remove(k);
         }
     }
-
+    internal class CList<K> : BList<K>,IComparable where K : IComparable
+    {
+        public new static readonly CList<K> Empty = new CList<K>();
+        protected CList() : base() { }
+        public CList(K k) : base(k) { }
+        protected CList(Bucket<int, K> r) : base(r) { }
+        protected override ATree<int, K> Add(int k, K v)
+        {
+            return new CList<K>(base.Add(k, v).root);
+        }
+        protected override ATree<int, K> Remove(int k)
+        {
+            return new CList<K>(base.Remove(k).root);
+        }
+        public static CList<K> operator +(CList<K> b, (int, K) x)
+        {
+            return (CList<K>)b.Add(x.Item1, x.Item2);
+        }
+        public static CList<K> operator +(CList<K> b, K k)
+        {
+            return (CList<K>)b.Add((int)b.Count, k);
+        }
+        public static CList<K> operator -(CList<K> b, int i)
+        {
+            return (CList<K>)b.Remove(i);
+        }
+        public int CompareTo(object obj)
+        {
+            var that = (CList<K>)obj;
+            var b = First();
+            var tb = that.First();
+            for (;b!=null && tb!=null; b=b.Next(),tb=tb.Next())
+            {
+                var c = b.value().CompareTo(tb.value());
+                if (c != 0)
+                    return c;
+            }
+            return (b == null) ? ((tb == null) ? 0 : 1) : -1;
+        }
+    }
 }

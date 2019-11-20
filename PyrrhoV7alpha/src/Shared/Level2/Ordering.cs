@@ -116,9 +116,12 @@ namespace Pyrrho.Level2
                 flags + Pos(funcdefpos);
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var dm = (Domain)db.objects[typedefpos];
+            dm = dm + (Domain.OrderFunc, (Procedure)db.objects[funcdefpos])
+                +(Domain.OrderCategory,flags);
+            return (db + (dm, p),ro);
         }
     }
 }

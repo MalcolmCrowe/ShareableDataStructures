@@ -19,7 +19,7 @@ namespace Tpcc
 		/// </summary>
 		private System.ComponentModel.Container components = null;
         public Form1 form;
-        int wid;
+        public int wid;
         public int did;
 		decimal c_balance;
 		string c_first;

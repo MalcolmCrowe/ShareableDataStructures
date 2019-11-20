@@ -30,11 +30,14 @@ namespace Test
             try
             {
                 Console.WriteLine("2 September 2019 Respeatable tests");
-                Console.WriteLine("Ensure testdb not present in database folder for any of");
-                Console.WriteLine("Test"); 
-                Console.WriteLine("Test 10 0");
-                Console.WriteLine("Test 0 0 commit");
-                Console.WriteLine("The next message should be 'Testing complete'");
+                if (args.Length == 0)
+                {
+                    Console.WriteLine("Ensure testdb not present in database folder for any of");
+                    Console.WriteLine("Test");
+                    Console.WriteLine("Test 10 0");
+                    Console.WriteLine("Test 0 0 commit");
+                    Console.WriteLine("The next message should be 'Testing complete'");
+                }
                 new Program(args).Tests();
                 Console.WriteLine("Testing complete");
                 Console.ReadLine();
@@ -73,6 +76,7 @@ namespace Test
             Test11(test);
             Test12(test);
             Test13(test);
+            Test14(test);
         }
         void Test1(int t)
         {
@@ -141,20 +145,20 @@ namespace Test
             if (t > 0 && t != 5)
                 return;
             Begin();
-            conn.Act("create table a(b int,c int)");
-            conn.Act("insert into a values(17,15)");
-            conn.Act("insert into a values(23,6)");
-            CheckResults(5, 1,"select * from a", "[{B:17,C:15},{B:23,C:6}]");
-            CheckResults(5, 2,"select b-3 as f,22 as g from a", "[{F:14,G:22},{F:20,G:22}]");
-            CheckResults(5, 3,"select (a.b) as f,(c) from a", "[{F:17,C:15},{F:23,C:6}]");
-            CheckResults(5, 4,"select b+3,d.c from a d", "[{Col0:20,C:15},{Col0:26,C:6}]");
-            CheckResults(5, 5,"select (b as d,c) from a", "[{Col0:(D=17,C=15)},{Col0:(D=23,C=6)}]");
-            CheckResults(5, 6,"select * from a order by c", "[{B:23,C:6},{B:17,C:15}]");
-            CheckResults(5, 7,"select * from a order by b desc", "[{B:23,C:6},{B:17,C:15}]");
-            CheckResults(5, 8,"select * from a order by b+c desc", "[{B:17,C:15},{B:23,C:6}]");
-            CheckResults(5, 9,"select sum(b) from a", "[{SUM:40}]");
-            CheckResults(5, 10,"select max(c),min(b) from a", "[{MAX:15,MIN:17}]");
-            CheckResults(5, 11,"select count(c) as d from a where b<20", "[{D:1}]");
+            conn.Act("create table f(b int,c int)");
+            conn.Act("insert into f values(17,15)");
+            conn.Act("insert into f values(23,6)");
+            CheckResults(5, 1,"select * from f", "[{B:17,C:15},{B:23,C:6}]");
+            CheckResults(5, 2,"select b-3 as h,22 as g from f", "[{H:14,G:22},{H:20,G:22}]");
+            CheckResults(5, 3,"select (f.b) as h,(c) from f", "[{H:17,C:15},{H:23,C:6}]");
+            CheckResults(5, 4,"select b+3,d.c from f d", "[{Col0:20,Col1:15},{Col0:26,Col1:6}]");
+            CheckResults(5, 5,"select (b as d,c) from f", "[{Col0:(D=17,C=15)},{Col0:(D=23,C=6)}]");
+            CheckResults(5, 6,"select * from f order by c", "[{B:23,C:6},{B:17,C:15}]");
+            CheckResults(5, 7,"select * from f order by b desc", "[{B:23,C:6},{B:17,C:15}]");
+            CheckResults(5, 8,"select * from f order by b+c desc", "[{B:17,C:15},{B:23,C:6}]");
+            CheckResults(5, 9,"select sum(b) from f", "[{SUM:40}]");
+            CheckResults(5, 10,"select max(c),min(b) from f", "[{MAX:15,MIN:17}]");
+            CheckResults(5, 11,"select count(c) as d from f where b<20", "[{D:1}]");
             Rollback();
         }
         void Test6(int t)
@@ -256,7 +260,7 @@ namespace Test
             r.Close();
             var task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 1, "Commit", "Transaction rollback - new key conflict with empty query");
+            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict: Read conflict");
             Begin();
             cmd.CommandText = "select * from RDC where A=52";
             r = cmd.ExecuteReader();
@@ -269,7 +273,7 @@ namespace Test
             CheckResults(10,2,"select * from RDC","[{A:42,B:'the product of 6 and 7'},{A:52,B:'Weeks in the year'}]");
             task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict");
+            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict: Read conflict");
         }
         void Test10A()
         {
@@ -290,20 +294,20 @@ namespace Test
             if (qry == 0 || qry == 1)
             {
                 Begin();
-                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
-                CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Value of b cannot be null");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as (b+c))");
+                CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Null value not allowed in column B");
             }
             if (qry == 0 || qry == 2)
             {
                 Begin();
-                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as (b+c))");
                 conn.Act("insert into cs(b) values(3)");
-                CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Illegal value for generated column");
+                CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Attempt to assign to a non-updatable column");
             }
             if (qry == 0 || qry == 3)
             {
                 Begin();
-                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as (b+c))");
                 conn.Act("insert into cs(b) values(3)");
                 CheckResults(11, 3, "select * from cs", "[{B:3,C:4,D:7}]");
             }
@@ -319,16 +323,16 @@ namespace Test
             conn.Act("insert into sce values(13,'Bakers')");
             conn.Act("insert into sce values(14,'Fortnight')");
             conn.Act("create table dst(c int)");
-            conn.Act("insert into dst select a from sce where b<'H'");
+            conn.Act("insert into dst (select a from sce where b<'H')");
             CheckResults(12, 1, "select * from dst", "[{C:13},{C:14}]");
             CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
-                "[{a:12},{a:14}]");
+                "[{A:12},{A:14}]");
             CheckResults(12, 3, "select * from dst where c in (select a from sce where b='Bakers')",
-                "[{c:13}]");
-            conn.Act("insert into dst(c) select max(x.a)+4 from sce x where x.b<'H'");
+                "[{C:13}]");
+            conn.Act("insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
             CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
-            conn.Act("insert into dst select min(x.c)-3 from dst x");
-            CheckResults(12, 5, "select * from dst", "[{C:13},{cC:14},{C:18},{C:10}]");
+            conn.Act("insert into dst (select min(x.c)-3 from dst x)");
+            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
             Rollback();
         }
         void Test13(int t)
@@ -340,7 +344,7 @@ namespace Test
             conn.Act("insert into ad values(20,'Twenty')");
             if (qry == 0 || qry == 1)
             {
-                CheckExceptionNonQuery(13, 1, "alter ad add c char notnull", "Table is not empty");
+                CheckExceptionNonQuery(13, 1, "alter table ad add c char not null", "Table is not empty");
                 if (!commit)
                 {
                     Begin();
@@ -348,24 +352,26 @@ namespace Test
                     conn.Act("insert into ad values(20,'Twenty')");
                 }
             }
-            conn.Act("alter ad add c char default 'XX'");
-            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty',C:'XX'}]");
-            conn.Act("alter ad drop b");
-            CheckResults(13,3,"select * from ad", "[{A:20,C:'XX'}]");
-            conn.Act("alter ad add primary key(a)");
+            conn.Act("alter table ad add c char default 'XX'");
+            conn.Act("insert into ad(a,b) values(2,'Two')");
+            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]");
+            conn.Act("alter table ad drop b");
+            CheckResults(13,3,"select * from ad", "[{A:20},{A:2,C:'XX'}]");
+            conn.Act("alter table ad add primary key(a)");
             conn.Act("insert into ad values(21,'AB')");
             conn.Act("create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
-                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Referential constraint violation");
+                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: foreign key DE(14)");
                 if (!commit)
                 {
                     Begin();
                     conn.Act("create table ad(a int,b char)");
                     conn.Act("insert into ad values(20,'Twenty')");
-                    conn.Act("alter ad add c char default 'XX'");
-                    conn.Act("alter ad drop b");
-                    conn.Act("alter ad add primary key(a)");
+                    conn.Act("alter table ad add c char default 'XX'");
+                    conn.Act("insert into ad(a,b) values(2,'Two')");
+                    conn.Act("alter table ad drop b");
+                    conn.Act("alter table ad add primary key(a)");
                     conn.Act("insert into ad values(21,'AB')");
                     conn.Act("create table de (d int references ad)");
                 }
@@ -373,15 +379,16 @@ namespace Test
             conn.Act("insert into de values(21)");
             if (qry == 0 || qry == 5)
             {
-                CheckExceptionNonQuery(13, 5, "delete from ad where c='AB'", "Referential constraint: illegal delete");
+                CheckExceptionNonQuery(13, 5, "delete from ad where c='AB'", "Integrity constraint: RESTRICT - foreign key in use");
                 if (!commit)
                 {
                     Begin();
                     conn.Act("create table ad(a int,b char)");
                     conn.Act("insert into ad values(20,'Twenty')");
-                    conn.Act("alter ad add c char default 'XX'");
-                    conn.Act("alter ad drop b");
-                    conn.Act("alter ad add primary key(a)");
+                    conn.Act("alter table ad add c char default 'XX'");
+                    conn.Act("insert into ad(a,b) values(2,'Two')");
+                    conn.Act("alter table ad drop b");
+                    conn.Act("alter table ad add primary key(a)");
                     conn.Act("insert into ad values(21,'AB')");
                     conn.Act("create table de (d int references ad)");
                     conn.Act("insert into de values(21)");
@@ -389,51 +396,53 @@ namespace Test
             }
             if (qry == 0 || qry == 6)
             {
-                CheckExceptionNonQuery(13, 6, "drop ad", "Restricted by reference");
+                CheckExceptionNonQuery(13, 6, "drop ad", "RESTRICT: Primary index");
                 if (!commit)
                 {
                     Begin();
                     conn.Act("create table ad(a int,b char)");
                     conn.Act("insert into ad values(20,'Twenty')");
-                    conn.Act("alter ad add c char default 'XX'");
-                    conn.Act("alter ad drop b");
-                    conn.Act("alter ad add primary key(a)");
+                    conn.Act("alter table ad add c char default 'XX'");
+                    conn.Act("insert into ad(a,b) values(2,'Two')");
+                    conn.Act("alter table ad drop b");
+                    conn.Act("alter table ad add primary key(a)");
                     conn.Act("insert into ad values(21,'AB')");
                     conn.Act("create table de (d int references ad)");
                     conn.Act("insert into de values(21)");
                 }
             }
-            conn.Act("alter ad column c drop default");
-            CheckResults(13,7,"select * from ad", "[{A:20},{A:21,C:'AB'}]");
-            if (qry == 0 || qry == 8)
-            {
-                CheckExceptionNonQuery(13, 8, "alter ad drop key(a)", "Restricted by reference");
-                if (!commit)
-                {
-                    Begin();
-                    conn.Act("create table ad(a int,b char)");
-                    conn.Act("insert into ad values(20,'Twenty')");
-                    conn.Act("alter ad add c char default 'XX'");
-                    conn.Act("alter ad drop b");
-                    conn.Act("alter ad add primary key(a)");
-                    conn.Act("insert into ad values(21,'AB')");
-                    conn.Act("create table de (d int references ad)");
-                    conn.Act("insert into de values(21)");
-                    conn.Act("alter ad column c drop default");
-                }
-            }
-            conn.Act("drop de");
-            conn.Act("alter ad drop key(a)");
-            // we don't get 'XX' here because the DEFAULT was not used inm an insert into ??
-            CheckResults(13,9, "select * from ad", "[{A:20},{A:21,C:'AB'}]");
-            conn.Act("insert ad(a) values(13)");
-            CheckResults(13, 10, "select * from ad", "[{A:20},{A:21,C:'AB'},{A:13}]");
+            conn.Act("drop de cascade");
+            conn.Act("alter table ad drop primary key(a)");
+            CheckResults(13,7, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'}]");
+            conn.Act("insert into ad(a) values(13)");
+            CheckResults(13,8, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
             conn.Act("drop ad");
             if (qry == 0 || qry == 11)
             {
-                CheckExceptionQuery(13, 11, "select * from ad", "No table ad");
+                CheckExceptionQuery(13, 11, "select * from ad", "Table AD undefined");
                 Begin();
             }
+            Rollback();
+        }
+        void Test14(int t)
+        {
+            if (t > 0 && t != 14)
+                return;
+            conn.Act("create table fi(a int primary key, b char)");
+            conn.Act("create table se(c char primary key, d int references fi on delete cascade)");
+            conn.Act("insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
+            conn.Act("insert into se values('johnson', 2019),('elizabeth',1953),('disaster',2019)");
+            conn.Act("insert into se values('normans',1066),('hastings', 1066)");
+            conn.Act("delete from fi where a = 1066");
+            CheckResults(14, 1, "table se", "[{C:'disaster',D:2019},{C:'elizabeth',D:1953},{C:'johnson',D:2019}]");
+            conn.Act("alter table se set (d) references fi on delete restrict");
+            CheckExceptionNonQuery(14,2,"delete from fi where a = 2019","Integrity constraint: RESTRICT");
+            conn.Act("alter table se set(d) references fi on delete set null on update cascade");
+            Begin();
+            conn.Act("update fi set a = 2020 where a = 2019");
+            CheckResults(14,3, "table se", "[{C:'disaster',D:2020},{C:'elizabeth',D:1953},{C:'johnson',D:2020}]");
+            conn.Act("delete from fi where a = 2020");
+            CheckResults(14,4, "table se", "[{C:'disaster'},{C:'elizabeth',D:1953},{C:'johnson'}]");
             Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)

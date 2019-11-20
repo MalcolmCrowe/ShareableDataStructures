@@ -61,7 +61,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The definition of the trigger
         /// </summary>
-		public string def;
+		public Executable def;
         public override long Dependent(Writer wr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
@@ -85,7 +85,7 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PTrigger(string tc, long tb, int ty, long[] cs, string or, 
-            string nr, string ot, string nt, string def, long u, Transaction tr)
+            string nr, string ot, string nt, Executable def, long u, Transaction tr)
 			:this(Physical.Type.PTrigger,tc,tb,ty,cs,or,nr,ot,nt,def,u, tr)
 		{
 		}
@@ -105,7 +105,7 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, long[] cs, 
-            string or, string nr, string ot, string nt, string df, long u, Transaction tr)
+            string or, string nr, string ot, string nt, Executable df, long u, Transaction tr)
 			:base(tp,u, tr)
 		{
             name = tc;
@@ -165,7 +165,7 @@ namespace Pyrrho.Level2
             wr.PutString(newRow?.ToString()??"");
             wr.PutString(oldTable?.ToString()??"");
             wr.PutString(newTable?.ToString()??"");
-            wr.PutString(def);
+            wr.PutString(def.ToString());
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -185,7 +185,7 @@ namespace Pyrrho.Level2
 			newRow = rdr.GetString();
             oldTable = rdr.GetString();
             newTable = rdr.GetString();
-            def = rdr.GetString();
+            def = new Parser(rdr.db, rdr.context).ParseTriggerDefClause(rdr.GetString());
 			base.Deserialise(rdr);
 		}	
         /// <summary>
@@ -236,14 +236,14 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var tb = (Table)db.mem[tabledefpos];
             var tg = new Trigger(this, db);
             tb = tb.AddTrigger(tg, db);
-            db += (tb,p);
-            db += (tg,p);
-            return db;
+            ro += new ObInfo(defpos, name);
+            db = db + (ro, p) + (tb,p) + (tg,p);
+            return (db,ro);
         }
     }
 }

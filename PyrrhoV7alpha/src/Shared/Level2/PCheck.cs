@@ -1,6 +1,7 @@
 using System;
 using Pyrrho.Common;
 using Pyrrho.Level3;
+using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2019
@@ -21,6 +22,7 @@ namespace Pyrrho.Level2
 		public string name;
         public long defpos;
 		public string check;
+        public SqlValue test;
         public override long Dependent(Writer wr)
         {
             if (!Committed(wr,ckobjdefpos)) return ckobjdefpos;
@@ -44,7 +46,12 @@ namespace Pyrrho.Level2
             defpos = ppos;
             name = nm ?? throw new DBException("42102");
 			check = cs;
-		}
+            var cx = new Context(tr);
+            cx.Add(tr.objects[ckobjdefpos] as DBObject);
+            if (subobjdefpos!=-1)
+                cx.Add(tr.objects[subobjdefpos] as DBObject);
+            test = new Parser(tr, cx).ParseSqlValue(check);
+        }
         /// <summary>
         /// Constructor: A new check constraint from the buffer
         /// </summary>
@@ -58,6 +65,7 @@ namespace Pyrrho.Level2
             defpos = wr.Fix(x.defpos);
             name = x.name;
             check = x.check;
+            test = (SqlValue)x.test.Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -93,7 +101,12 @@ namespace Pyrrho.Level2
             defpos = ppos;
 			check = rdr.GetString();
 			base.Deserialise(rdr);
-		}
+            var cx = rdr.context;
+            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject);
+            if (subobjdefpos != -1)
+                cx.Add(rdr.db.objects[subobjdefpos] as DBObject);
+            test = new Parser(rdr.db).ParseSqlValue(check);
+        }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
             switch(that.type)
@@ -110,13 +123,12 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             var ck = new Check(this, db);
-            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p); // add the check to the schema role and add the updated object
-            var ob = ro.objects[ck.checkobjpos];
-            db = db + (ck,p) + (ro,ck,p); // add the check itself to both roles
-            return db;
+            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p);
+            ro = ro + new ObInfo(defpos, name);
+            return (db + (ro,p)+(ck,p),ro); 
         }
     }
     /// <summary>

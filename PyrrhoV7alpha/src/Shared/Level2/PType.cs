@@ -61,7 +61,7 @@ namespace Pyrrho.Level2
 		protected PType(Type t, Reader rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
         {
-            structdefpos = wr.Fix(x.structdefpos);
+            structdef = x.structdef;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -74,7 +74,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(structdefpos);
+            wr.PutLong(structdef?.defpos??-1L);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -83,7 +83,9 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            structdefpos = rdr.GetLong();
+            var sp = rdr.GetLong();
+            if (sp!=-1)
+                structdef = rdr.role.obinfos[sp] as Domain;
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -94,7 +96,7 @@ namespace Pyrrho.Level2
 		{ 
 			string a = "PType "+name + " ";
             a += base.ToString();
-            a += "[" + structdefpos + "]";
+            a += "[" + structdef.defpos + "]";
 			return a;
 		}
         public override long Conflicts(Database db, Transaction tr, Physical that)
@@ -102,11 +104,11 @@ namespace Pyrrho.Level2
             switch(that.type)
             {
                 case Type.Drop:
-                        if (structdefpos == ((Drop)that).delpos)
+                        if (structdef.defpos == ((Drop)that).delpos)
                             return ppos;
                     break; // base class has other reasons for concern
                 case Type.Change:
-                    if (structdefpos == ((Change)that).affects)
+                    if (structdef.defpos == ((Change)that).affects)
                         return ppos;
                     break; // base class has other reasons for concern
             }

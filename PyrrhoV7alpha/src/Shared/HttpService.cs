@@ -230,7 +230,7 @@ namespace Pyrrho
             }
             if (chartType.flags != 0)
             {
-                for (var co = rs?.rowType.names.First(); co != null; co = co.Next())
+                for (var co = rs?.rowType.columns.First(); co != null; co = co.Next())
                 {
                     var sl = co.value();
                     var m = sl.Meta();
@@ -269,7 +269,7 @@ namespace Pyrrho
             {
                 sbuild.Append("<table border><tr>");
                 for (int i = 0; i < rs.rowType.Length; i++)
-                    sbuild.Append("<th>" + rs.rowType.columns[i].name+ "</th>");
+                    sbuild.Append("<th>" + rs.rowType.columns[i].name + "</th>");
                 sbuild.Append("</tr>");
             }
         }
@@ -566,7 +566,7 @@ namespace Pyrrho
                 rc[i] = e.row[dt.columns[i].defpos];
             var fm = tp.qry as From;
             var tb = fm.target as Table;
-            sbuild.Append(dt.Xml(tp._tr,_cx,tb?.defpos??-1, new TRow(dt, rc)));
+            sbuild.Append(dt.Xml(tp._tr,_cx,tb?.defpos??-1L, new TRow(dt, rc)));
         }
     }
     /// <summary>
@@ -580,7 +580,6 @@ namespace Pyrrho
         protected HttpListenerContext client;
         string agent = null;
         protected PyrrhoWebOutput woutput;
-        protected Transaction db;
         StringBuilder sbuild;
         /// <summary>
         /// the database path
@@ -623,6 +622,7 @@ namespace Pyrrho
                     return;
                 }
                 string role = dbn.ident;
+                var db = Database.Get(dbn.ident).Transact(Transaction.TransPos,"");
                 var h = client.Request.Headers["Authorization"];
                 var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;
@@ -651,7 +651,7 @@ namespace Pyrrho
                         Console.WriteLine("If-Match: " + et);
                 }
                 var cx = new Context(db);
-                db.Execute(cx,client.Request.HttpMethod, "H",pathbits, client.Request.Headers["Content-Type"],
+                db.Execute(cx,client.Request.HttpMethod,"H",pathbits, client.Request.Headers["Content-Type"],
                     sb, et);
                 woutput.SendResults(client.Response,cx,"");
                 return;

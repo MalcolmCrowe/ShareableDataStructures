@@ -45,15 +45,6 @@ namespace Pyrrho.Level4
         /// </summary>
         public string signature;
     }
-    /// <summary>
-    /// Helper for parsing a GenerationRule (stored in PColumn as strings)
-    /// </summary>
-    internal class GenerationRule
-    {
-        public string gfs = "";
-        public string upd = "";
-        public PColumn.GenerationRule gen = PColumn.GenerationRule.No; // or START or END for ROW START|END
-    }
     internal class TablePeriodDefinition
     {
         public Sqlx pkind = Sqlx.SYSTEM_TIME;
@@ -164,23 +155,21 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="d"></param>
         /// <returns></returns>
-        internal Domain Pick(Domain d)
+        internal ObInfo Pick(ObInfo d)
         {
             var cs = d.columns;
             if (cols != BList<string>.Empty)
             {
-                cs = BList<Selector>.Empty;
+                cs = BList<SqlValue>.Empty;
                 for (var b = cols.First(); b != null; b = b.Next())
-                    if (d.names[b.value()] is Selector s)
-                        cs += s+(Selector.Seq,b.key());
-                    else
+                        cs += d.ColFor(b.value())??
                         throw new DBException("42112", b.value());
             }
             if (tablealias != null)
                 d += (Basis.Name, tablealias);
-            return d + (Domain.Columns, cs);
+            return d + (ObInfo.Columns, cs);
         }
-        internal Domain Apply(Domain d)
+        internal ObInfo Apply(ObInfo d)
         {
             var cs = d.columns;
             if (cols != BList<string>.Empty)
@@ -193,7 +182,7 @@ namespace Pyrrho.Level4
             }
             if (tablealias != null)
                 d += (Basis.Name, tablealias);
-            return d + (Domain.Columns, cs);
+            return d + (ObInfo.Columns, cs);
         }
     }
     /// <summary>

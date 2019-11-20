@@ -101,7 +101,7 @@ namespace Pyrrho.Level4
             rw[2] = new TInt(df);
             rw[3] = new TInt(_pt.ppos);
             rw[4] = new TInt(_pt.time);
-            for (var c = rc.fields.First(); c != null; c = c.Next())
+            for (var c = rc.fields.PositionAt(0); c != null; c = c.Next())
                 if (c.value() != null)
                 {
                     var sl = _rs.rowType.names["" + c.key()];

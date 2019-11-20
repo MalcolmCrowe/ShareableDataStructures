@@ -270,7 +270,7 @@ namespace PyrrhoCmd
                     {
                         var n = cmd.ExecuteNonQuery();
                         ShowWarnings(db);
-                        if (n < 0 || transaction!=null) // For remote actions we don't get #affected rows
+                        if (n < 0) // For cascade actions we don't get #affected rows
                             Console.WriteLine(Format("0019")); // OK
                         else
                             Console.WriteLine("" + n + Format("0020")+files);

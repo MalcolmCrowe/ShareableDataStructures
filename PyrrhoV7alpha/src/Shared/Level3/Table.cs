@@ -19,47 +19,29 @@ namespace Pyrrho.Level3
     /// to security clearance and classification. Which columns are accessible also depends
     /// on privileges (but columns are not subject to classification).
     /// </summary>
-    internal class Table : Domain
+    internal class Table : DBObject
     {
         internal const long
-            ChartFormat = -266, // Sqlx (T)
-            ClientFormat = -267, // Sqlx (T)
-            Enforcement = -268, // Grant.Privilege (T)
-            Entity = -269, // true (T)
-            Indexes = -270, // BTree<long,Index> (T) supplied every time by schemaRole
-            Legend = -271, // string (T)
-            PeriodDef = -272, // PeriodDef
-            Rows = -273, // BTree<long,TableRow> (T) supplied every time by schemaRole
-            SystemTime = -274, // PeriodDef (T)
-            TableChecks = -275, // BTree<long,Check> (T)
-            TableProperties = -276, //BTree<string,DBObject> (T)
-            Triggers = -277,// BTree<PTrigger.TrigType,ATree<long,Trigger>> (T) 
-            Versions = -278; // BTree<long,Period> (T) supplied by schemaRole: ppos->Period
+            ApplicationPS = -262, // long
+            Enforcement = -263, // Grant.Privilege (T)
+            Indexes = -264, // BTree<CList<TableColumn>,long> (T) 
+            SystemPS = -265, //long
+            TableChecks = -266, // BTree<long,Check> (T)
+            Triggers = -267; // BTree<PTrigger.TrigType,ATree<long,Trigger>> (T) 
         /// <summary>
         /// The rows of the table with the latest version for each
         /// </summary>
-		public BTree<long, TableRow> tableRows => 
-            (BTree<long,TableRow>)mem[Rows]??BTree<long,TableRow>.Empty;
-        public BTree<long, Index> indexes => 
-            (BTree<long,Index>)mem[Indexes]??BTree<long,Index>.Empty;
-        /// <summary>
-        /// If versioning, then this will be the SYSTEM_TIME periodDef
-        /// </summary>
-        internal PeriodDef systemTime => (PeriodDef)mem[SystemTime];
-        internal Sqlx clientFormat => (Sqlx)(mem[ClientFormat] ?? Sqlx.NO);
-        internal Sqlx chartFormat => (Sqlx)(mem[ChartFormat] ?? Sqlx.NO);
-        internal bool entity => (bool)(mem[Entity] ?? false);
+		public BTree<long, object> tableRows => mem;
+        public BTree<CList<TableColumn>, long> indexes => 
+            (BTree<CList<TableColumn>,long>)mem[Indexes]??BTree<CList<TableColumn>,long>.Empty;
         /// <summary>
         /// Enforcement of clearance rules
         /// </summary>
-        internal Grant.Privilege enforcement => (Grant.Privilege)mem[Enforcement];
-        internal BTree<long, Period> versionedRows => 
-            (BTree<long, Period>)mem[Versions]??BTree<long,Period>.Empty;
+        internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
+        internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
+        internal long systemPS => (long)(mem[SystemPS] ?? -1L);
         internal BTree<long, Check> tableChecks => 
             (BTree<long, Check>)mem[TableChecks]??BTree<long,Check>.Empty;
-        internal BTree<string, DBObject> tableProperties => 
-            (BTree<string, DBObject>)mem[TableProperties]??BTree<string,DBObject>.Empty;
-        internal PeriodDef periodDef => (PeriodDef)mem[PeriodDef];
         internal BTree<PTrigger.TrigType, BTree<long, Trigger>> triggers =>
             (BTree<PTrigger.TrigType, BTree<long, Trigger>>)mem[Triggers]
             ??BTree<PTrigger.TrigType, BTree<long, Trigger>>.Empty;
@@ -67,18 +49,15 @@ namespace Pyrrho.Level3
         /// Constructor: a new empty table
         /// </summary>
         internal Table(PTable pt) :base(pt.ppos, BTree<long,object>.Empty
-            +(Name,pt.name)+(Definer,pt.role.defpos)
-            +(SqlValue.NominalType, new Domain(BList<Selector>.Empty))
-            +(Rows,BTree<long,TableRow>.Empty)+(Indexes,BTree<long,Index>.Empty)
+            +(Name,pt.name)+(Definer,pt.db.role.defpos)
+            //GetDomain((Database)null,BList<Selector>.Empty).Item2)
+            +(Indexes,BTree<CList<TableColumn>,long>.Empty)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, Trigger>>.Empty)
-            +(Enforcement,(Grant.Privilege)15) //read|insert|update|delete
-            +(Versions,BTree<long,Period>.Empty)+(TableProperties,BTree<string,DBObject>.Empty)) 
+            +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         {}
         protected Table(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Table operator+(Table tb,TableColumn tc)
         {
-            tb += (Columns, tb.columns + (tc.seq, tc));
-            tb += (Names, tb.names + (tc.name, tc));
             var ds = tb.dependents + (tc.defpos,true);
             var dp = _Max(tb.depth, 1 + tc.depth);
             return (Table)tb.New(tb.mem+(Dependents,ds)+(Depth,dp));
@@ -86,54 +65,25 @@ namespace Pyrrho.Level3
         public static Table operator+(Table tb,Metadata md)
         {
             var m = tb.mem;
-            if (md.Has(Sqlx.ENTITY)) m += (Entity, true); 
-            if (md.Has(Sqlx.HISTOGRAM)) m += (ChartFormat, Sqlx.HISTOGRAM);
-            else if (md.Has(Sqlx.PIE)) m += (ChartFormat, Sqlx.PIE);
-            else if (md.Has(Sqlx.POINTS)) m += (ChartFormat, Sqlx.POINTS);
-            else if (md.Has(Sqlx.LINE)) m += (ChartFormat, Sqlx.LINE);
-            if (md.Has(Sqlx.JSON)) m += (ClientFormat, Sqlx.JSON);
-            else if (md.Has(Sqlx.CSV)) m += (ClientFormat, Sqlx.CSV);
-            else if (md.Has(Sqlx.XML)) m += (ClientFormat, Sqlx.XML);
-            else if (md.Has(Sqlx.SQL)) m += (ClientFormat, Sqlx.SQL);
             if (md.description != "") m += (Description, md.description); 
             return new Table(tb.defpos, m);
         }
-        internal override Metadata Meta()
+        public static Table operator-(Table tb,long p)
         {
-            var md = new Metadata();
-            if (entity)
-                md.Add(Sqlx.ENTITY);
-            md.Add(chartFormat);
-            md.Add(clientFormat);
-            return md;
+            return new Table(tb.defpos, tb.mem - p);
         }
-        public static Table operator +(Table schema, TableRow row)
+        /// <summary>
+        /// Add a new or updated row, indexes already fixed.
+        /// </summary>
+        /// <param name="t"></param>
+        /// <param name="rw"></param>
+        /// <returns></returns>
+        public static Table operator +(Table t, (Database,TableRow) x)
         {
-            var rs = schema.tableRows + (row.defpos, row);
-            var xs = schema.indexes;
-
-            for (var b = xs.First(); b != null; b = b.Next())
-            {
-                var x = b.value();
-                if (row.prevKeys[x.defpos] is PRow ok)
-                {
-                    x -= ok;
-                    xs += (x.defpos, x + row);
-                }
-                else if (row.prev < 0)// for update no change to index if keys match
-                    xs += (x.defpos, x + row);
-            }
-            var se = schema.sensitive || row.classification!=Level.D;
-            var vs = schema.versionedRows;
-            if (schema.systemTime!=null)
-            {
-                var tm = schema.systemTime.domain.Coerce(new TDateTime(Domain.Timestamp, new DateTime(row.time)));
-                vs += (row.ppos, new Period(tm,Domain.MaxDate));
-                if (row.prev!=-1)
-                    vs += (row.prev, new Period(vs[row.prev].start, tm));
-            }
-            return new Table(schema.defpos, schema.mem + (Indexes, xs) + (Rows,rs) 
-                + (Sensitive,se) + (Versions,vs));
+            var (db, rw) = x;
+            var se = t.sensitive || rw.classification!=Level.D;
+            return new Table(t.defpos, t.mem + (rw.defpos,rw) 
+                + (Sensitive,se));
         }
         public static Table operator+(Table tb,(long,object)v)
         {
@@ -142,10 +92,6 @@ namespace Pyrrho.Level3
         internal override DBObject Add(Check ck, Database db)
         {
             return new Table(defpos,mem+(TableChecks,tableChecks+(ck.defpos,ck)));
-        }
-        internal override DBObject AddProperty(Check ck, Database db)
-        {
-            return new Table(defpos,mem+(TableProperties,tableProperties+(ck.name,ck)));
         }
         internal Table AddTrigger(Trigger tg, Database db)
         {
@@ -157,18 +103,27 @@ namespace Pyrrho.Level3
         {
             return new Table(defpos,m);
         }
-        internal override BTree<long,DBObject> Add(PMetadata p,Database db)
+        internal override DBObject Relocate(long dp)
         {
-            var m = mem;
-            if (p.Has(Sqlx.CSV)) m += (ClientFormat, Sqlx.CSV);
-            if (p.Has(Sqlx.ENTITY)) m += (Entity, true);
-            if (p.Has(Sqlx.HISTOGRAM)) m += (ClientFormat, Sqlx.HISTOGRAM);
-            if (p.Has(Sqlx.JSON)) m += (ClientFormat, Sqlx.JSON);
-            if (p.Has(Sqlx.LINE)) m += (ChartFormat, Sqlx.LINE);
-            if (p.Has(Sqlx.PIE)) m += (ChartFormat, Sqlx.PIE);
-            if (p.Has(Sqlx.POINTS)) m += (ChartFormat, Sqlx.POINTS);
-            var t = new Table(defpos, m);
-            return new BTree<long, DBObject>(t.defpos, t);
+            return new Table(dp, mem);
+        }
+        internal override Basis Relocate(Writer wr)
+        {
+            throw new NotImplementedException();
+        }
+        internal override (Database,Role) Cascade(Database d, Database nd,Role ro, 
+            Drop.DropAction a = 0, BTree<long, TypedValue> u = null)
+        {
+            if (a != 0)
+                nd += (Database.Cascade, true);
+            for (var b = indexes.First(); b != null; b = b.Next())
+                (nd,ro) = ((Index)d.objects[b.value()]).Cascade(d, nd,ro,a,u);
+            for (var b = d.role.dbobjects.First(); b != null; b = b.Next())
+                if (d.objects[b.value()] is Table tb)
+                    for (var c = tb.indexes.First(); c != null; c = c.Next())
+                        if (((Index)d.objects[c.value()]).reftabledefpos == defpos)
+                            (nd,ro) = tb.Cascade(d,nd,ro,a,u);
+            return base.Cascade(d, nd,ro,a,u);
         }
         /// <summary>
         /// Execute an Insert on the table including trigger operation.
@@ -183,19 +138,20 @@ namespace Pyrrho.Level3
         {
             int count = 0;
             if (Denied(tr, Grant.Privilege.Insert))
-                throw new DBException("42105", name);
+                throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
             long st = 0;
             var ot = data.rowType;
-            if (f.rowType.Length == ot.Length && (!f.rowType.Equals(ot))
-                && EqualOrStrongSubtypeOf(ot))
-                st = f.rowType.defpos;
+            var ft = f.rowType;
+            if (ft.Length == ot.Length && (!ft.Equals(ot))
+                && ((ObInfo)tr.role.obinfos[defpos]).EqualOrStrongSubtypeOf(ot))
+                st = ft.defpos;
             // parameter cl is only supplied when d_User.defpos==d.owner
             // otherwise check if we should compute it
             if (tr.user.defpos != tr.owner && enforcement.HasFlag(Grant.Privilege.Insert))
             {
                 var uc = tr.user.clearance;
                 if (!uc.ClearanceAllows(classification))
-                    throw new DBException("42105",name);
+                    throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
                 // The new record’s classification will have the user’s minimum clearance level:
                 // if this is above D, the groups will be the subset of the user’s groups 
                 // that are in the table classification, 
@@ -207,12 +163,36 @@ namespace Pyrrho.Level3
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
             tr = trs.InsertSA(tr, _cx);
-            if (_cx.ret!=TBool.True)
+            if (_cx.ret != TBool.True)
             {
                 var nr = tr.nextTid;
                 for (var trb = trs.First(_cx); trb != null; trb = trb.Next(_cx)) // trb constructor checks for autokey
                 {
                     var _trb = trb as TransitionRowSet.TransitionRowBookmark;
+                    var rt = (ObInfo)tr.schemaRole.obinfos[defpos];
+                    for (var b = rt.columns.First(); b != null; b = b.Next())
+                    {
+                        var sc = b.value();
+                        if (sc is SqlCol cm)
+                        {
+                            var tc = cm.tableCol;
+                            var tv = _cx.row.values[tc.defpos];
+                            if (tv == null || tv == TNull.Value)
+                            {
+                                if (tc.generated is GenerationRule gr && gr.gen!=Generation.No)
+                                    _cx.row.values += (tc.defpos,gr.Eval(tr,_cx));
+                                else
+                                if ((cm.tableCol.defaultValue ?? cm.tableCol.domain.defaultValue)
+                                    is TypedValue dv && dv != null && dv != TNull.Value)
+                                    _cx.row.values += (cm.tableCol.defpos, dv);
+                                else if (cm.tableCol.notNull)
+                                    throw new DBException("22206", sc.name);
+                            }
+                            for (var cb = cm.tableCol.constraints?.First(); cb != null; cb = cb.Next())
+                                if (cb.value().search.Eval(_cx, trb) != TBool.True)
+                                    throw new DBException("22212", sc.name);
+                        }
+                    }
                     // Do row-level triggers
                     tr = _trb.InsertRB(tr,_cx);
                     Record r = null;
@@ -236,24 +216,24 @@ namespace Pyrrho.Level3
             return tr;
         }
 
-        internal Index FindPrimaryIndex()
+        internal Index FindPrimaryIndex(Database db)
         {
             for (var b=indexes.First();b!=null;b=b.Next())
             {
-                var ix = b.value();
+                var ix = (Index)db.objects[b.value()];
                 if (ix.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
                     return ix;
             }
             return null;
         }
-        internal Index FindIndex(BList<Selector> key)
+        internal Index FindIndex(Database db,BList<DBObject> key)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
             {
-                var ix = b.value();
-                if (ix.cols.Count != key.Count)
+                var ix = (Index)db.objects[b.value()];
+                if (ix.keys.Count != key.Count)
                     continue;
-                var c = ix.cols.First();
+                var c = ix.keys.First();
                 for (var d = key.First(); d != null && c != null; d = d.Next(), c = c.Next())
                     if (d.value().defpos != c.value().defpos)
                         goto skip;
@@ -261,6 +241,10 @@ namespace Pyrrho.Level3
                     skip:;
             }
             return null;
+        }
+        internal Index FindIndex(Database db, CList<TableColumn> key)
+        {
+            return (Index)db.objects[indexes[key]];
         }
         /// <summary>
         /// Execute a Delete on a Table, including triggers
@@ -272,7 +256,7 @@ namespace Pyrrho.Level3
         {
             var count = 0;
             if (Denied(tr, Grant.Privilege.Delete))
-                throw new DBException("42105", name);
+                throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
             var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Delete, eqs);
             var cl = tr.user.clearance;
             tr = trs.DeleteSB(tr, cx);
@@ -292,7 +276,7 @@ namespace Pyrrho.Level3
                     ((!cl.ClearanceAllows(rec.classification)) || cl.minLevel > rec.classification.minLevel)
                     : cl.minLevel > 0)
                     throw new DBException("42105");
-                tr += new Delete(rec, nr++, tr);
+                tr += new Delete1(rec, nr++, tr);
                 count++;
                 cx.affected+=new Rvv(defpos, rec.defpos, tr.loadpos);
             }
@@ -311,20 +295,21 @@ namespace Pyrrho.Level3
             if (f.assigns == null)
                 return tr;
             if (Denied(tr, Grant.Privilege.Insert))
-                throw new DBException("42105", name);
+                throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
             var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Update, eqs);
             var updates = BTree<long, UpdateAssignment>.Empty;
             SqlValue level = null;
             for (var ass=f.assigns.First();ass!=null;ass=ass.Next())
             {
-                var c = ass.value().vbl as TableColumn ??
+                var c = ass.value().vbl;
+                var tc = tr.objects[c.defpos] as TableColumn ??
                     throw new DBException("42112", ass.value().vbl.name);
                 if (!cx.obs.Contains(c.defpos)) // can happen with updatable joins
                     continue;
-                if (c.generated != PColumn.GenerationRule.No)
+                if (tc.generated != GenerationRule.None)
                     throw tr.Exception("0U000", c.name).Mix();
                 if (c.Denied(tr, Grant.Privilege.Insert))
-                    throw new DBException("42105", name);
+                    throw new DBException("42105", c.name);
                 updates += (c.defpos, ass.value());
             }
       //      bool nodata = true;
@@ -344,7 +329,7 @@ namespace Pyrrho.Level3
                     {
                         var ua = b.value();
                         var av = ua.val.Eval(tr, cx)?.NotNull();
-                        var dt = ua.vbl.nominalDataType;
+                        var dt = ua.vbl.domain;
                         if (av != null && !av.dataType.EqualOrStrongSubtypeOf(dt))
                             av = dt.Coerce(av);
                         vals += (ua.vbl.defpos, av);
@@ -386,40 +371,16 @@ namespace Pyrrho.Level3
             return true;
         }
         /// <summary>
-        /// Accessor: get a period definition for this table
-        /// </summary>
-        /// <param name="db">The database</param>
-        /// <param name="ix">APPLICATION or SYSTEM</param>
-        /// <returns>the period definition or null</returns>
-        internal PeriodDef FindPeriodDef(Sqlx ix)
-        {
-            for (var c = columns.First(); c != null; c = c.Next())
-                    if (c.value() is PeriodDef pd && pd.versionKind == ix)
-                        return pd;
-            return null;
-        }
-        /// <summary>
         /// A readable version of the Table
         /// </summary>
         /// <returns>the string representation</returns>
-        public string ToString1()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (mem.Contains(ClientFormat)) { sb.Append(" ClientFormat:"); sb.Append(clientFormat); }
-            if (mem.Contains(Enforcement)) { sb.Append(" Enforcement="); sb.Append(enforcement); }
-            if (mem.Contains(Entity)) sb.Append(" Entity");
-            if (mem.Contains(ChartFormat)) { sb.Append(" "); sb.Append(chartFormat); }
-            if (mem.Contains(Legend)) sb.Append(" Legend");
-            if (mem.Contains(Rows)) { sb.Append(" Rows:"); sb.Append(tableRows); }
-            if (mem.Contains(Indexes)) { sb.Append(" Indexes:"); sb.Append(indexes); }
-            if (mem.Contains(SystemTime)) { sb.Append(" SystemTime="); sb.Append(systemTime); }
-            if (mem.Contains(Triggers)) { sb.Append(" Triggers:"); sb.Append(triggers); }
-            if (mem.Contains(Versions)) { sb.Append(" Versioned:"); sb.Append(versionedRows); }
-            return sb.ToString();
-        }
         public override string ToString()
         {
-            return "Table " +name+" "+ base.ToString();
+            var sb = new StringBuilder(base.ToString());
+            if (mem.Contains(Enforcement)) { sb.Append(" Enforcement="); sb.Append(enforcement); }
+            if (mem.Contains(Indexes)) { sb.Append(" Indexes:"); sb.Append(indexes); }
+            if (mem.Contains(Triggers)) { sb.Append(" Triggers:"); sb.Append(triggers); }
+            return sb.ToString();
         }
         /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition
@@ -429,40 +390,43 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal TRow RoleClassValue(Transaction tr, Table from, ABookmark<long, DBObject> _enu)
         {
-            var md = _enu.value();
+            var ob = _enu.value();
+            var md = (ObInfo)tr.role.obinfos[ob.defpos];
             var ro = tr.role;
             var versioned = true;
             var key = BuildKey(tr, out Index ix);
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
-            sb.Append("\r\n[Schema("); sb.Append(from.ppos); sb.Append(")]");
+            sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + tr.name + ", Role " + ro.name + "\r\n");
             if (md.desc != "")
                 sb.Append("/// " + md.desc + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " : Versioned" : "") + " {\r\n");
-            for (var b = columns.First();b!=null;b=b.Next())
+            var rt = tr.role.obinfos[from.defpos] as ObInfo;
+            for (var b = rt.columns.First();b!=null;b=b.Next())
             {
                 var cv = b.value();
                 var dt = cv.domain;
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+                var di = (ObInfo)tr.role.obinfos[dt.defpos];
+                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 if (ix != null)
                 {
-                    int j = (int)ix.cols.Count;
-                    for (j = 0; j < ix.cols.Count; j++)
-                        if (ix.cols[j].defpos == cv.defpos)
+                    int j = (int)ix.keys.Count;
+                    for (j = 0; j < ix.keys.Count; j++)
+                        if (ix.keys[j].defpos == cv.defpos)
                             break;
-                    if (j < ix.cols.Count)
+                    if (j < ix.keys.Count)
                         sb.Append("  [Key(" + j + ")]\r\n");
                 }
-                FieldType(sb, dt);
-                sb.Append("  public " + tn + " " + cv.name + ";");
+                FieldType(tr,sb, dt);
+                sb.Append("  public " + tn + " " + rt.columns[b.key()].name + ";");
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(new TColumn("Name",new TChar(md.name)),
-                new TColumn("Key",new TChar(key)),
-                new TColumn("Def",new TChar(sb.ToString())));
+            return new TRow(tr.nextTid,("Name",new TChar(md.name)),
+                ("Key",new TChar(key)),
+                ("Def",new TChar(sb.ToString())));
         }
         /// <summary>
         /// Generate a row for the Role$Java table: includes a Java class definition
@@ -473,7 +437,8 @@ namespace Pyrrho.Level3
         internal override TRow RoleJavaValue(Transaction tr, From from, 
             ABookmark<long, object> _enu)
         {
-            var md = (DBObject)_enu.value();
+            var ob = (DBObject)_enu.value();
+            var md = (ObInfo)tr.role.obinfos[ob.defpos];
             var ro = tr.role;
             var versioned = true;
             var sb = new StringBuilder();
@@ -482,33 +447,35 @@ namespace Pyrrho.Level3
             sb.Append("\r\n * from Database " + tr.name + ", Role " + tr.role.name + "r\n */");
             sb.Append("import org.pyrrhodb.*;\r\n");
             var key = BuildKey(tr,out Index ix);
-            sb.Append("\r\n@Schema("); sb.Append(from.ppos); sb.Append(")");
+            sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(")");
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(tr.user.name); sb.Append("\r\n */");
             if (md.desc != "")
                 sb.Append("/* " + md.desc + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
-            for(var b = columns.First();b!=null;b=b.Next())
+            var rt = tr.role.obinfos[from.defpos] as ObInfo;
+            for(var b = rt.columns.First();b!=null;b=b.Next())
             {
                 var cd = b.value();
                 var dt = cd.domain;
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+                var di = tr.role.obinfos[dt.defpos] as ObInfo;
+                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 if (ix != null)
                 {
-                    int j = (int)ix.cols.Count;
-                    for (j = 0; j < ix.cols.Count; j++)
-                        if (ix.cols[j].defpos == cd.defpos)
+                    int j = (int)ix.keys.Count;
+                    for (j = 0; j < ix.keys.Count; j++)
+                        if (ix.keys[j].defpos == cd.defpos)
                             break;
-                    if (j < ix.cols.Count)
+                    if (j < ix.keys.Count)
                         sb.Append("  @Key(" + j + ")\r\n");
                 }
                 FieldJava(tr, sb, dt);
-                sb.Append("  public " + tn + " " + cd.name + ";");
+                sb.Append("  public " + tn + " " + rt.columns[b.key()].name + ";");
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(new TColumn("Name",new TChar(md.name)),
-                new TColumn("Key",new TChar(key)),
-                new TColumn("Def",new TChar(sb.ToString())));
+            return new TRow(tr.nextTid,("Name",new TChar(md.name)),
+                ("Key",new TChar(key)),
+                ("Def",new TChar(sb.ToString())));
         }
         /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
@@ -518,7 +485,8 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
         {
-            var md = (Table)_enu.value();
+            var tb = (Table)_enu.value();
+            var md = (ObInfo)tr.role.obinfos[tb.defpos];
             var ro = tr.role;
             var versioned = true;
             var sb = new StringBuilder();
@@ -532,37 +500,40 @@ namespace Pyrrho.Level3
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");
-            for(var b = columns.First();b!=null;b=b.Next())
+            var rt = tr.role.obinfos[from.defpos] as ObInfo;
+            for(var b = rt.columns.First();b!=null;b=b.Next())
             {
                 var cd = b.value();
                 var dt = cd.domain;
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
-                sb.Append("  self." + cd.name + " = " + dt.defaultValue);
+                var di = (ObInfo)tr.role.obinfos[dt.defpos];
+                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                sb.Append("  self." + rt.columns[b.key()].name + " = " + dt.defaultValue);
                 sb.Append("\r\n");
             }
-            sb.Append("  self._schemakey = "); sb.Append(from.ppos); sb.Append("\r\n");
+            sb.Append("  self._schemakey = "); sb.Append(from.lastChange); sb.Append("\r\n");
             if (ix!=null)
             {
                 var comma = "";
                 sb.Append("  self._key = ["); 
-                for (var i=0;i<ix.cols.Count;i++)
+                for (var i=0;i<ix.keys.Count;i++)
                 {
-                    var tc = tr.role.objects[ix.cols[i].defpos]as TableColumn;
+                    var se = ix.keys[i];
+                    var tc = tr.objects[se.defpos]as TableColumn;
                     sb.Append(comma); comma = ",";
-                    sb.Append("'");  sb.Append(tc.name); sb.Append("'");
+                    sb.Append("'");  sb.Append(ix.keys[i]); sb.Append("'");
                 }
                 sb.Append("]\r\n");
             }
-            return new TRow(new TColumn("Name", new TChar(md.name)),
-                new TColumn("Key",new TChar(key)),
-                new TColumn("Def",new TChar(sb.ToString())));
+            return new TRow(tr.nextTid,("Name", new TChar(md.name)),
+                ("Key",new TChar(key)),
+                ("Def",new TChar(sb.ToString())));
         }
         string BuildKey(Database db,out Index ix)
         {
             ix = null;
             for (var xk = indexes.First(); xk != null; xk = xk.Next())
             {
-                var x = db.role.objects[xk.key()] as Index;
+                var x = db.objects[xk.value()] as Index;
                 if (x.tabledefpos != defpos)
                     continue;
                 if ((x.flags & PIndex.ConstraintType.PrimaryKey) == PIndex.ConstraintType.PrimaryKey)
@@ -571,89 +542,21 @@ namespace Pyrrho.Level3
             var comma = "";
             var sk = new StringBuilder();
             if (ix != null)
-                for(var i =0;i<(int)ix.cols.Count;i++)
+            {
+                var oi = (ObInfo)db.role.obinfos[ix.defpos];
+                for (var i = 0; i < (int)ix.keys.Count; i++)
                 {
-                    var cp = ix.cols[i].defpos;
-                    var cd = db.role.objects[cp] as TableColumn;
+                    var se = ix.keys[i];
+                    var cd = db.objects[se.defpos] as TableColumn;
                     if (cd != null)
                     {
                         sk.Append(comma);
                         comma = ",";
-                        sk.Append(cd.name);
+                        sk.Append(oi.columns[i].name);
                     }
                 }
-            return sk.ToString();
-        }
-    }
-    /// <summary>
-    /// A cursor for a non-indexed table.
-    /// Immutable
-    /// </summary>
-    internal class TableCursor
-    {
-        internal Context cnx;
-        internal readonly Database _db;
-        internal readonly Table _table;
-        internal readonly BTree<long, TypedValue> _match;
-        internal readonly Record _rec;
-        /// <summary>
-        /// Constructor: a cursor at a given position
-        /// </summary>
-        /// <param name="db">The database</param>
-        /// <param name="table">The table</param>
-        /// <param name="match">A low-level selection</param>
-        /// <param name="rec">a record</param>
-        TableCursor(Context cx, Database db, Table table, BTree<long, TypedValue> match, Record rec = null)
-        {
-            cnx = cx; _db = db; _table = table; _match = match; _rec = rec;
-        }
-        /// <summary>
-        /// Find a match for a given set of criteria
-        /// </summary>
-        /// <param name="_db">The database</param>
-        /// <param name="_match">The match criteria</param>
-        /// <param name="bmk">A bookmark to adjust</param>
-        /// <returns>The record found or null</returns>
-        static Record MoveToMatch(Context cnx, Database _db, BTree<long, TypedValue> _match, 
-            ref ABookmark<long, TableRow> bmk)
-        {
-            for (; bmk != null; bmk = bmk.Next())
-            {
-                var r = _db.GetD(bmk.key()) as Record;
-                for (var m = _match.First(); m != null; m = m.Next())
-                    if (m.value().CompareTo(r.fields[m.key()]) != 0)
-                        goto next;
-                return r;
-            next:;
             }
-            return null;
-        }
-        /// <summary>
-        /// Get the next cursor
-        /// </summary>
-        /// <returns>the new tablecursor</returns>
-        public TableCursor Next()
-        {
-            var bmk = _table.tableRows.PositionAt(_rec.defpos)?.Next();
-            var r = MoveToMatch(cnx, _db, _match, ref bmk);
-            if (r == null)
-                return null;
-            return new TableCursor(cnx, _db, _table, _match, r);
-        }
-        /// <summary>
-        /// Get the first tablecursor
-        /// </summary>
-        /// <param name="db">the database</param>
-        /// <param name="tb">the table</param>
-        /// <param name="match">the low-level match criteria</param>
-        /// <returns></returns>
-        internal static TableCursor New(Context cnx, Database db, Table tb, BTree<long, TypedValue> match)
-        {
-            var bmk = tb.tableRows.First();
-            var r = MoveToMatch(cnx, db, match, ref bmk);
-            if (r == null)
-                return null;
-            return new TableCursor(cnx, db, tb, match, r);
+            return sk.ToString();
         }
     }
 }

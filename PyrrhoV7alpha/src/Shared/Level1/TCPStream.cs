@@ -564,10 +564,10 @@ namespace Pyrrho.Level1
             {
                 var c = r[j];
                 string kn = "";
-                if (r.dataType.Length > j)
-                    kn = r.dataType.columns[j].name;
+                if (r.info.Length > j)
+                    kn = r.info.columns[j].name;
                 PutString(kn);
-                var dt = r.dataType.columns[j].domain;
+                var dt = r.info.columns[j].domain;
                 PutString(dt.ToString());
                 PutInt(dt.Typecode()); // other flags are 0
                 PutCell(_cx,dt, c);
@@ -582,7 +582,7 @@ namespace Pyrrho.Level1
             PutString("ARRAY");
             int n = a.list.Count;
             var et = a.dataType.elType ?? ((a.Length > 0) ? a[0].dataType : Domain.Content);
-            PutString(et.name?.ToString() ?? et.ToString());
+            PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt(n);
             for (int j = 0; j < n; j++)
@@ -597,7 +597,7 @@ namespace Pyrrho.Level1
             PutString("MULTISET");
             var e = m.First();
             var et = m.dataType.elType ?? m?.dataType ?? Domain.Content;
-            PutString(et.name ?? et.ToString());
+            PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.Count);
             for (; e != null; e = e.Next())
@@ -610,7 +610,7 @@ namespace Pyrrho.Level1
         internal void PutTable(Context _cx, RowSet r)
         {
             PutString("TABLE");
-            PutSchema(r);
+            PutSchema(_cx);
             int n = 0;
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
                 n++;
@@ -663,8 +663,9 @@ namespace Pyrrho.Level1
         /// Send a result schema to the client
         /// </summary>
         /// <param name="rowSet">the results</param>
-        internal void PutSchema(RowSet result)
+        internal void PutSchema(Context cx)
         {
+            var result = cx.data;
             if (result == null)
             {
 #if EMBEDDED
@@ -700,9 +701,10 @@ namespace Pyrrho.Level1
                 result.Schema(dt, flags);
                 for (int j = 0; j < m; j++)
                 {
-                    PutString(dt.columns[j].name);
                     var dn = dt.columns[j];
-                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name);
+                    var dc = (SqlValue)cx.obs[dn.defpos];
+                    PutString(dc.alias??dc.name??("Col"+j));
+                    PutString(DBObject.Uid(dn.domain.defpos));
                     PutInt(flags[j]);
                 }
             }
@@ -747,15 +749,15 @@ namespace Pyrrho.Level1
                 result.Schema(dt, flags);
                 for (int j = 0; j < m; j++)
                 {
-                    PutString(dt.columns[j].name);
                     var dn = dt.columns[j];
-                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name ?? dn.ToString());
+                    PutString(dn.name);
+                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name);
                     PutInt(flags[j]);
                 }
             }
             Flush();
         }
-        internal void PutColumns(Domain dt)
+        internal void PutColumns(ObInfo dt)
         {
             if (dt == null || dt.Length == 0)
             {
@@ -775,14 +777,14 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-            {
-                PutString(dt.columns[j].name);
-                var dn = (TableColumn)dt.columns[j];
-                PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name ?? dn.ToString());
-                var flags = dn.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
-                ((dn.generated != Level2.PColumn.GenerationRule.No) ? 0x200 : 0);
-                PutInt(flags);
-            }
+                if (dt.columns[j] is SqlCol sc && sc.tableCol is TableColumn dn)
+                {
+                    PutString(sc.name);
+                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
+                    var flags = dn.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
+                    ((dn.generated != GenerationRule.None) ? 0x200 : 0);
+                    PutInt(flags);
+                }
             Flush();
         }
         /// <summary>
@@ -818,10 +820,7 @@ namespace Pyrrho.Level1
             else
             {
                 WriteByte(2);
-                if (p.dataType.name != null)
-                    PutString(p.dataType.name.ToString());
-                else
-                    PutString(p.dataType.ToString());
+                PutString(p.dataType.ToString());
                 PutInt(p.dataType.Typecode());
             }
             PutData(_cx,p);

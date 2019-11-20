@@ -146,9 +146,9 @@ namespace Pyrrho.Level2
                 +" User="+Pos(ptuser)+" Time="+new DateTime(pttime);
 		}
 
-        internal override Database Install(Database db, Role ro,long p)
+        internal override (Database, Role) Install(Database db, Role ro,long p)
         {
-            return db;
+            return (db,(Role)db.objects[ptrole]);
         }
     }
     /// <summary>
@@ -225,9 +225,10 @@ namespace Pyrrho.Level2
             return "TriggeredAction " + trigger;
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
-            throw new NotImplementedException();
+            var tg = (Trigger)db.objects[trigger];
+            return (db,(Role)db.objects[tg.definer]);
         }
     }
     /// <summary>
@@ -235,6 +236,7 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class Audit : Physical
     {
+        internal User user;
         internal long table;
         internal long[] cols;// may be length 0
         internal string[] key; // length must match cols
@@ -254,7 +256,7 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,cols[i])) return cols[i];
             return -1;
         }
-        internal Audit(User us, long ta, long[] c, string[] k, long ts,long u, Transaction tr) 
+        internal Audit(User us,long ta, long[] c, string[] k, long ts,long u, Transaction tr) 
             : base(Type.Audit,u,tr)
         {
             user = us; table = ta; 
@@ -263,7 +265,7 @@ namespace Pyrrho.Level2
         internal Audit(Reader rdr) : base(Type.Audit, rdr) { }
         public override void Deserialise(Reader rdr)
         {
-            user = rdr.db.schemaRole.objects[rdr.GetLong()] as User;
+            user = rdr.db.objects[rdr.GetLong()] as User;
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
@@ -277,7 +279,7 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            user = wr.db.schemaRole.objects[wr.Fix(user.defpos)] as User;
+            user = wr.db.objects[wr.Fix(user.defpos)] as User;
             table = wr.Fix(table);
             timestamp = wr.Fix(timestamp);
             wr.PutLong(user.defpos);
@@ -312,7 +314,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override Database Install(Database db, Role ro, long p)
+        internal override (Database, Role) Install(Database db, Role ro, long p)
         {
             throw new NotImplementedException();
         }

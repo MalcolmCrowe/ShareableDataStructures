@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
-            for (var b = fields.First(); b != null; b = b.Next())
+            for (var b = fields.PositionAt(0); b != null; b = b.Next())
                 if (!Committed(wr,b.key())) return b.key();
             if (!Committed(wr,subType)) return subType;
             return -1;
@@ -73,13 +73,14 @@ namespace Pyrrho.Level2
                 throw new DBException("2201C");
             fields = fl;
             for (var b = fl.First(); b != null; b = b.Next())
-                if (db.role.objects[b.key()] is TableColumn tc)
+                if (db.objects[b.key()] is TableColumn tc)
                 {
                     if (tc.Denied(db, Grant.Privilege.Insert))
                         throw new DBException("42105", tc);
                     for (var c = tc.constraints?.First(); c != null; c = c.Next())
                         if (c.value().Eval(db,new Context(db)) != TBool.True)
-                            throw new DBException("22212", tc.name);
+                            throw new DBException("22212", 
+                                ((ObInfo)db.role.obinfos[tc.defpos]).name);
                 }
         }
         /// <summary>
@@ -99,7 +100,7 @@ namespace Pyrrho.Level2
         {
             tabledefpos = wr.Fix(x.tabledefpos);
             fields = BTree<long, TypedValue>.Empty;
-            for (var b = x.fields.First(); b != null; b = b.Next())
+            for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
                 fields += (wr.Fix(b.key()), b.value());
         }
         protected override Physical Relocate(Writer wr)
@@ -141,8 +142,10 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var tc = (TableColumn)rdr.role.objects[c];
-                var cdt = tc.domain;
+                var tc = (TableColumn)rdr.db.objects[c];
+                // If the column has been dropped we will show a simplified version of the Domain
+                // (The TableRow if still current has the historically correct domain)
+                var cdt = tc?.domain??Domain.Content; 
                 cdt = cdt.GetDataType(rdr);
                 if (cdt != null)
                 {
@@ -158,13 +161,13 @@ namespace Pyrrho.Level2
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
             wr.PutLong(fields.Count);
-            var f = BTree<long, TypedValue>.Empty;
-            for (var d = fields.First(); d != null; d = d.Next())
+            var f = BTree<long, object>.Empty;
+            for (var d = fields.PositionAt(0); d != null; d = d.Next())
             {
                 long k = d.key();
-                TypedValue o = d.value();
+                var o = d.value() as TypedValue;
                 wr.PutLong(k); // coldefpos
-                var ndt = ((TableColumn)wr.db.role.objects[k]).domain;
+                var ndt = ((TableColumn)wr.db.objects[k]).domain;
                 var dt = o?.dataType??Domain.Null;
                 dt.PutDataType(ndt, wr);
                 dt.Put(o,wr);
@@ -184,7 +187,14 @@ namespace Pyrrho.Level2
                 r = new PRow(fields[cols[i]], r);
             return r;
         }
-        public PRow MakeKey(BList<Selector> cols)
+        public PRow MakeKey(BList<SqlValue> cols)
+        {
+            PRow r = null;
+            for (var i = (int)cols.Count - 1; i >= 0; i--)
+                r = new PRow(fields[cols[i].defpos], r);
+            return r;
+        }
+        public PRow MakeKey(BList<TableColumn> cols)
         {
             PRow r = null;
             for (var i = (int)cols.Count - 1; i >= 0; i--)
@@ -198,10 +208,10 @@ namespace Pyrrho.Level2
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        var table = (Table)db.role.objects[tabledefpos];
+                        var table = (Table)db.objects[tabledefpos];
                         if (d.delpos == table.defpos)
                             return ppos;
-                        for (var s = fields.First(); s != null; s = s.Next())
+                        for (var s = fields.PositionAt(0); s != null; s = s.Next())
                             if (s.key() == d.delpos)
                                 return ppos;
                         return -1;
@@ -211,23 +221,68 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-
-        internal override Database Install(Database db, Role ro, long p)
+        /// <summary>
+        /// Fix indexes for a new Record
+        /// </summary>
+        /// <param name="db"></param>
+        /// <returns></returns>
+        internal virtual BTree<long,TypedValue> _Fields(BTree<long,TypedValue>fl,
+            ref Database db)
         {
-            var tb = db.schemaRole.objects[tabledefpos] as Table;
+            var tb = (Table)db.objects[tabledefpos];
+            for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
+            {
+                var x = (Index)db.objects[xb.value()];
+                var k = x.MakeKey(fl);
+                if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
+                    x.flags.HasFlag(PIndex.ConstraintType.Unique))
+                    && (x.rows?.Contains(k)==true))
+                    throw new DBException("23000", "duplicate key ", k);
+                if (x.reftabledefpos>=0)
+                {
+                    var rt = (Table)db.objects[x.reftabledefpos];
+                    var rx = (Index)db.objects[x.refindexdefpos];
+                    if (!rx.rows.Contains(k))
+                        throw new DBException("23000", "missing foreign key ", k);
+                }
+                x += (k, defpos);
+                db += (x, db.loadpos);
+            }
+            return fl;
+        }
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var tb = db.objects[tabledefpos] as Table;
             try
             {
-                tb += new TableRow(this, db);
+                // referential constraints need to be checked here
+                for (var b=tb.indexes.First();b!=null;b=b.Next())
+                {
+                    var x = (Index)db.objects[b.value()];
+                    if (!x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                        continue;
+                    var rt = (Table)db.objects[x.reftabledefpos];
+                    var rx = (Index)db.objects[x.refindexdefpos];
+                    var pk = MakeKey(x.keys);
+                    if (!rx.rows.Contains(pk))
+                        throw new DBException("23000","foreign key ",pk);
+                }
+                // primary key and unique violations will be detected by the MTree
+                var fl = _Fields(fields, ref db);
+                tb += (db,new TableRow(this, db, fl));
             }
             catch (DBException e)
             {
                 if (e.signal == "23000")
-                    throw new DBException(e.signal, e.objects[0].ToString() + tb.name + e.objects[1].ToString());
+                {
+                    var oi = (ObInfo)db.role.obinfos[tb.defpos];
+                    throw new DBException(e.signal, e.objects[0].ToString() + oi.name 
+                        + e.objects[1].ToString());
+                }
                 throw e;
             }
-            if (db.schemaRole != db.role)
-                db += (db.schemaRole, tb,p);
-            return db += (db.role, tb,p);
+            db += (tb, p);
+            return (db,ro);
         }
 
         internal class ColumnValue
@@ -238,13 +293,14 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Record "+defpos+"["+tabledefpos+"]");
+            var sb = new StringBuilder(GetType().Name+" "+defpos+"["+tabledefpos+"]");
             var cm = ": ";
-            for (var b=fields.First();b!=null;b=b.Next())
+            for (var b=fields.PositionAt(0);b!=null;b=b.Next())
             {
+                var v = b.value();
                 sb.Append(cm); cm = ",";
-                sb.Append(b.key());sb.Append('=');sb.Append(b.value().Val());
-                sb.Append('[');sb.Append(b.value().dataType.defpos);sb.Append(']');
+                sb.Append(b.key());sb.Append('=');sb.Append(v.Val());
+                sb.Append('[');sb.Append(v.dataType.defpos);sb.Append(']');
             }
             return sb.ToString();
         }

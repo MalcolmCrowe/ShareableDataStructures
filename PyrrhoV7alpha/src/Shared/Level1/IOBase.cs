@@ -130,7 +130,7 @@ namespace Pyrrho.Level2
 
     public abstract class ReaderBase : IOBase
     {
-        internal DBObject context; // set a function or object being defined
+        internal Context context; 
         public virtual long Position => buf.start + buf.pos;
         internal Integer GetInteger()
         {
@@ -247,11 +247,9 @@ namespace Pyrrho.Level2
     {
         public Stream file;
         internal Database db;   // a copy, updatable during Get, Load
+        internal Role role;
+        internal User user;
         internal PTransaction trans = null;
-        internal Role _role = null; // used with TriggeredAction
-        internal Role role => _role ?? 
-            ((trans == null) ? db.roles[Database.Schema] : db.roles[trans.ptrole]);
-        internal User user => (trans == null) ? null : (User)db.role.objects[trans.ptuser];
         internal long time => trans?.pttime ?? 0;
         public long segment;
         public readonly long limit;
@@ -282,15 +280,21 @@ namespace Pyrrho.Level2
         internal Reader(Database d)
         {
             db = d;
+            role = db.role;
+            user = (User)db.objects[db.owner];
             file = d.df;
             limit = file.Length;
+            context = new Context(db);
             GetBuf(d.loadpos);
         }
         internal Reader(Database d, long p)
         {
             db = d;
+            role = db.role;
+            user = (User)db.objects[db.owner];
             file = d.File();
             limit = file.Length;
+            context = new Context(db);
             GetBuf(p);
         }
         internal int GetInt32()
@@ -385,6 +389,9 @@ namespace Pyrrho.Level2
                 case Physical.Type.Enforcement: p = new Enforcement(this); break;
                 case Physical.Type.Record3: p = new Record3(this); break;
                 case Physical.Type.Update1: p = new Update1(this); break;
+                case Physical.Type.Delete1: p = new Delete1(this); break;
+                case Physical.Type.Drop1: p = new Drop1(this); break;
+                case Physical.Type.RefAction: p = new RefAction(this); break;
             }
             p.Deserialise(this);
             p.CheckDate();
@@ -399,7 +406,7 @@ namespace Pyrrho.Level2
             if (b == DataType.Null)
                 return StandardDataType.Null;
             if (b == DataType.DomainRef)
-                return (Domain)db.GetDomain(GetLong());
+                return (Domain)db.role.obinfos[GetLong()];
             return dt;
         }
         internal BList<Physical> GetAll(long max, long limit)

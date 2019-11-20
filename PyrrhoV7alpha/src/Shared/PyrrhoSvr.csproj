@@ -70,7 +70,6 @@
     <Compile Include="Common\Interfaces.cs" />
     <Compile Include="Common\Pyrrho.cs" />
     <Compile Include="Common\Row.cs" />
-    <Compile Include="Level2\IndexConstraint.cs" />
     <Compile Include="Level4\ParseClasses.cs" />
     <Compile Include="Level4\Symbols.cs" />
     <Compile Include="Common\TDocument.cs" />
@@ -115,7 +114,6 @@
     <Compile Include="Level3\Domain.cs" />
     <Compile Include="Level3\Index.cs" />
     <Compile Include="Level3\Method.cs" />
-    <Compile Include="Level3\PeriodDef.cs" />
     <Compile Include="Level3\Procedure.cs" />
     <Compile Include="Level3\Profile.cs" />
     <Compile Include="Level3\ReadConstraint.cs" />
@@ -132,8 +130,6 @@
     <Compile Include="Level3\From.cs" />
     <Compile Include="Level4\Group.cs" />
     <Compile Include="Level4\Join.cs" />
-    <Compile Include="Level4\LogRowColSelect.cs" />
-    <Compile Include="Level4\LogTableSelect.cs" />
     <Compile Include="Level4\MergeResults.cs" />
     <Compile Include="Level3\QueryClasses.cs" />
     <Compile Include="Level4\Parser.cs" />
