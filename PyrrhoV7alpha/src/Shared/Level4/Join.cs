@@ -30,7 +30,7 @@ namespace Pyrrho.Level4
         /// Constructor: build the rowset for the Join
         /// </summary>
         /// <param name="j">The Join part</param>
-		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : base(lr._tr,_cx,j)
+		public JoinRowSet(Context _cx, Query j,RowSet lr,RowSet rr) : base(lr._tr,_cx,j)
 		{
             first = lr;
             second = rr;

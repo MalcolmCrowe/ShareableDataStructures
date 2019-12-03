@@ -132,6 +132,10 @@ namespace Pyrrho.Level3
                 ds += (wr.Fix(b.key()), true);
             return (ds==dependents)?r:r + (Dependents, ds);
         }
+        internal virtual DBObject Frame(Context cx)
+        {
+            return cx.Add(this);
+        }
         internal virtual Database Add(Database d,Role ro,PMetadata pm, long p)
         {
             return d;
@@ -201,6 +205,8 @@ namespace Pyrrho.Level3
         internal virtual DBObject Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = this;
+            if (defpos<0)
+                return this;
             var dm = (Domain)domain.Replace(cx, so, sv);
             if (dm != domain)
                 r += (_Domain, dm);
@@ -334,11 +340,11 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleClassValue(Transaction tr,From from, 
+        internal virtual TRow RoleClassValue(Transaction tr,From from,
             ABookmark<long, object> _enu)
         {
             return null;
-        }
+        } 
         /// <summary>
         /// Implementation of the Role$Java table: Produce a Java class corresponding to a Table or View
         /// </summary>
@@ -507,6 +513,8 @@ namespace Pyrrho.Level3
         }
         internal static string Uid(long u)
         {
+            if (u >= PyrrhoServer.ConnPos)
+                return "^" + (u - PyrrhoServer.ConnPos);
             if (u >= Transaction.TransPos)
                 return "'" + (u - Transaction.TransPos);
             if (u == -1)

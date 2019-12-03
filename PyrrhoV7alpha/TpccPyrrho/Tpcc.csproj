@@ -37,10 +37,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
-    <Reference Include="PyrrhoLink, Version=6.3.7196.24082, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\PyrrhoLink.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
@@ -108,6 +104,12 @@
     <EmbeddedResource Include="VTerm.resx">
       <DependentUpon>VTerm.cs</DependentUpon>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\src\Shared\PyrrhoLink.csproj">
+      <Project>{893e315d-e6ca-4db3-ae08-2d28788d3693}</Project>
+      <Name>PyrrhoLink</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSHARP.Targets" />
   <ProjectExtensions>

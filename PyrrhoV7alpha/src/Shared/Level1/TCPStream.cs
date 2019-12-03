@@ -610,6 +610,7 @@ namespace Pyrrho.Level1
         internal void PutTable(Context _cx, RowSet r)
         {
             PutString("TABLE");
+            _cx.result = r.qry.defpos;
             PutSchema(_cx);
             int n = 0;
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
@@ -665,7 +666,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.data;
+            var result = cx.data[cx.result];
             if (result == null)
             {
 #if EMBEDDED

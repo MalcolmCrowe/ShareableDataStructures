@@ -695,7 +695,51 @@ namespace Pyrrho.Level3
             }
             return sb.ToString();
         }
-    public override string ToString()
+        /// <summary>
+        /// API development support: generate the C# type information for a field 
+        /// </summary>
+        /// <param name="dt">The type to use</param>
+        /// <param name="db">The database</param>
+        /// <param name="sb">a string builder</param>
+        internal void DisplayType(Database db, StringBuilder sb)
+        {
+            for (var i = 0; i < columns.Count; i++)
+            {
+                var c = (SqlValue)columns[i];
+                var cd = c.domain;
+                var n = c.name.Replace('.', '_');
+                var di = (ObInfo)db.role.obinfos[cd.defpos];
+                var tn = di.name;
+                if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                    tn = cd.SystemType.Name;
+                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET)
+                {
+                    if (tn == "[]")
+                        tn = "_T" + i + "[]";
+                    if (n.EndsWith("("))
+                        n = "_F" + i;
+                }
+                FieldType(db, sb, cd);
+                sb.Append("  public " + tn + " " + n + ";\r\n");
+            }
+            for (var i = 0; i < Length; i++)
+            {
+                var cd = columns[i].domain;
+                if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                    continue;
+                cd = cd.elType;
+                var di = (ObInfo)db.role.obinfos[cd.defpos];
+                var tn = di.name.ToString();
+                if (tn != null)
+                    sb.Append("// Delete this declaration of class " + tn + " if your app declares it somewhere else\r\n");
+                else
+                    tn += "_T" + i;
+                sb.Append("  public class " + tn + " {\r\n");
+                di.DisplayType(db, sb);
+                sb.Append("  }\r\n");
+            }
+        }
+        public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" "); sb.Append(name); sb.Append(" ");
@@ -720,6 +764,31 @@ namespace Pyrrho.Level3
                 }
             }
             return sb.ToString();
+        }
+    }
+    internal class ObInfoNewRow : ObInfo
+    {
+        public ObInfoNewRow(ObInfo oi) : base(oi.defpos, _NR(oi).mem) { }
+        public ObInfoNewRow(Table tb, Role ro)
+            : this((ObInfo)ro.obinfos[tb.defpos]) { }
+        protected ObInfoNewRow(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static ObInfoNewRow operator+(ObInfoNewRow oi,(long,object)x)
+        {
+            return (ObInfoNewRow)oi.New(oi.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ObInfoNewRow(defpos,m);
+        }
+        static ObInfo _NR(ObInfo oi)
+        {
+            var cs = BList<SqlValue>.Empty;
+            for (var b = oi.columns.First(); b != null; b = b.Next())
+            {
+                var sc = (SqlCol)b.value();
+                cs += new SqlNewRowCol(sc.defpos,sc);
+            }
+            return oi+(Columns,cs);
         }
     }
 }

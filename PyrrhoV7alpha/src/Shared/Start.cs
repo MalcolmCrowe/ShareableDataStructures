@@ -55,7 +55,11 @@ namespace Pyrrho
         public Thread myThread = null;
         private int nextCol = 0;
         private long nextTid = Transaction.TransPos;
+        internal const long ConnPos = 0x6000000000000000;
+        private long nextPid = ConnPos;
         private TypedValue nextCell = null;
+        // uid range for prepared statements is 0x6000000000000000-0x7fffffffffffffff
+        private BTree<string, PreparedStatement> prepared = BTree<string, PreparedStatement>.Empty;
         static int _cid = 0;
         int cid = _cid++;
         /// <summary>
@@ -313,6 +317,80 @@ namespace Pyrrho
                                 tcp.Flush();
                                 break;
                             }
+                        case Protocol.Prepare: // v7 Prepared statement API
+                            {
+                                var nm = tcp.GetString();
+                                var sql = tcp.GetString();
+                                var tr = db.Transact(nextPid, sql);
+                                tr+=(Database._ExecuteStatus,ExecuteStatus.Prepare);
+                                var cx = new Context(tr);
+                                (db, nextPid) = new Parser(tr, cx).ParseSql(sql);
+                                tcp.PutWarnings(tr);
+                                prepared += (nm, new PreparedStatement(cx.exec,cx.qParams));
+                                (db, nextPid) = db.RdrClose(cx);
+                                tcp.Write(Responses.Done);
+                                break;
+                            }
+                        case Protocol.Execute: // v7 Prepared statement API
+                            {
+                                var nm = tcp.GetString();
+                                var n = tcp.GetInt();
+                                var sb = new StringBuilder();
+                                for (var i=0;i<n;i++)
+                                {
+                                    sb.Append(tcp.GetString());
+                                    sb.Append(';');
+                                }
+                                if (!prepared.Contains(nm))
+                                    throw new DBException("33000", nm);
+                                var cmp = sb.ToString();
+                                var tr = db.Transact(nextTid, cmp);
+                                cx = new Context(tr);
+                                (db, nextTid) = new Parser(tr, cx).ParseSql(prepared[nm],cmp);
+                                var cascade = db.cascade;
+                                tcp.PutWarnings(tr);
+                                if (cx.data[cx.result] == null)
+                                {
+                                    (db, nextTid) = db.RdrClose(cx);
+                                    tcp.Write(Responses.Done);
+                                    tcp.PutInt(cascade ? -1 : (int)cx.affected.Count);
+                                }
+                                else
+                                    tcp.PutSchema(cx);
+                                break;
+                            }
+                        case Protocol.ExecuteTrace: // v7 Prepared statement API
+                            {
+                                var nm = tcp.GetString();
+                                var n = tcp.GetInt();
+                                var sb = new StringBuilder();
+                                for (var i = 0; i < n; i++)
+                                {
+                                    sb.Append(tcp.GetString());
+                                    sb.Append(';');
+                                }
+                                if (!prepared.Contains(nm))
+                                    throw new DBException("33000", nm);
+                                var cmp = sb.ToString();
+                                var tr = db.Transact(nextTid, cmp);
+                                var ts = db.loadpos;
+                                cx = new Context(tr);
+                                (db, nextTid) = new Parser(tr, cx).ParseSql(prepared[nm], cmp);
+                                var cascade = db.cascade;
+                                tcp.PutWarnings(tr);
+                                if (cx.data[cx.result] == null)
+                                {
+                                    (db, nextTid) = db.RdrClose(cx);
+                                    tcp.Write(Responses.DoneTrace);
+                                    tcp.PutLong(ts);
+                                    tcp.PutLong(db.loadpos);
+                                    tcp.PutInt(cascade ? -1 : (int)cx.affected.Count);
+                                }
+                                else
+                                    tcp.PutSchema(cx);
+                                Console.WriteLine("" + db.loadpos);
+                                break;
+                            }
                         case Protocol.ExecuteReader: // ExecuteReader
                             {
                                 if (cx?.rb != null)
@@ -328,7 +406,7 @@ namespace Pyrrho
                                 //                    Console.WriteLine(""+(tn- t));
                                 tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.domains);
                                 tcp.PutWarnings(tr);
-                                if (cx.data == null)
+                                if (cx.data[cx.result] == null)
                                 {
                                     (db,nextTid) = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
@@ -356,7 +434,7 @@ namespace Pyrrho
                                 db.Execute(db.role, "G",path, 1, "");
                                 var tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.data == null)
+                                if (cx.data[cx.result] == null)
                                 {
                                     cx.rb = null;
                                     (db,nextTid) = db.RdrClose(cx);
@@ -364,7 +442,7 @@ namespace Pyrrho
                                 else
                                 {
                                     tcp.PutSchema(cx);
-                                    cx.rb = cx.data.First(cx);
+                                    cx.rb = cx.data[cx.result].First(cx);
                                 }
                                 break;
                             }
@@ -376,15 +454,16 @@ namespace Pyrrho
                                 cx = new Context(tr);
                                 db.Execute(tr.role, "G", path, 1, "");
                                 tcp.PutWarnings(tr);
-                                if (cx.data == null)
+                                var da = cx.data[cx.result];
+                                if (da == null)
                                 {
                                     cx.rb = null;
                                     (db,nextTid) = db.RdrClose(cx);
                                 }
                                 else
                                 {
-                                    tcp.PutSchema1(cx.data);
-                                    cx.rb = cx.data.First(cx);
+                                    tcp.PutSchema1(da);
+                                    cx.rb = da.First(cx);
                                 }
                                 break;
                             }
@@ -485,9 +564,9 @@ namespace Pyrrho
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("PUT "+s);
                                 var si = new Parser(tr).ParseSqlUpdate(cx, s);
-                                var rs = cx.data;
-                                if (cx.data != null)
-                                    cx.rb = cx.data.First(cx);
+                                var rs = cx.data[si.defpos];
+                                if (rs != null)
+                                    cx.rb = rs.First(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.PutSchema(cx);
                                 var rec = cx.rb.Rec();
@@ -544,7 +623,7 @@ namespace Pyrrho
                     try
                     {
                         (db,nextTid) = db.Rollback(e);
-                        cx.data = null;
+                        cx.data = BTree<long,RowSet>.Empty;
                         cx.rb = null;
                         tcp.StartException();
                         tcp.Write(Responses.Exception);
@@ -585,7 +664,7 @@ namespace Pyrrho
                     {
                         (db,nextTid) = db.Rollback(e);
                         cx.rb = null;
-                        cx.data = null;
+                        cx.data = BTree<long,RowSet>.Empty;
                         tcp.StartException();
                         tcp.Write(Responses.FatalError);
                         Console.WriteLine("Internal Error " + e.Message);
@@ -654,7 +733,7 @@ namespace Pyrrho
             if (db!=null)
 				db.Rollback(new DBException("00000").ISO());
 			tcp.Close();
-            cx.data = null;
+            cx.data = BTree<long,RowSet>.Empty;
             cx.rb = null;
 			client.Close();
 		}
@@ -1146,7 +1225,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (20 November 2019)", " www.pyrrhodb.com"
+            "7.0 alpha"," (3 December 2019)", " www.pyrrhodb.com"
         };
 	}
 }

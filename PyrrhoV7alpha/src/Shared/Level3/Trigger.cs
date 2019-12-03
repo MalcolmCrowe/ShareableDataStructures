@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -64,17 +65,13 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Trigger(PTrigger p,Database db)
             : base(p.name,p.ppos,p.defpos,db.role.defpos,BTree<long,object>.Empty
-                  +(Action,p.def)+(Table,p.tabledefpos)+(TrigType,p.tgtype)
+                  +(Action,((WhenPart)p.def).stms)+(Table,p.tabledefpos)+(TrigType,p.tgtype)
                   +(UpdateCols,p.cols)+(OldRow,p.oldRow)+(NewRow,p.newRow)
-                  +(OldTable,p.oldTable)+(NewTable,p.newTable))
+                  +(OldTable,p.oldTable)+(NewTable,p.newTable)
+                  +(Def,p.src))
 		{ }
-        public Trigger(Transaction tr,PTrigger.TrigType tgt,string or,string nr, string ot,
-            string nt,BTree<long,object> m=null) 
-            :base(tr.uid, (m??BTree<long, object>.Empty)
-                  + (TrigType, tgt) + (OldRow, or) + (NewRow, nr)
-                  + (OldTable, ot) + (NewTable, nt))
+        public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) 
         { }
-        public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Trigger operator+(Trigger tg,(long,object)x)
         {
             return new Trigger(tg.defpos, tg.mem + x);
@@ -141,6 +138,13 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (UpdateCols, uc);
             return r;
+        }
+        internal override DBObject Frame(Context cx)
+        {
+            var ac = BList<Executable>.Empty;
+            for (var b = action.First(); b != null; b = b.Next())
+                ac += (Executable)b.value().Frame(cx);
+            return cx.Add(this + (Action, ac));
         }
     }
 }

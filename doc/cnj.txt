@@ -1,0 +1,147 @@
+ospcmd cnj
+select r,sum(a),sum(a)/t from d natural join p group by r
+
+Errors here: 
+QS has cols including T and A
+We need to discover that T is a required column and A is unavailable in group result.
+Microsoft Windows [Version 10.0.10586]
+(c) 2015 Microsoft Corporation. All rights reserved.
+
+
+C:\PyrrhoDB\Pyrrho\OpenSource\Windows>ospcmd cnj
+SQL> select 3/4 from static
+|---|
+|3/4|
+|---|
+|0  |
+|---|
+SQL> select 3.0/4 from static
+|----------------|
+|3.0/4           |
+|----------------|
+|0.74999999999999|
+|----------------|
+SQL> select 3*1.0/4
+FROM expected at
+SQL> select 3*1.0/4 from static
+|----------------|
+|3*1.0/4         |
+|----------------|
+|0.74999999999999|
+|----------------|
+SQL> table p
+|--|-|
+|A |R|
+|--|-|
+|4 |5|
+|5 |7|
+|6 |5|
+|10|8|
+|3 |8|
+|2 |8|
+|--|-|
+SQL> table d
+|-|--|
+|R|T |
+|-|--|
+|5|20|
+|7|42|
+|8|90|
+|-|--|
+SQL>  select r*1.0/t from d
+|----------------|
+|R*1.0/T         |
+|----------------|
+|0.24999999999999|
+|0.16666666666666|
+|0.08888888888888|
+|----------------|
+SQL> select r/t from d
+|---|
+|R/T|
+|---|
+|0  |
+|0  |
+|0  |
+|---|
+SQL> select sum(r)*1.0/sum(t) from d
+|-----------------|
+|SUM*1.0/SUM      |
+|-----------------|
+|0.131578947368421|
+|-----------------|
+SQL> select r,sum(a) from p group by r
+|-|---|
+|R|SUM|
+|-|---|
+|5|10 |
+|7|5  |
+|8|15 |
+|-|---|
+SQL> select r,sum(a)*t from p natural join d group by r
+|-|----------|
+|R|SUM*T     |
+|-|----------|
+|5|TypedValue|
+|7|TypedValue|
+|8|TypedValue|
+|-|----------|
+SQL> select r,t,sum(a)*t from p natural join d group by r
+|-|--|-----|
+|R|T |SUM*T|
+|-|--|-----|
+|5|20|200  |
+|7|42|210  |
+|8|90|1350 |
+|-|--|-----|
+SQL> select r,t,sum(a)*1.0/t from p natural join d group by r
+|-|--|---------|
+|R|T |SUM*1.0/T|
+|-|--|---------|
+|5|20|         |
+|7|42|         |
+|8|90|         |
+|-|--|---------|
+SQL>
+Looking at "select r,sum(a)*t from p natural join d group by r"
+When we are evaluating the *t we come to STC 11[137].Eval(QS 7)
+Then T is qs.cols[3] but is not part of the row (not part of qs's nominaldatatype)
+We want the grs to have t but not a 
+All columns in the aggregate P must be invisible apart from R
+All columns in D must be visible
+Now at the point where QS.Selects happens, we have just done TE.Selects()
+Currently we just build the display. But now I want to build in cols that have been set up but not grouped.
+Include cols in the display, and then look at A,T that are in the TableExp
+TE.group knows we need R
+Maybe we need to know that T FD on R (we can't know that yet)
+Could we recognise from the form of the SVE that we need T non-aggregated
+
+
+
+We had
+        internal override void Selects(Context spec)
+        {
+            tableExp.Selects(spec);
+            if (selectStar)
+                nominalDataType = tableExp.nominalDataType;
+            else
+            {
+                var sc = new TColumn[display];
+                for (int i = 0; i < Size; i++)
+                {
+                    SqlValue.Setup(cols[i], SqlDataType.Null);
+                    var n = NameAt(i);
+                    n.Set(cols[i].dbix, cols[i].defpos, Ident.IDType.Column);
+                    if (i<display)
+                        sc[i] = new TColumn(n, ValAt(i).nominalDataType.New(this));
+                }
+                var ndt = new SqlDataType(sc);
+                if (display == 1)
+                    nominalDataType = new SqlDataType(Sqlx.UNION,
+                       new SqlDataType[2] { ndt, ndt[0] });
+                else
+                    nominalDataType = ndt;
+                nominalDataType = nominalDataType.LimitBy(spec.nominalDataType);
+            }
+            base.Selects(spec);
+        }

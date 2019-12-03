@@ -28,7 +28,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A set of column constraints
         /// </summary>
-        public BTree<long, Check> constraints => (BTree<long, Check>)mem[Checks];
+        public BTree<long, Check> constraints => 
+            (BTree<long, Check>)mem[Checks] ?? BTree<long,Check>.Empty;
         public TypedValue defaultValue => (TypedValue)mem[Domain.Default];
         public GenerationRule generated =>
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
@@ -83,7 +84,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
+            var r = (TableColumn)base.Relocate(wr);
             var tb = wr.Fix(tabledefpos);
             if (tb != tabledefpos)
                 r += (Table, tb);

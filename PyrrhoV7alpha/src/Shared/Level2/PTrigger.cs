@@ -20,7 +20,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The possible trigger types (flag attribute)
         /// </summary>
-		[FlagsAttribute]
+		[Flags]
 			public enum TrigType { Insert=1, Update=2, Delete=4, Before=8, After=16, EachRow=32, Instead=64, EachStatement=128 }
         /// <summary>
         /// The defining position for the trigger
@@ -62,6 +62,7 @@ namespace Pyrrho.Level2
         /// The definition of the trigger
         /// </summary>
 		public Executable def;
+        public string src;
         public override long Dependent(Writer wr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
@@ -82,11 +83,12 @@ namespace Pyrrho.Level2
         /// <param name="ot">The alias for the old table</param>
         /// <param name="nt">The alias for the new table</param>
         /// <param name="def">The definition of the trigger</param>
+        /// <param name="sce">The source string for the trigger definition</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PTrigger(string tc, long tb, int ty, long[] cs, string or, 
-            string nr, string ot, string nt, Executable def, long u, Transaction tr)
-			:this(Physical.Type.PTrigger,tc,tb,ty,cs,or,nr,ot,nt,def,u, tr)
+            string nr, string ot, string nt, Executable def, string sce,long u, Transaction tr)
+			:this(Type.PTrigger,tc,tb,ty,cs,or,nr,ot,nt,def,sce,u, tr)
 		{
 		}
         /// <summary>
@@ -105,7 +107,8 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, long[] cs, 
-            string or, string nr, string ot, string nt, Executable df, long u, Transaction tr)
+            string or, string nr, string ot, string nt, Executable df, 
+            string sce, long u, Transaction tr)
 			:base(tp,u, tr)
 		{
             name = tc;
@@ -117,6 +120,7 @@ namespace Pyrrho.Level2
 			oldTable = ot;
 			newTable = nt;
 			def = df;
+            src = sce;
 		}     
         /// <summary>
         /// Constructor: a Trigger definition from the buffer
@@ -136,7 +140,8 @@ namespace Pyrrho.Level2
             newRow = x.newRow;
             oldTable = x.oldTable;
             newTable = x.newTable;
-            def = x.def;
+            def = (Executable)x.def.Relocate(wr);
+            src = x.src;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -165,7 +170,7 @@ namespace Pyrrho.Level2
             wr.PutString(newRow?.ToString()??"");
             wr.PutString(oldTable?.ToString()??"");
             wr.PutString(newTable?.ToString()??"");
-            wr.PutString(def.ToString());
+            wr.PutString(src);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -181,13 +186,39 @@ namespace Pyrrho.Level2
             var cols = new long[n];
 			while (n-->0)
                 cols[n] = rdr.GetLong();
+            var or = rdr.Position;
 			oldRow = rdr.GetString();
+            var nr = rdr.Position;
 			newRow = rdr.GetString();
+            var ot = rdr.Position;
             oldTable = rdr.GetString();
+            var nt = rdr.Position;
             newTable = rdr.GetString();
-            def = new Parser(rdr.db, rdr.context).ParseTriggerDefClause(rdr.GetString());
+            var lp = rdr.Position;
+            src = rdr.GetString();
+            // prepare a context for parsing the trigger definition
+            var tb = (Table)rdr.db.objects[tabledefpos];
+            var ti = (ObInfo)rdr.role.obinfos[tabledefpos];
+            var fm = new From(nt, tb, ti);
+            var cx = new Context(rdr.db);
+            var db = rdr.db + (Database._ExecuteStatus,ExecuteStatus.Parse);
+            AddTable(cx, newTable, fm);
+            AddTable(cx, oldTable, new FromOldTable(ot,fm));
+            AddRow(cx, oldRow, ti);
+            AddRow(cx, newRow, new ObInfoNewRow(tb,rdr.role));
+            def = new Parser(db, cx).ParseTriggerDefinition(src,lp);
 			base.Deserialise(rdr);
-		}	
+		}
+        void AddTable(Context cx,string s,From t)
+        {
+            if (s != "")
+                cx.defs += (new Ident(s, 0), t);
+        }
+        void AddRow(Context cx,string s,ObInfo oi)
+        {
+            if (s != "")
+                cx.defs += (new Ident(s, 0), oi);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -211,12 +242,12 @@ namespace Pyrrho.Level2
             Add("old table", oldTable, sb);
             Add("new table", newTable, sb);
             sb.Append(": ");
-            sb.Append(def);
+            sb.Append(src);
             return sb.ToString();
 		}
         void Add(string c,string v,System.Text.StringBuilder sb)
         {
-            if (v == null)
+            if (v == null || v=="")
                 return;
             sb.Append(",");
             sb.Append(v);

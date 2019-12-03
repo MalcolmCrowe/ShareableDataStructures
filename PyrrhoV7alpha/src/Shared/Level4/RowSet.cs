@@ -121,7 +121,7 @@ namespace Pyrrho.Level4
             var adds = new int[flags.Length];
             // see if we are going to add index flags stuff
             var fm = qry as From;
-            var ta = fm?.target as Table;
+            var ta = _tr.objects[fm?.target??-1] as Table;
             if (fm != null)
             {
                 var ix = ta.FindPrimaryIndex(_tr);
@@ -264,7 +264,7 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder("RowSet ");
             sb.Append(rowType);
-            _Strategy(sb, 0);
+ //           _Strategy(sb, 0);
             return sb.ToString();
         }
     }
@@ -346,9 +346,9 @@ namespace Pyrrho.Level4
         {
             return " Trivial ";
         }
-        readonly TRow row;
-        readonly TrivialRowBookmark here;
-        public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow(-1));
+        internal readonly TRow row;
+        internal readonly TrivialRowBookmark here;
+        public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow(ObInfo.Any));
         internal TrivialRowSet(Transaction tr,Context cx, Query q, TRow r, long d=0, long rc=0)  
             :base(tr,cx, q,q?.rowType??ObInfo.Any,r.info)
         {
@@ -741,7 +741,7 @@ namespace Pyrrho.Level4
         {
             return " Table ";
         }
-        readonly From from;
+        internal readonly From from;
         /// <summary>
         /// Constructor: a rowset defined by a base table without a primary key
         /// </summary>
@@ -759,7 +759,8 @@ namespace Pyrrho.Level4
             sb.Append(from);
             base._Strategy(sb, indent);
         }
-        internal override int? Count => (int?)(from.target as Table).tableRows.Count;
+        internal override int? Count => 
+            (int?)(_tr.objects[from.target] as Table).tableRows.Count;
         protected override RowBookmark _First(Context _cx)
         {
             return TableRowBookmark.New(_cx,this);
@@ -770,7 +771,7 @@ namespace Pyrrho.Level4
             internal readonly TRow _row, _key;
             public override TRow row => _row;
             public override TRow key => _key;
-            TableRowBookmark(Context _cx, RowSet trs, int pos,
+            protected TableRowBookmark(Context _cx, RowSet trs, int pos,
                 ABookmark<long, object> bmk) : base(_cx,trs, pos, bmk.key())
             {
                 _bmk = bmk;
@@ -782,7 +783,7 @@ namespace Pyrrho.Level4
             internal static TableRowBookmark New(Context _cx, TableRowSet trs)
             {
                 var fm = trs.qry as From;
-                var table = fm.target as Table;
+                var table = trs._tr.objects[fm.target] as Table;
                 for (var b = table.tableRows.PositionAt(0); b != null; b = b.Next())
                 {
                     var rec = (TableRow)b.value();
@@ -805,7 +806,7 @@ namespace Pyrrho.Level4
                 var bmk = _bmk;
                 var rec = (TableRow)_bmk.value();
                 var fm = _rs.qry as From;
-                var table = fm.target as Table;
+                var table = _rs._tr.objects[fm.target] as Table;
                 TableRowBookmark ret = null;
                 for (;;) // loop until we find a local or remote match record or we give up
                 {
@@ -930,6 +931,49 @@ namespace Pyrrho.Level4
         }
 #endif
     }
+    internal class OldTableRowSet : TableRowSet
+    {
+        readonly int count;
+        internal OldTableRowSet(FromOldTable f, TableRowSet trs, Context cx)
+            : base(trs._tr, cx, f) 
+        {
+            var ta = cx.FindTriggerActivation(f.target);
+            count = (int)ta.oldRows.Count;
+        }
+        internal override int? Count => count;
+        protected override RowBookmark _First(Context _cx)
+        {
+            return OldTableRowBookmark.New(_cx, this);
+        }
+        internal class OldTableRowBookmark : TableRowBookmark
+        {
+            OldTableRowBookmark(Context _cx,RowSet trs,int pos,
+                ABookmark<long,object> bmk) :base(_cx,trs,pos,bmk)
+            { }
+            internal new static TableRowBookmark New(Context _cx, TableRowSet trs)
+            {
+                var fm = trs.qry as From;
+                var table = trs._tr.objects[fm.target] as Table;
+                var ta = _cx.FindTriggerActivation(table.defpos);
+                for (var b = ta.oldRows.PositionAt(0); b != null; b = b.Next())
+                {
+                    var rec = (TableRow)b.value();
+                    if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
+                        trs._tr.user.defpos != table.definer
+                        && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
+                        continue;
+                    if (fm.CheckMatch(trs._tr, _cx, rec))
+                    {
+                        var bm = new OldTableRowBookmark(_cx, trs, 0, b);
+                        // because where won't evaluate correctly until we have a bookmark for the query
+                        if (Query.Eval(fm.where, trs._tr, _cx))
+                            return bm;
+                    }
+                }
+                return null;
+            }
+        }
+    }
     /// <summary>
     /// A RowSet defined by an Index (e.g. the primary key for a table)
     /// </summary>
@@ -942,13 +986,13 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The From part
         /// </summary>
-        readonly From from;
+        internal readonly From from;
         readonly Table table;
         /// <summary>
         /// The Index to use
         /// </summary>
-        readonly Index index;
-        readonly PRow filter;
+        internal readonly Index index;
+        internal readonly PRow filter;
         /// <summary>
         /// Constructor: A rowset for a table using a given index
         /// </summary>
@@ -959,7 +1003,7 @@ namespace Pyrrho.Level4
                   new OrderSpec(((ObInfo)tr.role.obinfos[x.defpos]).columns))
         {
             from = f;
-            table = f.target as Table;
+            table = tr.objects[f.target] as Table;
             index = x;
             filter = m;
             f.Audit(tr, x, m);
@@ -1057,7 +1101,7 @@ namespace Pyrrho.Level4
                 var bmk = _bmk;
                 var rec = _rec;
                 var fm = _rs.qry as From;
-                var table = fm.target as Table;
+                var table = _rs._tr.objects[fm.target] as Table;
                 for (; ; )
                 {
                     bmk = bmk.Next();
@@ -1098,7 +1142,7 @@ namespace Pyrrho.Level4
             return " Distinct ";
         }
         MTree rtree;
-        RowSet source;
+        internal RowSet source;
         /// <summary>
         /// constructor: a distinct rowset
         /// </summary>
@@ -1186,12 +1230,14 @@ namespace Pyrrho.Level4
         }
         internal RTree tree = null;
         internal RowSet source;
-        readonly bool distinct;
+        internal OrderSpec ordSpec;
+        internal readonly bool distinct;
         public OrderedRowSet(Context _cx,Query q,RowSet r,OrderSpec os,bool dct)
             :base(r._tr,_cx,q,r.rowType,new ObInfo(q.defpos, Domain.TableType, os.items),os)
         {
             source = r;
             distinct = dct;
+            ordSpec = os;
             building = !SameOrder(r);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
@@ -1424,7 +1470,7 @@ namespace Pyrrho.Level4
         internal readonly BTree<long, TypedValue> defaults = BTree<long, TypedValue>.Empty; 
         internal readonly From from; // will be a SqlInsert, QuerySearch or UpdateSearch
         internal readonly ObInfo targetInfo;
-        readonly PTrigger.TrigType _tgt;
+        internal readonly PTrigger.TrigType _tgt;
         internal readonly BTree<long, TriggerActivation> tb, ti, ta;
         internal readonly Index index;
         internal readonly Adapters _eqs;
@@ -1433,7 +1479,7 @@ namespace Pyrrho.Level4
         {
             from = q;
             _eqs = eqs;
-            var t = from.target as Table ?? from.simpleQuery as Table;
+            var t = tr.objects[from.target] as Table ?? from.simpleQuery as Table;
             index = t.FindPrimaryIndex(_tr);
             // check now about conflict with generated columns
             if (t.Denied(tr,Grant.Privilege.Insert))
@@ -1490,29 +1536,40 @@ namespace Pyrrho.Level4
         /// Perform the triggers in a set
         /// </summary>
         /// <param name="acts"></param>
-        Transaction Exec(Transaction tr,Context _cx, BTree<long, TriggerActivation> acts)
+        (Transaction,BTree<long,TypedValue>) Exec(Transaction tr,Context _cx, BTree<long, TriggerActivation> acts, 
+            BTree<long,TypedValue>nvals=null)
         {
             var r = false;
+            var rv = nvals;
             for (var a = acts.First(); a != null; a = a.Next())
             {
-                var nt = a.value().Exec(tr, _cx);
+                var ta = a.value() + nvals;
+                var nt = ta.Exec(tr, _cx);
+                if (nvals != null)
+                    for (var b = ta.newRow?.First(); b != null; b = b.Next())
+                    {
+                        var k = b.key();
+                        var v = b.value();
+                        if (nvals[k] != v)
+                            rv += (k, v);
+                    }
                 if (nt != _tr)
                     r = true;
                 tr = nt;
             }
             _cx.ret = TBool.For(r);
-            return tr;
+            return (tr,rv);
         }
-        internal Transaction InsertSA(Transaction tr,Context _cx)
+        internal (Transaction,BTree<long,TypedValue>) InsertSA(Transaction tr,Context _cx)
         { return Exec(tr, _cx,ta); }
-        internal Transaction InsertSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb); return Exec(tr,_cx,ti); }
-        internal Transaction UpdateSA(Transaction tr,Context _cx)
+        internal (Transaction, BTree<long, TypedValue>) InsertSB(Transaction tr,Context _cx)
+        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
+        internal (Transaction, BTree<long, TypedValue>) UpdateSA(Transaction tr,Context _cx)
         { return Exec(tr,_cx,ta); }
-        internal Transaction UpdateSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb); return Exec(tr,_cx,ti); }
-        internal Transaction DeleteSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb); return Exec(tr,_cx,ti); }
+        internal (Transaction, BTree<long, TypedValue>) UpdateSB(Transaction tr,Context _cx)
+        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
+        internal (Transaction, BTree<long, TypedValue>) DeleteSB(Transaction tr,Context _cx)
+        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
         internal class TransitionRowBookmark : RowBookmark
         {
             readonly TransitionRowSet _trs;
@@ -1520,12 +1577,10 @@ namespace Pyrrho.Level4
             readonly TRow _row, _key;
             readonly Index _index;
             /// <summary>
-            /// There may be several triggers of any type, so we manage a set of transitition activations for each.
+            /// There may be several triggers of any type, so we manage a set of transition activations for each.
             /// These are for table before, table instead, table after, row before, row instead, row after.
             /// </summary>
             internal readonly BTree<long, TriggerActivation> rb, ri, ra;
-            internal readonly BTree<long,TypedValue> oldRow = BTree<long, TypedValue>.Empty; // computed from Session role
-            internal readonly BTree<long, TypedValue> newRow = BTree<long, TypedValue>.Empty; // computed from Session role
             public override TRow row => _row;
             public override TRow key => _key;
             TransitionRowBookmark(Context _cx,TransitionRowSet trs, int pos, RowBookmark fbm, Index ix) 
@@ -1579,7 +1634,7 @@ namespace Pyrrho.Level4
                 }
                 if (ix!=null)
                     (oldRow,_index) = CheckPrimaryKey(oldRow, ix);
-                if (trs.qry is From fm && fm.target is Table t)
+                if (trs.qry is From fm && trs._tr.objects[fm.target] is Table t)
                 {
                     var rt = dt;
                     for (int i = 0; i < rt.Length; i++)
@@ -1595,16 +1650,15 @@ namespace Pyrrho.Level4
                             }
                         }
                 }
-                newRow = oldRow;
                 _row = new TRow(ti, oldRow);
                 _key = new TRow(trs.keyType, oldRow);
                 _cx.Add(trs.qry,this);
                 var q = trs.qry as From;
-                var tb = q.target as Table;
+                var tb = trs._tr.objects[q.target] as Table;
                 // Get the trigger sets and set up the activations
-                rb = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
-                ri = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
-                ra = Setup(trs._tr,q, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
+                rb = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
+                ri = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
+                ra = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
             }
             /// <summary>
             /// Implement the autokey feature: if a key column is an integer type,
@@ -1653,10 +1707,10 @@ namespace Pyrrho.Level4
             /// <param name="q"></param>
             /// <param name="tgs"></param>
             /// <returns></returns>
-            BTree<long, TriggerActivation> Setup(Transaction tr,Query q, BTree<long, Trigger> tgs)
+            BTree<long, TriggerActivation> Setup(Context cx, BTree<long, Trigger> tgs)
             {
                 var r = BTree<long, TriggerActivation>.Empty;
-                var cx = new Context(tr);
+                cx = new Context(cx); // for this trs
                 if (tgs != null)
                     for (var tg = tgs.First(); tg != null; tg = tg.Next())
                     {
@@ -1689,16 +1743,16 @@ namespace Pyrrho.Level4
             /// <summary>
             /// Some convenience functions for calling from Transaction.Execute(..)
             /// </summary>
-            internal Transaction InsertRA(Transaction tr,Context _cx)
+            internal (Transaction, BTree<long, TypedValue>) InsertRA(Transaction tr,Context _cx)
             { return _trs.Exec(tr, _cx,ra); }
-            internal Transaction InsertRB(Transaction tr,Context _cx)
-            { _cx.row = _cx.rb.row;  tr = _trs.Exec(tr,_cx,rb); return _trs.Exec(tr,_cx,ri); }
-            internal Transaction UpdateRA(Transaction tr,Context _cx)
-            { return _trs.Exec(tr,_cx,ra); }
-            internal Transaction UpdateRB(Transaction tr,Context _cx)
-            { tr = _trs.Exec(tr,_cx,rb); return _trs.Exec(tr,_cx,ri); }
-            internal Transaction DeleteRB(Transaction tr,Context _cx)
-            { tr = _trs.Exec(tr,_cx,rb); return _trs.Exec(tr,_cx,ri); }
+            internal (Transaction, BTree<long, TypedValue>) InsertRB(Transaction tr,Context _cx)
+            { _cx.row = _cx.rb.row;  tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
+            internal (Transaction, BTree<long, TypedValue>) UpdateRA(Transaction tr,Context _cx,BTree<long,TypedValue>vals)
+            { return _trs.Exec(tr,_cx,ra,vals); }
+            internal (Transaction, BTree<long, TypedValue>) UpdateRB(Transaction tr,Context _cx,BTree<long,TypedValue> vals)
+            { var x = _trs.Exec(tr,_cx,rb,vals); return _trs.Exec(x.Item1,_cx,ri,x.Item2); }
+            internal (Transaction, BTree<long, TypedValue>) DeleteRB(Transaction tr,Context _cx)
+            { tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
 
         }
     }
@@ -1709,8 +1763,8 @@ namespace Pyrrho.Level4
             return " Sorted ";
         }
         internal MTree tree;
-        RowSet source;
-        TreeInfo treeInfo;
+        internal readonly RowSet source;
+        internal readonly TreeInfo treeInfo;
         List<TRow> rows = new List<TRow>();
         List<Rvv> rvvs = new List<Rvv>();
         internal SortedRowSet(Context _cx,Query q, RowSet s, ObInfo kt, TreeInfo ti)
@@ -1849,9 +1903,9 @@ namespace Pyrrho.Level4
         protected override RowBookmark _First(Context _cx)
         {
             _tr = proc.Exec(_tr,_cx,actuals);
-            if (_cx.data == null)
+            if (_cx.data[qry.defpos] == null)
                 throw new DBException("22004").Mix();
-            rowSet = _cx.data;
+            rowSet = _cx.data[qry.defpos];
             return rowSet.First(_cx);
         }
     }
@@ -1861,8 +1915,8 @@ namespace Pyrrho.Level4
         {
             return " Section ";
         }
-        RowSet source;
-        readonly int offset,count;
+        internal readonly RowSet source;
+        internal readonly int offset,count;
         internal RowSetSection(Context _cx,RowSet s, int o, int c)
             : base(s._tr,_cx,s.qry,s.rowType,s.keyType)
         {

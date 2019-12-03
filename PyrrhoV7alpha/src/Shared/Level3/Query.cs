@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
             Filter = -180, // BTree<long,TypedValue>
             _Import = -181, // BTree<SqlValue,SqlValue>
             Matches = -182, // BTree<SqlValue,TypedValue>
-            Matching = -183, // BTree<SqlValue,ATree<SqlValue,bool>>
+            Matching = -183, // BTree<SqlValue,BTree<SqlValue,bool>>
             OrdSpec = -184, // OrderSpec
             Periods = -185, // BTree<long,PeriodSpec>
             _Replace = -186, // BTree<string,string>
@@ -613,10 +613,10 @@ namespace Pyrrho.Level3
             var q = this;
             if (cond is SqlValueExpr se && se.kind == Sqlx.EQL)
             {
-                if (se.left.target is DBObject cl && se.right is SqlLiteral ll)
-                    filt += (cl.defpos, ll.val);
-                else if (se.right.target is DBObject cr && se.left is SqlLiteral lr)
-                    filt += (cr.defpos, lr.val);
+                if (se.left.target>=0 && se.right is SqlLiteral ll)
+                    filt += (se.left.target, ll.val);
+                else if (se.right.target>=0 && se.left is SqlLiteral lr)
+                    filt += (se.right.target, lr.val);
             }
             if (filt != filter)
                 q += (Filter, filt);
@@ -913,19 +913,27 @@ namespace Pyrrho.Level3
     // LogTableSelectBookmark
     internal class LogRowTable :Query
     {
-        public readonly Table st,tb;
-        public LogRowTable(Transaction tr, long td, string ta) 
+        public readonly SystemTable logRows; 
+        public readonly Table targetTable;
+        public LogRowTable(Transaction tr, Context cx, long td, string ta) 
             :base(tr.uid,BTree<long,object>.Empty)
         {
-            tb = tr.objects[td] as Table ??
+            targetTable = tr.objects[td] as Table ??
                 throw new DBException("42131", "" + td).Mix();
             var tt = new SystemTable("" + td);
-            new SystemTableColumn(tt, "Pos", Domain.Int);
-            new SystemTableColumn(tt, "Action", Domain.Char);
-            new SystemTableColumn(tt, "DefPos", Domain.Int);
-            new SystemTableColumn(tt, "Transaction", Domain.Int);
-            new SystemTableColumn(tt, "Timestamp", Domain.Timestamp);
-            st = tt;
+            new SystemTableColumn(tt, "Pos", Domain.Int,1);
+            new SystemTableColumn(tt, "Action", Domain.Char,0);
+            new SystemTableColumn(tt, "DefPos", Domain.Int,0);
+            new SystemTableColumn(tt, "Transaction", Domain.Int,0);
+            new SystemTableColumn(tt, "Timestamp", Domain.Timestamp,0);
+            logRows = tt;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(targetTable);
+            sb.Append(logRows);
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -936,21 +944,21 @@ namespace Pyrrho.Level3
     {
         public readonly Table st,tb;
         public readonly long rd, cd;
-        public LogRowColTable(Transaction tr, long r, long c, string ta)
+        public LogRowColTable(Transaction tr, Context cx, long r, long c, string ta)
         : base(tr.uid, BTree<long, object>.Empty)
         {
-            var tc = tr.objects[cd] as TableColumn ??
+            var tc = tr.objects[c] as TableColumn ??
                 throw new DBException("42131", "" + cd).Mix();
             rd = r;
             cd = c;
             tb = tr.objects[tc.tabledefpos] as Table;
             var tt = new SystemTable("" + rd + ":" + cd);
-            new SystemTableColumn(tt, "Pos", Domain.Int);
-            new SystemTableColumn(tt, "Value", Domain.Char);
-            new SystemTableColumn(tt, "StartTransaction", Domain.Int);
-            new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp);
-            new SystemTableColumn(tt, "EndTransaction", Domain.Int);
-            new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp);
+            new SystemTableColumn(tt, "Pos", Domain.Int,1);
+            new SystemTableColumn(tt, "Value", Domain.Char,0);
+            new SystemTableColumn(tt, "StartTransaction", Domain.Int,0);
+            new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp,0);
+            new SystemTableColumn(tt, "EndTransaction", Domain.Int,0);
+            new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp,0);
             st = tt;
         }
     }
@@ -1742,7 +1750,8 @@ namespace Pyrrho.Level3
         FDJoinPart GetRefIndex(Transaction tr,Query a, Query b,bool left)
         {
             FDJoinPart best = null;
-            if (a is From fa &&  b is From fb && fa.target is Table ta && fb.target is Table tb)
+            if (a is From fa &&  b is From fb && tr.objects[fa.target] is Table ta 
+                && tr.objects[fb.target] is Table tb)
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
@@ -1780,7 +1789,7 @@ namespace Pyrrho.Level3
         FDJoinPart GetIndex(Transaction tr,Query a,bool left)
         {
             FDJoinPart best = null;
-            if (a is From fa && fa.target is Table ta)
+            if (a is From fa && tr.objects[fa.target] is Table ta)
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
@@ -2011,6 +2020,10 @@ namespace Pyrrho.Level3
                  +(FDConds,c)+(Reverse,r))
         { }
         protected FDJoinPart(BTree<long, object> m) : base(m) { }
+        public static FDJoinPart operator+(FDJoinPart f,(long,object)x)
+        {
+            return new FDJoinPart(f.mem + x);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new FDJoinPart(m);

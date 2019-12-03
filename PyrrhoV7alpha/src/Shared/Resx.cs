@@ -129,6 +129,8 @@ namespace Pyrrho
             dict.Add("2F003", "Prohibited SQL-statement attempted");
             dict.Add("2H000", "Collation error: {0}");
             dict.Add("34000", "No such cursor: {0}");
+            dict.Add("33000", "Invalid SQL-statement identifier");
+            dict.Add("33001", "Error in prepared statement parameters");
             dict.Add("3D000", "Invalid catalog specification {0}");
             dict.Add("3D001", "Database {0} not open");
             dict.Add("3D002", "Remote host {0} not available");

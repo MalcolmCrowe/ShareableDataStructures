@@ -60,7 +60,6 @@ namespace Pyrrho.Level3
             r += ")";
             return r;
         }
-
         internal override Basis New(BTree<long, object> m)
         {
             return new OrderSpec(m);
@@ -215,7 +214,6 @@ namespace Pyrrho.Level3
             }
             return partition == w.partition;
         }
-
         internal override Basis New(BTree<long, object> m)
         {
             return new WindowSpecification(defpos,m);
@@ -423,6 +421,12 @@ namespace Pyrrho.Level3
         {
             var va = (SqlValue)val.Replace(cx, was, now);
             var vb = (SqlValue)vbl.Replace(cx, was, now);
+            return new UpdateAssignment(vb, va);
+        }
+        internal UpdateAssignment Frame(Context cx)
+        {
+            var va = (SqlValue)val.Frame(cx);
+            var vb = (SqlValue)vbl.Frame(cx);
             return new UpdateAssignment(vb, va);
         }
         public int CompareTo(object obj)

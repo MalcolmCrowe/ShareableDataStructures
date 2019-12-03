@@ -158,7 +158,7 @@ namespace Pyrrho.Level4
         /// <param name="rs">The source rowset</param>
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
-        public GroupingRowSet(Context _cx, QuerySpecification q, RowSet rs, GroupSpecification gr, BTree<long,SqlValue> h)
+        public GroupingRowSet(Context _cx, Query q, RowSet rs, GroupSpecification gr, BTree<long,SqlValue> h)
             : base(rs._tr,_cx,q,q.rowType,_Type(_cx,q,gr))
         {
             source = rs;

@@ -22,7 +22,7 @@ namespace Tpcc
         }
         public void DeleteDatabase()
         {
-            File.Delete(@"..\..\..\PyrrhoSvr\bin\Debug\Tpcc.pfl");
+            File.Delete(@"..\..\..\PyrrhoSvr\bin\Debug\Tpcc");
         }
         public void CreationScript()
         {
@@ -67,9 +67,17 @@ namespace Tpcc
                 catch (Exception)
                 { }
         }
-        static void Exec(string s)
+        static void Exec(string s,params object[] q)
         {
-            db.ActTrace(s);
+            if (q.Length == 0)
+                db.ActTrace(s);
+            else
+            {
+                var qs = new string[q.Length];
+                for (var i = 0; i < q.Length; i++)
+                    qs[i] = q[i].ToString();
+                db.ExecuteNonQueryTrace(s, qs);
+            }
         }
         string NextData()
         {
@@ -89,23 +97,14 @@ namespace Tpcc
         {
             Console.WriteLine("Adding Items: " + DateTime.Now);
             util ut = new util(14, 24);
+            db.Prepare("Items", "insert into item(i_id, i_im_id, i_name, i_price, i_data) values(?,?,?,?,?)");
 #if TRY
             for (int j=1;j<=10;j++)
 #else
             for (int j = 1; j <= 100000; j++)
 #endif
-            {
-                string s = "insert into item(i_id,i_im_id,i_name,i_price,i_data) values (" +
-#if TRY
-                    j+","+util.random(1,10)
-#else
-                    j + "," + util.random(1, 10000)
-#endif
-                    + ",'" + enc.GetString(ut.NextAString()) +
-                    "'," + enc.GetString(util.NextNString(100, 10000, 2)) + ",'" +
-                    NextData() + "')";
-                Exec(s);
-            }
+                Exec("Items",j, util.random(1, 10000),"'"+ enc.GetString(ut.NextAString())+"'", 
+                    enc.GetString(util.NextNString(100, 10000, 2)),"'"+ enc.GetString(util.NextNString(100, 10000, 2))+"'");
             Console.WriteLine("Items done: Fill stock?" + DateTime.Now);
         }
         public void FillWarehouse(int w)
@@ -128,30 +127,51 @@ namespace Tpcc
         void FillStock(int wid)
         {
             Console.WriteLine("filling stock " + DateTime.Now);
+            string s = "insert into stock(s_i_id,s_w_id,s_quantity," +
+            "s_dist_0,s_dist_1,s_dist_2,s_dist_3,s_dist_4,s_dist_5,s_dist_6,s_dist_7,s_dist_8,s_dist_9" +
+            ",s_dist_10,s_ytd,s_order_cnt,s_remote_cnt,s_data) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            db.Prepare("Stock", s);
             util u = new util(26, 50);
+            var v = new object[18];
 #if TRY
             for (int siid=1;siid<=10;siid++)
 #else
             for (int siid = 1; siid <= 100000; siid++)
 #endif
             {
-                string s = "insert into stock(s_i_id,s_w_id,s_quantity";
-                string v = "'";
+                v[0] = siid;
+                v[1] = wid;
+                v[2] = enc.GetString(util.NextNString(10, 100, 0));
                 for (int j = 1; j <= 9; j++)
-                {
-                    s += ",s_dist_0" + j;
-                    v += enc.GetString(util.randchar(24)) + "','";
-                }
-                s += ",s_dist_10,s_ytd,s_order_cnt,s_remote_cnt,s_data) values ("
-                    + siid + "," + wid + "," + enc.GetString(util.NextNString(10, 100, 0)) +
-                    "," + v + enc.GetString(util.randchar(24)) + "',0,0,0,'" +
-                    enc.GetString(util.fixStockData(u.NextAString())) + "')";
-                Exec(s);
+                    v[j+3] = "'"+enc.GetString(util.randchar(24)) + "'";
+                v[13] = "'" + enc.GetString(util.randchar(24)) + "'";
+                v[14] = 0;
+                v[15] = 0;
+                v[16] = 0;
+                v[17] = "'"+enc.GetString(util.fixStockData(u.NextAString())) + "'";
+                Exec("Stock",v);
             }
             Console.WriteLine("Done filling stock " + DateTime.Now);
         }
         public void FillDistricts(int wid)
         {
+            db.Prepare("District", "insert into district(d_id, d_w_id, d_name, d_street_1, " +
+                "d_street_2, d_city, d_state, d_zip, d_tax, d_ytd, d_next_o_id)" +
+                "values(?,?,?,?,?,?,?,?,?,30000.00,3001)");
+            db.Prepare("Customer", "insert into customer(c_id,c_d_id,c_w_id,c_last,c_middle,c_first,c_street_1,c_street_2,c_city,c_state," + //10
+                    "c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt,c_delivery_cnt,c_data)"+
+                    "values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            db.Prepare("History", "insert into history(h_c_id,h_c_d_id,h_c_w_id,h_d_id,h_w_id,h_date,h_amount,h_data)"+
+                "values (?,?,?,?,?,?,?,?)");
+            db.Prepare("Order", "insert into \"ORDER\"(o_id,o_c_id,o_d_id,o_w_id,o_entry_d,o_carrier_id,o_ol_cnt,o_all_local)" +
+                "values (?,?,?,?,?,?,?,?)");
+            db.Prepare("Order1", "insert into \"ORDER\"(o_id,o_c_id,o_d_id,o_w_id,o_entry_d,o_ol_cnt,o_all_local)" +
+                "values (?,?,?,?,?,?,?)");
+            db.Prepare("NewOrder", "insert into new_order(no_o_id,no_d_id,no_w_id) values (?,?,?)");
+            db.Prepare("OrderLine", "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id," +
+                        "ol_delivery_d,ol_quantity,ol_amount,ol_dist_info) values(?,?,?,?,?,?,?,?,?,?)");
+            db.Prepare("OrderLine1", "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id," +
+                        "ol_quantity,ol_amount,ol_dist_info) values(?,?,?,?,?,?,?,?,?)");
             for (int did = 1; did <= 10; did++)
                 FillDistrict(wid, did);
         }
@@ -160,15 +180,14 @@ namespace Tpcc
             Console.WriteLine("Filling District " + did + " warehouse "+wid+ " " + DateTime.Now);
             util us = new util(10, 20);
             util un = new util(6, 10);
-            string s = "insert into district(d_id,d_w_id,d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_tax,d_ytd,d_next_o_id)values(" +
-                did + "," + wid + ",'" + enc.GetString(un.NextAString()) +
-                "','" + enc.GetString(us.NextAString()) +
-                "','" + enc.GetString(us.NextAString()) +
-                "','" + enc.GetString(us.NextAString()) +
-                "','" + (char)util.random(65, 90) + (char)util.random(65, 90) + "','" +
-                enc.GetString(util.NZip()) + "'," + enc.GetString(util.NextNString(0, 2000, 4)) +
-                ",30000.00,3001)";
-            Exec(s);
+            var v = new object[9];
+            Exec("District",did,wid,"'" + enc.GetString(un.NextAString()) + "'", //0-2
+                "'" + enc.GetString(us.NextAString()) + "'", // 3
+                "'" + enc.GetString(us.NextAString()) + "'", // 4
+                "'" + enc.GetString(us.NextAString()) + "'", // 5
+                "'" + (char)util.random(65, 90) + (char)util.random(65, 90) + "'", // 6 state
+                "'" + enc.GetString(util.NZip()) + "'", // 7
+                enc.GetString(util.NextNString(0, 2000, 4)));
             FillCustomer(wid, did);
             FillOrder(wid, did);
             Console.WriteLine("Done Filling District " + DateTime.Now);
@@ -186,23 +205,20 @@ namespace Tpcc
             for (int cid = 1; cid <= 3000; cid++)
 #endif
             {
-                string s = "insert into customer(c_id,c_d_id,c_w_id,c_last,c_middle,c_first,c_street_1,c_street_2,c_city,c_state," + //10
-                    "c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt,c_delivery_cnt,c_data) values (" + //21
-                    cid + "," + did + "," + wid + ",'" + enc.GetString(util.NextLast(cid)) + "','OE','" +
-                    enc.GetString(uf.NextAString()) +
-                    "','" + enc.GetString(us.NextAString()) +
-                    "','" + enc.GetString(us.NextAString()) +
-                    "','" + enc.GetString(us.NextAString()) +
-                    "','" + (char)util.random(65, 90) + (char)util.random(65, 90) + "','" + // 10
-                    enc.GetString(util.NZip()) + "','" + enc.GetString(util.NString(16)) + "',date'" +
-                    DateTime.Now.ToString("yyyy-MM-dd") + "','" + credit() + "',50000.00," +
-                    enc.GetString(util.NextNString(0, 5000, 4)) + ",-10.0,10.0,1,0,'" +
-                    enc.GetString(ud.NextAString()) + "')";
-                Exec(s);
-                s = "insert into history(h_c_id,h_c_d_id,h_c_w_id,h_d_id,h_w_id,h_date,h_amount,h_data) values (" +
-                    cid + "," + did + "," + wid + "," + did + "," + wid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") +
-                    "',10,'" + enc.GetString(uh.NextAString()) + "')";
-                Exec(s);
+                Exec("Customer",cid,did,wid,"'" + enc.GetString(util.NextLast(cid)) + "'","'OE'",//0-4
+                    "'" + enc.GetString(uf.NextAString()) + "'", //5
+                    "'" + enc.GetString(us.NextAString()) + "'", //6
+                    "'" + enc.GetString(us.NextAString()) + "'", //7
+                    "'" + enc.GetString(us.NextAString()) + "'", //8
+                    "'" + (char)util.random(65, 90) + (char)util.random(65, 90) + "'", //9 (state)
+                    "'" + enc.GetString(util.NZip()) + "'", // 10
+                    "'" + enc.GetString(util.NString(16)) + "'", // 11
+                    "date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'", //12
+                    "'" + credit() + "'",50000.00,enc.GetString(util.NextNString(0, 5000, 4)),//13-15
+                    -10.0,10.0,1,0,"'" + enc.GetString(ud.NextAString()) + "'"); //16-29
+                Exec("History",cid,did,wid,did,wid,"date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'",
+                    10,"'" + enc.GetString(uh.NextAString()) + "'");
+
             }
             Console.WriteLine("Customers done " + DateTime.Now);
         }
@@ -227,19 +243,14 @@ namespace Tpcc
                 string s;
                 int cnt = util.random(5, 15);
                 if (oid < 2101)
-                    s = "insert into \"ORDER\"(o_id,o_c_id,o_d_id,o_w_id,o_entry_d,o_carrier_id,o_ol_cnt,o_all_local) values (" +
-                        oid + "," + (perm[oid - 1] + 1) + "," + did + "," + wid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") +
-                        "'," + util.random(1, 10) + "," + util.random(5, 15) + ",1)";
+                    Exec("Order", oid,(perm[oid - 1] + 1),did,wid,"date'" + DateTime.Now.ToString("yyyy-MM-dd") +"'",
+                        util.random(1, 10),util.random(5, 15),1);
                 else
                 {
-                    s = "insert into \"ORDER\"(o_id,o_c_id,o_d_id,o_w_id,o_entry_d,o_ol_cnt,o_all_local) values (" +
-                        oid + "," + (perm[oid - 1] + 1) + "," + did + "," + wid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") +
-                        "'," + cnt + ",1)";
-                    Exec(s);
-                    s = "insert into new_order(no_o_id,no_d_id,no_w_id) values (" +
-                        oid + "," + did + "," + wid + ")";
+                    Exec("Order1",oid,(perm[oid - 1] + 1),did,wid,"date'" + DateTime.Now.ToString("yyyy-MM-dd") +"'",
+                        cnt,1);
+                    Exec("NewOrder",oid,did,wid);
                 }
-                Exec(s);
                 FillOrderLine(wid, did, oid, cnt);
             }
         }
@@ -249,29 +260,13 @@ namespace Tpcc
             {
                 string s;
                 if (oid < 2101)
-                    s = "insert into order_line(ol_o_id,ol_d_id,ol_w_id," +
-                        "ol_number,ol_i_id,ol_supply_w_id," +
-                        "ol_delivery_d,ol_quantity,ol_amount," +
-                        "ol_dist_info) values(" +
-                        oid + "," + did + "," + wid + "," +
-#if TRY
-                        j + "," + util.random(1, 10) + "," + wid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") + "',5,0,'" +
-#else
-                        j + "," + util.random(1, 100000) + "," + wid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") + "',5,0,'" +
-#endif
-                        enc.GetString(util.randchar(24)) + "')";
+                    Exec("OrderLine", oid,did, wid,j, util.random(1, 100000),wid,
+                        "date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'",5,0,
+                        "'" + enc.GetString(util.randchar(24)) + "'");
                 else
-                    s = "insert into order_line(ol_o_id,ol_d_id,ol_w_id," +
-                        "ol_number,ol_i_id,ol_supply_w_id," +
-                        "ol_quantity,ol_amount,ol_dist_info) values(" +
-                        oid + "," + did + "," + wid + "," +
-#if TRY
-                                                j + ","+util.random(1,10)+","+wid+
-#else
-                                                j + "," + util.random(1, 100000) + "," + wid +
-#endif
-                        ",5," + enc.GetString(util.NextNString(1, 999999, 2)) + ",'" + enc.GetString(util.randchar(24)) + "')";
-                Exec(s);
+                    Exec("OrderLine1",oid,did,wid,j,util.random(1, 100000),wid,5,
+                        enc.GetString(util.NextNString(1, 999999, 2)),
+                        "'" + enc.GetString(util.randchar(24)) + "'");
             }
         }
 

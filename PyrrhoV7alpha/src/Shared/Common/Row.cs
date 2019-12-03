@@ -31,8 +31,8 @@ namespace Pyrrho.Common
     {
         internal readonly ObInfo info = null;
         internal readonly Domain dataType = Domain.Null;
- //       static int _tvid = 0;
- //       int tvid = ++_tvid;
+        static int _tvid = 0;
+        internal int tvid = ++_tvid;
         internal TypedValue(Domain t)
         {
             if (t == null)
@@ -1204,25 +1204,6 @@ namespace Pyrrho.Common
                 values += (c.defpos, r?[i]);
             }
             columns = cols;
-        }
-        public TRow(long t,params (string, TypedValue)[] vs) : base(_Info(t,vs))
-        {
-            var cols = BList<TypedValue>.Empty;
-            values = BTree<long, TypedValue>.Empty;
-            for (int i = 0; i < vs.Length; i++)
-            {
-                cols += vs[i].Item2;
-                var c = info.columns[i];
-                values += (c.defpos, vs[i].Item2);
-            }
-            columns = cols;
-        }
-        static ObInfo _Info(long t,(string,TypedValue)[] vs)
-        {
-            var r = BList<SqlValue>.Empty;
-            for (var i = 0; i < vs.Length; i++)
-                r += new SqlValue(t++, vs[i].Item1);
-            return new ObInfo(t++,Domain.Row,r);
         }
         internal override object Val()
         {

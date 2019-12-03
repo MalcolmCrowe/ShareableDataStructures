@@ -1,7 +1,8 @@
 ﻿namespace Pyrrho.Common
 {
     /// <summary>
-    /// For details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.9
+    /// For details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
+    /// gives the current list of codes.
     /// </summary>
     public enum Protocol
     {
@@ -15,10 +16,11 @@
         Mongo = 41, Check = 42, CommitAndReport = 43, RemoteCommitAndReport = 44, Post = 45, Put = 46,
         Get1 = 47, Delete = 48, Update = 49, Rest = 50, Subscribe = 51, Synchronise = 52, SetMaster = 53,
         GetInfo = 54, Execute = 55, Get2 = 56, ExecuteNonQueryTrace = 73, CommitTrace = 74,
-        CommitAndReportTrace =75
+        CommitAndReportTrace = 75, ExecuteTrace = 76
     }
     /// <summary>
-    /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.9
+    /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
+    /// which gives the currently supported list of codes.
     /// </summary>
     public enum Responses
     {
@@ -32,8 +34,8 @@
         DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77
     }
     /// <summary>
-    /// Transaction strings are sent using a binary encrypted format. 
-    /// User, Password, Base, BaseServer, Coordinator and Length are reserved for server-server comms.
+    /// Connection strings are sent using a binary encrypted format. 
+    /// User, Password, Base, BaseServer, Coordinator and Length are no longer supported
     /// </summary>
     public enum Connecting
     {

@@ -27,7 +27,7 @@ namespace Pyrrho.Level3
             Indexes = -264, // BTree<CList<TableColumn>,long> (T) 
             SystemPS = -265, //long
             TableChecks = -266, // BTree<long,Check> (T)
-            Triggers = -267; // BTree<PTrigger.TrigType,ATree<long,Trigger>> (T) 
+            Triggers = -267; // BTree<PTrigger.TrigType,BTree<long,Trigger>> (T) 
         /// <summary>
         /// The rows of the table with the latest version for each
         /// </summary>
@@ -97,7 +97,7 @@ namespace Pyrrho.Level3
         {
             var tb = this;
             var ts = triggers[tg.tgType] ?? BTree<long, Trigger>.Empty;
-            return tb + (Triggers, triggers+(tg.tgType, ts + (tg.tabledefpos, tg)));
+            return tb + (Triggers, triggers+(tg.tgType, ts + (tg.defpos, tg)));
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -162,10 +162,9 @@ namespace Pyrrho.Level3
             var trs = new TransitionRowSet(tr, _cx, f, PTrigger.TrigType.Insert, eqs);
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
-            tr = trs.InsertSA(tr, _cx);
+            tr = trs.InsertSA(tr, _cx).Item1;
             if (_cx.ret != TBool.True)
             {
-                var nr = tr.nextTid;
                 for (var trb = trs.First(_cx); trb != null; trb = trb.Next(_cx)) // trb constructor checks for autokey
                 {
                     var _trb = trb as TransitionRowSet.TransitionRowBookmark;
@@ -194,25 +193,25 @@ namespace Pyrrho.Level3
                         }
                     }
                     // Do row-level triggers
-                    tr = _trb.InsertRB(tr,_cx);
+                    tr = _trb.InsertRB(tr,_cx).Item1;
                     Record r = null;
                     if (cl != Level.D)
-                        r = new Record3(this,_cx.row.values, st, cl, nr++, tr);
+                        r = new Record3(this,_cx.row.values, st, cl, tr.nextTid, tr);
                     else if (prov != null)
-                        r = new Record1(this,_cx.row.values, prov, nr++,tr);
+                        r = new Record1(this,_cx.row.values, prov, tr.nextTid, tr);
                     else
-                        r = new Record(this, _cx.row.values, nr++, tr);
+                        r = new Record(this, _cx.row.values, tr.nextTid, tr);
                     count++;
                     // install the record in the database
-                    tr+=r;
+                    tr = tr +r +(Database.NextTid,r.defpos+1);
                     _cx.affected+=new Rvv(defpos, trb._defpos, r.ppos);
                    // Row-level after triggers
-                    tr = _trb.InsertRA(tr,_cx);
+                    tr = _trb.InsertRA(tr,_cx).Item1;
                 }
-                tr += (Database.NextTid, nr);
+                tr += (Database.NextTid, _cx.top);
             }
             // Statement-level after triggers
-            tr = trs.InsertSA(tr,_cx);
+            tr = trs.InsertSA(tr,_cx).Item1;
             return tr;
         }
 
@@ -259,7 +258,7 @@ namespace Pyrrho.Level3
                 throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
             var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Delete, eqs);
             var cl = tr.user.clearance;
-            tr = trs.DeleteSB(tr, cx);
+            tr = trs.DeleteSB(tr, cx).Item1;
             var nr = tr.nextTid;
             cx.rb = f.RowSets(tr, cx).First(cx);
             for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark; trb != null;
@@ -267,7 +266,7 @@ namespace Pyrrho.Level3
             {
       //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
         //            continue;
-                tr = trb.DeleteRB(tr, cx);
+                tr = trb.DeleteRB(tr, cx).Item1;
                 var rec = cx.rb.Rec();
                 if (tr.user.defpos != tr.owner && enforcement.HasFlag(Grant.Privilege.Delete)?
                     // If Delete is enforced by the table and the user has delete privilege for the table, 
@@ -314,11 +313,11 @@ namespace Pyrrho.Level3
             }
       //      bool nodata = true;
             var cl = tr.user.clearance;
+            cx.row = null;
             cx.rb = f.RowSets(tr, cx).First(cx);
             if ((level != null || updates.Count > 0))
             {
-                tr = trs.UpdateSB(tr, cx);
-                var nr = tr.nextTid;
+                tr = trs.UpdateSB(tr, cx).Item1;
                 for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark;
                     trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
                 {
@@ -332,9 +331,13 @@ namespace Pyrrho.Level3
                         var dt = ua.vbl.domain;
                         if (av != null && !av.dataType.EqualOrStrongSubtypeOf(dt))
                             av = dt.Coerce(av);
-                        vals += (ua.vbl.defpos, av);
+                        vals += (ua.vbl.target, av);
                     }
-                    tr = trb.UpdateRB(tr, cx);
+                    (tr,vals) = trb.UpdateRB(tr, cx, vals);
+                    var vs = cx.row.values;
+                    for (var b = vals.First(); b != null; b = b.Next())
+                        vs += (b.key(), b.value());
+                    cx.row = new TRow(cx.row.info, vs);
                     TableRow rc = trb.Rec();
                     // If Update is enforced by the table, and a record selected for update 
                     // is not one to which the user has clearance 
@@ -347,13 +350,13 @@ namespace Pyrrho.Level3
                              : cl.minLevel > 0))
                         throw new DBException("42105");
                     var u = (level == null) ?
-                        new Update(rc, this, vals, nr++, tr) :
-                        new Update1(rc, this, vals, (Level)level.Eval(tr, cx).Val(), nr++, tr);
-                    tr += u;
-                    trb.UpdateRA(tr,cx);
+                        new Update(rc, this, vals, tr.nextTid, tr) :
+                        new Update1(rc, this, vals, (Level)level.Eval(tr, cx).Val(), tr.nextTid, tr);
+                    tr = tr + u + (Database.NextTid,tr.nextTid+1);
+                    trb.UpdateRA(tr,cx,vals);
                     cx.affected+=new Rvv(defpos, u.defpos, tr.loadpos);
+                    cx.row = null;
                 }
-                tr += (Database.NextTid, nr);
             }
             trs.UpdateSA(tr,cx);
             rs.Add(trs); // just for PUT
@@ -388,9 +391,10 @@ namespace Pyrrho.Level3
         /// <param name="from">The query</param>
         /// <param name="_enu">The object enumerator</param>
         /// <returns></returns>
-        internal TRow RoleClassValue(Transaction tr, Table from, ABookmark<long, DBObject> _enu)
+        internal override TRow RoleClassValue(Transaction tr, From from, 
+            ABookmark<long, object> _enu)
         {
-            var ob = _enu.value();
+            var ob = (DBObject)_enu.value();
             var md = (ObInfo)tr.role.obinfos[ob.defpos];
             var ro = tr.role;
             var versioned = true;
@@ -424,10 +428,9 @@ namespace Pyrrho.Level3
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(tr.nextTid,("Name",new TChar(md.name)),
-                ("Key",new TChar(key)),
-                ("Def",new TChar(sb.ToString())));
-        }
+            return new TRow(from.rowType,new TChar(md.name),new TChar(key),
+                new TChar(sb.ToString()));
+        } 
         /// <summary>
         /// Generate a row for the Role$Java table: includes a Java class definition
         /// </summary>
@@ -473,9 +476,8 @@ namespace Pyrrho.Level3
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(tr.nextTid,("Name",new TChar(md.name)),
-                ("Key",new TChar(key)),
-                ("Def",new TChar(sb.ToString())));
+            return new TRow(from.rowType,new TChar(md.name),new TChar(key),
+                new TChar(sb.ToString()));
         }
         /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
@@ -524,9 +526,8 @@ namespace Pyrrho.Level3
                 }
                 sb.Append("]\r\n");
             }
-            return new TRow(tr.nextTid,("Name", new TChar(md.name)),
-                ("Key",new TChar(key)),
-                ("Def",new TChar(sb.ToString())));
+            return new TRow(from.rowType,new TChar(md.name),new TChar(key),
+                new TChar(sb.ToString()));
         }
         string BuildKey(Database db,out Index ix)
         {

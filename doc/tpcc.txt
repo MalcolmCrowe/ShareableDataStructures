@@ -1,0 +1,29 @@
+Timings:
+	Recreate DB: 1:02
+	Fill stock: 2:02
+	Fill districts: 6:15
+	Cold start with initial warehouse: 1:30
+
+
+F:\PyrrhoDB7\Pyrrho>tpccpyrrho
+fid 1 loaded at 15/09/2019 12:04:32
+Started at 15/09/2019 12:04:40 with 1 clerks
+fid 2 loaded at 15/09/2019 12:04:40
+At 15/09/2019 12:14:40 Commits 16, Conflicts 0 0
+Last fid=2
+
+F:\PyrrhoDB7\Pyrrho>tpccpyrrho
+fid 1 loaded at 15/09/2019 12:17:56
+Started at 15/09/2019 12:18:03 with 10 clerks
+fid 11 loaded at 15/09/2019 12:18:03
+At 15/09/2019 12:28:03 Commits 145, Conflicts 0 95
+Last fid=11
+
+F:\PyrrhoDB7\Pyrrho>tpccpyrrho
+fid 1 loaded at 15/09/2019 12:32:41
+Started at 15/09/2019 12:33:33 with 100 clerks
+fid 101 loaded at 15/09/2019 12:35:01
+At 15/09/2019 12:43:33 Commits 313, Conflicts 0 2920
+Last fid=101
+
+F:\PyrrhoDB7\Pyrrho>

@@ -46,7 +46,7 @@ namespace Pyrrho.Level4
         /// <param name="a">the left operand</param>
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
-        internal MergeRowSet(Context _cx, QueryExpression q, RowSet a,RowSet b, bool d, Sqlx op)
+        internal MergeRowSet(Context _cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
             : base(a._tr,_cx,a.qry)
         {
             distinct = d;

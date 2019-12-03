@@ -1,0 +1,40 @@
+Table A (B,C,D,E)
+1	21	31	41
+3	22	35	47
+1	22	33	42
+1	22	35	49
+2	21	37	40
+2	23	33	43
+1	24	31	44
+2	26	37	45
+CREATE VIEW F AS select count(*) as G,B,D from A group by B,D
+select sum(G) as H,D from F where b<3 group by D
+
+Once a groupRowSet is built we should make all of the SqlCounters literals!
+
+Get G SqlName unresolved in QS 15
+View.Setup looks interesting:
+get f FM 17 with f.source with cols called COUNT,B,D This is not good.
+An ordinary select count(*) as G,B,D from A group by B,D has cols G,B,D
+But the names are right already at the end of ParseSelectItems when the
+v is added to the query, respecting the alias
+Looks as if f.source will have the right names, copied to FM 17, 
+but not used to resolve QS 15
+
+B is resolved for FM 23 and QS 15
+	when STC B is created in From 23.SetAccessibleCols 
+I'd like it to be done for aliases also by looking at names
+
+Resolve is only called in one place: name.set{ 
+This is called in SqlName constructor, SqlValue.New, SqlSystemColumn constructor.
+	STC constructor, SPC constructor, 
+SqlValue.New is called by From constructor (ALTER) and ParseUpdateAssignment
+The name setter looks for matching unresolved SqlNames s in the context 
+	and calls s.Resolved(this)
+
+We try giving v.name = alias in ParseSelectItem. But this gives a SqlFunction
+not a SqlTypeColumn.
+Defining a STC G sqid=17 for this.
+GroupingBookmark has row g=2,b=1,d=31 which is a row of the view,
+srs.qry.cols[0] is SqlFunction COUNT
+To my surprise: CS 13 has union QE 25

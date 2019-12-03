@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project-private xmlns="http://www.netbeans.org/ns/project-private/1">
+    <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
+    <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
+        <group>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/SQLException.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/DatabaseException.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/PreparedStatement.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/Connection.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/PyrrhoReader.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/PyrrhoInputStream.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/ResultSetMetaData.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/test/JCTest.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/test/BankTransferExt.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/Column.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/SQLWarning.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/ResultSet.java</file>
+            <file>file:/C:/PyrrhoDB/Pyrrho/OpenSource/src/PyrrhoJC/src/org/pyrrhodb/Statement.java</file>
+        </group>
+    </open-files>
+</project-private>

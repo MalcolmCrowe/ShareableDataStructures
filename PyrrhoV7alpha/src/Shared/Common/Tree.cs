@@ -81,13 +81,17 @@ namespace Pyrrho.Common
         {
             ABookmark<K, V> bm = null;
             var cb = root;
-            for (;;)
+            for (; ; )
             {
-                bm = new ABookmark<K, V>(cb, cb.count-1, bm);
-                var inr = cb as Inner<K, V>;
-                if (inr == null)
-                    return bm;
-                cb = inr.gtr;
+                if (cb == null)
+                    return null;
+                if (cb is Inner<K, V> inr) 
+                { 
+                    bm = new ABookmark<K, V>(cb, cb.count, bm);
+                    cb = inr.gtr;
+                }
+                else 
+                    return new ABookmark<K, V>(cb, cb.count-1, bm);
             }
         }
         /// <summary>

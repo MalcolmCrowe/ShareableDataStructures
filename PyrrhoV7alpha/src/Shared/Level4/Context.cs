@@ -33,15 +33,18 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Context 
 	{
+        static int _dbg;
+        readonly int dbg = ++_dbg;
         public readonly long cxid;
         public readonly User user;
-        internal Context next; // contexts form a stack (by nesting or calling)
+        internal Context next,parent=null; // contexts form a stack (by nesting or calling)
         /// <summary>
         /// The current set of values of objects in the Context
         /// </summary>
         internal TRow row = null; // row.values
         internal bool rawCols = false;
-        public RowSet data;
+        public BTree<long,RowSet> data = BTree<long,RowSet>.Empty;
+        public long top,frame,result;
         public BList<Rvv> affected = BList<Rvv>.Empty;
         internal RowBookmark rb = null; // 
         internal ETag etag = null;
@@ -62,6 +65,10 @@ namespace Pyrrho.Level4
         /// Used in Replace cascade
         /// </summary>
         internal BTree<long, DBObject> done = BTree<long, DBObject>.Empty;
+        /// <summary>
+        /// Used for executing prepared statements (a queue of SqlLiterals)
+        /// </summary>
+        internal BList<SqlValue> qParams = BList<SqlValue>.Empty;
         /// <summary>
         /// The current or latest statement
         /// </summary>
@@ -94,6 +101,8 @@ namespace Pyrrho.Level4
             next = null;
             user = db.user;
             cxid = db.lexeroffset;
+            frame = top = db.uid;
+            result = -1;
             rdC = (db as Transaction)?.rdC;
 //            domains = (db as Transaction)?.domains;
         }
@@ -101,10 +110,13 @@ namespace Pyrrho.Level4
         {
             next = cx;
             user = cx.user;
-            cxid = cx.cxid;
+            cxid = top = frame = cx.top+1;
             values = cx.values;
             obs = cx.obs;
             defs = cx.defs;
+            depths = cx.depths;
+            data = cx.data;
+            parent = cx.parent; // for triggers
             // and maybe some more?
         }
         internal Context(Context c,Executable e) :this(c)
@@ -123,6 +135,25 @@ namespace Pyrrho.Level4
                 values += (b.value().defpos, r.row[b.key()]);
             row = r.row;
             rb = r;
+            return this;
+        }
+        internal Context Add(BTree<long,TypedValue>fl)
+        {
+            for (var b = fl.First(); b != null; b = b.Next())
+                values += (b.key(), b.value());
+            return this;
+        }
+        internal Context Add(DBObject ob,ObInfo oi)
+        {
+            var on = new Ident(oi.name, ob.defpos);
+            defs += (on, ob);
+            for (var b = oi.columns?.First(); b != null; b = b.Next())
+            {
+                var sc = b.value();
+                var sn = new Ident(sc.name, sc.defpos);
+                defs += (new Ident(on, sn), sc);
+                defs += (sn, sc);
+            }
             return this;
         }
         internal DBObject Add(DBObject ob)
@@ -186,15 +217,16 @@ namespace Pyrrho.Level4
                     depths += (b.key(), bv);
             }
             // now use the done list to update defs
-            for (var b = defs.First(); b != null; b = b.Next())
-            {
-                var v = b.value().Item1;
-                if (done[v.defpos] is DBObject ob && ob != v)
-                    defs = defs+(new Ident(b.key(),0),ob);
-            }
+            defs = defs.Replace(done);
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
             return now;
+        }
+        internal long Fix(long dp)
+        {
+            if (done[dp] is DBObject ob)
+                return ob.defpos;
+            return dp;
         }
         /// <summary>
         /// We have just constructed a new From. Use it to replace any
@@ -221,6 +253,12 @@ namespace Pyrrho.Level4
             }
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
+        }
+        internal long AddUidRange(int n)
+        {
+            var r = top;
+            top += n;
+            return r;
         }
         /// <summary>
         /// Update a variable in this context
@@ -298,6 +336,12 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             return "Context " + cxid;
+        }
+
+        internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)
+        {
+            return next?.FindTriggerActivation(tabledefpos)
+                ?? throw new PEException("PE600");
         }
     }
     internal class FunctionData

@@ -102,10 +102,9 @@ namespace Pyrrho.Level2
 			check = rdr.GetString();
 			base.Deserialise(rdr);
             var cx = rdr.context;
-            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject);
-            if (subobjdefpos != -1)
-                cx.Add(rdr.db.objects[subobjdefpos] as DBObject);
-            test = new Parser(rdr.db).ParseSqlValue(check);
+            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject,
+                rdr.role.obinfos[ckobjdefpos] as ObInfo);
+            test = new Parser(rdr.db,cx).ParseSqlValue(check);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -127,8 +126,12 @@ namespace Pyrrho.Level2
         {
             var ck = new Check(this, db);
             db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p);
-            ro = ro + new ObInfo(defpos, name);
-            return (db + (ro,p)+(ck,p),ro); 
+            if (name != null && name != "")
+            { 
+                ro += new ObInfo(defpos, name);
+                db += (ro, p);
+            }
+            return (db +(ck,p),ro); 
         }
     }
     /// <summary>
@@ -156,6 +159,14 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
 		public PCheck2(Reader rdr) : base(rdr)
 		{}
+        protected PCheck2(PCheck2 p, Writer wr) : base(p, wr) 
+        {
+            subobjdefpos = wr.Fix(p.subobjdefpos);
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new PCheck2(this,wr);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -183,5 +194,24 @@ namespace Pyrrho.Level2
 			subobjdefpos = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
-   }
+        /// <summary>
+        /// Looks the same as PCheck::Install but gets a different constructor for Check
+        /// and calls a different Add !
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="ro"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var ck = new Check(this, db);
+            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db), p);
+            if (name != null && name != "")
+            {
+                ro += new ObInfo(defpos, name);
+                db += (ro, p);
+            }
+            return (db + (ck, p), ro);
+        }
+    }
 }

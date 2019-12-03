@@ -1,0 +1,8 @@
+We have a problem with OUT and INOUT variables.
+If an actual parameter is a simple local variable or a simple SqlTypeColumn
+there is a small chance that the corresponding parameter is OUT or INOUT
+but (at least for Methods) we won't know which until Setup.
+They should remain as SqlValues until the point of the Call, and
+we evaluate as we invoke.
+When we return from the procedure, for OUT and INOUT params, we copy values from the variables to the caller's context.
+

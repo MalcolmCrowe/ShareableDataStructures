@@ -1,0 +1,17 @@
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.Delivery.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.DelReport.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.NewOrder.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.OrderStatus.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.Payment.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.StockLevel.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.Form1.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.VTerm.resources
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.csproj.GenerateResource.cache
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.csproj.CoreCompileInputs.cache
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\bin\Debug\tpcc.exe.config
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\bin\Debug\tpcc.exe
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\bin\Debug\tpcc.pdb
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\bin\Debug\OSPLink.dll
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.csproj.CopyComplete
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.exe
+E:\PyrrhoDB63\Pyrrho\OpenSource\Tpcc\obj\Debug\tpcc.pdb

@@ -367,7 +367,7 @@ namespace Pyrrho.Level3
                     }
                 case "key":
                     {
-                        var ix = (f.target as Table)?.FindPrimaryIndex(this);
+                        var ix = (objects[f.target] as Table)?.FindPrimaryIndex(this);
                         var kt = (ObInfo)role.obinfos[ix.defpos];
                         if (ix != null)
                         {
@@ -564,7 +564,7 @@ namespace Pyrrho.Level3
                                 goto case "procedure";
                             }
                         }
-                        if (f is From fa && fa.target is Table ta)
+                        if (f is From fa && objects[fa.target] is Table ta)
                         {
                             var ix = ta.FindPrimaryIndex(this);
                             if (ix != null)

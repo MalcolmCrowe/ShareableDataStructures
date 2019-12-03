@@ -191,9 +191,19 @@ namespace Pyrrho.Level4
                         return new Idents(t + (id.ident, (ob, ts)));
                 }
                 else if (id.sub != null)
-                    return new Idents(t + (id.ident, (ob, Empty + (id.sub, ob))));
+                    return new Idents(t + (id.ident, (SqlNull.Value, Empty + (id.sub, ob))));
                 else
                     return new Idents(t + (id.ident, (ob, Empty)));
+            }
+            public static Idents operator +(Idents t, (Ident,ObInfo) x)
+            {
+                var (id, oi) = x;
+                for (var b = oi.columns.First(); b != null; b = b.Next())
+                {
+                    var c = b.value();
+                    t += (new Ident(id, new Ident(c.name, 0)), c);
+                }
+                return t;
             }
             public DBObject this[Ident ic] => 
                 Contains(ic.ident)?
@@ -219,6 +229,19 @@ namespace Pyrrho.Level4
                     t = bm.value().Item2;
                 }
                 return null;
+            }
+            internal Idents Replace(BTree<long,DBObject> done)
+            {
+                var r = BTree<string, (DBObject, Idents)>.Empty;
+                for (var b=First();b!=null;b=b.Next())
+                {
+                    var (ob, st) = b.value();
+                    if (done[ob.defpos] is DBObject nb)
+                        ob = nb;
+                    st = st.Replace(done);
+                    r += (b.key(), (ob, st));
+                }
+                return new Idents(r);
             }
         }
         internal class IdBookmark
@@ -545,6 +568,7 @@ namespace Pyrrho.Level4
 				case ',':	Advance(); return tok=Sqlx.COMMA;
 				case '.':	Advance(); return tok=Sqlx.DOT;
 				case ';':	Advance(); return tok=Sqlx.SEMICOLON;
+                case '?':   Advance(); return tok = Sqlx.QMARK; //added for Prepare()
 /* from v5.5 Document syntax allows exposed SQL expressions
                 case '{':
                     {

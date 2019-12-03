@@ -111,9 +111,10 @@ namespace Pyrrho
         /// <summary>
         /// Send results to the client using the PyrrhoWebOutput mechanisms
         /// </summary>
-        public virtual void SendResults(HttpListenerResponse rs,Context cx,string rdc)
+        public virtual void SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
+            string rdc)
         {
-            Header(rs, cx, rdc);
+            Header(rs, tr, cx, rdc);
             if (cx.rb is RowBookmark e)
             {
                 BeforeResults();
@@ -126,7 +127,8 @@ namespace Pyrrho
         /// <summary>
         /// Header for the page
         /// </summary>
-        public virtual void Header(HttpListenerResponse rs, Context cx, string rdc)
+        public virtual void Header(HttpListenerResponse rs, Transaction tr,
+            Context cx, string rdc)
         {
             rs.StatusCode = 200;
             string s = (cx.etag?.ToString() ?? "") + rdc;
@@ -177,10 +179,11 @@ namespace Pyrrho
             }
             sbuild.Append(")");
         }
-        public override void SendResults(HttpListenerResponse rs, Context cx, string rdc)
+        public override void SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
+            string rdc)
         {
             var cm = "";
-            Header(rs, cx, rdc);
+            Header(rs, tr,cx, rdc);
             if (cx.rb is RowBookmark e)
             {
                 BeforeResults();
@@ -213,15 +216,16 @@ namespace Pyrrho
         public HtmlWebOutput(Transaction d, StringBuilder s)
             : base(d, s)
         { }
-        public override void Header(HttpListenerResponse hrs, Context cx,string rdc)
+        public override void Header(HttpListenerResponse hrs, Transaction tr,
+            Context cx,string rdc)
         {
-            base.Header(hrs, cx, rdc);
+            base.Header(hrs, tr, cx, rdc);
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
             var rs = cx?.rb?._rs;
             var fm = rs?.qry as From;
-            var om = fm.target;
+            var om = tr.objects[fm.target] as DBObject;
             if (om!=null && om.defpos > 0)
             {
                 chartType.flags = om.Meta().flags;
@@ -565,7 +569,7 @@ namespace Pyrrho
             for (int i = 0; i < dt.Length; i++)
                 rc[i] = e.row[dt.columns[i].defpos];
             var fm = tp.qry as From;
-            var tb = fm.target as Table;
+            var tb = e._rs._tr.objects[fm.target] as Table;
             sbuild.Append(dt.Xml(tp._tr,_cx,tb?.defpos??-1L, new TRow(dt, rc)));
         }
     }
@@ -653,7 +657,7 @@ namespace Pyrrho
                 var cx = new Context(db);
                 db.Execute(cx,client.Request.HttpMethod,"H",pathbits, client.Request.Headers["Content-Type"],
                     sb, et);
-                woutput.SendResults(client.Response,cx,"");
+                woutput.SendResults(client.Response,db as Transaction,cx,"");
                 return;
             }
             catch (DBException e)

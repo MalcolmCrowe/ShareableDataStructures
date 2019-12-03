@@ -78,7 +78,7 @@ namespace Pyrrho.Level2
                     if (tc.Denied(db, Grant.Privilege.Insert))
                         throw new DBException("42105", tc);
                     for (var c = tc.constraints?.First(); c != null; c = c.Next())
-                        if (c.value().Eval(db,new Context(db)) != TBool.True)
+                        if (c.value().search.Eval(db,new Context(db).Add(fl)) != TBool.True)
                             throw new DBException("22212", 
                                 ((ObInfo)db.role.obinfos[tc.defpos]).name);
                 }
