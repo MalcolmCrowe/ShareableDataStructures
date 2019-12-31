@@ -3,10 +3,10 @@ E:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
 E:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
 E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
 E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
-E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
 F:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe.config
 F:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
 F:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
+E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache

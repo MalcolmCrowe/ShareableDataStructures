@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s))) { }
+                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>

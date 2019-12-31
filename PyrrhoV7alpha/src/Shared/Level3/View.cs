@@ -53,7 +53,7 @@ namespace Pyrrho.Level3
             Level cl)
         {
             f.source.AddCondition(_cx,f.where, null, data);
-            return f.source.Insert(data._tr,_cx,prov, data, eqs, rs, cl);
+            return f.source.Insert(data._tr as Transaction, _cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -207,7 +207,7 @@ namespace Pyrrho.Level3
                 var cd = c.domain;
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
-                cd = cd.elType;
+                cd = cd.elType.domain;
                 var tn = c.name;
                 if (tn != null)
                     sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");

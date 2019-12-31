@@ -148,8 +148,8 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         public Alter3(long co, string nm, int sq, long tb, long dm, string ds,
             TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
-            GenerationRule ge, long u, Transaction tr) :
-            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, u, tr)
+            GenerationRule ge, Transaction tr) :
+            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, tr)
 		{
             _defpos = co;
 		}

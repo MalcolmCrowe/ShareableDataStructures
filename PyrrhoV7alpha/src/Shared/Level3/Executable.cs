@@ -342,8 +342,8 @@ namespace Pyrrho.Level3
                     act.signal.Throw(tr,a);
             }
             catch (Exception e) { throw e; }
-            for (var b = act.affected.First(); b != null; b = b.Next())
-                a.affected += b.value();
+       //     for (var b = act.affected.First(); b != null; b = b.Next())
+       //         a.affected += b.value();
             return tr;
         }
         public override string ToString()
@@ -378,6 +378,7 @@ namespace Pyrrho.Level3
         /// Default initialiser
         /// </summary>
         public SqlValue init => (SqlValue)mem[Init];
+        public SqlValue vbl => (SqlValue)mem[AssignmentStatement.Vbl];
         public ObInfo info => (ObInfo)mem[SqlValue.Info] ?? ObInfo.Any;
         /// <summary>
         /// Constructor: a new local variable
@@ -385,12 +386,13 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         /// <param name="n">The name of the variable</param>
         /// <param name="dt">The data type</param>
-        public LocalVariableDec(long dp, string n, Domain dt, BTree<long,object> m=null)
-            : base(dp,(m??BTree<long,object>.Empty)+(Label,n)+(_Domain,dt))
+        public LocalVariableDec(long dp, string n, Domain dt, SqlValue v=null)
+            : base(dp,BTree<long,object>.Empty+(Label,n)+(_Domain,dt)
+                  +(AssignmentStatement.Vbl,v??(new SqlValue(dp,n)+(_Domain,dt))))
         { }
-        public LocalVariableDec(long dp, string n, Domain dt, ObInfo oi, BTree<long, object> m = null)
-    : base(dp, (m ?? BTree<long, object>.Empty) + (Label, n) + (_Domain, dt)
-          +(SqlValue.Info,oi))
+        public LocalVariableDec(long dp, string n, Domain dt, ObInfo oi, SqlValue v = null)
+    : base(dp, BTree<long, object>.Empty + (Label, n) + (_Domain, dt) + (SqlValue.Info,oi) 
+          + (AssignmentStatement.Vbl, (v??new SqlValue(dp, n) + (_Domain, dt))))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LocalVariableDec operator+(LocalVariableDec s,(long,object)x)
@@ -440,11 +442,18 @@ namespace Pyrrho.Level3
             cx.values += (defpos, tv); // We expect a==cx, but if not, tv will be copied to a later
             return tr;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(label); sb.Append(' '); sb.Append(Uid(defpos));
+            sb.Append(' ');  sb.Append(domain.kind);
+            return sb.ToString();
+        }
 	}
     /// <summary>
     /// A procedure formal parameter is a dynamically initialised local variable
     /// </summary>
-	internal class ProcParameter : LocalVariableDec
+	internal class ProcParameter : SqlValue
     {
         internal const long
             ParamMode = -98, // Sqlx
@@ -461,8 +470,8 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public ProcParameter(long dp, Sqlx m, string n, Domain dt) : base(dp, n, dt,
-            new BTree<long, object>(ParamMode, m))
+		public ProcParameter(long dp, Sqlx m, string n, Domain dt) : base(dp, n,
+            new BTree<long, object>(ParamMode, m)+(_Domain,dt))
         { }
         protected ProcParameter(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ProcParameter operator +(ProcParameter s, (long, object) x)
@@ -507,7 +516,7 @@ namespace Pyrrho.Level3
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
         public CursorDeclaration(long dp,Context cx,string n,CursorSpecification c) 
-            : base(dp,n,Domain.Row,c.rowType,new BTree<long,object>(CS,c)+(Dependents,c.dependents)) 
+            : base(dp,n,Domain.Row,c.rowType,new SqlCursor(c.defpos,c,n)) 
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -815,11 +824,15 @@ namespace Pyrrho.Level3
                 var v = t.Coerce(val.Eval(tr,cx)?.NotNull());
                 cx.values += (vbl.target, v);
                 // the following 5 lines are for triggers
-                if (vbl is SqlNewRowCol sn &&
+                if (vbl is SqlOldRowCol sn &&
                     cx.FindTriggerActivation(sn.tableCol.tabledefpos) is TriggerActivation ta)
                     ta.newRow += (sn.tableCol.defpos, v);
-                else if ((cx.parent ?? cx).row is TRow r)
-                    r.values += (vbl.target, v);
+                else
+                {
+                    var c = cx.parent ?? cx;
+                    if (c.row is TRow r)
+                        c.row = r+ (vbl.target, v);
+                }
             }
             return tr;
         }
@@ -838,7 +851,7 @@ namespace Pyrrho.Level3
     internal class MultipleAssignment : Executable
     {
         internal const long
-            LhsType = -107, // Domain
+            LhsType = -107, // DBObject
             List = -108, // BList<long>
             Rhs = -109; // SqlValue
         /// <summary>
@@ -848,7 +861,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The row type of the lefthand side, used to coerce the given value 
         /// </summary>
-        Domain lhsType => (Domain)mem[LhsType]??Domain.Content;
+        DBObject lhsType => (DBObject)mem[LhsType]??Domain.Content;
         /// <summary>
         /// The row-valued right hand side
         /// </summary>
@@ -1288,6 +1301,9 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            if (cond!=null)
+                sb.Append(" Cond: ");sb.Append(cond);
+            sb.Append(" Stms: ");sb.Append(stms);
             return sb.ToString();
         }
     }
@@ -2220,7 +2236,7 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Parms = -133, // BList<SqlValue>
-            Proc = -134, // Procedure
+            ProcDefPos = -134, // long
             Var = -135; // SqlValue
         /// <summary>
         /// The target object (for a method)
@@ -2229,7 +2245,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The proc/method to call
         /// </summary>
-		public Procedure proc => (Procedure)mem[Proc];
+		public long procdefpos => (long)mem[ProcDefPos];
         /// <summary>
         /// The list of actual parameters
         /// </summary>
@@ -2238,8 +2254,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-		public CallStatement(long dp) : base(dp,BTree<long,object>.Empty)
-		{ }
+        public CallStatement(long dp, Procedure pr, BList<SqlValue> ps,SqlValue tg=null)
+         : this(dp, pr, ps, (tg==null)?null: new BTree<long, object>(Var,tg))
+        { }
+        protected CallStatement(long dp, Procedure pr, BList<SqlValue> ps, BTree<long,object> m=null)
+         : base(dp, (m??BTree<long, object>.Empty) + (Parms, ps) + (ProcDefPos, pr.defpos))
+        { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
         {
@@ -2266,9 +2286,6 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Parms, ps);
-            var pr = proc.Relocate(wr);
-            if (pr != proc)
-                r += (Proc, pr);
             var vr = var.Relocate(wr);
             if (vr != var)
                 r += (Var, vr);
@@ -2287,9 +2304,6 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Parms, ps);
-            var pr = proc.Frame(cx);
-            if (pr != proc)
-                r += (Proc, pr);
             var vr = var.Frame(cx);
             if (vr != var)
                 r += (Var, vr);
@@ -2299,7 +2313,7 @@ namespace Pyrrho.Level3
         {
             if (var != null && var.Calls(defpos, db))
                 return true;
-            return proc.Calls(defpos,db) || Calls(parms,defpos, db);
+            return procdefpos==defpos || Calls(parms,defpos, db);
         }
 
         /// <summary>
@@ -2310,6 +2324,7 @@ namespace Pyrrho.Level3
 		{
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
+            var proc = (Procedure)tr.objects[procdefpos];
             return proc.Exec(tr,cx,parms);
 		}
         internal override DBObject Replace(Context cx,DBObject so,DBObject sv)

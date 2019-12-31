@@ -86,6 +86,18 @@ namespace Pyrrho.Level3
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
             return new Role(r.defpos, m);
         }
+        public static Role operator+(Role r,PProcedure pp)
+        {
+            var ps = r.procedures;
+            var pa = ps[pp.name] ?? BTree<int, long>.Empty;
+            return new Role(r.defpos,r.mem+(Procedures,ps+(pp.name,pa+(pp.arity,pp.ppos))));
+        }
+        public static Role operator +(Role r, Procedure p)
+        {
+            var ps = r.procedures;
+            var pa = ps[p.name] ?? BTree<int, long>.Empty;
+            return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
+        }
         public static Role operator +(Role r, Domain dm)
         {
             return new Role(r.defpos, r.mem + (dm.defpos, dm));
@@ -188,10 +200,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Allow construction of nameless ad-hoc Row types: see Transaction.GetDomain()
         /// </summary>
-        /// <param name="colums"></param>
+        /// <param name="cols"></param>
         public ObInfo(long lp, Domain dt, BList<SqlValue> cols)
             : this(lp, BTree<long, object>.Empty + (Map, _Map(cols)) + (Columns, cols)
                   + (_Domain,dt)) { }
+        public ObInfo(long lp, CList<TableColumn> cols,Transaction tr)
+            : this(lp, Domain.Row, _Cols(cols,tr)) { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
@@ -261,12 +275,15 @@ namespace Pyrrho.Level3
                     r += (v.name, k);
             return r;
         }
-        static BList<string> _Names(BList<SqlValue> cols)
+        static BList<SqlValue> _Cols(CList<TableColumn> cols,Transaction tr)
         {
-            var r = BList<string>.Empty;
+            var r = BList<SqlValue>.Empty;
             for (var b = cols.First(); b != null; b = b.Next())
-                if (b.value() is SqlValue v)
-                    r += v.name;
+            {
+                var tc = b.value();
+                var oi = (ObInfo)tr.role.obinfos[tc.defpos];
+                r += new SqlCol(tc.defpos,oi.name,tc);
+            }
             return r;
         }
         internal override Basis New(BTree<long, object> m)
@@ -284,8 +301,9 @@ namespace Pyrrho.Level3
                 return null;
             return columns[iq.Value];
         }
-        internal ObInfo For(Transaction tr, DBObject ob, Grant.Privilege pr)
+        internal ObInfo For(Database db, DBObject ob, Grant.Privilege pr)
         {
+            var tr = db as Transaction;
             if (ob.Denied(tr, pr))
                 throw new DBException("42105");
             var cs = columns;
@@ -313,7 +331,22 @@ namespace Pyrrho.Level3
                 c = db.value().domain.Compare(ab.value(), bb.value());
             return c;
         }
-        public TypedValue Parse(Scanner lx)
+        public override TypedValue Get(Reader rdr)
+        {
+            var r = BList<TypedValue>.Empty;
+            for (var b = columns.First(); b != null; b = b.Next())
+                r += b.value().Get(rdr);
+            return new TRow(this, r);
+        }
+        public override void Put(TypedValue tv, Writer wr)
+        {
+            for (var b = columns.First(); b != null; b = b.Next())
+            {
+                var sc = b.value();
+                sc.domain.Put(tv[sc.defpos],wr);
+            }
+        }
+        public override TypedValue Parse(Scanner lx,bool union=false)
         {
             var start = lx.pos;
             /*                       if (lx.mime == "text/xml")
@@ -611,6 +644,16 @@ namespace Pyrrho.Level3
                     return false;
             return true;
         }
+        internal bool CanBeAssigned(ObInfo oi)
+        {
+            if (Length != oi.Length)
+                return false;
+            var tb = oi.columns.First();
+            for (var b = columns.First(); b != null; b = b.Next(), tb = tb.Next())
+                if (!b.value().domain.CanTakeValueOf(tb.value().domain))
+                    return false;
+            return true;
+        }
         public string Props(Database db)
         {
             var sb = new StringBuilder();
@@ -727,7 +770,7 @@ namespace Pyrrho.Level3
                 var cd = columns[i].domain;
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
-                cd = cd.elType;
+                cd = cd.elType.domain;
                 var di = (ObInfo)db.role.obinfos[cd.defpos];
                 var tn = di.name.ToString();
                 if (tn != null)
@@ -766,27 +809,27 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class ObInfoNewRow : ObInfo
+    internal class ObInfoOldRow : ObInfo
     {
-        public ObInfoNewRow(ObInfo oi) : base(oi.defpos, _NR(oi).mem) { }
-        public ObInfoNewRow(Table tb, Role ro)
-            : this((ObInfo)ro.obinfos[tb.defpos]) { }
-        protected ObInfoNewRow(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static ObInfoNewRow operator+(ObInfoNewRow oi,(long,object)x)
+        public ObInfoOldRow(ObInfo oi,long trs) : base(oi.defpos, _Old(oi,trs).mem) { }
+        public ObInfoOldRow(Table tb, Role ro,long trs)
+            : this((ObInfo)ro.obinfos[tb.defpos],trs) { }
+        protected ObInfoOldRow(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static ObInfoOldRow operator+(ObInfoOldRow oi,(long,object)x)
         {
-            return (ObInfoNewRow)oi.New(oi.mem + x);
+            return (ObInfoOldRow)oi.New(oi.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new ObInfoNewRow(defpos,m);
+            return new ObInfoOldRow(defpos,m);
         }
-        static ObInfo _NR(ObInfo oi)
+        static ObInfo _Old(ObInfo oi,long trs)
         {
             var cs = BList<SqlValue>.Empty;
             for (var b = oi.columns.First(); b != null; b = b.Next())
             {
                 var sc = (SqlCol)b.value();
-                cs += new SqlNewRowCol(sc.defpos,sc);
+                cs += new SqlOldRowCol(sc.defpos,trs,sc);
             }
             return oi+(Columns,cs);
         }

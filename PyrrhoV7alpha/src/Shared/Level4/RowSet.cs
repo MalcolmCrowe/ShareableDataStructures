@@ -25,7 +25,7 @@ namespace Pyrrho.Level4
         /// </summary>
         static long _uid =0;
         internal readonly long uid = ++_uid;
-        internal Transaction _tr;
+        internal Database _tr; // MUTABLE must be kept up to date
         /// <summary>
         /// the query this rowset belongs to (most queries have at most one)
         /// </summary>
@@ -62,8 +62,8 @@ namespace Pyrrho.Level4
         /// <param name="q">the hosting query</param>
         /// <param name="n">optional the nominal data type for the rows</param>
         /// <param name="k">optional: a key type</param>
-        protected RowSet(Transaction tr,Context cx,Query q,ObInfo n=null,ObInfo k=null,OrderSpec os=null)
-            :base(n ?? q.rowType)
+        protected RowSet(Database tr,Context cx,Query q,ObInfo n=null,ObInfo k=null,OrderSpec os=null)
+            :base(n ?? q?.rowType ?? ObInfo.Any)
         {
             _tr = tr;
             qry = q;
@@ -145,7 +145,7 @@ namespace Pyrrho.Level4
                 var dc = dt.columns[i].domain;
                 var tc = Col(dt.columns[i]);
                 if (dc.kind == Sqlx.SENSITIVE)
-                    dc = dc.elType;
+                    dc = dc.elType.domain;
                 flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
                 if (tc!=null)
                 flags[i] += (tc.notNull ? 0x100 : 0) +
@@ -349,14 +349,14 @@ namespace Pyrrho.Level4
         internal readonly TRow row;
         internal readonly TrivialRowBookmark here;
         public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow(ObInfo.Any));
-        internal TrivialRowSet(Transaction tr,Context cx, Query q, TRow r, long d=0, long rc=0)  
+        internal TrivialRowSet(Database tr,Context cx, Query q, TRow r, long d=0, long rc=0)  
             :base(tr,cx, q,q?.rowType??ObInfo.Any,r.info)
         {
             row = r;
             here = new TrivialRowBookmark(cx,this,d,rc);
             cx?.Add(q, here);
         }
-        internal TrivialRowSet(Transaction tr,Context cx, Query fm, Record rec) 
+        internal TrivialRowSet(Database tr,Context cx, Query fm, Record rec) 
             : base(tr, cx, fm, fm?.rowType??ObInfo.Any, null)
         {
             row = new TRow(fm?.rowType??ObInfo.Any, rec?.fields??BTree<long,TypedValue>.Empty);
@@ -472,7 +472,7 @@ namespace Pyrrho.Level4
                     if (!rb.Matches())
                         goto skip;
                     for (var b = e.qry.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(e._tr,_cx) != TBool.True)
+                        if (b.value().Eval(e._tr as Transaction,_cx) != TBool.True)
                             goto skip;
                     return rb;
                     skip:;
@@ -485,7 +485,7 @@ namespace Pyrrho.Level4
                 {
                     var rb = new ExportedBookmark(_cx,_ers, _pos + 1, bmk);
                     for (var b = _rs.qry.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(_ers._tr,_cx) != TBool.True)
+                        if (b.value().Eval(_ers._tr as Transaction,_cx) != TBool.True)
                             goto skip;
                     return rb;
                     skip:;
@@ -513,7 +513,7 @@ namespace Pyrrho.Level4
         /// Constructor for the selected TableColumns rowset. At this stage all of the SqlValue have been resolved.
         /// So all of the selects in qout are guaranteed to be in qin.
         /// </summary>
-        internal SelectedRowSet(Transaction tr,Context cx,Query q,RowSet r)
+        internal SelectedRowSet(Database tr,Context cx,Query q,RowSet r)
             :base(tr,cx,q,q.rowType,_Type(cx,r, q),r.qry.ordSpec)
         {
             rIn = r;
@@ -591,7 +591,7 @@ namespace Pyrrho.Level4
                         return null;
                     valueInProgress = id;
                     if (_rs.qry is Query qs && i < qs.Size(_cx)) // always will be
-                        v = qt.columns[i].Eval(_rs._tr, _cx);
+                        v = qt.columns[i].Eval(_rs._tr as Transaction, _cx);
                     if (v!=null)
                         r += (id,v);
                 }
@@ -603,7 +603,7 @@ namespace Pyrrho.Level4
                 {
                     var rb = new SelectedRowBookmark(_cx,srs, bmk, 0);
                     if (rb.row.values!=BTree<long,TypedValue>.Empty && !rb.row.IsNull &&
-                        rb.Matches() && Query.Eval(srs.qry.where,srs._tr,_cx))
+                        rb.Matches() && Query.Eval(srs.qry.where,srs._tr as Transaction,_cx))
                         return rb;
                 }
                 return null;
@@ -616,7 +616,7 @@ namespace Pyrrho.Level4
                     for (var b = _rs.qry.rowType.columns.First(); b != null; b = b.Next())
                         b.value().OnRow(rb);
                     if (rb.row.values != BTree<long, TypedValue>.Empty && !rb.row.IsNull &&
-                        rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                        rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -647,7 +647,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rs">The source data</param>
         /// <param name="h">The having condition</param>
-		public EvalRowSet(Transaction tr,Context cx,Query qout, RowSet rs, BTree<long,SqlValue> h) 
+		public EvalRowSet(Database tr,Context cx,Query qout, RowSet rs, BTree<long,SqlValue> h) 
             : base(rs._tr,cx,qout)
         {
             source = rs;
@@ -695,7 +695,7 @@ namespace Pyrrho.Level4
             if (ebm != null)
             {
                 for (; ebm != null; ebm = ebm.Next(_cx))
-                    if (Query.Eval(having,_tr,_cx))
+                    if (Query.Eval(having, _tr as Transaction, _cx))
                         for (int i = 0; i < rowType.Length; i++)
                             qry.ValAt(_cx,i).AddIn(_cx,ebm);
             }
@@ -703,7 +703,7 @@ namespace Pyrrho.Level4
             for (int i = 0; i < cols.Count; i++)
             {
                 var s = cols[i];
-                vs += (s.defpos,s.Eval(_tr, _cx));
+                vs += (s.defpos,s.Eval(_tr as Transaction, _cx));
             }
             row = new TRow(rowType,vs);
             key = new TRow(keyType, vs);
@@ -746,10 +746,10 @@ namespace Pyrrho.Level4
         /// Constructor: a rowset defined by a base table without a primary key
         /// </summary>
         /// <param name="f">the from</param>
-        internal TableRowSet(Transaction tr, Context cx,From f) : base(tr,cx,f)
+        internal TableRowSet(Database tr, Context cx,From f) : base(tr,cx,f)
         {
             from = f;
-            f.Audit(tr,f);
+            f.Audit(tr as Transaction,f);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -791,11 +791,11 @@ namespace Pyrrho.Level4
                         trs._tr.user.defpos != table.definer 
                         && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    if (fm.CheckMatch(trs._tr, _cx,rec))
+                    if (fm.CheckMatch(trs._tr as Transaction, _cx,rec))
                     {
                         var bm = new TableRowBookmark(_cx,trs, 0, b);
                         // because where won't evaluate correctly until we have a bookmark for the query
-                        if (Query.Eval(fm.where,trs._tr, _cx))
+                        if (Query.Eval(fm.where,trs._tr as Transaction, _cx))
                             return bm;
                     }
                 }
@@ -819,8 +819,8 @@ namespace Pyrrho.Level4
                         && !_rs._tr.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     ret = new TableRowBookmark(_cx,_rs, _pos + 1, bmk);
-                    if ((!fm.CheckMatch(_rs._tr,_cx,rec)) 
-                        || !Query.Eval(fm.where,_rs._tr,_cx))
+                    if ((!fm.CheckMatch(_rs._tr as Transaction,_cx,rec)) 
+                        || !Query.Eval(fm.where,_rs._tr as Transaction,_cx))
                         continue;
                     break;  // got a local row
                 }
@@ -962,11 +962,11 @@ namespace Pyrrho.Level4
                         trs._tr.user.defpos != table.definer
                         && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    if (fm.CheckMatch(trs._tr, _cx, rec))
+                    if (fm.CheckMatch(trs._tr as Transaction, _cx, rec))
                     {
                         var bm = new OldTableRowBookmark(_cx, trs, 0, b);
                         // because where won't evaluate correctly until we have a bookmark for the query
-                        if (Query.Eval(fm.where, trs._tr, _cx))
+                        if (Query.Eval(fm.where, trs._tr as Transaction, _cx))
                             return bm;
                     }
                 }
@@ -998,7 +998,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal IndexRowSet(Transaction tr, Context cx, From f, Index x, PRow m)
+        internal IndexRowSet(Database tr, Context cx, From f, Index x, PRow m)
             : base(tr, cx, f, f.rowType, (ObInfo)tr.role.obinfos[x.defpos], 
                   new OrderSpec(((ObInfo)tr.role.obinfos[x.defpos]).columns))
         {
@@ -1006,7 +1006,7 @@ namespace Pyrrho.Level4
             table = tr.objects[f.target] as Table;
             index = x;
             filter = m;
-            f.Audit(tr, x, m);
+            f.Audit(tr as Transaction, x, m);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1085,11 +1085,11 @@ namespace Pyrrho.Level4
                         if (rec.fields.Contains(m.key().defpos)
                             && m.value().CompareTo(rec.fields[m.key().defpos]) != 0)
                             goto skip;
-                    if (irs.from.CheckMatch(irs._tr, _cx, rec))
+                    if (irs.from.CheckMatch(irs._tr as Transaction, _cx, rec))
                     {
                         var bm = new IndexRowBookmark(_cx,irs, 0, bmk);
                         // because where won't evaluate until we have a bookmark for the query
-                        if (Query.Eval(irs.from.where, irs._tr, _cx))
+                        if (Query.Eval(irs.from.where, irs._tr as Transaction, _cx))
                             return bm;
                     }
                 skip:;
@@ -1119,11 +1119,11 @@ namespace Pyrrho.Level4
                         if (rec.fields.Contains(m.key().defpos)
                             && m.value().CompareTo(rec.fields[m.key().defpos]) != 0)
                             goto skip;
-                    if (fm.CheckMatch(_rs._tr, _cx, rec))
+                    if (fm.CheckMatch(_rs._tr as Transaction, _cx, rec))
                     {
                         var bm = new IndexRowBookmark(_cx,_irs, _pos + 1, bmk);
                         // because where won't evaluate correctly until we update the bookmark for the query
-                        if (Query.Eval(fm.where, _rs._tr, _cx))
+                        if (Query.Eval(fm.where, _rs._tr as Transaction, _cx))
                             return bm;
                     }
                 skip:;
@@ -1201,7 +1201,7 @@ namespace Pyrrho.Level4
                 for (var bmk = drs.rtree.First(); bmk != null; bmk = bmk.Next())
                 {
                     var rb = new DistinctRowBookmark(_cx,drs, 0, bmk);
-                    if (rb.Matches() && Query.Eval(drs.qry.where, drs._tr, _cx))
+                    if (rb.Matches() && Query.Eval(drs.qry.where, drs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1211,7 +1211,7 @@ namespace Pyrrho.Level4
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
                     var rb = new DistinctRowBookmark(_cx,_rs as DistinctRowSet, _pos + 1, bmk);
-                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1260,7 +1260,7 @@ namespace Pyrrho.Level4
                     var ks = new TypedValue[keyType.Length];
                     var rw = e.row;
                     for (int j = (int)rowOrder.items.Count - 1; j >= 0; j--)
-                        ks[j] = rowOrder.items[j].Eval(source._tr,_cx);
+                        ks[j] = rowOrder.items[j].Eval(source._tr as Transaction,_cx);
                     RTree.Add(ref tree, new TRow(keyType, ks), rw);
                 }
                 building = false;
@@ -1328,7 +1328,7 @@ namespace Pyrrho.Level4
             SqlRowBookmark(Context _cx,SqlRowSet rs,int pos): base(_cx,rs,pos,0)
             {
                 _srs = rs;
-                _row = _srs.rows[_pos].Eval(_srs._tr, _cx) as TRow;
+                _row = _srs.rows[_pos].Eval(_srs._tr as Transaction, _cx) as TRow;
                 _cx.Add(rs.qry, this);
             }
             internal static SqlRowBookmark New(Context _cx,SqlRowSet rs)
@@ -1336,7 +1336,7 @@ namespace Pyrrho.Level4
                 for (var i = 0; i < rs.rows.Length; i++)
                 {
                     var rb = new SqlRowBookmark(_cx,rs, i);
-                    if (rb.Matches() && Query.Eval(rs.qry.where, rs._tr, _cx))
+                    if (rb.Matches() && Query.Eval(rs.qry.where, rs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1346,7 +1346,7 @@ namespace Pyrrho.Level4
                 for (var i = _pos + 1; i < _srs.rows.Length; i++)
                 {
                     var rb = new SqlRowBookmark(_cx,_srs, i);
-                    if (rb.Matches() && Query.Eval(_srs.qry.where, _srs._tr, _cx))
+                    if (rb.Matches() && Query.Eval(_srs.qry.where, _srs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1432,7 +1432,7 @@ namespace Pyrrho.Level4
                 for (;i<ers.rows.Count;i++)
                 {
                     var rb = new ExplicitRowBookmark(_cx,ers, 0, i);
-                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr, _cx))
+                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1443,7 +1443,7 @@ namespace Pyrrho.Level4
                 for (var i = _i+1; i < ers.rows.Count; i++)
                 {
                     var rb = new ExplicitRowBookmark(_cx,ers, _pos+1, i);
-                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr, _cx))
+                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1470,30 +1470,33 @@ namespace Pyrrho.Level4
         internal readonly BTree<long, TypedValue> defaults = BTree<long, TypedValue>.Empty; 
         internal readonly From from; // will be a SqlInsert, QuerySearch or UpdateSearch
         internal readonly ObInfo targetInfo;
+        internal readonly long indexdefpos = -1L;
         internal readonly PTrigger.TrigType _tgt;
         internal readonly BTree<long, TriggerActivation> tb, ti, ta;
-        internal readonly Index index;
+        internal readonly Transaction oldTr;
         internal readonly Adapters _eqs;
         internal TransitionRowSet(Transaction tr,Context cx,From q, PTrigger.TrigType tg, Adapters eqs)
             : base(tr,cx,q,q.rowType,q.KeyType(tr)??q.rowType)
         {
             from = q;
             _eqs = eqs;
-            var t = tr.objects[from.target] as Table ?? from.simpleQuery as Table;
-            index = t.FindPrimaryIndex(_tr);
+            oldTr = tr;
+            var t = tr.objects[from.target] as Table;
+            indexdefpos = t.FindPrimaryIndex(tr)?.defpos ?? -1L;
             // check now about conflict with generated columns
             if (t.Denied(tr,Grant.Privilege.Insert))
                 throw new DBException("42105",q);
             var dt = q.rowType; // data rowType
             if (tg != PTrigger.TrigType.Delete)
             {
+                targetInfo = tr.role.obinfos[t.defpos] as ObInfo;
                 for (int i = 0; i < dt.Length; i++) // at this point q is the insert statement, simpleQuery is the base table
                     if (dt.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
                     {
                         if (tc.generated != GenerationRule.None)
                             throw new DBException("0U000", dt.columns[i].name).Mix();
                     }
-                targetInfo = tr.role.obinfos[t.defpos] as ObInfo;
+
                 for (int i = 0; i < targetInfo.Length; i++)
                     if (targetInfo.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
                     {
@@ -1505,7 +1508,7 @@ namespace Pyrrho.Level4
                         }
                     }
             }
-            else
+            else 
                 targetInfo = ObInfo.Any;
             _tgt = tg;
             tb = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Before]);
@@ -1516,7 +1519,38 @@ namespace Pyrrho.Level4
         {
             return TransitionRowBookmark.New(_cx,this);
         }
-
+        /// <summary>
+        /// Implement the autokey feature: if a key column is an integer type,
+        /// the engine will pick a suitable unused value. 
+        /// The works cleverly for multi-column indexes. 
+        /// The transition rowset adds to a private copy of the index as there may
+        /// be several rows to add, and the null column(s!) might not be the first key column.
+        /// </summary>
+        /// <param name="fl"></param>
+        /// <param name="ix"></param>
+        /// <returns></returns>
+        void CheckPrimaryKey(Context cx)
+        {
+            var ix = (Index)_tr.objects[indexdefpos];
+            if (ix == null)
+                return;
+            var k = BList<TypedValue>.Empty;
+            for (var i = 0; i < (int)ix.keys.Count; i++)
+            {
+                var sc = ix.keys[i];
+                var v = cx.values[sc.defpos];
+                if (v == null || v == TNull.Value)
+                {
+                    if (sc.domain.kind != Sqlx.INTEGER)
+                        throw new DBException("22004");
+                    v = ix.rows.NextKey(k, 0, i);
+                    if (v == TNull.Value)
+                        v = new TInt(0);
+                    cx.values += (sc.defpos, v);
+                }
+                k += v;
+            }
+        }
         /// <summary>
         /// Set up activations for executing a set of triggers
         /// </summary>
@@ -1536,168 +1570,116 @@ namespace Pyrrho.Level4
         /// Perform the triggers in a set
         /// </summary>
         /// <param name="acts"></param>
-        (Transaction,BTree<long,TypedValue>) Exec(Transaction tr,Context _cx, BTree<long, TriggerActivation> acts, 
-            BTree<long,TypedValue>nvals=null)
+        (Transaction,bool) Exec(Transaction tr,Context _cx, BTree<long, TriggerActivation> acts)
         {
             var r = false;
-            var rv = nvals;
             for (var a = acts.First(); a != null; a = a.Next())
             {
-                var ta = a.value() + nvals;
-                var nt = ta.Exec(tr, _cx);
-                if (nvals != null)
-                    for (var b = ta.newRow?.First(); b != null; b = b.Next())
-                    {
-                        var k = b.key();
-                        var v = b.value();
-                        if (nvals[k] != v)
-                            rv += (k, v);
-                    }
-                if (nt != _tr)
+                var (nt,fi) = a.value().Exec(tr, _cx);
+                if (fi)
                     r = true;
                 tr = nt;
             }
             _cx.ret = TBool.For(r);
-            return (tr,rv);
+            return (tr,r);
         }
-        internal (Transaction,BTree<long,TypedValue>) InsertSA(Transaction tr,Context _cx)
+        internal (Transaction,bool) InsertSA(Transaction tr,Context _cx)
         { return Exec(tr, _cx,ta); }
-        internal (Transaction, BTree<long, TypedValue>) InsertSB(Transaction tr,Context _cx)
+        internal (Transaction,bool) InsertSB(Transaction tr,Context _cx)
         { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
-        internal (Transaction, BTree<long, TypedValue>) UpdateSA(Transaction tr,Context _cx)
+        internal (Transaction,bool) UpdateSA(Transaction tr,Context _cx)
         { return Exec(tr,_cx,ta); }
-        internal (Transaction, BTree<long, TypedValue>) UpdateSB(Transaction tr,Context _cx)
+        internal (Transaction,bool) UpdateSB(Transaction tr,Context _cx)
         { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
-        internal (Transaction, BTree<long, TypedValue>) DeleteSB(Transaction tr,Context _cx)
+        internal (Transaction,bool) DeleteSB(Transaction tr,Context _cx)
         { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
         internal class TransitionRowBookmark : RowBookmark
         {
             readonly TransitionRowSet _trs;
+            readonly Context _cx;
             readonly RowBookmark _fbm;
-            readonly TRow _row, _key;
-            readonly Index _index;
+            internal readonly BTree<long,TypedValue> _oldVals;
             /// <summary>
             /// There may be several triggers of any type, so we manage a set of transition activations for each.
             /// These are for table before, table instead, table after, row before, row instead, row after.
             /// </summary>
             internal readonly BTree<long, TriggerActivation> rb, ri, ra;
-            public override TRow row => _row;
-            public override TRow key => _key;
-            TransitionRowBookmark(Context _cx,TransitionRowSet trs, int pos, RowBookmark fbm, Index ix) 
-                : base(_cx,trs, pos, fbm._defpos)
+            public override TRow row => new TRow(_trs.targetInfo,_cx.values);
+            public override TRow key => new TRow(_trs.keyType, _cx.values);
+            TransitionRowBookmark(Context cx,TransitionRowSet trs, int pos, RowBookmark fbm, Index ix) 
+                : base(cx,trs, pos, fbm._defpos)
             {
                 _trs = trs;
+                _cx = cx;
                 _fbm = fbm;
-                var dt = (trs.qry as From)?.rowType??trs.qry.rowType;
+                var dt = trs.from.rowType;
                 var ti = trs.targetInfo;
-                var oldRow = trs.defaults;
-                if (dt.columns == BList<SqlValue>.Empty)
+                for (var b = ti.columns.First(); b != null; b = b.Next())
+                    _cx.values -= b.value().defpos;
+                for (var b = trs.defaults.First(); b != null; b = b.Next())
+                    if (row[b.key()] == null || row[b.key()] == TNull.Value)
+                        _cx.values += (b.key(),b.value());
+                for (int i = 0; i < trs.from.display; i++)
                 {
-                    oldRow = fbm.row.values;
-                    for (var b = trs.defaults.First(); b != null; b = b.Next())
-                        if (oldRow[b.key()] == null || oldRow[b.key()] == TNull.Value)
-                            oldRow += (b.key(),b.value());
-                }
-                else
-                {
-                    for (int i = 0; i < trs.qry.display; i++)
+                    TypedValue tv = fbm.row[i];
+                    var sl = dt.columns[i];
+                    if (sl is SqlProcedureCall sv)
                     {
-                        TypedValue tv = fbm.row[i];
-                        var sl = dt.columns[i];
-                        if (sl is SqlProcedureCall sv)
+                        var fp = sv.call.procdefpos;
+                        var m = _trs._eqs.Match(fp, sl.defpos);
+                        if (m.HasValue)
                         {
-                            var fp = sv.call.proc.defpos;
-                            var m = _trs._eqs.Match(fp, sl.defpos);
-                            if (m.HasValue)
+                            if (m.Value == 0)
+                                tv = fbm.row[sl.defpos];
+                            else // there's an adapter function
                             {
-                                if (m.Value == 0)
-                                    tv = fbm.row[sl.defpos];
-                                else // there's an adapter function
-                                {
-                                    // tv = fn (fbm[j])
-                                    var pr = trs._tr.objects[m.Value] as Procedure;
-                                    var ac = new CalledActivation(trs._tr, _cx, pr, Domain.Null);
-                                    tv = pr.body.Eval(_trs._tr, ac);
-                                }
+                                // tv = fn (fbm[j])
+                                var pr = trs._tr.objects[m.Value] as Procedure;
+                                var ac = new CalledActivation(trs._tr as Transaction, _cx, pr, Domain.Null);
+                                tv = pr.body.Eval(_trs._tr as Transaction, ac);
                             }
                         }
-                        oldRow += (sl.defpos, tv);
                     }
-                    for (var b = dt.columns.First(); b != null; b = b.Next())
-                    {
-                        var sl = b.value();
-                        var tv = oldRow[sl.defpos];
-                        if (tv == null || tv==TNull.Value)
-                            tv = trs.defaults[sl.defpos] ?? TNull.Value;
-                        oldRow += (sl.defpos, tv);
-                    }
+                    _cx.values += (sl.defpos, tv);
                 }
-                if (ix!=null)
-                    (oldRow,_index) = CheckPrimaryKey(oldRow, ix);
-                if (trs.qry is From fm && trs._tr.objects[fm.target] is Table t)
+                for (var b = dt.columns.First(); b != null; b = b.Next())
                 {
-                    var rt = dt;
-                    for (int i = 0; i < rt.Length; i++)
-                        if (rt.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
-                        {
-                            if (tc.notNull && !oldRow.Contains(tc.defpos))
-                                throw new DBException("22206", rt.columns[i].name);
-                            switch (tc.generated.gen)
-                            {
-                                case Generation.Expression:
-                                    oldRow += (tc.defpos, tc.generated.exp.Eval(trs._tr, _cx));
-                                    break;
-                            }
-                        }
+                    var sl = b.value();
+                    var tv = row[sl.defpos];
+                    if (tv == null || tv==TNull.Value)
+                        tv = trs.defaults[sl.defpos] ?? TNull.Value;
+                    _cx.values += (sl.defpos, tv);
                 }
-                _row = new TRow(ti, oldRow);
-                _key = new TRow(trs.keyType, oldRow);
+                if (trs.indexdefpos>0)
+                    trs.CheckPrimaryKey(_cx);
+                for (int i = 0; i < ti.Length; i++)
+                    if (ti.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                    {
+                        if (tc.notNull && !_cx.values.Contains(tc.defpos))
+                            throw new DBException("22206", ti.columns[i].name);
+                        switch (tc.generated.gen)
+                        {
+                            case Generation.Expression:
+                                _cx.values += (tc.defpos, tc.generated.exp.Eval(trs._tr as Transaction, _cx));
+                                break;
+                        }
+                    }
+                _oldVals = _cx.values;
                 _cx.Add(trs.qry,this);
-                var q = trs.qry as From;
-                var tb = trs._tr.objects[q.target] as Table;
+                var tb = trs._tr.objects[trs.from.target] as Table;
                 // Get the trigger sets and set up the activations
                 rb = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
                 ri = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
                 ra = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
             }
-            /// <summary>
-            /// Implement the autokey feature: if a key column is an integer type,
-            /// the engine will pick a suitable unused value. 
-            /// The works cleverly for multi-column indexes. 
-            /// The transition rowset adds to a private copy of the index as there may
-            /// be several rows to add, and the null column(s!) might not be the first key column.
-            /// </summary>
-            /// <param name="fl"></param>
-            /// <param name="ix"></param>
-            /// <returns></returns>
-            static (BTree<long,TypedValue>,Index) CheckPrimaryKey(
-                BTree<long,TypedValue> fl,Index ix)
-            {
-                var r = BList<TypedValue>.Empty;
-                for (var i = 0; i < (int)ix.keys.Count; i++)
-                {
-                    var sc = ix.keys[i];
-                    var v = fl[sc.defpos];
-                    if (v == null || v == TNull.Value)
-                    {
-                        if (sc.domain.kind != Sqlx.INTEGER)
-                            throw new DBException("22004");
-                        v = ix.rows.NextKey(r, 0, i);
-                        if (v == TNull.Value)
-                            v = new TInt(0);
-                        fl += (sc.defpos, v);
-                    }
-                    r += v;
-                }
-                return (fl, ix);
-            }
             internal static TransitionRowBookmark New(Context _cx,TransitionRowSet trs)
             {
-                var from = trs.qry;
+                var tb = trs._tr.objects[trs.from.target] as Table;
                 for (var fbm = _cx.rb; fbm != null; fbm = fbm.Next(_cx))
                 {
-                    if (fbm.Matches() && Query.Eval(from.where,trs._tr,_cx))
-                        return new TransitionRowBookmark(_cx,trs, 0, fbm,trs.index);
+                    if (fbm.Matches() && Query.Eval(trs.from.where,trs._tr as Transaction, _cx))
+                        return new TransitionRowBookmark(_cx,trs, 0, fbm,
+                            tb.FindPrimaryIndex(trs._tr));
                 }
                 return null;
             }
@@ -1725,11 +1707,13 @@ namespace Pyrrho.Level4
                 var from = _trs.qry;
                 if(from.where.First()?.value() is SqlValue sv && sv.domain.kind == Sqlx.CURRENT)
                         return null;
+                var t = _trs._tr.objects[_trs.from.target] as Table;
+                var ix = t.FindPrimaryIndex(_trs._tr);
                 for (var fbm = _fbm.Next(_cx); fbm != null; fbm = fbm.Next(_cx))
                 {
-                    var ret = new TransitionRowBookmark(_cx,_trs, 0, fbm,_index);
+                    var ret = new TransitionRowBookmark(_cx,_trs, 0, fbm,ix);
                     for (var b = from.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(_trs._tr, _cx) != TBool.True)
+                        if (b.value().Eval(_trs._tr as Transaction, _cx) != TBool.True)
                             goto skip;
                     return ret;
                     skip:;
@@ -1743,15 +1727,15 @@ namespace Pyrrho.Level4
             /// <summary>
             /// Some convenience functions for calling from Transaction.Execute(..)
             /// </summary>
-            internal (Transaction, BTree<long, TypedValue>) InsertRA(Transaction tr,Context _cx)
+            internal (Transaction,bool) InsertRA(Transaction tr,Context _cx)
             { return _trs.Exec(tr, _cx,ra); }
-            internal (Transaction, BTree<long, TypedValue>) InsertRB(Transaction tr,Context _cx)
+            internal (Transaction, bool) InsertRB(Transaction tr,Context _cx)
             { _cx.row = _cx.rb.row;  tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
-            internal (Transaction, BTree<long, TypedValue>) UpdateRA(Transaction tr,Context _cx,BTree<long,TypedValue>vals)
-            { return _trs.Exec(tr,_cx,ra,vals); }
-            internal (Transaction, BTree<long, TypedValue>) UpdateRB(Transaction tr,Context _cx,BTree<long,TypedValue> vals)
-            { var x = _trs.Exec(tr,_cx,rb,vals); return _trs.Exec(x.Item1,_cx,ri,x.Item2); }
-            internal (Transaction, BTree<long, TypedValue>) DeleteRB(Transaction tr,Context _cx)
+            internal (Transaction, bool) UpdateRA(Transaction tr,Context _cx)
+            { return _trs.Exec(tr,_cx,ra); }
+            internal (Transaction, bool) UpdateRB(Transaction tr,Context _cx)
+            { tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
+            internal (Transaction, bool) DeleteRB(Transaction tr,Context _cx)
             { tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
 
         }
@@ -1833,7 +1817,7 @@ namespace Pyrrho.Level4
                     //           var rvv = srs.rvvs[(int)mbm.Value().Value];
                     //           var d = (rvv != null) ? rvv.def : 0;
                     var rb = new SortedRowBookmark(_cx, srs, 0, mbm, 0);// d);
-                    if (rb.Matches() && Query.Eval(srs.qry.where, srs._tr,_cx))
+                    if (rb.Matches() && Query.Eval(srs.qry.where, srs._tr as Transaction, _cx))
                         return rb;
                 }
                     return null;
@@ -1856,7 +1840,7 @@ namespace Pyrrho.Level4
                     //         var rvv = ((SortedRowSet)_rs).rvvs[(int)mbm.Value().Value];
                     //         var d = (rvv != null) ? rvv.def : 0;
                     var rb = new SortedRowBookmark(_cx, _srs, _pos + 1, mbm, 0); // d);
-                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -1902,7 +1886,7 @@ namespace Pyrrho.Level4
         }
         protected override RowBookmark _First(Context _cx)
         {
-            _tr = proc.Exec(_tr,_cx,actuals);
+            _tr = proc.Exec(_tr as Transaction, _cx,actuals);
             if (_cx.data[qry.defpos] == null)
                 throw new DBException("22004").Mix();
             rowSet = _cx.data[qry.defpos];
@@ -2201,7 +2185,7 @@ namespace Pyrrho.Level4
                 :base(_cx,drs,bmk.key(),0)
             {
                 _bmk = bmk;
-                _row = new TRow(ObInfo.Any, bmk.value().Eval(drs._tr, _cx));
+                _row = new TRow(ObInfo.Any, bmk.value().Eval(drs._tr as Transaction, _cx));
                 _key = _row;
             }
 

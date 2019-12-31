@@ -112,13 +112,6 @@ namespace Pyrrho
             dict.Add("2E208", "Badly formatted connection string {0}");
             dict.Add("2E209", "Unexpected element {0} in connection string");
             dict.Add("2E210", "LOCAL database server does not support distributed or partitioned operation");
-            dict.Add("2E213", "Unsupported configuration operation");
-            dict.Add("2E214", "Schema change must be on base database");
-            dict.Add("2E215", "Overlapping partitions");
-            dict.Add("2E216", "Configuration update can only be for local server");
-            dict.Add("2E217", "This server does not provide a Query service for {0}");
-            dict.Add("2E218", "Index {0} is incompatible with the partitioning scheme");
-            dict.Add("2E219", "Data and Schema changes cannot be mixed in a partitioned transaction");
             dict.Add("2E300", "The calling assembly does not have type {0}");
             dict.Add("2E301", "Type {0} does not have a default constructor");
             dict.Add("2E302", "Type {0} does not define public field {1}");
@@ -133,9 +126,6 @@ namespace Pyrrho
             dict.Add("33001", "Error in prepared statement parameters");
             dict.Add("3D000", "Invalid catalog specification {0}");
             dict.Add("3D001", "Database {0} not open");
-            dict.Add("3D002", "Remote host {0} not available");
-            dict.Add("3D003", "Remote database no longer accessible");
-            dict.Add("3D004", "Exception reported by remote database: {0}");
             dict.Add("3D005", "Requested operation not supported by this edition of Pyrrho");
             dict.Add("3D006", "Database {0} incorrectly terminated or damaged");
             dict.Add("3D007", "Database is not append storage"); // must match server version

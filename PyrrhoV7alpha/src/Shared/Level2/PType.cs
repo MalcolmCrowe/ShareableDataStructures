@@ -30,8 +30,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="sd">The representation datatype</param>
         /// <param name="pb">The local database</param>
-        public PType(string nm, long ud, Domain dt, long u, Transaction tr)
-            : this(Type.PType,nm, ud, dt, u, tr)
+        public PType(string nm, long ud, Domain dt, Transaction tr)
+            : this(Type.PType,nm, ud, dt, tr)
         {
         }
         /// <summary>
@@ -41,8 +41,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, string nm, long ud, Domain dt, long u, Transaction tr)
-            : base(t,nm, dt, u, tr)
+        protected PType(Type t, string nm, long ud, Domain dt, Transaction tr)
+            : base(t,nm, dt, tr)
 		{
             underdefpos = ud;
 		}
@@ -61,7 +61,7 @@ namespace Pyrrho.Level2
 		protected PType(Type t, Reader rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
         {
-            structdef = x.structdef;
+            structdefpos = x.structdefpos;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -74,7 +74,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(structdef?.defpos??-1L);
+            wr.PutLong(structdefpos);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -85,7 +85,7 @@ namespace Pyrrho.Level2
         {
             var sp = rdr.GetLong();
             if (sp!=-1)
-                structdef = rdr.role.obinfos[sp] as Domain;
+                structdefpos = sp;
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -96,7 +96,7 @@ namespace Pyrrho.Level2
 		{ 
 			string a = "PType "+name + " ";
             a += base.ToString();
-            a += "[" + structdef.defpos + "]";
+            a += "[" + structdefpos + "]";
 			return a;
 		}
         public override long Conflicts(Database db, Transaction tr, Physical that)
@@ -104,11 +104,11 @@ namespace Pyrrho.Level2
             switch(that.type)
             {
                 case Type.Drop:
-                        if (structdef.defpos == ((Drop)that).delpos)
+                        if (structdefpos == ((Drop)that).delpos)
                             return ppos;
                     break; // base class has other reasons for concern
                 case Type.Change:
-                    if (structdef.defpos == ((Change)that).affects)
+                    if (structdefpos == ((Change)that).affects)
                         return ppos;
                     break; // base class has other reasons for concern
             }
@@ -125,8 +125,8 @@ namespace Pyrrho.Level2
         /// <param name="un">The supertype if specified</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        public PType1(string nm, long ud, Domain dt,long u,Transaction tr)
-            : base(Type.PType1, nm, ud, dt, u,tr)
+        public PType1(string nm, long ud, Domain dt,Transaction tr)
+            : base(Type.PType1, nm, ud, dt, tr)
         {  }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer

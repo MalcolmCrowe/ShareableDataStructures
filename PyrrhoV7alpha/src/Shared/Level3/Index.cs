@@ -91,7 +91,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, new Parser(db).ParseSqlValue(c.adapter));
+                r += (Adapter, db.GetProcedure(c.adapter, 1));
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)

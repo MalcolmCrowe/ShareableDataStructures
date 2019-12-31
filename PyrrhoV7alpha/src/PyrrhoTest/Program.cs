@@ -8,7 +8,7 @@ namespace Test
 {
     class Program
     {
-        static int test = 0, qry = 0;
+        static int test = 0, qry = 0,testing=0;
         bool commit = false;
         PyrrhoConnect conn;
         PyrrhoTransaction tr;
@@ -44,7 +44,7 @@ namespace Test
             }
             catch (Exception e)
             {
-                Console.WriteLine("Exception: " + e.Message);
+                Console.WriteLine("Test" +testing + " Exception: " + e.Message);
                 Console.ReadLine();
             }
         }
@@ -79,11 +79,17 @@ namespace Test
             Test14(test);
             Test15(test);
             Test16(test);
+     /*       Test17(test);
+            Test18(test);
+            Test19(test);
+            Test20(test);
+            Test21(test); */
         }
         void Test1(int t)
         {
             if (t > 0 && t != 1)
                 return;
+            testing = 1;
             Begin();
             conn.Act("create table A(B int,C int,D char,primary key(B,C))");
             conn.Act("insert into A values(2,3,'TwentyThree')");
@@ -100,6 +106,7 @@ namespace Test
         {
             if (t > 0 && t != 2)
                 return;
+            testing = 2;
             Begin();
             conn.Act("create table AA(B int,C char)");
             conn.Act("insert into AA(B) values(17)");
@@ -117,6 +124,7 @@ namespace Test
         {
             if (t > 0 && t != 3)
                 return;
+            testing = 3;
             Begin();
             conn.Act("create table b(c int primary key,d char)");
             conn.Act("insert into b values(45,'DE')");
@@ -129,6 +137,7 @@ namespace Test
         {
             if (t > 0 && t != 4)
                 return;
+            testing = 4;
             Begin();
             conn.Act("create table e(f int,g char,primary key(g,f))");
             conn.Act("insert into e values(23,'XC')");
@@ -146,6 +155,7 @@ namespace Test
         {
             if (t > 0 && t != 5)
                 return;
+            testing = 5;
             Begin();
             conn.Act("create table f(b int,c int)");
             conn.Act("insert into f values(17,15)");
@@ -167,6 +177,7 @@ namespace Test
         {
             if (t > 0 && t != 6)
                 return;
+            testing = 6;
             Begin();
             conn.Act("create table ta(b date,c interval hour to second,d boolean)");
             conn.Act("insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)");
@@ -177,6 +188,7 @@ namespace Test
         {
             if (t > 0 && t != 7)
                 return;
+            testing = 7;
             Begin();
             conn.Act("create table TB(S char,D int,C int)");
             conn.Act("insert into TB values('Glasgow',2,43)");
@@ -190,6 +202,7 @@ namespace Test
         {
             if (t > 0 && t != 8)
                 return;
+            testing = 8;
             Begin();
             conn.Act("create table JA(B int,C int,D int)");
             conn.Act("insert into JA values(4,2,43)");
@@ -225,6 +238,7 @@ namespace Test
         {
             if (t > 0 && t != 9)
                 return;
+            testing = 9;
             Begin();
             conn.Act("create table ba(b int,c real,d numeric)");
             conn.Act("insert into ba values(12345678901234567890123456789,123.4567,0.1234)");
@@ -246,6 +260,7 @@ namespace Test
         {
             if (commit || (t > 0 && t != 10)) //This test runs if commit is false
                 return;
+            testing = 10;
             try
             {
                 conn.Act("create table RDC(A int primary key,B char)");
@@ -293,6 +308,7 @@ namespace Test
         {
             if (commit || (t > 0 && t != 11)) // this test only runs if commit is false
                 return;
+            testing = 11;
             if (qry == 0 || qry == 1)
             {
                 Begin();
@@ -319,6 +335,7 @@ namespace Test
         {
             if (t > 0 && t != 12)
                 return;
+            testing = 12;
             Begin();
             conn.Act("create table sce(a int,b char)");
             conn.Act("insert into sce values(12,'Zodiac')");
@@ -341,6 +358,7 @@ namespace Test
         {
             if (t > 0 && t != 13)
                 return;
+            testing = 13;
             Begin();
             conn.Act("create table ad(a int,b char)");
             conn.Act("insert into ad values(20,'Twenty')");
@@ -364,7 +382,7 @@ namespace Test
             conn.Act("create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
-                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: foreign key DE(14)");
+                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key DE(14)");
                 if (!commit)
                 {
                     Begin();
@@ -430,6 +448,8 @@ namespace Test
         {
             if (t > 0 && t != 14)
                 return;
+            testing = 14;
+            Begin();
             conn.Act("create table fi(a int primary key, b char)");
             conn.Act("create table se(c char primary key, d int references fi on delete cascade)");
             conn.Act("insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
@@ -439,8 +459,17 @@ namespace Test
             CheckResults(14, 1, "table se", "[{C:'disaster',D:2019},{C:'elizabeth',D:1953},{C:'johnson',D:2019}]");
             conn.Act("alter table se set (d) references fi on delete restrict");
             CheckExceptionNonQuery(14,2,"delete from fi where a = 2019","Integrity constraint: RESTRICT");
+            if (!commit)
+            {
+                Begin();
+                conn.Act("create table fi(a int primary key, b char)");
+                conn.Act("create table se(c char primary key, d int references fi on delete cascade)");
+                conn.Act("insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
+                conn.Act("insert into se values('johnson', 2019),('elizabeth',1953),('disaster',2019)");
+                conn.Act("insert into se values('normans',1066),('hastings', 1066)");
+                conn.Act("delete from fi where a = 1066");
+            }
             conn.Act("alter table se set(d) references fi on delete set null on update cascade");
-            Begin();
             conn.Act("update fi set a = 2020 where a = 2019");
             CheckResults(14,3, "table se", "[{C:'disaster',D:2020},{C:'elizabeth',D:1953},{C:'johnson',D:2020}]");
             conn.Act("delete from fi where a = 2020");
@@ -451,9 +480,15 @@ namespace Test
         {
             if (t > 0 && t != 15)
                 return;
+            testing = 15;
             Begin();
             conn.Act("create table ca(a char,b int check (b>0))");
-            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99))","Column B check constraint fails");
+            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column B Check constraint fails");
+            if (!commit)
+            {
+                Begin();
+                conn.Act("create table ca(a char,b int check (b>0))");
+            }
             conn.Act("insert into ca values('Pos',45)");
             CheckResults(15, 2, "table ca", "[{A:'Pos',B:45}]");
             Rollback();
@@ -462,6 +497,7 @@ namespace Test
         {
             if (t > 0 && t != 16)
                 return;
+            testing = 16;
             Begin();
             conn.Act("create table xa(b int,c int,d char)");
             conn.Act("create table xb(tot int)");
@@ -484,6 +520,97 @@ namespace Test
             conn.Act("delete from xa where d='changed'");
             CheckResults(16,5,"table xc", "[{TOTB:8,TOTC:10}]");
             CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'}]"); // INSTEAD OF!
+            Rollback();
+        }
+        public void Test17(int t)
+        {
+            if (t > 0 && t != 17)
+                return;
+            testing = 17;
+            Begin();
+            conn.Act("create function reverse(a char) returns char "+
+                "if char_length(a)<=1 then return a "+
+                "else return reverse(substring(a from 1 for char_length(a)-1))"+
+                "   ||substring(a from 0 for 1) end if");
+            CheckResults(17, 1, "select reverse('Fred')", "[{Col0:'derF'}]");
+            Rollback();
+        }
+        public void Test18(int t)
+        {
+            if (t > 0 && t != 18)
+                return;
+            testing = 18;
+            Begin();
+            conn.Act("create table author(id int primary key,aname char)");
+            conn.Act("create table book(id int primary key,authid int references author,title char)");
+            conn.Act("insert into author values (1,'Dickens'),(2,'Conrad')");
+            conn.Act("insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')");
+            conn.Act("create function booksby(auth char) returns table(title char) "+
+                "return table (select title from author inner join book b "+
+                "on author.id=b.authid where aname=booksby.auth)");
+            CheckResults(18, 1, "select title from author inner join book b on author.id=b.authid where aname='Dickens'",
+                "[{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]");
+            CheckResults(18, 2, "select * from table(booksby('Dickens'))", 
+                "[{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]");
+            CheckResults(18, 3, "select count(*) from table(booksby('Dickens'))",
+                "[{Col0:2}]");
+            Rollback();
+        }
+        public void Test19(int t)
+        {
+            if (t > 0 && t != 19)
+                return;
+            testing = 19;
+            Begin();
+            conn.Act("create table ga(a1 int primary key,a2 char)");
+            conn.Act("insert into ga values(1,'First'),(2,'Second')");
+            conn.Act("create function gather1() returns char "+
+                " begin declare c cursor for select a2 from ga;" +
+                "  declare done Boolean default false;" +
+                "  declare continue handler for sqlstate '02000' set done=true;" +
+                "  declare a char default '';" +
+                "  declare p char;" +
+                "  open c;" +
+                "  repeat" +
+                "   fetch c into p; " +
+                "   if not done then " +
+                "    if a='' then " +
+                "     set a=p " +
+                "    else " +
+                "     set a=a||', '||p " +
+                "    end if" +
+                "   end if" +
+                "  until done end repeat;" +
+                "  close c;" +
+                "  return a end");
+            CheckResults(19, 1, "select gather1()", "[{Col0:'First, Second'}]");
+            conn.Act("create function gather2() returns char "+
+                "  begin declare b char default '';" +
+                "   for select a2 from ga do " +
+                "    if b='' then " +
+                "     set b=a2 " +
+                "    else " +
+                "     set b=b||', '||a2 " +
+                "    end if " +
+                "   end for;" +
+                "   return b end");
+            CheckResults(19, 2, "select gather2()", "[{Col0:'First, Second'}]");
+            Rollback();
+        }
+        public void Test20(int t)
+        {
+            if (t > 0 && t != 20)
+                return;
+            testing = 20;
+            Begin();
+            Rollback();
+        }
+        public void Test21(int t)
+        {
+            if (t > 0 && t != 21)
+                return;
+            testing = 21;
+            Begin();
             Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)

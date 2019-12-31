@@ -24,7 +24,7 @@ namespace Pyrrho.Level3
         internal BList<UpdateAssignment> assigns =>
             (BList<UpdateAssignment>)mem[Assigns] ?? BList<UpdateAssignment>.Empty;
         internal Query source => (Query)mem[Source];
-        internal long target => (long)(mem[Target]??-1);
+        internal long target => (long)(mem[Target]??-1L);
         internal readonly static From _static = new From();
         From() : base(Static, BTree<long,object>.Empty) { }
         public From(long dp, Table tb, ObInfo ti) : this(dp, BTree<long, object>.Empty
@@ -78,6 +78,10 @@ namespace Pyrrho.Level3
         {
             return new From(dp,mem);
         }
+        internal override SqlValue ToSql(Ident id,Database db)
+        {
+            return new SqlTable(id.iix,name,this);
+        }
         internal override DBObject Frame(Context cx)
         {
             var r = (From)base.Frame(cx);
@@ -110,17 +114,17 @@ namespace Pyrrho.Level3
             if (rec != null)
                 for (var e = matches?.First(); e != null; e = e.Next())
                 {
-                    var v = (TypedValue)rec.fields[e.key().defpos];
+                    var v = rec.fields[e.key().defpos];
                     var m = e.value();
                     if (v != null && m != null && m.dataType.Compare(m, v) != 0)
                         return false;
                 }
             return true;
         }
-        internal override RowSet RowSets(Transaction tr, Context cx)
+        internal override RowSet RowSets(Database tr, Context cx)
         {
             if (defpos == Static)
-                return new TrivialRowSet(tr, cx, this, new TRow(rowType, cx.values));
+                return new TrivialRowSet(tr as Transaction, cx, this, new TRow(rowType, cx.values));
             RowSet rowSet = null;
             //           if (target == null)
             //               return new TrivialRowSet(tr, cx, this, Eval(tr, cx) as TRow ?? TRow.Empty);
@@ -310,9 +314,11 @@ namespace Pyrrho.Level3
     }
     internal class FromOldTable: From
     {
-        public FromOldTable(long dp, Table tb, Transaction tr)
-            : this(dp,new From(dp, tb, (ObInfo)tr.role.obinfos[tb.defpos])) { }
-        public FromOldTable(long dp,From f) : base(dp, f.mem) { }
+        internal long trs => (long)(mem[SqlOldRowCol.TransitionRowSet] ?? -1L);
+        public FromOldTable(Ident id, From f)
+            : base(id.iix,f.mem
+                  +(SqlOldRowCol.TransitionRowSet,f.defpos)
+                  +(Name,id.ident)) { }
         protected FromOldTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static FromOldTable operator+(FromOldTable f,(long,object)x)
         {
@@ -326,44 +332,16 @@ namespace Pyrrho.Level3
         {
             return new FromOldTable(dp,mem);
         }
-        internal override DBObject Replace(Context cx, DBObject was, DBObject now)
+        internal override Basis Relocate(Writer wr)
         {
-            var r = (FromOldTable)base.Replace(cx, was, now);
-            var ch = false;
-            var so = r.source?.Replace(cx, was, now);
-            if (so != r.source)
-            {
-                ch = true;
-                r += (Source, so);
-            }
-            var ua = BList<UpdateAssignment>.Empty;
-            for (var b = assigns?.First(); b != null; b = b.Next())
-                ua += b.value().Replace(cx, was, now);
-            if (ua != assigns)
-                r += (Assigns, ua);
-            if (now is SqlCol sc && sc.tableCol.tabledefpos == target)
-            {
-                var bt = cx.used[defpos] ?? BTree<long, SqlCol>.Empty;
-                bt += (sc.defpos, sc);
-                cx.used += (defpos, bt);
-                r += (RowType, r.rowType.Replace(cx, was, now));
-                ch = true;
-            }
-            if (ch)
-                cx.Add(r);
+            var r = (FromOldTable)base.Relocate(wr);
+            r += (SqlOldRowCol.TransitionRowSet, wr.Fix(trs));
             return r;
         }
         internal override DBObject Frame(Context cx)
         {
             var r = (FromOldTable)base.Frame(cx);
-            var so = r.source?.Frame(cx);
-            if (so != r.source)
-                r += (Source, so);
-            var ua = BList<UpdateAssignment>.Empty;
-            for (var b = assigns?.First(); b != null; b = b.Next())
-                ua += b.value().Frame(cx);
-            if (ua != assigns)
-                r += (Assigns, ua);
+            r += (SqlOldRowCol.TransitionRowSet, cx.data[trs]);
             return r;
         }
         internal RowSet Change(RowSet rs,Context cx)
@@ -400,9 +378,19 @@ namespace Pyrrho.Level3
                 return new JoinRowSet(cx, rs.qry, Change(jrs.first, cx), Change(jrs.second, cx));
             return rs;
         }
-        internal override RowSet RowSets(Transaction tr, Context cx)
+        internal override RowSet RowSets(Database tr, Context cx)
         {
-            return Change(base.RowSets(tr, cx),cx);
+            var t = cx.data[((FromOldTable)cx.defs[name].Item1).trs];
+            return t;
+    //        if (t == null)
+    //            return null;
+    //        return Change(base.RowSets(t._tr, cx),cx);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Trs: "); sb.Append(Uid(trs));
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -432,7 +420,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The parsing context</param>
         /// <param name="name">The name of the table to insert into</param>
-        public SqlInsert(long dp, Transaction tr,Context cx,Ident name, Correlation cr, 
+        public SqlInsert(long dp, Database tr,Context cx,Ident name, Correlation cr, 
             string prov, SqlValue v) : base(dp+1,_Mem(dp,tr,cx,name,cr)+ (Provenance, prov)+(Value,v))
         {
             if (from.rowType.Length == 0)
@@ -443,14 +431,14 @@ namespace Pyrrho.Level3
         {
             return new SqlInsert(s.defpos, s.mem + x);
         }
-        static BTree<long,object> _Mem(long dp,Transaction tr,Context cx,Ident name,Correlation cr)
+        static BTree<long,object> _Mem(long dp,Database db,Context cx,Ident name,Correlation cr)
         {
-            var tb = tr.GetObject(name.ident) as Table ??
+            var tb = db.GetObject(name.ident) as Table ??
                 throw new DBException("42107", name.ident);
-            var rt = (ObInfo)((ObInfo)tr.role.obinfos[tb.defpos]).Relocate(dp);
+            var rt = (ObInfo)((ObInfo)db.role.obinfos[tb.defpos]).Relocate(dp);
             var fm = new From(dp, tb, rt);
             if (cr!=null)
-                fm += (Query.RowType,cr.Pick(rt.For(tr, tb, Grant.Privilege.Insert)));
+                fm += (Query.RowType,cr.Pick(rt.For(db, tb, Grant.Privilege.Insert)));
             fm = (From)fm.AddCols(cx,fm);
             return BTree<long, object>.Empty + (_Table, fm);
         }
@@ -480,6 +468,9 @@ namespace Pyrrho.Level3
             var tb = from.Frame(cx);
             if (tb != from)
                 r += (_Table, tb);
+            var vl = value.Frame(cx);
+            if (vl != value)
+                r += (Value, vl);
             return cx.Add(r);
         }
         public override Transaction Obey(Transaction tr, Context cx)
@@ -494,6 +485,15 @@ namespace Pyrrho.Level3
             return from.Insert(tr,cx,provenance, cx.data[defpos], new Common.Adapters(),
                 new List<RowSet>(), classification);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Table: "); sb.Append(from);
+            sb.Append(" Value: "); sb.Append(value);
+            if (provenance != null)
+            { sb.Append(" Provenance: "); sb.Append(provenance); }
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// QuerySearch is for DELETE and UPDATE 
@@ -503,20 +503,20 @@ namespace Pyrrho.Level3
         internal From table => (From)mem[SqlInsert._Table];
         internal BList<UpdateAssignment> assigs =>
             (BList<UpdateAssignment>)mem[From.Assigns] ?? BList<UpdateAssignment>.Empty;
-        internal QuerySearch(long dp,Transaction tr, Context cx,Ident ic, Correlation cr, 
-            Grant.Privilege how) : this(Type.DeleteWhere,dp,tr,cx,ic,cr,how,BList<UpdateAssignment>.Empty)
+        internal QuerySearch(long dp,Database db, Context cx,Ident ic, Correlation cr, 
+            Grant.Privilege how) : this(Type.DeleteWhere,dp,db,cx,ic,cr,how,BList<UpdateAssignment>.Empty)
             // detected for HttpService for DELETE verb
         { }
         /// <summary>
         /// Constructor: a DELETE or UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The parsing context</param>
-        protected QuerySearch(Type et,long dp,Transaction tr, Context cx,Ident ic, Correlation cr, 
+        protected QuerySearch(Type et,long dp,Database db, Context cx,Ident ic, Correlation cr, 
             Grant.Privilege how, BList<UpdateAssignment> ua=null)
-            : base(dp,_Mem(dp,tr,cx,ic,cr,ua)+(_Type,et)+(From.Assigns,ua))
+            : base(dp,_Mem(dp,db,cx,ic,cr,ua)+(_Type,et)+(From.Assigns,ua))
         {
             if (table.rowType.Length == 0)
-                throw new DBException("2E111", tr.user, ic.ident).Mix();
+                throw new DBException("2E111", db.user, ic.ident).Mix();
         }
         protected QuerySearch(long dp,BTree<long,object>m) :base(dp,m) { }
         public static QuerySearch operator+(QuerySearch q,(long,object)x)
@@ -527,13 +527,13 @@ namespace Pyrrho.Level3
         {
             return new QuerySearch(defpos,m);
         }
-        static BTree<long, object> _Mem(long dp,Transaction tr, Context cx, Ident name, Correlation cr, 
+        static BTree<long, object> _Mem(long dp,Database db, Context cx, Ident name, Correlation cr, 
             BList<UpdateAssignment> ua)
         {
-            var tb = tr.GetObject(name.ident) as Table ??
+            var tb = db.GetObject(name.ident) as Table ??
                 throw new DBException("42107", name.ident);
-            var rt = tr.role.obinfos[tb.defpos] as ObInfo;
-            var dt = rt.For(tr, tb, Grant.Privilege.Insert);
+            var rt = db.role.obinfos[tb.defpos] as ObInfo;
+            var dt = rt.For(db as Transaction, tb, Grant.Privilege.Insert);
             if (cr != null)
                 dt = cr.Pick(dt);
             return BTree<long, object>.Empty + (SqlInsert._Table, new From(name.iix,tb,dt));
@@ -607,9 +607,9 @@ namespace Pyrrho.Level3
         /// Constructor: A searched UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The context</param>
-        public UpdateSearch(long dp, Transaction tr, Context cx, Ident ic, Correlation ca, 
+        public UpdateSearch(long dp, Database db, Context cx, Ident ic, Correlation ca, 
             Grant.Privilege how)
-            : base(Type.UpdateWhere, dp, tr, cx, ic, ca, how)
+            : base(Type.UpdateWhere, dp, db, cx, ic, ca, how)
         {  }
         protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UpdateSearch operator+(UpdateSearch u,(long,object)x)

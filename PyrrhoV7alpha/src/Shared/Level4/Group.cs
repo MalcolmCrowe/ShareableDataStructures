@@ -66,7 +66,7 @@ namespace Pyrrho.Level4
             internal void AddIn(Context _cx,GroupingBookmark gb)
             {
                 for (var b = gb._grs.having.First(); b != null; b = b.Next())
-                    if (b.value()?.Eval(gb._rs._tr,_cx) != TBool.True)
+                    if (b.value()?.Eval(gb._rs._tr as Transaction, _cx) != TBool.True)
                         return;
                 var key = new TRow(nominalKeyType,gb.row.values);
                 GroupRow r = grs.g_rows[key] 
@@ -116,7 +116,7 @@ namespace Pyrrho.Level4
             internal GroupValueEntry(GroupingRowSet rs, Ident n, int? x) : base(rs, n, x) { }
             internal override TypedValue Eval(Context _cx, ABookmark<TRow, GroupRow> bm)
             {
-                return bm.value().groupInfo[ix.Value].Eval(grs._tr,_cx);
+                return bm.value().groupInfo[ix.Value].Eval(grs._tr as Transaction, _cx);
             }
         }
         /// <summary>
@@ -234,7 +234,7 @@ namespace Pyrrho.Level4
                 var vs = BTree<long, TypedValue>.Empty;
                 for (var i = rowType.Length - 1; i >= 0; i--)
                     if (rw[i] is SqlValue sv)
-                        vs += (sv.defpos, sv.Eval(_tr, _cx));
+                        vs += (sv.defpos, sv.Eval(_tr as Transaction, _cx));
                 var key = rg.key();
                 for (var b = key.values.First(); b != null; b = b.Next())
                     vs += (b.key(), b.value());
@@ -307,7 +307,7 @@ namespace Pyrrho.Level4
                     for (var ebm = grs.rows.First(); ebm != null; ebm = ebm.Next())
                     {
                         r = new GroupingBookmark(_cx,grs, bbm, ebm, 0);
-                        if (r.Matches() && Query.Eval(grs.qry.where,grs._tr,_cx))
+                        if (r.Matches() && Query.Eval(grs.qry.where,grs._tr as Transaction, _cx))
                             return r;
                     }
                     return null;
@@ -336,7 +336,7 @@ namespace Pyrrho.Level4
                         var r = new GroupingBookmark(_cx,_grs, _bbm, ebm, _pos + 1);
                         for (var b = _rs.qry.rowType.columns.First(); b != null; b = b.Next())
                             ((SqlValue)b.value()).OnRow(r);
-                        if (r.Matches() && Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (r.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return r;
                     }
                 }

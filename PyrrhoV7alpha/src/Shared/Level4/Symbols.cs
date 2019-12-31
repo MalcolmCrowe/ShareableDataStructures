@@ -205,11 +205,26 @@ namespace Pyrrho.Level4
                 }
                 return t;
             }
-            public DBObject this[Ident ic] => 
-                Contains(ic.ident)?
-                    (ic.sub==null)?this[ic.ident].Item1
-                        :this[ic.ident].Item2[ic.sub]
-                :null;
+            public DBObject Get(Context cx,Ident ic)
+            {
+                if (!Contains(ic.ident))
+                    return null;
+                var (ob,si) = this[ic.ident];
+                if (cx.dbformat < 51)
+                    cx.digest += (ic.iix, (ic.ident, ob.defpos));
+                return (ic.sub == null) ? ob
+                    : si.Get(cx, ic.sub);
+            }
+            public (DBObject,string) Split(Ident ic,DBObject ob=null)
+            {
+                var id = ic.ident;
+                if (!Contains(id))
+                    return (null, id);
+                if (ic.sub == null)
+                    return (ob, id);
+                var (nb,nt) = this[id];
+                return nt.Split(ic.sub,nb);
+            }
             public IdBookmark First(int p,Ident pr=null)
             {
                 var b = base.First();

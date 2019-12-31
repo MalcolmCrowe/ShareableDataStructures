@@ -25,7 +25,12 @@ namespace Pyrrho.Level4
     /// the comments are extracts from Pyrrho.doc synopsis of syntax
     /// 
     /// Many SQL statements parse to Executables (can be placed in stored procedures etc)
-    /// Can then be executed imediately depending on parser settings
+    /// Can then be executed imediately depending on parser settings.
+    /// 
+    /// Some constructs get parsed during database Load(): these should never try to change the schema
+    /// or make other changes. db.parse should only be Obey within a transaction.
+    /// This means that (for now at least) stored executable code (triggers, procedures) should
+    /// never attempt schema changes. 
     /// </summary>
 	internal class Parser
     {
@@ -33,7 +38,7 @@ namespace Pyrrho.Level4
         /// Both tr and cx have their idea of role. Use tr.role to get information
         /// about Tables and cx.role to store and get information about TabelReferences
         /// </summary>
-        public Transaction tr; // immutable shareable: we will update this and return new version
+        public Database db; // immutable shareable: we will update this and return new version
         public Context cx; // updatable: has volatile query rowTypes.
         /// <summary>
         /// The lexer breaks the input into tokens for us. During parsing
@@ -55,9 +60,17 @@ namespace Pyrrho.Level4
         /// <param name="t">The transaction</param>
         public Parser(Database db,Context c=null)
         {
-            tr = db.Transact(db.nextTid,db.source);
+            this.db = db.Transact(db.nextTid, db.source);
             cx = c??new Context(db);
             id = ""+cx?.cxid;
+        }
+        public Parser(Database d,Ident src)
+        {
+            db = d+(Database._ExecuteStatus,ExecuteStatus.Parse);
+            cx = new Context(db);
+            lxr = new Lexer(src.ident, src.iix);
+            tok = lxr.tok;
+            id = db.name+db.dbg;
         }
         /// <summary>
         /// Move to the next token
@@ -131,16 +144,19 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse Sql input
         ///     Sql = SqlStatement [‘;’] .
+        /// The type of database maodification that may occur is determined by tr.parse.
         /// </summary>
         /// <param name="sql">the input</param>
-        public (Database,long) ParseSql(string sql)
+        /// <param name="rt">the desired result type (default is Domain.Null)</param>
+        /// <returns>The modified Database and the new uid highwatermark </returns>
+        public (Database,long) ParseSql(string sql,DBObject rt=null)
         {
-            lxr = new Lexer(sql,tr.lexeroffset);
+            lxr = new Lexer(sql,db.lexeroffset);
             tok = lxr.tok;
-            var e = ParseSqlStatement();
+            var e = ParseSqlStatement(rt);
             cx.result = e.defpos;
             if (e.type == Executable.Type.Commit)
-                return tr.Commit(cx);
+                return db.Commit(cx);
             if (tok == Sqlx.SEMICOLON)
                 Next();
             if (tok != Sqlx.EOF)
@@ -148,20 +164,21 @@ namespace Pyrrho.Level4
                 string ctx = new string(lxr.input, lxr.start, lxr.pos - lxr.start);
                 throw new DBException("42000", ctx).ISO();
             }
-            tr += (Database.NextTid,tr.nextTid+sql.Length);
-            return (tr, tr.nextTid);
+            if (lxr.Position>Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid,db.nextTid+sql.Length);
+            return (db, db.nextTid);
         }
         /// <summary>
         /// Add the parameters to a prepared statement
         /// </summary>
         /// <param name="pre">The object with placeholders</param>
         /// <param name="s">The parameter strings concatenated by |</param>
-        /// <returns></returns>
+        /// <returns>The modified database and the new uid highwatermark</returns>
         public (Database,long) ParseSql(PreparedStatement pre,string s)
         {
             cx.Add(pre);
             cx.top = pre.defpos;
-            lxr = new Lexer(s, tr.lexeroffset);
+            lxr = new Lexer(s, db.lexeroffset);
             tok = lxr.tok;
             var b = pre.qMarks.First();
             for (;b!=null && tok!=Sqlx.EOF;b=b.Next())
@@ -187,8 +204,8 @@ namespace Pyrrho.Level4
             }
             if (!(b == null && tok == Sqlx.EOF))
                 throw new DBException("33001");
-            tr = pre.target.Obey(tr, cx);
-            return (tr, tr.nextTid);
+            db = pre.target.Obey((Transaction)db, cx);
+            return (db, db.nextTid);
         }
         /// <summary>
         ///SqlStatement = 	Rdf
@@ -207,10 +224,12 @@ namespace Pyrrho.Level4
         /// 	|	ROLLBACK [WORK]
         /// 	|	UpdateSearched .       
         /// </summary>
+        /// <param name="rt">A Domain or ObInfo for the expected result of the Executable</param>
         /// <returns>The Executable result of the Parse</returns>
-        public Executable ParseSqlStatement()
+        public Executable ParseSqlStatement(DBObject rt=null)
         {
             int st = lxr.start;
+            var oi = rt as ObInfo ?? ObInfo.Any;
             Executable e = null;
             //            Match(Sqlx.RDF);
             switch (tok)
@@ -222,20 +241,20 @@ namespace Pyrrho.Level4
                 case Sqlx.DELETE: e = ParseSqlDelete(); break;
                 case Sqlx.DROP: e = ParseDropStatement(); break;
                 case Sqlx.GRANT: e = ParseGrant(); break;
-                case Sqlx.HTTP: e = ParseHttpREST(); break;
+                case Sqlx.HTTP: e = ParseHttpREST(rt); break;
                 case Sqlx.INSERT: e = ParseSqlInsert(); break;
                 case Sqlx.REVOKE: e = ParseRevoke(); break;
                 case Sqlx.ROLLBACK:
                     Next();
                     if (Match(Sqlx.WORK))
                         Next();
-                    tr.Rollback(new DBException("0000").ISO());
+                    db.Rollback(new DBException("0000").ISO());
                     break;
-                case Sqlx.SELECT: e = ParseCursorSpecification(); break;
+                case Sqlx.SELECT: e = ParseCursorSpecification(oi); break;
                 case Sqlx.SET: e = ParseSqlSet(); break;
-                case Sqlx.TABLE: e = ParseCursorSpecification(); break;
+                case Sqlx.TABLE: e = ParseCursorSpecification(oi); break;
                 case Sqlx.UPDATE: e = ParseSqlUpdate(); break;
-                case Sqlx.VALUES: e = ParseCursorSpecification(); break;
+                case Sqlx.VALUES: e = ParseCursorSpecification(oi); break;
                 //    case Sqlx.WITH: e = ParseCursorSpecification(); break;
                 case Sqlx.EOF: return null; // whole input is a comment
                 default:
@@ -253,18 +272,18 @@ namespace Pyrrho.Level4
                 Next();
             return new CommitStatement(lxr.Position);
         }
-        private Executable ParseHttpREST()
+        private Executable ParseHttpREST(DBObject rt)
         {
             Sqlx t = Next();
             SqlValue us = null;
             SqlValue pw = null;
             if (!Match(Sqlx.ADD, Sqlx.UPDATE, Sqlx.DELETE))
             {
-                us = ParseSqlValue();
+                us = ParseSqlValue(Domain.Char);
                 if (Match(Sqlx.COLON))
                 {
                     Next();
-                    pw = ParseSqlValue();
+                    pw = ParseSqlValue(Domain.Char);
                 }
             }
             HttpREST h = null;
@@ -276,13 +295,13 @@ namespace Pyrrho.Level4
                 case Sqlx.DELETE: h = new HttpREST(lp,"DELETE", us, pw); break;
             }
                 Next();
-                h+= (HttpREST.Url,Domain.Char.Coerce(ParseSqlValue().Eval(tr,cx)));
+                h+= (HttpREST.Url,ParseSqlValue(Domain.Char).Eval((Transaction)db,cx));
             cx = new Context(cx, h);
             try
             { 
                 if (t != Sqlx.DELETE)
                 {
-                    var e = ParseProcedureStatement();
+                    var e = ParseProcedureStatement(Domain.Content);
                     cx=cx.next;
                     return (Executable)cx.Add(e);
                 }
@@ -296,7 +315,7 @@ namespace Pyrrho.Level4
                 if (Match(Sqlx.WHERE))
                 {
                     Next();
-                    h+=(HttpREST.Where, ParseSqlValue());
+                    h+=(HttpREST.Where, ParseSqlValue(Domain.Bool));
                 }
             }
             catch (Exception e) { throw e; }
@@ -360,10 +379,10 @@ namespace Pyrrho.Level4
                 var nm = lxr.val;
                 var lp = lxr.Position;
                 Mustbe(Sqlx.ID);
-                var usr = tr.GetObject(nm.ToString()) as User ??
+                var usr = db.GetObject(nm.ToString()) as User ??
                     throw new DBException("42135", nm.ToString());
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Clearance(usr.defpos, lv, lp, tr);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    tr += new Clearance(usr.defpos, lv, tr);
                 return e; // still null
             }
             else if (Match(Sqlx.PASSWORD))
@@ -381,26 +400,26 @@ namespace Pyrrho.Level4
                     Next();
                     var rid = new Ident(lxr);
                     Mustbe(Sqlx.ID);
-                    irole = tr.GetObject(rid.ident) as Role??
+                    irole = db.GetObject(rid.ident) as Role??
                         throw new DBException("42135", rid);
                 }
                 Mustbe(Sqlx.TO);
                 var lp = lxr.Position;
                 var grantees = ParseGranteeList(null);
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
                 {
                     var irolepos = -1L;
                     if (irole != null)
                     {
-                        tr.AccessRole(true, new string[] { irole.name }, grantees, false);
+                        tr = tr.AccessRole(true, new string[] { irole.name }, grantees, false);
                         irolepos = irole.defpos;
                     }
                     for (var i = 0; i < grantees.Length; i++)
                     {
                         var us = grantees[i];
-                        tr += new Authenticate(us.defpos, pwd.ToString(), irolepos, 
-                            lp, tr);
+                        tr += new Authenticate(us.defpos, pwd.ToString(), irolepos, tr);
                     }
+                    db = tr;
                 }
                 return e;// e.SPop(lxr); // e is still null of course
             }
@@ -415,7 +434,7 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.TO);
                 var grantees = ParseGranteeList(priv);
                 bool opt = ParseGrantOption();
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
                     tr.AccessObject(true, priv, pob, grantees, opt);
             }
             else
@@ -425,8 +444,8 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.TO);
                 var grantees = ParseGranteeList(new PrivNames[] { new PrivNames(Sqlx.USAGE) });
                 bool opt = ParseAdminOption();
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr.AccessRole(true, roles, grantees, opt);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr.AccessRole(true, roles, grantees, opt);
             }
             return (Executable)cx.Add(e);
         }
@@ -462,7 +481,7 @@ namespace Pyrrho.Level4
                 case Sqlx.VIEW:
                 case Sqlx.ENTITY:
                 case Sqlx.TRIGGER:
-                case Sqlx.TYPE: ob = tr.GetObject(n) ??
+                case Sqlx.TYPE: ob = db.GetObject(n) ??
                         throw new DBException("42135",n);
                     break;
                 case Sqlx.CONSTRUCTOR: 
@@ -470,7 +489,7 @@ namespace Pyrrho.Level4
                 case Sqlx.PROCEDURE:
                     {
                         var a = ParseArity();
-                        ob = tr.GetProcedure(n, a) ??
+                        ob = db.GetProcedure(n, a) ??
                         throw new DBException("42108", n+"$"+a);
                         break;
                     }
@@ -483,7 +502,7 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.FOR);
                         var tp = lxr.val.ToString();
                         Mustbe(Sqlx.ID);
-                        var ut = tr.GetObject(tp) as UDType ??
+                        var ut = db.GetObject(tp) as UDType ??
                             throw new DBException("42119", tp);
                         ob = ut.methods[n][arity];
                         break;
@@ -513,12 +532,12 @@ namespace Pyrrho.Level4
                     Next();
                     return 0;
                 }
-                fs.Add(ParseSqlDataType());
+                fs.Add(ParseSqlDataType().domain);
                 n++;
                 while (tok == Sqlx.COMMA)
                 {
                     Next();
-                    fs.Add(ParseSqlDataType());
+                    fs.Add(ParseSqlDataType().domain);
                     n++;
                 }
                 Mustbe(Sqlx.RPAREN);
@@ -613,7 +632,7 @@ namespace Pyrrho.Level4
         }
         internal Role GetRole(string n)
         {
-            return (tr.roles.Contains(n)) ? (Role)tr.objects[tr.roles[n]] : null;
+            return (db.roles.Contains(n)) ? (Role)db.objects[db.roles[n]] : null;
         }
         /// <summary>
 		/// Grantee = 	[USER] id
@@ -640,9 +659,9 @@ namespace Pyrrho.Level4
                 case Sqlx.USER:
                     {
                         ob = GetRole(n) as User;
-                        if (ob == null || ob.defpos == -1)
+                        if ((ob == null || ob.defpos == -1) && db is Transaction tr)
                         {
-                            tr +=new PUser(n, lp, tr);
+                            db = tr+new PUser(n, tr);
                             ob = GetRole(n);
                         }
                         break;
@@ -723,8 +742,8 @@ namespace Pyrrho.Level4
                 var grantees = ParseGranteeList(new PrivNames[0]);
                 if (opt == Sqlx.GRANT)
                     throw new DBException("42116").Mix();
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr = tr.AccessRole(false, priv, grantees, opt == Sqlx.ADMIN);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db =tr.AccessRole(false, priv, grantees, opt == Sqlx.ADMIN);
             }
             else
             {
@@ -735,7 +754,7 @@ namespace Pyrrho.Level4
                 var (ob,n) = ParseObjectName();
                 Mustbe(Sqlx.FROM);
                 var grantees = ParseGranteeList(priv);
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
                     tr.AccessObject(false, priv, ob.defpos, grantees, (opt == Sqlx.GRANT));
             }
             return (Executable)cx.Add(e);
@@ -760,13 +779,14 @@ namespace Pyrrho.Level4
 		/// Call = 		CALL Procedure_id '(' [  TypedValue { ','  TypedValue } ] ')' 
 		/// 	|	MethodCall .
         /// </summary>
+        /// <param name="ob">The target object of the method call if any</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseCallStatement()
+		Executable ParseCallStatement(DBObject ob=null)
         {
             Next();
-            Executable e = ParseProcedureCall();
-            if (tr.parse == ExecuteStatus.Obey)
-                tr = tr.Execute(e,cx);
+            Executable e = ParseProcedureCall(ob);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(e,cx);
             return (Executable)cx.Add(e);
         }
         /// <summary>
@@ -808,7 +828,7 @@ namespace Pyrrho.Level4
                     Role au = GetRole("Temp");
                     if (au == null)
                         throw new DBException("3D001", "Temp").Mix();
-                    cx = new Context(cx, au, tr.user);
+                    cx = new Context(cx, au, db.user);
                     Next();
                 }
                 Mustbe(Sqlx.TABLE);
@@ -842,8 +862,8 @@ namespace Pyrrho.Level4
                     o = lxr.val;
                     Next();
                 }
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new PRole(id, o.ToString(), lp, tr);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr +new PRole(id, o.ToString(), tr);
                 return (Executable)cx.Add(cr);
             }
             else if (tok == Sqlx.VIEW)
@@ -894,7 +914,7 @@ namespace Pyrrho.Level4
                     tn = lxr.val.ToString();
                     lp = lxr.Position;
                     Mustbe(Sqlx.ID);
-                    t = tr.objects[tr.role.dbobjects[tn]] as ObInfo??
+                    t = db.objects[db.role.dbobjects[tn]] as ObInfo??
                         throw new DBException("42119", tn, "").Mix();
                 }
                 schema = true;
@@ -906,7 +926,7 @@ namespace Pyrrho.Level4
             var rest = Match(Sqlx.GET);
             QueryExpression qe = null;
             if (!rest)
-                qe = ParseQueryExpression();
+                qe = ParseQueryExpression(ObInfo.Any);
             else
             {
                 if (!schema)
@@ -917,31 +937,33 @@ namespace Pyrrho.Level4
                     Next();
                     var idu = lxr.val.ToString();
                     Mustbe(Sqlx.ID);
-                    ut = tr.GetObject(idu) as Table ??
+                    ut = db.GetObject(idu) as Table ??
                         throw new DBException("42107", idu);
                 }
             }
             cx = old;
             PView pv = null;
-            if (tr.parse == ExecuteStatus.Obey)
+            var tr = db as Transaction;
+            if (db.parse == ExecuteStatus.Obey)
             {
                 if (rest)
                 {
                     if (ut == null)
-                        pv = new PRestView(id, structdef, lp, tr);
+                        pv = new PRestView(id, structdef, tr);
                     else
-                        pv = new PRestView2(id, structdef, ut.defpos, lp, tr);
+                        pv = new PRestView2(id, structdef, ut.defpos, tr);
                 }
                 else
-                    pv = new PView(id, qe, lp, tr);
+                    pv = new PView(id, qe, tr);
                 tr+= pv;
             }
-            var ob = (DBObject)tr.objects[tr.loadpos];
+            var ob = (DBObject)db.objects[db.loadpos];
             lp = lxr.Position;
-            var md = ParseMetadata(tr, ob, -1, Sqlx.ADD);
-            if (md != null && tr.parse == ExecuteStatus.Obey)
+            var md = ParseMetadata(db, ob, -1, Sqlx.ADD);
+            if (md != null && db.parse == ExecuteStatus.Obey)
                 tr+=new PMetadata(id, -1, pv.ppos, md.description,
-                    md.iri,md.seq+1,md.flags, lp, tr);
+                    md.iri,md.seq+1,md.flags, tr);
+            db = tr??db;
             return (Executable)cx.Add(ct);
         }
         /// <summary>
@@ -954,10 +976,10 @@ namespace Pyrrho.Level4
             var lp = lxr.Position;
             var ns = (XmlNameSpaces)ParseXmlNamespaces();
             cx.nsps += ns.nsps;
-            if (tr.parse == ExecuteStatus.Obey)
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
             {
                 for (var s = ns.nsps.First(); s != null; s = s.Next())
-                    tr += new Namespace(s.key(), s.value(), lp, tr);
+                    db = tr + new Namespace(s.key(), s.value(), tr);
             }
             return (Executable)cx.Add(ns);
         }
@@ -973,7 +995,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.FOR);
             var n = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            UDType ut = tr.GetObject(n.ident) as UDType??
+            UDType ut = db.GetObject(n.ident) as UDType??
                 throw new DBException("42133", n).Mix();
             OrderCategory fl;
             if (Match(Sqlx.EQUALS))
@@ -992,8 +1014,8 @@ namespace Pyrrho.Level4
             if (smr == Sqlx.STATE)
             {
                 fl = fl | OrderCategory.State;
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr +=new Ordering(ut.defpos, -1L, fl, n.iix, tr);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr + new Ordering(ut.defpos, -1L, fl, tr);
             }
             else
             {
@@ -1004,8 +1026,8 @@ namespace Pyrrho.Level4
                 Procedure func = fob as Procedure;
                 if (smr == Sqlx.RELATIVE && func.arity != 2)
                     throw new DBException("42154", nf).Mix();
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Ordering(ut.defpos, func.defpos, fl, lp, tr);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr + new Ordering(ut.defpos, func.defpos, fl, tr);
             }
             return (Executable)cx.Add(co);
         }
@@ -1062,15 +1084,15 @@ namespace Pyrrho.Level4
                 Next();
                 var pn = lxr.val;
                 Mustbe(Sqlx.ID);
-                var pd = tr.objects[tb.applicationPS] as PeriodDef;
-                var pi = tr.role.obinfos[pd.defpos] as ObInfo;
+                var pd = db.objects[tb.applicationPS] as PeriodDef;
+                var pi = db.role.obinfos[pd.defpos] as ObInfo;
                 if (pd == null || pi.name != pn.ToString())
                     throw new DBException("42162", pn).Mix();
                 return (PeriodDef)cx.Add(pd);
             }
             // We will raise an exception if the first one does not exist
             var id = new Ident(lxr);
-            var rt = tr.role.obinfos[tb.defpos] as ObInfo;
+            var rt = db.role.obinfos[tb.defpos] as ObInfo;
             var sc = rt.ColFor(id.ident) as SqlCol ??
                 throw new DBException("42112", id.ident).Mix();
             var tc = sc.tableCol;
@@ -1081,22 +1103,22 @@ namespace Pyrrho.Level4
                 Next();
                 var pa = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                tc = new ColumnPath(pa.iix,pa.ident,tc,tr); // returns a (child)TableColumn for non-documents
+                tc = new ColumnPath(pa.iix,pa.ident,tc,db); // returns a (child)TableColumn for non-documents
                 long dm = -1;
                 if (tok == Sqlx.AS)
                 {
                     Next();
-                    var at = ParseSqlDataType();
-                    if (tr.types.Contains(at))
-                        at = tr.types[at];
-                    else
-                        tr += at;
+                    var at = ParseSqlDataType().domain;
+                    if (db.types.Contains(at))
+                        at = db.types[at];
+                    else if (db is Transaction tr0)
+                        db = tr0 + at;
                     tc += (DBObject._Domain, at);
                 }
-                if (!rt.map.Contains(pa.ident)) // create a new path 
+                if (!rt.map.Contains(pa.ident) && db is Transaction tr) // create a new path 
                 {
-                    var pp = new PColumnPath(sc.defpos, pa.ToString(), dm, pa.iix, tr);
-                    tr += pp;
+                    var pp = new PColumnPath(sc.defpos, pa.ToString(), dm, tr);
+                    db = tr+pp;
                 }
             }
             return (TableColumn)cx.Add(tc);
@@ -1112,6 +1134,7 @@ namespace Pyrrho.Level4
             var ct = new Executable(lxr.Position, Executable.Type.CreateType);
             var typename = new Ident(lxr);
             Ident undername = null;
+            var tr = db as Transaction?? throw new DBException("2F003");
             Mustbe(Sqlx.ID);
             if (Match(Sqlx.UNDER))
             {
@@ -1122,8 +1145,8 @@ namespace Pyrrho.Level4
             long underdef = -1L;
             if (undername != null)
             {
-                var udm = tr.GetObject(undername.ident) as Domain ??
-                    throw tr.Exception("42119", undername).Pyrrho();
+                var udm = db.GetObInfo(undername.ident)?.domain ??
+                    throw db.Exception("42119", undername).Pyrrho();
                 underdef = udm.defpos;
             }
             if (tok == Sqlx.AS)
@@ -1146,26 +1169,27 @@ namespace Pyrrho.Level4
                     Next();
                 }
                 PType pt = null;
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey)
                 {
                     if (dt.iri != null)
-                        pt = new PType1(typename.ident, underdef, dt, typename.iix, tr);
+                        pt = new PType1(typename.ident, underdef, dt, tr);
                     else
-                        pt = new PType(typename.ident, underdef, dt, typename.iix, tr);
+                        pt = new PType(typename.ident, underdef, dt, tr);
                     tr += pt;
                 }
                 while (Match(Sqlx.CHECK, Sqlx.CONSTRAINT))
                 {
                     PCheck pc = ParseCheckConstraint(pt);
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                         tr+=pc;
                 }
             }
+            db = tr;
             MethodModes();
             if (Match(Sqlx.OVERRIDING, Sqlx.INSTANCE, Sqlx.STATIC, Sqlx.CONSTRUCTOR, Sqlx.METHOD))
             {
-                var tb = (Domain)tr.GetObject(typename.ident) ??
-                    throw tr.Exception("42133", typename.ident);
+                var tb = (Domain)db.GetObject(typename.ident) ??
+                    throw db.Exception("42133", typename.ident);
                 ParseMethodHeader(typename);
                 while (tok == Sqlx.COMMA)
                 {
@@ -1195,18 +1219,16 @@ namespace Pyrrho.Level4
             }
             Mustbe(Sqlx.METHOD);
             mn.mname = new Ident(lxr);
-            var n = mn.mname.ident; // without the $ which we are just about to add
+            mn.name = mn.mname.ident; // without the $ which we are just about to add
             Mustbe(Sqlx.ID);
             int st = lxr.start;
             mn.arity = 0;
-            mn.ins = ParseParameters();
+            mn.ins = ParseParameters(mn.mname);
             mn.arity = (int)mn.ins.Count;
-            mn.retType = ParseReturnClause();
+            mn.retType = ParseReturnClause(mn.mname);
             mn.mname.ident = mn.mname.ident + "$" + mn.arity;
             mn.signature = new string(lxr.input,st, lxr.start - st);
-            if (mn.methodType == PMethod.MethodType.Constructor)
-                type = new Ident(n, 0);
-            else if (tok == Sqlx.FOR)
+            if (tok == Sqlx.FOR)
             {
                 Next();
                 type = new Ident(lxr);
@@ -1225,11 +1247,11 @@ namespace Pyrrho.Level4
             MethodName mn = ParseMethod(type);
             var tdef = type.iix;
             if (tdef < 0)
-                tdef = (tr.GetObject(type.ident) as UDType ?? 
+                tdef = (db.GetObject(type.ident) as UDType ?? 
                     throw new DBException("42133", mn.tname).Mix()).defpos;
-            if (tr.parse == ExecuteStatus.Obey)
-                tr += new PMethod(mn.mname.ident, mn.retType.defpos, mn.methodType, 
-                    tdef, mn.signature, mn.mname.iix, null, tr);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr + new PMethod(mn.name, mn.arity, mn.retType.defpos, mn.methodType, 
+                    tdef, mn.signature, tr);
             return mn;
         }
         /// <summary>
@@ -1241,18 +1263,18 @@ namespace Pyrrho.Level4
             var cr = new Executable(lxr.Position, Executable.Type.CreateRoutine);
             MethodName mn = ParseMethod(null);
             int st = lxr.start;
-            UDType ut = tr.GetObject(mn.tname.ident) as UDType??
+            UDType ut = db.GetObject(mn.tname.ident) as UDType??
                 throw new DBException("42133", mn.tname).Mix();
-            var ti = tr.role.obinfos[ut.defpos] as ObInfo;
+            var ti = db.role.obinfos[ut.defpos] as ObInfo;
             Method meth = ut.methods[mn.mname.ident]?[mn.arity]??
                 throw new DBException("42132", mn.mname.ToString(), ti.name).Mix();
             meth +=(Procedure.Params, mn.ins);
-            meth += (Procedure.Body, ParseProcedureStatement());
+            meth += (Procedure.Body, ParseProcedureStatement(mn.retType));
             string ss = new string(lxr.input,st, lxr.start - st);
             // we really should check the signature here
-            if (tr.parse == ExecuteStatus.Obey)
-                tr += new Modify(mn.mname.ident, meth.defpos, mn.signature + " " + ss, 
-                    mn.mname.iix,meth,tr);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr + new Modify(mn.mname.ident, meth.defpos, mn.signature + " " + ss, 
+                    meth,tr);
             return (Executable)cx.Add(cr);
         }
         /// <summary>
@@ -1266,7 +1288,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.ID);
             if (tok == Sqlx.AS)
                 Next();
-            Domain type = ParseSqlDataType();
+            var type = ParseSqlDataType().domain;
             if (tok == Sqlx.DEFAULT)
             {
                 Next();
@@ -1277,22 +1299,24 @@ namespace Pyrrho.Level4
                 type = type + (Domain.Default, dv) + (Domain.DefaultString, ds);
             }
             PDomain pd = null;
+            var tr = db as Transaction?? throw new DBException("2F003");
             if (type.iri != null)
-                pd = new PDomain1(colname.ident, type, colname.iix, tr);
+                pd = new PDomain1(colname.ident, type, tr);
             else
-                pd = new PDomain(colname.ident, type, colname.iix, tr);
+                pd = new PDomain(colname.ident, type, tr);
             // pd gets added to the database 10 lines below
             var a = new List<Physical>();
             while (Match(Sqlx.NOT, Sqlx.CONSTRAINT, Sqlx.CHECK))
                 a.Add(ParseCheckConstraint(pd));
             if (tok == Sqlx.COLLATE)
                 pd.culture = new CultureInfo(ParseCollate());
-            if (tr.parse == ExecuteStatus.Obey)
+            if (db.parse == ExecuteStatus.Obey)
             {
                 tr+=pd;
                 for (int j = 0; j < a.Count; j++)
                     tr+=a[j];
             }
+            db = tr;
             return (Executable)cx.Add(cd);
         }
         /// <summary>
@@ -1327,12 +1351,12 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.CHECK);
             Mustbe(Sqlx.LPAREN);
             st = lxr.start;
-            ParseSqlValue();
+            ParseSqlValue(Domain.Bool);
             Mustbe(Sqlx.RPAREN);
             PCheck pc = null;
-            if (tr.parse == ExecuteStatus.Obey)
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
                 pc = new PCheck(pd.defpos, n.ident, 
-                    new string(lxr.input,st, lxr.start - st), n.iix, tr);
+                    new string(lxr.input,st, lxr.start - st), tr);
             return pc;
         }
         /// <summary>
@@ -1345,13 +1369,14 @@ namespace Pyrrho.Level4
             var name = new Ident(lxr);
             PTable tb = null;
             Mustbe(Sqlx.ID);
-            if (tr.schemaRole.dbobjects.Contains(name.ident) || tr.role.dbobjects.Contains(name.ident))
+            if (db.schemaRole.dbobjects.Contains(name.ident) || db.role.dbobjects.Contains(name.ident))
                 throw new DBException("42104", name);
-            tb = new PTable(name.ident, name.iix, tr);
-            tr+=tb;
-            var ta = (Table)tr.objects[tb.defpos];
+            var tr = db as Transaction?? throw new DBException("2F003");
+            tb = new PTable(name.ident, tr);
+            db = tr+tb;
+            var ta = (Table)db.objects[tb.defpos];
             ParseTableContentsSource(ta);
-            ta = (Table)tr.objects[tb.defpos];
+            ta = (Table)db.objects[tb.defpos];
             if (tok == Sqlx.RDFLITERAL)
             {
                 RdfLiteral rit = (RdfLiteral)lxr.val;
@@ -1372,8 +1397,8 @@ namespace Pyrrho.Level4
         {
             var lp = lxr.Position;
             var lv = MustBeLevel();
-            if (tr.parse == ExecuteStatus.Obey)
-                tr+= new Classify(pt, lv, lp, tr);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr+ new Classify(pt, lv, tr);
         }
         /// <summary>
         /// Enforcement = SCOPE [READ] [INSERT] [UPDATE] [DELETE]
@@ -1381,7 +1406,7 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         void ParseEnforcement(long pt)
         {
-            if (tr.user.defpos != tr.owner)
+            if (db.user.defpos != db.owner)
                 throw new DBException("42105");
             Mustbe(Sqlx.SCOPE);
             var lp = lxr.Position;
@@ -1397,8 +1422,8 @@ namespace Pyrrho.Level4
                 }
                 Next();
             }
-            if (tr.parse==ExecuteStatus.Obey)
-                tr+=new Enforcement(pt, r, lp, tr);
+            if (db.parse==ExecuteStatus.Obey && db is Transaction tr)
+                db = tr + new Enforcement(pt, r, tr);
         }
         /// <summary>
         /// TebleContents = '(' TableClause {',' TableClause } ')' { VersioningClause }
@@ -1407,17 +1432,17 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="ta">The newly defined Table</param>
         /// <returns>The iri or null</returns>
-        void ParseTableContentsSource(Table ta)
+        void ParseTableContentsSource(Table ta,Ident tn=null)
         {
             switch (tok)
             {
                 case Sqlx.LPAREN:
                     Next();
-                    ta = ParseTableItem(ta);
+                    ta = ParseTableItem(ta,tn);
                     while (tok == Sqlx.COMMA)
                     {
                         Next();
-                        ta = ParseTableItem(ta);
+                        ta = ParseTableItem(ta,tn);
                     }
                     Mustbe(Sqlx.RPAREN);
                     while (Match(Sqlx.WITH))
@@ -1427,21 +1452,23 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         var id = ParseIdent();
-                        var udt = tr.GetObject(id.ident) as UDType??
+                        var udt = db.GetObject(id.ident) as UDType??
                             throw new DBException("42133", id.ToString()).Mix();
-                        var ui = tr.role.obinfos[udt.defpos] as ObInfo;
+                        var ui = db.role.obinfos[udt.defpos] as ObInfo;
+                        var tr = db as Transaction?? throw new DBException("2F003");
                         for (var cd = ui.columns.First(); cd != null; cd = cd.Next())
                         {
                             var se = cd.value() as SqlValue;
-                            var tc = tr.objects[se.defpos] as TableColumn;
+                            var tc = db.objects[se.defpos] as TableColumn;
                             var pc = new PColumn2(ta.defpos, se.name, cd.key(), tc.domain.defpos, 
                                 tc.generated.gfs??tc.domain.defaultValue?.ToString()??"", 
                                 tc.domain.defaultValue, tc.notNull, 
-                                tc.generated, id.iix, tr);
+                                tc.generated, db);
                             tr += pc;
                         }
-                        ta = (Table)tr.objects[ta.defpos];
-                        var rt = tr.role.obinfos[ta.defpos] as ObInfo;
+                        db = tr;
+                        ta = (Table)db.objects[ta.defpos];
+                        var rt = db.role.obinfos[ta.defpos] as ObInfo;
                         if (Match(Sqlx.LPAREN))
                         {
                             for (; ; )
@@ -1482,19 +1509,20 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.SYSTEM, Sqlx.APPLICATION);
             var vi = (sa == Sqlx.SYSTEM) ? PIndex.ConstraintType.SystemTimeIndex : PIndex.ConstraintType.ApplicationTimeIndex;
             PIndex pi = null;
+            var tr = db as Transaction?? throw new DBException("2F003");
             if (drop)
             {
                 var fl = (vi == 0) ? PIndex.ConstraintType.SystemTimeIndex : PIndex.ConstraintType.ApplicationTimeIndex;
                 for (var e = ta.indexes.First(); e != null; e = e.Next())
                 {
-                    var px = tr.objects[e.value()] as PIndex;
+                    var px = db.objects[e.value()] as PIndex;
                     if (px.tabledefpos == ta.defpos && (px.flags & fl) == fl)
-                        tr += new Drop(px.defpos, lp, tr);
+                        tr += new Drop(px.defpos, tr);
                 }
                 if (sa == Sqlx.SYSTEM)
                 {
-                    var pd = tr.objects[ta.systemPS] as PeriodDef;
-                    tr+=new Drop(pd.defpos, lp, tr);
+                    var pd = db.objects[ta.systemPS] as PeriodDef;
+                    tr+=new Drop(pd.defpos, tr);
                 }
                 Mustbe(Sqlx.VERSIONING);
                 return (Table)cx.Add(ta);
@@ -1503,15 +1531,16 @@ namespace Pyrrho.Level4
             {
                 // ??
             }
-            Index ix = ta.FindPrimaryIndex(tr);
-            var ti = tr.role.obinfos[ta.defpos] as ObInfo;
+            Index ix = ta.FindPrimaryIndex(db);
+            var ti = db.role.obinfos[ta.defpos] as ObInfo;
             if (pi == null && sa == Sqlx.APPLICATION)
                 throw new DBException("42164", ti.name).Mix();
             if (pi != null)
                 tr+=new PIndex("",ta.defpos, pi.columns,
                     PIndex.ConstraintType.PrimaryKey | vi,
-                    -1L, lp+1, tr);
+                    -1L, tr);
             Mustbe(Sqlx.VERSIONING);
+            db = tr;
             return (Table)cx.Add(ta);
         }
         /// <summary>
@@ -1537,7 +1566,8 @@ namespace Pyrrho.Level4
                             Next();
                             int st = lxr.start;
                             var dfv = se.domain.Parse(lxr.Position,new string(lxr.input, st, lxr.start - st));
-                            tr += (se + (DBObject._Domain, se.domain + (Domain.Default, dfv)));
+                            db = ((Transaction)db)+ 
+                                (se + (DBObject._Domain, se.domain + (Domain.Default, dfv)));
                             break;
                         }
                     default: ParseColumnConstraint(tb, se);
@@ -1555,12 +1585,12 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="tb">the table</param>
         /// <returns>the updated Table</returns>
-        Table ParseTableItem(Table tb)
+        Table ParseTableItem(Table tb,Ident tn=null)
         {
             if (Match(Sqlx.PERIOD))
                 tb = AddTablePeriodDefinition(tb);
             else if (tok == Sqlx.ID)
-                tb = ParseColumnDefin(tb);
+                tb = ParseColumnDefin(tb,tn);
             else
                 tb = ParseTableConstraintDefin(tb);
             return (Table)cx.Add(tb);
@@ -1598,7 +1628,7 @@ namespace Pyrrho.Level4
         Table AddTablePeriodDefinition(Table tb)
         {
             var ptd = ParseTablePeriodDefinition();
-            var rt = tr.role.obinfos[tb.defpos] as ObInfo;
+            var rt = db.role.obinfos[tb.defpos] as ObInfo;
             var c1 = rt.ColFor(ptd.col1.ident);
             var c2 = rt.ColFor(ptd.col2.ident);
             var c1t = c1?.domain;
@@ -1613,10 +1643,10 @@ namespace Pyrrho.Level4
             if (c1t.CompareTo(c2t)!=0)
                 throw new DBException("22005S", c1t.ToString(), c2t.ToString()).ISO()
                     .AddType(c1t).AddValue(c2t);
-            var ps = new PPeriodDef(tb.defpos, ptd.periodname.ident, c1.defpos, c2.defpos,
-                ptd.periodname.iix, tr);
-            tr += ps;
-            return (Table)cx.Add((Table)tr.objects[tb.defpos]);
+            var tr = db as Transaction?? throw new DBException("2F003");
+            var ps = new PPeriodDef(tb.defpos, ptd.periodname.ident, c1.defpos, c2.defpos, tr);
+            db = tr+ps;
+            return (Table)cx.Add((Table)db.objects[tb.defpos]);
         }
         /// <summary>
 		/// ColumnDefinition = id Type [DEFAULT TypedValue] {ColumnConstraint|CheckConstraint} Collate {Metadata}
@@ -1627,9 +1657,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="tb">the table</param>
         /// <returns>the updated table</returns>
-        Table ParseColumnDefin(Table tb)
+        Table ParseColumnDefin(Table tb,Ident tn=null)
         {
-            Domain type = null;
+            DBObject type = null;
             SqlValue rc = null;
             var colname = new Ident(lxr);
             long lp = lxr.Position;
@@ -1637,7 +1667,7 @@ namespace Pyrrho.Level4
             Domain dm = null;
             if (tok == Sqlx.ID)
             {
-                var domain = tr.GetObject(new Ident(lxr).ident) as Domain ??
+                var domain = db.GetObInfo(new Ident(lxr).ident)?.domain ??
                     throw new DBException("42119", lxr.val.ToString());
                 Next();
             }
@@ -1690,45 +1720,51 @@ namespace Pyrrho.Level4
             }
             else
             {
-                dv = type.defaultValue;
-                dfs = type.defaultString;
-                var oi = (ObInfo)tr.role.obinfos[tb.defpos];
+                var dn = type as Domain;
+                dv = dn?.defaultValue??TNull.Value;
+                dfs = dn?.defaultString??"";
+                var oi = (ObInfo)db.role.obinfos[tb.defpos];
                 for (var b = oi.columns.First(); b != null; b = b.Next())
                 {
                     var co = (SqlCol)b.value();
-                    cx.defs += (new Ident(co.name,co.defpos), co);
+                    var cn = new Ident(co.name, co.defpos);
+                    if (tn != null)
+                        cx.defs += (new Ident(tn, cn), co);
+                    cx.defs += (cn, co);
                 }
                 if (Match(Sqlx.GENERATED))
                     gr = ParseGenerationRule(tb);
             }
             if (dm == null)
-                dm = type;
+                dm = type as Domain;
             if (dm == null)
                 throw new DBException("42120", colname.ident);
+            var tr = db as Transaction?? throw new DBException("2F003");
             PColumn3 pc = null;
             TableColumn tc = null;
             int k = 0;
-            var dt = (ObInfo)tr.role.obinfos[tb.defpos];
+            var dt = (ObInfo)db.role.obinfos[tb.defpos];
             k = (int)dt.columns.Count;
             pc = new PColumn3(tb.defpos, colname.ident, k, dm.defpos, gr.gfs??dfs, dv, 
-                "",ua,false, gr, colname.iix,tr);
+                "",ua,false, gr, db);
             tr +=pc;
-            tb = tr.objects[tb.defpos] as Table;
-            tc = tr.objects[pc.ppos] as TableColumn;
+            db = tr;
+            tb = db.objects[tb.defpos] as Table;
+            tc = db.objects[pc.ppos] as TableColumn;
             var se = new SqlValue(tc.defpos,colname.ident);
-            var ri = (ObInfo)tr.role.obinfos[tb.defpos];
+            var ri = (ObInfo)db.role.obinfos[tb.defpos];
             if (rc != null)
-                tr += new PCheck(tc.defpos, ""+tr.uid,
+                tr += new PCheck(tc.defpos, ""+db.uid,
                     "value in (select \"" + rc.name + "\" from \"" + ri.name + "\")",
-                    lxr.Position, tr);
+                    tr);
             while (Match(Sqlx.NOT, Sqlx.REFERENCES, Sqlx.CHECK, Sqlx.UNIQUE, Sqlx.PRIMARY, Sqlx.CONSTRAINT,
                 Sqlx.SECURITY))
-                tb = ParseColumnConstraintDefin(tb, se, pc);
-            if (type != null)
             {
-                if (tok == Sqlx.COLLATE)
-                    dm = new Domain(pc.ppos,type.kind,type.mem+(Domain.Culture,new CultureInfo(ParseCollate())));
+                tb = ParseColumnConstraintDefin(tb, se, pc);
+                tr = (Transaction)db; // !!
             }
+            if (type != null && tok == Sqlx.COLLATE)
+                dm = new Domain(pc.ppos,type.kind,type.mem+(Domain.Culture,new CultureInfo(ParseCollate())));
             if (pc != null && pc.domdefpos != dm.defpos)
             {
                 pc.domdefpos = dm.defpos;
@@ -1736,8 +1772,14 @@ namespace Pyrrho.Level4
                 tc += (DBObject._Domain, dm);
                 tr += tc;
             }
+            db = tr;
             cx.Add(tc);
-            return (Table)cx.Add((Table)tr.objects[tb.defpos]);
+            var sc = new SqlCol(tc.defpos, colname.ident, tc);
+            if (tn != null)
+                cx.defs += (new Ident(tn, colname), sc);
+            else
+                cx.defs += (colname, sc);
+            return (Table)cx.Add((Table)db.objects[tb.defpos]);
         }
         /// <summary>
         /// Detect start of TableMetadata or ColumnMetatdata
@@ -1762,11 +1804,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse ([ADD]|DROP) Metadata
         /// </summary>
-        /// <param name="db">the database</param>
+        /// <param name="tr">the database</param>
         /// <param name="ob">the object the metadata is for</param>
         /// <param name="seq">the position of the metadata</param>
         /// <param name="kind">the metadata</param>
-        Metadata ParseMetadata(Transaction db, DBObject ob, int seq, Sqlx kind)
+        Metadata ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind)
         {
             var drop = false;
             if (Match(Sqlx.ADD))
@@ -1776,25 +1818,25 @@ namespace Pyrrho.Level4
                 drop = true;
                 Next();
             }
-            return ParseMetadata(db, ob, seq, kind, drop);
+            return ParseMetadata(tr, ob, seq, kind, drop);
         }
         /// <summary>
         /// Parse Metadata
         /// </summary>
-        /// <param name="db">the database</param>
+        /// <param name="tr">the database</param>
         /// <param name="ob">the object to be affected</param>
         /// <param name="seq">the position in the metadata</param>
         /// <param name="kind">the metadata</param>
         /// <param name="drop">whether drop</param>
         /// <returns>the metadata</returns>
-        Metadata ParseMetadata(Transaction db, DBObject ob, int seq, Sqlx kind, bool drop)
+        Metadata ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind, bool drop)
         {
             Metadata m = null;
             var checkedRole = 0;
-            var pr = ((ObInfo)db.role.obinfos[ob.defpos]).priv;
+            var pr = ((ObInfo)tr.role.obinfos[ob.defpos]).priv;
             while (StartMetadata(kind))
             {
-                if (checkedRole++ == 0 && (db.role == null || !pr.HasFlag(Grant.Privilege.AdminRole)))
+                if (checkedRole++ == 0 && (tr.role == null || !pr.HasFlag(Grant.Privilege.AdminRole)))
                     throw new DBException("42105");
                 if (m == null)
                     m = new Metadata();
@@ -1811,7 +1853,7 @@ namespace Pyrrho.Level4
                         {
                             var ifc = new Ident(lxr);
                             var nm = ifc.Suffix(seq);
-                            var x = db.GetObject(nm.ident)??
+                            var x = tr.GetObject(nm.ident)??
                                 throw new DBException("42108", lxr.val.ToString()).Pyrrho();
                             m.refpos = x.defpos;
                             break;
@@ -1832,10 +1874,8 @@ namespace Pyrrho.Level4
         /// GenerationRule =  GENERATED ALWAYS AS '('Value')' [ UPDATE '(' Assignments ')' ]
         /// |   GENERATED ALWAYS AS ROW (START|END) .
         /// </summary>
-        /// <param name="db">The database</param>
-        /// <param name="tb">The table</param>
-        /// <param name="type">The resulting qlDataType</param>
-        GenerationRule ParseGenerationRule(Table tb)
+        /// <param name="rt">The expected type</param>
+        GenerationRule ParseGenerationRule(DBObject rt)
         {
             var gr = GenerationRule.None;
             if (Match(Sqlx.GENERATED))
@@ -1857,7 +1897,7 @@ namespace Pyrrho.Level4
                 else
                 {
                     int st = lxr.start;
-                    var gnv = ParseSqlValue();
+                    var gnv = ParseSqlValue(rt);
                     var s = new string(lxr.input, st, lxr.start - st);
                     gr = new GenerationRule(Generation.Expression, s, gnv);
                 }
@@ -1890,19 +1930,21 @@ namespace Pyrrho.Level4
                     pc.notNull = true;
                 Mustbe(Sqlx.NULL);
                 // adding NOT NULL at this stage is ridiculously tricky
-                var tc = tr.objects[se.defpos] as TableColumn;
-                var ro = tr.role;
+                var tc = db.objects[se.defpos] as TableColumn;
+                var ro = db.role;
                 var ti = (ObInfo)ro.obinfos[tb.defpos];
                 var iq = ti.map[pc.name];
                 tc+=(Domain.NotNull,true);
                 ti += (ObInfo.Columns, ti.columns + (iq.Value, new SqlCol(pc.ppos, pc.name, tc)));
                 ro += ti;
+                var tr = (Transaction)db;
                 tr += pc;
                 tr += ro;
+                db = tr;
             }
             else
                 tb = ParseColumnConstraint(tb, se);
-            return (Table)cx.Add(tr,tb.defpos);
+            return (Table)cx.Add((Transaction)db,tb.defpos);
         }
         /// <summary>
         /// ColumnConstraintDef = 	NOT NULL
@@ -1917,13 +1959,13 @@ namespace Pyrrho.Level4
         /// <returns>the updated table</returns>
 		Table ParseColumnConstraint(Table tb, SqlValue se)
         {
-            var tc = tr.objects[se.defpos] as TableColumn;
+            var tc = db.objects[se.defpos] as TableColumn;
             if (tc.generated != GenerationRule.None)
                 throw new DBException("42163", se.name).Mix();
             var key = CList<TableColumn>.Empty;
             if (se is SqlCol sc)
                 key += sc.tableCol;
-            else if (se is SqlValue sv && tr.objects[sv.defpos] is TableColumn co)
+            else if (se is SqlValue sv && db.objects[sv.defpos] is TableColumn co)
                 key += co;
             else throw new DBException("42112", se.name);
             var o = lxr.val;
@@ -1937,7 +1979,7 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         var refname = new Ident(lxr);
-                        var rt = tr.GetObject(refname.ident) as Table??
+                        var rt = db.GetObject(refname.ident) as Table??
                             throw new DBException("42107", refname).Mix();
                         CList<TableColumn> cols = null;
                         Mustbe(Sqlx.ID);
@@ -1952,20 +1994,20 @@ namespace Pyrrho.Level4
                             {
                                 Next();
                                 var nm = new Ident(lxr);
-                                var pr = tr.GetProcedure(nm.ident,1) ??
+                                var pr = db.GetProcedure(nm.ident,1) ??
                                     throw new DBException("42108", nm).Pyrrho();
                                 afn = "\"" + pr.defpos + "\"";
                             }
                             else
                             {
                                 Mustbe(Sqlx.LPAREN);
-                                ParseSqlValueList();
+                                ParseSqlValueList(new ObInfo(st,cols,(Transaction)db));
                                 Mustbe(Sqlx.RPAREN);
                                 afn = new string(lxr.input,st, lxr.start - st);
                             }
                         }
                         var ct = ParseReferentialAction();
-                        tr = tr.AddReferentialConstraint(lp,tb, new Ident("",0), key, rt, cols, ct, afn);
+                        db = ((Transaction)db).AddReferentialConstraint(lp,tb, new Ident("",0), key, rt, cols, ct, afn);
                         break;
                     }
                 case Sqlx.CHECK:
@@ -1977,24 +2019,26 @@ namespace Pyrrho.Level4
                 case Sqlx.UNIQUE:
                     {
                         Next();
-                        tr+=new PIndex(se.name, tb.defpos, key, PIndex.ConstraintType.Unique, -1L,
-                            lp, tr);
+                        var tr = db as Transaction?? throw new DBException("2F003");
+                        db= tr+new PIndex(se.name, tb.defpos, key, PIndex.ConstraintType.Unique, -1L,
+                            tr);
                         break;
                     }
                 case Sqlx.PRIMARY:
                     {
-                        Index x = tb.FindPrimaryIndex(tr);
-                        var ti = tr.role.obinfos[tb.defpos] as ObInfo;
+                        Index x = tb.FindPrimaryIndex(db);
+                        var ti = db.role.obinfos[tb.defpos] as ObInfo;
                         if (x != null)
                             throw new DBException("42147", ti.name).Mix();
                         Next();
                         Mustbe(Sqlx.KEY);
-                        tr+= new PIndex(ti.name, tb.defpos, key, PIndex.ConstraintType.PrimaryKey, 
-                            -1L, lp, tr);
+                        var tr = db as Transaction?? throw new DBException("2F003");
+                        db = tr+new PIndex(ti.name, tb.defpos, key, PIndex.ConstraintType.PrimaryKey, 
+                            -1L, tr);
                         break;
                     }
             }
-            return (Table)cx.Add(tr,tb.defpos);
+            return (Table)cx.Add((Transaction)db,tb.defpos);
         }
         /// <summary>
         /// TableConstraint = [CONSTRAINT id ] TableConstraintDef .
@@ -2023,7 +2067,7 @@ namespace Pyrrho.Level4
                 case Sqlx.FOREIGN: tb = ParseReferentialConstraint(tb, name); break;
                 case Sqlx.CHECK: ParseTableConstraint(tb, name); break;
             }
-            return (Table)cx.Add(tr,tb.defpos);
+            return (Table)cx.Add((Transaction)db,tb.defpos);
         }
         /// <summary>
         /// construct a unique constraint
@@ -2033,8 +2077,9 @@ namespace Pyrrho.Level4
         /// <returns>the updated table</returns>
         Table ParseUniqueConstraint(Table tb, Ident name)
         {
-            tr+=new PIndex(name.ident, tb.defpos, ParseColsList(tb), 
-                PIndex.ConstraintType.Unique, -1L, name.iix, tr);
+            var tr = db as Transaction ?? throw new DBException("2F003");
+            db = tr + new PIndex(name.ident, tb.defpos, ParseColsList(tb), 
+                PIndex.ConstraintType.Unique, -1L, tr);
             return (Table)cx.Add(tr,tb.defpos);
         }
         /// <summary>
@@ -2045,13 +2090,14 @@ namespace Pyrrho.Level4
         /// <param name="name">the constraint name</param>
         Table ParsePrimaryConstraint(Table tb, Ident name)
         {
-            Index x = tb.FindPrimaryIndex(tr);
-            var ti = tr.role.obinfos[tb.defpos] as ObInfo;
+            var tr = db as Transaction ?? throw new DBException("2F003");
+            Index x = tb.FindPrimaryIndex(db);
+            var ti = db.role.obinfos[tb.defpos] as ObInfo;
             if (x != null)
                 throw new DBException("42147", ti.name).Mix();
             Mustbe(Sqlx.KEY);
-            tr+=new PIndex(name.ident, tb.defpos, ParseColsList(tb), 
-                PIndex.ConstraintType.PrimaryKey, -1L, name.iix, tr);
+            db=tr+new PIndex(name.ident, tb.defpos, ParseColsList(tb), 
+                PIndex.ConstraintType.PrimaryKey, -1L, tr);
             return (Table)cx.Add(tr,tb.defpos);
         }
         /// <summary>
@@ -2063,12 +2109,13 @@ namespace Pyrrho.Level4
         /// <returns>the updated table</returns>
         Table ParseReferentialConstraint(Table tb, Ident name)
         {
+            var tr = db as Transaction?? throw new DBException("2F003");
             Mustbe(Sqlx.KEY);
             var cols = ParseColsList(tb);
             var lp = lxr.Position;
             Mustbe(Sqlx.REFERENCES);
             var refname = new Ident(lxr);
-            var rt = tr.GetObject(refname.ident) as Table??
+            var rt = db.GetObject(refname.ident) as Table??
                 throw new DBException("42107", refname).Mix();
             Mustbe(Sqlx.ID);
             var refs = CList<TableColumn>.Empty;
@@ -2084,21 +2131,21 @@ namespace Pyrrho.Level4
                 {
                     var ic = new Ident(lxr);
                     Next();
-                    var pr = tr.GetProcedure(ic.ident,(int)refs.Count)??
+                    var pr = db.GetProcedure(ic.ident,(int)refs.Count)??
                         throw new DBException("42108", ic.ident+"$"+refs.Count).Pyrrho();
                     afn = "\"" + pr.defpos + "\"";
                 }
                 else
                 {
                     Mustbe(Sqlx.LPAREN);
-                    ParseSqlValueList();
+                    ParseSqlValueList(new ObInfo(st,cols,tr));
                     Mustbe(Sqlx.RPAREN);
                     afn = new string(lxr.input,st, lxr.start - st);
                 }
             }
             if (tok == Sqlx.ON)
                 ct |= ParseReferentialAction();
-            tr=tr.AddReferentialConstraint(lp,tb, name, cols, rt, refs, ct, afn);
+            db=tr.AddReferentialConstraint(lp,tb, name, cols, rt, refs, ct, afn);
             return (Table)cx.Add(tr,tb.defpos);
         }
         /// <summary>
@@ -2111,14 +2158,16 @@ namespace Pyrrho.Level4
         {
             int st = lxr.start;
             Mustbe(Sqlx.LPAREN);
-            ParseSqlValue();
+            ParseSqlValue(Domain.Bool);
             Mustbe(Sqlx.RPAREN);
             var n = name ?? new Ident(lxr);
+            var tr = db as Transaction?? throw new DBException("2F003");
             PCheck r = new PCheck(tb.defpos, n.ident,
-                new string(lxr.input,st, lxr.start - st), n.iix, tr);
+                new string(lxr.input,st, lxr.start - st), tr);
             tr+=r;
             if (tb.defpos < Transaction.TransPos)
-                new From(-1,tb, (ObInfo)tr.role.obinfos[tb.defpos]).TableCheck(tr,r);
+                new From(-1,tb, (ObInfo)db.role.obinfos[tb.defpos]).TableCheck(tr,r);
+            db = tr;
         }
         /// <summary>
         /// CheckConstraint = [ CONSTRAINT id ] CHECK '(' [XMLOption] SqlValue ')' .
@@ -2132,12 +2181,13 @@ namespace Pyrrho.Level4
             int st = lxr.start;
             var lp = lxr.Position;
             Mustbe(Sqlx.LPAREN);
-            var cx = new Context(tr);
-            ParseSqlValue();
+            var cx = new Context(db);
+            ParseSqlValue(Domain.Bool);
             Mustbe(Sqlx.RPAREN);
+            var tr = db as Transaction?? throw new DBException("2F003");
             PCheck2 r = new PCheck2(tb.defpos, se.defpos,se.name,
-                new string(lxr.input,st, lxr.start - st), lp, tr);
-            tr += r;
+                new string(lxr.input,st, lxr.start - st), tr);
+            db = tr+r;
         }
         /// <summary>
 		/// ReferentialAction = {ON (DELETE|UPDATE) (CASCADE| SET DEFAULT|RESTRICT)} .
@@ -2175,12 +2225,27 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public Executable ParseProcedureClause(bool func,Sqlx create,string sql)
+        public Procedure ParseProcedureBody(Procedure pr,string sql)
         {
-            lxr = new Lexer(sql);
+            var tr = db as Transaction ?? throw new DBException("2F003");
+            lxr = new Lexer(sql,pr.defpos-1);
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length);
-            return ParseProcedureClause(func, create);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                tr += (Database.NextTid, db.nextTid + sql.Length);
+            var (ps,dm) = ParseProcedureHeading(new Ident(pr.name,pr.defpos));
+            pr = pr + (Procedure.Params, ps) + (Procedure.RetType, dm);
+            db = tr+pr;
+            var oc = cx;
+            cx = new Context(db);
+            for (var b = ps.First(); b != null; b = b.Next())
+            {
+                var pp = b.value();
+                cx.defs += (new Ident(pp.name,0),pp);
+                cx.Add(pp);
+            }
+            var bd = ParseProcedureStatement(dm);
+            cx = oc;
+            return pr + (Procedure.Body, bd);
         }
         /// <summary>
         /// Called from ALTER and CREATE parsers. This is the first time we see the proc-clause,
@@ -2194,30 +2259,34 @@ namespace Pyrrho.Level4
         /// <returns>the new Executable</returns>
         public Executable ParseProcedureClause(bool func, Sqlx create)
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
+            var op = db.parse;
+            db += (Database._ExecuteStatus, ExecuteStatus.Parse);
             var cr = new Executable(lxr.Position, (create == Sqlx.CREATE) ? Executable.Type.CreateRoutine : Executable.Type.AlterRoutine);
             var n = new Ident(lxr);
             Mustbe(Sqlx.ID);
             int st = lxr.start;
-            var ps = ParseParameters();
+            var ps = ParseParameters(n);
             var arity = (int)ps.Count;
             var pn = n.Suffix(arity);
-            var rt = Domain.Null;
+            DBObject rt = Domain.Null;
             if (func)
-                rt = ParseReturnClause();
+                rt = ParseReturnClause(n);
             if (Match(Sqlx.EOF) && create == Sqlx.CREATE)
                 throw new DBException("42000", "EOF").Mix();
             PProcedure pp = null;
             Domain rdt = null;
-            var pr = tr.GetProcedure(n.ident,arity) as Procedure;
+            var pr = db.GetProcedure(n.ident, arity) as Procedure;
             if (pr == null)
             {
                 if (create == Sqlx.CREATE)
                 {
-                    pp = new PProcedure(n.ident, rt.defpos, "", n.iix, pr.body, tr);
-                    pr = new Procedure(pp, tr, false, create,
-                        new BTree<long, object>(Procedure.Params,ps));
+                    pp = new PProcedure(n.ident, arity, rt.defpos, "", db);
+                    pr = new Procedure(pp, db, new BTree<long, object>(Procedure.Params, ps));
                     tr += pp;
                     tr += pr;
+                    if (cx.dbformat<51)// provide for possible recursive reference
+                        cx.digest += (n.iix, (n.ident, n.iix)); 
                 }
                 else
                     throw new DBException("42108", n.ToString()).Mix();
@@ -2230,35 +2299,59 @@ namespace Pyrrho.Level4
                 Next();
                 var nn = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                pr = pr+ (Basis.Name, n.ident) + (Procedure.Arity, (int)ps.Count);
+                pr = pr + (Basis.Name, n.ident) + (Procedure.Arity, (int)ps.Count);
                 tr += pr;
             }
             else if (create == Sqlx.ALTER && (StartMetadata(Sqlx.FUNCTION) || Match(Sqlx.ALTER, Sqlx.ADD, Sqlx.DROP)))
                 ParseAlterBody(pr);
             else
             {
-                    var sq = 1;
-                    Metadata md = ParseMetadata(tr, pr, sq, Sqlx.FUNCTION, false);
-                    tr += new PMetadata3(n.ident, md.seq, pr.defpos,md.description,
-                        md.iri, pr.defpos, md.flags, n.iix, tr);
-                if (tr.parse == ExecuteStatus.Obey)
+                var sq = 1;
+                if (ParseMetadata(db, pr, sq, Sqlx.FUNCTION, false) is Metadata md)
+                    tr += new PMetadata3(n.ident, md.seq, pr.defpos, md.description,
+                        md.iri, pr.defpos, md.flags, tr);
+                pr = pr + (Procedure.RetType, rdt) + (Procedure.Params, ps);
+                var s = new string(lxr.input, st, lxr.start - st);
+                if (tok != Sqlx.EOF && tok != Sqlx.SEMICOLON)
                 {
-                    pr = pr+(Procedure.RetType,rdt)+(Procedure.Params, ps);
-                    string s = new string(lxr.input,st, lxr.start - st);
-                    if (create == Sqlx.CREATE)
-                    {
-                        pp.proc_clause = s;
-                        tr += pp; // finally add the PProcedure physical
-                        pr = tr.objects[pp.defpos] as Procedure;
-                        pr+=(Procedure.Body,new Parser(tr).ParseProcedureStatement(s));
-                        tr += pr;
-                      //  pr.forSchema = db.lastSchemaPos;
-                    }
-                    else
-                        tr += new Modify(n.ident, pr.defpos, s, n.iix, pr,tr); // finally add the Modify
+                    pr += (Procedure.Body, ParseProcedureStatement(pr.retType));
+                    s = new string(lxr.input, st, lxr.start - st);
                 }
+                if (create == Sqlx.CREATE)
+                {
+                    tr += pp;
+                    tr += pr;
+                }
+                //  pr.forSchema = db.lastSchemaPos;
+                if (pp != null)
+                {
+                    pp.proc = pr;
+                    pp.proc_clause = s;
+                    tr += pr;
+                    cx.defs += (n, pr);
+                    if (db.format < 51)
+                        pp.digested = cx.digest;
+                }
+                else
+                    tr += new Modify(n.ident, pr.defpos, s, pr, tr); // finally add the Modify
             }
+            tr += (Database._ExecuteStatus, op);
+            db = tr;
             return (Executable)cx.Add(cr);
+        }
+        (BList<ProcParameter>,DBObject) ParseProcedureHeading(Ident pn)
+        {
+            var ps = BList<ProcParameter>.Empty;
+            var dm = Domain.Null;
+            if (tok != Sqlx.LPAREN)
+                return (ps, dm);
+            ps = ParseParameters(pn);
+            if (tok == Sqlx.RETURNS)
+            {
+                Next();
+                dm = ParseSqlDataType(pn).domain;
+            }
+            return (ps, dm);
         }
         /// <summary>
         /// Function metadata is used to control display of output from table-valued functions
@@ -2266,10 +2359,11 @@ namespace Pyrrho.Level4
         /// <param name="pr"></param>
         Procedure ParseAlterBody(Procedure pr)
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
             if (!pr.mem.Contains(Procedure.RetType))
                 return pr;
             var dt = pr.retType;
-            var ri = tr.role.obinfos[dt.defpos] as ObInfo;
+            var ri = db.role.obinfos[dt.defpos] as ObInfo;
             if (ri.Length==0)
                 return pr;
             pr = (Procedure)ParseAlterOp(pr);
@@ -2281,10 +2375,10 @@ namespace Pyrrho.Level4
             return (Procedure)cx.Add(tr, pr.defpos);
         }
         /// <summary>
-        /// Parse a parameter list (at execution time)
+        /// Parse a parameter list
         /// </summary>
-        /// <returns>the list of procparameters</returns>
-		BList<ProcParameter> ParseParameters()
+        /// <returns>the list of formal procparameters</returns>
+		BList<ProcParameter> ParseParameters(Ident pn)
 		{
             Mustbe(Sqlx.LPAREN);
             var r = BList<ProcParameter>.Empty;
@@ -2292,7 +2386,7 @@ namespace Pyrrho.Level4
             var svs = ac?.locals;
 			while (tok!=Sqlx.RPAREN)
 			{
-                r+= ParseProcParameter();
+                r+= ParseProcParameter(pn);
 				if (tok!=Sqlx.COMMA)
 					break;
 				Next();
@@ -2305,8 +2399,8 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse the return clause 
         /// </summary>
-        /// <returns>the data type required</returns>
-		Domain ParseReturnClause()
+        /// <returns>the data type required (Domain or ObInfo)</returns>
+		DBObject ParseReturnClause(Ident pn)
 		{
 			if (tok!=Sqlx.RETURNS)
 				return Domain.Null;
@@ -2314,16 +2408,21 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.ID)
             {
                 var s = lxr.val.ToString();
-                return tr.GetObject(s) as Domain ??
-                    throw new DBException("42119", s, tr.name);
+                return db.GetObject(s);
             }
-			return ParseSqlDataType();
+            var st = lxr.pos;
+            var lp = lxr.Position;
+			var dm = ParseSqlDataType(pn);
+            if (cx.dbformat < 51)
+                cx.digest += (lp, (new string(lxr.input,st,lxr.start - st), 
+                    (dm.domain.structure>0)?dm.domain.structure:dm.defpos));
+            return dm;
 		}
         /// <summary>
         /// parse a formal parameter
         /// </summary>
         /// <returns>the procparameter</returns>
-		ProcParameter ParseProcParameter()
+		ProcParameter ParseProcParameter(Ident pn)
 		{
 			Sqlx pmode = Sqlx.NONE;
 			if (Match(Sqlx.IN,Sqlx.OUT,Sqlx.INOUT))
@@ -2333,7 +2432,9 @@ namespace Pyrrho.Level4
 			}
 			var n = new Ident(lxr);
 			Mustbe(Sqlx.ID);
-            var p = new ProcParameter(lxr.Position, pmode,n.ident, ParseSqlDataType());
+            var p = new ProcParameter(lxr.Position, pmode,n.ident,ParseSqlDataType().domain);
+            if (pn!=null)
+                cx.defs += (new Ident(pn, n), p);
 			if (Match(Sqlx.RESULT))
 			{
                 p += (ProcParameter.Result, true);
@@ -2356,24 +2457,31 @@ namespace Pyrrho.Level4
 			var n = new Ident(lxr);
 			Mustbe(Sqlx.ID);
             LocalVariableDec lv = null;
-			if (tok==Sqlx.CURSOR)
-			{
-				Next();
-				Mustbe(Sqlx.FOR);
-                var e = ParseCursorSpecification() as SelectStatement;
-                var qe = e.cs;
-                lv = new CursorDeclaration(lxr.Position, cx,n.ident,e.cs);
-			} 
-			else
-				lv = new LocalVariableDec(lxr.Position, n.ident, ParseSqlDataType());
+            DBObject ld;
+            if (tok == Sqlx.CURSOR)
+            {
+                Next();
+                Mustbe(Sqlx.FOR);
+                var e = ParseCursorSpecification(ObInfo.Any) as SelectStatement;
+                lv = new CursorDeclaration(lxr.Position, cx, n.ident, e.cs);
+                ld = e.cs.rowType;
+            }
+            else
+            {
+                ld = ParseSqlDataType();
+                lv = new LocalVariableDec(lxr.Position, n.ident,
+                     ld as Domain ?? throw new DBException("42000", lxr.pos));
+            }
             if (Match(Sqlx.EQL, Sqlx.DEFAULT))
             {
                 Next();
                 st = lxr.start;
-                var iv = ParseSqlValue();
+                var iv = ParseSqlValue(ld);
                 lv+=(LocalVariableDec.Init, iv);
             }
-            return (Executable)cx.Add(lv);
+            cx.defs += (n, lv.vbl);
+            cx.Add(lv.vbl);
+            return lv;
 		}
         /// <summary>
         /// |	DECLARE HandlerType HANDLER FOR ConditionList Statement .
@@ -2389,7 +2497,7 @@ namespace Pyrrho.Level4
             var ac = new Activation(cx, hs.label);
             hs+=(HandlerStatement.Conds,ParseConditionValueList());
             var st = lxr.pos;
-            var a = ParseProcedureStatement();
+            var a = ParseProcedureStatement(Domain.Content);
             hs= hs+(HandlerStatement.Action,a)+(DBObject.Dependents,a.dependents);
             return (Executable)cx.Add(hs);
         }
@@ -2451,13 +2559,13 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseCompoundStatement(Ident n)
+		Executable ParseCompoundStatement(DBObject rt,Ident n)
         {
             var eid = id + lxr.start;
-            var cs = new CompoundStatement(lxr.Position, n.ident);
+            var cs = new CompoundStatement(lxr.Position, n?.ident);
             BList<Executable> r = BList<Executable>.Empty;
             Mustbe(Sqlx.BEGIN);
-            var ac = new Activation(cx, n.ident);
+            var ac = new Activation(cx, n?.ident);
             if (tok == Sqlx.TRANSACTION)
                 throw new DBException("25001", "Nested transactions are not supported").ISO();
             if (tok == Sqlx.XMLNAMESPACES)
@@ -2467,7 +2575,7 @@ namespace Pyrrho.Level4
             }
             while (tok != Sqlx.END)
             {
-                r+=((int)r.Count,ParseProcedureStatement());
+                r+=((int)r.Count,ParseProcedureStatement(rt));
                 if (tok == Sqlx.END)
                     break;
                 Mustbe(Sqlx.SEMICOLON);
@@ -2477,12 +2585,14 @@ namespace Pyrrho.Level4
             cs += (DBObject.Dependents, _Deps(r));
             return (Executable)cx.Add(cs);
         }
-        internal (Database,Executable) ParseProcedureStatement(string sql)
+        internal (Database,Executable) ParseProcedureStatement(string sql,DBObject rt)
         {
-            lxr = new Lexer(sql, tr.lexeroffset);
+            lxr = new Lexer(sql, db.lexeroffset);
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length);
-            return (tr,(Executable)cx.Add(ParseProcedureStatement()));
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid + sql.Length);
+            var b = ParseProcedureStatement(rt);
+            return (db,(b!=null)?(Executable)cx.Add(b):null);
         }
         /// <summary>
 		/// Statement = 	Assignment
@@ -2515,17 +2625,17 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="p">the procedure return type</param>
         /// <returns>the Executable resulting from the parse</returns>
-		Executable ParseProcedureStatement()
+		Executable ParseProcedureStatement(DBObject rt)
 		{
             Match(Sqlx.BREAK);
             Executable r = null;
             int st = lxr.start;
  			switch (tok)
 			{
-                case Sqlx.ID: r= ParseLabelledStatement(); break;
-                case Sqlx.BEGIN: r = ParseCompoundStatement(null); break;
-                case Sqlx.CALL: r = ParseCallStatement(); break;
-                case Sqlx.CASE: r = ParseCaseStatement(); break;
+                case Sqlx.ID: r= ParseLabelledStatement(rt); break;
+                case Sqlx.BEGIN: r = ParseCompoundStatement(rt,null); break;
+                case Sqlx.CALL: r = ParseCallStatement(rt); break;
+                case Sqlx.CASE: r = ParseCaseStatement(rt); break;
                 case Sqlx.CLOSE: r = ParseCloseStatement(); break;
                 case Sqlx.COMMIT: throw new DBException("2D000").ISO(); // COMMIT not allowed inside SQL routine
                 case Sqlx.BREAK: r = ParseBreakLeave(); break;
@@ -2533,24 +2643,24 @@ namespace Pyrrho.Level4
                 case Sqlx.DELETE: r = ParseSqlDelete(); break;
                 case Sqlx.EOF: r = new CompoundStatement(lxr.Position, id + lxr.start); break; // okay if it's a partially defined method
                 case Sqlx.FETCH: r = ParseFetchStatement(); break;
-                case Sqlx.FOR: r = ParseForStatement(null); break;
+                case Sqlx.FOR: r = ParseForStatement(rt,null); break;
                 case Sqlx.GET: r = ParseGetDiagnosticsStatement(); break;
-                case Sqlx.HTTP: r = ParseHttpREST(); break;
-                case Sqlx.IF: r = ParseIfThenElse(); break;
+                case Sqlx.HTTP: r = ParseHttpREST(rt); break;
+                case Sqlx.IF: r = ParseIfThenElse(rt); break;
                 case Sqlx.INSERT: r = ParseSqlInsert(); break;
                 case Sqlx.ITERATE: r = ParseIterate(); break;
                 case Sqlx.LEAVE: r = ParseBreakLeave(); break;
-                case Sqlx.LOOP: r = ParseLoopStatement(null); break;
+                case Sqlx.LOOP: r = ParseLoopStatement(rt,null); break;
                 case Sqlx.OPEN: r = ParseOpenStatement(); break;
-                case Sqlx.REPEAT: r = ParseRepeat(null); break;
+                case Sqlx.REPEAT: r = ParseRepeat(rt,null); break;
                 case Sqlx.ROLLBACK: r = new Executable(lxr.Position, Executable.Type.RollbackWork); break;
-                case Sqlx.RETURN: r = ParseReturn(); break;
-                case Sqlx.SELECT: r = ParseSelectSingle(); break;
+                case Sqlx.RETURN: r = ParseReturn(rt); break;
+                case Sqlx.SELECT: r = ParseSelectSingle(rt); break;
                 case Sqlx.SET: r = ParseAssignment(); break;
                 case Sqlx.SIGNAL: r = ParseSignal(); break;
                 case Sqlx.RESIGNAL: r = ParseSignal(); break;
                 case Sqlx.UPDATE: r = ParseSqlUpdate(); break;
-                case Sqlx.WHILE: r = ParseSqlWhile(null); break;
+                case Sqlx.WHILE: r = ParseSqlWhile(rt,null); break;
 				default: throw new DBException("42000",lxr.Diag).ISO();
 			}
             return (Executable)cx.Add(r);
@@ -2566,7 +2676,7 @@ namespace Pyrrho.Level4
             var r = new GetDiagnostics(lxr.Position);
             for (; ; )
             {
-                var t = ParseSqlValueEntry(false);
+                var t = ParseSqlValueEntry(Domain.Content,false);
                 Mustbe(Sqlx.EQL);
                 Match(Sqlx.NUMBER, Sqlx.MORE, Sqlx.COMMAND_FUNCTION, Sqlx.COMMAND_FUNCTION_CODE,
                     Sqlx.DYNAMIC_FUNCTION, Sqlx.DYNAMIC_FUNCTION_CODE, Sqlx.ROW_COUNT,
@@ -2607,7 +2717,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rt">the expected data type if any</param>
         /// <returns>the Executable resulting from the parse</returns>
-		Executable ParseLabelledStatement()
+		Executable ParseLabelledStatement(DBObject rt)
         {
             Ident sc = new Ident(lxr);
             var lp = lxr.Position;
@@ -2619,11 +2729,11 @@ namespace Pyrrho.Level4
                 var s = sc;
                 switch (tok)
                 {
-                    case Sqlx.BEGIN: return (Executable)cx.Add(ParseCompoundStatement(s));
-                    case Sqlx.FOR: return (Executable)cx.Add(ParseForStatement(s));
-                    case Sqlx.LOOP: return (Executable)cx.Add(ParseLoopStatement(s));
-                    case Sqlx.REPEAT: return (Executable)cx.Add(ParseRepeat(s));
-                    case Sqlx.WHILE: return (Executable)cx.Add(ParseSqlWhile(s));
+                    case Sqlx.BEGIN: return (Executable)cx.Add(ParseCompoundStatement(rt,s));
+                    case Sqlx.FOR: return (Executable)cx.Add(ParseForStatement(rt,s));
+                    case Sqlx.LOOP: return (Executable)cx.Add(ParseLoopStatement(rt,s));
+                    case Sqlx.REPEAT: return (Executable)cx.Add(ParseRepeat(rt,s));
+                    case Sqlx.WHILE: return (Executable)cx.Add(ParseSqlWhile(rt,s));
                     default:
                         throw new DBException("26000", s).ISO();
                 }
@@ -2631,29 +2741,28 @@ namespace Pyrrho.Level4
             // OOPS: but we'q better allow a procedure call here for backwards compatibility
             else if (tok == Sqlx.LPAREN)
             {
-                var cs = new CallStatement(sc.iix);
                 Next();
-                cs+=(CallStatement.Parms,ParseSqlValueList());
+                var cp = lxr.Position;
+                var ps = ParseSqlValueList(ObInfo.Any);
                 Mustbe(Sqlx.RPAREN);
-                var arity = (int)cs.parms.Count;
+                var arity = (int)ps.Count;
                 var pn = sc.Suffix(arity);
-                var pr = tr.GetProcedure(sc.ident, arity) ??
+                var pr = db.GetProcedure(sc.ident, arity) ??
                     throw new DBException("42108", pn);
-                cs = cs + (Basis.Name, sc.ident) + (Procedure.Arity, arity)
-                + (CallStatement.Proc, pr);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr.Execute(cs,cx);
+                var cs = new CallStatement(cp,pr,ps);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr.Execute(cs,cx);
                 return (Executable)cx.Add(cs);
             }
             // OOPS: and a simple assignment for backwards compatibility
             else
             {
-                var vb = (SqlValue)cx.defs[sc];
+                var vb = (SqlValue)cx.Get(sc);
                 Mustbe(Sqlx.EQL);
-                var va = ParseSqlValue();
+                var va = ParseSqlValue(rt);
                 var sa = new AssignmentStatement(lp,vb,va);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr.Execute(sa,cx);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr.Execute(sa,cx);
                 return (Executable)cx.Add(sa);
             }
         }
@@ -2669,12 +2778,12 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.LPAREN)
                 return (Executable)cx.Add(ParseMultipleAssignment());
             var ic = ParseIdentChain();
-            var vb = (SqlValue)cx.defs[ic] ?? throw new DBException("42112", ic.ToString());
+            var vb = (SqlValue)cx.Get(ic) ?? throw new DBException("42112", ic.ToString());
             Mustbe(Sqlx.EQL);
-            var va = ParseSqlValue();
+            var va = ParseSqlValue(vb.domain);
             var sa = new AssignmentStatement(lp,vb,va);
-            if (tr.parse == ExecuteStatus.Obey)
-                tr.Execute(sa,cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(sa,cx);
             return (Executable)cx.Add(sa);
         }
         /// <summary>
@@ -2687,8 +2796,8 @@ namespace Pyrrho.Level4
             var ma = new MultipleAssignment(lxr.Position);
             Mustbe(Sqlx.EQL);
             ma = ma + (MultipleAssignment.List,ParseIDList())
-                +(MultipleAssignment.Rhs,ParseSqlValue());
-            if (tr.parse == ExecuteStatus.Obey)
+                +(MultipleAssignment.Rhs,ParseSqlValue(Domain.Content));
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
                 ma.Obey(tr,cx);
             return (Executable)cx.Add(ma);
         }
@@ -2696,11 +2805,11 @@ namespace Pyrrho.Level4
         /// |	RETURN TypedValue
         /// </summary>
         /// <returns>the executable resulting from the parse</returns>
-		Executable ParseReturn()
+		Executable ParseReturn(DBObject rt)
         {
             var rs = new ReturnStatement(lxr.Position);
             Next();
-            rs += (ReturnStatement.Ret, ParseSqlValue());
+            rs += (ReturnStatement.Ret, ParseSqlValue(rt));
             return (Executable)cx.Add(rs);
         }
         /// <summary>
@@ -2708,7 +2817,7 @@ namespace Pyrrho.Level4
 		/// |	CASE { WHEN SqlValue THEN Statements }+ [ ELSE Statements ] END CASE .
         /// </summary>
         /// <returns>the Executable resulting from the parse</returns>
-		Executable ParseCaseStatement()
+		Executable ParseCaseStatement(DBObject rt)
         {
             var old = cx;
             Next();
@@ -2716,46 +2825,47 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.WHEN)
             {
                 e = new SearchedCaseStatement(lxr.Position);
-                e+=(SimpleCaseStatement.Whens, ParseWhenList());
+                e+=(SimpleCaseStatement.Whens, ParseWhenList(Domain.Bool,rt));
                 if (tok == Sqlx.ELSE)
                 {
                     Next();
-                    e+= (SimpleCaseStatement.Else,ParseStatementList());
+                    e+= (SimpleCaseStatement.Else,ParseStatementList(rt));
                 }
                 Mustbe(Sqlx.END);
                 Mustbe(Sqlx.CASE);
             }
             else
             {
+                var op = ParseSqlValue(Domain.Content);
                 e = new SimpleCaseStatement(lxr.Position);
-                e+=(SimpleCaseStatement.Operand,ParseSqlValue());
-                e+=(SimpleCaseStatement.Whens,ParseWhenList());
+                e+=(SimpleCaseStatement.Operand,op);
+                e+=(SimpleCaseStatement.Whens,ParseWhenList(op.domain, rt));
                 if (tok == Sqlx.ELSE)
                 {
                     Next();
-                    e +=(SimpleCaseStatement.Else,ParseStatementList());
+                    e +=(SimpleCaseStatement.Else,ParseStatementList(rt));
                 }
                 Mustbe(Sqlx.END);
                 Mustbe(Sqlx.CASE);
             }
             cx = old;
-            if (tr.parse == ExecuteStatus.Obey)
-                tr.Execute(e,cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(e,cx);
             return (Executable)cx.Add(e);
         }
         /// <summary>
         /// { WHEN SqlValue THEN Statements }
         /// </summary>
         /// <returns>the list of Whenparts</returns>
-		BList<WhenPart> ParseWhenList()
+		BList<WhenPart> ParseWhenList(Domain od,DBObject rt)
 		{
             var r = BList<WhenPart>.Empty;
 			while (tok==Sqlx.WHEN)
 			{
 				Next();
-                var c = ParseSqlValue();
+                var c = ParseSqlValue(od);
 				Mustbe(Sqlx.THEN);
-                r+=new WhenPart(lxr.Position, c, ParseStatementList());
+                r+=new WhenPart(lxr.Position, c, ParseStatementList(rt));
 			}
 			return r;
 		}
@@ -2765,7 +2875,7 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseForStatement(Ident n)
+        Executable ParseForStatement(DBObject rt,Ident n)
         {
             var fs = new ForSelectStatement(lxr.Position, n.ident);
             var old = cx;
@@ -2793,10 +2903,10 @@ namespace Pyrrho.Level4
                     }
                 }
             }
-            fs = fs + (ForSelectStatement.Sel, ParseCursorSpecification().cs)
+            fs = fs + (ForSelectStatement.Sel, ParseCursorSpecification(ObInfo.Any).cs)
             + (ForSelectStatement.Cursor, (c ?? new Ident(lxr)).ident);
             Mustbe(Sqlx.DO);
-            fs += (ForSelectStatement.Stms,ParseStatementList());
+            fs += (ForSelectStatement.Stms,ParseStatementList(rt));
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.FOR);
             if (tok == Sqlx.ID)
@@ -2806,8 +2916,8 @@ namespace Pyrrho.Level4
                 Next();
             }
             cx = old;
-            if (tr.parse == ExecuteStatus.Obey)
-                tr.Execute(fs,cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(fs,cx);
             return (Executable)cx.Add(fs);
         }
         /// <summary>
@@ -2815,23 +2925,23 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseIfThenElse()
+		Executable ParseIfThenElse(DBObject rt)
         {
             var ife = new IfThenElse(lxr.Position);
             var old = cx;
             Next();
-            ife += (IfThenElse.Search, ParseSqlValue());
+            ife += (IfThenElse.Search, ParseSqlValue(Domain.Bool));
             Mustbe(Sqlx.THEN);
-            ife += (IfThenElse.Then, ParseStatementList());
+            ife += (IfThenElse.Then, ParseStatementList(rt));
             var ei = BList<Executable>.Empty;
             while (Match(Sqlx.ELSEIF))
             {
                 var eif = new IfThenElse(lxr.Position);
                 Next();
-                eif += (IfThenElse.Search, ParseSqlValue());
+                eif += (IfThenElse.Search, ParseSqlValue(rt));
                 Mustbe(Sqlx.THEN);
                 Next();
-                eif += (IfThenElse.Then, ParseStatementList());
+                eif += (IfThenElse.Then, ParseStatementList(rt));
                 ei += eif;
             }
             ife += (IfThenElse.Elsif, ei);
@@ -2839,14 +2949,14 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.ELSE)
             {
                 Next();
-                el = ParseStatementList();
+                el = ParseStatementList(rt);
             }
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.IF);
             ife += (IfThenElse.Else, el);
             cx = old;
-            if (tr.parse == ExecuteStatus.Obey)
-                tr.Execute(ife, cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(ife, cx);
             return (Executable)cx.Add(ife);
         }
         /// <summary>
@@ -2854,13 +2964,13 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-		BList<Executable> ParseStatementList()
+		BList<Executable> ParseStatementList(DBObject rt)
 		{
-            var r = new BList<Executable>(ParseProcedureStatement());
+            var r = new BList<Executable>(ParseProcedureStatement(rt));
             while (tok==Sqlx.SEMICOLON)
 			{
 				Next();
-                r+=ParseProcedureStatement();
+                r+=ParseProcedureStatement(rt);
 			}
 			return r;
 		}
@@ -2868,7 +2978,7 @@ namespace Pyrrho.Level4
 		/// SelectSingle =	[DINSTINCT] SelectList INTO VariableRef { ',' VariableRef } TableExpression .
         /// </summary>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseSelectSingle()
+		Executable ParseSelectSingle(DBObject rt)
         {
             Next();
             var lp = lxr.Position;
@@ -2878,7 +2988,7 @@ namespace Pyrrho.Level4
             var s = new QuerySpecification(lp+2, BTree<long, object>.Empty
                 + (QueryExpression._Distinct, ParseDistinctClause()));
             cs+=(CursorSpecification.Union,qe);
-            s = ParseSelectList(s);
+            s = ParseSelectList(s,rt as ObInfo);
             s += (Query.Display,s.Size(cx));
             qe+=(QueryExpression._Left,s);
             Mustbe(Sqlx.INTO);
@@ -2902,7 +3012,7 @@ namespace Pyrrho.Level4
             var r = BList<SqlValue>.Empty;
             for (; ; )
             {
-                r += ParseVarOrColumn();
+                r += ParseVarOrColumn(Domain.Content);
                 if (tok != Sqlx.COMMA)
                     break;
                 Next();
@@ -2919,7 +3029,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="ppos">the lexer position</param>
         /// <returns>an sqlName </returns>
-        SqlValue ParseVarOrColumn()
+        SqlValue ParseVarOrColumn(DBObject rt)
         {
             Match(Sqlx.PROVENANCE, Sqlx.TYPE_URI, Sqlx.SYSTEM_TIME, Sqlx.SECURITY);
             if (tok == Sqlx.SECURITY)
@@ -2935,54 +3045,52 @@ namespace Pyrrho.Level4
                 pseudoTok = tok;
                 Next();
             }
+            var lp = lxr.Position;
             if (tok == Sqlx.LPAREN)
             {
-                var tg = cx.defs[ic] as SqlValue;
-                CallStatement fc = new CallStatement(ic.iix);
+                var (tg,pn) = cx.defs.Split(ic);
                 Next();
-                if (tok != Sqlx.RPAREN)
-                    fc += (CallStatement.Parms, ParseSqlValueList());
+                var ps = BList<SqlValue>.Empty;
+                if (tok!=Sqlx.RPAREN)
+                    ps = ParseSqlValueList(rt);
                 Mustbe(Sqlx.RPAREN);
-                int n = (int)fc.parms.Count;
-                var icf = ic.Final();
-                var pn = new Ident(icf.lexer, icf.lxrstt, icf.lxrpos) { ident = icf.ident }.Suffix(n);
-                fc = fc + (Basis.Name, ic.ident) + (Procedure.Arity, n) + (CallStatement.Var, tg);
-                if (tg == null && fc.proc != null)
-                {
-                    var rt = fc.proc.retType;
-                    fc += (DBObject._Domain, rt);
-                }
-                else if (tg == null)
+                int n = (int)ps.Count;
+                var pr = db.GetProcedure(pn, n);
+                if (pr==null && (tg==null || tg.domain.kind!=Sqlx.CONTENT)) 
                     throw new DBException("42108", ic.ident);
-                return (SqlValue)cx.Add(new SqlProcedureCall(ic.iix, fc));
+                var cs = new CallStatement(lp, pr, ps, (SqlValue)tg);
+                return (SqlValue)cx.Add(new SqlProcedureCall(ic.iix, cs));
                 // notreached
             }
             SqlValue r = null;
             if (ic != null)
             {
-                r = cx.defs[ic] as SqlValue;
+                r = cx.Get(ic) as SqlValue;
                 if (r == null)
                 {
                     var nd = cx.defs;
                     for (var id = ic; nd != null && id != null; id = id.sub)
                     {
                         DBObject ob = null;
-                        if (nd.Contains(id.ident))
+                        if (char.IsDigit(id.ident[0])) // cx.dbformat<51 compatibility
+                        {
+                            ob = (DBObject)db.objects[long.Parse(id.ident)];
+                            r = ob.ToSql(id,db);
+                        }
+                        else if (nd.Contains(id.ident))
                         {
                             (ob, nd) = cx.defs[id.ident];
-                            r = ob as SqlValue;
-                            if (ob is From fm)
-                                r = new SqlTable(id.iix, id.ident, fm);
+                            r = ob?.ToSql(id,db);
                         }
                         if (ob == null)
                         {
                             var fm = (r as SqlTable)?.from;
-                            if (fm?.rowType is ObInfo rt && rt.map.Contains(id.ident))
+                            if (fm?.rowType is ObInfo ri && ri.map.Contains(id.ident))
                             {
                                 var dp = id.iix - 1;
                                 var fo = fm;
-                                var sr = rt.columns[rt.map[id.ident].Value];
-                                if (sr is SqlCol sc && sc.defpos < tr.uid)
+                                var sr = ri.columns[ri.map[id.ident].Value];
+                                if (sr is SqlCol sc && sc.defpos < db.uid)
                                 {
                                     //             sr = new SqlValueExpr(dp,Sqlx.DOT,r,sc,Sqlx.NO);
                                     sr = new SqlCol(dp, sc.name, sc.tableCol);
@@ -3008,12 +3116,13 @@ namespace Pyrrho.Level4
                     }
                     cx.defs += (ic, r);
                 }
-                else if (r.defpos > tr.loadpos)
+                else if (r.defpos > db.loadpos)
                     r = new SqlCopy(ic.iix, r);
-                else if (r is SqlNewRowCol sn)
-                    r = new SqlNewRowCol(ic.iix, sn);
+                else if (r is SqlOldRowCol sn)
+                    r = new SqlOldRowCol(ic.iix, sn.trs, sn);
                 else if (r is SqlCol sc)
                     r = new SqlCol(ic.iix, sc.name, sc.tableCol);
+                cx.Add(r);
             }
             if (pseudoTok != Sqlx.NO)
                 r = new SqlFunction(lxr.Position, pseudoTok, r, null, null, Sqlx.NO);
@@ -3051,11 +3160,11 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseLoopStatement(Ident n)
+		Executable ParseLoopStatement(DBObject rt, Ident n)
         {
             var ls = new LoopStatement(lxr.Position, n.ident,cx.cxid);
                 Next();
-                ls+=(WhenPart.Stms,ParseStatementList());
+                ls+=(WhenPart.Stms,ParseStatementList(rt));
                 Mustbe(Sqlx.END);
                 Mustbe(Sqlx.LOOP);
                 if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
@@ -3068,21 +3177,21 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseSqlWhile(Ident n)
+        Executable ParseSqlWhile(DBObject rt, Ident n)
         {
             var ws = new WhileStatement(lxr.Position, n.ident);
             var old = cx; // new SaveContext(lxr, ExecuteStatus.Parse);
             Next();
-            ws+=(WhileStatement.Search,ParseSqlValue());
+            ws+=(WhileStatement.Search,ParseSqlValue(Domain.Bool));
             Mustbe(Sqlx.DO);
-            ws+=(WhileStatement.What,ParseStatementList());
+            ws+=(WhileStatement.What,ParseStatementList(rt));
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.WHILE);
             if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
                 Next();
             cx = old; // old.Restore(lxr);
-            if (tr.parse == ExecuteStatus.Obey)
-                tr.Execute(ws,cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(ws,cx);
             return (Executable)cx.Add(ws);
         }
         /// <summary>
@@ -3091,13 +3200,13 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseRepeat(Ident n)
+        Executable ParseRepeat(DBObject rt, Ident n)
         {
-            var rs = new RepeatStatement(lxr.Position, n.ident);
+            var rs = new RepeatStatement(lxr.Position, n?.ident);
             Next();
-            rs+=(WhileStatement.What,ParseStatementList());
+            rs+=(WhileStatement.What,ParseStatementList(rt));
             Mustbe(Sqlx.UNTIL);
-            rs+=(WhileStatement.Search,ParseSqlValue());
+            rs+=(WhileStatement.Search,ParseSqlValue(Domain.Bool));
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.REPEAT);
             if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
@@ -3170,7 +3279,7 @@ namespace Pyrrho.Level4
                         Sqlx.SCHEMA_NAME, Sqlx.TABLE_NAME, Sqlx.COLUMN_NAME, Sqlx.CURSOR_NAME,
                         Sqlx.MESSAGE_TEXT);
                     Mustbe(Sqlx.EQL);
-                    r+=(Signal.SetList, r.setlist+(k, ParseSqlValue()));
+                    r+=(Signal.SetList, r.setlist+(k, ParseSqlValue(Domain.Content)));
                     if (tok != Sqlx.COMMA)
                         break;
                     Next();
@@ -3188,7 +3297,7 @@ namespace Pyrrho.Level4
 			var o = new Ident(lxr);
 			Mustbe(Sqlx.ID);
 			return (Executable)cx.Add(new OpenStatement(lxr.Position,
-                cx.GetActivation().defs[o] as SqlCursor?? throw new DBException("34000",o.ToString()),
+                cx.Get(o) as SqlCursor?? throw new DBException("34000",o.ToString()),
                 cx.cxid));
 		}
         /// <summary>
@@ -3201,7 +3310,7 @@ namespace Pyrrho.Level4
 			var o = new Ident(lxr);
 			Mustbe(Sqlx.ID);
 			return (Executable)cx.Add(new CloseStatement(lxr.Position,
-                cx.GetActivation().defs[o] as SqlCursor?? throw new DBException("34000", o.ToString()),
+                cx.Get(o) as SqlCursor?? throw new DBException("34000", o.ToString()),
                 cx.cxid));
 		}
         /// <summary>
@@ -3219,42 +3328,39 @@ namespace Pyrrho.Level4
                 Next();
             }
             if (how == Sqlx.ABSOLUTE || how == Sqlx.RELATIVE)
-                where = ParseSqlValue();
+                where = ParseSqlValue(Domain.Int);
             if (tok == Sqlx.FROM)
                 Next();
             var o = new Ident(lxr);
             Mustbe(Sqlx.ID);
             var fs = new FetchStatement(lxr.Position, 
-                cx.GetActivation().defs[o] as SqlCursor 
+                cx.Get(o) as SqlCursor 
                 ?? throw new DBException("34000", o.ToString()),
                 how, where);
             Mustbe(Sqlx.INTO);
             fs+=(FetchStatement.Outs,ParseTargetList());
             return (Executable)cx.Add(fs);
         }
-        internal WhenPart ParseTriggerDefinition(string sql,long pos)
-        {
-            lxr = new Lexer(sql,pos);
-            tok = lxr.tok;
-            tr += (Database.NextTid, sql.Length);
-            return ParseTriggerDefinition();
-        }
         /// <summary>
         /// [ TriggerCond ] (Call | (BEGIN ATOMIC Statements END)) .
 		/// TriggerCond = WHEN '(' SqlValue ')' .
         /// </summary>
         /// <returns>a TriggerAction</returns>
-        internal WhenPart ParseTriggerDefinition()
+        internal WhenPart ParseTriggerDefinition(PTrigger trig)
         {
+            var fm = trig.from;
+            var ti = fm.rowType;
+            cx.AddOldTable(trig.oldTable, fm);
+            cx.AddOldRow(trig.oldRow,ti);
+            cx.AddTable(trig.newTable, fm);
+            cx.AddRow(trig.newRow, ti);
             var needed = BTree<SqlValue, Ident>.Empty; //ignored
             SqlValue when = null;
             Executable act = null;
-            var ot = tr;
-            tr+=(Database._ExecuteStatus,ExecuteStatus.Parse);
             if (tok == Sqlx.WHEN)
             {
                 Next();
-                when = ParseSqlValue();
+                when = ParseSqlValue(Domain.Bool);
             }
             if (tok == Sqlx.BEGIN)
             {
@@ -3264,7 +3370,7 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ATOMIC);
                 while (tok != Sqlx.END)
                 {
-                    ss+=ParseProcedureStatement(); 
+                    ss+=ParseProcedureStatement(Domain.Content); 
                     if (tok == Sqlx.END)
                         break;
                     Mustbe(Sqlx.SEMICOLON);
@@ -3275,8 +3381,7 @@ namespace Pyrrho.Level4
                 act = cs;
             }
             else
-                act = ParseProcedureStatement();
-            tr = ot;
+                act = ParseProcedureStatement(Domain.Content);
             return (WhenPart)cx.Add(new WhenPart(lxr.Position, when, new BList<Executable>(act)));
         }
         public Executable ParseTriggerDefClause(string sql)
@@ -3322,7 +3427,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.ON);
             var tabl = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            var tb = tr.GetObject(tabl.ident) as Table??
+            var tb = db.GetObject(tabl.ident) as Table??
                 throw new DBException("42107", tabl.ToString()).Mix();
             Ident or = null, nr = null, ot = null, nt = null;
             if (tok == Sqlx.REFERENCING)
@@ -3344,7 +3449,8 @@ namespace Pyrrho.Level4
                                 Next();
                             ot = new Ident(lxr);
                             Mustbe(Sqlx.ID);
-                            cx.defs += (ot, new FromOldTable(ot.iix, tb, tr));
+                            cx.defs += (ot, new FromOldTable(ot, 
+                                new From(ot.iix,tb,(ObInfo)db.role.obinfos[tb.defpos])));
                             continue;
                         }
                         if (tok == Sqlx.ROW)
@@ -3354,6 +3460,7 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.AS)
                             Next();
                         or = new Ident(lxr);
+                        cx.defs += (or, new ObInfoOldRow((ObInfo)db.role.obinfos[tb.defpos],tb.defpos));
                         Mustbe(Sqlx.ID);
                     }
                     else
@@ -3377,7 +3484,6 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.AS)
                             Next();
                         nr = new Ident(lxr);
-                        cx.defs += (nr, new ObInfoNewRow(tb,tr.role));
                         Mustbe(Sqlx.ID);
                     }
                 }
@@ -3406,7 +3512,7 @@ namespace Pyrrho.Level4
             int st = lxr.start;
             var fm = _From(tabl.iix,tb,null,QuerySpecification.Default);
             if (tb == null)
-                tb = tr.objects[fm.target] as Table;
+                tb = db.objects[fm.target] as Table;
             fm +=(Query.SimpleQuery,fm);
             if (ot != null)
                 cx.defs += (ot, tb);
@@ -3416,16 +3522,22 @@ namespace Pyrrho.Level4
                 cx.defs += (or, fm.rowType);
             if (nr != null)
                 cx.defs += (nr, fm.rowType);
-            st = lxr.start; 
-            var wh = ParseTriggerDefinition();
-            cx = old; // old.Restore(lxr);
+            st = lxr.start;
             var cols = new long[cls.Count];
             for (int i = 0; i < cols.Length; i++)
-                cols[i] = fm.rowType.ColFor(cls[i].ident).defpos;
-            if (tb != null && tr.parse == ExecuteStatus.Obey)
-                tr +=new PTrigger(trig.ident, tb.defpos, (int)tgtype, cols,
-                    or?.ident, nr?.ident, ot?.ident, nt?.ident, wh, 
-                    new string(lxr.input,st,lxr.pos-st),trig.iix, tr);
+                cols[i] = fm.rowType.ColFor(cls[i].ident).defpos; 
+            var pt = new PTrigger(trig.ident, fm, (int)tgtype, cols,
+                    or, nr, ot, nt, null,
+                    new Ident(new string(lxr.input, st, lxr.input.Length - st), st),
+                        cx, db);
+            var op = db.parse;
+            db += (Database._ExecuteStatus, ExecuteStatus.Parse);
+            pt.def = ParseTriggerDefinition(pt);
+            pt.src = new Ident(new string(lxr.input, st, lxr.pos - st), st);
+            db += (Database._ExecuteStatus, op);
+            cx = old;
+            if (tb != null && db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr + pt;
             return (Executable)cx.Add(ct);
         }
         /// <summary>
@@ -3495,7 +3607,7 @@ namespace Pyrrho.Level4
             Table tb = null;
             var o = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            tb = tr.GetObject(o.ident) as Table??
+            tb = db.GetObject(o.ident) as Table??
                 throw new DBException("42107", o).Mix();
             ParseAlterTableOps(tb);
             return (Executable)cx.Add(at);
@@ -3513,7 +3625,7 @@ namespace Pyrrho.Level4
             Next();
             var nm = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            DBObject vw = tr.GetObject(nm.ident) ??
+            DBObject vw = db.GetObject(nm.ident) ??
                 throw new DBException("42107", nm).Mix();
             ParseAlterOp(vw);
             while (tok == Sqlx.COMMA)
@@ -3530,8 +3642,9 @@ namespace Pyrrho.Level4
         /// <param name="ob">the object to be affected</param>
         DBObject ParseAlterOp(DBObject ob)
         {
+            var tr = db as Transaction?? throw new DBException("2F003");
             var kind = (ob is View)?Sqlx.VIEW:Sqlx.FUNCTION;
-            var oi = tr.role.obinfos[ob.defpos] as ObInfo;
+            var oi = db.role.obinfos[ob.defpos] as ObInfo;
             if (tok == Sqlx.SET && ob is View)
             {
                 Next();
@@ -3544,9 +3657,9 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.TO);
                     st = lxr.start;
                     lp = lxr.Position;
-                    var qe = ParseQueryExpression();
+                    var qe = ParseQueryExpression(ObInfo.Any);
                     s = new string(lxr.input,st, lxr.start - st);
-                    tr += new Modify("Source", ob.defpos, s, lp, qe, tr);
+                    db = tr + new Modify("Source", ob.defpos, s, qe, tr);
                     return cx.Add(tr,ob.defpos);
                 }
                 var t = tok;
@@ -3563,7 +3676,7 @@ namespace Pyrrho.Level4
                     case Sqlx.UPDATE: n = "Update"; break;
                     case Sqlx.DELETE: n = "Delete"; break;
                 }
-                tr +=new Modify(n, ob.defpos, s, lp, null, tr);
+                tr +=new Modify(n, ob.defpos, s, null, tr);
             }
             else if (tok == Sqlx.TO)
             {
@@ -3571,30 +3684,31 @@ namespace Pyrrho.Level4
                 var nm = lxr.val;
                 var lp = lxr.Position;
                 Mustbe(Sqlx.ID);
-                tr+=new Change(ob.defpos, nm.ToString(), lp, tr);
+                tr +=new Change(ob.defpos, nm.ToString(), tr);
             }
             else if (tok == Sqlx.ALTER)
             {
                 Next();
                 var ic = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                ob = tr.GetObject(ic.ident) ??
+                ob = db.GetObject(ic.ident) ??
                     throw new DBException("42135", ic.ident);
                     if (tr.role.Denied(tr, Grant.Privilege.AdminRole))
-                        throw new DBException("42105", tr.role.name??"").Mix();
-                    var m = ParseMetadata(tr, ob, -1, Sqlx.COLUMN);
-                    tr+=new PMetadata(ic.ident, m, ob.defpos, m.refpos, ic.iix, tr);
+                        throw new DBException("42105", db.role.name??"").Mix();
+                    var m = ParseMetadata(db, ob, -1, Sqlx.COLUMN);
+                    tr +=new PMetadata(ic.ident, m, ob.defpos, m.refpos, tr);
             }
             if (StartMetadata(kind) || Match(Sqlx.ADD))
             {
                 var lp = lxr.Position;
                 if (tr.role.Denied(tr, Grant.Privilege.AdminRole))
-                    throw new DBException("42105", tr.role.name ?? "").Mix();
+                    throw new DBException("42105", db.role.name ?? "").Mix();
                 if (tok == Sqlx.ALTER)
                     Next();
-                var m = ParseMetadata(tr, ob, -1, kind);
-                tr+=new PMetadata(oi.name, m, -1, ob.defpos, lp, tr);
+                var m = ParseMetadata(db, ob, -1, kind);
+                tr+=new PMetadata(oi.name, m, -1, ob.defpos, tr);
             }
+            db = tr;
             return cx.Add(tr, ob.defpos);
         }
         /// <summary>
@@ -3606,8 +3720,7 @@ namespace Pyrrho.Level4
             var ad = new Executable(lxr.Position, Executable.Type.AlterDomain);
                 Next();
                 var c = ParseIdent();
-                var d = tr.GetObject(c.ident) as Domain ??
-                throw new DBException("42119",c.ident,tr.name);
+                var d = db.GetObInfo(c.ident).domain;
                 ParseAlterDomainOp(d);
                 while (tok == Sqlx.COMMA)
                 {
@@ -3628,17 +3741,18 @@ namespace Pyrrho.Level4
         /// <param name="d">the domain object</param>
         void ParseAlterDomainOp(Domain d)
 		{
-            var oi = tr.role.obinfos[d.defpos] as ObInfo;
+            var tr = db as Transaction?? throw new DBException("2F003");
+            var oi = db.role.obinfos[d.defpos] as ObInfo;
             if (tok == Sqlx.SET)
 			{
 				Next();
 				Mustbe(Sqlx.DEFAULT);
 				int st = lxr.start;
                 var lp = lxr.Position;
-				var dv = ParseSqlValue();
+				var dv = ParseSqlValue(d);
 				string ds = new string(lxr.input,st,lxr.start-st);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Edit(d, oi.name, d+(Domain.Default,dv)+(Domain.DefaultString,ds), lp, tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    tr+=new Edit(d, oi.name, d+(Domain.Default,dv)+(Domain.DefaultString,ds), tr);
 			} 
 			else if (Match(Sqlx.ADD))
 			{
@@ -3655,12 +3769,12 @@ namespace Pyrrho.Level4
 				Mustbe(Sqlx.CHECK);
 				Mustbe(Sqlx.LPAREN);
                 int st = lxr.pos;
-                var sc = ParseSqlValue();
+                var sc = ParseSqlValue(Domain.Bool);
                 string source = new string(lxr.input,st, lxr.pos - st - 1);
 				Mustbe(Sqlx.RPAREN);
                 if (tr.parse == ExecuteStatus.Obey)
                 {
-                    var ck = new PCheck(d.defpos, id.ident, source, id.iix, tr);
+                    var ck = new PCheck(d.defpos, id.ident, source, tr);
                     tr+=ck;
                 }
 			}
@@ -3673,15 +3787,15 @@ namespace Pyrrho.Level4
                 {
                     Next();
                     if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Edit(d,oi.name, d, lp, tr);
+                        tr+=new Edit(d,oi.name, d, tr);
                 }
                 else if (StartMetadata(Sqlx.DOMAIN) || Match(Sqlx.ADD, Sqlx.DROP))
                 {
                     if (tr.role == null || 
                         tr.role.Denied(tr, Grant.Privilege.AdminRole))
                         throw new DBException("42105", tr.role.name ?? "").Mix();
-                    tr += new PMetadata(oi.name, ParseMetadata(tr, d, -1, Sqlx.DOMAIN), -1, 
-                        d.defpos, lp, tr);
+                   tr += new PMetadata(oi.name, ParseMetadata(db, d, -1, Sqlx.DOMAIN), -1, 
+                        d.defpos, tr);
                 }
                 else
                 {
@@ -3689,27 +3803,28 @@ namespace Pyrrho.Level4
                     n = new Ident(lxr);
                     Mustbe(Sqlx.ID);
                     Drop.DropAction s = ParseDropAction();
-                    var ch = tr.GetObject(n.ident) as Check;
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr += new Drop1(ch.defpos, s, n.iix, tr);
+                    var ch = db.GetObject(n.ident) as Check;
+                    if (db.parse == ExecuteStatus.Obey)
+                        tr += new Drop1(ch.defpos, s, tr);
                 }
             }
             else if (StartMetadata(Sqlx.DOMAIN) || Match(Sqlx.ADD, Sqlx.DROP))
             {
                 var lp = lxr.Position;
                 if (tr.role.Denied(tr, Grant.Privilege.AdminRole))
-                    throw new DBException("42105", tr.role.name??"").Mix();
-                tr+=new PMetadata(oi.name,ParseMetadata(tr, d, -1, Sqlx.DOMAIN), -1, d.defpos,
-                    lp, tr);
+                    throw new DBException("42105", db.role.name??"").Mix();
+                tr+=new PMetadata(oi.name,ParseMetadata(db, d, -1, Sqlx.DOMAIN), -1, d.defpos,
+                    tr);
             }
             else
             {
                 Mustbe(Sqlx.TYPE);
                 var lp = lxr.Position;
-                Domain dt = ParseSqlDataType();
+                Domain dt = ParseSqlDataType().domain;
                 if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Edit(d, oi.name, dt, lp, tr);
+                    tr+=new Edit(d, oi.name, dt, tr);
             }
+            db = tr;
 		}
         /// <summary>
         /// DropAction = | RESTRICT | CASCADE .
@@ -3722,7 +3837,7 @@ namespace Pyrrho.Level4
 			switch (tok)
 			{
                 case Sqlx.CASCADE: r = Drop.DropAction.Cascade; Next();
-                    tr += (Database.Cascade, true);
+                    db += (Database.Cascade, true);
                     break;
                 case Sqlx.RESTRICT: r = Drop.DropAction.Restrict; Next(); break;
             }
@@ -3760,6 +3875,7 @@ namespace Pyrrho.Level4
         /// <param name="tb">the Table object</param>
         void ParseAlterTable(Table tb)
         {
+            var tr = db as Transaction?? throw new DBException("2F003");
             if (tok == Sqlx.TO)
             {
                 Next();
@@ -3767,7 +3883,7 @@ namespace Pyrrho.Level4
                 var lp = lxr.Position;
                 Mustbe(Sqlx.ID);
                 if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Change(tb.defpos, o.ToString(), lp, tr);
+                    db = tr+new Change(tb.defpos, o.ToString(), tr);
                 return;
             } 
             if (tok==Sqlx.LEVEL)
@@ -3796,10 +3912,10 @@ namespace Pyrrho.Level4
                                     Drop.DropAction act = ParseDropAction();
                                     if (tb != null)
                                     {
-                                        var ck = tr.GetObject(name.ident) as Check;
-                                        if (ck != null && tr.parse == ExecuteStatus.Obey)
+                                        var ck = db.GetObject(name.ident) as Check;
+                                        if (ck != null && db.parse == ExecuteStatus.Obey)
                                         {
-                                            tr+= new Drop1(ck.defpos, act, name.iix, tr);
+                                            db = tr+new Drop1(ck.defpos, act, tr);
                                             return;
                                         }
                                     }
@@ -3816,10 +3932,10 @@ namespace Pyrrho.Level4
                                     var cols = ParseColsList(tb);
                                     if (tb != null)
                                     {
-                                        Index x = tb.FindIndex(tr,cols);
-                                        if (x!=null && tr.parse == ExecuteStatus.Obey)
+                                        Index x = tb.FindIndex(db,cols);
+                                        if (x!=null && db.parse == ExecuteStatus.Obey)
                                         {
-                                            tr += new Drop1(x.defpos, act, lp, tr);
+                                            db =tr+ new Drop1(x.defpos, act, tr);
                                             return;
                                         }
                                     }
@@ -3835,7 +3951,7 @@ namespace Pyrrho.Level4
                                     Mustbe(Sqlx.REFERENCES);
                                     var n = new Ident(lxr);
                                     Mustbe(Sqlx.ID);
-                                    var rt = tr.GetObject(n.ident) as Table??
+                                    var rt = db.GetObject(n.ident) as Table??
                                         throw new DBException("42107", n).Mix();
                                     var rcols = CList<TableColumn>.Empty;
                                     var st = lxr.pos;
@@ -3843,10 +3959,10 @@ namespace Pyrrho.Level4
                                         rcols = ParseColsList(rt);
                                     if (tr.parse == ExecuteStatus.Obey)
                                     {
-                                        var x = tb.FindIndex(tr,cols);
+                                        var x = tb.FindIndex(db,cols);
                                         if (x != null)
                                         {
-                                            tr+=new Drop(x.defpos, n.iix, tr);
+                                            db = tr+new Drop(x.defpos, tr);
                                             return;
                                         }
                                         throw new DBException("42135", new string(lxr.input, st, lxr.pos)).Mix();
@@ -3860,12 +3976,12 @@ namespace Pyrrho.Level4
                                     var st = lxr.pos;
                                     var lp = lxr.Position;
                                     var cols = ParseColsList(tb);
-                                    if (tr.parse == ExecuteStatus.Obey)
+                                    if (db.parse == ExecuteStatus.Obey)
                                     {
-                                        var x = tb.FindIndex(tr,cols);
+                                        var x = tb.FindIndex(db,cols);
                                         if (x != null)
                                         {
-                                            tr+=new Drop(x.defpos, lp, tr);
+                                            db=tr+new Drop(x.defpos, tr);
                                             return;
                                         }
                                         throw new DBException("42135", new string(lxr.input, st, lxr.pos)).Mix();
@@ -3879,7 +3995,7 @@ namespace Pyrrho.Level4
                                     var ptd = ParseTablePeriodDefinition();
                                     var pd = (ptd.pkind==Sqlx.SYSTEM_TIME)?tb.systemPS:tb.applicationPS;
                                     if (pd >0)
-                                        tr+=new Drop(pd, lp, tr);
+                                        db= tr+new Drop(pd, tr);
                                     return;
                                 }
                             case Sqlx.WITH:
@@ -3891,9 +4007,9 @@ namespace Pyrrho.Level4
                                         var lp = lxr.Position;
                                         var ti = tr.role.obinfos[tb.defpos] as ObInfo;
                                         if (tr.role.Denied(tr, Grant.Privilege.AdminRole))
-                                            throw new DBException("42105", tr.role.name ?? "").Mix();
-                                        tr+=new PMetadata(ti.name, ParseMetadata(tr, tb, -1, 
-                                            Sqlx.TABLE,true), -1, tb.defpos, lp, tr);
+                                            throw new DBException("42105", db.role.name ?? "").Mix();
+                                        db=tr+new PMetadata(ti.name, ParseMetadata(tr, tb, -1, 
+                                            Sqlx.TABLE,true), -1, tb.defpos, tr);
                                         return;
                                     }
                                     if (tok == Sqlx.COLUMN)
@@ -3907,7 +4023,7 @@ namespace Pyrrho.Level4
                                         var tc = ft.ColFor(name.ident);
                                         if (tc != null && tr.parse == ExecuteStatus.Obey)
                                         {
-                                            tr+=new Drop1(tc.defpos, act, name.iix, tr);
+                                            db=tr+new Drop1(tc.defpos, act, tr);
                                             return;
                                         }
                                     }
@@ -3928,6 +4044,7 @@ namespace Pyrrho.Level4
                         else
                         {
                             tb = ParseColumnDefin(tb);
+                            tr = (Transaction)db; //!!
                             if (tr.physicals.Last()?.value() is PColumn pc 
                                 && pc.notNull && tb.tableRows.PositionAt(0) != null)
                                     throw new DBException("42130");
@@ -3944,7 +4061,7 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.ID);
                         if (tb != null)
                         {
-                            var ft = tr.role.obinfos[tb.defpos] as ObInfo;
+                            var ft = db.role.obinfos[tb.defpos] as ObInfo;
                             col = ft.ColFor(o.ident) as SqlValue;
                         }
                         if (col == null)
@@ -3960,14 +4077,14 @@ namespace Pyrrho.Level4
                             var pid = lxr.val;
                             Next();
                             Mustbe(Sqlx.TO);
-                            var pd = tr.objects[tb.applicationPS] as PeriodDef;
+                            var pd = db.objects[tb.applicationPS] as PeriodDef;
                             if (pd == null)
                                 throw new DBException("42162", pid).Mix();
                             pid = lxr.val;
                             var lp = lxr.Position;
                             Mustbe(Sqlx.ID);
-                            if (tr.parse == ExecuteStatus.Obey)
-                                tr+=new Change(pd.defpos, pid.ToString(), lp, tr);
+                            if (db.parse == ExecuteStatus.Obey)
+                                db=tr+new Change(pd.defpos, pid.ToString(), tr);
                         }
                         tb = AddTablePeriodDefinition(tb);
                         break;
@@ -3979,7 +4096,7 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.REFERENCES);
                         var n = new Ident(lxr);
                         Mustbe(Sqlx.ID);
-                        var rt = tr.GetObject(n.ident) as Table ??
+                        var rt = db.GetObject(n.ident) as Table ??
                             throw new DBException("42107", n).Mix();
                         var rcols = CList<TableColumn>.Empty;
                         var st = lxr.pos;
@@ -3988,12 +4105,12 @@ namespace Pyrrho.Level4
                         PIndex.ConstraintType ct=0;
                         if (tok == Sqlx.ON)
                             ct = ParseReferentialAction();
-                        if (tr.parse == ExecuteStatus.Obey)
+                        if (db.parse == ExecuteStatus.Obey)
                         {
-                            var x = tb.FindIndex(tr, cols);
+                            var x = tb.FindIndex(db, cols);
                             if (x != null)
                             {
-                                tr += new RefAction(x.defpos, ct, n.iix, tr);
+                                db = tr+new RefAction(x.defpos, ct, tr);
                                 return;
                             }
                             throw new DBException("42135", new string(lxr.input, st, lxr.pos)).Mix();
@@ -4003,14 +4120,14 @@ namespace Pyrrho.Level4
                     }
                 default:
                     if (StartMetadata(Sqlx.TABLE) || Match(Sqlx.ADD, Sqlx.DROP))
-                        if (tr.parse == ExecuteStatus.Obey)
+                        if (db.parse == ExecuteStatus.Obey)
                         {
                             var lp = lxr.Position;
                             var oi = tr.role.obinfos[tb.defpos] as ObInfo;
                             if (tb.Denied(tr, Grant.Privilege.AdminRole))
                                 throw new DBException("42015",oi.name);
-                            tr+=new PMetadata(oi.name, ParseMetadata(tr, tb, -1, Sqlx.TABLE), 
-                                -1, tb.defpos, lp, tr);
+                            db=tr+new PMetadata(oi.name, ParseMetadata(db, tb, -1, Sqlx.TABLE), 
+                                -1, tb.defpos, tr);
                         }
                     break;
             }
@@ -4028,17 +4145,18 @@ namespace Pyrrho.Level4
         /// <param name="col">the table column object</param>
         void ParseAlterColumn(Table tb, SqlValue col)
 		{
+            var tr = db as Transaction?? throw new DBException("2F003");
 			TypedValue o = null;
-            var ti = tr.role.obinfos[tb.defpos] as ObInfo;
-            var tc = tr.objects[col.defpos] as TableColumn;
+            var ti = db.role.obinfos[tb.defpos] as ObInfo;
+            var tc = db.objects[col.defpos] as TableColumn;
             string nm = col.name;
             if (tok == Sqlx.TO)
             {
                 Next();
                 var n = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Change(col.defpos, n.ident, n.iix, tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    db= tr+new Change(col.defpos, n.ident, tr);
                 return;
             }
             if (tok == Sqlx.POSITION)
@@ -4047,12 +4165,12 @@ namespace Pyrrho.Level4
                 o = lxr.val;
                 var lp = lxr.Position;
                 Mustbe(Sqlx.INTEGERLITERAL);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Alter3(col.defpos, nm, o.ToInt().Value, tc.tabledefpos, 
+                if (db.parse == ExecuteStatus.Obey)
+                    db = tr+new Alter3(col.defpos, nm, o.ToInt().Value, tc.tabledefpos, 
                         col.domain.defpos, 
                         tc.generated.gfs??tc.domain.defaultValue?.ToString()??"",
                         tc.domain.defaultValue,
-                        "",tc.update,tc.notNull, tc.generated, lp, tr);
+                        "",tc.update,tc.notNull, tc.generated, tr);
                 return;
             }
             if (Match(Sqlx.ADD))
@@ -4063,9 +4181,8 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     if (tb.Denied(tr, Grant.Privilege.AdminRole))
                         throw new DBException("42105", ti.name).Mix();
-                    tr+=new PMetadata(col.name, 
-                        ParseMetadata(tr, col, -1, Sqlx.COLUMN, false), 0, col.defpos,
-                        lp, tr);
+                    db = tr+new PMetadata(col.name, 
+                        ParseMetadata(db, col, -1, Sqlx.COLUMN, false), 0, col.defpos, tr);
                     return;
                 }
                 if (tok == Sqlx.CONSTRAINT)
@@ -4075,11 +4192,11 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.CHECK);
                 Mustbe(Sqlx.LPAREN);
                 int st = lxr.pos;
-                ParseSqlValue();
+                ParseSqlValue(Domain.Bool);
                 string source = new string(lxr.input,st, lxr.pos - st - 1);
                 Mustbe(Sqlx.RPAREN);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new PCheck(col.defpos, n.ident, source, n.iix, tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    db=tr+new PCheck(col.defpos, n.ident, source, tr);
                 return;
             }
             if (tok == Sqlx.SET)
@@ -4093,11 +4210,11 @@ namespace Pyrrho.Level4
                     var dv = lxr.val;
                     Next();
                     var ds = new string(lxr.input, st, lxr.start - st);
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
+                    if (db.parse == ExecuteStatus.Obey)
+                        db=tr+new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
                             tc.domain.defpos,ds,dv,"",
                             BList<UpdateAssignment>.Empty, tc.notNull, GenerationRule.None, 
-                            lp, tr);
+                            tr);
                     return;
                 }
                 if (Match(Sqlx.GENERATED))
@@ -4105,15 +4222,15 @@ namespace Pyrrho.Level4
                     Domain type = null;
                     var lp = lxr.Position;
                     var gr = ParseGenerationRule(tb);
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                     {
                         tc.ColumnCheck(tr, true);
-                        tr+=new Alter3(tc.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
+                        db=tr+new Alter3(tc.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
                             tc.domain.defpos,
                             gr.gfs??type.defaultValue?.ToString()??"",
                             type.defaultValue, 
                             "",BList<UpdateAssignment>.Empty, tc.notNull, gr, 
-                            lp, tr);
+                            tr);
                     }
                     return;
                 }
@@ -4122,12 +4239,12 @@ namespace Pyrrho.Level4
                     Next();
                     var lp = lxr.Position;
                     Mustbe(Sqlx.NULL);
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                     {
                         tc.ColumnCheck(tr, false);
-                        tr+=new Alter3(tc.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, tc.domain.defpos,
+                        db=tr+new Alter3(tc.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, tc.domain.defpos,
                             "",TNull.Value, "", BList<UpdateAssignment>.Empty, true, 
-                            tc.generated, lp, tr);
+                            tc.generated, tr);
                     }
                     return;
                 }
@@ -4142,9 +4259,9 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     if (tb.Denied(tr, Grant.Privilege.AdminRole))
                         throw new DBException("42105", ti.name ?? "").Mix();
-                    tr+=new PMetadata(col.name, 
-                            ParseMetadata(tr, col, -1, Sqlx.COLUMN, true), 0,
-                        col.defpos, lp, tr);
+                    db=tr+new PMetadata(col.name, 
+                            ParseMetadata(db, col, -1, Sqlx.COLUMN, true), 0,
+                        col.defpos, tr);
                     return;
                 }
                 if (tok != Sqlx.DEFAULT && tok != Sqlx.NOT && tok != Sqlx.PRIMARY && tok != Sqlx.REFERENCES && tok != Sqlx.UNIQUE && tok != Sqlx.CONSTRAINT && !StartMetadata(Sqlx.COLUMN))
@@ -4153,10 +4270,10 @@ namespace Pyrrho.Level4
                 {
                     var lp = lxr.Position;
                     Next();
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
+                    if (db.parse == ExecuteStatus.Obey)
+                        db=tr+new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, 
                             tc.domain.defpos,"", null, tc.updateString, tc.update, tc.notNull, 
-                            GenerationRule.None, lp, tr);
+                            GenerationRule.None, tr);
                     return;
                 }
                 else if (tok == Sqlx.NOT)
@@ -4164,11 +4281,11 @@ namespace Pyrrho.Level4
                     Next();
                     var lp = lxr.Position;
                     Mustbe(Sqlx.NULL);
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, tc.domain.defpos,
+                    if (db.parse == ExecuteStatus.Obey)
+                        db=tr+new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, tc.domain.defpos,
                             tc.domain.defaultString,tc.domain.defaultValue, 
                             tc.updateString, tc.update, false, 
-                            tc.generated, lp, tr);
+                            tc.generated, tr);
                     return;
                 }
                 else if (tok == Sqlx.PRIMARY)
@@ -4177,15 +4294,15 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     Mustbe(Sqlx.KEY);
                     Drop.DropAction act = ParseDropAction();
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                     {
-                        Index x = tb.FindPrimaryIndex(tr);
+                        Index x = tb.FindPrimaryIndex(db);
                         if (x.keys.Count != 1 
                             || x.keys[0].defpos != col.defpos)
                             throw new DBException("42158", col.name, ti.name).Mix()
                                 .Add(Sqlx.TABLE_NAME,new TChar(ti.name))
                                 .Add(Sqlx.COLUMN_NAME,new TChar(col.name));
-                        tr+= new Drop1(x.defpos, act, lp, tr);
+                        db=tr+ new Drop1(x.defpos, act, tr);
                     }
                     return;
                 }
@@ -4207,11 +4324,11 @@ namespace Pyrrho.Level4
                     ObInfo ri = null;
                     for (var p = tb.indexes.First();p!= null;p=p.Next())
                     {
-                        var x = (Index)tr.objects[p.value()];
+                        var x = (Index)db.objects[p.value()];
                         if (x.keys.Count != 1 || x.keys[0].defpos != col.defpos)
                             continue;
-                        rt = tr.objects[x.reftabledefpos] as Table;
-                        ri = tr.role.obinfos[rt.defpos] as ObInfo;
+                        rt = db.objects[x.reftabledefpos] as Table;
+                        ri = db.role.obinfos[rt.defpos] as ObInfo;
                         if (ri.name == n.ident)
                         {
                             dx = x;
@@ -4222,8 +4339,8 @@ namespace Pyrrho.Level4
                         throw new DBException("42159", col.name, n.ident).Mix()
                             .Add(Sqlx.TABLE_NAME,new TChar(n.ident))
                             .Add(Sqlx.COLUMN_NAME,new TChar(col.name));
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Drop(dx.defpos, n.iix, tr);
+                    if (db.parse == ExecuteStatus.Obey)
+                        db = tr+new Drop(dx.defpos, tr);
                     return;
                 }
                 else if (tok == Sqlx.UNIQUE)
@@ -4233,7 +4350,7 @@ namespace Pyrrho.Level4
                     Index dx = null;
                     for (var p =tb.indexes.First();p!= null;p=p.Next())
                     {
-                        var x = (Index)tr.objects[p.value()];
+                        var x = (Index)db.objects[p.value()];
                         if (x.keys.Count != 1 
                             || x.keys[0].defpos != col.defpos)
                             continue;
@@ -4246,8 +4363,8 @@ namespace Pyrrho.Level4
                     if (dx == null)
                         throw new DBException("42160", nm).Mix()
                             .Add(Sqlx.TABLE_NAME,new TChar(nm));
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Drop(dx.defpos, lp, tr);
+                    if (db.parse == ExecuteStatus.Obey)
+                        db=tr+new Drop(dx.defpos, tr);
                     return;
                 }
                 else if (tok == Sqlx.CONSTRAINT)
@@ -4255,9 +4372,9 @@ namespace Pyrrho.Level4
                     var n = new Ident(lxr);
                     Mustbe(Sqlx.ID);
                     Drop.DropAction s = ParseDropAction();
-                    var ch = tr.GetObject(n.ident) as Check;
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+= new Drop1(ch.defpos, s, n.iix, tr);
+                    var ch = db.GetObject(n.ident) as Check;
+                    if (db.parse == ExecuteStatus.Obey)
+                        db= tr+new Drop1(ch.defpos, s, tr);
                     return;
                 }
             }
@@ -4271,10 +4388,10 @@ namespace Pyrrho.Level4
                 {
                     var domain = new Ident(lxr);
                     Next();
-                    type = tr.GetObject(domain.ident) as Domain;
+                    type = db.GetObInfo(domain.ident).domain;
                     if (type == null)
-                        throw new DBException("42119", domain.ident, tr.name).Mix()
-                            .Add(Sqlx.CATALOG_NAME, new TChar(tr.name))
+                        throw new DBException("42119", domain.ident, db.name).Mix()
+                            .Add(Sqlx.CATALOG_NAME, new TChar(db.name))
                             .Add(Sqlx.TYPE, new TChar(domain.ident));
                     dm = type.defpos;
                 }
@@ -4286,20 +4403,20 @@ namespace Pyrrho.Level4
                     Sqlx.BINARY, Sqlx.BLOB, Sqlx.NCLOB,
                     Sqlx.CLOB, Sqlx.DATE, Sqlx.TIME, Sqlx.ROW, Sqlx.TABLE))
                 {
-                    type = ParseSqlDataType()+(Domain.Default,tc.domain.defaultValue)
+                    type = ParseSqlDataType().domain+(Domain.Default,tc.domain.defaultValue)
                         +(Domain.DefaultString,tc.domain.defaultString);
-                    var xx = Domain.Create(tr,type,lp);
-                    tr = (Transaction)xx.Item1;
+                    var xx = Domain.Create(db,type);
+                    db = (Transaction)xx.Item1;
                     type = xx.Item2;
                     dm = type.defpos;
                 }
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey)
                 {
                     if (!tc.domain.CanTakeValueOf(type))
                         throw new DBException("2200G");
-                    tr+=new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, dm, 
+                    db=tr+new Alter3(col.defpos, nm, ti.map[col.name].Value, tc.tabledefpos, dm, 
                         type.defaultString,type.defaultValue,tc.updateString, tc.update,
-                        tc.notNull, tc.generated, lp, tr);
+                        tc.notNull, tc.generated, tr);
                 }
                 return;
             }
@@ -4308,8 +4425,8 @@ namespace Pyrrho.Level4
                 var lp = lxr.Position;
                 if (tb.Denied(tr, Grant.Privilege.AdminRole))
                     throw new DBException("42105", ti.name ?? "").Mix();
-                var md = ParseMetadata(tr, col, -1, Sqlx.COLUMN);
-                tr+=new PMetadata(nm, md, -1, col.defpos, lp, tr);
+                var md = ParseMetadata(db, col, -1, Sqlx.COLUMN);
+                db=tr+new PMetadata(nm, md, -1, col.defpos, tr);
             }
 		}
         /// <summary>
@@ -4322,21 +4439,22 @@ namespace Pyrrho.Level4
         /// <returns>the executable</returns>
         Executable ParseAlterType()
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
             var at = new Executable(lxr.Position, Executable.Type.AlterType);
             Next();
             var id = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            var tp = tr.GetObject(id.ident) as UDType??
+            var tp = db.GetObject(id.ident) as UDType??
                 throw new DBException("42133", id.ident).Mix()
                     .Add(Sqlx.TYPE, new TChar(id.ident));
-            var ti = tr.role.obinfos[tp.defpos] as ObInfo;
+            var ti = db.role.obinfos[tp.defpos] as ObInfo;
             if (tok == Sqlx.TO)
             {
                 Next();
                 id = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr+=new Change(tp.defpos, id.ident,id.iix, tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    tr+=new Change(tp.defpos, id.ident,tr);
             }
             else if (tok == Sqlx.SET)
             {
@@ -4344,18 +4462,18 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ID);
                 var sq = ti.map[id.ident] ?? -1;
                 var ts = ti.columns[sq] as SqlValue;
-                var tc = tr.objects[ts?.defpos ?? -1L] as TableColumn;
+                var tc = db.objects[ts?.defpos ?? -1L] as TableColumn;
                 if (tc == null)
                     throw new DBException("42133", id).Mix()
                         .Add(Sqlx.TYPE, new TChar(id.ident));
                 Mustbe(Sqlx.TO);
                 id = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey)
                     tr+= new Alter3(tc.defpos, id.ident, sq, tc.tabledefpos, 
                         tc.domain.defpos, tc.domain.defaultString, 
                         tc.domain.defaultValue, tc.updateString,
-                       tc.update, tc.notNull, tc.generated, id.iix, tr);
+                       tc.update, tc.notNull, tc.generated, tr);
             }
             else if (tok == Sqlx.DROP)
             {
@@ -4368,10 +4486,10 @@ namespace Pyrrho.Level4
                     if (mt == null)
                         throw new DBException("42133", tp).Mix().
                             Add(Sqlx.TYPE, new TChar(ti.name));
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                     {
                         ParseDropAction();
-                        tr += new Drop(mt.defpos, id.iix, tr);
+                        tr += new Drop(mt.defpos, tr);
                     }
                 }
                 else
@@ -4380,10 +4498,10 @@ namespace Pyrrho.Level4
                     if (tc == null)
                         throw new DBException("42133", id).Mix()
                             .Add(Sqlx.TYPE, new TChar(id.ident));
-                    if (tr.parse == ExecuteStatus.Obey)
+                    if (db.parse == ExecuteStatus.Obey)
                     {
                         ParseDropAction();
-                        tr += new Drop(tc.defpos, id.iix, tr);
+                        tr += new Drop(tc.defpos, tr);
                     }
                 }
             }
@@ -4400,13 +4518,13 @@ namespace Pyrrho.Level4
                 var nc = (int)ti.columns.Count;
                 var c = ParseMember(nc);
                 tp += (ObInfo.Columns, ti.columns + (nc, c));
-                var (db,dm) = Domain.Create(tr,tp,lp);
-                tr = (Transaction)db;
+                var (d,dm) = Domain.Create(db,tp);
+                db = (Transaction)d;
                 tp = (UDType)dm;
-                if (tp.tabledefpos>0 && tr.parse == ExecuteStatus.Obey)
+                if (tp.tabledefpos>0 && db.parse == ExecuteStatus.Obey)
                     tr+=new PColumn2(tp.tabledefpos, c.name, nc,
                         dm.defpos, c.domain.defaultString, c.domain.defaultValue, 
-                        false, GenerationRule.None, lp, tr);
+                        false, GenerationRule.None, tr);
             }
             else if (tok == Sqlx.ALTER)
             {
@@ -4419,6 +4537,7 @@ namespace Pyrrho.Level4
                         .Add(Sqlx.TYPE, new TChar(id.ident));
                 ParseAlterMembers(tc);
             }
+            db = tr;
             return at;
         }
         /// <summary>
@@ -4430,9 +4549,10 @@ namespace Pyrrho.Level4
         /// <param name="tc">The UDType member</param>
         void ParseAlterMembers(SqlValue tc)
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
             TypedValue dv = tc.domain.defaultValue;
-            var co = tr.objects[tc.defpos] as TableColumn;
-            var ti = tr.role.obinfos[co.tabledefpos] as ObInfo;
+            var co = db.objects[tc.defpos] as TableColumn;
+            var ti = db.role.obinfos[co.tabledefpos] as ObInfo;
             var dt = tc.domain;
             var ds = "";
             for (; ; )
@@ -4443,15 +4563,15 @@ namespace Pyrrho.Level4
                     Next();
                     var n = new Ident(lxr);
                     Mustbe(Sqlx.ID);
-                    if (tr.parse == ExecuteStatus.Obey)
-                        tr+=new Change(tc.defpos, n.ident, n.iix, tr);
+                    if (db.parse == ExecuteStatus.Obey)
+                        tr+=new Change(tc.defpos, n.ident, tr);
                     goto skip;
                 }
                 else if (Match(Sqlx.TYPE))
                 {
                     Next();
-                    var xx = Domain.Create(tr, ParseSqlDataType(),lp);
-                    tr = (Transaction)xx.Item1;
+                    var xx = Domain.Create(db, ParseSqlDataType().domain);
+                    db = (Transaction)xx.Item1;
                     dt = xx.Item2;
                 }
                 else if (tok == Sqlx.SET)
@@ -4469,15 +4589,16 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.DEFAULT);
                     dv = TNull.Value;
                 }
-                if (tr.parse == ExecuteStatus.Obey)
+                if (db.parse == ExecuteStatus.Obey)
                     tr+=new Alter3(tc.defpos, tc.name, ti.map[tc.name].Value, co.tabledefpos,
                          co.domain.defpos, ds, dv, co.updateString, co.update, 
-                         co.notNull, GenerationRule.None, lp, tr);
+                         co.notNull, GenerationRule.None, tr);
             skip:
                 if (tok != Sqlx.COMMA)
                     break;
                 Next();
             }
+            db = tr;
         }
         /// <summary>
         /// FUNCTION id '(' Parameters ')' RETURNS Type Statement
@@ -4502,6 +4623,7 @@ namespace Pyrrho.Level4
         /// <returns>the executable</returns>
 		Executable ParseDropStatement()
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
             Next();
             if (Match(Sqlx.ORDERING))
             {
@@ -4510,10 +4632,10 @@ namespace Pyrrho.Level4
                 var o = new Ident(lxr);
                 Mustbe(Sqlx.ID);
                 ParseDropAction(); // ignore if present
-                var tp = tr.GetObject(o.ident) as UDType ??
+                var tp = db.GetObject(o.ident) as UDType ??
                     throw new DBException("42133", o.ToString()).Mix();
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Ordering(tp.defpos, -1L, OrderCategory.None, o.iix, tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    tr += new Ordering(tp.defpos, -1L, OrderCategory.None, tr);
                 return dr;
             }
             else
@@ -4522,10 +4644,12 @@ namespace Pyrrho.Level4
                 var lp = lxr.Position;
                 var (ob, n) = ParseObjectName();
                 var a = ParseDropAction();
-                var (db, ro) = ob.Cascade(tr, tr, tr.role, a);
-                tr = (Transaction)(db + (ro, db.loadpos));
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Drop1(ob.defpos, a, lp, tr);
+                var (d, ro) = ob.Cascade(tr, tr, db.role, a);
+                d += (ro, d.loadpos);
+                tr = (Transaction)d;
+                if (db.parse == ExecuteStatus.Obey)
+                    tr += new Drop1(ob.defpos, a, tr);
+                db = tr;
                 return dt;
             }
         }
@@ -4546,12 +4670,12 @@ namespace Pyrrho.Level4
                 if (tok != Sqlx.RPAREN)
                 {
                     Next();
-                    anons += ParseSqlDataType();
+                    anons += ParseSqlDataType().domain;
                     n++;
                     while (tok == Sqlx.COMMA)
                     {
                         Next();
-                        anons += ParseSqlDataType();
+                        anons += ParseSqlDataType().domain;
                         n++;
                     }
                     Mustbe(Sqlx.RPAREN);
@@ -4566,11 +4690,11 @@ namespace Pyrrho.Level4
         /// 	|   ( Type {, Type }) 
         ///     |   Type UNION Type { UNION Type }.
         /// </summary>
-        /// <returns>The specified Domain</returns>
-		Domain ParseSqlDataType()
+        /// <returns>The specified Domain or ObInfo</returns>
+		DBObject ParseSqlDataType(Ident pn=null)
         {
             var lp = lxr.Position;
-            Domain r = null;
+            DBObject r = null;
             Sqlx tp = tok;
             if (Match(Sqlx.ROW, Sqlx.TYPE, Sqlx.LPAREN))// anonymous row type
             {
@@ -4580,8 +4704,10 @@ namespace Pyrrho.Level4
                     tp = Sqlx.TYPE;
                 if (tok == Sqlx.LPAREN)
                 {
-                    tr += ParseRowTypeSpec(Sqlx.TYPE, lxr.start);
-                    return new Domain(lp, Sqlx.TYPE, BTree<long, object>.Empty);
+                    var oi = ParseRowTypeSpec(Sqlx.TYPE, lxr.start,pn);
+                    r = oi;
+                    if (db is Transaction tr)
+                        db = tr+ oi; // must be + ObInfo, so not += r
                 }
             }
             if (Match(Sqlx.REF))
@@ -4598,10 +4724,34 @@ namespace Pyrrho.Level4
             r = ParseStandardDataType();
             if (r == null)
             {
+                var tr = db as Transaction ?? throw new DBException("2F003");
                 var o = new Ident(lxr);
-                Mustbe(Sqlx.ID);
-                r = tr.GetObject(o.ident) as Domain??
-                    throw new DBException("42119", o.ident, "").Mix();
+                if (tok == Sqlx.TABLE) // ad hoc table type
+                {
+                    Next();
+                    var pt = new PTable("",tr);
+                    tr += pt;
+                    var pd = new PDomain(Physical.Type.PDomain, "", Sqlx.TABLE, 0, 
+                        0, CharSet.UCS, "", "", pt.ppos, tr);
+                    db = tr + pd;
+                    var ta = (Table)db.objects[lp-1];
+                    if (pn != null)
+                        ta += (Basis.Name, pn);
+                    ParseTableContentsSource(ta,pn);
+                    r = (Domain)db.objects[lp];
+                }
+                else
+                {
+                    Mustbe(Sqlx.ID);
+                    var oi = db.GetObInfo(o.ident)??
+                        throw new DBException("42119", o.ident, "").Mix();
+                    for (var b = oi.columns.First(); b != null; b = b.Next())
+                    {
+                        var sc = b.value();
+                        cx.defs += (new Ident(pn, new Ident(sc.name, sc.defpos)), sc);
+                    }
+                    r = oi;
+                }
             }
             if (tok==Sqlx.SENSITIVE)
             {
@@ -4610,7 +4760,7 @@ namespace Pyrrho.Level4
             }
             if (tok == Sqlx.UNION)
             {
-                var ts = new List<Domain>
+                var ts = new List<DBObject>
                 {
                     r
                 };
@@ -4621,12 +4771,18 @@ namespace Pyrrho.Level4
                 }
                 Domain[] ta = new Domain[ts.Count];
                 for (int j = 0; j < ts.Count; j++)
-                    ta[j] = ts[j];
+                    ta[j] = ts[j] as Domain ??
+                        throw new DBException("42133");
                 r = Domain.UnionType(lp,ta);
             }
-            var xx = Domain.Create(tr, r,lp);
-            tr = (Transaction)xx.Item1;
-            return xx.Item2;
+            if (r is Domain dm)
+            {
+                var xx = Domain.Create(db, dm);
+                db = (Transaction)xx.Item1;
+                return xx.Item2;
+            }
+            else
+                return r;
         }
         /// <summary>
         /// StandardType = 	BooleanType | CharacterType | FloatType | IntegerType | LobType | NumericType | DateTimeType | IntervalType | XMLType .
@@ -4818,50 +4974,52 @@ namespace Pyrrho.Level4
         /// <param name="d">The type of type spec (ROW or TABLE)</param>
         /// <param name="tdp">ref: the typedefpos</param>
         /// <returns>The RowTypeSpec</returns>
-        ObInfo ParseRowTypeSpec(Sqlx d, int st)
+        ObInfo ParseRowTypeSpec(Sqlx d, int st, Ident pn = null)
         {
+            var tr = db as Transaction ?? throw new DBException("2F003");
             var ic = new Ident(lxr);
             if (tok == Sqlx.ID)
             {
                 Next();
-                var tb = tr.GetObject(ic.ident) as Table ?? 
+                var tb = db.GetObject(ic.ident) as Table ??
                     throw new DBException("42107", ic.ident).Mix();
-                return tr.role.obinfos[tb.defpos] as ObInfo;
+                return db.role.obinfos[tb.defpos] as ObInfo;
             }
             var mems = BList<SqlValue>.Empty;
             var lps = BList<long>.Empty;
             Mustbe(Sqlx.LPAREN);
-            for (var n = 0; ;n++)
+            for (var n = 0; ; n++)
             {
                 lps += lxr.Position;
-                mems+=(n,ParseMember(n));
+                mems += (n, ParseMember(n, pn));
                 if (tok != Sqlx.COMMA)
                     break;
                 Next();
             }
             Mustbe(Sqlx.RPAREN);
-            var oi = new ObInfo(ic.iix+1, Domain.Row,mems)+(Basis.Name,ic.ident);
-            tr += (Database.Roles, tr.role + oi);
-            var pt = new PTable(ic.ident,ic.iix+1,tr);
+            var oi = new ObInfo(ic.iix + 1, Domain.Row, mems) + (Basis.Name, ic.ident);
+            tr += (Database.Roles, db.role + oi);
+            var pt = new PTable(ic.ident, tr);
             tr += pt;
             for (int j = 0; j < oi.columns.Count; j++)
             {
                 var dt = oi.columns[j].domain;
                 var pc = new PColumn3(pt.defpos, oi.columns[j].name, j, dt.defpos,
-                    "", dt.defaultValue, "", BList<UpdateAssignment>.Empty, 
-                    false, GenerationRule.None, lps[j], tr);
+                    "", dt.defaultValue, "", BList<UpdateAssignment>.Empty,
+                    false, GenerationRule.None, db);
                 tr += pc;
                 oi += new SqlValue(lps[j], oi.columns[j].name);
             }
             tr += oi;
             tr += new Domain(ic.iix, d, BTree<long, object>.Empty);
+            db = tr;
             return oi;
         }
         /// <summary>
         /// Member = id Type [DEFAULT TypedValue] Collate .
         /// </summary>
         /// <returns>The RowTypeColumn</returns>
-		SqlValue ParseMember(int seq)
+		SqlValue ParseMember(int seq,Ident pn=null)
 		{
             Ident n = null;
             if (tok == Sqlx.ID)
@@ -4869,22 +5027,22 @@ namespace Pyrrho.Level4
                 n = new Ident(lxr);
                 Next();
             }
-            Domain dt = ParseSqlDataType();
+            DBObject dt = ParseSqlDataType();
 			if (tok==Sqlx.DEFAULT)
 			{
 				int st = lxr.start;
                 long lp = lxr.Position;
-				ParseSqlValue();
+				ParseSqlValue(dt);
 				dt += (Domain.Default,dt.Parse(new Scanner(lp,lxr.input,st)));
 			}
             if (tok == Sqlx.COLLATE)
                 dt+= (Domain.Culture,ParseCollate());
             var r = new SqlValue(n.iix,n?.ident);
+            if (pn != null)
+                cx.defs += (new Ident(pn, n), r);
             ObInfo oi = new ObInfo(n.iix, n.ident);
             if (StartMetadata(Sqlx.COLUMN))
-                r +=(SqlValue.Info,ParseMetadata(tr,null,-1, Sqlx.COLUMN));
-            if (tr.types.Contains(dt))
-                r += (DBObject._Domain,tr.types[dt]);
+                r +=(SqlValue.Info,ParseMetadata(db,null,-1, Sqlx.COLUMN));
             return (SqlValue)cx.Add(r);
 		}
         /// <summary>
@@ -4957,10 +5115,11 @@ namespace Pyrrho.Level4
                 Next();
                 Mustbe(Sqlx.EQL);
                 Mustbe(Sqlx.CURATED);
-                if (tr.user == null || tr.user.defpos != tr.owner)
+                var tr = db as Transaction ?? throw new DBException("2F003");
+                if (db.user == null || db.user.defpos != db.owner)
                     throw new DBException("42105").Mix();
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Curated(lxr.Position,tr);
+                if (db.parse == ExecuteStatus.Obey)
+                    db = tr+ new Curated(tr);
                 return (Executable)cx.Add(ss);
             }
             if (Match(Sqlx.PROFILING))
@@ -4968,7 +5127,7 @@ namespace Pyrrho.Level4
                 var sc = new Executable(lxr.Position, Executable.Type.SetSessionCharacteristics);
                 Next();
                 Mustbe(Sqlx.EQL);
-                if (tr.user == null || tr.user.defpos != tr.owner)
+                if (db.user == null || db.user.defpos != db.owner)
                     throw new DBException("42105").Mix();
                 var o = lxr.val;
                 Mustbe(Sqlx.BOOLEANLITERAL);
@@ -4980,7 +5139,7 @@ namespace Pyrrho.Level4
                 var sc = new Executable(lxr.Position, Executable.Type.SetSessionCharacteristics);
                 Next();
                 Mustbe(Sqlx.EQL);
-                if (tr.user == null || tr.user.defpos != tr.owner)
+                if (db.user == null || db.user.defpos != db.owner)
                     throw new DBException("42105").Mix();
                 var o2 = lxr.val;
                 Mustbe(Sqlx.INTEGERLITERAL);
@@ -5000,7 +5159,7 @@ namespace Pyrrho.Level4
                 Next();
                 n = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                ob = tr.GetObject(n.ident) ??
+                ob = db.GetObject(n.ident) ??
                     throw new DBException("42135", n.ident);
                 switch (kind)
                 {
@@ -5073,17 +5232,17 @@ namespace Pyrrho.Level4
                     }
                     if (type == null)
                         throw new DBException("42134").Mix();
-                    ob = (tr.GetObject(type.ident) as UDType)?.methods[n.ident]?[arity];
+                    ob = (db.GetObject(type.ident) as UDType)?.methods[n.ident]?[arity];
                 }
                 else
-                    ob = tr.GetProcedure(n.ident,arity);
+                    ob = db.GetProcedure(n.ident,arity);
                 if (ob == null)
                     throw new DBException("42135", "Object not found").Mix();
                 Mustbe(Sqlx.TO);
                 var nm = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                if (tr.parse == ExecuteStatus.Obey)
-                    tr += new Change(ob.defpos, nm.ident, nm.iix, tr);
+                if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                    db = tr+ new Change(ob.defpos, nm.ident, tr);
             }
             return (Executable)cx.Add(at);
         }
@@ -5103,13 +5262,13 @@ namespace Pyrrho.Level4
                 dn = new Ident(lxr);
                 Mustbe(Sqlx.ID);
             }
-            var a = tr.GetObject(n.ident) as Role;
-            var dm = (a != null) ? (ObInfo)tr.role.obinfos[a.defpos] : null;
+            var a = db.GetObject(n.ident) as Role;
+            var dm = (a != null) ? (ObInfo)db.role.obinfos[a.defpos] : null;
             if (dm == null || (dm.priv&Grant.Privilege.UseRole)==0)
                 throw new DBException("42135", n.ident);
-            tr += (Transaction.Role, a);
+            db += (Transaction.Role, a);
             if (cx.next == null)
-                cx = new Context(tr);
+                cx = new Context(db);
             else
                 cx = new Context(cx, a, cx.user);
         }
@@ -5118,30 +5277,33 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="sql">The sql to parse</param>
         /// <returns>A CursorSpecification</returns>
-		public SelectStatement ParseCursorSpecification(string sql)
+		public SelectStatement ParseCursorSpecification(string sql,ObInfo rt=null)
 		{
-			lxr = new Lexer(sql, tr.lexeroffset);
+            rt = rt ?? ObInfo.Any;
+			lxr = new Lexer(sql, db.lexeroffset);
 			tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid+sql.Length);
-			return ParseCursorSpecification();
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid+sql.Length);
+			return ParseCursorSpecification(rt);
 		}
         /// <summary>
 		/// CursorSpecification = [ XMLOption ] QueryExpression  .
         /// </summary>
         /// <returns>A CursorSpecification</returns>
-		internal SelectStatement ParseCursorSpecification(bool defer = false)
+		internal SelectStatement ParseCursorSpecification(ObInfo rt,bool defer = false)
         {
+            rt = rt ?? ObInfo.Any;
             var lp = lxr.Position;
             int st = lxr.start;
             CursorSpecification r = new CursorSpecification(lxr.Position,BTree<long,object>.Empty);
             ParseXmlOption(false);
-            var qe = ParseQueryExpression();
+            var qe = ParseQueryExpression(rt);
             r += (CursorSpecification.Union,qe);
             r += (Query.Display, qe.display);
             r += (Query.OrdSpec, qe.ordSpec);
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
             r = (CursorSpecification)cx.Add(r);
-            if (tr.parse == ExecuteStatus.Obey)
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
             {
                 var da = r.RowSets(tr, cx);
                 if (da != null)
@@ -5156,12 +5318,14 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="sql">The sql string</param>
         /// <returns>A QueryExpression</returns>
-		public QueryExpression ParseQueryExpression(string sql)
+		public QueryExpression ParseQueryExpression(string sql,ObInfo rt=null)
 		{
+            rt = rt ?? ObInfo.Any;
 			lxr = new Lexer(sql);
 			tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length);
-			return ParseQueryExpression();
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid + sql.Length);
+			return ParseQueryExpression(rt);
 		}
         /// <summary>
         /// QueryExpression = QueryExpressionBody [OrderByClause] [FetchFirstClause] .
@@ -5171,9 +5335,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>A QueryExpression</returns>
-		QueryExpression ParseQueryExpression()
+		QueryExpression ParseQueryExpression(ObInfo rt)
         {
-            QueryExpression left = ParseQueryTerm();
+            QueryExpression left = ParseQueryTerm(rt);
             while (Match(Sqlx.UNION, Sqlx.EXCEPT))
             {
                 left += (Query.SimpleQuery, null);
@@ -5186,7 +5350,7 @@ namespace Pyrrho.Level4
                     m = tok;
                     Next();
                 }
-                left = new QueryExpression(lp + 1, cx, left, op, ParseQueryTerm());
+                left = new QueryExpression(lp + 1, cx, left, op, ParseQueryTerm(rt));
                 if (m == Sqlx.DISTINCT)
                     left += (QueryExpression._Distinct, true);
             }
@@ -5217,9 +5381,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>the QueryExpression</returns>
-		QueryExpression ParseQueryTerm()
+		QueryExpression ParseQueryTerm(ObInfo rt)
 		{
-			QueryExpression left = ParseQueryPrimary();
+			QueryExpression left = ParseQueryPrimary(rt);
 			while (Match(Sqlx.INTERSECT))
 			{
                 left+=(Query.SimpleQuery,false);
@@ -5231,7 +5395,7 @@ namespace Pyrrho.Level4
 					m = tok;
 					Next();
 				}
-				left = new QueryExpression(lp+1, cx, left,Sqlx.INTERSECT,ParseQueryPrimary());
+				left = new QueryExpression(lp+1, cx, left,Sqlx.INTERSECT,ParseQueryPrimary(rt));
                 if (m == Sqlx.DISTINCT)
                     left += (QueryExpression._Distinct, true);
 			}
@@ -5243,7 +5407,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>the QueryExpression</returns>
-		QueryExpression ParseQueryPrimary()
+		QueryExpression ParseQueryPrimary(ObInfo rt)
 		{
             var lp = lxr.Position;
             var qe = new QueryExpression(lp+1, true);
@@ -5251,36 +5415,36 @@ namespace Pyrrho.Level4
             {
                 case Sqlx.LPAREN:
                     Next();
-                    qe = ParseQueryExpression();
+                    qe = ParseQueryExpression(rt);
                     Mustbe(Sqlx.RPAREN);
                     break;
                 case Sqlx.SELECT: // query specification
                     {
-                        var qs = ParseQuerySpecification();
+                        var qs = ParseQuerySpecification(rt);
                         qe = qe + (QueryExpression._Left, qs)
                             +(Query.RowType,(ObInfo)qs.rowType.Relocate(qe.defpos));
                         break;
                     }
                 case Sqlx.VALUES:
-                    var v = BList<TRow>.Empty;
+                    var v = BList<SqlValue>.Empty;
                     Sqlx sep = Sqlx.COMMA;
                     while (sep == Sqlx.COMMA)
                     {
                         Next();
-                        v+=ParseSqlValue().Eval(tr,cx) as TRow;
+                        v += ParseSqlValue(rt);
                         sep = tok;
                     }
-                    qe+=(QueryExpression._Left,v);
+                    qe+=(QueryExpression._Left,new SqlRow(lp,v));
                     break;
                 case Sqlx.TABLE:
                     Next();
                     lp = lxr.Position;
                     Ident ic = new Ident(lxr);
                     Mustbe(Sqlx.ID);
-                    var tb = tr.GetObject(ic.ident) as Table ??
+                    var tb = db.GetObject(ic.ident) as Table ??
                         throw new DBException("42107", ic.ident);
                     var fm = _From(lp, tb, null, QuerySpecification.Default);
-                    var ft = fm.rowType.For(tr, tb, Grant.Privilege.Select);
+                    var ft = fm.rowType.For(db, tb, Grant.Privilege.Select);
                     qe = qe+(QueryExpression._Left,fm+(Query.RowType,ft))
                         + (Query.RowType,(ObInfo)ft.Relocate(qe.defpos));
                     break;
@@ -5318,7 +5482,7 @@ namespace Pyrrho.Level4
         /// <returns>an OrderItem</returns>
 		SqlValue ParseOrderItem(long curq,bool wfok)
 		{
-            var v = ParseSqlValue(curq,wfok);
+            var v = ParseSqlValue(Domain.Content,curq,wfok);
             var dt = v.domain;
             var a = Sqlx.ASC;
             var n = Sqlx.FIRST;
@@ -5347,17 +5511,18 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>The QuerySpecification</returns>
-		QuerySpecification ParseQuerySpecification()
+		QuerySpecification ParseQuerySpecification(ObInfo rt)
         {
             Mustbe(Sqlx.SELECT);
             var lp = lxr.Position;
             QuerySpecification r = new QuerySpecification(lp-1,BTree<long, object>.Empty
                 + (QuerySpecification.Distinct, ParseDistinctClause()));
-            r = ParseSelectList(r);
+            r = ParseSelectList(r,ObInfo.Any); // not rt
             var te = ParseTableExpression(r);
             r = (QuerySpecification)r.Refresh(cx);
             r = r + (QuerySpecification.TableExp,te) 
                 + (Query.Display,(int)r.rowType.columns.Count)
+                + (DBObject._Domain,Domain.TableType)
                 + (DBObject.Depth, Math.Max(Depth(r),1+te.depth));
             r = (QuerySpecification)cx.Add(r);
             if (Match(Sqlx.FOR))
@@ -5365,6 +5530,8 @@ namespace Pyrrho.Level4
                 Next();
                 Mustbe(Sqlx.UPDATE);
             }
+            if (rt!=ObInfo.Any && !rt.CanBeAssigned(r.rowType))
+                throw new DBException("42000", lxr.pos);
             return (QuerySpecification)r.Refresh(cx); // no chances
         }
         int Depth(QuerySpecification q)
@@ -5394,16 +5561,15 @@ namespace Pyrrho.Level4
         /// <summary>
 		/// SelectList = '*' | SelectItem { ',' SelectItem } .
         /// </summary>
-        /// <param name="q">the query specification being parsed</param>
         /// <param name="t">the expected data type</param>
-		QuerySpecification ParseSelectList(QuerySpecification q)
+		QuerySpecification ParseSelectList(QuerySpecification q,ObInfo rt)
         {
             int j = 0;
-            q = ParseSelectItem(q, j++);
+            q = ParseSelectItem(q, rt, j++);
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                q = ParseSelectItem(q, j++);
+                q = ParseSelectItem(q, rt, j++);
             }
             return (QuerySpecification)cx.Add(q);
         }
@@ -5413,7 +5579,7 @@ namespace Pyrrho.Level4
         /// <param name="q">the query being parsed</param>
         /// <param name="t">the expected data type for the query</param>
         /// <param name="pos">The position in the SelectList</param>
-        QuerySpecification ParseSelectItem(QuerySpecification q,int pos)
+        QuerySpecification ParseSelectItem(QuerySpecification q,ObInfo rt,int pos)
         {
             Ident alias = null;
             if (tok==Sqlx.TIMES)
@@ -5423,7 +5589,8 @@ namespace Pyrrho.Level4
                 cx.Add(sa);
                 return (QuerySpecification)cx.Add(q + sa);
             }
-            var v = ParseSqlValue(q.defpos,true);
+            var dt = (rt == ObInfo.Any) ? Domain.Content : rt.columns[pos].domain;
+            var v = ParseSqlValue(dt,q.defpos,true);
             cx.Add(v);
             if (v.aggregates())
                 q += (Query._Aggregates, true);
@@ -5454,8 +5621,8 @@ namespace Pyrrho.Level4
             q += (Query.Display, q.rowType.Length);
             if (alias != null)
             {
-                var rt = q.rowType;
-                q += (Query.RowType, rt + (ObInfo.Map, rt.map + (alias.ident, pos)));
+                var qt = q.rowType;
+                q += (Query.RowType, qt + (ObInfo.Map, qt.map + (alias.ident, pos)));
             }
             return (QuerySpecification)cx.Add(q);
         }
@@ -5477,11 +5644,12 @@ namespace Pyrrho.Level4
             fm = fm.Refresh(cx);
             // we build the tablexpression after the context has settled down
             var r = new TableExpression(lp, BTree<long, object>.Empty
-                +(Query.RowType,(ObInfo)fm.rowType.Relocate(lp))
-            + (TableExpression.From, fm)
-            + (TableExpression.Group, gp)
-            + (TableExpression.Having, ha)
-            + (TableExpression.Windows, wi));
+                + (Query.RowType, (ObInfo)fm.rowType.Relocate(lp))
+                + (DBObject._Domain, fm.domain)
+                + (TableExpression.From, fm)
+                + (TableExpression.Group, gp)
+                + (TableExpression.Having, ha)
+                + (TableExpression.Windows, wi));
             r = (TableExpression)cx.Add(r);
             r = (TableExpression)r.AddCondition(cx,Query.Where, wh);
             r = (TableExpression)r.AddCondition(cx,TableExpression.Having, ha);
@@ -5520,7 +5688,7 @@ namespace Pyrrho.Level4
                 return (Query)cx.Add(rt);
             }
             else
-                return q;
+                return (Query)cx.Add(From._static);
 		}
         /// <summary>
 		/// TableReference = TableFactor Alias | JoinedTable .
@@ -5559,6 +5727,7 @@ namespace Pyrrho.Level4
             Query rf;
             if (tok == Sqlx.ROWS) // Pyrrho specific
             {
+                var tr = db as Transaction ?? throw new DBException("2F003");
                 Next();
                 Mustbe(Sqlx.LPAREN);
                 var v = lxr.val;
@@ -5598,7 +5767,7 @@ namespace Pyrrho.Level4
                     if (tok != Sqlx.RBRACK)
                         while (true)
                         {
-                            da += ParseSqlRow();
+                            da += ParseSqlRow(Domain.Document);
                             if (tok != Sqlx.COMMA)
                                 break;
                             Next();
@@ -5607,7 +5776,7 @@ namespace Pyrrho.Level4
                     sv = da;
                 }
                 else
-                    sv = ParseSqlValue(); //  unnest forces table value
+                    sv = ParseSqlValue(Domain.TableType); //  unnest forces table value
                 rf = new Query(lp,new BTree<long, object>(From.Target, sv.defpos));
                 Mustbe(Sqlx.RPAREN);
             }
@@ -5623,7 +5792,7 @@ namespace Pyrrho.Level4
                 if (tok != Sqlx.RPAREN)
                     for (; ; )
                     {
-                        r += ParseSqlValue();
+                        r += ParseSqlValue(Domain.Content);
                         if (tok == Sqlx.RPAREN)
                             break;
                         Mustbe(Sqlx.COMMA);
@@ -5631,21 +5800,23 @@ namespace Pyrrho.Level4
                 Next();
                 Mustbe(Sqlx.RPAREN); // another: see above
                 var cr = ParseCorrelation();
-                var proc = tr.GetProcedure(n.ident, (int)r.Count)
+                var proc = db.GetProcedure(n.ident, (int)r.Count)
                     ?? throw new DBException("42108", n.ident + "$" + r.Count).Mix();
-                proc.Exec(tr, cx, r);
+                if (db.parse==ExecuteStatus.Obey && db is Transaction tr)
+                    proc.Exec(tr, cx, r);
+                var ri = (ObInfo)db.role.obinfos[proc.retType.defpos];
                 rf = (Query)cx.Add(new Query(n.iix, BTree<long, object>.Empty
                     + (Basis.Name, cr.tablealias))
-                    +(Query.RowType,cr.Apply(cx.ret.info).Relocate(n.iix)));
+                    +(Query.RowType,cr.Apply(ri).Relocate(n.iix)));
             }
             else if (tok == Sqlx.LPAREN) // subquery
             {
                 var lp = lxr.Position;
                 Next();
-                QueryExpression qe = ParseQueryExpression();
+                QueryExpression qe = ParseQueryExpression(q.rowType);
                 Mustbe(Sqlx.RPAREN);
                 var r = ParseCorrelation();
-                var rs = qe.RowSets(tr, cx);
+                var rs = qe.RowSets(db, cx);
                 rf = new Query(lp, BTree<long, object>.Empty + (Basis.Name, r.tablealias))
                     +(Query.RowType,(ObInfo)r.Pick(rs.qry.rowType).Relocate(lp));
             }
@@ -5674,13 +5845,13 @@ namespace Pyrrho.Level4
                 }
                 Table tb = null;
                 long tabledefpos;
-                var st = cx.defs[ic] as From; 
+                var st = cx.Get(ic) as From; 
                 if (st != null)
                     tabledefpos = st.target;
                 else
                 {
-                    tb = tr.GetObject(ic.ident) as Table
-                        ?? cx.defs[ic] as Table
+                    tb = db.GetObject(ic.ident) as Table
+                        ?? cx.Get(ic) as Table
                         ?? throw new DBException("42107", ic);
                     tabledefpos = tb.defpos;
                 }              
@@ -5695,6 +5866,8 @@ namespace Pyrrho.Level4
                     rf += (Query.Periods, rf.periods + (tabledefpos, ps));
                 }
                 cx.defs += (ic, rf);
+                if (cx.dbformat < 51)
+                    cx.defs += (new Ident(rf.defpos.ToString(), rf.defpos), rf);
                 if (a != null)
                     cx.defs += (new Ident(a, rf.defpos), rf);
             }
@@ -5704,6 +5877,8 @@ namespace Pyrrho.Level4
             {
                 var co = dt.columns[i];
                 cx.defs += (new Ident(dt.columns[i].name, co.defpos), co);
+                if (cx.dbformat < 51)
+                    cx.defs += (new Ident(co.defpos.ToString(),co.defpos), co);
                 cx.obs += (co.defpos, co);
             }
             return rf.Refresh(cx); // but check anyway
@@ -5733,7 +5908,7 @@ namespace Pyrrho.Level4
             ObInfo ti = fm?.rowType;
             if (fm == null)
             {
-                ti = (ObInfo)((ObInfo)tr.role.obinfos[tb.defpos]).Relocate(dp);
+                ti = (ObInfo)((ObInfo)db.role.obinfos[tb.defpos]).Relocate(dp);
                 if (a != null)
                     cx.defs += (new Ident(a, 0), ti);
                 i = 0;
@@ -5766,11 +5941,15 @@ namespace Pyrrho.Level4
                     qs += (i++, nc);
                 }
             }
+
             if (q.mem.Contains(SqlStar.Prefix))
             {
                 ch = true;
                 DoStar(tb, ref ti, ref qs, ref i);
             }
+  //          if (ti != null)
+  //              for (var j = ti.Length - 1; j > qs.Count - 1; j--)
+  //                  ti += (ObInfo.Columns,ti.columns-j);
             if (ch)
                 cx.Add(q + (Query.Display, (int)qs.Count)
                     +(Query.RowType,new ObInfo(q.defpos, Domain.TableType,qs)));
@@ -5781,10 +5960,20 @@ namespace Pyrrho.Level4
             cx.TableRef(r);
             return (From)cx.Add(r);
         }
+        /// <summary>
+        /// We need to create SqlCols for this From
+        /// Transaction uses additional space above tr.nextTid
+        /// Database uses the heap
+        /// </summary>
+        /// <param name="tb"></param>
+        /// <param name="ti"></param>
+        /// <param name="qs"></param>
+        /// <param name="i"></param>
         void DoStar(Table tb,ref ObInfo ti,ref BList<SqlValue> qs, ref int i)
         {
-            var ce = new StringBuilder(tr.source);
-            var off = tr.uid;
+
+            var ce = new StringBuilder(db.source);
+            var off = db.uid; // used if db is Transaction
             var cm = ';';
             var j = 0;
             for (var bb = ti.columns.First(); bb != null; bb = bb.Next())
@@ -5792,13 +5981,21 @@ namespace Pyrrho.Level4
                 var bc = (SqlCol)bb.value();
                 ce.Append(cm); cm = ',';
                 ce.Append(bc.name);
-                var nb = new SqlCol(off + ce.Length, bc.name, bc.tableCol)
+                long cp; 
+                if (db is Transaction)
+                    cp = off + ce.Length;
+                else
+                {
+                    cp = db.nextHeap;
+                    db += (Database.NextHeap, cp + 1);
+                }
+                var nb = new SqlCol(cp, bc.name, bc.tableCol)
                     + (DBObject._Domain, bc.tableCol.domain);
                 cx.Add(nb);
                 ti += (ObInfo.Columns,ti.columns+(j++, nb));
                 qs += (i++, nb);
             }
-            tr += (CursorSpecification._Source, ce.ToString());
+            db += (CursorSpecification._Source, ce.ToString());
         }
         /// <summary>
         /// TimePeriodSpec = 
@@ -5819,7 +6016,7 @@ namespace Pyrrho.Level4
             {
                 case Sqlx.AS: Next();
                     Mustbe(Sqlx.OF);
-                    r.time1 = ParseSqlValue(q.defpos);
+                    r.time1 = ParseSqlValue(Domain.UnionDate,q.defpos);
                     break;
                 case Sqlx.BETWEEN: Next();
                     r.kind = Sqlx.ASYMMETRIC;
@@ -5830,14 +6027,14 @@ namespace Pyrrho.Level4
                         Next();
                         r.kind = Sqlx.SYMMETRIC;
                     }
-                    r.time1 = ParseSqlValueTerm(false);
+                    r.time1 = ParseSqlValueTerm(Domain.UnionDate,false);
                     Mustbe(Sqlx.AND);
-                    r.time2 = ParseSqlValue();
+                    r.time2 = ParseSqlValue(Domain.UnionDate);
                     break;
                 case Sqlx.FROM: Next();
-                    r.time1 = ParseSqlValue();
+                    r.time1 = ParseSqlValue(Domain.UnionDate);
                     Mustbe(Sqlx.TO);
-                    r.time2 = ParseSqlValue();
+                    r.time2 = ParseSqlValue(Domain.UnionDate);
                     break;
                 default:
                     r.kind=Sqlx.NO;
@@ -5934,7 +6131,7 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.ON);
                     var lo = BList<SqlValue>.Empty;
                     var ro = BList<SqlValue>.Empty;
-                    var oc = ParseSqlValue().Disjoin();
+                    var oc = ParseSqlValue(Domain.Bool).Disjoin();
                     var lm = left.rowType.map;
                     var rm = right.rowType.map;
                     for (var b = oc.First(); b != null; b = b.Next())
@@ -5973,7 +6170,7 @@ namespace Pyrrho.Level4
             //       for (var b = v.joinCond.First(); b != null; b = b.Next())
             //         r.Needs(b.value().alias ?? b.value().name, Query.Need.joined);
             q = (QuerySpecification)q.Refresh(cx);
-            return (Query)cx.Add(v.Selects(cx,q).Conditions(cx).Orders(tr,cx,q.ordSpec));
+            return (Query)cx.Add(v.Selects(cx,q).Conditions(cx).Orders(db as Transaction,cx,q.ordSpec));
         }
         /// <summary>
 		/// GroupByClause = GROUP BY [DISTINCT|ALL] GroupingElement { ',' GroupingElement } .
@@ -6032,7 +6229,7 @@ namespace Pyrrho.Level4
             {
                 var cn = ParseIdent();
                 var ls = new Grouping(cn.iix,BTree<long,object>.Empty+
-                    (Grouping.Members,new BTree<SqlValue,int>((SqlValue)cx.defs[cn],0)));
+                    (Grouping.Members,new BTree<SqlValue,int>((SqlValue)cx.Get(cn), 0)));
                 g += (GroupSpecification.Sets,g.sets+ls);
                 simple = true;
                 return (GroupSpecification)cx.Add(g);
@@ -6112,7 +6309,7 @@ namespace Pyrrho.Level4
                 return r;
             Next();
             var lp = lxr.Position;
-            var d = ParseSqlValueDisjunct(false);
+            var d = ParseSqlValueDisjunct(Domain.Bool,false);
             if (tok != Sqlx.OR)
             {
                 foreach (var s in d)
@@ -6127,7 +6324,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 left = new SqlValueExpr(lp, Sqlx.OR, left, 
-                    Disjoin(ParseSqlValueDisjunct(false)), Sqlx.NO);
+                    Disjoin(ParseSqlValueDisjunct(Domain.Bool,false)), Sqlx.NO);
             }
             r +=(left.defpos, left);
       //      lxr.context.cur.Needs(left.alias ?? left.name, Query.Need.condition);
@@ -6143,7 +6340,7 @@ namespace Pyrrho.Level4
             if (tok != Sqlx.WHERE)
                 return r;
 			Next();
-            var d = ParseSqlValueDisjunct(false);
+            var d = ParseSqlValueDisjunct(Domain.Bool,false);
             if (tok != Sqlx.OR)
             {
                 foreach (var s in d)
@@ -6157,7 +6354,7 @@ namespace Pyrrho.Level4
                 var lp = lxr.Position;
                 Next();
                 left = new SqlValueExpr(lp, Sqlx.OR, left, 
-                    Disjoin(ParseSqlValueDisjunct(false)), Sqlx.NO);
+                    Disjoin(ParseSqlValueDisjunct(Domain.Bool,false)), Sqlx.NO);
                 left = (SqlValue)cx.Add(left);
             }
             r +=(left.defpos, left);
@@ -6216,7 +6413,8 @@ namespace Pyrrho.Level4
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid + sql.Length);
             return ParseSqlInsert();
         }
         /// <summary>
@@ -6245,6 +6443,8 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.INTO);
             Ident ic = new Ident(lxr);
             Mustbe(Sqlx.ID);
+            var oi = db.GetObInfo(ic.ident)??
+                throw new DBException("42107", ic.ident);
             var idlist = false;
             Correlation r = null;
             if (tok == Sqlx.LPAREN)
@@ -6265,20 +6465,20 @@ namespace Pyrrho.Level4
             }
             else
                 // care: we might have e.g. a subquery here
-                v = ParseSqlValue();
+                v = ParseSqlValue(oi);
             if (v is SqlRow) // tolerate a single value without the VALUES keyword
                 v = new SqlRowArray(vp, BTree<long, object>.Empty
                     + (SqlRowArray.Rows, new BList<SqlRow>(v as SqlRow)));
-            SqlInsert s = new SqlInsert(lp,tr, cx, ic, r, prov, v);
+            SqlInsert s = new SqlInsert(lp,db, cx, ic, r, prov, v);
             if (Match(Sqlx.SECURITY))
             {
                 Next();
-                if (tr.user.defpos != tr.owner)
+                if (db.user.defpos != db.owner)
                     throw new DBException("42105");
                 s += (DBObject.Classification, MustBeLevel());
             }
-            if (tr.parse == ExecuteStatus.Obey)
-                tr = tr.Execute(s, cx);
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = tr.Execute(s, cx);
             return (SqlInsert)cx.Add(s);
         }
         /// <summary>
@@ -6292,7 +6492,6 @@ namespace Pyrrho.Level4
             ParseXmlOption(false);
             Mustbe(Sqlx.FROM);
             Ident a = null;
-
             Ident ic = new Ident(lxr);
             Mustbe(Sqlx.ID);
             if (tok == Sqlx.AS)
@@ -6302,7 +6501,7 @@ namespace Pyrrho.Level4
                 a = new Ident(lxr);
                 Next();
             }
-            QuerySearch r = new QuerySearch(lp, tr, cx, ic, (a!=null)?new Correlation(a.ident):null, 
+            QuerySearch r = new QuerySearch(lp, db, cx, ic, (a!=null)?new Correlation(a.ident):null, 
                 Grant.Privilege.Delete);
             var fm = r.table;
             ObInfo dt = fm.rowType;
@@ -6314,8 +6513,8 @@ namespace Pyrrho.Level4
             }
             r += (SqlInsert._Table, 
                 fm.AddCols(cx,fm).AddCondition(cx,Query.Where, ParseWhereClause(fm)));
-            if (tr.parse == ExecuteStatus.Obey)
-                tr = r.table.Delete(tr, cx, BTree<string, bool>.Empty, new Adapters());
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = r.table.Delete(tr, cx, BTree<string, bool>.Empty, new Adapters());
             return (Executable)cx.Add(r);
         }
         /// <summary>
@@ -6328,7 +6527,8 @@ namespace Pyrrho.Level4
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid + sql.Length);
             return ParseSqlUpdate() as UpdateSearch;
         }
         /// <summary>
@@ -6352,7 +6552,7 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ID);
             }
             Mustbe(Sqlx.SET);
-            UpdateSearch r = new UpdateSearch(lp, tr, cx, ic, (a==null)?null:new Correlation(a.ident), Grant.Privilege.Update);
+            UpdateSearch r = new UpdateSearch(lp, db, cx, ic, (a==null)?null:new Correlation(a.ident), Grant.Privilege.Update);
             var fm = r.table;
             ObInfo dt = fm.rowType;
             for (var i = 0; i < dt.Length; i++)
@@ -6362,30 +6562,30 @@ namespace Pyrrho.Level4
                 cx.obs += (co.defpos, co);
             }
             fm = (From)fm.AddCols(cx,fm);
-            fm += (From.Assigns, ParseAssignments());
+            fm += (From.Assigns, ParseAssignments(fm.rowType));
             fm = (From)fm.AddCondition(cx,Query.Where, ParseWhereClause(fm));
             r += (SqlInsert._Table, fm);
-            if (tr.parse == ExecuteStatus.Obey)
-                tr = r.table.Update(tr, cx, BTree<string, bool>.Empty, new Adapters(), new List<RowSet>());
+            if (db.parse == ExecuteStatus.Obey && db is Transaction tr)
+                db = r.table.Update(tr, cx, BTree<string, bool>.Empty, new Adapters(), new List<RowSet>());
             return (Executable)cx.Add(r);
         }
-        internal BList<UpdateAssignment> ParseAssignments(string sql)
+        internal BList<UpdateAssignment> ParseAssignments(string sql,ObInfo rt)
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
-            return ParseAssignments();
+            return ParseAssignments(rt);
         }
         /// <summary>
         /// Assignment = 	SET Target '='  TypedValue { ',' Target '='  TypedValue }
         /// </summary>
         /// <returns>the list of assignments</returns>
-		BList<UpdateAssignment> ParseAssignments()
+		BList<UpdateAssignment> ParseAssignments(ObInfo rt)
 		{
-            var r = BList<UpdateAssignment>.Empty + ParseUpdateAssignment();
+            var r = BList<UpdateAssignment>.Empty + ParseUpdateAssignment(rt);
             while (tok==Sqlx.COMMA)
 			{
 				Next();
-				r+=ParseUpdateAssignment();
+				r+=ParseUpdateAssignment(rt);
 			}
 			return r;
 		}
@@ -6393,7 +6593,7 @@ namespace Pyrrho.Level4
         /// Target '='  TypedValue
         /// </summary>
         /// <returns>An updateAssignmentStatement</returns>
-		UpdateAssignment ParseUpdateAssignment()
+		UpdateAssignment ParseUpdateAssignment(ObInfo rt)
         {
             SqlValue vbl;
             SqlValue val;
@@ -6409,11 +6609,11 @@ namespace Pyrrho.Level4
             {
                 var ic = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                vbl = (SqlValue)cx.defs[ic] 
+                vbl = (SqlValue)cx.Get(ic,rt)
                     ?? throw new DBException("42112", ic.ToString()).Mix();
             }
             Mustbe(Sqlx.EQL);
-            val = ParseSqlValue();
+            val = ParseSqlValue(vbl.domain);
             return new UpdateAssignment(vbl,val);
         }
         /// <summary>
@@ -6422,11 +6622,11 @@ namespace Pyrrho.Level4
         /// <param name="s">The string to parse</param>
         /// <param name="t">the expected data type if any</param>
         /// <returns>the SqlValue</returns>
-        internal SqlValue ParseSqlValue(string s)
+        internal SqlValue ParseSqlValue(string s,DBObject rt)
         {
             lxr = new Lexer(s);
             tok = lxr.tok;
-            return ParseSqlValue();
+            return ParseSqlValue(rt);
         }
         /// <summary>
         /// Alas the following informal syntax is not a good guide to the way LL(1) has to go...
@@ -6457,7 +6657,7 @@ namespace Pyrrho.Level4
         /// <param name="t">a constraint on usage</param>
         /// <param name="wfok">whether to allow a window function</param>
         /// <returns>the SqlValue</returns>
-        SqlValue ParseSqlValue(long curq= -1L,bool wfok=false)
+        SqlValue ParseSqlValue(DBObject rt,long curq= -1L,bool wfok=false)
         {
             if (tok == Sqlx.NULL)
             {
@@ -6468,19 +6668,19 @@ namespace Pyrrho.Level4
             {
                 Next();
                 Mustbe(Sqlx.LPAREN);
-                var op1 = ParseSqlValue(curq);
+                var op1 = ParseSqlValue(Domain.UnionDate,curq);
                 Mustbe(Sqlx.COMMA);
-                var op2 = ParseSqlValue(curq);
+                var op2 = ParseSqlValue(Domain.UnionDate,curq);
                 Mustbe(Sqlx.RPAREN);
                 return (SqlValue)cx.Add(new SqlValueExpr(lxr.Position, Sqlx.PERIOD, op1, op2, Sqlx.NO));
             }
             SqlValue left = null;
-            left = Disjoin(ParseSqlValueDisjunct(wfok));
+            left = Disjoin(ParseSqlValueDisjunct(rt,wfok));
             while (left.domain.kind==Sqlx.BOOLEAN && tok==Sqlx.OR)
             {
                 Next();
                 left = new SqlValueExpr(lxr.Position, Sqlx.OR, left, 
-                    Disjoin(ParseSqlValueDisjunct(wfok)), Sqlx.NO);
+                    Disjoin(ParseSqlValueDisjunct(rt,wfok)), Sqlx.NO);
             }
             while (Match(Sqlx.UNION, Sqlx.EXCEPT, Sqlx.INTERSECT))
             {
@@ -6493,7 +6693,7 @@ namespace Pyrrho.Level4
                     m = tok;
                     Next();
                 }
-                var right = ParseSqlValueTerm(wfok);
+                var right = ParseSqlValueTerm(rt,wfok);
                 left = new SqlValueExpr(lp, op, left, right, Sqlx.NO);
             }
             ObInfo ti = null;
@@ -6506,35 +6706,35 @@ namespace Pyrrho.Level4
                 right = new SqlValueExpr(lxr.Position, Sqlx.AND, s[i], right, Sqlx.NO);
             return (SqlValue)cx.Add(right);
         }
-        List<SqlValue> ParseSqlValueDisjunct(bool wfok)
+        List<SqlValue> ParseSqlValueDisjunct(DBObject rt,bool wfok)
         {
             var r = new List<SqlValue>();
-            var left = ParseSqlValueConjunct(wfok);
+            var left = ParseSqlValueConjunct(rt,wfok);
             r.Add(left);
             while (left.domain.kind==Sqlx.BOOLEAN && Match(Sqlx.AND))
             {
                 Next();
-                left = ParseSqlValueConjunct(wfok);
+                left = ParseSqlValueConjunct(rt,wfok);
                 r.Add(left);
             }
             return r;
         }
-        SqlValue ParseSqlValueConjunct(bool wfok)
+        SqlValue ParseSqlValueConjunct(DBObject rt,bool wfok)
         {
-            var left = ParseSqlValueExpression(wfok);
+            var left = ParseSqlValueExpression(Domain.Content,wfok);
             if (Match(Sqlx.EQL, Sqlx.NEQ, Sqlx.LSS, Sqlx.GTR, Sqlx.LEQ, Sqlx.GEQ))
             {
                 var op = tok;
                 var lp = lxr.Position;
                 Next();
                 return (SqlValue)cx.Add(new SqlValueExpr(lp, 
-                    op, left, ParseSqlValueExpression(wfok), Sqlx.NO));
+                    op, left, ParseSqlValueExpression(left.domain,wfok), Sqlx.NO));
             }
             return (SqlValue)cx.Add(left);
         }
-        SqlValue ParseSqlValueExpression(bool wfok)
+        SqlValue ParseSqlValueExpression(DBObject rt,bool wfok)
         {
-            var left = ParseSqlValueTerm(wfok);
+            var left = ParseSqlValueTerm(rt,wfok);
             while (Domain.UnionDateNumeric.CanTakeValueOf(left.domain) 
                 && Match(Sqlx.PLUS, Sqlx.MINUS))
             {
@@ -6542,7 +6742,7 @@ namespace Pyrrho.Level4
                 var lp = lxr.Position;
                 Next();
                 left = new SqlValueExpr(lp, op, left, 
-                    ParseSqlValueTerm(wfok), Sqlx.NO);
+                    ParseSqlValueTerm(rt,wfok), Sqlx.NO);
             }
             return (SqlValue)cx.Add(left);
         }
@@ -6556,7 +6756,7 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected data type</param>
         /// <param name="wfok">whether to allow a window function</param>
         /// <returns>the sqlValue</returns>
-        SqlValue ParseSqlValueTerm(bool wfok)
+        SqlValue ParseSqlValueTerm(DBObject rt,bool wfok)
         {
             bool sign = false, not = false;
             var lp = lxr.Position;
@@ -6572,7 +6772,7 @@ namespace Pyrrho.Level4
                 Next();
                 not = true;
             }	
-            var left = ParseSqlValueFactor(wfok);
+            var left = ParseSqlValueFactor(Domain.Content,wfok);
             if (sign)
                 left = new SqlValueExpr(lp, Sqlx.MINUS, null, left, Sqlx.NO);
             else if (not)
@@ -6589,7 +6789,7 @@ namespace Pyrrho.Level4
                 lp = lxr.Position;
                 Next();
                 return (SqlValue)cx.Add(new SqlValueExpr(lp, 
-                    op, left, ParseSqlValueFactor(wfok), imm));
+                    op, left, ParseSqlValueFactor(left.domain,wfok), imm));
             }
 //            if (Match(Sqlx.AND))
 //            {
@@ -6630,8 +6830,10 @@ namespace Pyrrho.Level4
                     Next();
                 }
                 Next();
-                left = new SqlValueExpr(lp, op, left, ParseSqlValueFactor(wfok), m);
+                left = new SqlValueExpr(lp, op, left, ParseSqlValueFactor(left.domain,wfok), m);
             }
+            if (!rt.domain.CanTakeValueOf(left.domain))
+                throw new DBException("42000", lxr.pos);
             return (SqlValue)cx.Add(left);
         }
         /// <summary>
@@ -6640,14 +6842,14 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected data type</param>
         /// <param name="wfok">whether to allow a window function</param>
         /// <returns>the SqlValue</returns>
-		SqlValue ParseSqlValueFactor(bool wfok)
+		SqlValue ParseSqlValueFactor(DBObject rt,bool wfok)
 		{
-			var left = ParseSqlValueEntry(wfok);
-			while (Match(Sqlx.CONCATENATE))
+			var left = ParseSqlValueEntry(rt,wfok);
+			while (left.domain.kind==Sqlx.CHAR && Match(Sqlx.CONCATENATE))
 			{
 				Sqlx op = tok;
 				Next();
-				var right = ParseSqlValueEntry(wfok);
+				var right = ParseSqlValueEntry(Domain.Char,wfok);
 				left = new SqlValueExpr(lxr.Position, op,left,right,Sqlx.NO);
 			}
 			return (SqlValue)cx.Add(left);
@@ -6671,9 +6873,9 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected data type</param>
         /// <param name="wfok">whether to allow a window function</param>
         /// <returns>the sqlValue</returns>
-		SqlValue ParseSqlValueEntry(bool wfok)
+		SqlValue ParseSqlValueEntry(DBObject rt,bool wfok)
         {
-            var left = ParseSqlValueItem(wfok);
+            var left = ParseSqlValueItem(Domain.Content,wfok);
             bool invert = false;
             var lp = lxr.Position;
             if (left is SqlValue && tok == Sqlx.COLON)
@@ -6682,7 +6884,7 @@ namespace Pyrrho.Level4
                 if (fl == null)
                     throw new DBException("42000", left.ToString()).ISO();
                 Next();
-                left = ParseSqlValueItem(wfok);
+                left = ParseSqlValueItem(rt,wfok);
                 // ??
             }
             while (tok==Sqlx.DOT || tok==Sqlx.LBRACK)
@@ -6699,14 +6901,13 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.ID);
                     if (tok == Sqlx.LPAREN)
                     {
-                        var cs = new CallStatement(n.iix);
                         Next();
-                        cs += (CallStatement.Var, left);
-                        if (tok != Sqlx.RPAREN)
-                            cs += (CallStatement.Parms, ParseSqlValueList());
-                        cs += (Basis.Name, n.ident);
+                        var ps = ParseSqlValueList(rt);
+                        var pr = (left.domain as UDType)?.methods[n.ident][(int)ps.Count]
+                            ?? throw new DBException("42173", n);
+                        var cs = new CallStatement(lp, pr, ps, left);
                         Mustbe(Sqlx.RPAREN);
-                        left = new SqlMethodCall(lp, cs);
+                        left = new SqlMethodCall(n.iix, cs);
                     }
                     else
                     {
@@ -6719,12 +6920,14 @@ namespace Pyrrho.Level4
                 {
                     Next();
                     left = new SqlValueExpr(lp, Sqlx.LBRACK, left,
-                        ParseSqlValue(), Sqlx.NO);
+                        ParseSqlValue(Domain.Int), Sqlx.NO);
                     Mustbe(Sqlx.RBRACK);
                 }
 
             if (tok == Sqlx.IS)
             {
+                if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 bool b = true;
                 if (tok == Sqlx.NOT)
@@ -6740,7 +6943,7 @@ namespace Pyrrho.Level4
                     if (only)
                         Next();
                     var r = BList<Domain>.Empty;
-                    var t1 = ParseSqlDataType();
+                    var t1 = ParseSqlDataType().domain;
                     lp = lxr.Position;
                     if (only)
                         t1 = new Domain(lp,Sqlx.ONLY,new BTree<long,object>(Domain.Under,t1));
@@ -6751,7 +6954,7 @@ namespace Pyrrho.Level4
                         only = (tok == Sqlx.ONLY);
                         if (only)
                             Next();
-                        t1 = ParseSqlDataType();
+                        t1 = ParseSqlDataType().domain;
                         lp = lxr.Position;
                         if (only)
                             t1 = new Domain(lp,Sqlx.ONLY, new BTree<long, object>(Domain.Under, t1));
@@ -6766,33 +6969,42 @@ namespace Pyrrho.Level4
             var savestart = lxr.start;
             if (tok == Sqlx.NOT)
             {
+                if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 invert = true;
             }
             if (tok == Sqlx.BETWEEN)
             {
+                if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 BetweenPredicate b = new BetweenPredicate(lp, left, !invert, 
-                    ParseSqlValueTerm(false), null);
+                    ParseSqlValueTerm(left.domain,false), null);
                 Mustbe(Sqlx.AND);
-                b+=(QuantifiedPredicate.High,ParseSqlValue());
+                b+=(QuantifiedPredicate.High,ParseSqlValue(left.domain));
                 return (SqlValue)cx.Add(b);
             }
             if (tok == Sqlx.LIKE)
             {
+                if (!(rt.domain.CanTakeValueOf(Domain.Bool) && 
+                    Domain.Char.CanTakeValueOf(left.domain)))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 LikePredicate k = new LikePredicate(lp,left, !invert, 
-                    ParseSqlValue(), null);
+                    ParseSqlValue(Domain.Char), null);
                 if (tok == Sqlx.ESCAPE)
                 {
                     Next();
-                    k+=(LikePredicate.Escape,ParseSqlValueItem(false));
+                    k+=(LikePredicate.Escape,ParseSqlValueItem(Domain.Char,false));
                 }
                 return (SqlValue)cx.Add(k);
             }
 #if SIMILAR
             if (tok == Sqlx.LIKE_REGEX)
             {
+                            if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 SimilarPredicate k = new SimilarPredicate(left, !invert, ParseSqlValue(), null, null);
                 if (Match(Sqlx.FLAG))
@@ -6804,6 +7016,8 @@ namespace Pyrrho.Level4
             }
             if (tok == Sqlx.SIMILAR)
             {
+                            if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 Mustbe(Sqlx.TO);
                 SimilarPredicate k = new SimilarPredicate(left, !invert, ParseSqlValue(), null, null);
@@ -6817,23 +7031,28 @@ namespace Pyrrho.Level4
 #endif
             if (tok == Sqlx.IN)
             {
+                if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
+                var oi = new ObInfo(-1, Domain.Row, new BList<SqlValue>(left));
                 Next();
                 InPredicate n = new InPredicate(lxr.Position, left)+
                     (QuantifiedPredicate.Found, !invert);
                 Mustbe(Sqlx.LPAREN);
                 if (Match(Sqlx.SELECT, Sqlx.TABLE, Sqlx.VALUES))
-                    n+=(QuantifiedPredicate.Select,ParseQuerySpecification());
+                    n+=(QuantifiedPredicate.Select,ParseQuerySpecification(oi));
                 else
-                    n+=(QuantifiedPredicate.Vals,ParseSqlValueList());
+                    n+=(QuantifiedPredicate.Vals,ParseSqlValueList(left.domain));
                 Mustbe(Sqlx.RPAREN);
                 return (SqlValue)cx.Add(n);
             }
             if (tok == Sqlx.MEMBER)
             {
+                if (!rt.domain.CanTakeValueOf(Domain.Bool))
+                    throw new DBException("42000", lxr.pos);
                 Next();
                 Mustbe(Sqlx.OF);
                 return (SqlValue)cx.Add(new MemberPredicate(lxr.Position,left,
-                    !invert, ParseSqlValue()));
+                    !invert, ParseSqlValue(Domain.Multiset)));
             }
             if (invert)
             {
@@ -6971,10 +7190,10 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected data type</param>
         /// <param name="wfok">whether a window function is allowed</param>
         /// <returns>the sql value</returns>
-        SqlValue ParseSqlValueItem(bool wfok)
+        SqlValue ParseSqlValueItem(DBObject rt,bool wfok)
         {
             SqlValue r;
-            if (tok == Sqlx.QMARK && tr.parse == ExecuteStatus.Prepare)
+            if (tok == Sqlx.QMARK && db.parse == ExecuteStatus.Prepare)
             {
                 Next();
                 var qm = new SqlValueExpr(lxr.Position, Sqlx.QMARK, null, null, Sqlx.NO);
@@ -6990,15 +7209,15 @@ namespace Pyrrho.Level4
                 Next();
                 if (!Match(Sqlx.GET))
                 { // supplying user and password this way is no longer supported
-                    ParseSqlValue();
+                    ParseSqlValue(Domain.Char);
                     if (Match(Sqlx.COLON))
                     {
                         Next();
-                        ParseSqlValue();
+                        ParseSqlValue(Domain.Char);
                     }
                 }
                 Mustbe(Sqlx.GET);
-                var x = ParseSqlValue();
+                var x = ParseSqlValue(rt);
                 string m = "application/json";
                 if (Match(Sqlx.AS))
                 {
@@ -7010,7 +7229,7 @@ namespace Pyrrho.Level4
                 if (Match(Sqlx.WHERE))
                 {
                     Next();
-                    wh = ParseSqlValue().Disjoin();
+                    wh = ParseSqlValue(Domain.Bool).Disjoin();
         //            for (var b = wh.First(); b != null; b = b.Next())
        //                 lxr.context.cur.Needs(b.value().alias ?? b.value().name,Query.Need.condition);
                 }
@@ -7021,29 +7240,25 @@ namespace Pyrrho.Level4
             if (Match(Sqlx.ID,Sqlx.NEXT,Sqlx.LAST,Sqlx.CHECK,Sqlx.PROVENANCE,Sqlx.TYPE_URI)) // ID or pseudo ident
             {
                 bool tp = tok == Sqlx.TYPE_URI;
-                SqlValue vr = ParseVarOrColumn();
+                SqlValue vr = ParseVarOrColumn(rt);
                 if (tok == Sqlx.DOUBLECOLON)
                 {
-                    var fc = new CallStatement(lxr.Position);
                     Next();
-                    var ut = tr.GetObject(vr.name) as UDType
+                    var ut = db.GetObject(vr.name) as UDType
                         ?? throw new DBException("42139",vr.name).Mix();
-                    var ui = tr.role.obinfos[vr.defpos] as ObInfo;
+                    var ui = db.role.obinfos[vr.defpos] as ObInfo;
                     var name = new Ident(lxr);
-                    lp = lxr.Position;
                     Mustbe(Sqlx.ID);
+                    lp = lxr.Position;
                     Mustbe(Sqlx.LPAREN);
-                    if (tok != Sqlx.RPAREN)
-                        fc+=(CallStatement.Parms,ParseSqlValueList());
-                    int n = (int)fc.parms.Count;
+                    var ps = ParseSqlValueList(rt);
                     Mustbe(Sqlx.RPAREN);
+                    int n = (int)ps.Count;
                     var m = ut.methods[name.ident]?[n] 
                         ?? throw new DBException("42132",name.ident,ui.name).Mix();
                     if (m.methodType != PMethod.MethodType.Static)
                         throw new DBException("42140").Mix();
-                    fc+=(CallStatement.Proc,m);
-                    var rt = fc.proc.retType;
-                    fc +=(DBObject._Domain,rt);
+                    var fc = new CallStatement(lp, m, ps, vr);
                     return (SqlValue)cx.Add(new SqlProcedureCall(name.iix, fc));
                 }
                 return (SqlValue)cx.Add(vr);
@@ -7053,7 +7268,7 @@ namespace Pyrrho.Level4
                 Sqlx op = tok;
                 Next();
                 Mustbe(Sqlx.LPAREN);
-                QueryExpression g = ParseQueryExpression();
+                QueryExpression g = ParseQueryExpression(ObInfo.Any);
                 Mustbe(Sqlx.RPAREN);
                 if (op == Sqlx.EXISTS)
                     return (SqlValue)cx.Add(new ExistsPredicate(lxr.Position, g));
@@ -7080,7 +7295,7 @@ namespace Pyrrho.Level4
                             if (tok == Sqlx.SELECT)
                             {
                                 var st = lxr.start;
-                                var cs = ParseCursorSpecification(true).cs;
+                                var cs = ParseCursorSpecification(ObInfo.Any,true).cs;
                                 Mustbe(Sqlx.RPAREN);
                                 return (SqlValue)cx.Add(new SqlValueSelect(lp+1, cs, 
                                     new string(lxr.input, st, lxr.start - st)));
@@ -7088,7 +7303,10 @@ namespace Pyrrho.Level4
                             throw new DBException("22204");
                         }
                         Mustbe(Sqlx.LBRACK);
-                        var v = ParseSqlValueList();
+                        var et = (rt == Domain.Content) ? rt :
+                            (rt as Domain)?.elType ??
+                            throw new DBException("42000", lxr.pos);
+                        var v = ParseSqlValueList(et);
                         if (v.Count == 0)
                             throw new DBException("22103").ISO();
                         Mustbe(Sqlx.RBRACK);
@@ -7107,7 +7325,7 @@ namespace Pyrrho.Level4
                             var tb = ob as Table;
                             if (tb == null)
                                 throw new DBException("42107", n).Mix();
-                            var ft = tr.role.obinfos[tb.defpos] as ObInfo;
+                            var ft = db.role.obinfos[tb.defpos] as ObInfo;
                             ob = ft.ColFor(cn.ToString());
                         }
                         r = new SqlLiteral(lp, new TInt(ob.lastChange));
@@ -7173,26 +7391,17 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.SELECT)
                         {
                             var st = lxr.start;
-                            var cs = ParseCursorSpecification(true).cs;
+                            var cs = ParseCursorSpecification(ObInfo.Any,true).cs;
                             Mustbe(Sqlx.RPAREN);
                             return (SqlValue)cx.Add(new SqlValueSelect(lp, cs, 
                                 new string(lxr.input,st,lxr.start-st)));
                         }
                         var fs = BList<SqlValue>.Empty;
-                        var it = ParseSqlValue();
-                        if (tok == Sqlx.AS)
+                        var oi = (rt==Domain.Content)?ObInfo.Any :
+                            rt as ObInfo ?? throw new DBException("42000", lxr.pos);
+                        for (var i = 0; ; i++)
                         {
-                            lp = lxr.Position;
-                            Next();
-                            var ic = new Ident(lxr);
-                            Mustbe(Sqlx.ID);
-                            it += (DBObject._Alias, ic.ToString());
-                        }
-                        fs += it;
-                        while (tok==Sqlx.COMMA)
-                        {
-                            Next();
-                            it = ParseSqlValue();
+                            var it = ParseSqlValue(oi.columns[i]?.domain ?? Domain.Content);
                             if (tok == Sqlx.AS)
                             {
                                 lp = lxr.Position;
@@ -7202,6 +7411,9 @@ namespace Pyrrho.Level4
                                 it += (DBObject._Alias, ic.ToString());
                             }
                             fs += it;
+                            if (tok != Sqlx.COMMA)
+                                break;
+                            Next();
                         }
                         Mustbe(Sqlx.RPAREN);
                         if (fs.Count == 1)
@@ -7212,9 +7424,9 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         if (Match(Sqlx.LPAREN))
-                            return ParseSqlValue();
+                            return ParseSqlValue(rt);
                         Mustbe(Sqlx.LBRACK);
-                        var v = ParseSqlValueList();
+                        var v = ParseSqlValueList(rt);
                         if (v.Count == 0)
                             throw new DBException("22103").ISO();
                         Domain dt = v[0].domain;
@@ -7223,30 +7435,27 @@ namespace Pyrrho.Level4
                     }
                 case Sqlx.NEW:
                     {
-                        var fc = new CallStatement(lp);
                         Next();
                         var o = new Ident(lxr);
                         Mustbe(Sqlx.ID);
-                        var ut = tr.GetObject(o.ident) as UDType??
+                        lp = lxr.Position;
+                        var ut = db.GetObject(o.ident) as UDType??
                             throw new DBException("42142").Mix();
                         Mustbe(Sqlx.LPAREN);
-                        if (tok != Sqlx.RPAREN)
-                            fc+=(CallStatement.Parms,ParseSqlValueList());
-                        int n = (int)fc.parms.Count;
+                        var ps = ParseSqlValueList((ObInfo)db.role.obinfos[ut.tabledefpos]);
+                        int n = (int)ps.Count;
                         Mustbe(Sqlx.RPAREN);
                         Method m = ut.methods[o.ident]?[n];
-                        var ui = tr.role.obinfos[ut.defpos] as ObInfo;
+                        var ui = db.role.obinfos[ut.defpos] as ObInfo;
                         if (m == null)
                         {
                             if (ui.columns != null && (int)ui.columns.Count != n)
                                 throw new DBException("42142").Mix();
-                            //         tr.SPop(fc); done by finally
-                            return (SqlValue)cx.Add(new SqlDefaultConstructor(o.iix, ut, fc.parms));
+                            return (SqlValue)cx.Add(new SqlDefaultConstructor(o.iix, ut, ps));
                         }
                         if (m.methodType != PMethod.MethodType.Constructor)
                             throw new DBException("42142").Mix();
-                        fc+=(CallStatement.Proc,m);
-                        var rt = fc.proc.retType;
+                        var fc = new CallStatement(lp, m, ps);
                         return (SqlValue)cx.Add(new SqlProcedureCall(o.iix, fc));
                     }
                 case Sqlx.ROW:
@@ -7256,7 +7465,7 @@ namespace Pyrrho.Level4
                         {
                             lp = lxr.Position;
                             Next();
-                            var v = ParseSqlValueList();
+                            var v = ParseSqlValueList(rt);
                             Mustbe(Sqlx.RPAREN);
                             return (SqlValue)cx.Add(new SqlRow(lp,v));
                         }
@@ -7272,7 +7481,7 @@ namespace Pyrrho.Level4
                 case Sqlx.TABLE: // allowed by 6.39
                     {
                         Next();
-                        return (SqlValue)cx.Add(ParseSqlValue());
+                        return (SqlValue)cx.Add(ParseSqlValue(rt));
                     }
 
                 case Sqlx.TIME: goto case Sqlx.DATE;
@@ -7281,11 +7490,11 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        var v = ParseSqlValue();
+                        var v = ParseSqlValue(Domain.Content);
                         Mustbe(Sqlx.RPAREN);
                         Mustbe(Sqlx.AS);
-                        Domain dt = ParseSqlDataType();
-                        return (SqlValue)cx.Add(new SqlTreatExpr(lp, v, dt, cx));//.Needs(v);
+                        DBObject dt = ParseSqlDataType();
+                        return (SqlValue)cx.Add(new SqlTreatExpr(lp, v, dt.domain, cx));//.Needs(v);
                     }
                 case Sqlx.VALUE:
                     {
@@ -7302,7 +7511,7 @@ namespace Pyrrho.Level4
                             Next();
                             var llp = lxr.Position;
                             Mustbe(Sqlx.LPAREN);
-                            var x = ParseSqlValueList();
+                            var x = ParseSqlValueList(rt);
                             Mustbe(Sqlx.RPAREN);
                             v+=new SqlRow(llp,x);
                             sep = tok;
@@ -7345,7 +7554,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.UnionNumeric);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7356,7 +7565,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Collection);
                         if (kind != Sqlx.MULTISET)
                             throw new DBException("42113", kind).Mix();
                         Mustbe(Sqlx.RPAREN);
@@ -7373,41 +7582,41 @@ namespace Pyrrho.Level4
                                 kind = tok;
                                 Next();
                                 var llp = lxr.Position;
-                                op1 = ParseSqlValue();
+                                op1 = ParseSqlValue(Domain.Bool);
                                 Mustbe(Sqlx.THEN);
-                                val = ParseSqlValue();
+                                val = ParseSqlValue(rt);
                                 if (tok == Sqlx.WHEN)
                                     op2 = new SqlFunction(llp, kind,val, op1, op2, mod);
                             }
                             if (tok == Sqlx.ELSE)
                             {
                                 Next();
-                                op2 = ParseSqlValue();
+                                op2 = ParseSqlValue(rt);
                             }
                             Mustbe(Sqlx.END);
                             return (SqlValue)cx.Add(new SqlFunction(lp,kind,val,op1,op2,mod));
                         }
-                        var val1 = ParseSqlValue(); // simple case
+                        var val1 = ParseSqlValue(Domain.Content); // simple case
                         if (tok != Sqlx.WHEN)
                             throw new DBException("42129").Mix();
                         while (tok == Sqlx.WHEN)
                         {
                             Next();
                             var llp = lxr.Position;
-                            op1 = ParseSqlValue();
+                            op1 = ParseSqlValue(val1.domain);
                             var c = new List<SqlValue>();
                             while (tok == Sqlx.COMMA)
                             {
                                 Next();
-                                c.Add(ParseSqlValue());
+                                c.Add(ParseSqlValue(val1.domain));
                             }
                             Mustbe(Sqlx.THEN);
-                            val = ParseSqlValue();
+                            val = ParseSqlValue(rt);
                             foreach(var cv in c)
                                 op2 = new SqlFunction(llp, Sqlx.WHEN,val,cv,op2,mod);
                         }
                         if (tok == Sqlx.ELSE)
-                            op2 = ParseSqlValue();
+                            op2 = ParseSqlValue(rt);
                         val = val1;
                         Mustbe(Sqlx.END);
                         break;
@@ -7417,9 +7626,9 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Content);
                         Mustbe(Sqlx.AS);
-                        op1 = new SqlTypeExpr(lp,ParseSqlDataType(),cx);
+                        op1 = new SqlTypeExpr(lp,ParseSqlDataType().domain,cx);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7430,7 +7639,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7440,14 +7649,14 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        op1 = ParseSqlValue();
+                        op1 = ParseSqlValue(rt);
                         Mustbe(Sqlx.COMMA);
-                        op2 = ParseSqlValue();
+                        op2 = ParseSqlValue(rt);
                         while (tok == Sqlx.COMMA)
                         {
                             Next();
                             op1 = new SqlCoalesce(lxr.Position, op1,op2);
-                            op2 = ParseSqlValue();
+                            op2 = ParseSqlValue(rt);
                         }
                         Mustbe(Sqlx.RPAREN);
                         return (SqlValue)cx.Add(new SqlCoalesce(lp, op1, op2));
@@ -7476,7 +7685,7 @@ namespace Pyrrho.Level4
                                 mod = tok;
                                 Next();
                             }
-                            val = ParseSqlValue();
+                            val = ParseSqlValue(Domain.Content);
                         }
                         Mustbe(Sqlx.RPAREN);
                         if (tok == Sqlx.FILTER)
@@ -7484,7 +7693,7 @@ namespace Pyrrho.Level4
                             Next();
                             Mustbe(Sqlx.LPAREN);
                             Mustbe(Sqlx.WHERE);
-                            filter = ParseSqlValue();
+                            filter = ParseSqlValue(Domain.Bool);
                             Mustbe(Sqlx.RPAREN);
                         }
                         if (tok == Sqlx.OVER && wfok)
@@ -7498,7 +7707,7 @@ namespace Pyrrho.Level4
                             else
                             {
                                 window = ParseWindowSpecificationDetails();
-                                window += (Basis.Name, "U" + tr.uid);
+                                window += (Basis.Name, "U" + db.uid);
                             }
                         }
                         return (SqlValue)cx.Add(new SqlFunction(lp, kind, val, op1, op2, mod, BTree<long,object>.Empty
@@ -7528,7 +7737,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.OF);
-                        val = (SqlValue)cx.defs[ParseIdentChain()];
+                        val = (SqlValue)cx.Get(ParseIdentChain());
                         break;
                     }
 #if OLAP
@@ -7545,7 +7754,7 @@ namespace Pyrrho.Level4
                         mod = tok;
                         Mustbe(Sqlx.YEAR, Sqlx.MONTH, Sqlx.DAY, Sqlx.HOUR, Sqlx.MINUTE, Sqlx.SECOND);
                         Mustbe(Sqlx.FROM);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.UnionDate);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7571,9 +7780,9 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        op1 = ParseSqlValue();
+                        op1 = ParseSqlValue(Domain.Content);
                         Mustbe(Sqlx.COMMA);
-                        op2 = ParseSqlValue();
+                        op2 = ParseSqlValue(op1.domain);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7583,12 +7792,12 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        var pat = ParseSqlValue();
+                        var pat = ParseSqlValue(Domain.Char);
                         SqlValue flg = null;
                         if (Match(Sqlx.FLAG))
                         {
                             Next();
-                            flg = ParseSqlValue();
+                            flg = ParseSqlValue(Domain.Char);
                         }
                         op1 = new RegularExpression(cx, pat, flg, null);
                         Mustbe(Sqlx.IN);
@@ -7597,7 +7806,7 @@ namespace Pyrrho.Level4
                         if (Match(Sqlx.FROM))
                         {
                             Next();
-                            rep.startPos = ParseSqlValue();
+                            rep.startPos = ParseSqlValue(Domain.Int);
                         }
                         if (Match(Sqlx.CHARACTERS, Sqlx.OCTETS))
                         {
@@ -7623,7 +7832,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        op1 = ParseSqlValue();
+                        op1 = ParseSqlValue(Domain.UnionNumeric);
                         Mustbe(Sqlx.RPAREN);
                         WindowSpecification ws = ParseWithinGroupSpecification();
                         window = ws;
@@ -7642,9 +7851,9 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.LPAREN)
                         {
                             Next();
-                            op1 = ParseSqlValue();
+                            op1 = ParseSqlValue(Domain.Int);
                             Mustbe(Sqlx.IN);
-                            op2 = ParseSqlValue();
+                            op2 = ParseSqlValue(Domain.Content);
                             Mustbe(Sqlx.RPAREN);
                         }
                         break;
@@ -7657,26 +7866,26 @@ namespace Pyrrho.Level4
                         mod = Sqlx.AFTER;
                         if (Match(Sqlx.START, Sqlx.AFTER))
                             mod = tok;
-                        var pat = ParseSqlValue();
+                        var pat = ParseSqlValue(Domain.Char);
                         SqlValue flg = null;
                         if (Match(Sqlx.FLAG))
                         {
                             Next();
-                            flg = ParseSqlValue();
+                            flg = ParseSqlValue(Domain.Char);
                         }
                         op1 = new RegularExpression(cx, pat, flg, null);
                         Mustbe(Sqlx.IN);
-                        val = ParseSqlValue(t);
+                        val = ParseSqlValue(rt);
                         var rep = new RegularExpressionParameters(cx);
                         if (Match(Sqlx.WITH))
                         {
                             Next();
-                            rep.with = ParseSqlValue();
+                            rep.with = ParseSqlValue(Domain.Int);
                         }
                         if (Match(Sqlx.FROM))
                         {
                             Next();
-                            rep.startPos = ParseSqlValue();
+                            rep.startPos = ParseSqlValue(Domain.Int);
                         }
                         if (Match(Sqlx.CHARACTERS, Sqlx.OCTETS))
                         {
@@ -7686,12 +7895,12 @@ namespace Pyrrho.Level4
                         if (Match(Sqlx.OCCURRENCE))
                         {
                             Next();
-                            rep.occurrence = ParseSqlValue();
+                            rep.occurrence = ParseSqlValue(Domain.Int);
                         }
                         if (Match(Sqlx.GROUP))
                         {
                             Next();
-                            rep.group = ParseSqlValue();
+                            rep.group = ParseSqlValue(Domain.Char);
                         }
                         Mustbe(Sqlx.RPAREN);
                         op2 = rep;
@@ -7729,26 +7938,29 @@ namespace Pyrrho.Level4
                             else
                             {
                                 window = ParseWindowSpecificationDetails();
-                                window+=(Basis.Name,"U"+tr.uid);
+                                window+=(Basis.Name,"U"+db.uid);
                             }
                             return (SqlValue)cx.Add(new SqlFunction(lp, kind, val, op1, op2, mod, BTree<long,object>.Empty
                             +(SqlFunction.Filter,filter)+(SqlFunction.Window,window)
                              +(SqlFunction.WindowId,windowName)));
                         }
-                        var v = new BList<SqlValue>(ParseSqlValue());
-                        while (tok == Sqlx.COMMA)
+                        var oi = rt as ObInfo;
+                        var v = new BList<SqlValue>(ParseSqlValue(oi?.columns[0]?.domain??
+                            Domain.Content));
+                        for (var i=1; tok == Sqlx.COMMA;i++)
                         {
                             Next();
-                            v +=ParseSqlValue();
+                            v += ParseSqlValue(oi?.columns[i]?.domain ??
+                            Domain.Content);
                         }
                         Mustbe(Sqlx.RPAREN);
                         val = new SqlRow(lxr.Position, v);
                         var f = new SqlFunction(lp, kind, val, op1, op2, mod, BTree<long, object>.Empty
                             + (SqlFunction.Window, ParseWithinGroupSpecification(lxr.Position))
-                            + (SqlFunction.WindowId,"U"+tr.uid));
+                            + (SqlFunction.WindowId,"U"+db.uid));
                         return (SqlValue)cx.Add(f);
                     }
-                case Sqlx.ROWS: // Pyrrho
+                case Sqlx.ROWS: // Pyrrho (what is this?)
                     {
                         kind = tok;
                         Next();
@@ -7759,7 +7971,7 @@ namespace Pyrrho.Level4
                             Next();
                         }
                         else
-                            val = ParseSqlValue();
+                            val = ParseSqlValue(Domain.Int);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7773,7 +7985,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         if (kind == Sqlx.SUBSTRING)
                         {
 #if SIMILAR
@@ -7789,11 +8001,11 @@ namespace Pyrrho.Level4
 #endif
                             {
                                 Mustbe(Sqlx.FROM);
-                                op1 = ParseSqlValue();
+                                op1 = ParseSqlValue(Domain.Int);
                                 if (tok == Sqlx.FOR)
                                 {
                                     Next();
-                                    op2 = ParseSqlValue();
+                                    op2 = ParseSqlValue(Domain.Int);
                                 }
                             }
                         }
@@ -7894,12 +8106,12 @@ namespace Pyrrho.Level4
                             mod = tok;
                             Next();
                         }
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         if (tok == Sqlx.FROM)
                         {
                             Next();
                             op1 = val; // trim character
-                            val = ParseSqlValue();
+                            val = ParseSqlValue(Domain.Char);
                         }
                         Mustbe(Sqlx.RPAREN);
                         break;
@@ -7920,7 +8132,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
@@ -7929,12 +8141,12 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         while (tok == Sqlx.COMMA)
                         {
                             Next();
                             val = new SqlValueExpr(lxr.Position, Sqlx.XMLCONCAT, 
-                                val, ParseSqlValue(), Sqlx.NO);
+                                val, ParseSqlValue(Domain.Char), Sqlx.NO);
                         }
                         Mustbe(Sqlx.RPAREN);
                         return (SqlValue)cx.Add(val);
@@ -7964,7 +8176,7 @@ namespace Pyrrho.Level4
                                 Next();
                                 Mustbe(Sqlx.LPAREN);
                                 var doc = new SqlRow(llp,BTree<long,object>.Empty);
-                                var v = ParseSqlValue();
+                                var v = ParseSqlValue(Domain.Char);
                                 var j = 0;
                                 var a = new Ident("Att"+(++j),0);
                                 if (tok == Sqlx.AS)
@@ -7978,7 +8190,7 @@ namespace Pyrrho.Level4
                                 while (tok == Sqlx.COMMA)
                                 {
                                     Next();
-                                    var w = ParseSqlValue();
+                                    var w = ParseSqlValue(Domain.Char);
                                     if (tok == Sqlx.AS)
                                     {
                                         Next();
@@ -7993,7 +8205,7 @@ namespace Pyrrho.Level4
                             }
                             else
                             {
-                                val = new SqlValueExpr(lp, Sqlx.XML, val, ParseSqlValue(), Sqlx.NO);
+                                val = new SqlValueExpr(lp, Sqlx.XML, val, ParseSqlValue(Domain.Char), Sqlx.NO);
                                 n++;
                             }
                         }
@@ -8011,12 +8223,12 @@ namespace Pyrrho.Level4
                             Next();
                             ParseXmlNamespaces();
                         }
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         while (tok == Sqlx.COMMA)
                         {
                             var llp = lxr.Position;
                             Next();
-                            val = new SqlValueExpr(llp, Sqlx.XMLCONCAT, val, ParseSqlValue(), Sqlx.NO);
+                            val = new SqlValueExpr(llp, Sqlx.XMLCONCAT, val, ParseSqlValue(Domain.Char), Sqlx.NO);
                         }
                         Mustbe(Sqlx.RPAREN);
                         return (SqlValue)cx.Add(val);
@@ -8027,7 +8239,7 @@ namespace Pyrrho.Level4
                         Next();
                         Mustbe(Sqlx.LPAREN);
                         Mustbe(Sqlx.CONTENT);
-                        val = ParseSqlValue();
+                        val = ParseSqlValue(Domain.Char);
                         Mustbe(Sqlx.RPAREN);
                         return (SqlValue)cx.Add(val);
                     }
@@ -8036,7 +8248,7 @@ namespace Pyrrho.Level4
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
-                        op1 = ParseSqlValue();
+                        op1 = ParseSqlValue(Domain.Char);
                         if (tok != Sqlx.COMMA)
                             throw new DBException("42000", tok).Mix();
                         lxr.XmlNext(')');
@@ -8055,14 +8267,15 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.COMMA)
                         {
                             Next();
-                            op1 = ParseSqlValue();
+                            op1 = ParseSqlValue(Domain.Char);
                         }
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }
 
                 default:
-                    return (SqlValue)cx.Add(new SqlProcedureCall(lp,(CallStatement)ParseProcedureCall()));
+                    return (SqlValue)cx.Add(new SqlProcedureCall(lp,
+                        (CallStatement)ParseProcedureCall(rt)));
             }
             return (SqlValue)cx.Add(new SqlFunction(lp, kind, val, op1, op2, mod));
         }
@@ -8152,7 +8365,7 @@ namespace Pyrrho.Level4
 			{
 				Next();
 				Mustbe(Sqlx.BY);
-                oi = ParseSqlValueList();
+                oi = ParseSqlValueList(Domain.Char);
                 pt = (int)oi.Count;
                 w += (WindowSpecification.Order, OrderSpec.Empty + (OrderSpec.Items, oi));
                 w += (WindowSpecification.Partition, pt);
@@ -8253,38 +8466,40 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="sql">an expression string to parse</param>
         /// <returns>the SqlValue</returns>
-        internal SqlValue ParseSqlValueItem(string sql)
+        internal SqlValue ParseSqlValueItem(string sql,DBObject rt)
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid + sql.Length); // not really needed here
-            return ParseSqlValueItem(false);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid + sql.Length); // not really needed here
+            return ParseSqlValueItem(rt,false);
         }
         /// <summary>
         /// For the REST service there may be an explicit procedure call
         /// </summary>
         /// <param name="sql">a call statement to parse</param>
         /// <returns>the CallStatement</returns>
-        internal CallStatement ParseProcedureCall(string sql)
+        internal CallStatement ParseProcedureCall(string sql,DBObject ob)
         {
             lxr = new Lexer(sql); 
             tok = lxr.tok;
-            tr += (Database.NextTid, tr.nextTid +sql.Length); // not really needed here
-            var fc = new CallStatement(lxr.Position);
-            fc+=(Basis.Name,new Ident(lxr).ident);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextTid
+                db += (Database.NextTid, db.nextTid +sql.Length); // not really needed here
+            var n = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            if (tok != Sqlx.LPAREN)
-                return (CallStatement)cx.Add(fc);
-            Mustbe(Sqlx.LPAREN);
-            if (tok != Sqlx.RPAREN)
-                fc += (CallStatement.Parms,ParseSqlValueList());
-            var arity = (int)fc.parms.Count;
+            var ps = BList<SqlValue>.Empty;
+            var lp = lxr.Position;
+            if (tok == Sqlx.LPAREN)
+            {
+                Next();
+                ps = ParseSqlValueList(Domain.Content);
+            }
+            var arity = (int)ps.Count;
             Mustbe(Sqlx.RPAREN);
-            fc +=(CallStatement.Proc,tr.role.procedures[fc.name]?[arity]);
-            if (fc.proc == null)
-                throw new DBException("42108", fc.name).Mix();
-            fc +=(Executable.Stmt,fc.proc.body);
-            fc +=(DBObject._Domain, fc.proc.retType);
+            var pp = db.role.procedures[n.ident]?[arity] ?? -1;
+            var pr = db.objects[pp] as Procedure
+                ?? throw new DBException("42108", n).Mix();
+            var fc = new CallStatement(lp, pr, ps);
             return (CallStatement)cx.Add(fc);
         }
         /// <summary>
@@ -8292,20 +8507,19 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>the Executable</returns>
-        Executable ParseProcedureCall()
+        Executable ParseProcedureCall(DBObject ob)
         {
-            var fc = new CallStatement(lxr.Position);
-            fc+=(Basis.Name,new Ident(lxr).ident);
+            var id = new Ident(lxr);
             Mustbe(Sqlx.ID);
             var lp = lxr.Position;
             Mustbe(Sqlx.LPAREN);
-            if (tok != Sqlx.RPAREN)
-                fc+=(CallStatement.Parms,ParseSqlValueList());
-            var n = (int)fc.parms.Count;
+            var ps = ParseSqlValueList(Domain.Content);
+            var a = (int)ps.Count;
             Mustbe(Sqlx.RPAREN);
-            fc += (CallStatement.Proc,tr.role.procedures[fc.name]?[n] ??
-                throw new DBException("42108", fc.name).Mix());
-            fc+=(Executable.Stmt,fc.proc.body);
+            var pp = db.role.procedures[id.ident]?[a] ??
+                throw new DBException("42108", id.ident).Mix();
+            var pr = (Procedure)db.objects[pp];
+            var fc = new CallStatement(lp, pr, ps);
             return (Executable)cx.Add(fc);
         }
         /// <summary>
@@ -8313,16 +8527,16 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected data type</param>
         /// <returns>the List of SqlValue</returns>
-        BList<SqlValue> ParseSqlValueList()
+        BList<SqlValue> ParseSqlValueList(DBObject rt)
         {
             var r = BList<SqlValue>.Empty;
             for (; ;)
             {
-                var v = ParseSqlValue();
+                var v = ParseSqlValue(rt);
                 if (tok == Sqlx.AS)
                 {
                     Next();
-                    var d = ParseSqlDataType();
+                    var d = ParseSqlDataType().domain;
                     v = new SqlTreatExpr(lxr.Position, v, d, cx); //.Needs(v);
                     cx.Add(v);
                 }
@@ -8334,10 +8548,11 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public SqlRow ParseSqlRow()
+        public SqlRow ParseSqlRow(DBObject rt)
         {
             Mustbe(Sqlx.LPAREN);
-            var lk = ParseSqlValueList();
+            var lk = ParseSqlValueList(rt as ObInfo ??
+                 throw new DBException("42000", lxr.pos));
             Mustbe(Sqlx.RPAREN);
             return (SqlRow)cx.Add(new SqlRow(lxr.Position, lk));
         }
@@ -8348,13 +8563,13 @@ namespace Pyrrho.Level4
         /// <param name="sql">The string to parse</param>
         /// <param name="result">the expected data type</param>
         /// <returns>the SqlRow</returns>
-        public SqlValue ParseSqlValueList(string sql)
+        public SqlValue ParseSqlValueList(string sql,DBObject rt)
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
             if (tok == Sqlx.LPAREN)
-                return ParseSqlRow();         
-            return ParseSqlValueEntry(false);
+                return ParseSqlRow(rt);         
+            return ParseSqlValueEntry(rt,false);
         }
         /// <summary>
         /// Get a document item
@@ -8365,7 +8580,7 @@ namespace Pyrrho.Level4
             Ident k = new Ident(lxr);
             Mustbe(Sqlx.ID);
             Mustbe(Sqlx.COLON);
-            return v + (ParseSqlValue(v.defpos)+(Basis.Name,k.ident));
+            return v + (ParseSqlValue(Domain.Content,v.defpos)+(Basis.Name,k.ident));
         }
         /// <summary>
         /// Parse a document array
@@ -8377,11 +8592,11 @@ namespace Pyrrho.Level4
             cx.Add(v);
             Next();
             if (tok != Sqlx.RBRACK)
-                v += ParseSqlRow();
+                v += ParseSqlRow(Domain.Content);
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                v+=ParseSqlRow();
+                v+=ParseSqlRow(Domain.Content);
             }
             Mustbe(Sqlx.RBRACK);
             return (SqlValue)cx.Add(v);
@@ -8399,7 +8614,7 @@ namespace Pyrrho.Level4
             while (tok!=Sqlx.GTR && tok!=Sqlx.DIVIDE)
             {
                 var a = GetName();
-                v+=(SqlXmlValue.Attrs,v.attrs+(a, ParseSqlValue()));
+                v+=(SqlXmlValue.Attrs,v.attrs+(a, ParseSqlValue(Domain.Char)));
             }
             if (tok != Sqlx.DIVIDE)
             {
@@ -8419,7 +8634,7 @@ namespace Pyrrho.Level4
                     {
                         lxr.PushBack(Sqlx.ANY);
                         lxr.pos = lxr.start;
-                        v += (SqlXmlValue.Content, ParseSqlValueItem(false));
+                        v += (SqlXmlValue.Content, ParseSqlValueItem(Domain.Char,false));
                     }
                 }
                 else
@@ -8457,5 +8672,5 @@ namespace Pyrrho.Level4
                 r += (b.value().defpos, true);
             return r;
         }
-	}
+    }
 }

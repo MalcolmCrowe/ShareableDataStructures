@@ -229,7 +229,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
-        internal Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
+        public override Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
         internal BList<Grouping> groups => 
             (BList<Grouping>)mem[Groups]?? BList<Grouping>.Empty;
         /// <summary>
@@ -433,6 +433,13 @@ namespace Pyrrho.Level3
         {
             var that = (UpdateAssignment)obj;
             return vbl.CompareTo(that.vbl);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Vbl: ");sb.Append(vbl);
+            sb.Append(" Val: "); sb.Append(val);
+            return sb.ToString();
         }
     }
 }

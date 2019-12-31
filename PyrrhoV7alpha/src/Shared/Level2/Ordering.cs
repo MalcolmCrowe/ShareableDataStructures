@@ -30,7 +30,7 @@ namespace Pyrrho.Level2
         /// The flags specified in CREATE ORDERING
         /// </summary>
         public OrderCategory flags;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,typedefpos)) return typedefpos;
             if (!Committed(wr,funcdefpos)) return funcdefpos;
@@ -43,8 +43,8 @@ namespace Pyrrho.Level2
         /// <param name="fn">The ordering function</param>
         /// <param name="fl">The ordering flags</param>
         /// <param name="db">The local database</param>
-        public Ordering(long tp, long fn, OrderCategory fl, long u, Transaction tr) 
-            :base(Type.Ordering,u,tr)
+        public Ordering(long tp, long fn, OrderCategory fl, Transaction tr) 
+            :base(Type.Ordering,tr)
         {
             typedefpos = tp;
             funcdefpos = fn;

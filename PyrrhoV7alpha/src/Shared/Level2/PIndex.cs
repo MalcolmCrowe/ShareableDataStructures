@@ -62,7 +62,7 @@ namespace Pyrrho.Level2
         /// The adapter function (PIndex1)
         /// </summary>
         public string adapter = "";
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
@@ -88,8 +88,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, long u, Transaction tr) :
-            this(Type.PIndex, nm, tb, cl, fl, rx, u, tr)
+            ConstraintType fl, long rx, Transaction tr) :
+            this(Type.PIndex, nm, tb, cl, fl, rx, tr)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -103,8 +103,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, long u,Transaction tr) :
-            base(t, u, tr)
+            ConstraintType fl, long rx, Transaction tr) :
+            base(t, tr)
         {
             name = nm?? throw new DBException("42102").Mix();
             tabledefpos = tb;
@@ -264,8 +264,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, long u,Transaction tr) :
-            this(Type.PIndex1, nm, tb, cl, fl, rx, af, u,tr)
+            ConstraintType fl, long rx, string af, Transaction tr) :
+            this(Type.PIndex1, nm, tb, cl, fl, rx, af, tr)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -280,8 +280,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, long u,Transaction tr) :
-            base(t, nm, tb, cl, fl, rx, u,tr)
+            ConstraintType fl, long rx, string af, Transaction tr) :
+            base(t, nm, tb, cl, fl, rx, tr)
         {
             adapter = af;
         }
@@ -332,13 +332,13 @@ namespace Pyrrho.Level2
         /// <param name="md">The metadata flags</param>
         /// <param name="db">The database</param>
         public PIndex2(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, ulong md, long u,Transaction tr) :
-            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, u, tr)
+            ConstraintType fl, long rx, string af, ulong md, Transaction tr) :
+            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, tr)
         {
         }
         protected PIndex2(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, ulong md, long u, Transaction tr)
-            :base(t, nm, tb, cl, fl, rx, af, u, tr)
+            ConstraintType fl, long rx, string af, ulong md, Transaction tr)
+            :base(t, nm, tb, cl, fl, rx, af, tr)
         {
             metadata = md;
         }
@@ -372,7 +372,8 @@ namespace Pyrrho.Level2
     {
         public PIndex.ConstraintType ctype;
         public long index;
-        public RefAction(long ix, PIndex.ConstraintType ct, long u, Transaction tr) : base(Type.RefAction,u, tr) 
+        public RefAction(long ix, PIndex.ConstraintType ct, Transaction tr) 
+            : base(Type.RefAction, tr) 
         {
             index = ix;
             ctype = ct;
@@ -399,7 +400,7 @@ namespace Pyrrho.Level2
         {
             return new RefAction(this, wr);
         }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,index)) return index;
             return -1;

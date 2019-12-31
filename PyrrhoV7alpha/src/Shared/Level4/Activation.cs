@@ -133,10 +133,9 @@ namespace Pyrrho.Level4
         /// <param name="trs">The transition row set</param>
         /// <param name="tg">The trigger</param>
         internal TriggerActivation(Context _cx, TransitionRowSet trs, Trigger tg)
-            : base(trs._tr,_cx, tg.definer, tg.name)
+            : base(trs._tr as Transaction,_cx, tg.definer, tg.name)
         {
             _trs = trs;
-            top += tg.def.Length;
             parent = _cx.next;
             newRow = parent?.row.values;
             var fm = trs.qry as From;
@@ -146,14 +145,14 @@ namespace Pyrrho.Level4
                 oldIndexes += (b.value(), (Index)trs._tr.objects[b.value()]);
             _trig = (Trigger)tg.Frame(this);
             domain = trs._tr.role.obinfos[t.defpos] as Domain;
-            if (tg.oldRow != "")
-                defs += (new Ident(tg.oldRow,frame+1), fm.rowType);
-            if (tg.newRow != "")
-                defs += (new Ident(tg.newRow, frame+2), new ObInfoNewRow(fm.rowType));
-            if (tg.oldTable != "")
-                defs += (new Ident(tg.oldTable, frame+3), new FromOldTable(frame+3,fm));
-            if (tg.newTable != "")
-                defs += (new Ident(tg.newTable, frame+4), fm);
+            if (tg.oldRow != null)
+                defs += (tg.oldRow, new ObInfoOldRow(fm.rowType,trs.qry.defpos));
+            if (tg.newRow != null)
+                defs += (tg.newRow, fm.rowType);
+            if (tg.oldTable != null)
+                defs += (tg.oldTable, new FromOldTable(tg.oldTable,fm));
+            if (tg.newTable != null)
+                defs += (tg.newTable, fm);
         }
         public static TriggerActivation operator+(TriggerActivation a,BTree<long,TypedValue>nv)
         {
@@ -165,17 +164,27 @@ namespace Pyrrho.Level4
         /// Execute the trigger for the current row or table, using the definer's context
         /// </summary>
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
-        internal Transaction Exec(Transaction tr, Context ox)
+        internal (Transaction,bool) Exec(Transaction tr, Context cx)
         {
             row = null;
-            tr = tr + new Level2.TriggeredAction(_trig.defpos, tr.nextTid, tr)
-                + (Database.NextTid, tr.nextTid + 1);
+            values = cx.values;
+            data = cx.data;
+            if (cx.row!=null)
+                values += (cx.row.info.defpos,cx.values[_trs.from.defpos]);
             var ta = _trig.action;
-            tr = ta.First().value().Obey(tr, this);
-            if (parent != null)
-                for (var b = affected.First(); b != null; b = b.Next())
-                    parent.affected += b.value();
-            return tr;
+            var tc = ta.cond?.Eval(tr, cx);
+            if (tc != TBool.False)
+            {
+                var oa = tr.triggeredAction;
+                tr += (Transaction.TriggeredAction, tr.nextPos);
+                tr += new Level2.TriggeredAction(_trig.defpos, tr);
+                tr = ta.stms.First().value().Obey(tr, this);
+        //        if (parent != null)
+       //            for (var b = affected.First(); b != null; b = b.Next())
+       //                 parent.affected += b.value();
+                tr += (Transaction.TriggeredAction, oa);
+            }
+            return (tr,tc!=TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead));
         }
         internal override TriggerActivation FindTriggerActivation(long tabledefpos)
         {

@@ -20,20 +20,21 @@ namespace Pyrrho.Level3
 	internal class Trigger : DBObject
 	{
         internal const long
-            Action = -290, // BList<Executable>
+            Action = -290, // WhenPart
             Def = -291, // string
+            _From = -396, // long
             NewRow = -292, // string
             NewTable = -293, // string
             OldRow = -294, // string
             OldTable = -295, // string
-            Table = -296, // long
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // BList<long>
         /// <summary>
         /// The defining position of the associated table
         /// </summary>
-		public long tabledefpos => (long)mem[Table];
-        public string def => (string)mem[Def];
+		public long from => (long)mem[_From];
+        public long table => (long)mem[From.Target];
+        public Ident def => (Ident)mem[Def];
         public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The trigger type (flags)
@@ -46,26 +47,27 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the name of the old row
         /// </summary>
-		public string oldRow =>(string)mem[OldRow];
+		public Ident oldRow =>(Ident)mem[OldRow];
         /// <summary>
         /// the name of the new row
         /// </summary>
-		public string newRow =>(string)mem[NewRow];
+		public Ident newRow =>(Ident)mem[NewRow];
         /// <summary>
         /// the name of the old table
         /// </summary>
-		public string oldTable =>(string)mem[OldTable];
+		public Ident oldTable =>(Ident)mem[OldTable];
         /// <summary>
         /// the name of the new table
         /// </summary>
-		public string newTable => (string)mem[NewTable];
-        public BList<Executable> action => (BList<Executable>)mem[Action];
+		public Ident newTable => (Ident)mem[NewTable];
+        public WhenPart action => (WhenPart)mem[Action];
         /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
 		public Trigger(PTrigger p,Database db)
             : base(p.name,p.ppos,p.defpos,db.role.defpos,BTree<long,object>.Empty
-                  +(Action,((WhenPart)p.def).stms)+(Table,p.tabledefpos)+(TrigType,p.tgtype)
+                  +(Action,(WhenPart)p.def)+(_From,p.from.defpos)
+                  +(From.Target,p.from.target) + (TrigType,p.tgtype)
                   +(UpdateCols,p.cols)+(OldRow,p.oldRow)+(NewRow,p.newRow)
                   +(OldTable,p.oldTable)+(NewTable,p.newTable)
                   +(Def,p.src))
@@ -84,7 +86,8 @@ namespace Pyrrho.Level3
 		{
             var sb = new StringBuilder(base.ToString());
             sb.Append(" TrigType=");sb.Append(tgType);
-            sb.Append(" On=");sb.Append(Uid(tabledefpos));
+            sb.Append(" From="); sb.Append(Uid(from));
+            sb.Append(" On=");sb.Append(Uid(table));
             sb.Append(" Action:");sb.Append(action);
             if (cols != null)
             {
@@ -116,17 +119,18 @@ namespace Pyrrho.Level3
                 r = (Trigger)Relocate(wr);
             var ac = BList<Executable>.Empty;
             var ch = false;
-            for (var b=action.First();b!=null;b=b.Next())
+            var cn = (SqlValue)action.cond?.Relocate(wr);
+            for (var b=action.stms.First();b!=null;b=b.Next())
             {
                 var a = (Executable)b.value().Relocate(wr);
                 ch = ch || (a != b.value());
                 ac += a;
             }
-            if (ch)
-                r += (Action, ac);
-            var ta = wr.Fix(tabledefpos);
-            if (ta != tabledefpos)
-                r += (Table, ta);
+            if (ch || cn!=action.cond)
+                r += (Action, new WhenPart(action.defpos,cn,ac));
+            var ta = wr.Fix(from);
+            if (ta != from)
+                r += (_From, ta);
             var uc = BList<long>.Empty;
             ch = false;
             for (var b=cols.First();b!=null;b=b.Next())
@@ -142,9 +146,10 @@ namespace Pyrrho.Level3
         internal override DBObject Frame(Context cx)
         {
             var ac = BList<Executable>.Empty;
-            for (var b = action.First(); b != null; b = b.Next())
+            var cn = (SqlValue)action.cond?.Frame(cx);
+            for (var b = action.stms.First(); b != null; b = b.Next())
                 ac += (Executable)b.value().Frame(cx);
-            return cx.Add(this + (Action, ac));
+            return cx.Add(this + (Action, new WhenPart(action.defpos,cn,ac)));
         }
     }
 }

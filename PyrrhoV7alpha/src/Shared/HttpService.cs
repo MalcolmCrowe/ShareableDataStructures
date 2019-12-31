@@ -570,7 +570,7 @@ namespace Pyrrho
                 rc[i] = e.row[dt.columns[i].defpos];
             var fm = tp.qry as From;
             var tb = e._rs._tr.objects[fm.target] as Table;
-            sbuild.Append(dt.Xml(tp._tr,_cx,tb?.defpos??-1L, new TRow(dt, rc)));
+            sbuild.Append(dt.Xml(tp._tr as Transaction, _cx,tb?.defpos??-1L, new TRow(dt, rc)));
         }
     }
     /// <summary>
@@ -626,7 +626,7 @@ namespace Pyrrho
                     return;
                 }
                 string role = dbn.ident;
-                var db = Database.Get(dbn.ident).Transact(Transaction.TransPos,"");
+                var db = Database.Get(dbn.ident).Transact(Transaction.Analysing,"");
                 var h = client.Request.Headers["Authorization"];
                 var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;

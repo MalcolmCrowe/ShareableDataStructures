@@ -78,6 +78,10 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(defpos,m);
         }
+        internal override SqlValue ToSql(Ident id,Database db)
+        {
+            return new SqlCol(id.iix,((ObInfo)db.role.obinfos[defpos]).name,this);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableColumn(dp,mem);

@@ -46,7 +46,7 @@ namespace Pyrrho.Level2
         /// The grantee object
         /// </summary>
 		public long grantee;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,obj)) return obj;
             if (!Committed(wr,grantee)) return grantee;
@@ -59,10 +59,10 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local base</param>
-        public Grant(Privilege pr, long ob, long ge, long u, Transaction tr)
-            : this(Type.Grant, pr, ob, ge, u, tr) { }
-        protected Grant(Type t,Privilege pr, long ob, long ge, long u, Transaction tr)
-            : base(t, u, tr)
+        public Grant(Privilege pr, long ob, long ge, Transaction tr)
+            : this(Type.Grant, pr, ob, ge, tr) { }
+        protected Grant(Type t,Privilege pr, long ob, long ge, Transaction tr)
+            : base(t, tr)
 		{
             priv = pr;
             obj = ob;
@@ -90,7 +90,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serilaise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relecation information for positions</param>
+        /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutInt((int)priv);
@@ -165,14 +165,14 @@ namespace Pyrrho.Level2
         internal long userpos;
         internal string pwd;
         internal long irolepos;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,userpos)) return userpos;
             if (!Committed(wr,irolepos)) return irolepos;
             return -1;
         }
-        internal Authenticate(long us, string p, long r, long u, Transaction tr) 
-            : base(Type.Authenticate, u, tr)
+        internal Authenticate(long us, string p, long r, Transaction tr) 
+            : base(Type.Authenticate, tr)
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }

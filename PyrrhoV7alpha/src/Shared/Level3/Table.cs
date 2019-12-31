@@ -54,7 +54,7 @@ namespace Pyrrho.Level3
             +(Indexes,BTree<CList<TableColumn>,long>.Empty)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, Trigger>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
-        {}
+        { }
         protected Table(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Table operator+(Table tb,TableColumn tc)
         {
@@ -160,10 +160,12 @@ namespace Pyrrho.Level3
                 cl = uc.ForInsert(classification);
             }
             var trs = new TransitionRowSet(tr, _cx, f, PTrigger.TrigType.Insert, eqs);
+            bool fi = false;
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
-            tr = trs.InsertSA(tr, _cx).Item1;
-            if (_cx.ret != TBool.True)
+            (tr,fi) = trs.InsertSA(tr, _cx);
+            trs._tr = tr; // !!
+            if (!fi) // no insteadof has fired
             {
                 for (var trb = trs.First(_cx); trb != null; trb = trb.Next(_cx)) // trb constructor checks for autokey
                 {
@@ -175,15 +177,15 @@ namespace Pyrrho.Level3
                         if (sc is SqlCol cm)
                         {
                             var tc = cm.tableCol;
-                            var tv = _cx.row.values[tc.defpos];
+                            var tv = _cx.row[tc.defpos];
                             if (tv == null || tv == TNull.Value)
                             {
                                 if (tc.generated is GenerationRule gr && gr.gen!=Generation.No)
-                                    _cx.row.values += (tc.defpos,gr.Eval(tr,_cx));
+                                    _cx.row += (tc.defpos,gr.Eval(tr,_cx));
                                 else
                                 if ((cm.tableCol.defaultValue ?? cm.tableCol.domain.defaultValue)
                                     is TypedValue dv && dv != null && dv != TNull.Value)
-                                    _cx.row.values += (cm.tableCol.defpos, dv);
+                                    _cx.row += (cm.tableCol.defpos, dv);
                                 else if (cm.tableCol.notNull)
                                     throw new DBException("22206", sc.name);
                             }
@@ -193,25 +195,31 @@ namespace Pyrrho.Level3
                         }
                     }
                     // Do row-level triggers
-                    tr = _trb.InsertRB(tr,_cx).Item1;
+                    (tr,fi) = _trb.InsertRB(tr,_cx);
+                    trs._tr = tr; // !!
+                    if (fi) // an insteadof trigger has fired
+                        continue;
                     Record r = null;
                     if (cl != Level.D)
-                        r = new Record3(this,_cx.row.values, st, cl, tr.nextTid, tr);
+                        r = new Record3(this,_cx.row.values, st, cl, tr);
                     else if (prov != null)
-                        r = new Record1(this,_cx.row.values, prov, tr.nextTid, tr);
+                        r = new Record1(this,_cx.row.values, prov, tr);
                     else
-                        r = new Record(this, _cx.row.values, tr.nextTid, tr);
+                        r = new Record(this, _cx.row.values, tr);
                     count++;
                     // install the record in the database
-                    tr = tr +r +(Database.NextTid,r.defpos+1);
-                    _cx.affected+=new Rvv(defpos, trb._defpos, r.ppos);
+                    tr.FixTriggeredActions(triggers,((TransitionRowSet)_trb._rs)._tgt,r.ppos);
+                    tr += r;
+                    trs._tr = tr; // !!
+          //          _cx.affected+=new Rvv(defpos, trb._defpos, r.ppos);
                    // Row-level after triggers
-                    tr = _trb.InsertRA(tr,_cx).Item1;
+                    (tr,fi) = _trb.InsertRA(tr,_cx);
+                    trs._tr = tr; // !!
                 }
-                tr += (Database.NextTid, _cx.top);
             }
             // Statement-level after triggers
-            tr = trs.InsertSA(tr,_cx).Item1;
+            (tr,fi) = trs.InsertSA(tr,_cx);
+            trs._tr = tr; // !!
             return tr;
         }
 
@@ -258,27 +266,34 @@ namespace Pyrrho.Level3
                 throw new DBException("42105", ((ObInfo)tr.role.obinfos[defpos]).name);
             var trs = new TransitionRowSet(tr, cx, f, PTrigger.TrigType.Delete, eqs);
             var cl = tr.user.clearance;
-            tr = trs.DeleteSB(tr, cx).Item1;
+            var fi = false;
+            var rs = f.RowSets(tr, cx);
+            cx.data += (f.defpos, rs);
+            (tr,fi) = trs.DeleteSB(tr, cx);
             var nr = tr.nextTid;
-            cx.rb = f.RowSets(tr, cx).First(cx);
-            for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark; trb != null;
-                trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
-            {
-      //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
-        //            continue;
-                tr = trb.DeleteRB(tr, cx).Item1;
-                var rec = cx.rb.Rec();
-                if (tr.user.defpos != tr.owner && enforcement.HasFlag(Grant.Privilege.Delete)?
-                    // If Delete is enforced by the table and the user has delete privilege for the table, 
-                    // but the record to be deleted has a classification level different from the user 
-                    // or the clearance does not allow access to the record, throw an Access Denied exception.
-                    ((!cl.ClearanceAllows(rec.classification)) || cl.minLevel > rec.classification.minLevel)
-                    : cl.minLevel > 0)
-                    throw new DBException("42105");
-                tr += new Delete1(rec, nr++, tr);
-                count++;
-                cx.affected+=new Rvv(defpos, rec.defpos, tr.loadpos);
-            }
+            cx.rb = rs.First(cx);
+            if (!fi)
+                for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark; trb != null;
+                    trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
+                {
+                    //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
+                    //            continue;
+                    (tr, fi) = trb.DeleteRB(tr, cx);
+                    if (fi)
+                        continue;
+                    var rec = cx.rb.Rec();
+                    if (tr.user.defpos != tr.owner && enforcement.HasFlag(Grant.Privilege.Delete) ?
+                        // If Delete is enforced by the table and the user has delete privilege for the table, 
+                        // but the record to be deleted has a classification level different from the user 
+                        // or the clearance does not allow access to the record, throw an Access Denied exception.
+                        ((!cl.ClearanceAllows(rec.classification)) || cl.minLevel > rec.classification.minLevel)
+                        : cl.minLevel > 0)
+                        throw new DBException("42105");
+                    tr.FixTriggeredActions(triggers, ((TransitionRowSet)trb._rs)._tgt, tr.nextPos);
+                    tr += new Delete1(rec, tr);
+                    count++;
+          //          cx.affected += new Rvv(defpos, rec.defpos, tr.loadpos);
+                }
             return tr+(Database.NextTid,nr);
         }
         /// <summary>
@@ -315,50 +330,54 @@ namespace Pyrrho.Level3
             var cl = tr.user.clearance;
             cx.row = null;
             cx.rb = f.RowSets(tr, cx).First(cx);
+            bool fi = false;
             if ((level != null || updates.Count > 0))
             {
-                tr = trs.UpdateSB(tr, cx).Item1;
-                for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark;
-                    trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
-                {
-                    //       if (ur.Count > 0 && !ur.Contains(trb._Rvv().ToString()))
-                    //           continue;
-                    var vals = BTree<long,TypedValue>.Empty;
-                    for (var b=updates.First();b!=null;b=b.Next())
+                (tr,fi) = trs.UpdateSB(tr, cx);
+                trs._tr = tr; // !!
+                if (!fi)
+                    for (var trb = trs.First(cx) as TransitionRowSet.TransitionRowBookmark;
+                        trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionRowBookmark)
                     {
-                        var ua = b.value();
-                        var av = ua.val.Eval(tr, cx)?.NotNull();
-                        var dt = ua.vbl.domain;
-                        if (av != null && !av.dataType.EqualOrStrongSubtypeOf(dt))
-                            av = dt.Coerce(av);
-                        vals += (ua.vbl.target, av);
+                        var vals = BTree<long, TypedValue>.Empty;
+                        for (var b = updates.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.value();
+                            var av = ua.val.Eval(tr, cx)?.NotNull();
+                            var dt = ua.vbl.domain;
+                            if (av != null && !av.dataType.EqualOrStrongSubtypeOf(dt))
+                                av = dt.Coerce(av);
+                            cx.values += (ua.vbl.target, av);
+                        }
+                        cx.row = new TRow(cx.row.info, cx.values);
+                        fi = false;
+                        (tr, fi) = trb.UpdateRB(tr, cx);
+                        trs._tr = tr; // !!
+                        if (fi) // an insteadof trigger has fired
+                            continue;
+                        TableRow rc = trb.Rec();
+                        // If Update is enforced by the table, and a record selected for update 
+                        // is not one to which the user has clearance 
+                        // or does not match the user’s clearance level, 
+                        // throw an Access Denied exception.
+                        if (enforcement.HasFlag(Grant.Privilege.Update)
+                            && tr.user.defpos != tr.owner && ((rc != null) ?
+                                 ((!cl.ClearanceAllows(rc.classification))
+                                 || cl.minLevel != rc.classification.minLevel)
+                                 : cl.minLevel > 0))
+                            throw new DBException("42105");
+                        var u = (level == null) ?
+                            new Update(rc, this, cx.row.values, tr) :
+                            new Update1(rc, this, cx.row.values, (Level)level.Eval(tr, cx).Val(), tr);
+                        tr.FixTriggeredActions(triggers, ((TransitionRowSet)trb._rs)._tgt, u.ppos);
+                        tr += u;
+                        (tr, fi) = trb.UpdateRA(tr, cx);
+              //          cx.affected += new Rvv(defpos, u.defpos, tr.loadpos);
+                        cx.row = null;
+                        trs._tr = tr; // !!
                     }
-                    (tr,vals) = trb.UpdateRB(tr, cx, vals);
-                    var vs = cx.row.values;
-                    for (var b = vals.First(); b != null; b = b.Next())
-                        vs += (b.key(), b.value());
-                    cx.row = new TRow(cx.row.info, vs);
-                    TableRow rc = trb.Rec();
-                    // If Update is enforced by the table, and a record selected for update 
-                    // is not one to which the user has clearance 
-                    // or does not match the user’s clearance level, 
-                    // throw an Access Denied exception.
-                    if (enforcement.HasFlag(Grant.Privilege.Update)
-                        && tr.user.defpos != tr.owner && ((rc != null) ?
-                             ((!cl.ClearanceAllows(rc.classification))
-                             || cl.minLevel != rc.classification.minLevel)
-                             : cl.minLevel > 0))
-                        throw new DBException("42105");
-                    var u = (level == null) ?
-                        new Update(rc, this, vals, tr.nextTid, tr) :
-                        new Update1(rc, this, vals, (Level)level.Eval(tr, cx).Val(), tr.nextTid, tr);
-                    tr = tr + u + (Database.NextTid,tr.nextTid+1);
-                    trb.UpdateRA(tr,cx,vals);
-                    cx.affected+=new Rvv(defpos, u.defpos, tr.loadpos);
-                    cx.row = null;
-                }
             }
-            trs.UpdateSA(tr,cx);
+            (tr,fi) = trs.UpdateSA(tr,cx);
             rs.Add(trs); // just for PUT
             return tr;
         }

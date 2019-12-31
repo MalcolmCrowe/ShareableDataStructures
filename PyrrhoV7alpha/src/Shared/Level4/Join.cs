@@ -159,7 +159,7 @@ namespace Pyrrho.Level4
                 {
                     var s = t.columns[j];
                     if (_left._rs.qry is Query qs && j < qs.rowType.columns.Count)
-                        v = qs.rowType.columns[j].Eval(_rs._tr, _cx);
+                        v = qs.rowType.columns[j].Eval(_rs._tr as Transaction, _cx);
                     if (v == null)
                         v = _left?.row[s.defpos] ?? TNull.Value; // allow for outer joins
                 }
@@ -172,7 +172,7 @@ namespace Pyrrho.Level4
                 {
                     var s = t.columns[j];
                     if (_right._rs.qry is Query qs && j < qs.rowType.columns.Count)
-                        v = qs.rowType.columns[j].Eval(_rs._tr, _cx);
+                        v = qs.rowType.columns[j].Eval(_rs._tr as Transaction, _cx);
                     if (v == null)
                         v = _right?.row[s.defpos] ?? TNull.Value;
                 }
@@ -187,7 +187,7 @@ namespace Pyrrho.Level4
         internal RowBookmark MoveToMatch(Context _cx)
         {
             var r = this;
-            while (r != null && !Query.Eval(_jrs.qry.where,_jrs._tr,_cx))
+            while (r != null && !Query.Eval(_jrs.qry.where,_jrs._tr as Transaction, _cx))
                 r = r._Next(_cx);
             return r;
         }
@@ -226,7 +226,7 @@ namespace Pyrrho.Level4
             for (;;)
             {
                 var bm = new InnerJoinBookmark(_cx,j, left, right);
-                int c = join.Compare(j._tr,_cx);
+                int c = join.Compare(j._tr as Transaction, _cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -269,7 +269,7 @@ namespace Pyrrho.Level4
             for (; ; )
             {
                 var ret = new InnerJoinBookmark(_cx,_jrs, left, right, _pos + 1);
-                int c = join.Compare(_jrs._tr,_cx);
+                int c = join.Compare(_jrs._tr as Transaction, _cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -336,30 +336,30 @@ namespace Pyrrho.Level4
                 for (left = j.first.First(_cx); left != null; left = left.Next(_cx))
                 {
                     if (j._tr.objects[info.rindexDefPos] is Index rx && !(left.Matches() &&
-                            Query.Eval(join.left.where, j._tr,_cx)))
+                            Query.Eval(join.left.where, j._tr as Transaction, _cx)))
                         continue;
                     PRow key = null;
                     for (var b = info.conds.First(); b != null; b = b.Next())
                         if (b.value() is SqlValueExpr se)
-                            key = new PRow(se.left.Eval(j._tr, _cx), key);
+                            key = new PRow(se.left.Eval(j._tr as Transaction, _cx), key);
                     right = j.second.PositionAt(_cx,key.Reverse());
                     if (right?.Matches()==true &&
-                        Query.Eval(join.right.where, j._tr, _cx))
+                        Query.Eval(join.right.where, j._tr as Transaction, _cx))
                         return new FDJoinBookmark(_cx,j, left, right, 0);
                 }
             else
                 for (right = j.second.First(_cx); right != null; right = right.Next(_cx))
                 {
                     if (j._tr.objects[info.rindexDefPos] is Index rx && !(right.Matches() &&
-                            Query.Eval(join.right.where, j._tr, _cx)))
+                            Query.Eval(join.right.where, j._tr as Transaction, _cx)))
                         continue;
                     PRow key = null;
                     for (var b = info.conds.First(); b != null; b = b.Next())
                         if (b.value() is SqlValueExpr se)
-                            key = new PRow(se.right.Eval(j._tr, _cx), key);
+                            key = new PRow(se.right.Eval(j._tr as Transaction, _cx), key);
                     left = j.first.PositionAt(_cx,key.Reverse());
                     if (left?.Matches()==true &&
-                        Query.Eval(join.left.where, j._tr, _cx))
+                        Query.Eval(join.left.where, j._tr as Transaction, _cx))
                         return new FDJoinBookmark(_cx,j, left, right, 0);
                 }
             return null;
@@ -379,15 +379,15 @@ namespace Pyrrho.Level4
                 for (left = left.Next(_cx); left != null; left = left.Next(_cx))
                 {
                     if (rindex != null && !(left.Matches() &&
-                         Query.Eval(join.left.where, _rs._tr, _cx)))
+                         Query.Eval(join.left.where, _rs._tr as Transaction, _cx)))
                         continue;
                     PRow ks = null;
                     for (var b = info.conds.First(); b != null; b = b.Next())
                         if (b.value() is SqlValueExpr c)
-                            ks = new PRow(c.left.Eval(_jrs._tr, _cx), ks);
+                            ks = new PRow(c.left.Eval(_jrs._tr as Transaction, _cx), ks);
                     right = _jrs.second.PositionAt(_cx,ks.Reverse());
                     if (right?.Matches()==true &&
-                        Query.Eval(join.right.where, _rs._tr, _cx))
+                        Query.Eval(join.right.where, _rs._tr as Transaction, _cx))
                         return new FDJoinBookmark(_cx,_jrs, left, right, _pos + 1);
                 }
                 return null;
@@ -397,15 +397,15 @@ namespace Pyrrho.Level4
                 for (right = right.Next(_cx);right != null;right = right.Next(_cx))
                 {
                     if (rindex != null && !(right.Matches() &&
-                            Query.Eval(join.right.where, _rs._tr, _cx)))
+                            Query.Eval(join.right.where, _rs._tr as Transaction, _cx)))
                         continue;
                     PRow ks = null;
                     for (var b = info.conds.First(); b!=null; b=b.Next())
                         if (b.value() is SqlValueExpr c)
-                            ks = new PRow(c.right.Eval(_jrs._tr,_cx), ks);
+                            ks = new PRow(c.right.Eval(_jrs._tr as Transaction, _cx), ks);
                     left = _jrs.first.PositionAt(_cx,ks.Reverse());
                    if (left?.Matches()==true && 
-                        Query.Eval(join.left.where,_rs._tr,_cx))
+                        Query.Eval(join.left.where,_rs._tr as Transaction, _cx))
                     return new FDJoinBookmark(_cx,_jrs, left, right, _pos + 1);
                 }
                 return null;
@@ -463,7 +463,7 @@ namespace Pyrrho.Level4
                 if (right == null)
                     return new LeftJoinBookmark(_cx,j, left, null, false, 0);
                 var bm = new LeftJoinBookmark(_cx,j, left, right,true,0);
-                int c = join.Compare(j._tr,_cx);
+                int c = join.Compare(j._tr as Transaction, _cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -513,7 +513,7 @@ namespace Pyrrho.Level4
                 if (right == null)
                     return new LeftJoinBookmark(_cx,_jrs, left, null, false, _pos + 1);
                 var ret = new LeftJoinBookmark(_cx,_jrs, left, right, true, _pos + 1);
-                int c = join.Compare(_jrs._tr,_cx);
+                int c = join.Compare(_jrs._tr as Transaction, _cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -571,7 +571,7 @@ namespace Pyrrho.Level4
                 if (left == null)
                     return new RightJoinBookmark(_cx,j, null, false, right, 0);
                 var bm = new RightJoinBookmark(_cx,j, left, true, right,0);
-                int c = join.Compare(j._tr,_cx);
+                int c = join.Compare(j._tr as Transaction, _cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -616,7 +616,7 @@ namespace Pyrrho.Level4
                 if (left == null)
                     return new RightJoinBookmark(_cx,_jrs, null, false, right, _pos + 1);
                 var ret = new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
-                int c = join.Compare(_jrs._tr,_cx);
+                int c = join.Compare(_jrs._tr as Transaction, _cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -678,7 +678,7 @@ namespace Pyrrho.Level4
                 return null;
             var join = j.qry as JoinPart;
             var bm = new FullJoinBookmark(_cx,j, left, true, right, true, 0);
-            int c = join.Compare(j._tr,_cx);
+            int c = join.Compare(j._tr as Transaction, _cx);
             if (c == 0)
                 return bm;
             if (c < 0)
@@ -730,7 +730,7 @@ namespace Pyrrho.Level4
             if (right == null)
                 return new FullJoinBookmark(_cx,_jrs, left, true, right, false, _pos + 1);
             new FullJoinBookmark(_cx,_jrs, left, true, right, true, _pos + 1);
-            int c = join.Compare(_jrs._tr,_cx);
+            int c = join.Compare(_jrs._tr as Transaction, _cx);
             return new FullJoinBookmark(_cx,_jrs, left, c <= 0, right, c >= 0, _pos + 1);
         }
 

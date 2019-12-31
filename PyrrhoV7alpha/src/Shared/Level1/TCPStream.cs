@@ -583,10 +583,10 @@ namespace Pyrrho.Level1
             int n = a.list.Count;
             var et = a.dataType.elType ?? ((a.Length > 0) ? a[0].dataType : Domain.Content);
             PutString(et.ToString());
-            PutInt(et.Typecode());
+            PutInt(et.domain.Typecode());
             PutInt(n);
             for (int j = 0; j < n; j++)
-                PutCell(_cx,et, a[j]);
+                PutCell(_cx,et.domain, a[j]);
         }
         /// <summary>
         /// send a Multiset to the client
@@ -598,10 +598,10 @@ namespace Pyrrho.Level1
             var e = m.First();
             var et = m.dataType.elType ?? m?.dataType ?? Domain.Content;
             PutString(et.ToString());
-            PutInt(et.Typecode());
+            PutInt(et.domain.Typecode());
             PutInt((int)m.Count);
             for (; e != null; e = e.Next())
-                PutCell(_cx,et, e.Value());
+                PutCell(_cx,et.domain, e.Value());
         }
         /// <summary>
         /// Send a Table to the client

@@ -31,9 +31,9 @@ namespace Pyrrho.Level2
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="dt">The (new) Sql data type</param>
         /// <param name="pb">The local database</param>
-        public Edit(Domain old, string nm, Domain dt,long u,Transaction db)
+        public Edit(Domain old, string nm, Domain dt,Transaction db)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
-                  dt.culture.Name,dt.defaultString,dt.super.defpos, u, db)
+                  dt.culture.Name,dt.defaultString,dt.super.defpos,db)
         {
             _defpos = old.defpos;
             prev = old.lastChange;

@@ -32,6 +32,7 @@ namespace Pyrrho.Level3
             Depth = -66, // int  (max depth of dependents)
             Description = -67, // string
             _Domain = -176, // Domain
+            Kind = -80, // Sqlx (specified for SqlValue, Domain, otherwise delegated to Domain)
             LastChange = -68, // long (formerly called Ppos)
             Sensitive = -69; // bool
         /// <summary>
@@ -44,7 +45,8 @@ namespace Pyrrho.Level3
         /// </summary>
         public long definer =>(long)(mem[Definer]??-1L);
         public string description => (string)mem[Description] ?? "";
-        internal Domain domain => (Domain)mem[_Domain] ?? Domain.Content;
+        internal virtual Domain domain => (Domain)mem[_Domain] ?? Domain.Content;
+        public virtual Sqlx kind => domain.kind;
         internal long lastChange => (long)(mem[LastChange] ?? defpos);
         /// <summary>
         /// Sensitive if it contains a sensitive type
@@ -115,6 +117,8 @@ namespace Pyrrho.Level3
         /// <returns>the current role if it has this privilege</returns>
         public virtual bool Denied(Transaction tr, Grant.Privilege priv)
         {
+            if (tr == null)
+                return false;
             if (tr.user!=null && !(classification == Level.D || tr.user.defpos==tr.owner
                 || tr.user.clearance.ClearanceAllows(classification)))
                 return true;
@@ -140,6 +144,22 @@ namespace Pyrrho.Level3
         {
             return d;
         }
+        // Helper for format<51 compatibility
+        internal virtual SqlValue ToSql(Ident id,Database db)
+        {
+            return null;
+        }
+        // Overridden in Domain and ObInfo
+        public virtual TypedValue Parse(Scanner lx,bool union=false)
+        {
+            return TNull.Value;
+        }
+        public virtual TypedValue Get(Reader rdr)
+        {
+            return TNull.Value;
+        }
+        public virtual void Put(TypedValue tv,Writer wr)
+        { }
         /// <summary>
         /// Record a need (droppable objects only)
         /// </summary>
@@ -455,7 +475,7 @@ namespace Pyrrho.Level3
         {
             if (DoAudit(tr, cols, key))
                 tr.Audit(new Audit(tr.user, defpos,
-                    cols, key,System.DateTime.Now.Ticks, tr.uid, tr));
+                    cols, key,System.DateTime.Now.Ticks, tr));
         }
         /// <summary>
         /// Issues here: This object may not have been committed yet
@@ -491,6 +511,8 @@ namespace Pyrrho.Level3
         /// <param name="m"></param>
         internal void Audit(Transaction tr, Query f)
         {
+            if (tr == null)
+                return;
             var tb = this as Table;
             if (((!sensitive) && (tb?.classification.minLevel??0)==0)
                 || defpos >= Transaction.TransPos)
@@ -514,9 +536,13 @@ namespace Pyrrho.Level3
         internal static string Uid(long u)
         {
             if (u >= PyrrhoServer.ConnPos)
-                return "^" + (u - PyrrhoServer.ConnPos);
+                return "%" + (u - PyrrhoServer.ConnPos);
+            if (u >= Transaction.Analysing)
+                return "#" + (u - Transaction.Analysing);
+            if (u >= Transaction.Aliasing)
+                return "@" + (u - Transaction.Aliasing);
             if (u >= Transaction.TransPos)
-                return "'" + (u - Transaction.TransPos);
+                return "'" + (u - Transaction.TransPos); 
             if (u == -1)
                 return "_";
             return "" + u;

@@ -165,7 +165,7 @@ namespace Pyrrho.Level4
         /// Construct results for a system table
         /// </summary>
         /// <param name="f">the from part</param>
-        internal SystemRowSet(Transaction tr,Context cx,From f,ObInfo rt=null)
+        internal SystemRowSet(Database tr,Context cx,From f,ObInfo rt=null)
             : base(tr,new Context(cx),f,rt??f.rowType)
         {
             from = f;
@@ -475,7 +475,7 @@ namespace Pyrrho.Level4
                 for (var x = res._NextPhysical(5); x.Item1 != null; x = res._NextPhysical(x.Item2))
                 {
                     var rb = new LogBookmark(_cx,res, 0, x);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -500,7 +500,7 @@ namespace Pyrrho.Level4
                 for (var x=res._NextPhysical(nextpos); x.Item1!=null; x=res._NextPhysical(x.Item2))
                 {
                     var rb = new LogBookmark(_cx,res, _pos+1, x);
-                    if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                    if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -539,7 +539,7 @@ namespace Pyrrho.Level4
                         || ph.type == Physical.Type.Alter3)
                     {
                         var rb = new LogAlterBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -567,7 +567,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Alter || ph.type == Physical.Type.Alter2 || ph.type == Physical.Type.Alter3)
                     {
                         var rb = new LogAlterBookmark(_cx,res, _pos+1,x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -603,7 +603,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Change)
                     {
                         var rb = new LogChangeBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -628,7 +628,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Change)
                     {
                         var rb = new LogChangeBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -663,7 +663,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Delete)
                     {
                         var rb = new LogDeleteBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -687,7 +687,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Delete)
                     {
                         var rb = new LogDeleteBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -723,7 +723,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Drop)
                     {
                         var rb = new LogDropBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -747,7 +747,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Drop)
                     {
                         var rb = new LogDropBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -785,7 +785,7 @@ namespace Pyrrho.Level4
                         || ph.type == Physical.Type.Metadata3)
                     {
                         var rb = new LogMetadataBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -800,7 +800,7 @@ namespace Pyrrho.Level4
                         || ph.type == Physical.Type.Metadata3)
                     {
                         var rb = new LogMetadataBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -852,7 +852,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Modify)
                     {
                         var rb = new LogModifyBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -866,7 +866,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Modify)
                     {
                         var rb = new LogModifyBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -913,7 +913,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PUser)
                     {
                         var rb = new LogUserBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -927,7 +927,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PUser)
                     {
                         var rb = new LogUserBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -973,7 +973,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PRole||ph.type==Physical.Type.PRole1)
                     {
                         var rb = new LogRoleBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -987,7 +987,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PRole || ph.type == Physical.Type.PRole1)
                     {
                         var rb = new LogRoleBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1036,7 +1036,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PCheck||ph.type == Physical.Type.PCheck2)
                     {
                         var rb = new LogCheckBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1050,7 +1050,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PCheck||ph.type == Physical.Type.PCheck2)
                     {
                         var rb = new LogCheckBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1094,7 +1094,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Classify)
                     {
                         var rb = new LogClassificationBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1108,7 +1108,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Classify)
                     {
                         var rb = new LogClassificationBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1152,7 +1152,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Clearance)
                     {
                         var rb = new LogClearanceBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1166,7 +1166,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Clearance)
                     {
                         var rb = new LogClearanceBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr,_cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1223,7 +1223,7 @@ namespace Pyrrho.Level4
                         ||ph.type==Physical.Type.PColumn3)
                     {
                         var rb = new LogColumnBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1238,7 +1238,7 @@ namespace Pyrrho.Level4
                         ||ph.type==Physical.Type.PColumn3)
                     {
                         var rb = new LogColumnBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1298,7 +1298,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PeriodDef)
                     {
                         var rb = new LogTablePeriodBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1312,7 +1312,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PeriodDef)
                     {
                         var rb = new LogTablePeriodBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1366,7 +1366,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PDateType)
                     {
                         var rb = new LogDateTypeBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1380,7 +1380,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PDateType)
                     {
                         var rb = new LogDateTypeBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1438,7 +1438,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PDomain||ph.type==Physical.Type.PDomain1)
                     {
                         var rb = new LogDomainBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr,_cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1452,7 +1452,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PDomain||ph.type==Physical.Type.PDomain1)
                     {
                         var rb = new LogDomainBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1474,7 +1474,7 @@ namespace Pyrrho.Level4
                     new TChar(d.charSet.ToString()),
                     new TChar(d.culture.Name),
                     Display(d.defaultString),
-                    new TInt(d.elType.defpos),
+                    new TInt(d.eltypedefpos),
                     Pos(d.trans));
             }
          }
@@ -1507,7 +1507,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Edit)
                     {
                         var rb = new LogEditBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1521,7 +1521,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Edit)
                     {
                         var rb = new LogEditBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1563,7 +1563,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Enforcement)
                     {
                         var rb = new LogEnforcementBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1583,7 +1583,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Enforcement)
                     {
                         var rb = new LogEnforcementBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1621,7 +1621,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Grant)
                     {
                         var rb = new LogGrantBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1635,7 +1635,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Grant)
                     {
                         var rb = new LogGrantBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1690,7 +1690,7 @@ namespace Pyrrho.Level4
                         ||ph.type==Physical.Type.PIndex2)
                     {
                         var rb = new LogIndexBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1705,7 +1705,7 @@ namespace Pyrrho.Level4
                         ||ph.type==Physical.Type.PIndex2)
                     {
                         var rb = new LogIndexBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1766,7 +1766,7 @@ namespace Pyrrho.Level4
                     if (p.type == Physical.Type.PIndex || p.type == Physical.Type.PIndex1 || p.type == Physical.Type.PIndex2)
                     {
                         var rb = new LogIndexKeyBookmark(_cx,res, 0, x, 0);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1777,7 +1777,7 @@ namespace Pyrrho.Level4
                 for (var ix = _ix + 1; ph is PIndex x && ix < x.columns.Count; ix = ix + 1)
                 {
                     var rb = new LogIndexKeyBookmark(_cx,res, _pos, (ph, nextpos), ix);
-                    if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                    if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 for (var pp = res._NextPhysical(nextpos); pp.Item1 != null; pp = res._NextPhysical(pp.Item2))
@@ -1789,7 +1789,7 @@ namespace Pyrrho.Level4
                         for (var ix = 0; ix < x.columns.Count; ix++)
                         {
                             var rb = new LogIndexKeyBookmark(_cx,res, _pos + 1, pp, ix);
-                            if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                            if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -1840,7 +1840,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Ordering)
                     {
                         var rb = new LogOrderingBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1854,7 +1854,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Ordering)
                     {
                         var rb = new LogOrderingBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1906,7 +1906,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PProcedure||ph.type == Physical.Type.PProcedure2)
                     {
                         var rb = new LogProcedureBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1920,7 +1920,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PProcedure||ph.type == Physical.Type.PProcedure2)
                     {
                         var rb = new LogProcedureBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1972,7 +1972,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Revoke)
                     {
                         var rb = new LogRevokeBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -1986,7 +1986,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Revoke)
                     {
                         var rb = new LogRevokeBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2036,7 +2036,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTable||ph.type == Physical.Type.PTable1)
                     {
                         var rb = new LogTableBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2050,7 +2050,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTable||ph.type == Physical.Type.PTable1)
                     {
                         var rb = new LogTableBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2105,7 +2105,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTrigger)
                     {
                         var rb = new LogTriggerBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2119,7 +2119,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTrigger)
                     {
                         var rb = new LogTriggerBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2134,7 +2134,7 @@ namespace Pyrrho.Level4
                 return new TRow(res.from.rowType,
                     Pos(d.ppos),
                     new TChar(d.name),
-                    Pos(d.tabledefpos),
+                    Pos(d.from.target),
                     new TChar(d.tgtype.ToString()),
                     new TChar(d.oldTable),
                     new TChar(d.newTable),
@@ -2188,7 +2188,7 @@ namespace Pyrrho.Level4
                             for (var ix = 0; ix < pt.cols.Length; ix++)
                             {
                                 var rb = new LogTriggerUpdateColumnBookmark(_cx,res, 0, x, pt.cols, ix);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                     }
@@ -2200,7 +2200,7 @@ namespace Pyrrho.Level4
                 for (var ix = _ix + 1; ix < _sub.Length; ix = ix + 1)
                 {
                     var rb = new LogTriggerUpdateColumnBookmark(_cx,res, _pos + 1, (ph, nextpos), _sub, ix);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (var pp = res._NextPhysical(nextpos); pp.Item1 is PTrigger pt && pt.cols != null;
@@ -2208,7 +2208,7 @@ namespace Pyrrho.Level4
                     for (var ix = 0; ix < pt.cols.Length; ix = ix + 1)
                     {
                         var rb = new LogTriggerUpdateColumnBookmark(_cx,res, _pos + 1, pp, pt.cols, ix);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -2248,7 +2248,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.TriggeredAction)
                     {
                         var rb = new LogTriggeredActionBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2262,7 +2262,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.TriggeredAction)
                     {
                         var rb = new LogTriggeredActionBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2309,7 +2309,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PType||ph.type == Physical.Type.PType1)
                     {
                         var rb = new LogTypeBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2323,7 +2323,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PType||ph.type == Physical.Type.PType1)
                     {
                         var rb = new LogTypeBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2371,7 +2371,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PMethod||ph.type == Physical.Type.PMethod2)
                     {
                         var rb = new LogTypeMethodBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2385,7 +2385,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PMethod||ph.type == Physical.Type.PMethod2)
                     {
                         var rb = new LogTypeMethodBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2436,7 +2436,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PView||ph.type == Physical.Type.PView1)
                     {
                         var rb = new LogViewBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2450,7 +2450,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PView||ph.type == Physical.Type.PView1)
                     {
                         var rb = new LogViewBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2508,7 +2508,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Record||ph.type == Physical.Type.Record1||ph.type == Physical.Type.Record2)
                     {
                         var rb = new LogRecordBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2522,7 +2522,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Record||ph.type == Physical.Type.Record1||ph.type == Physical.Type.Record2)
                     {
                         var rb = new LogRecordBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2583,7 +2583,7 @@ namespace Pyrrho.Level4
                     for (var b = (lb.ph as Record).fields.PositionAt(0); b != null; b = b.Next())
                     {
                         var rb = new LogRecordFieldBookmark(_cx,lb, 0, b);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -2611,7 +2611,7 @@ namespace Pyrrho.Level4
                 for (var fld = _fld.Next(); fld != null; fld = fld.Next())
                 {
                     var rb = new LogRecordFieldBookmark(_cx,_rec, _pos + 1, fld);
-                    if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                    if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                         return rb;
                 }
                 for (var rec = (LogRecordBookmark)_rec.Next(_cx); rec != null; 
@@ -2619,7 +2619,7 @@ namespace Pyrrho.Level4
                     for (var b = (rec.ph as Record).fields.PositionAt(0); b != null; b = b.Next())
                     {
                         var rb = new LogRecordFieldBookmark(_cx,rec, _pos + 1, b);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -2657,7 +2657,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Update||ph.type == Physical.Type.Update1)
                     {
                         var rb = new LogUpdateBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2671,7 +2671,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.Update||ph.type == Physical.Type.Update1)
                     {
                         var rb = new LogUpdateBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2726,7 +2726,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTransaction||ph.type == Physical.Type.PTransaction2)
                     {
                         var rb = new LogTransactionBookmark(_cx,res, 0, x);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2740,7 +2740,7 @@ namespace Pyrrho.Level4
                     if (ph.type == Physical.Type.PTransaction||ph.type == Physical.Type.PTransaction2)
                     {
                         var rb = new LogTransactionBookmark(_cx,res, _pos + 1, x);
-                        if (Query.Eval(_rs.qry.where, _rs._tr, _cx))
+                        if (Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -2801,7 +2801,7 @@ namespace Pyrrho.Level4
                 for (var en = res._tr.objects.PositionAt(0); en != null; en = en.Next())
                 {
                     var rb = new SysRoleBookmark(_cx,res, 0, en);
-                    if (en.value() is Role && Query.Eval(res.qry.where, res._tr, _cx))
+                    if (en.value() is Role && Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -2825,7 +2825,7 @@ namespace Pyrrho.Level4
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
                     var rb = new SysRoleBookmark(_cx,res, _pos + 1, bmk);
-                    if (bmk.value() is Role && Query.Eval(res.qry.where, res._tr, _cx))
+                    if (bmk.value() is Role && Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -2879,7 +2879,7 @@ namespace Pyrrho.Level4
                 for (var en = res._tr.objects.PositionAt(0); en != null; en = en.Next())
                 {
                     var rb = new SysUserBookmark(_cx,res, 0, en);
-                    if (en.value() is User && Query.Eval(res.qry.where, res._tr, _cx))
+                    if (en.value() is User && Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -2907,7 +2907,7 @@ namespace Pyrrho.Level4
                 {
                     var rb = new SysUserBookmark(_cx,res, _pos + 1, e);
                     if (e.value() is User 
-                        && Query.Eval(res.qry.where, res._tr, _cx))
+                        && Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -2949,7 +2949,7 @@ namespace Pyrrho.Level4
                         if (dm != null & dm.priv.HasFlag(Grant.Privilege.Usage))
                         {
                             var sb = new SysRoleUserBookmark(_cx, res, rb, inner, 0);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return sb;
                         }
                     }
@@ -2968,7 +2968,7 @@ namespace Pyrrho.Level4
                     if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
                     {
                         var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos+1);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return sb;
                     }
                     if (inner != null)
@@ -2986,7 +2986,7 @@ namespace Pyrrho.Level4
                     if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
                     {
                         var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos + 1);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return sb;
                     }
                 }
@@ -3024,7 +3024,7 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.Audit:
                             var rb = new SysAuditBookmark(_cx,res, bmk, 0);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                             break;
                     }
@@ -3053,7 +3053,7 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.Audit:
                             var rb = new SysAuditBookmark(_cx,res, bmk, _pos+1);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                             break;
                     }
@@ -3085,7 +3085,7 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.Audit:
                             var rb = new SysAuditKeyBookmark(_cx,res, bmk, 0, 0);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                             break;
                     }
@@ -3108,7 +3108,7 @@ namespace Pyrrho.Level4
                     for (ix = ix + 1; ix < au.key.Length; ix++)
                     {
                         var sb = new SysAuditKeyBookmark(_cx,res, _bmk, ix, _pos + 1);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return sb;
                     }
                     for (bmk = bmk?.Next(_cx) as LogBookmark; bmk != null; 
@@ -3120,7 +3120,7 @@ namespace Pyrrho.Level4
                     ix = 0;
                     au = bmk.ph as Audit;
                     var rb = new SysAuditKeyBookmark(_cx,res, bmk, 0, _pos + 1);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
             }
@@ -3169,7 +3169,7 @@ namespace Pyrrho.Level4
                     {
                         var b = new SysClassificationBookmark(_cx,res, 0, obm, null,
                             ob.lastChange, ob.GetType().Name, ob.classification);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return b;
                     }
                     if (ob is Table tb)
@@ -3180,7 +3180,7 @@ namespace Pyrrho.Level4
                             {
                                 var rb = new SysClassificationBookmark(_cx, res, 0, obm, tbm,
                                     tbm.key(), "Record", rw.classification);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                         }
@@ -3215,7 +3215,7 @@ namespace Pyrrho.Level4
                                 var ta = tbm.value();
                                 var b = new SysClassificationBookmark(_cx, res, _pos + 1, obm, tbm,
                                             tbm.key(), "Record", rw.classification);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return b;
                             }
                         }
@@ -3228,7 +3228,7 @@ namespace Pyrrho.Level4
                     {
                         var rb = new SysClassificationBookmark(_cx,res, _pos + 1, obm, null, 
                                                 ob.lastChange, ob.GetType().Name, ob.classification);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 } 
@@ -3281,7 +3281,7 @@ namespace Pyrrho.Level4
                         {
                             var rb = new SysClassifiedColumnDataBookmark(_cx,res, 0, cbm,
                                 tbm, rt.defpos, rt.classification);
-                            if (Query.Eval(res.qry.where, res._tr,_cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -3314,7 +3314,7 @@ namespace Pyrrho.Level4
                         {
                             var rb = new SysClassifiedColumnDataBookmark(_cx,res, _pos + 1, cbm, tbm,
                                                                     rt.defpos, rt.classification);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -3345,7 +3345,7 @@ namespace Pyrrho.Level4
                     if (b.value() is Table t && (int)t.enforcement!=15)
                     {
                         var rb = new SysEnforcementBookmark(_cx,res, 0, b);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -3366,7 +3366,7 @@ namespace Pyrrho.Level4
                     if (b.value() is Table t && (int)t.enforcement != 15)
                     {
                         var rb = new SysEnforcementBookmark(_cx,res, _pos+1, b);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -3410,7 +3410,7 @@ namespace Pyrrho.Level4
                     if (bmk.value() is View vw)
                     {
                         var rb =new RoleViewBookmark(_cx,res, 0, bmk);
-                        if (Query.Eval(res.qry.where, res._tr,_cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -3452,7 +3452,7 @@ namespace Pyrrho.Level4
                     if (bmk.value() is View vw)
                     {
                         var rb = new RoleViewBookmark(_cx,res, _pos + 1, bmk);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -3500,7 +3500,7 @@ namespace Pyrrho.Level4
                         if (inner.value() is Check ck)
                         {
                             var rb = new RoleDomainCheckBookmark(_cx,res, 0, bmk, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 }
@@ -3537,7 +3537,7 @@ namespace Pyrrho.Level4
                         if (check != null)
                         {
                             var rb = new RoleDomainCheckBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -3554,7 +3554,7 @@ namespace Pyrrho.Level4
                         if (check != null)
                         {
                             var sb = new RoleDomainCheckBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return sb;
                         }
                     }
@@ -3602,7 +3602,7 @@ namespace Pyrrho.Level4
                             if (inner.value() is Check ck)
                             {
                                 var rb = new RoleTableCheckBookmark(_cx,res, 0, outer, inner);
-                                if (Query.Eval(res.qry.where, res._tr,_cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -3651,7 +3651,7 @@ namespace Pyrrho.Level4
                         continue;
                     test:
                     var rb = new RoleTableCheckBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (Query.Eval(res.qry.where, res._tr,_cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
             }
@@ -3698,13 +3698,13 @@ namespace Pyrrho.Level4
                         if (t.systemPS > 0)
                         {
                             var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, true);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                         else if (t.applicationPS > 0)
                         {
                             var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, false);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -3751,7 +3751,7 @@ namespace Pyrrho.Level4
                     if (system && outer.value() is Table t && t.applicationPS>0)
                     {
                         var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, false);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                     if ((outer = outer.Next()) == null)
@@ -3760,7 +3760,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is Table tb && tb.systemPS > 0)
                     {
                         var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, true);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -3816,7 +3816,7 @@ namespace Pyrrho.Level4
                             if (inner.value() is SqlValue)
                             {
                                 var rb = new RoleColumnBookmark(_cx, res, 0, outer, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                     }
@@ -3863,7 +3863,7 @@ namespace Pyrrho.Level4
                             if (inner.value() is SqlValue)
                             {
                                 var rb = new RoleColumnBookmark(_cx,res, _pos + 1, outer, inner);
-                                if (Query.Eval(res.qry.where, res._tr,_cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                         inner = null;
@@ -3898,7 +3898,7 @@ namespace Pyrrho.Level4
                     if (((t is Table) || (t is View)) && !(t is RestView))
                     {
                         var rb = new RoleClassBookmark(_cx,res, 0, outer);
-                        if (Query.Eval(res.qry.where, res._tr,_cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -3913,7 +3913,7 @@ namespace Pyrrho.Level4
                     if ((tb is Table || tb is View) && !(tb is RestView))
                     {
                         var rb = new RoleClassBookmark(_cx,res, _pos + 1, enu);
-                        if (Query.Eval(res.qry.where, res._tr,_cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -3921,7 +3921,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentValue()
             {
-                return ((Table)_enu.value()).RoleClassValue(res._tr,res.from, _enu);
+                return ((Table)_enu.value()).RoleClassValue(res._tr as Transaction, res.from, _enu);
             }
         }
 
@@ -3978,7 +3978,7 @@ namespace Pyrrho.Level4
                                     {
                                         var rb = new RoleColumnCheckBookmark(_cx, res, 0, outer,
                                             middle, inner);
-                                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                             return rb;
                                     }
                     }
@@ -4013,7 +4013,7 @@ namespace Pyrrho.Level4
                     if (inner != null && (inner=inner.Next())!= null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                         continue;
                     }
@@ -4034,7 +4034,7 @@ namespace Pyrrho.Level4
                     if (inner != null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                         continue;
                     }
@@ -4081,7 +4081,7 @@ namespace Pyrrho.Level4
                             if (inner.value() is Role ro && res._tr.objects[sc.defpos] is SqlValue rc)
                             {
                                 var rb = new RoleColumnPrivilegeBookmark(_cx,res, 0, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4114,7 +4114,7 @@ namespace Pyrrho.Level4
                     && inner.value() is SqlValue sc && sc.defpos == middle.key())
                 {
                     var rb = new RoleColumnPrivilegeBookmark(_cx,res, _pos + 1, middle, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (middle = middle.Next(); middle != null; middle = middle.Next())
@@ -4123,7 +4123,7 @@ namespace Pyrrho.Level4
                             if (res._tr.objects[mc.defpos] is SqlValue rc && rc.defpos == mc.defpos)
                             {
                                 var rb = new RoleColumnPrivilegeBookmark(_cx,res, _pos + 1, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4171,7 +4171,7 @@ namespace Pyrrho.Level4
                     if (b.value() is Domain dm)
                     {
                         var rb =new RoleDomainBookmark(_cx,res, 0, b);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4225,7 +4225,7 @@ namespace Pyrrho.Level4
                 if (outer.value() is Domain)
                     {
                         var rb = new RoleDomainBookmark(_cx,res, _pos + 1, outer);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4274,7 +4274,7 @@ namespace Pyrrho.Level4
                         for (var inner = tb.indexes.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RoleIndexBookmark(_cx,res, 0, outer,inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;
@@ -4312,7 +4312,7 @@ namespace Pyrrho.Level4
                 for (inner=inner.Next();inner!=null;inner=inner.Next())
                 {
                     var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
@@ -4320,7 +4320,7 @@ namespace Pyrrho.Level4
                         for (inner=tb.indexes.First();inner!=null;inner=inner.Next())
                         {
                             var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;
@@ -4364,7 +4364,7 @@ namespace Pyrrho.Level4
                                 inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleIndexKeyBookmark(_cx,res, 0, outer,middle,inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4392,14 +4392,14 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next();inner!=null;inner=inner.Next())
                 {
                     var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (middle=middle.Next();middle!=null;middle=middle.Next())
                     for (inner=middle.key().First();inner!=null;inner=inner.Next())
                     {
                         var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 for (outer = outer.Next(); outer!=null;outer=outer.Next())
@@ -4409,7 +4409,7 @@ namespace Pyrrho.Level4
                                 inner = inner.Next())
                             {
                                 var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4441,7 +4441,7 @@ namespace Pyrrho.Level4
                         && !(tb is RestView))
                     {
                         var rb = new RoleJavaBookmark(_cx,res, 0, outer);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4453,14 +4453,14 @@ namespace Pyrrho.Level4
                     if (enu.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
                     {
                         var rb = new RoleJavaBookmark(_cx,res, _pos + 1, enu);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
             }
             public override TRow CurrentValue()
             {
-                return ((DBObject)_enu.value()).RoleJavaValue(res._tr, res.from, _enu);
+                return ((DBObject)_enu.value()).RoleJavaValue(res._tr as Transaction, res.from, _enu);
             }
         }
         /// <summary>
@@ -4488,7 +4488,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
                     {
                         var rb = new RolePythonBookmark(_cx,res, 0, outer);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4500,14 +4500,14 @@ namespace Pyrrho.Level4
                     if (enu.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
                     {
                         var rb = new RolePythonBookmark(_cx,res, _pos+1, enu);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
             }
             public override TRow CurrentValue()
             {
-                return ((DBObject)_enu.value()).RolePythonValue(res._tr, res.from, _enu);
+                return ((DBObject)_enu.value()).RolePythonValue(res._tr as Transaction, res.from, _enu);
             }
         }
         /// <summary>
@@ -4550,7 +4550,7 @@ namespace Pyrrho.Level4
                     if (en.value() is Procedure && !(en.value() is Method))
                     {
                         var rb =new RoleProcedureBookmark(_cx,res, 0, en);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4587,7 +4587,7 @@ namespace Pyrrho.Level4
                     if (en.value() is Procedure ob && !(ob is Method))
                     {
                         var rb = new RoleProcedureBookmark(_cx,res, _pos + 1, en);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4631,7 +4631,7 @@ namespace Pyrrho.Level4
                         for (var inner = p.ins.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RoleParameterBookmark(_cx,res, 0, en, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;
@@ -4645,8 +4645,8 @@ namespace Pyrrho.Level4
                 return new TRow(res.from.rowType,
                     Pos(_defpos),
                     new TInt(_inner.key()),
-                    new TChar(pp.label),
-                    new TChar(pp.dataType.ToString()),
+                    new TChar(pp.name),
+                    new TChar(pp.domain.ToString()),
                     new TChar(((pp.result==Sqlx.RESULT) ? Sqlx.RESULT : pp.paramMode).ToString()));
             }
             /// <summary>
@@ -4660,7 +4660,7 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
                     var rb = new RoleParameterBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
@@ -4668,7 +4668,7 @@ namespace Pyrrho.Level4
                         for (inner = p.ins.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RoleParameterBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;
@@ -4710,7 +4710,7 @@ namespace Pyrrho.Level4
                         for (var ix = ob.dependents.First(); ix != null; ix = ix.Next())
                     {
                         var rb = new RoleSubobjectBookmark(_cx,res, 0, en, ix);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4743,7 +4743,7 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
                     var rb = new RoleSubobjectBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
@@ -4751,7 +4751,7 @@ namespace Pyrrho.Level4
                         for (inner = ob.dependents.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RoleSubobjectBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;
@@ -4798,7 +4798,7 @@ namespace Pyrrho.Level4
                     if (b.value() is Table t)
                     {
                         var rb =new RoleTableBookmark(_cx,res, 0, b);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4831,7 +4831,7 @@ namespace Pyrrho.Level4
                     if (en.value() is Table t)
                     {
                         var rb =new RoleTableBookmark(_cx,res, _pos + 1, en);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -4886,7 +4886,7 @@ namespace Pyrrho.Level4
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleTriggerBookmark(_cx,res, 0, outer, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4921,14 +4921,14 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
                     var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (middle=middle.Next();middle!=null;middle=middle.Next())
                     for (inner=middle.value().First();inner!=null;inner=inner.Next())
                         {
                             var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
@@ -4937,7 +4937,7 @@ namespace Pyrrho.Level4
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -4986,7 +4986,7 @@ namespace Pyrrho.Level4
                                 {
                                     var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, 0, outer, middle, 
                                         inner, fourth);
-                                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                         return rb;
                                 }
                 return null;
@@ -5019,14 +5019,14 @@ namespace Pyrrho.Level4
                 for (fourth = fourth.Next(); fourth != null; fourth = fourth.Next())
                 {
                     var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (inner=inner.Next();inner!=null;inner=inner.Next())
                     for (fourth = inner.value().cols.First(); fourth != null; fourth = fourth.Next())
                     {
                         var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 for (middle=middle.Next();middle!=null;middle=middle.Next())
@@ -5034,7 +5034,7 @@ namespace Pyrrho.Level4
                         for (fourth = inner.value().cols.First(); fourth != null; fourth = fourth.Next())
                         {
                             var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
@@ -5044,7 +5044,7 @@ namespace Pyrrho.Level4
                             for (fourth = inner.value().cols.First(); fourth != null; fourth = fourth.Next())
                             {
                                 var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -5089,7 +5089,7 @@ namespace Pyrrho.Level4
                     if (en.value() is UDType)
                     {
                         var rb =new RoleTypeBookmark(_cx,res,0, en);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -5123,7 +5123,7 @@ namespace Pyrrho.Level4
                     if (en.value() is UDType)
                     {
                         var rb = new RoleTypeBookmark(_cx,res, _pos + 1, en);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 return null;
@@ -5175,7 +5175,7 @@ namespace Pyrrho.Level4
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx,res, 0, outer, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -5209,14 +5209,14 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
                     var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (middle = middle.Next(); middle != null; middle = middle.Next())
                     for (inner = middle.value().First(); inner != null; inner = inner.Next())
                     {
                         var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
@@ -5225,7 +5225,7 @@ namespace Pyrrho.Level4
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                                if (Query.Eval(res.qry.where, res._tr, _cx))
+                                if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                     return rb;
                             }
                 return null;
@@ -5274,7 +5274,7 @@ namespace Pyrrho.Level4
                         if (ro.obinfos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, 0, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -5309,7 +5309,7 @@ namespace Pyrrho.Level4
                     if (ro.obinfos.Contains(outer.key()))
                     {
                         var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                        if (Query.Eval(res.qry.where, res._tr, _cx))
+                        if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                             return rb;
                     }
                 }
@@ -5320,7 +5320,7 @@ namespace Pyrrho.Level4
                         if (ro.obinfos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                     }
@@ -5371,7 +5371,7 @@ namespace Pyrrho.Level4
                         || (ou!=null)))
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, 0, bm, ou);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -5407,7 +5407,7 @@ namespace Pyrrho.Level4
                         || (output!=null)))
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, _pos+1, en,output);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 return null;
@@ -5449,7 +5449,7 @@ namespace Pyrrho.Level4
                     for (var inner = t.FindPrimaryIndex(res._tr).keys.First(); inner != null; inner = inner.Next())
                     {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, 0, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                     }
                 return null;
@@ -5478,7 +5478,7 @@ namespace Pyrrho.Level4
                 for (inner=inner.Next();inner!=null;inner=inner.Next())
                 {
                     var rb = new RolePrimaryKeyBookmark(_cx,res, _pos+1, outer, inner);
-                    if (Query.Eval(res.qry.where, res._tr, _cx))
+                    if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                         return rb;
                 }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
@@ -5486,7 +5486,7 @@ namespace Pyrrho.Level4
                         for (inner = t.FindPrimaryIndex(_rs._tr).keys.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (Query.Eval(res.qry.where, res._tr, _cx))
+                            if (Query.Eval(res.qry.where, res._tr as Transaction, _cx))
                                 return rb;
                         }
                 return null;

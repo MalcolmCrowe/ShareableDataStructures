@@ -40,7 +40,7 @@ namespace Pyrrho.Level2
         /// The colum with the ening time
         /// </summary>
         public long endcol;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
@@ -57,8 +57,8 @@ namespace Pyrrho.Level2
         /// <param name="e">The end column</param>
         /// <param name="wh">The PhysBase</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PPeriodDef(long t, string p, long s, long e, long u,Transaction tr)
-            : base(Type.PeriodDef, u,tr)
+        public PPeriodDef(long t, string p, long s, long e, Transaction tr)
+            : base(Type.PeriodDef, tr)
         {
             tabledefpos = t;
             periodname = p;

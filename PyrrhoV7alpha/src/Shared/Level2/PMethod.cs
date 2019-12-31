@@ -35,26 +35,27 @@ namespace Pyrrho.Level2
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The defining position of the owning type</param>
-        /// <param name="pc">The procedure body</param>
+        /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, long rt, MethodType mt, long td, string pc, long u,Executable b,Transaction tr)
-			:this(Type.PMethod2,nm,rt,mt,td,pc,u,b,tr)
+        public PMethod(string nm, int ar, long rt, MethodType mt, long td, string pc, Transaction tr)
+			:this(Type.PMethod2,nm,ar,rt,mt,td,pc,tr)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
         /// </summary>
         /// <param name="tp">The PMethod type</param>
-        /// <param name="nm">The name $ arity of the method</param>
+        /// <param name="nm">The name of the method</param>
+        /// <param name="ar">The arity</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The defining position of the type</param>
-        /// <param name="pc">The procedure body</param>
-        /// <param name="pb">The physical database</param>
-        /// <param name="curpos">The current position in the datafile</param>
-        protected PMethod(Type tp, string nm, long rt, MethodType mt, long td, string pc, 
-            long u,Executable b,Transaction tr)
-			:base(tp,nm,rt,pc,u,b,tr)
+        /// <param name="pc">The procedure clause including body</param>
+        /// <param name="u">The defining position for the method</param>
+        /// /// <param name="db">The database</param>
+        protected PMethod(Type tp, string nm, int ar, long rt, MethodType mt, long td, string pc, 
+            Database db)
+			:base(tp,nm,ar,rt,pc,db)
 		{
 			typedefpos = td;
 			methodType = mt;

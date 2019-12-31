@@ -21,7 +21,7 @@ namespace Pyrrho.Level2
 	{
         public long delpos;
         public long tabledefpos;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             var dp = wr.Fix(delpos);
             if (!Committed(wr,dp)) return dp;
@@ -33,14 +33,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete(TableRow rw, long u, Transaction tr)
-            : base(Type.Delete, u, tr)
+        public Delete(TableRow rw, Transaction tr)
+            : base(Type.Delete, tr)
 		{
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
 		}
-        protected Delete(Type t,TableRow rw, long u, Transaction tr)
-    : base(t, u, tr)
+        protected Delete(Type t,TableRow rw, Transaction tr)
+    : base(t, tr)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
@@ -92,6 +92,12 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
   //          tabledefpos = tb;
             delpos= dp;
+        }
+        internal override void Affected(ref BTree<long, BTree<long, long>> aff)
+        {
+            var ta = aff[tabledefpos] ?? BTree<long, long>.Empty;
+            ta += (delpos, ppos);
+            aff += (tabledefpos, ta);
         }
         /// <summary>
         /// A readable version of the Delete
@@ -150,8 +156,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete1(TableRow rw, long u, Transaction tr)
-            : base(Type.Delete1, rw, u, tr)
+        public Delete1(TableRow rw, Transaction tr)
+            : base(Type.Delete1, rw, tr)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;

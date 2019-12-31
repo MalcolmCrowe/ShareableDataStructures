@@ -24,9 +24,13 @@ namespace Pyrrho.Level4
         /// </summary>
         public PMethod.MethodType methodType;
         /// <summary>
-        /// the name of the method
+        /// the name of the method (including $arity)
         /// </summary>
         public Ident mname;
+        /// <summary>
+        /// The name excluding the arity
+        /// </summary>
+        public string name; 
         /// <summary>
         /// the name of the parent type
         /// </summary>
@@ -39,7 +43,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The return type
         /// </summary>
-        public Domain retType;
+        public DBObject retType;
         /// <summary>
         /// a string version of the signature
         /// </summary>
