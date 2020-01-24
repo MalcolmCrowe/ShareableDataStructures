@@ -1,0 +1,6 @@
+create table a(b int,c char)
+insert into a values(17.'AG'),(23,'BC')
+select sum(p.b) from a p
+
+name B
+s._name P.B

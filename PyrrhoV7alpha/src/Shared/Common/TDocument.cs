@@ -39,7 +39,7 @@ namespace Pyrrho.Common
         {
             content = t;
         }
-        internal TDocument(Transaction tr, Query q, TRow r, string id = null) :this()
+        internal TDocument(Query q, TRow r, string id = null) :this()
         {
             if (id != null)
                 Add(_id, id);
@@ -976,7 +976,7 @@ namespace Pyrrho.Common
         internal TDocArray(Context _cx, RowSet rs) :base(Domain.DocArray)
         {
             for (var a = rs.First(_cx); a != null; a = a.Next(_cx))
-                Add(new TDocument(rs._tr,rs.qry,a.row));
+                Add(new TDocument(rs.qry,a.row));
         }
         internal TDocArray(Domain dt, BList<TypedValue>t) : base(dt)
         {

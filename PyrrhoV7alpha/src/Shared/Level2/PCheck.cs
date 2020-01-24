@@ -23,7 +23,7 @@ namespace Pyrrho.Level2
         public long defpos;
 		public string check;
         public SqlValue test;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,ckobjdefpos)) return ckobjdefpos;
             if (!Committed(wr,subobjdefpos)) return subobjdefpos;
@@ -37,20 +37,20 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="db">The local database</param>
-        public PCheck(long dm, string nm, string cs, long u, Transaction tr)
-            : this(Type.PCheck, dm, nm, cs, u, tr) { }
-        protected PCheck(Type tp, long dm, string nm, string cs, long u,Transaction tr)
-			:base(tp,u,tr)
+        public PCheck(long dm, string nm, string cs, Transaction tr)
+            : this(Type.PCheck, dm, nm, cs, tr) { }
+        protected PCheck(Type tp, long dm, string nm, string cs, Transaction tr)
+			:base(tp,tr)
 		{
 			ckobjdefpos = dm;
             defpos = ppos;
             name = nm ?? throw new DBException("42102");
 			check = cs;
             var cx = new Context(tr);
-            cx.Add(tr.objects[ckobjdefpos] as DBObject);
+            cx.Add(tr.objects[ckobjdefpos] as DBObject,tr.role.obinfos[ckobjdefpos] as ObInfo);
             if (subobjdefpos!=-1)
                 cx.Add(tr.objects[subobjdefpos] as DBObject);
-            test = new Parser(tr, cx).ParseSqlValue(check);
+            test = new Parser(tr, cx).ParseSqlValue(check,Domain.Bool);
         }
         /// <summary>
         /// Constructor: A new check constraint from the buffer
@@ -102,10 +102,9 @@ namespace Pyrrho.Level2
 			check = rdr.GetString();
 			base.Deserialise(rdr);
             var cx = rdr.context;
-            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject);
-            if (subobjdefpos != -1)
-                cx.Add(rdr.db.objects[subobjdefpos] as DBObject);
-            test = new Parser(rdr.db).ParseSqlValue(check);
+            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject,
+                rdr.role.obinfos[ckobjdefpos] as ObInfo);
+            test = new Parser(rdr.db,cx).ParseSqlValue(check,Domain.Bool);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -127,8 +126,12 @@ namespace Pyrrho.Level2
         {
             var ck = new Check(this, db);
             db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p);
-            ro = ro + new ObInfo(defpos, name);
-            return (db + (ro,p)+(ck,p),ro); 
+            if (name != null && name != "")
+            { 
+                ro += new ObInfo(defpos, name);
+                db += (ro, p);
+            }
+            return (db +(ck,p),ro); 
         }
     }
     /// <summary>
@@ -144,8 +147,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="pb">The local database</param>
-        public PCheck2(long dm, long so, string nm, string cs, long u, Transaction tr)
-			:base(Type.PCheck2,dm,nm,cs,u,tr)
+        public PCheck2(long dm, long so, string nm, string cs, Transaction tr)
+			:base(Type.PCheck2,dm,nm,cs,tr)
 		{
             subobjdefpos=so;
 		}
@@ -156,6 +159,14 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
 		public PCheck2(Reader rdr) : base(rdr)
 		{}
+        protected PCheck2(PCheck2 p, Writer wr) : base(p, wr) 
+        {
+            subobjdefpos = wr.Fix(p.subobjdefpos);
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new PCheck2(this,wr);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -183,5 +194,24 @@ namespace Pyrrho.Level2
 			subobjdefpos = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
-   }
+        /// <summary>
+        /// Looks the same as PCheck::Install but gets a different constructor for Check
+        /// and calls a different Add !
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="ro"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal override (Database, Role) Install(Database db, Role ro, long p)
+        {
+            var ck = new Check(this, db);
+            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db), p);
+            if (name != null && name != "")
+            {
+                ro += new ObInfo(defpos, name);
+                db += (ro, p);
+            }
+            return (db + (ck, p), ro);
+        }
+    }
 }

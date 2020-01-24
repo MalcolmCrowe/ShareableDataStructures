@@ -38,7 +38,7 @@ namespace Pyrrho.Level3
         /// <param name="owner">the owner</param>
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Sqlx create, Database db)
-            : base(m, db, true, create, BTree<long, object>.Empty
+            : base(m, db, BTree<long, object>.Empty
                   + (TypeDef, m.typedefpos) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }

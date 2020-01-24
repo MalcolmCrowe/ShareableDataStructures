@@ -31,6 +31,7 @@ namespace Pyrrho.Level3
         /// The arity (number of parameters) of the procedure
         /// </summary>
 		public int arity => (int)mem[Arity];
+        public string name => (string)mem[Name];
         /// <summary>
         /// The body and ins stored in the database uses the definer's role. 
         /// These fields are filled in during Install.
@@ -38,7 +39,7 @@ namespace Pyrrho.Level3
         public Executable body => (Executable)mem[Body];
 		public BList<ProcParameter> ins => 
             (BList<ProcParameter>)mem[Params]?? BList<ProcParameter>.Empty;
-        public Domain retType => (Domain)mem[RetType];
+        public Domain retType => (Domain)mem[RetType]??Domain.Null;
         public string clause => (string)mem[Clause];
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
@@ -46,11 +47,10 @@ namespace Pyrrho.Level3
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
-		public Procedure(PProcedure p, Database db,bool mth,Sqlx create,BTree<long,object> m)
+		public Procedure(PProcedure p, Database db,BTree<long,object> m)
             : base( p.ppos, p.defpos, db.role.defpos, m
-                  + (Arity, p.arity) + (RetType, db.role.obinfos[p.retdefpos])
-                  + (Body,new Parser(db,new Context(db)).ParseProcedureClause(mth,create))
-                  + (Clause, p.proc_clause))
+                  + (Arity, p.arity) + (RetType, db.objects[p.retdefpos])
+                  + (Name,p.name) + (Clause, p.proc_clause))
         { }
         public Procedure(long defpos,BTree<long, object> m) : base(defpos, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
@@ -58,15 +58,15 @@ namespace Pyrrho.Level3
             return new Procedure(p.defpos, p.mem + v);
         }
         /// <summary>
-        /// Execute a Procedure/function
+        /// Execute a Procedure/function.
         /// </summary>
-        /// <param name="dbx">The participant dbix</param>
-        /// <param name="n">The procedure name</param>
         /// <param name="actIns">The actual parameters</param>
-        /// <returns>The return value</returns>
+        /// <returns>The possibily modified Transaction</returns>
         public Transaction Exec(Transaction tr,Context cx, BList<SqlValue> actIns)
         {
-            //         Permission(tr.user, tr.role, Grant.Privilege.Execute);
+            var oi = (ObInfo)tr.role.obinfos[defpos];
+            if (!oi.priv.HasFlag(Grant.Privilege.Execute))
+                throw new DBException("42105");
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             for (int i = 0; i < n; i++)
@@ -81,7 +81,7 @@ namespace Pyrrho.Level3
             for (int i = 0; i < n; i++)
             {
                 var p = ins[i];
-                var v = act.row.values[p.defpos];
+                var v = act.row?.values[p.defpos];
                 if (p.paramMode == Sqlx.INOUT || p.paramMode == Sqlx.OUT)
                     acts[i] = v;
                 if (p.paramMode == Sqlx.RESULT)
@@ -125,6 +125,11 @@ namespace Pyrrho.Level3
             if (rt != retType)
                 r += (RetType, rt);
             return r;
+        }
+        internal override DBObject Frame(Context cx)
+        {
+            body.Frame(cx);
+            return base.Frame(cx);
         }
         internal override (Database,Role) Cascade(Database d, Database nd,Role ro, 
             Drop.DropAction a = 0, BTree<long, TypedValue> u = null)

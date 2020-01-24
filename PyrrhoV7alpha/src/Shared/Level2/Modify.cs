@@ -36,7 +36,7 @@ namespace Pyrrho.Level2
         /// The Parsed version of the body for the definer's role
         /// </summary>
         public DBObject now;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,modifydefpos)) return modifydefpos;
             return -1;
@@ -48,8 +48,8 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(string nm, long dp, string pc, long u, DBObject nw, Transaction tr)
-			:base(Type.Modify,u, tr)
+        public Modify(string nm, long dp, string pc, DBObject nw, Transaction tr)
+			:base(Type.Modify,tr)
 		{
             modifydefpos = dp;
             name = nm;
@@ -98,8 +98,7 @@ namespace Pyrrho.Level2
             {
                 default:
                     var pp = rdr.db.objects[modifydefpos] as Procedure;
-                    now = new Parser(rdr.db, rdr.context).ParseProcedureClause(pp.retType != Domain.Null, 
-                Sqlx.NO,body);
+                    now = new Parser(rdr.db, rdr.context).ParseProcedureBody(pp,body);
                     break;
                 case "Source":
                     now = new Parser(rdr.db, rdr.context).ParseQueryExpression(body);

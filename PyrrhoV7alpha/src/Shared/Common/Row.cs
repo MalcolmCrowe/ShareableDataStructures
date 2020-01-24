@@ -31,8 +31,8 @@ namespace Pyrrho.Common
     {
         internal readonly ObInfo info = null;
         internal readonly Domain dataType = Domain.Null;
- //       static int _tvid = 0;
- //       int tvid = ++_tvid;
+        static int _tvid = 0;
+        internal int tvid = ++_tvid;
         internal TypedValue(Domain t)
         {
             if (t == null)
@@ -1155,6 +1155,17 @@ namespace Pyrrho.Common
             columns = cols;
             values = vs;
         }
+        public TRow(ObInfo oi,BList<TypedValue> cols) :base(oi)
+        {
+            var vals = BTree<long, TypedValue>.Empty;
+            for (var b = oi.columns.First(); b != null; b = b.Next())
+            {
+                var sc = b.value();
+                vals += (sc.defpos, cols[b.key()]);
+            }
+            columns = cols;
+            values = vals;
+        }
         /// <summary>
         /// Constructor: used for system tables etc
         /// </summary>
@@ -1205,24 +1216,17 @@ namespace Pyrrho.Common
             }
             columns = cols;
         }
-        public TRow(long t,params (string, TypedValue)[] vs) : base(_Info(t,vs))
+        public static TRow operator+(TRow r,(long,TypedValue)x)
         {
-            var cols = BList<TypedValue>.Empty;
-            values = BTree<long, TypedValue>.Empty;
-            for (int i = 0; i < vs.Length; i++)
-            {
-                cols += vs[i].Item2;
-                var c = info.columns[i];
-                values += (c.defpos, vs[i].Item2);
-            }
-            columns = cols;
+            return new TRow(r.info, r.values + x);
         }
-        static ObInfo _Info(long t,(string,TypedValue)[] vs)
+        public static TRow operator +(TRow r, (int, TypedValue) x)
         {
-            var r = BList<SqlValue>.Empty;
-            for (var i = 0; i < vs.Length; i++)
-                r += new SqlValue(t++, vs[i].Item1);
-            return new ObInfo(t++,Domain.Row,r);
+            return new TRow(r.info, r.columns + x);
+        }
+        public static TRow operator +(TRow r, (string, TypedValue) x)
+        {
+            return new TRow(r.info, r.columns + (r.info.map[x.Item1].Value,x.Item2));
         }
         internal override object Val()
         {
@@ -1383,7 +1387,7 @@ namespace Pyrrho.Common
         }
         internal TMultiset(Domain mt) : base(mt)
         {
-            tree = new CTree<TypedValue, long?>(mt.elType);
+            tree = new CTree<TypedValue, long?>(mt.elType.domain);
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(Domain dt,Context cx) : base(dt) { }
@@ -1398,7 +1402,7 @@ namespace Pyrrho.Common
         /// <param name="n">a multiplicity</param>
         internal void Add(TypedValue a, long n)
         {
-             if (!dataType.elType.CanTakeValueOf(a.dataType))
+             if (!dataType.elType.domain.CanTakeValueOf(a.dataType))
                 throw new DBException("22005", dataType.elType, a).ISO();
             if (!tree.Contains(a))
                 tree+=(a, n);
@@ -1506,7 +1510,7 @@ namespace Pyrrho.Common
         /// <returns>A new Multiset</returns>
         internal TMultiset Set(long lp) // return a multiset with same values but no duplicates
         {
-            TMultiset m = new TMultiset(lp,dataType.elType);
+            TMultiset m = new TMultiset(lp,dataType.elType.domain);
             for (var b = m.tree.First();b!=null;b=b.Next())
                 m.Add(b.key());
             return m;
@@ -1522,9 +1526,9 @@ namespace Pyrrho.Common
         {
             if (a == null || b == null)
                 return null;
-            Domain tp = a.dataType.elType;
+            Domain tp = a.dataType.elType.domain;
             if (tp == Domain.Null)
-                tp = b.dataType.elType;
+                tp = b.dataType.elType.domain;
             else if (b.dataType.elType != Domain.Null && b.dataType.elType != tp)
                 throw new DBException("22105").Mix();
             TMultiset r = new TMultiset(a.dataType.defpos,tp);
@@ -1557,9 +1561,9 @@ namespace Pyrrho.Common
         {
             if (a == null || b == null)
                 return null;
-            Domain tp = a.dataType.elType;
+            Domain tp = a.dataType.elType.domain;
             if (tp == Domain.Null)
-                tp = b.dataType.elType;
+                tp = b.dataType.elType.domain;
             else if (b.dataType.elType != Domain.Null && b.dataType.elType != tp)
                 throw new DBException("22105").Mix();
             TMultiset r = new TMultiset(a.dataType.defpos,tp);
@@ -1593,7 +1597,7 @@ namespace Pyrrho.Common
                 return b;
             if (b == null)
                 return a;
-            Domain tp = a.dataType.elType;
+            Domain tp = a.dataType.elType.domain;
             TMultiset r = new TMultiset(a.dataType);
             for (var d = a.tree.First(); d != null; d = d.Next())
                 if (d.value() != null)
@@ -1641,7 +1645,7 @@ namespace Pyrrho.Common
             var f = that.tree.First();
             for (; e!=null && f!=null; e = e.Next(), f = f.Next())
             {
-                var c = dataType.elType.Compare(e.key(),f.key());
+                var c = dataType.elType.domain.Compare(e.key(),f.key());
                 if (c != 0)
                     return c;
             }

@@ -24,7 +24,7 @@ namespace Pyrrho.Level2
 		public long delpos;
         public enum DropAction { Restrict=0,Null=1,Default=2,Cascade=3}
         public DropAction dropAction=DropAction.Restrict;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,delpos)) return delpos;
             return -1;
@@ -34,8 +34,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="dp">The object to drop</param>
         /// <param name="db">The local database</param>
-        public Drop(long dp,long u, Transaction db)
-            : this(Type.Drop, dp, u, db)
+        public Drop(long dp,Transaction db)
+            : this(Type.Drop, dp, db)
 		{
 		}
         /// <summary>
@@ -45,8 +45,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The PhysBase</param>
         /// <param name="ob">The defining position of the object being dropped</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Drop(Type t, long ob, long u,Transaction db)
-            : base(t, u, db)
+        protected Drop(Type t, long ob, Transaction db)
+            : base(t, db)
 		{
 			delpos = ob;
 		}
@@ -179,7 +179,7 @@ namespace Pyrrho.Level2
     }
     internal class Drop1 : Drop
     {
-        public Drop1(long dp, Drop.DropAction a, long u, Transaction db) : base(Type.Drop1, dp, u, db) 
+        public Drop1(long dp, Drop.DropAction a, Transaction db) : base(Type.Drop1, dp, db) 
         {
             dropAction = a;
         }

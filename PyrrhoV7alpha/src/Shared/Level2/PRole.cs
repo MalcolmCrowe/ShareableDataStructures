@@ -28,7 +28,7 @@ namespace Pyrrho.Level2
         /// The description of the role
         /// </summary>
         public string details = "";
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -39,7 +39,7 @@ namespace Pyrrho.Level2
         /// <param name="dt">The description of the role</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-		public PRole(string nm,string dt,long u, Transaction tr):base(Type.PRole,u,tr)
+		public PRole(string nm,string dt,Transaction tr):base(Type.PRole,tr)
 		{
             name = nm;
             details = dt;
@@ -127,7 +127,7 @@ namespace Pyrrho.Level2
         static Sqlx[] keys = new Sqlx[] { Sqlx.ENTITY, Sqlx.ATTRIBUTE, Sqlx.REFERS, Sqlx.REFERRED,
             Sqlx.PIE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, Sqlx.LINE,
             Sqlx.CAPTION, Sqlx.LEGEND, Sqlx.JSON, Sqlx.CSV };
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,refpos)) return refpos;
@@ -143,16 +143,16 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
         public PMetadata(string nm, long sq, long ob, string ds,string i,
-            long rf,ulong fl,long u,Transaction tr)
-          :this(Type.Metadata,nm,sq,ob,ds,i,rf,fl,u,tr)
+            long rf,ulong fl,Transaction tr)
+          :this(Type.Metadata,nm,sq,ob,ds,i,rf,fl,tr)
 		{
         }
-        public PMetadata(string nm, Metadata md, long pp, long dp, long u,Transaction tr)
-            :this(Type.Metadata,nm,md.seq,dp,md.description,md.iri,md.refpos,md.flags,u,tr)
+        public PMetadata(string nm, Metadata md, long pp, long dp, Transaction tr)
+            :this(Type.Metadata,nm,md.seq,dp,md.description,md.iri,md.refpos,md.flags,tr)
         { }
         protected PMetadata(Type t, string nm, long sq, long ob, string ds, 
-            string i,long rf,ulong fl,long u,Transaction tr)
-          : base(t, u, tr)
+            string i,long rf,ulong fl,Transaction tr)
+          : base(t, tr)
         {
             name = nm;
             seq = sq;
@@ -281,13 +281,13 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject ref</param>
         /// <param name="db">The physical database</param>
          public PMetadata2(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, long u,Transaction tr)
-          :this(Type.Metadata2,nm,sq,ob,ds,i,rf,fl,u,tr)
+            long rf, ulong fl, Transaction tr)
+          :this(Type.Metadata2,nm,sq,ob,ds,i,rf,fl,tr)
 		{
         }
         protected PMetadata2(Type tp,string nm, long sq, long ob, string ds, string i,
-           long rf, ulong fl, long u,Transaction tr)
-         : base(tp, nm, sq, ob, ds, i, rf, fl, u,tr)
+           long rf, ulong fl, Transaction tr)
+         : base(tp, nm, sq, ob, ds, i, rf, fl, tr)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -340,8 +340,8 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
         public PMetadata3(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, long u,Transaction tr)
-         : base(Type.Metadata3, nm, sq, ob, ds,i,rf,fl,u,tr)
+            long rf, ulong fl, Transaction tr)
+         : base(Type.Metadata3, nm, sq, ob, ds,i,rf,fl,tr)
         {
         }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }

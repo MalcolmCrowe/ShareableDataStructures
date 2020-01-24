@@ -43,6 +43,11 @@ namespace Pyrrho.Level3
                   + (From.Target,c.ckobjdefpos)+(Source,c.check)
                   + (Condition, c.test) +(Dependents,c.test.dependents))
         { }
+        public Check(PCheck2 c, Database db)
+            : base(c.name, c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
+          + (From.Target, c.subobjdefpos) + (Source, c.check)
+          + (Condition, c.test) + (Dependents, c.test.dependents))
+        { }
         /// <summary>
         /// for system types
         /// </summary>
@@ -50,7 +55,7 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s))) { }
+                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>

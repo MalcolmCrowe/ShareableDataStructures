@@ -38,7 +38,7 @@ namespace Pyrrho.Level3
         /// Constructor: from a level 2 PType
         /// </summary>
         /// <param name="t">The PType</param>
-        public UDType(PType t) : base(t, BTree<long, object>.Empty
+        public UDType(PType t,Database db) : base(t, db, BTree<long, object>.Empty
             + (UnderDefPos, t.underdefpos) + (Methods, BTree<string, BList<Method>>.Empty))
         { }
         public UDType(long defpos, BTree<long, object> m) : base(Sqlx.TYPE, defpos, m) { }

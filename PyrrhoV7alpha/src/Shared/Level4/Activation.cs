@@ -60,12 +60,16 @@ namespace Pyrrho.Level4
         protected Activation(Transaction tr,Context cx,Procedure pr, string n)
             : base(cx,tr.objects[pr.definer] as Role,cx.user)
         {
+            next = cx;
+            top = cx.top;
             label = n;
             domain = pr.retType;
         }
         protected Activation(Transaction tr,Context cx,long definer,string n)
             :base(cx,tr.objects[definer] as Role,cx.user)
         {
+            next = cx;
+            top = cx.top;
             label = n;
         }
         internal override void SlideDown(Context was)
@@ -116,8 +120,9 @@ namespace Pyrrho.Level4
     internal class TriggerActivation : Activation
     {
         internal readonly TransitionRowSet _trs;
-        internal BTree<long, TypedValue> oldRow=BTree<long,TypedValue>.Empty;
-        internal BTree<long, TypedValue> newRow=BTree<long,TypedValue>.Empty; 
+        internal BTree<long, Index> oldIndexes = BTree<long, Index>.Empty;
+        internal BTree<long, object> oldRows = BTree<long, object>.Empty;
+        internal BTree<long, TypedValue> newRow;
         /// <summary>
         /// The trigger definition
         /// </summary>
@@ -128,27 +133,64 @@ namespace Pyrrho.Level4
         /// <param name="trs">The transition row set</param>
         /// <param name="tg">The trigger</param>
         internal TriggerActivation(Context _cx, TransitionRowSet trs, Trigger tg)
-            : base(trs._tr,_cx, tg.definer, tg.name)
+            : base(trs._tr as Transaction,_cx, tg.definer, tg.name)
         {
             _trs = trs;
-            _trig = tg;
+            parent = _cx.next;
+            newRow = parent?.row.values;
             var fm = trs.qry as From;
-            var t = fm.target as Table;
+            var t = trs._tr.objects[fm.target] as Table;
+            oldRows = t.tableRows;
+            for (var b = t.indexes.First(); b != null; b = b.Next())
+                oldIndexes += (b.value(), (Index)trs._tr.objects[b.value()]);
+            _trig = (Trigger)tg.Frame(this);
             domain = trs._tr.role.obinfos[t.defpos] as Domain;
+            if (tg.oldRow != null)
+                defs += (tg.oldRow, new ObInfoOldRow(fm.rowType,trs.qry.defpos));
+            if (tg.newRow != null)
+                defs += (tg.newRow, fm.rowType);
+            if (tg.oldTable != null)
+                defs += (tg.oldTable, new FromOldTable(tg.oldTable,fm));
+            if (tg.newTable != null)
+                defs += (tg.newTable, fm);
+        }
+        public static TriggerActivation operator+(TriggerActivation a,BTree<long,TypedValue>nv)
+        {
+            for (var b = nv?.First(); b != null; b = b.Next())
+                a.newRow += (b.key(), b.value());
+            return a;
         }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's context
         /// </summary>
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
-        internal Transaction Exec(Transaction tr, Context ox)
+        internal (Transaction,bool) Exec(Transaction tr, Context cx)
         {
-            var cx = new Context(ox, tr.role, tr.user);
-            var trig = _trig;
-            tr+=new Level2.TriggeredAction(_trig.defpos,tr.uid,tr);
+            row = null;
+            values = cx.values;
+            data = cx.data;
+            if (cx.row!=null)
+                values += (cx.row.info.defpos,cx.values[_trs.from.defpos]);
             var ta = _trig.action;
-            tr = ta.First().value().Obey(tr,cx);
-            return tr;
+            var tc = ta.cond?.Eval(tr, cx);
+            if (tc != TBool.False)
+            {
+                var oa = tr.triggeredAction;
+                tr += (Transaction.TriggeredAction, tr.nextPos);
+                tr += new Level2.TriggeredAction(_trig.defpos, tr);
+                tr = ta.stms.First().value().Obey(tr, this);
+        //        if (parent != null)
+       //            for (var b = affected.First(); b != null; b = b.Next())
+       //                 parent.affected += b.value();
+                tr += (Transaction.TriggeredAction, oa);
+            }
+            return (tr,tc!=TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead));
         }
-
+        internal override TriggerActivation FindTriggerActivation(long tabledefpos)
+        {
+            var fm = _trs.qry as From;
+            var t = _trs._tr.objects[fm.target] as Table;
+            return (t.defpos == tabledefpos) ? this : base.FindTriggerActivation(tabledefpos);
+        }
     }
 }

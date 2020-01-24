@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
             Filter = -180, // BTree<long,TypedValue>
             _Import = -181, // BTree<SqlValue,SqlValue>
             Matches = -182, // BTree<SqlValue,TypedValue>
-            Matching = -183, // BTree<SqlValue,ATree<SqlValue,bool>>
+            Matching = -183, // BTree<SqlValue,BTree<SqlValue,bool>>
             OrdSpec = -184, // OrderSpec
             Periods = -185, // BTree<long,PeriodSpec>
             _Replace = -186, // BTree<string,string>
@@ -197,6 +197,81 @@ namespace Pyrrho.Level3
             {
                 var k = wr.Fix(b.key());
                 var v = (SqlValue)b.value().Relocate(wr);
+                ch = ch || (b.key() != k || b.value() != v);
+                wh += (k, v);
+            }
+            if (ch)
+                r += (Where, wh);
+            return r;
+        }
+        internal override DBObject Frame(Context cx)
+        {
+            var r = (Query)base.Frame(cx);
+            var ua = BTree<UpdateAssignment, bool>.Empty;
+            var ch = false;
+            for (var b = assig?.First(); b != null; b = b.Next())
+            {
+                var u = (UpdateAssignment)b.key().Frame(cx);
+                ch = ch || (u != b.key());
+                ua += (u, b.value());
+            }
+            if (ch)
+                r += (Assig, ua);
+            var cs = BList<SqlValue>.Empty;
+            ch = false;
+            for (var b = rowType.columns.First(); b != null; b = b.Next())
+            {
+                var c = (SqlValue)b.value().Frame(cx);
+                ch = ch || c != b.value();
+                cs += c;
+            }
+            var ec = (Query)enc?.Frame(cx);
+            if (ec != enc)
+                r += (Enc, ec);
+            var im = BTree<SqlValue, SqlValue>.Empty;
+            ch = false;
+            for (var b = import?.First(); b != null; b = b.Next())
+            {
+                var ik = (SqlValue)b.key().Frame(cx);
+                var iv = (SqlValue)b.value().Frame(cx);
+                ch = ch || (ik != b.key() || iv != b.value());
+                im += (ik, iv);
+            }
+            if (ch)
+                r += (_Import, im);
+            var ma = BTree<SqlValue, TypedValue>.Empty;
+            ch = false;
+            for (var b = matches?.First(); b != null; b = b.Next())
+            {
+                var mk = (SqlValue)b.key().Frame(cx);
+                ch = ch || (mk != b.key());
+                ma += (mk, b.value());
+            }
+            if (ch)
+                r += (Matches, ma);
+            var mg = BTree<SqlValue, BTree<SqlValue, bool>>.Empty;
+            ch = false;
+            for (var b = matching?.First(); b != null; b = b.Next())
+            {
+                var k = (SqlValue)b.key().Frame(cx);
+                ch = ch || k != b.key();
+                var mm = BTree<SqlValue, bool>.Empty;
+                for (var mb = b.value()?.First(); mb != null; mb = mb.Next())
+                {
+                    var mk = (SqlValue)mb.key().Frame(cx);
+                    ch = ch || mk != mb.key();
+                    mm += (mk, mb.value());
+                }
+                mg += (k, mm);
+            }
+            if (ch)
+                r += (Matching, mg);
+            var wh = BTree<long, SqlValue>.Empty;
+            ch = false;
+            for (var b = where.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var v = (SqlValue)b.value().Frame(cx);
                 ch = ch || (b.key() != k || b.value() != v);
                 wh += (k, v);
             }
@@ -497,11 +572,7 @@ namespace Pyrrho.Level3
         }
         internal void AddMatch(Context cx, SqlValue sv, TypedValue tv)
         {
-            cx.row.values += (sv.defpos, tv);
-        }
-        internal void RemoveMatch(Context cx, SqlValue sv)
-        {
-            cx.row.values -= sv.defpos;
+            cx.row += (sv.defpos, tv);
         }
         internal virtual Query Conditions(Context cx)
         {
@@ -613,10 +684,10 @@ namespace Pyrrho.Level3
             var q = this;
             if (cond is SqlValueExpr se && se.kind == Sqlx.EQL)
             {
-                if (se.left.target is DBObject cl && se.right is SqlLiteral ll)
-                    filt += (cl.defpos, ll.val);
-                else if (se.right.target is DBObject cr && se.left is SqlLiteral lr)
-                    filt += (cr.defpos, lr.val);
+                if (se.left.target>=0 && se.right is SqlLiteral ll)
+                    filt += (se.left.target, ll.val);
+                else if (se.right.target>=0 && se.left is SqlLiteral lr)
+                    filt += (se.right.target, lr.val);
             }
             if (filt != filter)
                 q += (Filter, filt);
@@ -847,7 +918,7 @@ namespace Pyrrho.Level3
                 return new DistinctRowSet(_cx,r);
             return r;
         }
-        internal virtual RowSet RowSets(Transaction tr,Context cx)
+        internal virtual RowSet RowSets(Database tr,Context cx)
         {
             return null;
         }
@@ -913,19 +984,27 @@ namespace Pyrrho.Level3
     // LogTableSelectBookmark
     internal class LogRowTable :Query
     {
-        public readonly Table st,tb;
-        public LogRowTable(Transaction tr, long td, string ta) 
+        public readonly SystemTable logRows; 
+        public readonly Table targetTable;
+        public LogRowTable(Transaction tr, Context cx, long td, string ta) 
             :base(tr.uid,BTree<long,object>.Empty)
         {
-            tb = tr.objects[td] as Table ??
+            targetTable = tr.objects[td] as Table ??
                 throw new DBException("42131", "" + td).Mix();
             var tt = new SystemTable("" + td);
-            new SystemTableColumn(tt, "Pos", Domain.Int);
-            new SystemTableColumn(tt, "Action", Domain.Char);
-            new SystemTableColumn(tt, "DefPos", Domain.Int);
-            new SystemTableColumn(tt, "Transaction", Domain.Int);
-            new SystemTableColumn(tt, "Timestamp", Domain.Timestamp);
-            st = tt;
+            new SystemTableColumn(tt, "Pos", Domain.Int,1);
+            new SystemTableColumn(tt, "Action", Domain.Char,0);
+            new SystemTableColumn(tt, "DefPos", Domain.Int,0);
+            new SystemTableColumn(tt, "Transaction", Domain.Int,0);
+            new SystemTableColumn(tt, "Timestamp", Domain.Timestamp,0);
+            logRows = tt;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(targetTable);
+            sb.Append(logRows);
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -936,21 +1015,21 @@ namespace Pyrrho.Level3
     {
         public readonly Table st,tb;
         public readonly long rd, cd;
-        public LogRowColTable(Transaction tr, long r, long c, string ta)
+        public LogRowColTable(Transaction tr, Context cx, long r, long c, string ta)
         : base(tr.uid, BTree<long, object>.Empty)
         {
-            var tc = tr.objects[cd] as TableColumn ??
+            var tc = tr.objects[c] as TableColumn ??
                 throw new DBException("42131", "" + cd).Mix();
             rd = r;
             cd = c;
             tb = tr.objects[tc.tabledefpos] as Table;
             var tt = new SystemTable("" + rd + ":" + cd);
-            new SystemTableColumn(tt, "Pos", Domain.Int);
-            new SystemTableColumn(tt, "Value", Domain.Char);
-            new SystemTableColumn(tt, "StartTransaction", Domain.Int);
-            new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp);
-            new SystemTableColumn(tt, "EndTransaction", Domain.Int);
-            new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp);
+            new SystemTableColumn(tt, "Pos", Domain.Int,1);
+            new SystemTableColumn(tt, "Value", Domain.Char,0);
+            new SystemTableColumn(tt, "StartTransaction", Domain.Int,0);
+            new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp,0);
+            new SystemTableColumn(tt, "EndTransaction", Domain.Int,0);
+            new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp,0);
             st = tt;
         }
     }
@@ -1017,6 +1096,14 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override DBObject Frame(Context cx)
+        {
+            var r = (CursorSpecification)base.Frame(cx);
+            var u = union.Frame(cx);
+            if (u != union)
+                r += (Union, u);
+            return r;
+        }
         internal override Query Refresh(Context cx)
         {
             var r = (CursorSpecification)base.Refresh(cx);
@@ -1072,7 +1159,7 @@ namespace Pyrrho.Level3
         {
             return union.aggregates() || base.aggregates();
         }
-        internal override RowSet RowSets(Transaction tr, Context cx)
+        internal override RowSet RowSets(Database tr, Context cx)
         {
             var r = union.RowSets(tr, cx);
             r = Ordering(cx,r,false);
@@ -1206,6 +1293,36 @@ namespace Pyrrho.Level3
             var fm = r.from?.Refresh(cx);
             return (fm == r.from) ? r : (TableExpression)cx.Add(r + (From, fm));
         }
+        internal override DBObject Frame(Context cx)
+        {
+            var r = (TableExpression)base.Frame(cx);
+            var f = from.Frame(cx);
+            if (f != from)
+                r += (From, f);
+            var hv = BTree<long, SqlValue>.Empty;
+            var ch = false;
+            for (var b=having.First();b!=null;b=b.Next())
+            {
+                var h = (SqlValue)b.value().Frame(cx);
+                if (h != b.value())
+                    ch = true;
+                hv += (b.key(), h);
+            }
+            if (ch)
+                r += (Having, hv);
+            var ws = BTree<long, WindowSpecification>.Empty;
+            ch = false;
+            for (var b = window?.First(); b != null; b = b.Next())
+            {
+                var w = (WindowSpecification)b.value().Frame(cx);
+                if (w != b.value())
+                    ch = true;
+                ws += (b.key(), w);
+            }
+            if (ch)
+                r += (Windows, ws);
+            return r;
+        }
         internal override bool Uses(long t)
         {
             return from.Uses(t);
@@ -1214,7 +1331,7 @@ namespace Pyrrho.Level3
         {
             return from.aggregates() || base.aggregates();
         }
-        internal override RowSet RowSets(Transaction tr, Context cx)
+        internal override RowSet RowSets(Database tr, Context cx)
         {
             var r = from.RowSets(tr,cx);
             if (where.Count > 0)
@@ -1396,7 +1513,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the kind of Join
         /// </summary>
-        internal Sqlx kind => (Sqlx)(mem[JoinKind]??Sqlx.CROSS);
+        public override Sqlx kind => (Sqlx)(mem[JoinKind]??Sqlx.CROSS);
         /// <summary>
         /// The join condition is implemented by ordering, using any available indexes.
         /// Rows in the join will use left/rightInfo.Keys() for ordering and theta-operation.
@@ -1425,7 +1542,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t"></param>
         internal JoinPart(long u, BTree<long,object> m) 
-            : base(u,m) { }
+            : base(u,(m??BTree<long,object>.Empty)+(_Domain,Domain.TableType)) { }
         public static JoinPart operator+ (JoinPart j,(long,object)x)
         {
             return new JoinPart(j.defpos, j.mem + x);
@@ -1475,6 +1592,29 @@ namespace Pyrrho.Level3
             if (rg != r.right)
                 r += (RightOperand, rg);
             return (r == rr) ? rr : (JoinPart)cx.Add(r);
+        }
+        internal override DBObject Frame(Context cx)
+        {
+            var r = (JoinPart)base.Frame(cx);
+            var f = left.Frame(cx);
+            if (f != left)
+                r += (LeftOperand, f);
+            var s = right.Frame(cx);
+            if (s != right)
+                r += (RightOperand, s);
+            var jc = BTree<long, SqlValue>.Empty;
+            var ch = false;
+            for (var b=joinCond.First();b!=null;b=b.Next())
+            {
+                var v = b.value();
+                var nv = (SqlValue)v.Frame(cx);
+                if (v != nv)
+                    ch = true;
+                jc += (b.key(), nv);
+            }
+            if (ch)
+                r += (JoinCond, jc);
+            return r;
         }
         /// <summary>
         /// Analysis stage Selects: call for left and right.
@@ -1742,7 +1882,8 @@ namespace Pyrrho.Level3
         FDJoinPart GetRefIndex(Transaction tr,Query a, Query b,bool left)
         {
             FDJoinPart best = null;
-            if (a is From fa &&  b is From fb && fa.target is Table ta && fb.target is Table tb)
+            if (a is From fa &&  b is From fb && tr.objects[fa.target] is Table ta 
+                && tr.objects[fb.target] is Table tb)
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
@@ -1780,7 +1921,7 @@ namespace Pyrrho.Level3
         FDJoinPart GetIndex(Transaction tr,Query a,bool left)
         {
             FDJoinPart best = null;
-            if (a is From fa && fa.target is Table ta)
+            if (a is From fa && tr.objects[fa.target] is Table ta)
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
@@ -1835,7 +1976,7 @@ namespace Pyrrho.Level3
         internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            Eqs(data._tr,_cx,joinCond,ref eqs); // add in equality columns
+            Eqs(data._tr as Transaction,_cx,joinCond,ref eqs); // add in equality columns
             tr = left.Insert(tr,_cx, prov, data, eqs, rs, cl); // careful: data has extra columns!
             return right.Insert(tr,_cx,prov, data, eqs, rs,cl);
         }
@@ -1893,7 +2034,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Analysis stage RowSets: build the join rowset
         /// </summary>
-        internal override RowSet RowSets(Transaction tr,Context cx)
+        internal override RowSet RowSets(Database tr,Context cx)
         {
             for (var b = matches.First(); b != null; b = b.Next())
             {
@@ -2011,6 +2152,10 @@ namespace Pyrrho.Level3
                  +(FDConds,c)+(Reverse,r))
         { }
         protected FDJoinPart(BTree<long, object> m) : base(m) { }
+        public static FDJoinPart operator+(FDJoinPart f,(long,object)x)
+        {
+            return new FDJoinPart(f.mem + x);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new FDJoinPart(m);

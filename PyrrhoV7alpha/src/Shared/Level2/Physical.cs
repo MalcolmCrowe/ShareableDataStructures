@@ -56,11 +56,13 @@ namespace Pyrrho.Level2
         public readonly long ppos;
         public long trans;
         public Database db;
+        // for format<51 compatibility
+        public BTree<long, (string, long)> digested = BTree<long, (string, long)>.Empty;
         public readonly long time;
-        protected Physical(Type tp, long pp, Database d)
+        protected Physical(Type tp, Database d)
         {
             type = tp;
-            ppos = pp;
+            ppos = d.nextPos;
             db = d;
             time = DateTime.Now.Ticks;
         }
@@ -80,6 +82,7 @@ namespace Pyrrho.Level2
         protected Physical(Physical ph,Writer wr)
         {
             type = ph.type;
+            digested = ph.digested;
             ppos = wr.Length;
             wr.uids += (ph.ppos, ppos);
             db = wr.db;
@@ -101,7 +104,7 @@ namespace Pyrrho.Level2
         /// On commit, dependent Physicals must be committed first
         /// </summary>
         /// <returns>An uncommitted Physical ppos or null if there are none</returns>
-        public abstract long Dependent(Writer wr);
+        public abstract long Dependent(Writer wr,Transaction tr);
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
@@ -120,7 +123,7 @@ namespace Pyrrho.Level2
                 return;
             for (; ; ) // check for uncommitted dependents
             {
-                var pd = Dependent(wr);
+                var pd = Dependent(wr,tr);
                 if (Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
@@ -168,9 +171,7 @@ namespace Pyrrho.Level2
         public override string ToString() { return "Physical"; }
         protected string Pos(long p)
         {
-            if (p < Level3.Transaction.TransPos)
-                return "" + p;
-            return "'" + (p - Level3.Transaction.TransPos);
+            return DBObject.Uid(p);
         }
         /// <summary>
         /// The previous record affected by this one
@@ -189,13 +190,36 @@ namespace Pyrrho.Level2
         {
             return -1;
         }
+        protected string DigestSql(Writer wr,string s)
+        {
+            if (digested.Count == 0)
+                return s;
+            var sb = new StringBuilder();
+            var cp = 0;
+            for (var b=digested.First();b!=null;b=b.Next())
+            {
+                var sp = wr.Fix(b.key())-ppos;
+                if (sp <= 0)
+                    continue;
+                while(cp<sp)
+                    sb.Append(s[cp++]);
+                var (os, dp) = b.value();
+                cp += os.Length;
+                sb.Append('"'); sb.Append(wr.Fix(dp)); sb.Append('"');
+            }
+            while (cp < s.Length)
+                sb.Append(s[cp++]);
+            return sb.ToString();
+        }
+        internal virtual void Affected(ref BTree<long,BTree<long,long>> aff)
+        { }
     }
     internal class Curated : Physical
     {
         public Curated(Reader rdr) : base(Type.Curated, rdr) { }
-        public Curated(long u,Transaction db) : base(Type.Curated, u, db) { }
+        public Curated(Transaction db) : base(Type.Curated, db) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -217,8 +241,8 @@ namespace Pyrrho.Level2
     {
         public long perioddefpos;
         public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
-        public Versioning(long pd, long u, Transaction db)
-            : base(Type.Versioning, u, db)
+        public Versioning(long pd, Transaction db)
+            : base(Type.Versioning, db)
         {
             perioddefpos = pd;
         }
@@ -226,7 +250,7 @@ namespace Pyrrho.Level2
         {
             perioddefpos = wr.Fix(x.perioddefpos);
         }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,perioddefpos)) return perioddefpos;
             return -1;
@@ -286,8 +310,8 @@ namespace Pyrrho.Level2
         public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
         {
         }
-        public Namespace(string pf, string ur, long u, Transaction db)
-            : base(Physical.Type.Namespace, u, db) 
+        public Namespace(string pf, string ur, Transaction db)
+            : base(Type.Namespace, db) 
         {
             prefix = pf;
             uri = ur;
@@ -297,7 +321,7 @@ namespace Pyrrho.Level2
             prefix = x.prefix;
             uri = x.uri;
         }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -342,7 +366,7 @@ namespace Pyrrho.Level2
             obj = wr.Fix(x.obj);
             classification = x.classification;
         }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,obj)) return obj;
             return -1;
@@ -351,8 +375,8 @@ namespace Pyrrho.Level2
         {
             return new Classify(this, wr);
         }
-        public Classify(long ob, Level cl, long u, Transaction db)
-            : base(Type.Classify, u, db)
+        public Classify(long ob, Level cl, Transaction db)
+            : base(Type.Classify, db)
         {
             obj = ob;
             classification = cl;

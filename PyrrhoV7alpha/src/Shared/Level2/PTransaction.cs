@@ -33,7 +33,7 @@ namespace Pyrrho.Level2
         /// The transaction time, updated in Commit
         /// </summary>
 		public long pttime;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -58,14 +58,14 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PTransaction(Type tp, int nr, long usr, long rl, Transaction tr)
-			: base (tp,tr.uid, tr)
+			: base (tp,tr)
 		{
 			nrecs = nr;
 			ptuser = usr;
 			ptrole = rl;
 			pttime = DateTime.Now.Ticks;
 		}
-        public PTransaction(long u,Transaction tr) : base(Type.PTransaction,u,tr)
+        public PTransaction(long u,Transaction tr) : base(Type.PTransaction,tr)
         {
             nrecs = 0;
             ptuser = tr.user.defpos;
@@ -190,15 +190,17 @@ namespace Pyrrho.Level2
     internal class TriggeredAction : Physical
     {
         internal long trigger;
-        public override long Dependent(Writer wr)
+        internal long refPhys = -1;
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,trigger)) return trigger;
+            if (!Committed(wr,refPhys)) return refPhys;
             return -1;
         }
         internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
         { }
-        internal TriggeredAction(long tg,long u,Transaction tr) 
-            : base(Type.TriggeredAction,u,tr)
+        internal TriggeredAction(long tg,Transaction tr) 
+            : base(Type.TriggeredAction,tr)
         {
             trigger = tg;
         }
@@ -241,7 +243,7 @@ namespace Pyrrho.Level2
         internal long[] cols;// may be length 0
         internal string[] key; // length must match cols
         internal long timestamp;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr,Transaction tr)
         {
             // This would be really strange: Audit is never added to Transaction.physicals
             // but anyway it does not make sense to audit uncommitted objects 
@@ -256,8 +258,8 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,cols[i])) return cols[i];
             return -1;
         }
-        internal Audit(User us,long ta, long[] c, string[] k, long ts,long u, Transaction tr) 
-            : base(Type.Audit,u,tr)
+        internal Audit(User us,long ta, long[] c, string[] k, long ts,Transaction tr) 
+            : base(Type.Audit,tr)
         {
             user = us; table = ta; 
             timestamp = ts; cols = c; key = k;

@@ -28,7 +28,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A set of column constraints
         /// </summary>
-        public BTree<long, Check> constraints => (BTree<long, Check>)mem[Checks];
+        public BTree<long, Check> constraints => 
+            (BTree<long, Check>)mem[Checks] ?? BTree<long,Check>.Empty;
         public TypedValue defaultValue => (TypedValue)mem[Domain.Default];
         public GenerationRule generated =>
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
@@ -77,13 +78,17 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(defpos,m);
         }
+        internal override SqlValue ToSql(Ident id,Database db)
+        {
+            return new SqlCol(id.iix,((ObInfo)db.role.obinfos[defpos]).name,this);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableColumn(dp,mem);
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
+            var r = (TableColumn)base.Relocate(wr);
             var tb = wr.Fix(tabledefpos);
             if (tb != tabledefpos)
                 r += (Table, tb);

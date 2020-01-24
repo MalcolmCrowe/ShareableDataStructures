@@ -21,7 +21,7 @@ namespace Pyrrho.Level2
         /// The name of the user
         /// </summary>
 		public string name;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -30,8 +30,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="nm">The name of the user (an identifier)</param>
         /// <param name="db">The local database</param>
-        public PUser(string nm, long u,Transaction db)
-            : this(Type.PUser, nm, u,db)
+        public PUser(string nm, Transaction db)
+            : this(Type.PUser, nm, db)
         {
         }
         /// <summary>
@@ -40,8 +40,8 @@ namespace Pyrrho.Level2
         /// <param name="tp">The PUser type</param>
         /// <param name="nm">The name of the user (an identifier)</param>
         /// <param name="pb">The local database</param>
-        protected PUser(Type tp, string nm, long u, Transaction db)
-            : base(tp, u,db)
+        protected PUser(Type tp, string nm, Transaction db)
+            : base(tp, db)
         {
             name = nm;
         }
@@ -107,15 +107,15 @@ namespace Pyrrho.Level2
     {
         public long _user;
         public Level clearance = Level.D;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,_user)) return _user;
             return -1;
         }
         public Clearance(Reader rdr) : base(Type.Clearance, rdr)
         { }
-        public Clearance(long us, Level cl, long u,Transaction db)
-            : base(Type.Clearance, u,db)
+        public Clearance(long us, Level cl, Transaction db)
+            : base(Type.Clearance, db)
         {
             _user = us;
             clearance = cl;

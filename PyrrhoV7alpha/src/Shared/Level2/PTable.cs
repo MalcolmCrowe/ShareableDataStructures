@@ -30,7 +30,7 @@ namespace Pyrrho.Level2
 		public string name;
         public string rowiri = "";
         public Grant.Privilege enforcement = (Grant.Privilege)15; // read,insert,udate,delete
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             return -1;
@@ -41,8 +41,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm, long u, Transaction tr)
-            : this(Type.PTable, nm, u, tr)
+        public PTable(string nm, Transaction tr)
+            : this(Type.PTable, nm, tr)
 		{}
         /// <summary>
         /// Constructor: a Table definition from the Parser
@@ -51,8 +51,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTable(Type t, string nm, long u, Transaction tr)
-            : base(t, u, tr)
+        protected PTable(Type t, string nm, Transaction tr)
+            : base(t, tr)
 		{
 			name = nm;
 		}
@@ -97,29 +97,6 @@ namespace Pyrrho.Level2
             name = rdr.GetString();
 			base.Deserialise(rdr);
 		}
-        /*        internal override (Database, Role) Install(Database db,Role ro,long p)
-                {
-                    var db = rdr.db;
-                    var ro = db.role;
-                    if (ro == null)
-                        throw new DBException("42105", db.name).Mix();
-                    if (ro.names.Contains(t.name))
-                        throw new DBException("42153", name).Mix();
-                    var sr = Grant.Privilege.Insert |
-                        Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
-                        Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences;
-                    var rs = new BTree<long, DataTypeTracker>(ro.defpos,
-                        new DataTypeTracker(ppos, TableType.Table, sr, null));
-                    Table s = new Table(this, ro, db.user, rs);
-                    var dfs = ro.defs;
-                    var rr = new RoleObject(ppos, name);
-                    BTree<long, RoleObject>.Add(ref dfs, s.defpos, rr);
-                    ro = new Role(ro, dfs);
-                    name.segpos = defpos;
-                    ro += (name, defpos);
-                    rdr.db = db.Change(p, ro, s);
-                    return (rdr.db,ro)
-                } */
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -156,18 +133,20 @@ namespace Pyrrho.Level2
             var tb = new Table(this);
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            if (db.format < 51)
+                ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             return (db + (ro,p) + (tb,p),ro);
         }
     }
     internal class PTable1 : PTable
     {
-        public PTable1(string ir, string nm, long u, Transaction tr)
-            : base(Type.PTable1, nm, u, tr)
+        public PTable1(string ir, string nm, Transaction tr)
+            : base(Type.PTable1, nm, tr)
         {
             rowiri = ir;
         }
-        protected PTable1(Type typ, string ir, string nm, long u, Transaction tr)
-            : base(typ, nm, u, tr)
+        protected PTable1(Type typ, string ir, string nm, Transaction tr)
+            : base(typ, nm, tr)
         {
             rowiri = ir;
         }
@@ -202,8 +181,8 @@ namespace Pyrrho.Level2
     internal class AlterRowIri : PTable1
     {
         public long rowpos;
-        public AlterRowIri(long pr, string ir, long u, Transaction tr)
-            : base(Type.AlterRowIri, ir, null, u, tr)
+        public AlterRowIri(long pr, string ir, Transaction tr)
+            : base(Type.AlterRowIri, ir, null, tr)
         {
             rowpos = pr;
         }
@@ -238,7 +217,7 @@ namespace Pyrrho.Level2
     {
         public long tabledefpos;
         public Grant.Privilege enforcement;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             return -1;
@@ -247,8 +226,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        public Enforcement(long pt, Grant.Privilege en, long u, Transaction tr) 
-            : base(Type.Enforcement, u, tr)
+        public Enforcement(long pt, Grant.Privilege en, Transaction tr) 
+            : base(Type.Enforcement, tr)
         {
             tabledefpos = pt;
             enforcement = en;
@@ -258,8 +237,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        protected Enforcement(Type typ, long pt, Grant.Privilege en, long u, Transaction tr) 
-            : base(typ, u, tr)
+        protected Enforcement(Type typ, long pt, Grant.Privilege en, Transaction tr) 
+            : base(typ, tr)
         {
             tabledefpos = pt;
             enforcement = en;

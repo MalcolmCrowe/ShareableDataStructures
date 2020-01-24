@@ -60,7 +60,6 @@ namespace Pyrrho.Level3
             r += ")";
             return r;
         }
-
         internal override Basis New(BTree<long, object> m)
         {
             return new OrderSpec(m);
@@ -215,7 +214,6 @@ namespace Pyrrho.Level3
             }
             return partition == w.partition;
         }
-
         internal override Basis New(BTree<long, object> m)
         {
             return new WindowSpecification(defpos,m);
@@ -231,7 +229,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
-        internal Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
+        public override Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
         internal BList<Grouping> groups => 
             (BList<Grouping>)mem[Groups]?? BList<Grouping>.Empty;
         /// <summary>
@@ -425,10 +423,23 @@ namespace Pyrrho.Level3
             var vb = (SqlValue)vbl.Replace(cx, was, now);
             return new UpdateAssignment(vb, va);
         }
+        internal UpdateAssignment Frame(Context cx)
+        {
+            var va = (SqlValue)val.Frame(cx);
+            var vb = (SqlValue)vbl.Frame(cx);
+            return new UpdateAssignment(vb, va);
+        }
         public int CompareTo(object obj)
         {
             var that = (UpdateAssignment)obj;
             return vbl.CompareTo(that.vbl);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Vbl: ");sb.Append(vbl);
+            sb.Append(" Val: "); sb.Append(val);
+            return sb.ToString();
         }
     }
 }

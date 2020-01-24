@@ -53,7 +53,7 @@ namespace Pyrrho.Level3
             Level cl)
         {
             f.source.AddCondition(_cx,f.where, null, data);
-            return f.source.Insert(data._tr,_cx,prov, data, eqs, rs, cl);
+            return f.source.Insert(data._tr as Transaction, _cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -115,57 +115,13 @@ namespace Pyrrho.Level3
                 sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + mi.name + " : Versioned {\r\n");
-            DisplayType(tr,viewQry.rowType, sb);
+            viewQry.rowType.DisplayType(tr,sb);
             sb.Append("}\r\n");
             return new TRow(from.rowType,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
-        }
-        /// <summary>
-        /// API development support: generate the C# type information for a field 
-        /// </summary>
-        /// <param name="dt">The type to use</param>
-        /// <param name="db">The database</param>
-        /// <param name="sb">a string builder</param>
-        static void DisplayType(Database db,ObInfo dt,StringBuilder sb)
-        {
-            for (var i = 0; i < dt.columns.Count; i++)
-            {
-                var c = (SqlValue)dt.columns[i];
-                var cd = c.domain;
-                var n = c.name.Replace('.', '_');
-                var di = (ObInfo)db.role.obinfos[cd.defpos];
-                var tn = di.name;
-                if (cd.kind != Sqlx.TYPE && cd.kind!=Sqlx.ARRAY && cd.kind!=Sqlx.MULTISET)
-                    tn = cd.SystemType.Name;
-                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET)
-                {
-                    if (tn == "[]")
-                        tn = "_T" + i + "[]";
-                    if (n.EndsWith("("))
-                        n = "_F" + i;
-                }
-                FieldType(db,sb, cd);
-                sb.Append("  public " + tn + " "+n+ ";\r\n");
-            }
-            for (var i = 0; i < dt.Length; i++)
-            {
-                var cd = dt.columns[i].domain;
-                if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
-                    continue;
-                cd = cd.elType;
-                var di = (ObInfo)db.role.obinfos[cd.defpos];
-                var tn =di.name.ToString();
-                if (tn!=null)
-                    sb.Append("// Delete this declaration of class "+tn+" if your app declares it somewhere else\r\n");
-                else
-                    tn += "_T" + i;
-                sb.Append("  public class " + tn + " {\r\n");
-                DisplayType(db,di,sb);
-                sb.Append("  }\r\n");
-            } 
-        }
+        } 
         /// <summary>
         /// API development support: generate the Java information for a Role$Java description
         /// </summary>
@@ -251,7 +207,7 @@ namespace Pyrrho.Level3
                 var cd = c.domain;
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
-                cd = cd.elType;
+                cd = cd.elType.domain;
                 var tn = c.name;
                 if (tn != null)
                     sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");

@@ -38,7 +38,7 @@ namespace Pyrrho.Level2
         {
             return "Checkpoint";
         }
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }

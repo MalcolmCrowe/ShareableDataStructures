@@ -177,6 +177,41 @@ namespace Pyrrho
             cmd.CommandText = sql;
             return cmd.ExecuteNonQueryTrace(ob);
         }
+        public int ExecuteNonQuery(string name,params string[] actuals)
+        {
+            Send(Protocol.Execute);
+            PutString(name);
+            PutInt(actuals.Length);
+            foreach (var s in actuals)
+                PutString(s);
+            var p = Receive();
+            if (p != Responses.Done)
+                throw new DatabaseError("2E203");
+            return GetInt();
+        }
+        public int ExecuteNonQueryTrace(string name, params string[] actuals)
+        {
+            Send(Protocol.ExecuteTrace);
+            PutString(name);
+            PutInt(actuals.Length);
+            foreach (var s in actuals)
+                PutString(s);
+            var p = Receive();
+            if (p != Responses.DoneTrace)
+                throw new DatabaseError("2E203");
+            var ts = GetLong();
+            RecordResponse(ts, GetLong());
+            return GetInt();
+        }
+        public PyrrhoReader ExecuteReader(string name, params string[] actuals)
+        {
+            Send(Protocol.Execute);
+            PutString(name);
+            PutInt(actuals.Length);
+            foreach (var s in actuals)
+                PutString(s);
+            return PyrrhoReader.New((PyrrhoCommand)CreateCommand());
+        }
 #if !MONO1
         /// <summary>
         /// Find for a given key, locking is done inside Get<>()
@@ -871,6 +906,13 @@ CallingConventions.HasThis, new Type[0], null);
             PutString(check);
             return Receive() == Responses.Valid;
 #endif
+        }
+        public void Prepare(string nm,string sql)
+        {
+            Send(Protocol.Prepare);
+            PutString(nm);
+            PutString(sql);
+            Receive();
         }
         #region IDbConnect Members
 

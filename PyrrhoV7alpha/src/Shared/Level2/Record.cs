@@ -46,17 +46,23 @@ namespace Pyrrho.Level2
         /// A relative URI (base is given in PImportTransaction)
         /// </summary>
         public string provenance;
-        public override long Dependent(Writer wr)
+        long triggeredAction;
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
                 if (!Committed(wr,b.key())) return b.key();
             if (!Committed(wr,subType)) return subType;
+            if (!Committed(wr, triggeredAction)) return triggeredAction;
             return -1;
         }
-        public Record(Table tb, BTree<long, TypedValue> fl, long u, Transaction db)
-            : this(Type.Record, tb, fl, u, db) { }
+        public Record(Table tb, BTree<long, TypedValue> fl, Transaction db)
+            : this(Type.Record, tb, fl, db) 
+        {
+            if (db.triggeredAction > 0)
+                triggeredAction = db.triggeredAction;
+        }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
         /// </summary>
@@ -65,8 +71,8 @@ namespace Pyrrho.Level2
         /// <param name="fl">The field values</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record(Type t, Table tb, BTree<long, TypedValue> fl, long u, Transaction db)
-            : base(t, u, db)
+        protected Record(Type t, Table tb, BTree<long, TypedValue> fl, Transaction db)
+            : base(t, db)
         {
             tabledefpos = tb.defpos;
             if (fl.Count == 0)
@@ -78,7 +84,7 @@ namespace Pyrrho.Level2
                     if (tc.Denied(db, Grant.Privilege.Insert))
                         throw new DBException("42105", tc);
                     for (var c = tc.constraints?.First(); c != null; c = c.Next())
-                        if (c.value().Eval(db,new Context(db)) != TBool.True)
+                        if (c.value().search.Eval(db,new Context(db).Add(fl)) != TBool.True)
                             throw new DBException("22212", 
                                 ((ObInfo)db.role.obinfos[tc.defpos]).name);
                 }
@@ -255,21 +261,10 @@ namespace Pyrrho.Level2
             var tb = db.objects[tabledefpos] as Table;
             try
             {
-                // referential constraints need to be checked here
-                for (var b=tb.indexes.First();b!=null;b=b.Next())
-                {
-                    var x = (Index)db.objects[b.value()];
-                    if (!x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
-                        continue;
-                    var rt = (Table)db.objects[x.reftabledefpos];
-                    var rx = (Index)db.objects[x.refindexdefpos];
-                    var pk = MakeKey(x.keys);
-                    if (!rx.rows.Contains(pk))
-                        throw new DBException("23000","foreign key ",pk);
-                }
-                // primary key and unique violations will be detected by the MTree
                 var fl = _Fields(fields, ref db);
-                tb += (db,new TableRow(this, db, fl));
+                var rw = new TableRow(this, db, fl);
+                // primary key and unique violations will be detected by the MTree
+                tb += (db,rw);
             }
             catch (DBException e)
             {
@@ -284,23 +279,27 @@ namespace Pyrrho.Level2
             db += (tb, p);
             return (db,ro);
         }
-
-        internal class ColumnValue
+        internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {
-            public PColumn col;
-            public TypedValue val;
-            public ColumnValue(PColumn tc,  TypedValue tv) { col = tc; val = tv; }
+            var ta = aff[tabledefpos]??BTree<long,long>.Empty;
+            ta += (defpos, ppos);
+            aff += (tabledefpos, ta);
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(GetType().Name+" "+defpos+"["+tabledefpos+"]");
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(' ');
+            sb.Append(DBObject.Uid(defpos));
+            sb.Append('[');
+            sb.Append(DBObject.Uid(tabledefpos));
+            sb.Append(']');
             var cm = ": ";
             for (var b=fields.PositionAt(0);b!=null;b=b.Next())
             {
                 var v = b.value();
                 sb.Append(cm); cm = ",";
-                sb.Append(b.key());sb.Append('=');sb.Append(v.Val());
-                sb.Append('[');sb.Append(v.dataType.defpos);sb.Append(']');
+                sb.Append(DBObject.Uid(b.key()));sb.Append('=');sb.Append(v.Val());
+                sb.Append('[');sb.Append(DBObject.Uid(v.dataType.defpos));sb.Append(']');
             }
             return sb.ToString();
         }
@@ -326,8 +325,8 @@ namespace Pyrrho.Level2
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record1(Type t, Table tb, BTree<long,  TypedValue> fl, string p,
-            long u, Transaction tr)
-            : base(t, tb, fl, u, tr)
+            Transaction tr)
+            : base(t, tb, fl, tr)
         {
             provenance = p;
         }
@@ -339,8 +338,8 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record1(Table tb, BTree<long, TypedValue> fl, string prov, long u, Transaction db)
-            : this(Type.Record1, tb, fl, prov, u, db)
+        public Record1(Table tb, BTree<long, TypedValue> fl, string prov, Transaction db)
+            : this(Type.Record1, tb, fl, prov, db)
         {
         }
         protected Record1(Record1 x, Writer wr) : base(x, wr)
@@ -392,8 +391,8 @@ namespace Pyrrho.Level2
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record2(Type t, Table tb, BTree<long,  TypedValue> fl, long st, 
-            long u, Transaction tr)
-            : base(t, tb, fl, u, tr)
+            Transaction tr)
+            : base(t, tb, fl, tr)
         {
             subType = st;
         }
@@ -443,8 +442,8 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record3(Table tb, BTree<long, TypedValue> fl, long st, Level lv, long u, Transaction tr)
-            : base(Type.Record3, tb, fl, st, u, tr)
+        public Record3(Table tb, BTree<long, TypedValue> fl, long st, Level lv, Transaction tr)
+            : base(Type.Record3, tb, fl, st, tr)
         {
             _classification = lv;
         }

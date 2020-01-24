@@ -122,6 +122,17 @@ namespace Pyrrho.Level2
             }
             buf.buf[buf.pos++] = value;
         }
+        internal Ident PutIdent(Ident id)
+        {
+            if (id == null || id.ident=="")
+            {
+                PutString("");
+                return null;
+            }
+            var r = new Ident(id.ident,Length);
+            PutString(id.ident);
+            return r;
+        }
         internal long Fix(long pos)
         {
             return (uids.Contains(pos)) ? uids[pos] : pos;

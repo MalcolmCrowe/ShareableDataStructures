@@ -1,0 +1,18 @@
+create table members (id int primary key,firstname char)
+create table played (id int primary key, winner int references members, loser int references members,agreed boolean)
+grant select on members to public
+grant select on played to public
+create procedure claim(won int,beat int) insert into played(winner,loser) values(claim.won,claim.beat)
+[create procedure agree(p int) update played set agreed=true where winner=agree.p and loser in
+(select m.id from members m where current_user like '%'||firstname escape '^')]
+insert into members(firstname) values(current_user)
+insert into members(firstname) values('Fred')
+insert into played(winner,loser) values(2,1)
+create role membergames
+grant execute on procedure claim(int,int) to role membergames
+grant execute on procedure agree(int) to role membergames
+grant membergames to public
+begin transaction
+set role membergames
+call agree(2)
+call claim(1,2)

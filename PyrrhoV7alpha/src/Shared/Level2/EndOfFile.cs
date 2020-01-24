@@ -23,7 +23,7 @@ namespace Pyrrho.Level2
     /// </summary>
 	internal class EndOfFile : Physical
 	{
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }

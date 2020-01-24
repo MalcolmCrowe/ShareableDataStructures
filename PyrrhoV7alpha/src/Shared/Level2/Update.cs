@@ -31,12 +31,12 @@ namespace Pyrrho.Level2
         /// <param name="fl">The changed fields and values</param>
         /// <param name="u">The new record position</param>
         /// <param name="db">The transaction</param>
-        public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, long u,Transaction db)
-            : this(Type.Update, old, tb, fl, u,db)
+        public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, Transaction db)
+            : this(Type.Update, old, tb, fl, db)
         { }
         protected Update(Type t, TableRow old, Table tb,BTree<long,TypedValue> fl, 
-            long u,Transaction db)
-            : base(t,tb,fl,u,db)
+            Transaction db)
+            : base(t,tb,fl,db)
         {
             _defpos = old.defpos;
             prev = old.lastChange;
@@ -155,8 +155,8 @@ namespace Pyrrho.Level2
     {
 
         public Update1(TableRow old, Table tb, BTree<long, TypedValue> fl, Level lv, 
-            long u, Transaction db) 
-            : base(Type.Update1,old, tb, fl, u,db)
+            Transaction db) 
+            : base(Type.Update1,old, tb, fl, db)
         {
             _classification = lv;
         }
@@ -165,8 +165,8 @@ namespace Pyrrho.Level2
         }
 
         public Update1(TableRow old, BTree<long, TypedValue> fl, Table tb, Level lv, 
-            long u,Transaction db) 
-            : base(Type.Update1, old,tb,  fl, u, db)
+            Transaction db) 
+            : base(Type.Update1, old,tb,  fl, db)
         {
             _classification = lv;
         }
@@ -176,8 +176,8 @@ namespace Pyrrho.Level2
         }
 
         protected Update1(Type t, TableRow old, Table tb, BTree<long, TypedValue> fl, 
-            long u, Transaction db) 
-            : base(t, old, tb, fl, u, db)
+            Transaction db) 
+            : base(t, old, tb, fl, db)
         {
         }
         protected Update1(Update1 x, Writer wr) : base(x, wr)

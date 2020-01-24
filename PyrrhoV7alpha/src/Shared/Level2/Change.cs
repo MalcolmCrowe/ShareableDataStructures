@@ -30,7 +30,7 @@ namespace Pyrrho.Level2
         /// The new name for the object
         /// </summary>
 		public string name;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,prev)) return prev;
             return -1;
@@ -42,8 +42,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
         /// <param name="tr">The transaction</param>
-        public Change(long pt, string nm, long u, Transaction tr) 
-			:this(Type.Change,pt,nm, u, tr)
+        public Change(long pt, string nm, Transaction tr) 
+			:this(Type.Change,pt,nm, tr)
 		{
             prev = pt;
             name = nm;
@@ -56,8 +56,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
         /// <param name="db">The local database</param>
-        protected Change(Type t, long pt, string nm, long u, Transaction tr)
-			:base(t,u, tr)
+        protected Change(Type t, long pt, string nm, Transaction tr)
+			:base(t,tr)
 		{
             prev = pt;
             name = nm;

@@ -23,7 +23,7 @@ namespace Pyrrho.Level3
             RVJoinType = -241, // Domain
             TableExp = -242; // TableExpression
         internal static readonly QuerySpecification Default =
-            new QuerySpecification(Transaction.TransPos,
+            new QuerySpecification(Transaction.Analysing,
                 BTree<long, object>.Empty
                 + (RowType, ObInfo.Any + SqlStar.Default) +
                 (Display, 1));
@@ -50,7 +50,15 @@ namespace Pyrrho.Level3
         }
         public static QuerySpecification operator +(QuerySpecification q, SqlValue x)
         {
-            return (QuerySpecification)q.New((((Query)q) + x).mem);
+            q = (QuerySpecification)q.New((((Query)q) + x).mem);
+            Domain dm = null;
+            if (x.domain == Domain.Content && q.domain!=Domain.Content)
+                dm = Domain.Content;
+            else if (q.domain == Domain.Content)
+                dm = Domain.TableType;
+            if (dm != null)
+                q += (_Domain, dm);
+            return q;
         }
         public static QuerySpecification operator -(QuerySpecification q, long col)
         {
@@ -74,7 +82,15 @@ namespace Pyrrho.Level3
             var te = r.tableExp?.Refresh(cx);
             return (te == r.tableExp) ? r : (QuerySpecification)cx.Add(r + (TableExp, te));
         }
-        internal override RowSet RowSets(Transaction tr, Context cx)
+        internal override DBObject Frame(Context cx)
+        {
+            var r =  (QuerySpecification)base.Frame(cx);
+            var t = tableExp.Frame(cx);
+            if (t != tableExp)
+                r += (TableExp, t);
+            return r;
+        }
+        internal override RowSet RowSets(Database tr, Context cx)
         {
             var r = tableExp?.RowSets(tr,cx)??new TrivialRowSet(tr,cx,this,null);
             if (aggregates())
@@ -88,8 +104,8 @@ namespace Pyrrho.Level3
                 r = new SelectedRowSet(tr, cx, this, r);
             var cols = rowType.columns;
             for (int i = 0; i < Size(cx); i++)
-                if (cols[i] is SqlFunction f && f.window != null)
-                    f.RowSets(tr, this);
+                if (cols[i] is SqlFunction f && f.window != null && tr is Transaction)
+                    f.RowSets((Transaction)tr, this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
             return r;
@@ -143,7 +159,7 @@ namespace Pyrrho.Level3
         {
             var cols = rowType.columns;
             for (var i=0;i<cols.Count;i++)
-                cols[i].Eqs(data._tr,_cx,ref eqs);
+                cols[i].Eqs(data._tr as Transaction,_cx,ref eqs);
             return tableExp.Insert(tr,_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
@@ -191,7 +207,7 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QueryExpression : Query
     {
-        internal static readonly QueryExpression Get =
+        internal new static readonly QueryExpression Get =
                 new QueryExpression(-1, BTree<long, object>.Empty);
         internal const long
             _Distinct = -243, // bool
@@ -256,10 +272,22 @@ namespace Pyrrho.Level3
             var lf = r.left.Refresh(cx);
             if (lf != r.left)
                 r += (_Left, lf);
-            var rg = r.right.Refresh(cx);
+            var rg = r.right?.Refresh(cx);
             if (rg != r.right)
                 r += (_Right, rg);
             return (r == rr) ? rr : (QueryExpression)cx.Add(r);
+        }
+        internal override DBObject Frame(Context cx)
+        {
+            var r = (QueryExpression)base.Frame(cx);
+            var rr = r;
+            var lf = r.left.Frame(cx);
+            if (lf != r.left)
+                r += (_Left, lf);
+            var rg = r.right?.Frame(cx);
+            if (rg != r.right)
+                r += (_Right, rg);
+            return r;
         }
         internal override void Build(Context _cx, RowSet rs)
         {
@@ -416,7 +444,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Analysis stage RowSets(). Implement UNION, INTERSECT and EXCEPT.
         /// </summary>
-        internal override RowSet RowSets(Transaction tr,Context cx)
+        internal override RowSet RowSets(Database tr,Context cx)
         {
             var lr = left.RowSets(tr,cx);
             if (right != null)

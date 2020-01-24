@@ -1,0 +1,43 @@
+
+create table b(a int primary key, c int)
+insert into b values(5,2),(6,1),(7,4)
+create table d(e int array)
+insert into d values(array(select c from b g))
+select e[0] from d
+
+6.1 doesn't allow the table d verification
+6.2 OSPSvr crashes if its in a transaction while computing _ETag if table b is not committed
+and fails on select e[0] from d if table d is not committed
+6.2 EmbeddedOSP is confused as to the datatype being transmitted
+e[0] left is SqlName
+
+Try order by with different options
+Try goup and having
+
+with table a(b int,c int)
+select * from a
+select b from a
+select b as d from a
+select a.b from a
+select a.b as b from a
+select a.b from a d
+select d.b from a d
+select d.b as e from a d
+select d.b as c from a d
+select c.b from a c
+select * from a d
+select (b) from a
+select (a.b) from a
+select (d.b) as c from a
+select (b,c) from a
+select (b,a.c) from a
+select (b as d,c) from a
+select (b,d.c) from a d
+select b+1 from a
+select b from a order by c
+select b from a order by b+c
+select a.b+1 from a
+select c.b+1 as d from a c 
+select b from a order by b
+
+Repeat all the above with primary key

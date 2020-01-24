@@ -1,0 +1,6 @@
+create type "name" as ("first" char,"last" char)
+create table "Person" ("Id" int primary key,"Name" "name")
+create table "Team" ("Id" int primary key,"Title" char,"Manager" int references "Person")
+create table "Player" ("Who" int references "Person","Where" int references "Team")
+insert into "Person" ("Name") values("name"('Fred','Bloggs')),("name"('Joe','White')),("name"('Freda','Black'))
+insert into "Team" ("Title") values ('Ryder Cup')

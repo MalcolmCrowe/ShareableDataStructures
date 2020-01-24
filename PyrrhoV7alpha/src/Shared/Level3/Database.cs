@@ -66,7 +66,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    public enum ExecuteStatus { Parse, Obey, Drop,Rename }
+    public enum ExecuteStatus { Parse, Obey, Prepare }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
@@ -107,29 +107,41 @@ namespace Pyrrho.Level3
             Cascade = -390, // bool (only used for Transaction subclass)
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
+            Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // Role
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
+            NextHeap = -393, // long: Prepared statements and dynamic memory
+            NextPid = -394, // long: Used by DoStar for compiled executable code
+            NextPos = -395, // long: next proposed Physical record
             NextTid = -58, // long:  will be used for next transaction
             Owner = -59, // long
+            Role = -285, // long
             Roles = -60, // BTree<string,long>
-            Types = -61;  // BTree<Domain,Domain>
+            Types = -61, // BTree<Domain,Domain>
+            User = -288; // long
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
         internal long owner => (long)(mem[Owner]??-1L);
-        internal virtual long nextTid => Transaction.TransPos;
+        internal long nextHeap => (long)(mem[NextHeap] ?? PyrrhoServer.ConnPos);
+        internal long nextPid => (long)(mem[NextPid] ?? Transaction.Aliasing);
+        internal virtual long nextPos => Transaction.TransPos;
+        internal long nextTid => (long)(mem[NextTid] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
         internal Role schemaRole => (mem[DBObject.Definer] is Role r)?r
             :(Role)mem[(long)mem[DBObject.Definer]];
         internal Role guestRole => (Role)mem[Guest];
-        internal virtual Role role => schemaRole;
-        internal virtual User user => (User)mem[owner];
+        internal long _role => (long)(mem[Role]??DBObject.Definer);
+        internal long _user => (long)(mem[User]??-500L);
+        internal virtual Role role => (Role)objects[_role]??schemaRole;
+        internal virtual User user => (User)(objects[_user]??mem[owner]);
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal bool cascade => (bool)(mem[Cascade] ?? false);
+        internal int format => (int)(mem[Format] ?? 0);
         /// <summary>
         /// The type system needs to be able to consider ad-hoc data types, i.e. not reified in
         /// any physical database. When data with any data type is committed to a database this must be
@@ -165,7 +177,8 @@ namespace Pyrrho.Level3
         {
             loadpos = 0;
         }
-        public Database(string n,FileStream f):base(_system.mem+(Name,n))
+        public Database(string n,FileStream f):base(_system.mem+(Name,n)
+            +(Format,_Format(f)))
         {
             dbfiles += (n, f);
             loadpos = 5;
@@ -237,6 +250,11 @@ namespace Pyrrho.Level3
         {
             return dbfiles[name];
         }
+        static int _Format(FileStream f)
+        {
+            var bs = new byte[5];
+            return (f.Read(bs, 0, 5)==5)?bs[4]:0;
+        }
         public virtual Transaction Transact(long t,string sce,bool? auto=null)
         {
             // if not new, this database may be out of date: ensure we get the latest
@@ -246,6 +264,10 @@ namespace Pyrrho.Level3
         public DBObject GetObject(string n)
         {
             return objects[role.dbobjects[n]] as DBObject;
+        }
+        public ObInfo GetObInfo(string n)
+        {
+            return role.obinfos[role.dbobjects[n]] as ObInfo;
         }
         public Procedure GetProcedure(string n,int a)
         {
@@ -263,7 +285,7 @@ namespace Pyrrho.Level3
         }
         public virtual (Database,long) RdrClose(Context cx)
         {
-            return (this,Transaction.TransPos);
+            return (this,Transaction.Analysing);
         }
         /// <summary>
         /// Load the database
@@ -309,6 +331,17 @@ namespace Pyrrho.Level3
         /// </summary>
         public virtual long WorkPos { get { return long.MaxValue; } }
         public virtual void Audit(Audit a) { }
+        internal virtual BTree<long,BTree<long,long>> Affected()
+        {
+            return BTree<long, BTree<long, long>>.Empty;
+        }
+        internal virtual int AffCount(BTree<long,BTree<long,long>> aff)
+        {
+            var r = 0L;
+            for (var b = aff.First(); b != null; b = b.Next())
+                r += b.value().Count;
+            return (int)r;
+        }
         /// <summary>
         /// Accessor: a level2 record by position
         /// </summary>
@@ -353,11 +386,11 @@ namespace Pyrrho.Level3
         {
             var db = new Database(df.Length, mem);
             databases += (name, db);
-            return (db,Transaction.TransPos);
+            return (db,Transaction.Analysing);
         }
         internal virtual (Database,long) Rollback(object e)
         {
-            return (this,Transaction.TransPos);
+            return (this,Transaction.Analysing);
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

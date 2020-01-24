@@ -23,8 +23,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local database</param>
-        public Revoke(Privilege pr, long ob, long ge, long u,Transaction db)
-            : this(Type.Revoke, pr, ob, ge, u, db)
+        public Revoke(Privilege pr, long ob, long ge, Transaction db)
+            : this(Type.Revoke, pr, ob, ge, db)
 		{}
         /// <summary>
         /// Constructor: Revoke a privilege on an object for a grantee, from the Parser
@@ -34,8 +34,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local database</param>
-        protected Revoke(Type tp, Privilege pr, long ob, long ge, long u,Transaction db)
-            : base(tp, pr, ob, ge, u, db)
+        protected Revoke(Type tp, Privilege pr, long ob, long ge, Transaction db)
+            : base(tp, pr, ob, ge, db)
 		{}
         /// <summary>
         /// Constructor: Revoke a privilege on an object for a grantee, from the buffer

@@ -25,7 +25,7 @@ namespace Pyrrho.Level2
         /// The definition of the view
         /// </summary>
         public QueryExpression view;
-        public override long Dependent(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
         }
@@ -37,9 +37,9 @@ namespace Pyrrho.Level2
         /// <param name="vc">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, QueryExpression vc, long u, Transaction db) 
-            : this(Type.PView, nm, vc, u, db) { }
-        protected PView(Type pt,string nm,QueryExpression vc,long u,Transaction db) : base(pt,u,db)
+        internal PView(string nm, QueryExpression vc, Transaction db) 
+            : this(Type.PView, nm, vc, db) { }
+        protected PView(Type pt,string nm,QueryExpression vc,Transaction db) : base(pt,db)
         {
             name = nm;
             view = vc;
@@ -121,10 +121,10 @@ namespace Pyrrho.Level2
         internal string rname = null, rpass = null;
         public PRestView(Reader rdr) : this(Type.RestView, rdr) { }
         protected PRestView(Type t, Reader rdr) : base(t,rdr) { }
-        public PRestView(string nm, long tp, long u, Transaction d) 
-            : this(Type.RestView, nm, tp, u, d) { }
-        protected PRestView(Type t,string nm,long tp,long u,Transaction d) 
-            : base(t,nm,QueryExpression.Get,u,d)
+        public PRestView(string nm, long tp, Transaction d) 
+            : this(Type.RestView, nm, tp, d) { }
+        protected PRestView(Type t,string nm,long tp,Transaction d) 
+            : base(t,nm,QueryExpression.Get,d)
         {
             structpos = tp;
         }
@@ -159,8 +159,8 @@ namespace Pyrrho.Level2
     internal class PRestView1 : PRestView
     {
         public PRestView1(Reader rdr) : base(Type.RestView1, rdr) { }
-        public PRestView1(string nm, long tp, string rnm, string rpw, long u, Transaction db) 
-            : base(Type.RestView1, nm, tp, u, db)
+        public PRestView1(string nm, long tp, string rnm, string rpw, Transaction db) 
+            : base(Type.RestView1, nm, tp, db)
         {
             rname = rnm;
             rpass = rpw;
@@ -195,8 +195,8 @@ namespace Pyrrho.Level2
     internal class PRestView2 : PRestView
     {
         public PRestView2(Reader rdr) : base(Type.RestView1, rdr) { }
-        public PRestView2(string nm, long tp, long utp, long u, Transaction db) 
-            : base(Type.RestView2, nm, tp, u, db)
+        public PRestView2(string nm, long tp, long utp, Transaction db) 
+            : base(Type.RestView2, nm, tp, db)
         {
             usingtbpos = utp;
         }

@@ -1,0 +1,239 @@
+# 2019-01-12 MKC
+# 
+# Tracing INSERT/UPDATE/DELETE accesses for classified column G of table F
+
+
+DROP TABLE F_accesses;
+[CREATE TABLE F_accesses (
+id        INTEGER NOT NULL PRIMARY KEY, 
+user_id   CHAR NOT NULL,
+Fkey      CHAR    NOT NULL,
+Event     CHAR NOT NULL,
+tstamp    TIMESTAMP
+) security level A ]
+
+-- Note: Pyrrho does not have "identity", "autonumber", "sequence", etc 
+-- explicit autoincrement definitions, but by default the PRIMARY KEY constraint 
+-- works like AUTO_INCREMENT. See PyrrhoBook 5.2.2
+
+[CREATE PROCEDURE F_access (event CHAR, fkey CHAR) 
+INSERT INTO F_accesses (user_id, Fkey, Event,tstamp) 
+VALUES ( CURRENT_USER, fkey, event, CURRENT_TIMESTAMP)]
+
+[CREATE TRIGGER F_insert BEFORE INSERT ON F
+REFERENCING NEW ROW AS new_row
+FOR EACH ROW
+  IF new_row.H IS NOT NULL THEN
+     F_access ('INSERT', new_row.G) 
+  END IF ]
+
+[CREATE TRIGGER F_update BEFORE UPDATE ON F
+REFERENCING OLD ROW AS old_row NEW ROW AS new_row
+FOR EACH ROW 
+  IF new_row.H IS NOT NULL THEN
+     F_access ('UPDATE', old_row.G) 
+  END IF ]
+
+[CREATE TRIGGER F_delete BEFORE DELETE ON F
+REFERENCING OLD ROW AS old_row 
+FOR EACH ROW 
+  IF old_row.H IS NOT NULL THEN
+     F_access ('DELETE', old_row.G) 
+  END IF ]
+
+---------
+su dbtech
+./pyrrho mac
+
+dbtech@debian9:~$ ./pyrrho mac
+connecting to database mac
+SQL> -- A. Logged in as database owner 
+SQL> -- 1. Starting with empty database mac
+SQL> create table A(B int,C char)
+SQL> create table D(E char primary key) security level D groups Army Navy references Defence scope read
+SQL> create table F(G char primary key,H char security level C)
+SQL> revoke "mac" from public 
+SQL> -- 2. Create some users with and without clearance
+SQL> grant "mac" to "student"
+SQL> grant "mac" to "fred"
+SQL> grant security level B groups Army references Defence Cyber to "student"
+SQL> table "Sys$User"
+|---|-------|-----------|-----------|-----------------------|
+|Pos|Name   |SetPassword|InitialRole|Clearance              |
+|---|-------|-----------|-----------|-----------------------|
+|32 |dbtech |           |           |                       |
+|427|fred   |           |           |                       |
+|386|student|           |           | B{ARMY}[CYBER,DEFENCE]|
+|---|-------|-----------|-----------|-----------------------|
+SQL> [CREATE TABLE F_accesses (
+> > > > > > SQL> 
+SQL> [CREATE PROCEDURE F_access (event CHAR, fkey CHAR) 
+> > SQL> 
+SQL> [CREATE TRIGGER F_insert BEFORE INSERT ON F
+> > > > > SQL> 
+SQL> [CREATE TRIGGER F_update BEFORE UPDATE ON F
+> > > > > SQL> 
+SQL> [CREATE TRIGGER F_delete BEFORE DELETE ON F
+> > > > > SQL> 
+SQL> -- 3. Add some rows with and without classification
+SQL> insert into A values(2,'Two')
+1 records affected in mac
+SQL> insert into A values(3,'Three') security level C
+1 records affected in mac
+SQL> insert into D values('Test')
+1 records affected in mac
+SQL> insert into F values('MI6','sis.gov.uk')
+Internal error: Object reference not set to an instance of an object
+SQL> 
+
+
+
+---------
+su fred
+
+connecting to database mac
+./pyrrho: line 2: /home/dbtech/Pyrrho/OpenSource/Mono/OSPCmd.exe: Permission denied
+fred@debian9:/home/dbtech$ 
+
+
+---------  server log --------------
+dbtech@debian9:~$ ./pyrrhosrv
+./pyrrhosrv: line 2: ./OSPSvr.exe: Permission denied
+dbtech@debian9:~$ chmod 755 /home/dbtech/Pyrrho/OpenSource/Mono/OSPSvr.exe
+dbtech@debian9:~$ chmod 755 /home/dbtech/Pyrrho/OpenSource/Mono/OSPCmd.exe
+dbtech@debian9:~$ ./pyrrhosrv
+-E -V -H -D -F Enter to start up
+Pyrrho DBMS (c) 2019 Malcolm Crowe and University of the West of Scotland
+6.3 (10 January 2019) www.pyrrhodb.com
+Open Source Edition
+LOCAL SERVER VERSION
+APPEND STORAGE VERSION
+PyrrhoDBMS protocol on 127.0.0.1:5433
+HTTP service started on port 8180
+HTTPS service started on port 8133
+Flushing 8
+Connection 1 on 1:Files=mac|User=dbtech||
+Flushing 1
+(1,1) Protocol byte ExecuteReader
+-- A. Logged in as database owner
+Creating a new database file mac558750
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+-- 1. Starting with empty database mac
+5260
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+create table A(B int,C char)
+create table A(B int,C char)
+605570
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+create table D(E char primary key) security level D groups Army Navy references Defence scope read
+create table D(E char primary key) security level D groups Army Navy references Defence scope read
+352940
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+create table F(G char primary key,H char security level C)
+create table F(G char primary key,H char security level C)
+175590
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+revoke "mac" from public
+revoke "mac" from public
+152170
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+-- 2. Create some users with and without clearance
+6680
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+grant "mac" to "student"
+grant "mac" to "student"
+58690
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+grant "mac" to "fred"
+grant "mac" to "fred"
+8130
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+grant security level B groups Army references Defence Cyber to "student"
+25180
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+table "Sys$User"
+table "Sys$User"
+Transaction 24 (Pos,Name,SetPassword,InitialRole,Clearance)
+FM 17 B25:16: Sys$User
+665070
+Flushing 138
+(24,1) Protocol byte ReaderData
+Flushing 116
+(24,1) Protocol byte ReaderData
+Flushing 1
+(24,1) Protocol byte CloseReader
+(1,1) Protocol byte ExecuteReader
+CREATE TABLE F_accesses ( id        INTEGER NOT NULL PRIMARY KEY, user_id   INTEGER NOT NULL, Fkey      CHAR    NOT NULL, Event     CHAR NOT NULL, tstamp    TIMESTAMP ) security level A 
+CREATE TABLE F_accesses ( id        INTEGER NOT NULL PRIMARY KEY, user_id   INTEGER NOT NULL, Fkey      CHAR    NOT NULL, Event     CHAR NOT NULL, tstamp    TIMESTAMP ) security level A 
+150490
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+CREATE PROCEDURE F_access (event CHAR, fkey CHAR) INSERT INTO F_accesses (user_id, Fkey, Event,tstamp) VALUES ( CURRENT_USER, fkey, event, CURRENT_TIMESTAMP)
+(event CHAR, fkey CHAR) INSERT INTO "518" ("580", "608", "633","678") VALUES ( CURRENT_USER, fkey, event, CURRENT_TIMESTAMP)
+CREATE PROCEDURE F_access (event CHAR, fkey CHAR) INSERT INTO "518" ("580", "608", "633","678") VALUES ( CURRENT_USER, fkey, event, CURRENT_TIMESTAMP)
+763770
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+CREATE TRIGGER F_insert BEFORE INSERT ON F REFERENCING NEW ROW AS new_row FOR EACH ROW IF new_row.H IS NOT NULL THEN F_access ('INSERT', new_row.G) END IF 
+IF new_row."308" IS NOT NULL THEN F_access ('INSERT', new_row."264") END IF 
+CREATE TRIGGER F_insert BEFORE INSERT ON "257" REFERENCING NEW ROW AS new_row FOR EACH ROW IF new_row."308" IS NOT NULL THEN F_access ('INSERT', new_row."264") END IF 
+636820
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+CREATE TRIGGER F_update BEFORE UPDATE ON F REFERENCING OLD ROW AS old_row NEW ROW AS new_row FOR EACH ROW IF new_row.H IS NOT NULL THEN F_access ('UPDATE', old_row.G) END IF 
+IF new_row."308" IS NOT NULL THEN F_access ('UPDATE', old_row."264") END IF 
+CREATE TRIGGER F_update BEFORE UPDATE ON "257" REFERENCING OLD ROW AS old_row NEW ROW AS new_row FOR EACH ROW IF new_row."308" IS NOT NULL THEN F_access ('UPDATE', old_row."264") END IF 
+75360
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+CREATE TRIGGER F_delete BEFORE DELETE ON F REFERENCING OLD ROW AS old_row FOR EACH ROW IF old_row.H IS NOT NULL THEN F_access ('DELETE', old_row.G) END IF 
+IF old_row."308" IS NOT NULL THEN F_access ('DELETE', old_row."264") END IF 
+CREATE TRIGGER F_delete BEFORE DELETE ON "257" REFERENCING OLD ROW AS old_row FOR EACH ROW IF old_row."308" IS NOT NULL THEN F_access ('DELETE', old_row."264") END IF 
+25620
+Flushing 5
+(1,1) Protocol byte ExecuteReader
+-- 3. Add some rows with and without classification
+4220
+Flushing 5
+(1,1) Protocol byte ExecuteNonQuery
+(131916982138772150#41) insert into A values(2,'Two')
+FM 36 B42:14: 
+FM 36 B42:14: SqlRows 1
+insert into "59" values(2,'Two')
+Transaction 41 (B 79,C 110)
+474130
+Flushing 5
+(1,1) Protocol byte ExecuteNonQuery
+(131916982231901580#43) insert into A values(3,'Three') security level C
+FM 38 B44:14: 
+FM 38 B44:14: SqlRows 1
+insert into "59" values(3,'Three') security level C
+Transaction 43 (B 79,C 110)
+41730
+Flushing 5
+(1,1) Protocol byte ExecuteNonQuery
+(131916982318134750#45) insert into D values('Test')
+FM 40 B46:14: 
+FM 40 B46:14: SqlRows 1
+insert into "145" values('Test')
+Transaction 45 (E 152)
+188160
+Flushing 5
+(1,1) Protocol byte ExecuteNonQuery
+(131916982401493470#47) insert into F values('MI6','sis.gov.uk')
+FM 42 B48:14: 
+FM 42 B48:14: SqlRows 1
+Internal Error Object reference not set to an instance of an object
+(47) Rollback
+Flushing 57
+

@@ -18,17 +18,12 @@ namespace Pyrrho.Level3
             _Mark = -281, // Transaction
             Physicals = -282, // BTree<long,Physical>
             ReadConstraint = -283, // BTree<long,ReadConstraint> Context has latest version
-            Role = -285, // long
             SchemaKey = -286, // long
             StartTime = -287, //long
-            User = -288, // long
+            TriggeredAction = -397, // long
             Warnings = -289; // BList<Exception>
-        internal override Role role =>(Role)objects[_role];
-        internal override User user =>(User)objects[_user];
         internal BTree<long,Physical> physicals => 
             (BTree<long,Physical>)mem[Physicals]?? BTree<long,Physical>.Empty;
-        internal long _role => (long)mem[Role];
-        internal long _user => (long)mem[User];
         internal long startTime => (long)(mem[StartTime] ?? 0);
    //     internal BTree<CList<long>,BTree<CList<Domain>,Domain>> domains => 
    //         (BTree<CList<long>,BTree<CList<Domain>,Domain>>)mem[Domains]
@@ -41,17 +36,22 @@ namespace Pyrrho.Level3
             (BTree<long, ReadConstraint>)mem[ReadConstraint] ?? BTree<long, ReadConstraint>.Empty;
         long tid;
         internal override long uid => tid;
+        internal override Role role => (Role)objects[_role] ?? guestRole;
+        internal override User user => (User)objects[_user];
         public override long lexeroffset => tid;
         internal Transaction mark => (Transaction)mem[_Mark];
         internal long schemaKey => (long)(mem[SchemaKey]??0L);
-        internal override long nextTid => (long)mem[NextTid];
+        internal override long nextPos => (long)(mem[NextPos]??TransPos);
         internal override string source => (string)mem[CursorSpecification._Source];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
+        internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
         /// <summary>
         /// Physicals, SqlValues and Executables constructed by the transaction
         /// will use virtual positions above this mark (see PyrrhoServer.nextTid)
         /// </summary>
         public const long TransPos = 0x4000000000000000;
+        public const long Analysing = 0x5000000000000000;
+        public const long Aliasing = 0x6000000000000000;
         readonly Database parent;
         internal Transaction(Database db,long t,string sce,bool auto) :base(db.loadpos,db.mem
             +(Role,db.role.defpos)+(User,db.user.defpos)+(StartTime,System.DateTime.Now.Ticks)
@@ -80,7 +80,9 @@ namespace Pyrrho.Level3
             if (auto == false && autoCommit)
                 r += (AutoCommit, false);
             tid = t;
-            return r + (NextTid,t+1)+(CursorSpecification._Source,sce);
+            if (t>=TransPos) // if sce is tranaction-local, we need to make space above nextTid
+                r = r+ (NextTid,t+1)+(CursorSpecification._Source,sce);
+            return r;
         }
         public override (Database,long) RdrClose(Context cx)
         {
@@ -107,10 +109,17 @@ namespace Pyrrho.Level3
         {
             return (Transaction)(d + (oi, d.loadpos));
         }
+        public static Transaction operator+(Transaction d,Procedure p)
+        {
+            var ro = d.role + p;
+            return (Transaction)(d + (ro, d.loadpos) + (p,d.loadpos));
+        }
         public static Transaction operator+(Transaction d,Physical p)
         {
             d += (Physicals, d.physicals + (p.ppos,p));
-            return (Transaction)p.Install(d, d.role, d.loadpos).Item1;
+            d += (NextPos, d.nextPos + 1);
+            var (nt,ro) = p.Install(d, d.role, d.loadpos);
+            return (Transaction)((Transaction)nt + (ro, nt.loadpos));
         }
         public static Transaction operator-(Transaction t,long x)
         {
@@ -139,6 +148,23 @@ namespace Pyrrho.Level3
                 cx.rdC+=(d.defpos, r);
             }
             return r;
+        }
+        /// <summary>
+        /// Ensure that TriggeredAction effects get serialised after the event that triggers them. 
+        /// </summary>
+        /// <param name="rp">The triggering record</param>
+        internal void FixTriggeredActions(BTree<PTrigger.TrigType,BTree<long,Trigger>> trigs,
+            PTrigger.TrigType tgt, long rp)
+        {
+            for (var t = trigs.First(); t != null; t = t.Next())
+                if (t.key().HasFlag(tgt))
+                {
+                    var tgs = t.value();
+                    for (var b = physicals.First(); b != null; b = b.Next())
+                        if (b.value() is TriggeredAction ta && tgs.Contains(ta.trigger) 
+                                && ta.refPhys < 0)
+                            ta.refPhys = rp;
+                }
         }
         internal override (Database,long) Rollback(object e)
         {
@@ -208,7 +234,7 @@ namespace Pyrrho.Level3
                 for (var b = physicals.First(); b != null; b = b.Next())
                     b.value().Commit(wr,this);
                 wr.PutBuf();
-                cx.affected = wr.rvv;
+         //       cx.affected = wr.rvv;
                 df.Flush();
                 return wr.db.Install();
             }
@@ -307,7 +333,7 @@ namespace Pyrrho.Level3
         //                SetResults(f.rowSet);
          //               break;
                     case "POST":
-                        new Parser(tr).ParseProcedureStatement(sdata);
+                        new Parser(tr).ParseProcedureStatement(sdata,Domain.Content);
                         break;
                 }
             }
@@ -358,7 +384,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                             pn = WebUtility.UrlDecode(pn);
 #endif
-                            fc = new Parser(this).ParseProcedureCall(pn);
+                            fc = new Parser(this).ParseProcedureCall(pn,null);
                         }
                         var pr = GetProcedure(fc.name,(int)fc.parms.Count) ??
                             throw new DBException("42108", fc.name).Mix();
@@ -367,7 +393,7 @@ namespace Pyrrho.Level3
                     }
                 case "key":
                     {
-                        var ix = (f.target as Table)?.FindPrimaryIndex(this);
+                        var ix = (objects[f.target] as Table)?.FindPrimaryIndex(this);
                         var kt = (ObInfo)role.obinfos[ix.defpos];
                         if (ix != null)
                         {
@@ -427,7 +453,7 @@ namespace Pyrrho.Level3
                             sk = ks.Split(',');
                         var n = sk.Length;
                         f = (From)f.AddCondition(cx,Query.Where,
-                            new Parser(this).ParseSqlValue(sk[0]).Disjoin());
+                            new Parser(this).ParseSqlValue(sk[0],Domain.Bool).Disjoin());
                         //           if (f.target.SafeName(this) == "User")
                         //           {
                         TypedValue[] wh = new TypedValue[n];
@@ -553,7 +579,7 @@ namespace Pyrrho.Level3
                             off = -6;
                             goto case "where";
                         }
-                        var sv = new Parser(this).ParseSqlValueItem(cn);
+                        var sv = new Parser(this).ParseSqlValueItem(cn,Domain.Content);
                         if (sv is SqlProcedureCall pr)
                         {
                             fc = pr.call;
@@ -564,7 +590,7 @@ namespace Pyrrho.Level3
                                 goto case "procedure";
                             }
                         }
-                        if (f is From fa && fa.target is Table ta)
+                        if (f is From fa && objects[fa.target] is Table ta)
                         {
                             var ix = ta.FindPrimaryIndex(this);
                             if (ix != null)
@@ -602,9 +628,9 @@ namespace Pyrrho.Level3
             if (grantees == null) // PUBLIC
             {
                 if (grant)
-                    d+=new Grant(pr, obj, -1L, tid, d);
+                    d+=new Grant(pr, obj, -1, d);
                 else
-                    d+=new Revoke(pr, obj, -1L, tid, d);
+                    d+=new Revoke(pr, obj, -1, d);
                 return d;
             }
             foreach (var mk in grantees)
@@ -612,9 +638,9 @@ namespace Pyrrho.Level3
                 long gee = -1;
                 gee = mk.defpos;
                 if (grant)
-                    d+=new Grant(pr, obj, gee, tid,d);
+                    d+=new Grant(pr, obj, gee, d);
                 else
-                    d+=new Revoke(pr, obj, gee, tid,d);
+                    d+=new Revoke(pr, obj, gee, d);
             }
             return d;
         }
@@ -786,8 +812,15 @@ namespace Pyrrho.Level3
             if (rx.keys.Count != key.Count)
                 throw new DBException("22207").Mix();
             var pc = new PIndex2(name.ident, tb.defpos, key, ct, rx.defpos, afn,0,
-                lp, this);
+                this);
             r += pc;
+            return r;
+        }
+        internal override BTree<long, BTree<long, long>> Affected()
+        {
+            var r = BTree<long, BTree<long, long>>.Empty;
+            for (var b = physicals.First();b!=null;b=b.Next())
+                b.value().Affected(ref r);
             return r;
         }
     }

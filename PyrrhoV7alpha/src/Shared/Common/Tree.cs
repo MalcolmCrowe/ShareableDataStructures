@@ -81,13 +81,17 @@ namespace Pyrrho.Common
         {
             ABookmark<K, V> bm = null;
             var cb = root;
-            for (;;)
+            for (; ; )
             {
-                bm = new ABookmark<K, V>(cb, cb.count-1, bm);
-                var inr = cb as Inner<K, V>;
-                if (inr == null)
-                    return bm;
-                cb = inr.gtr;
+                if (cb == null)
+                    return null;
+                if (cb is Inner<K, V> inr) 
+                { 
+                    bm = new ABookmark<K, V>(cb, cb.count, bm);
+                    cb = inr.gtr;
+                }
+                else 
+                    return new ABookmark<K, V>(cb, cb.count-1, bm);
             }
         }
         /// <summary>
@@ -223,28 +227,23 @@ namespace Pyrrho.Common
             if (sb.Length>0)
                 sb.Append(')');
             return sb.ToString();
-        } 
-        static string Uid(long u)
+        }
+        string Uid(long u)
         {
-            long dompos = 0x2000000000000000;
-            long trapos = 0x4000000000000000;
-            if (u >= trapos + dompos)
-                return "^" + (u - trapos - dompos);
-            if (u >= trapos)
-                return "'" + (u - trapos);
-            if (u >= dompos)
-                Console.WriteLine("DomPos found?");
+            if (u >= 0x7000000000000000)
+                return "%" + (u - 0x7000000000000000);
+            if (u >= 0x6000000000000000)
+                return "@" + (u - 0x6000000000000000);
+            if (u >= 0x5000000000000000)
+                return "#" + (u - 0x5000000000000000);
+            if (u >= 0x4000000000000000)
+                return "'" + (u - 0x4000000000000000);
             if (u == -1)
                 return "_";
             return "" + u;
         }
-        public static ATree<K,V> operator+(ATree<K,V> a,ATree<K,V> b)
-        {
-            for (var c = b.First(); c != null; c = c.Next())
-                a += (c.key(), c.value());
-            return a;
-        }
     }
+
     interface IBucket
     {
         byte Count();

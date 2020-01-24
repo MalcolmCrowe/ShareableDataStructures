@@ -1,0 +1,16 @@
+create type point as (x int, y int)
+create type size as (w int,h int)
+create type line as (strt point,en point)
+create type rect as (tl point,sz size) constructor method rect(x1 int,y1 int, x2 int, y2 int),method centre() returns point
+create table figure(id int primary key,title char)
+create table figureline(id int primary key,fig int references figure,what line)
+create table figurerect(id int primary key,fig int references figure,what rect)
+create constructor method rect(x1 int,y1 int,x2 int,y2 int) begin tl=point(x1,y1); sz=size(x2-x1,y2-y1) end
+create method centre() returns point for rect return point(tl.x+sz.w/2,tl.y+sz.h/2)
+create function centrerect(a int) returns point return (select what.centre() from figurerect where id=a)
+insert into figure values(1,'Diagram')
+insert into figurerect values(1,1,rect(point(1,2),size(3,4)))
+insert into figurerect values(2,1,rect(4,5,6,7))
+insert into figureline values(1,1,line(centrerect(1),centrerect(2)))
+
+                

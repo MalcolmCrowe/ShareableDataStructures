@@ -33,16 +33,19 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Context 
 	{
+        static int _dbg;
+        readonly int dbg = ++_dbg;
         public readonly long cxid;
+        public readonly int dbformat; 
         public readonly User user;
-        internal Context next; // contexts form a stack (by nesting or calling)
+        internal Context next,parent=null; // contexts form a stack (by nesting or calling)
         /// <summary>
         /// The current set of values of objects in the Context
         /// </summary>
         internal TRow row = null; // row.values
         internal bool rawCols = false;
-        public RowSet data;
-        public BList<Rvv> affected = BList<Rvv>.Empty;
+        public BTree<long,RowSet> data = BTree<long,RowSet>.Empty;
+        public long top,frame,result;
         internal RowBookmark rb = null; // 
         internal ETag etag = null;
         internal BTree<long, FunctionData> func = BTree<long, FunctionData>.Empty;
@@ -53,6 +56,10 @@ namespace Pyrrho.Level4
         /// Left-to-right accumulation of definitions during a parse: accessed only by Query
         /// </summary>
         internal Ident.Idents defs = Ident.Idents.Empty;
+        /// <summary>
+        /// Lexical positions to DBObjects (if dbformat<51)
+        /// </summary>
+        public BTree<long,(string,long)> digest = BTree<long,(string,long)>.Empty;
         // unresolved SqlValues
         internal BTree<long, SqlValue> undef = BTree<long,SqlValue>.Empty;
         // used SqlColRefs by From.defpos
@@ -62,6 +69,10 @@ namespace Pyrrho.Level4
         /// Used in Replace cascade
         /// </summary>
         internal BTree<long, DBObject> done = BTree<long, DBObject>.Empty;
+        /// <summary>
+        /// Used for executing prepared statements (a queue of SqlLiterals)
+        /// </summary>
+        internal BList<SqlValue> qParams = BList<SqlValue>.Empty;
         /// <summary>
         /// The current or latest statement
         /// </summary>
@@ -94,6 +105,9 @@ namespace Pyrrho.Level4
             next = null;
             user = db.user;
             cxid = db.lexeroffset;
+            dbformat = db.format;
+            frame = top = db.uid;
+            result = -1;
             rdC = (db as Transaction)?.rdC;
 //            domains = (db as Transaction)?.domains;
         }
@@ -101,10 +115,14 @@ namespace Pyrrho.Level4
         {
             next = cx;
             user = cx.user;
-            cxid = cx.cxid;
+            cxid = top = frame = cx.top+1;
             values = cx.values;
             obs = cx.obs;
             defs = cx.defs;
+            depths = cx.depths;
+            data = cx.data;
+            parent = cx.parent; // for triggers
+            dbformat = cx.dbformat;
             // and maybe some more?
         }
         internal Context(Context c,Executable e) :this(c)
@@ -114,6 +132,14 @@ namespace Pyrrho.Level4
         internal Context(Context c,Role r,User u) :this(c)
         {
             user = u;
+        }
+        internal DBObject Get(Ident ic,DBObject rt=null)
+        {
+            rt = rt ?? Domain.Content;
+            var r = defs.Get(this,ic);
+            if (r!=null && !rt.domain.CanTakeValueOf(r.domain))
+                throw new DBException("42000", ic);
+            return r;
         }
         internal Context Add(Query q,RowBookmark r)
         {
@@ -125,8 +151,65 @@ namespace Pyrrho.Level4
             rb = r;
             return this;
         }
+        internal Context Add(BTree<long,TypedValue>fl)
+        {
+            for (var b = fl.First(); b != null; b = b.Next())
+                values += (b.key(), b.value());
+            return this;
+        }
+        internal Context Add(DBObject ob,ObInfo oi)
+        {
+            var on = new Ident(oi.name, ob.defpos);
+            Add(ob);
+            defs += (on, ob);
+            for (var b = oi.columns?.First(); b != null; b = b.Next())
+            {
+                var sc = b.value();
+                var sn = new Ident(sc.name, sc.defpos);
+                Add(sc);
+                defs += (new Ident(on, sn), sc);
+                defs += (sn, sc);
+            }
+            return this;
+        }
+        /// <summary>
+        /// The following four convenience routines cannot be combined
+        /// because they select different + operators in Context
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="t"></param>
+        internal void AddTable(Ident id, From t)
+        {
+            if (id!=null && id.ident!="")
+                defs += (id, t);
+        }
+        public void AddRow(Ident id, ObInfo oi)
+        {
+            if (id!=null && id.ident!="")
+                defs += (id, oi);
+        }
+        internal void AddOldTable(Ident id, From t)
+        {
+            if (id != null && id.ident != "")
+                defs += (id, new FromOldTable(id,t));
+        }
+        public void AddOldRow(Ident id, ObInfo oi)
+        {
+            if (id != null && id.ident != "")
+                defs += (id, new ObInfoOldRow(oi,oi.defpos));
+        }
         internal DBObject Add(DBObject ob)
         {
+            long rp;
+            if (dbformat < 51)
+            {
+                if (ob is SqlValue sv && (rp = sv.target) > 0 && sv.defpos > Transaction.TransPos
+                    && sv.name != "" && rp< Transaction.TransPos)
+                    digest += (sv.defpos, (sv.name, rp));
+                else if (ob is From fm && (rp = fm.target) > 0 && fm.defpos > Transaction.TransPos
+                    && fm.name != "" && rp < Transaction.TransPos)
+                    digest += (fm.defpos, (fm.name, rp));
+            }
             if (ob is ObInfo)
             {
                 Console.WriteLine("Attempt to add ObInfo to Context");
@@ -168,7 +251,8 @@ namespace Pyrrho.Level4
         /// <param name="now"></param>
         internal DBObject Replace(DBObject was, DBObject now)
         {
-            Add(now);
+            if (dbformat<51)
+                Add(now);
             if (was == now)
                 return now;
             done = new BTree<long, DBObject>(was.defpos, now);
@@ -186,15 +270,16 @@ namespace Pyrrho.Level4
                     depths += (b.key(), bv);
             }
             // now use the done list to update defs
-            for (var b = defs.First(); b != null; b = b.Next())
-            {
-                var v = b.value().Item1;
-                if (done[v.defpos] is DBObject ob && ob != v)
-                    defs = defs+(new Ident(b.key(),0),ob);
-            }
+            defs = defs.Replace(done);
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
             return now;
+        }
+        internal long Fix(long dp)
+        {
+            if (done[dp] is DBObject ob)
+                return ob.defpos;
+            return dp;
         }
         /// <summary>
         /// We have just constructed a new From. Use it to replace any
@@ -222,6 +307,12 @@ namespace Pyrrho.Level4
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
         }
+        internal long AddUidRange(int n)
+        {
+            var r = top;
+            top += n;
+            return r;
+        }
         /// <summary>
         /// Update a variable in this context
         /// </summary>
@@ -230,7 +321,7 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal virtual TypedValue Assign(Transaction tr, Context cx, long dp, TypedValue val)
         {
-            row.values += (dp, val);
+            row += (dp, val);
             return val;
         }
         /// <summary>
@@ -298,6 +389,12 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             return "Context " + cxid;
+        }
+
+        internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)
+        {
+            return next?.FindTriggerActivation(tabledefpos)
+                ?? throw new PEException("PE600");
         }
     }
     internal class FunctionData
