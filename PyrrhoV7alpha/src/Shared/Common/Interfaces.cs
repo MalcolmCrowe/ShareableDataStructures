@@ -10,7 +10,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// All data in the database is strongly typed
     /// </summary>
-    public interface ITypedValue
+    public interface ITypedValue : IComparable
     {
         int _CompareTo(object obj);
         bool IsNull {get;}

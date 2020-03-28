@@ -1,4 +1,0 @@
-[create function reverse(a char) returns char 
- if char_length(a)<=1 then return a 
- else return reverse(substring(a from 1 for char_length(a)-1))||substring(a from 0 for 1) end if]
-select reverse('Fred') from static

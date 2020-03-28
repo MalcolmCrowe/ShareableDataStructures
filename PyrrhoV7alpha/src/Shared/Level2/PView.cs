@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -37,9 +37,10 @@ namespace Pyrrho.Level2
         /// <param name="vc">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, QueryExpression vc, Transaction db) 
-            : this(Type.PView, nm, vc, db) { }
-        protected PView(Type pt,string nm,QueryExpression vc,Transaction db) : base(pt,db)
+        internal PView(string nm, QueryExpression vc, long pp, Context cx)
+            : this(Type.PView, nm, vc, pp, cx) { }
+        protected PView(Type pt,string nm,QueryExpression vc,long pp, Context cx) 
+            : base(pt,pp,cx)
         {
             name = nm;
             view = vc;
@@ -78,7 +79,8 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            view = new Parser(rdr.db,rdr.context).ParseQueryExpression(rdr.GetString());
+            view = new Parser(rdr.context).ParseQueryExpression(rdr.GetString(),
+                Domain.Content,ObInfo.Any);
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -107,12 +109,12 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             var vi = new ObInfo(ppos, name);
             ro = ro+vi+(ppos,vi);
-            return (db + (ro, p) + (new View(this), p),ro);
+            cx.db = cx.db + (ro, p) + (new View(this), p);
         }
     }
     internal class PRestView : PView
@@ -121,10 +123,10 @@ namespace Pyrrho.Level2
         internal string rname = null, rpass = null;
         public PRestView(Reader rdr) : this(Type.RestView, rdr) { }
         protected PRestView(Type t, Reader rdr) : base(t,rdr) { }
-        public PRestView(string nm, long tp, Transaction d) 
-            : this(Type.RestView, nm, tp, d) { }
-        protected PRestView(Type t,string nm,long tp,Transaction d) 
-            : base(t,nm,QueryExpression.Get,d)
+        public PRestView(string nm, long tp, long pp, Context cx)
+            : this(Type.RestView, nm, tp, pp, cx) { }
+        protected PRestView(Type t,string nm,long tp,long pp, Context cx)
+            : base(t,nm,QueryExpression.Get,pp,cx)
         {
             structpos = tp;
         }
@@ -159,8 +161,8 @@ namespace Pyrrho.Level2
     internal class PRestView1 : PRestView
     {
         public PRestView1(Reader rdr) : base(Type.RestView1, rdr) { }
-        public PRestView1(string nm, long tp, string rnm, string rpw, Transaction db) 
-            : base(Type.RestView1, nm, tp, db)
+        public PRestView1(string nm, long tp, string rnm, string rpw, long pp, 
+            Context cx) : base(Type.RestView1, nm, tp, pp, cx)
         {
             rname = rnm;
             rpass = rpw;
@@ -195,8 +197,8 @@ namespace Pyrrho.Level2
     internal class PRestView2 : PRestView
     {
         public PRestView2(Reader rdr) : base(Type.RestView1, rdr) { }
-        public PRestView2(string nm, long tp, long utp, Transaction db) 
-            : base(Type.RestView2, nm, tp, db)
+        public PRestView2(string nm, long tp, long utp, long pp, Context cx)
+            : base(Type.RestView2, nm, tp, pp, cx)
         {
             usingtbpos = utp;
         }

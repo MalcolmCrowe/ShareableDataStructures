@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 // 
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -31,9 +31,9 @@ namespace Pyrrho.Level2
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="dt">The (new) Sql data type</param>
         /// <param name="pb">The local database</param>
-        public Edit(Domain old, string nm, Domain dt,Transaction db)
+        public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
-                  dt.culture.Name,dt.defaultString,dt.super.defpos,db)
+                  dt.culture.Name,dt.defaultString,dt.super.defpos,pp,cx)
         {
             _defpos = old.defpos;
             prev = old.lastChange;
@@ -69,7 +69,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			var prev = rdr.GetLong();
-            _defpos = (long)(rdr.db.mem[prev]??ppos);
+            _defpos = (long)(rdr.context.db.mem[prev]??ppos);
 			base.Deserialise(rdr);
 		}
         /// <summary>

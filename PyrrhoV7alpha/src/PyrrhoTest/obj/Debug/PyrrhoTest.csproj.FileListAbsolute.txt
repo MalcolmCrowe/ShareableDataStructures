@@ -46,3 +46,4 @@ F:\PyrrhoDB70\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csprojAssemblyReference
 F:\PyrrhoDB70\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csproj.CopyComplete
 F:\PyrrhoDB70\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.exe
 F:\PyrrhoDB70\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.pdb
+E:\PyrrhoDB70\Pyrrho\src\PyrrhoTest\obj\Debug\PyrrhoTest.csproj.CoreCompileInputs.cache

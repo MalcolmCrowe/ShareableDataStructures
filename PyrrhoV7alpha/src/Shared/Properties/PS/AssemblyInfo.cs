@@ -11,7 +11,7 @@ using System.Runtime.CompilerServices;
 [assembly: AssemblyConfiguration("Debug")]
 [assembly: AssemblyCompany("Malcolm Crowe and UWS")]
 [assembly: AssemblyProduct("PyrrhoDB")]
-[assembly: AssemblyCopyright("2019 Malcolm Crowe and University of the West of Scotland")]
+[assembly: AssemblyCopyright("2020 Malcolm Crowe and University of the West of Scotland")]
 [assembly: AssemblyTrademark("PyrrhoDB")]
 [assembly: AssemblyCulture("")]		
 

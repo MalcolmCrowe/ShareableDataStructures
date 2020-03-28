@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -48,8 +48,8 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(string nm, long dp, string pc, DBObject nw, Transaction tr)
-			:base(Type.Modify,tr)
+        public Modify(string nm, long dp, string pc, DBObject nw, long pp, Context cx)
+            : base(Type.Modify,pp,cx)
 		{
             modifydefpos = dp;
             name = nm;
@@ -83,7 +83,10 @@ namespace Pyrrho.Level2
             wr.PutString(name);
             wr.PutString(body);
 			base.Serialise(wr);
-		}
+            var pp = wr.cx.db.objects[modifydefpos] as Procedure;
+            pp += (Procedure.Clause, body);
+            new Parser(wr.cx).ParseProcedureBody(pp, pp.clause);
+        }
         /// <summary>
         /// Desrialise this p[hysical from the buffer
         /// </summary>
@@ -97,11 +100,13 @@ namespace Pyrrho.Level2
             switch (name)
             {
                 default:
-                    var pp = rdr.db.objects[modifydefpos] as Procedure;
-                    now = new Parser(rdr.db, rdr.context).ParseProcedureBody(pp,body);
+                    var pp = rdr.context.db.objects[modifydefpos] as Procedure;
+                    pp += (Procedure.Clause, body);
+                    pp = new Parser(rdr.context).ParseProcedureBody(pp, pp.clause);
+                    now = pp.body;
                     break;
                 case "Source":
-                    now = new Parser(rdr.db, rdr.context).ParseQueryExpression(body);
+                    now = new Parser(rdr.context).ParseQueryExpression(body,Domain.TableType,ObInfo.Any);
                     break;
                 case "Insert": // we ignore all of these (PView1)
                 case "Update":
@@ -138,9 +143,9 @@ namespace Pyrrho.Level2
 			return "Modify "+Pos(modifydefpos)+": "+name+" to "+body;
 		}
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            return (((DBObject)db.objects[modifydefpos]).Modify(db,now,p),ro);
+            ((DBObject)cx.db.objects[modifydefpos]).Modify(cx,now,p);
         }
     }
 }

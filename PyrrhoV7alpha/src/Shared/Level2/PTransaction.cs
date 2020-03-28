@@ -7,7 +7,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -45,8 +45,8 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTransaction(int nr, long usr, long rl, Transaction tr)
-			: this (Type.PTransaction,nr,usr,rl,tr)
+        public PTransaction(int nr, long usr, long rl, long pp, Context cx)
+            : this (Type.PTransaction,nr,usr,rl,pp,cx)
 		{}
         /// <summary>
         /// Constructor: a Transaction record for a Commit
@@ -57,19 +57,20 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTransaction(Type tp, int nr, long usr, long rl, Transaction tr)
-			: base (tp,tr)
+        protected PTransaction(Type tp, int nr, long usr, long rl, long pp, Context cx)
+            : base (tp,pp,cx)
 		{
 			nrecs = nr;
 			ptuser = usr;
 			ptrole = rl;
 			pttime = DateTime.Now.Ticks;
 		}
-        public PTransaction(long u,Transaction tr) : base(Type.PTransaction,tr)
+        public PTransaction(long u,long pp, Context cx) 
+            : base(Type.PTransaction,pp,cx)
         {
             nrecs = 0;
-            ptuser = tr.user.defpos;
-            ptrole = tr.role.defpos;
+            ptuser = cx.tr.user.defpos;
+            ptrole = cx.tr.role.defpos;
             pttime = DateTime.Now.Ticks;
         }
         /// <summary>
@@ -134,6 +135,7 @@ namespace Pyrrho.Level2
 			ptrole = rdr.GetLong();
 			ptuser = rdr.GetLong();
 			pttime = rdr.GetLong();
+            rdr.context.Add(this);
 			// no base.Deserialise() for PTransaction
 		}
         /// <summary>
@@ -145,10 +147,11 @@ namespace Pyrrho.Level2
 			return "PTransaction for "+nrecs+" Role="+Pos(ptrole)
                 +" User="+Pos(ptuser)+" Time="+new DateTime(pttime);
 		}
-
-        internal override (Database, Role) Install(Database db, Role ro,long p)
+        internal override void Install(Context cx, long p)
         {
-            return (db,(Role)db.objects[ptrole]);
+            var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schemaRole;
+            if (ro!=cx.db.role)
+                cx.db += (ro,p);
         }
     }
     /// <summary>
@@ -160,8 +163,8 @@ namespace Pyrrho.Level2
         /// A URI describing the source of the imported data
         /// </summary>
         internal string uri;
-        public PImportTransaction(int nr, long usr, long au, string ur, Transaction tr)
-            :base(Physical.Type.PImportTransaction,nr,usr,au,tr)
+        public PImportTransaction(int nr, long usr, long au, string ur, long pp, Context cx)
+            : base(Type.PImportTransaction,nr,usr,au,pp,cx)
         {
             uri = ur;
         }
@@ -199,8 +202,8 @@ namespace Pyrrho.Level2
         }
         internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
         { }
-        internal TriggeredAction(long tg,Transaction tr) 
-            : base(Type.TriggeredAction,tr)
+        internal TriggeredAction(long tg,long pp, Context cx)
+            : base(Type.TriggeredAction,pp,cx)
         {
             trigger = tg;
         }
@@ -227,10 +230,10 @@ namespace Pyrrho.Level2
             return "TriggeredAction " + trigger;
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tg = (Trigger)db.objects[trigger];
-            return (db,(Role)db.objects[tg.definer]);
+            var tg = (Trigger)cx.db.objects[trigger];
+            cx.db+=((Role)cx.db.objects[tg.definer],p);
         }
     }
     /// <summary>
@@ -258,8 +261,8 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,cols[i])) return cols[i];
             return -1;
         }
-        internal Audit(User us,long ta, long[] c, string[] k, long ts,Transaction tr) 
-            : base(Type.Audit,tr)
+        internal Audit(User us,long ta, long[] c, string[] k, long ts,long pp, Context cx)
+            : base(Type.Audit,pp,cx)
         {
             user = us; table = ta; 
             timestamp = ts; cols = c; key = k;
@@ -267,7 +270,7 @@ namespace Pyrrho.Level2
         internal Audit(Reader rdr) : base(Type.Audit, rdr) { }
         public override void Deserialise(Reader rdr)
         {
-            user = rdr.db.objects[rdr.GetLong()] as User;
+            user = rdr.context.db.objects[rdr.GetLong()] as User;
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
@@ -281,7 +284,7 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            user = wr.db.objects[wr.Fix(user.defpos)] as User;
+            user = wr.cx.db.objects[wr.Fix(user.defpos)] as User;
             table = wr.Fix(table);
             timestamp = wr.Fix(timestamp);
             wr.PutLong(user.defpos);
@@ -316,7 +319,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

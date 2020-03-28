@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
             Inverse = -170, // long
             Monotonic = -171, // bool
             Params = -172, // BList<ProcParameter>
-            RetType = -173; // Domain
+            RetType = -173; // ObInfo
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -39,7 +39,7 @@ namespace Pyrrho.Level3
         public Executable body => (Executable)mem[Body];
 		public BList<ProcParameter> ins => 
             (BList<ProcParameter>)mem[Params]?? BList<ProcParameter>.Empty;
-        public Domain retType => (Domain)mem[RetType]??Domain.Null;
+        public ObInfo retType => (ObInfo)mem[RetType]?? ObInfo.Any;
         public string clause => (string)mem[Clause];
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
@@ -55,33 +55,46 @@ namespace Pyrrho.Level3
         public Procedure(long defpos,BTree<long, object> m) : base(defpos, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
         {
-            return new Procedure(p.defpos, p.mem + v);
+            return (Procedure)p.New(p.mem + v);
         }
         /// <summary>
         /// Execute a Procedure/function.
         /// </summary>
         /// <param name="actIns">The actual parameters</param>
         /// <returns>The possibily modified Transaction</returns>
-        public Transaction Exec(Transaction tr,Context cx, BList<SqlValue> actIns)
+        public Context Exec(Context cx, BList<SqlValue> actIns)
         {
-            var oi = (ObInfo)tr.role.obinfos[defpos];
+            var oi = (ObInfo)cx.db.role.obinfos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             for (int i = 0; i < n; i++)
-                acts[i] = actIns[i].Eval(tr,cx);
-            var a = cx.GetActivation();
-            var bd = body;
-            var act = new CalledActivation(tr,cx, this,Domain.Null);
+                acts[i] = actIns[i].Eval(cx);
+            var act = new CalledActivation(cx, this,Domain.Null);
+            var bd = (Executable)body.Frame(act);
             for (int i = 0; i < acts.Length; i++)
                 act.values +=(ins[i].defpos, acts[i]);
-            tr = bd.Obey(tr, act);
-            var r = act.ret;
+            cx = bd.Obey(act);
+            var r = act.Ret();
+            if (r is RowSet ts)
+            {
+/*                // organise the import map
+                var rt = ts.rowSet.rowType;
+                var ri = (ObInfo)tr.role.obinfos[retType.structure];
+                for (var b = ri.columns.First(); b != null; b = b.Next())
+                {
+                    var rc = b.value();
+                    ts.rowSet.imp += (rc.defpos,rt.columns[rt.map[rc.name].Value].defpos);
+                } */
+                for (var b = act.values.First(); b != null; b = b.Next())
+                    if (!cx.values.Contains(b.key()))
+                        cx.values += (b.key(), b.value());
+            }
             for (int i = 0; i < n; i++)
             {
                 var p = ins[i];
-                var v = act.row?.values[p.defpos];
+                var v = act.values[p.defpos];
                 if (p.paramMode == Sqlx.INOUT || p.paramMode == Sqlx.OUT)
                     acts[i] = v;
                 if (p.paramMode == Sqlx.RESULT)
@@ -89,23 +102,23 @@ namespace Pyrrho.Level3
             }
             if (cx != null)
             {
-                cx.ret = r;
+                cx.val = r;
                 for (int i = 0; i < n; i++)
                 {
                     var p = ins[i];
                     if (p.paramMode == Sqlx.INOUT || p.paramMode == Sqlx.OUT)
-                        cx.values += (actIns[i].defpos, acts[i]);
+                        cx.AddValue(actIns[i], acts[i]);
                 }
             }
-            return tr;
+            return cx;
         }
         internal virtual bool Uses(long t)
         {
             return false;
         }
-        internal override Database Modify(Database db, DBObject now, long p)
+        internal override void Modify(Context cx, DBObject now, long p)
         {
-            return db + (this+(Body,now),p);
+            cx.db = cx.db + (this+(Body,now),p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -117,11 +130,8 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (Procedure)Relocate(d);
-            var rt = (Domain)retType?.Relocate(wr);
+            var r = (Procedure)base.Relocate(wr);
+            var rt = retType?.Relocate(wr);
             if (rt != retType)
                 r += (RetType, rt);
             return r;
@@ -131,18 +141,16 @@ namespace Pyrrho.Level3
             body.Frame(cx);
             return base.Frame(cx);
         }
-        internal override (Database,Role) Cascade(Database d, Database nd,Role ro, 
+        internal override void Cascade(Context cx,
             Drop.DropAction a = 0, BTree<long, TypedValue> u = null)
         {
-            if (a != 0)
-                nd += (Database.Cascade, true);
-            for (var b = d.role.dbobjects.First(); b != null; b = b.Next())
+            base.Cascade(cx, a, u);
+            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
             {
-                var ob = (DBObject)d.objects[b.value()];
-                if (ob.Calls(defpos, d))
-                    (nd,ro) = ob.Cascade(d,nd,ro,a,u);
+                var ob = (DBObject)cx.db.objects[b.value()];
+                if (ob.Calls(defpos, cx.db))
+                    ob.Cascade(cx,a,u);
             }
-            return base.Cascade(d, nd,ro,a,u);
         }
         internal override bool Calls(long defpos, Database db)
         {

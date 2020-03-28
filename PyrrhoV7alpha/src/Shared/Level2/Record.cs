@@ -6,7 +6,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -57,11 +57,11 @@ namespace Pyrrho.Level2
             if (!Committed(wr, triggeredAction)) return triggeredAction;
             return -1;
         }
-        public Record(Table tb, BTree<long, TypedValue> fl, Transaction db)
-            : this(Type.Record, tb, fl, db) 
+        public Record(Table tb, BTree<long, TypedValue> fl, long pp, Context cx)
+            : this(Type.Record, tb, fl, pp, cx) 
         {
-            if (db.triggeredAction > 0)
-                triggeredAction = db.triggeredAction;
+            if (cx.tr.triggeredAction > 0)
+                triggeredAction = cx.tr.triggeredAction;
         }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
@@ -71,23 +71,13 @@ namespace Pyrrho.Level2
         /// <param name="fl">The field values</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record(Type t, Table tb, BTree<long, TypedValue> fl, Transaction db)
-            : base(t, db)
+        protected Record(Type t, Table tb, BTree<long, TypedValue> fl, long pp, 
+            Context cx)  : base(t, pp, cx)
         {
             tabledefpos = tb.defpos;
             if (fl.Count == 0)
                 throw new DBException("2201C");
             fields = fl;
-            for (var b = fl.First(); b != null; b = b.Next())
-                if (db.objects[b.key()] is TableColumn tc)
-                {
-                    if (tc.Denied(db, Grant.Privilege.Insert))
-                        throw new DBException("42105", tc);
-                    for (var c = tc.constraints?.First(); c != null; c = c.Next())
-                        if (c.value().search.Eval(db,new Context(db).Add(fl)) != TBool.True)
-                            throw new DBException("22212", 
-                                ((ObInfo)db.role.obinfos[tc.defpos]).name);
-                }
         }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
@@ -148,7 +138,9 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var tc = (TableColumn)rdr.db.objects[c];
+                if (c == 1616)
+                    Console.WriteLine("Here");
+                var tc = (TableColumn)rdr.context.db.objects[c];
                 // If the column has been dropped we will show a simplified version of the Domain
                 // (The TableRow if still current has the historically correct domain)
                 var cdt = tc?.domain??Domain.Content; 
@@ -173,7 +165,7 @@ namespace Pyrrho.Level2
                 long k = d.key();
                 var o = d.value() as TypedValue;
                 wr.PutLong(k); // coldefpos
-                var ndt = ((TableColumn)wr.db.objects[k]).domain;
+                var ndt = ((TableColumn)wr.cx.db.objects[k]).domain;
                 var dt = o?.dataType??Domain.Null;
                 dt.PutDataType(ndt, wr);
                 dt.Put(o,wr);
@@ -232,52 +224,46 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="db"></param>
         /// <returns></returns>
-        internal virtual BTree<long,TypedValue> _Fields(BTree<long,TypedValue>fl,
-            ref Database db)
+        internal virtual TableRow AddRow(Context cx)
         {
-            var tb = (Table)db.objects[tabledefpos];
+            var tb = (Table)cx.db.objects[tabledefpos];
+            var now = new TableRow(this,cx.db);
             for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
             {
-                var x = (Index)db.objects[xb.value()];
-                var k = x.MakeKey(fl);
+                var x = (Index)cx.db.objects[xb.value()];
+                var k = x.MakeKey(now);
                 if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                     x.flags.HasFlag(PIndex.ConstraintType.Unique))
                     && (x.rows?.Contains(k)==true))
                     throw new DBException("23000", "duplicate key ", k);
                 if (x.reftabledefpos>=0)
                 {
-                    var rt = (Table)db.objects[x.reftabledefpos];
-                    var rx = (Index)db.objects[x.refindexdefpos];
+                    var rt = (Table)cx.db.objects[x.reftabledefpos];
+                    var rx = (Index)cx.db.objects[x.refindexdefpos];
                     if (!rx.rows.Contains(k))
                         throw new DBException("23000", "missing foreign key ", k);
                 }
                 x += (k, defpos);
-                db += (x, db.loadpos);
+                cx.db += (x, cx.db.loadpos);
             }
-            return fl;
+            return now;
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = db.objects[tabledefpos] as Table;
+            var tb = cx.db.objects[tabledefpos] as Table;
             try
             {
-                var fl = _Fields(fields, ref db);
-                var rw = new TableRow(this, db, fl);
-                // primary key and unique violations will be detected by the MTree
-                tb += (db,rw);
+                tb +=  AddRow(cx);
             }
             catch (DBException e)
             {
+                var oi = cx.role.obinfos[tb.defpos] as ObInfo;
                 if (e.signal == "23000")
-                {
-                    var oi = (ObInfo)db.role.obinfos[tb.defpos];
                     throw new DBException(e.signal, e.objects[0].ToString() + oi.name 
                         + e.objects[1].ToString());
-                }
                 throw e;
             }
-            db += (tb, p);
-            return (db,ro);
+            cx.db += (tb, p);
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {
@@ -325,8 +311,8 @@ namespace Pyrrho.Level2
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record1(Type t, Table tb, BTree<long,  TypedValue> fl, string p,
-            Transaction tr)
-            : base(t, tb, fl, tr)
+            long pp, Context cx)
+            : base(t, tb, fl, pp, cx)
         {
             provenance = p;
         }
@@ -338,8 +324,8 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record1(Table tb, BTree<long, TypedValue> fl, string prov, Transaction db)
-            : this(Type.Record1, tb, fl, prov, db)
+        public Record1(Table tb, BTree<long, TypedValue> fl, string prov, long pp, Context cx)
+            : this(Type.Record1, tb, fl, prov, pp, cx)
         {
         }
         protected Record1(Record1 x, Writer wr) : base(x, wr)
@@ -391,8 +377,7 @@ namespace Pyrrho.Level2
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record2(Type t, Table tb, BTree<long,  TypedValue> fl, long st, 
-            Transaction tr)
-            : base(t, tb, fl, tr)
+            long pp, Context cx) : base(t, tb, fl, pp, cx)
         {
             subType = st;
         }
@@ -442,8 +427,8 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record3(Table tb, BTree<long, TypedValue> fl, long st, Level lv, Transaction tr)
-            : base(Type.Record3, tb, fl, st, tr)
+        public Record3(Table tb, BTree<long, TypedValue> fl, long st, Level lv, long pp, Context cx)
+            : base(Type.Record3, tb, fl, st, pp, cx)
         {
             _classification = lv;
         }

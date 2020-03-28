@@ -4,7 +4,7 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -22,11 +22,6 @@ namespace Pyrrho.Level3
             Distinct = -239, // bool
             RVJoinType = -241, // Domain
             TableExp = -242; // TableExpression
-        internal static readonly QuerySpecification Default =
-            new QuerySpecification(Transaction.Analysing,
-                BTree<long, object>.Empty
-                + (RowType, ObInfo.Any + SqlStar.Default) +
-                (Display, 1));
         internal bool distinct => (bool)(mem[Distinct] ?? false);
         /// <summary>
         /// the TableExpression
@@ -44,21 +39,20 @@ namespace Pyrrho.Level3
         internal QuerySpecification(long u,BTree<long, object> m)
             : base(u, m)
         { }
+        internal QuerySpecification(long dp) : this(dp, BTree<long, object>.Empty
+            + (RowType, Selection.Star) + (Display, 1))
+        { }
         public static QuerySpecification operator +(QuerySpecification q, (long, object) x)
         {
             return (QuerySpecification)q.New(q.mem + x);
         }
+        public static QuerySpecification operator +(QuerySpecification q, (int, SqlValue) x)
+        {
+            return (QuerySpecification)q.Add(x.Item1,x.Item2);
+        }
         public static QuerySpecification operator +(QuerySpecification q, SqlValue x)
         {
-            q = (QuerySpecification)q.New((((Query)q) + x).mem);
-            Domain dm = null;
-            if (x.domain == Domain.Content && q.domain!=Domain.Content)
-                dm = Domain.Content;
-            else if (q.domain == Domain.Content)
-                dm = Domain.TableType;
-            if (dm != null)
-                q += (_Domain, dm);
-            return q;
+            return (QuerySpecification)q.Add(x);
         }
         public static QuerySpecification operator -(QuerySpecification q, long col)
         {
@@ -68,13 +62,17 @@ namespace Pyrrho.Level3
         {
             return new QuerySpecification(defpos,m);
         }
-        internal override Query SelQuery()
+        internal override DBObject Relocate(long dp)
         {
-            return this;
+            return new QuerySpecification(dp,mem);
         }
-        internal override QuerySpecification QuerySpec()
+        internal override Basis Relocate(Level2.Writer wr)
         {
-            return this;
+            var r = (QuerySpecification)base.Relocate(wr);
+            var te = tableExp.Relocate(wr);
+            if (te != tableExp)
+                r += (TableExp, te);
+            return r;
         }
         internal override Query Refresh(Context cx)
         {
@@ -88,24 +86,37 @@ namespace Pyrrho.Level3
             var t = tableExp.Frame(cx);
             if (t != tableExp)
                 r += (TableExp, t);
+            return cx.Add(r,true);
+        }
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (QuerySpecification)base._Replace(cx, was, now);
+            var te = tableExp?._Replace(cx, was, now);
+            if (te != tableExp)
+                r += (TableExp, te);
+            cx.done += (defpos, r);
             return r;
         }
-        internal override RowSet RowSets(Database tr, Context cx)
+        internal override RowSet RowSets(Context cx)
         {
-            var r = tableExp?.RowSets(tr,cx)??new TrivialRowSet(tr,cx,this,null);
+            var r = tableExp?.RowSets(cx);
+            if (r==null)
+                r = new TrivialRowSet(defpos,cx,ObInfo.Any);
             if (aggregates())
             {
                 if (tableExp?.group != null)
                     r = new GroupingRowSet(cx,this, r, tableExp.group, tableExp.having);
                 else
-                    r = new EvalRowSet(tr, cx, this, r, tableExp.having);
+                    r = new EvalRowSet(cx, this, r, tableExp.having);
             }
             else
-                r = new SelectedRowSet(tr, cx, this, r);
-            var cols = rowType.columns;
+                r = new SelectRowSet(cx, this, r);
+            var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
-                if (cols[i] is SqlFunction f && f.window != null && tr is Transaction)
-                    f.RowSets((Transaction)tr, this);
+                if (cols[i] is SqlFunction f && f.window != null)
+                    f.RowSets(this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
             return r;
@@ -119,7 +130,7 @@ namespace Pyrrho.Level3
         internal override Query Conditions(Context cx)
         {
             var r = this;
-            var cols = rowType.columns;
+            var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
                 r = (QuerySpecification)((SqlValue)cols[i]).Conditions(cx,r,false,out _);
             //      q.CheckKnown(where,tr);
@@ -128,13 +139,13 @@ namespace Pyrrho.Level3
             r += (Depth, _Max(r.depth, 1 + r.tableExp.depth));
             return AddPairs(r.tableExp);
         }
-        internal override Query Orders(Transaction tr,Context cx,OrderSpec ord)
+        internal override Query Orders(Context cx,OrderSpec ord)
         {
             var d = 0;
             for (var b = ord.items.First(); b != null; b = b.Next())
                 d = _Max(d, b.value().depth);
-            return (QuerySpecification)base.Orders(tr,cx,ord)
-                +(TableExp,tableExp.Orders(tr,cx,ord) + (Depth, _Max(depth, 1 + d)));
+            return (QuerySpecification)base.Orders(cx,ord)
+                +(TableExp,tableExp.Orders(cx,ord) + (Depth, _Max(depth, 1 + d)));
         }
         /// <summary>
         /// propagate an update operation
@@ -142,10 +153,10 @@ namespace Pyrrho.Level3
         /// <param name="ur">a set of versions</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
-        internal override Transaction Update(Transaction tr,Context cx,BTree<string, bool> ur, 
+        internal override Context Update(Context cx,BTree<string, bool> ur, 
             Adapters eqs,List<RowSet>rs)
         {
-            return tableExp.Update(tr,cx,ur,eqs,rs);
+            return tableExp.Update(cx,ur,eqs,rs);
         }
         /// <summary>
         /// propagate an insert operation
@@ -154,22 +165,22 @@ namespace Pyrrho.Level3
         /// <param name="data">some data to insert</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
-        internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            var cols = rowType.columns;
-            for (var i=0;i<cols.Count;i++)
-                cols[i].Eqs(data._tr as Transaction,_cx,ref eqs);
-            return tableExp.Insert(tr,_cx,prov, data, eqs, rs, cl);
+            var cols = rowType;
+            for (var i=0;i<cols.Length;i++)
+                cols[i].Eqs(_cx,ref eqs);
+            return tableExp.Insert(_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// propagate a delete operation
         /// </summary>
         /// <param name="dr">a set of versions</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Transaction Delete(Transaction tr,Context cx,BTree<string, bool> dr, Adapters eqs)
+        internal override Context Delete(Context cx,BTree<string, bool> dr, Adapters eqs)
         {
-            return tableExp.Delete(tr,cx,dr,eqs);
+            return tableExp.Delete(cx,dr,eqs);
         }
         internal override Query AddRestViews(CursorSpecification q)
         {
@@ -243,12 +254,9 @@ namespace Pyrrho.Level3
         internal QueryExpression(long u,bool stq, BTree<long, object> m=null)
             : base(u, (m??BTree<long,object>.Empty) + (SimpleTableQuery,stq)) 
         { }
-        internal QueryExpression(long u, Context cx, ObInfo rt, bool stq, BTree<long, object> m=null)
-            : base(u, cx, rt, (m ?? BTree<long, object>.Empty) + (SimpleTableQuery, stq))
-        { }
         internal QueryExpression(long u, Context cx, Query a, Sqlx o, QueryExpression b)
             : base(u,BTree<long,object>.Empty+(_Left,a)+(Op,o)+(_Right,b)
-                  +(Display,a.display)+(RowType,a.rowType.Relocate(u))
+                  +(Display,a.display)
                   +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth)))
         { }
@@ -261,9 +269,38 @@ namespace Pyrrho.Level3
         {
             return new QueryExpression(defpos,m);
         }
+        internal override DBObject Relocate(long dp)
+        {
+            return new QueryExpression(dp,mem);
+        }
+        internal override Basis Relocate(Level2.Writer wr)
+        {
+            var r = (QueryExpression)base.Relocate(wr);
+            var q = left.Relocate(wr);
+            if (q != left)
+                r += (_Left, q);
+            q = right?.Relocate(wr);
+            if (q != right)
+                r += (_Right, q);
+            return r;
+        }
         internal override bool aggregates()
         {
             return left.aggregates()||(right?.aggregates()??false)||base.aggregates();
+        }
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (QueryExpression)base._Replace(cx, was, now);
+            var lf = left?._Replace(cx, was, now);
+            if (lf != left)
+                r += (_Left, lf);
+            var rg = right?._Replace(cx, was, now);
+            if (rg != right)
+                r += (_Right, rg);
+            cx.done += (defpos, r);
+            return r;
         }
         internal override Query Refresh(Context cx)
         {
@@ -287,7 +324,7 @@ namespace Pyrrho.Level3
             var rg = r.right?.Frame(cx);
             if (rg != r.right)
                 r += (_Right, rg);
-            return r;
+            return cx.Add(r,true);
         }
         internal override void Build(Context _cx, RowSet rs)
         {
@@ -301,24 +338,22 @@ namespace Pyrrho.Level3
             right?.StartCounter(_cx,rs);
             base.StartCounter(_cx,rs);
         }
-        internal override void AddIn(Context _cx, RowBookmark rs)
+        internal override void AddIn(Context _cx, Cursor rs,TRow key)
         {
-            left.AddIn(_cx,rs);
-            right?.AddIn(_cx,rs);
-            base.AddIn(_cx,rs);
+            left.AddIn(_cx,rs,key);
+            right?.AddIn(_cx,rs,key);
+            base.AddIn(_cx,rs,key);
         }
         /// <summary>
         /// propagate a delete operation
         /// </summary>
         /// <param name="dr">a set of versions</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Transaction Delete(Transaction tr,Context cx,
+        internal override Context Delete(Context cx,
             BTree<string, bool> dr, Adapters eqs)
         {
-            tr = left.Delete(tr, cx, dr, eqs);
-            if (right!=null)
-                tr = right.Delete(tr, cx, dr, eqs);
-            return tr;
+            cx = left.Delete(cx, dr, eqs);
+            return right?.Delete(cx, dr, eqs)??cx;
         }
         /// <summary>
         ///  propagate an insert operation
@@ -327,13 +362,11 @@ namespace Pyrrho.Level3
         /// <param name="data">a set of insert data</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
-        internal override Transaction Insert(Transaction tr,Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            tr = left.Insert(tr, _cx, prov, data, eqs, rs, cl);
-            if (right!=null)
-                tr = right.Insert(tr,_cx,prov, data, eqs, rs,cl);
-            return tr;
+            _cx = left.Insert(_cx, prov, data, eqs, rs, cl);
+            return right?.Insert(_cx,prov, data, eqs, rs,cl)??_cx;
         }
         /// <summary>
         /// propagate an update operation
@@ -341,19 +374,17 @@ namespace Pyrrho.Level3
         /// <param name="ur">a set of versions</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">affected rowsets</param>
-        internal override Transaction Update(Transaction tr,Context cx, 
+        internal override Context Update(Context cx, 
             BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
-            tr = left.Update(tr, cx, ur, eqs, rs);
-            if (right!=null)
-                tr = right.Update(tr, cx, ur, eqs, rs);
-            return tr;
+            cx = left.Update(cx, ur, eqs, rs);
+            return right?.Update(cx, ur, eqs, rs)??cx;
         }
-        internal override Query AddMatches(Context cx, Query q)
+        internal override Query AddMatches(Context cx,Query q)
         {
             var r = this;
             if (right == null)
-                r += (_Left,left.AddMatches(cx, q));
+                r += (_Left,left.AddMatches(cx,q));
             return (QueryExpression)cx.Add(r);
         }
         /// <summary>
@@ -412,14 +443,14 @@ namespace Pyrrho.Level3
         /// Check left and right.
         /// </summary>
         /// <param name="ord">the orderitems</param>
-        internal override Query Orders(Transaction tr,Context cx,OrderSpec ord)
+        internal override Query Orders(Context cx,OrderSpec ord)
         {
             if (ordSpec != null)
                 ord = ordSpec;
-            var m = base.Orders(tr,cx, ord).mem;
-            m += (_Left, left.Orders(tr,cx, ord));
+            var m = base.Orders(cx, ord).mem;
+            m += (_Left, left.Orders(cx, ord));
             if (right != null)
-                m += (_Right, right.Orders(tr,cx, ord));
+                m += (_Right, right.Orders(cx, ord));
             return new QueryExpression(defpos, m);
         }
         internal override Query AddRestViews(CursorSpecification q)
@@ -444,12 +475,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Analysis stage RowSets(). Implement UNION, INTERSECT and EXCEPT.
         /// </summary>
-        internal override RowSet RowSets(Database tr,Context cx)
+        internal override RowSet RowSets(Context cx)
         {
-            var lr = left.RowSets(tr,cx);
+            var lr = left.RowSets(cx);
             if (right != null)
             {
-                var rr = right.RowSets(tr, cx);
+                var rr = right.RowSets(cx);
                 lr = new MergeRowSet(cx, this, lr, rr, distinct, op);
             }
             return Ordering(cx, lr, false);
@@ -468,7 +499,7 @@ namespace Pyrrho.Level3
                 sb.Append("Right: ");
                 sb.Append(Uid(right.defpos)); sb.Append(") ");
             }
-            if (ordSpec != null && ordSpec.items.Count!=0)
+            if (ordSpec != null && ordSpec.items.Length!=0)
             {
                 sb.Append(" order by (");
                 sb.Append(ordSpec.items);

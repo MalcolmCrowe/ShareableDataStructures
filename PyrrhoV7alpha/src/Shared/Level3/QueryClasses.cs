@@ -5,7 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -18,10 +18,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             Items = -217; // BList<SqlValue>
-        internal BList<SqlValue> items => (BList<SqlValue>)mem[Items]??BList<SqlValue>.Empty;
+        internal Selection items => (Selection)mem[Items]??Selection.Empty;
+        internal ObInfo info => (ObInfo)mem[SqlValue.Info]??ObInfo.Any;
         internal static readonly OrderSpec Empty = new OrderSpec();
         OrderSpec():base(BTree<long,object>.Empty) { }
-        public OrderSpec(BList<SqlValue> k):base((Items,k)) { }
+        public OrderSpec(Selection k):base((Items,k),(SqlValue.Info,new ObInfo(k.defpos,k.cols))) { }
+        public OrderSpec(long dp, string nm) : this(new Selection(dp, nm)) { }
         protected OrderSpec(BTree<long, object> m) : base(m) { }
         public static OrderSpec operator+(OrderSpec o,(long,object)x)
         {
@@ -38,10 +40,10 @@ namespace Pyrrho.Level3
                 return false;
             var its = items;
             var tis = that.items;
-            if (its.Count != tis.Count)
+            if (its.Length != tis.Length)
                 return false;
-            for (var i = 0; i < its.Count; i++)
-                if (!((SqlValue)its[i]).MatchExpr(q,(SqlValue)tis[i]))
+            for (var i = 0; i < its.Length; i++)
+                if (!(its[i]).MatchExpr(q,tis[i]))
                     return false;
             return true;
         }
@@ -55,7 +57,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var r = "";
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < items.Length; i++)
                 r += ((i > 0) ? "," : "(") + items[i].ToString();
             r += ")";
             return r;
@@ -132,7 +134,7 @@ namespace Pyrrho.Level3
             Order = -225, // OrderSpec
             OrderWindow = -226, // string
             Partition = -228, // int
-            PartitionType = -229, // ObInfo
+            PartitionType = -229, // Selection
             Units = -230, // Sqlx
             WQuery = -231; // Query
         public string name => (string)mem[Name];
@@ -156,7 +158,7 @@ namespace Pyrrho.Level3
         /// The partitionType is the partition columns for the window/
         /// NB this a Domain, not an ObInfo as we treat the TRow as a single value for once
         /// </summary>
-        internal ObInfo partitionType => (ObInfo)mem[PartitionType];
+        internal Selection partitionType => (Selection)mem[PartitionType];
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
@@ -183,13 +185,18 @@ namespace Pyrrho.Level3
         {
             return (WindowSpecification)w.New(w.mem + x);
         }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new WindowSpecification(defpos, m);
+        }
         internal override DBObject Relocate(long dp)
         {
-            return new WindowSpecification(dp,mem);
+            return new WindowSpecification(dp, mem);
         }
         internal override Basis Relocate(Writer wr)
         {
-            throw new NotImplementedException();
+            var r = (WindowSpecification)base.Relocate(wr);
+            return r;
         }
         /// <summary>
         /// Compare two WindowSpecifications for equivalance
@@ -206,17 +213,13 @@ namespace Pyrrho.Level3
             {
                 var cols = order?.items;
                 var wcols = w.order?.items;
-                if (order == null || w.order == null || cols.Count!=wcols.Count)
+                if (order == null || w.order == null || cols.Length!=wcols.Length)
                     return false;
-                for (int i = 0; i < order.items.Count; i++)
+                for (int i = 0; i < order.items.Length; i++)
                     if (!((SqlValue)cols[i]).MatchExpr(query, (SqlValue)wcols[i]))
                         return false;
             }
             return partition == w.partition;
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new WindowSpecification(defpos,m);
         }
         public static long MemoryLimit = 0;
     }
@@ -225,7 +228,7 @@ namespace Pyrrho.Level3
         internal const long
             GroupKind = -232, //Sqlx
             Groups = -233, // BList<Grouping>
-            Members = -234; // BTree<SqlValue,int>
+            Members = -234; // BTree<long,int>
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
@@ -236,9 +239,10 @@ namespace Pyrrho.Level3
         /// the names for this grouping.
         /// See SqlValue.IsNeeded for where the ref gp parameter is used.
         /// </summary>
-        internal BTree<SqlValue,int> members => 
-            (BTree<SqlValue,int>)mem[Members]??BTree<SqlValue,int>.Empty;
-        internal Grouping(long dp,BTree<long,object>m=null):base(dp,m) { }
+        internal BTree<long,int> members => 
+            (BTree<long,int>)mem[Members]??BTree<long,int>.Empty;
+        internal Grouping(long dp,BTree<long,object>m=null)
+            :base(dp,m??BTree<long,object>.Empty) { }
         public static Grouping operator+(Grouping g,(long,object) x)
         {
             return new Grouping(g.defpos,g.mem+x);
@@ -246,7 +250,7 @@ namespace Pyrrho.Level3
         internal bool Has(SqlValue sv)
         {
             for (var b = members.First(); b != null; b = b.Next())
-                if (b.key().defpos == sv.defpos)
+                if (b.key() == sv.defpos)
                     return true;
             for (var b = groups.First(); b != null; b = b.Next())
                 if (b.value().Has(sv))
@@ -260,7 +264,7 @@ namespace Pyrrho.Level3
         }
         internal void Grouped(SqlValue sv, ref bool gp)
         {
-            if (members.Contains(sv))
+            if (members.Contains(sv.defpos))
                 gp = true;
             for (var g = groups.First();g!=null;g=g.Next())
                 g.value().Grouped(sv, ref gp);
@@ -298,10 +302,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (Grouping)Relocate(d);
+            var r = (Grouping)base.Relocate(wr);
             var gs = BList<Grouping>.Empty;
             var ch = false;
             for (var b=groups.First();b!=null;b=b.Next())
@@ -313,10 +314,10 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (Groups, gs);
             ch = false;
-            var ms = BTree<SqlValue,int>.Empty;
+            var ms = BTree<long,int>.Empty;
             for (var b = members.First(); b != null; b = b.Next())
             {
-                var m = (SqlValue)b.key().Relocate(wr);
+                var m = wr.Fix(b.key());
                 ch = ch || m != b.key();
                 ms += (m,b.value());
             }
@@ -372,10 +373,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (GroupSpecification)Relocate(d);
+            var r = (GroupSpecification)base.Relocate(wr);
             var gs = BList<Grouping>.Empty;
             var ch = false;
             for (var b=sets.First();b!=null;b=b.Next())
@@ -391,7 +389,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (mem.Contains(DistinctGp))
+            if (mem.Contains(DistinctGp) && distinct)
                 sb.Append(" distinct");
             for (var b = sets.First(); b != null; b = b.Next())
                 sb.Append(b.value());
@@ -415,12 +413,23 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            throw new NotImplementedException();
+            return new UpdateAssignment(m);
+        }
+        internal override Basis Relocate(Writer wr)
+        {
+            var r = base.Relocate(wr);
+            var va = val.Relocate(wr);
+            if (va != val)
+                r += (Val, va);
+            var vb = vbl.Relocate(wr);
+            if (vb != vbl)
+                r += (Vbl, vb);
+            return r;
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)
         {
-            var va = (SqlValue)val.Replace(cx, was, now);
-            var vb = (SqlValue)vbl.Replace(cx, was, now);
+            var va = (SqlValue)val._Replace(cx, was, now);
+            var vb = (SqlValue)vbl._Replace(cx, was, now);
             return new UpdateAssignment(vb, va);
         }
         internal UpdateAssignment Frame(Context cx)

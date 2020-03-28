@@ -7,7 +7,7 @@ using Pyrrho.Level3;
 using System.Security.Principal;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -39,7 +39,8 @@ namespace Pyrrho.Level2
         /// <param name="dt">The description of the role</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-		public PRole(string nm,string dt,Transaction tr):base(Type.PRole,tr)
+		public PRole(string nm,string dt,long pp, Context cx) 
+            : base(Type.PRole,pp,cx)
 		{
             name = nm;
             details = dt;
@@ -92,24 +93,18 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <returns>the string representation</returns>
 		public override string ToString() { return "PRole "+name; }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             // If this is the first Role to be defined, 
             // it becomes the schema role
             var first = true;
-            for (var b = db.roles.First(); first && b != null; b = b.Next())
-                if (b.value()>0 && !(db.objects[b.value()] is User))
+            for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
+                if (b.value()>0 && !(cx.db.objects[b.value()] is User))
                     first = false;
-            var nr = new Role(this, db, first);
-            db += (nr,p);
+            var nr = new Role(this, cx.db, first);
+            cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,ppos));
             if (first)
-            { // install as the new schema role
-                var sr = db.schemaRole;
-                db += (DBObject.Definer, nr.defpos);
-            }
-            // The new Role can be seen publicly but usage is controlled
-            return (db,ro); // + (db.schemaRole, nr,p);
+                cx.db += (DBObject.Definer, nr.defpos);
         }
     }
      internal class PMetadata : Physical
@@ -143,16 +138,17 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
         public PMetadata(string nm, long sq, long ob, string ds,string i,
-            long rf,ulong fl,Transaction tr)
-          :this(Type.Metadata,nm,sq,ob,ds,i,rf,fl,tr)
+            long rf,ulong fl,long pp, Context cx)
+          : this(Type.Metadata,nm,sq,ob,ds,i,rf,fl,pp,cx)
 		{
         }
-        public PMetadata(string nm, Metadata md, long pp, long dp, Transaction tr)
-            :this(Type.Metadata,nm,md.seq,dp,md.description,md.iri,md.refpos,md.flags,tr)
+        public PMetadata(string nm, Metadata md, long op, long pp, Context cx)
+            : this(Type.Metadata,nm,md.seq,op,md.description,md.iri,md.refpos,md.flags,pp,
+                  cx)
         { }
         protected PMetadata(Type t, string nm, long sq, long ob, string ds, 
-            string i,long rf,ulong fl,Transaction tr)
-          : base(t, tr)
+            string i,long rf,ulong fl,long pp, Context cx)
+          : base(t, pp, cx)
         {
             name = nm;
             seq = sq;
@@ -264,11 +260,10 @@ namespace Pyrrho.Level2
                     sb.Append(" " + keys[i]);
             return sb.ToString();
         }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            return (((DBObject)db.objects[defpos]).Add(db, ro, this, p),ro);
-        }
+            cx.db = ((DBObject)cx.db.objects[defpos]).Add(cx.db,this, p);
+       }
     }
      internal class PMetadata2 : PMetadata
      {
@@ -281,13 +276,13 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject ref</param>
         /// <param name="db">The physical database</param>
          public PMetadata2(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, Transaction tr)
-          :this(Type.Metadata2,nm,sq,ob,ds,i,rf,fl,tr)
+            long rf, ulong fl, long pp, Context cx)
+          : this(Type.Metadata2,nm,sq,ob,ds,i,rf,fl,pp,cx)
 		{
         }
         protected PMetadata2(Type tp,string nm, long sq, long ob, string ds, string i,
-           long rf, ulong fl, Transaction tr)
-         : base(tp, nm, sq, ob, ds, i, rf, fl, tr)
+           long rf, ulong fl, long pp,Context cx)
+         : base(tp, nm, sq, ob, ds, i, rf, fl, pp, cx)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -340,8 +335,8 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
         public PMetadata3(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, Transaction tr)
-         : base(Type.Metadata3, nm, sq, ob, ds,i,rf,fl,tr)
+            long rf, ulong fl, long pp, Context cx)
+         : base(Type.Metadata3, nm, sq, ob, ds,i,rf,fl,pp,cx)
         {
         }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }

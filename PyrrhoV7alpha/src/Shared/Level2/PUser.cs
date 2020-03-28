@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -30,8 +30,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="nm">The name of the user (an identifier)</param>
         /// <param name="db">The local database</param>
-        public PUser(string nm, Transaction db)
-            : this(Type.PUser, nm, db)
+        public PUser(string nm, long pp, Context cx)
+            : this(Type.PUser, nm, pp, cx)
         {
         }
         /// <summary>
@@ -40,8 +40,8 @@ namespace Pyrrho.Level2
         /// <param name="tp">The PUser type</param>
         /// <param name="nm">The name of the user (an identifier)</param>
         /// <param name="pb">The local database</param>
-        protected PUser(Type tp, string nm, Transaction db)
-            : base(tp, db)
+        protected PUser(Type tp, string nm, long pp, Context cx)
+            : base(tp, pp, cx)
         {
             name = nm;
         }
@@ -86,21 +86,20 @@ namespace Pyrrho.Level2
         {
             return "PUser " + name;
         }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var nu = new User(this, db);
+            var ro = cx.db.role;
+            var nu = new User(this, cx.db);
             // If this is the first User to be defined, 
             // it becomes the Owner of the database
             var first = true;
-            for (var b = db.roles.First(); first && b != null; b = b.Next())
-                if ((db.objects[b.value()] is User))
+            for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
+                if ((cx.db.objects[b.value()] is User))
                     first = false;
             ro += new ObInfo(nu.defpos, nu.name);
-            db += (nu,p);
+            cx.db = cx.db + (nu,cx.db.schemaKey) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
-                db += (Database.Owner, nu.defpos);
-            return (db,ro);
+                cx.db += (Database.Owner, nu.defpos);
         }
     }
     internal class Clearance : Physical
@@ -114,8 +113,8 @@ namespace Pyrrho.Level2
         }
         public Clearance(Reader rdr) : base(Type.Clearance, rdr)
         { }
-        public Clearance(long us, Level cl, Transaction db)
-            : base(Type.Clearance, db)
+        public Clearance(long us, Level cl, long pp, Context cx)
+            : base(Type.Clearance, pp, cx)
         {
             _user = us;
             clearance = cl;
@@ -149,7 +148,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new System.NotImplementedException();
         }

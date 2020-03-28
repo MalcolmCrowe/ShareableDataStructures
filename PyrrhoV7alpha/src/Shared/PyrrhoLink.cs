@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Globalization;
 using System.Reflection;
 using System.IO;
@@ -30,9 +29,6 @@ using System.Threading;
 namespace Pyrrho
 {
     public class PyrrhoConnect
-#if (!EMBEDDED)
- : IDbConnection
-#endif
     {
 #if EMBEDDED
         internal Connection db;
@@ -449,12 +445,7 @@ namespace Pyrrho
                 pt.PrimaryKey = pk;
             }
         }
-#if !EMBEDDED
-#if MONO1
         internal PyrrhoTable GetTable()
-#else
-        internal DataTable GetTable()
-#endif
         {
             var n = GetInt();
             if (n == 0)
@@ -476,7 +467,6 @@ namespace Pyrrho
             }
             return dt;
         }
-#endif
         internal CellValue GetCell(int j, string tname, int flag, ref Versioned rc)
         {
             var cell = new CellValue()
@@ -914,8 +904,6 @@ CallingConventions.HasThis, new Type[0], null);
             PutString(sql);
             Receive();
         }
-        #region IDbConnect Members
-
         public void ChangeDatabase(string databaseName)
         {
         }
@@ -936,18 +924,7 @@ CallingConventions.HasThis, new Type[0], null);
         {
             return reflection.Get<C>(rurl);
         }
-#if SILVERLIGHT || EMBEDDED
         public PyrrhoTransaction BeginTransaction()
-#else
-        public IDbTransaction BeginTransaction(IsolationLevel lv)
-        {
-            if (transaction == Thread.CurrentThread)
-                throw new DatabaseError("");
-            AcquireTransaction();
-            return new PyrrhoTransaction(this);
-        }
-        public IDbTransaction BeginTransaction()
-#endif
         {
             AcquireTransaction();
             return new PyrrhoTransaction(this);
@@ -965,11 +942,7 @@ CallingConventions.HasThis, new Type[0], null);
             }
         }
 
-#if SILVERLIGHT || EMBEDDED 
         public PyrrhoCommand CreateCommand()
-#else
-        public IDbCommand CreateCommand()
-#endif
         {
             return new PyrrhoCommand(this);
         }
@@ -1073,8 +1046,6 @@ CallingConventions.HasThis, new Type[0], null);
                 return 0;
             }
         }
-
-        #endregion
         public DatabaseError[] Warnings
         {
             get
@@ -1086,10 +1057,6 @@ CallingConventions.HasThis, new Type[0], null);
                 return r;
             }
         }
-#if !SILVERLIGHT
-        public void Dispose()
-        { }
-#endif
         public ConnectionState State
         {
             get
@@ -1100,20 +1067,13 @@ CallingConventions.HasThis, new Type[0], null);
             }
         }
     }
-#if SILVERLIGHT || EMBEDDED
+
     public enum ConnectionState { Open, Closed, Connecting }
-#endif
     public class PyrrhoCommand
-#if (!EMBEDDED) && (!SILVERLIGHT)
-        : IDbCommand
-#endif
     {
         internal string commandText = "";
-#if (!SILVERLIGHT) && (!EMBEDDED)
-        public CommandType type = CommandType.Text;
-#endif
         internal PyrrhoConnect conn;
-        IDbTransaction trans;
+        PyrrhoTransaction trans;
         Thread thread = Thread.CurrentThread;
         public PyrrhoParameterCollection parameters = new PyrrhoParameterCollection();
         public PyrrhoCommand(PyrrhoConnect c)
@@ -1125,31 +1085,7 @@ CallingConventions.HasThis, new Type[0], null);
             if (thread != Thread.CurrentThread)
                 throw new DatabaseError("08C01");
         }
-        /// <summary>
-        /// The following routine works because we only support named parameters
-        /// and the parameters list is guaranteed to be in reverse alphoabetical order
-        /// </summary>
-        /// <returns>The command text after parameter substitution</returns>
-        string CommandTextWithParams()
-        {
-            var r = commandText;
-            foreach (IDataParameter p in parameters)
-            {
-                var s = "";
-                if (p.Value == null)
-                    s = "NULL";
-                else
-                    switch (p.DbType)
-                    {
-                        case DbType.String:
-                        case DbType.StringFixedLength: s = "'" + p.Value + "'"; break;
-                        default:
-                            s = p.Value.ToString(); break;
-                    }
-                r = r.Replace(p.ParameterName, s);
-            }
-            return r;
-        }
+
         #region IDbCommand Members
 
         public void Cancel()
@@ -1180,7 +1116,7 @@ CallingConventions.HasThis, new Type[0], null);
                 throw new DatabaseError(e);
             }
 #else
-            conn.Send(Protocol.ExecuteReader,CommandTextWithParams()); 
+            conn.Send(Protocol.ExecuteReader,commandText); 
 #endif
             return PyrrhoReader.New(this);
         }
@@ -1200,7 +1136,7 @@ CallingConventions.HasThis, new Type[0], null);
                 throw new DatabaseError(e);
             }
 #else
-            conn.Send(Protocol.ExecuteReader, CommandTextWithParams());
+            conn.Send(Protocol.ExecuteReader, commandText);
 #endif
             return PyrrhoReader.New<T>(this, t);
         }
@@ -1212,20 +1148,11 @@ CallingConventions.HasThis, new Type[0], null);
                 throw new DatabaseError("2E201");
             conn.AcquireExecution();
             conn.Send(Protocol.ExecuteReaderCrypt);
-            conn.crypt.PutString(CommandTextWithParams());
+            conn.crypt.PutString(commandText);
             return PyrrhoReader.New(this);
         }
 #endif
-#if (!SILVERLIGHT) && (!EMBEDDED)
-        public IDataReader ExecuteReader(System.Data.CommandBehavior behavior)
-        {
-            return _ExecuteReader();
-        }
-
-        public IDataReader ExecuteReader()
-#else
         public PyrrhoReader ExecuteReader()
-#endif
         {
 #if !EMBEDDED
             if (trans != null)
@@ -1296,7 +1223,7 @@ CallingConventions.HasThis, new Type[0], null);
                     throw new DatabaseError(e);
                 }
 #else
-                conn.Send(Protocol.ExecuteNonQuery, CommandTextWithParams());
+                conn.Send(Protocol.ExecuteNonQuery, commandText);
                 var p = conn.Receive();
                 if (p != Responses.Done)
                     throw new DatabaseError("2E203");
@@ -1339,7 +1266,7 @@ CallingConventions.HasThis, new Type[0], null);
                 }
 #else
                 conn.RecordRequest(CommandText);
-                conn.Send(Protocol.ExecuteNonQueryTrace, CommandTextWithParams());
+                conn.Send(Protocol.ExecuteNonQueryTrace, commandText);
                 var p = conn.Receive();
                 if (p!= Responses.DoneTrace)
                     throw new DatabaseError("2E203");
@@ -1363,7 +1290,7 @@ CallingConventions.HasThis, new Type[0], null);
             conn.AcquireExecution();
             try {
                 conn.Send(Protocol.ExecuteNonQueryCrypt);
-                conn.crypt.PutString(CommandTextWithParams());
+                conn.crypt.PutString(commandText);
                 var p = conn.Receive();
                 if (p != Responses.Done)
                     throw new DatabaseError("2E203");
@@ -1386,23 +1313,14 @@ CallingConventions.HasThis, new Type[0], null);
 				// TODO:  Add PyrrhoCommand.CommandTimeout setter implementation
 			}
 		}
-
-#if SILVERLIGHT || EMBEDDED
         public PyrrhoParameter CreateParameter()
-#else
-        public IDbDataParameter CreateParameter()
-#endif
 		{
             if (thread != Thread.CurrentThread)
                 throw new DatabaseError("08C01");
             return new PyrrhoParameter();
 		}
 
-#if SILVERLIGHT || EMBEDDED
-            public PyrrhoConnect Connection
-#else
-        public IDbConnection Connection
-#endif
+        public PyrrhoConnect Connection
 		{
 			get
 			{
@@ -1428,13 +1346,8 @@ CallingConventions.HasThis, new Type[0], null);
                 commandText = value;
 			}
 		}
-
-#if SILVERLIGHT || EMBEDDED
-            public PyrrhoParameterCollection Parameters
-#else
-        public IDataParameterCollection Parameters
-#endif
-		{
+        public PyrrhoParameterCollection Parameters
+    	{
 			get
 			{
                 if (thread != Thread.CurrentThread)
@@ -1443,58 +1356,20 @@ CallingConventions.HasThis, new Type[0], null);
 			}
 		}
 
-#if SILVERLIGHT || EMBEDDED
-            public PyrrhoTransaction Transaction
-#else
-        public IDbTransaction Transaction
-#endif
+        public PyrrhoTransaction Transaction
 		{
 			get
 			{
-                return trans as PyrrhoTransaction;
+                return trans;
 			}
 			set
 			{
                 // this is allowed for compatibility: makes no sense in Pyrrho
-                trans = value as IDbTransaction;
+                trans = value;
 			}
 		}
 
         #endregion
-
-		#region IDisposable Members
-
-		public void Dispose()
-		{
-		}
-        #endregion
-
-#if !SILVERLIGHT && !EMBEDDED
-        public UpdateRowSource UpdatedRowSource
-        {
-            get
-            {
-                return UpdateRowSource.None;
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        public CommandType CommandType
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-#endif
     }
     /// <summary>
     /// The DataParameterCollection turns out slightly more interesting than it sounds.
@@ -1506,9 +1381,6 @@ CallingConventions.HasThis, new Type[0], null);
     /// collection in the the code below.
     /// </summary>
     public class PyrrhoParameterCollection
-#if (!SILVERLIGHT) && (!EMBEDDED)
- : IDataParameterCollection
-#endif
     {
         // items are maintained in reverse alphabetical order (important)
 #if MONO1
@@ -1516,7 +1388,7 @@ CallingConventions.HasThis, new Type[0], null);
 #elif SILVERLIGHT || EMBEDDED
         List<PyrrhoParameter> items = new List<PyrrhoParameter>();
 #else
-        List<IDataParameter> items = new List<IDataParameter>();
+        List<PyrrhoParameter> items = new List<PyrrhoParameter>();
 #endif
         // private variable for helping with Add etc
         bool found = false;
@@ -1533,7 +1405,7 @@ CallingConventions.HasThis, new Type[0], null);
             found = false;
             while (at>0)
             {
-                var p = items[at-1] as IDataParameter;
+                var p = items[at-1] as PyrrhoParameter;
                 var c = p.ParameterName.CompareTo(parameterName);
                 if (c > 0)
                     break;
@@ -1580,11 +1452,7 @@ CallingConventions.HasThis, new Type[0], null);
             }
             set
             {
-#if SILVERLIGHT || EMBEDDED
                 var p = value as PyrrhoParameter;
-#else
-                var p = value as IDataParameter;
-#endif
                 if (p == null)
                     return;
                 p.ParameterName = parameterName;
@@ -1598,11 +1466,7 @@ CallingConventions.HasThis, new Type[0], null);
 
         public int Add(object value)
         {
-#if SILVERLIGHT || EMBEDDED
             if (value is PyrrhoParameter p)
-#else
-            if (value is IDataParameter p)
-#endif
             {
                 var k = PositionFor(p.ParameterName);
                 if (found)
@@ -1622,22 +1486,14 @@ CallingConventions.HasThis, new Type[0], null);
 
         public bool Contains(object value)
         {
-#if SILVERLIGHT || EMBEDDED
             if (value is PyrrhoParameter p)
-#else
-            if (value is IDataParameter p)
-#endif
                 return Contains(p.ParameterName);
             return false;
         }
 
         public int IndexOf(object value)
         {
-#if SILVERLIGHT || EMBEDDED
             if (value is PyrrhoParameter p)
-#else
-            if (value is IDataParameter p)
-#endif
                 return IndexOf(p.ParameterName);
             return -1;
         }
@@ -1659,11 +1515,7 @@ CallingConventions.HasThis, new Type[0], null);
 
         public void Remove(object value)
         {
-#if SILVERLIGHT || EMBEDDED
             if (value is PyrrhoParameter p)
-#else
-            if (value is IDataParameter p)
-#endif
                 RemoveAt(p.ParameterName);
         }
 
@@ -1711,9 +1563,6 @@ CallingConventions.HasThis, new Type[0], null);
         }
     }
     public class PyrrhoTransaction
-#if (!SILVERLIGHT) && (!EMBEDDED)
- : IDbTransaction
-#endif
     {
         PyrrhoConnect conn;
         bool active = true;
@@ -1726,9 +1575,6 @@ CallingConventions.HasThis, new Type[0], null);
 			conn.Send(Protocol.BeginTransaction);
 #endif
         }
-
-        #region IDbTransaction Members
-
         public void Rollback()
         {
             try
@@ -1747,13 +1593,14 @@ CallingConventions.HasThis, new Type[0], null);
                 conn.ReleaseTransaction();
             }
         }
-        public void Commit()
+        public int Commit()
         {
-            CommitTrace(new Versioned[0]);
+            return CommitTrace(new Versioned[0]);
         }
 
-        public void Commit(params Versioned[] obs)
+        public int Commit(params Versioned[] obs)
         {
+            int r = 0;
             try
             {
 #if (EMBEDDED)
@@ -1770,7 +1617,7 @@ CallingConventions.HasThis, new Type[0], null);
             }
             active = false;
 #else
-                conn.Send(Protocol.CommitAndReport);
+                conn.Send(Protocol.CommitAndReport1);
                 conn.PutInt(obs.Length);
                 for (int i = 0; i < obs.Length; i++)
                 {
@@ -1783,6 +1630,7 @@ CallingConventions.HasThis, new Type[0], null);
                 var p = conn.Receive();
                 if (p == Responses.TransactionReport)
                 {
+                    r = conn.GetInt();
                     conn.GetLong(); // schemaKey
                     conn.GetInt(); // obs.Length
                     for (int i = 0; i < obs.Length; i++)
@@ -1799,9 +1647,11 @@ CallingConventions.HasThis, new Type[0], null);
             {
                 conn.ReleaseTransaction();
             }
+            return r;
         }
-        public void CommitTrace(params Versioned[] obs)
+        public int CommitTrace(params Versioned[] obs)
         {
+            int r = 0;
             try
             {
 #if (EMBEDDED)
@@ -1819,7 +1669,7 @@ CallingConventions.HasThis, new Type[0], null);
             active = false;
 #else
                 conn.RecordRequest("Commit");
-                conn.Send(Protocol.CommitAndReportTrace);
+                conn.Send(Protocol.CommitAndReportTrace1);
                 conn.PutInt(obs.Length);
                 for (int i = 0; i < obs.Length; i++)
                 {
@@ -1834,6 +1684,7 @@ CallingConventions.HasThis, new Type[0], null);
                 var p = conn.Receive();
                 if (p == Responses.TransactionReportTrace)
                 {
+                    r = conn.GetInt();
                     ts = conn.GetLong();
                     te = conn.GetLong();
                     conn.RecordResponse(ts, te);
@@ -1853,6 +1704,7 @@ CallingConventions.HasThis, new Type[0], null);
             {
                 conn.ReleaseTransaction();
             }
+            return r;
         }
         long Pos(string s)
         {
@@ -1864,41 +1716,8 @@ CallingConventions.HasThis, new Type[0], null);
         {
             if (p > 0x400000000000)
                 return "'" + (p - 0x400000000000);
-            return ""+p;
+            return "" + p;
         }
-
-#if SILVERLIGHT || EMBEDDED
-            public PyrrhoConnect Connection
-#else
-        public IDbConnection Connection
-#endif
-        {
-            get
-            {
-                return conn;
-            }
-        }
-
-#if (!SILVERLIGHT) && (!EMBEDDED)
-        public IsolationLevel IsolationLevel
-        {
-            get { return IsolationLevel.Serializable; }
-            set { throw new NotImplementedException(); }
-        }
-#endif
-
-        #endregion
-
-        #region IDisposable Members
-
-        public void Dispose()
-        {
-            if (active)
-                Rollback();
-        }
-
-        #endregion
-
     }
 #if !EMBEDDED
     public class PyrrhoTransactionReport
@@ -1953,9 +1772,6 @@ CallingConventions.HasThis, new Type[0], null);
     }
     public sealed class ExcludeAttribute : Attribute { }
     public class PyrrhoReader
-#if (!SILVERLIGHT) && (!EMBEDDED)
- : IDataReader
-#endif
     {
         PyrrhoCommand cmd;
         bool active = true, bOF = true;
@@ -2248,11 +2064,7 @@ CallingConventions.HasThis, new Type[0], null);
                 return 0;
             }
         }
-#if SILVERLIGHT || EMBEDDED
         public PyrrhoTable GetSchemaTable()
-#else
-        public DataTable GetSchemaTable()
-#endif
         {
             cmd.CheckThread();
             schema.Fill(this);
@@ -2596,11 +2408,7 @@ CallingConventions.HasThis, new Type[0], null);
 #endif
         }
 
-#if SILVERLIGHT || EMBEDDED
         public PyrrhoReader GetData(int i)
-#else
-        public IDataReader GetData(int i)
-#endif
         {
             cmd.CheckThread();
             PyrrhoTable t = row[i].val as PyrrhoTable;
@@ -2658,13 +2466,6 @@ CallingConventions.HasThis, new Type[0], null);
         }
 
 #endregion
-
-#if (!SILVERLIGHT) && (!EMBEDDED) && !MONO1
-        DataTable IDataReader.GetSchemaTable()
-        {
-            throw new NotImplementedException();
-        }
-#endif
         public PyrrhoRow GetRow()
         {
             cmd.CheckThread();
@@ -2697,9 +2498,6 @@ CallingConventions.HasThis, new Type[0], null);
         }
     }
     public class PyrrhoParameter
-#if (!EMBEDDED) && (!SILVERLIGHT)
-        : IDbDataParameter, IDataParameter
-#endif
     {
         string name = "";
         PyrrhoDbType type = PyrrhoDbType.DBNull;
@@ -2849,81 +2647,9 @@ CallingConventions.HasThis, new Type[0], null);
         }
 
 #endregion
-#if (!SILVERLIGHT) && (!EMBEDDED)
-        public DbType DbType
-        {
-            get
-            {
-                switch (type)
-                {
-                    case PyrrhoDbType.Blob: return DbType.Binary;
-                    case PyrrhoDbType.Bool: return DbType.Boolean;
-                    case PyrrhoDbType.Date: return DbType.Date;
-                    case PyrrhoDbType.Decimal: return DbType.Decimal;
-                    case PyrrhoDbType.Integer: return DbType.Int64;
-                    case PyrrhoDbType.Real: return DbType.Double;
-                    case PyrrhoDbType.String: return DbType.String;
-                    case PyrrhoDbType.Time: return DbType.Time;
-                    case PyrrhoDbType.Timestamp: return DbType.DateTime;
-                    case PyrrhoDbType.Row:
-                    case PyrrhoDbType.UDType: return DbType.Object;
-                }
-                return DbType.Binary;
-            }
-            set
-            {
-                switch (value)
-                {
-                    default: throw new DatabaseError("unsupported DbType ", value.ToString());
-                    case DbType.AnsiStringFixedLength:
-                    case DbType.AnsiString: type = PyrrhoDbType.String; break;
-                    case DbType.Binary: type = PyrrhoDbType.Blob; break;
-                    case DbType.Byte: type = PyrrhoDbType.Integer; break;
-                    case DbType.Boolean: type = PyrrhoDbType.Bool; break;
-                    case DbType.Date: type = PyrrhoDbType.Date; break;
-                    case DbType.DateTime: type = PyrrhoDbType.Timestamp; break;
-                    case DbType.Decimal: type = PyrrhoDbType.Decimal; break;
-                    case DbType.Double: type = PyrrhoDbType.Real; break;
-                    case DbType.Int16:
-                    case DbType.Int32:
-                    case DbType.Int64: type = PyrrhoDbType.Integer; break;
-                    case DbType.Single: type = PyrrhoDbType.Real; break;
-                    case DbType.StringFixedLength:
-                    case DbType.String: type = PyrrhoDbType.String; break;
-                    case DbType.Time: type = PyrrhoDbType.Time; break;
-                    case DbType.VarNumeric: type = PyrrhoDbType.Decimal; break;
-                }
-            }
-        }
-        public ParameterDirection Direction
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
-        }
 
-        public DataRowVersion SourceVersion
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
-        }
-#endif
     }
     public class PyrrhoTable 
-#if !SILVERLIGHT
-        : DataTable
-#endif
 	{
         public new string TableName;
 #if EMBEDDED
@@ -3024,11 +2750,6 @@ CallingConventions.HasThis, new Type[0], null);
     public class PyrrhoTable<T> : PyrrhoTable where T : class
     {
         private PyrrhoTable(PyrrhoConnect c, string n)
-#if EMBEDDED
-            : base(c.db.result.rowSet.qry.nominalDataType, c,n)
-#else
-            : base(c, n)
-#endif
         {
             var cmd = c.CreateCommand() as PyrrhoCommand;
             cmd.CommandText = "table \"" + TableName + "\"";
@@ -3067,21 +2788,13 @@ CallingConventions.HasThis, new Type[0], null);
     }
 #endif
         public class PyrrhoColumn
-#if (!EMBEDDED) && (!SILVERLIGHT) && !MONO1
-            : DataColumn
-#endif
     {
-#if EMBEDDED || SILVERLIGHT || MONO1
         internal string ColumnName, Caption;
         internal Type DataType;
         internal bool AllowDBNull, ReadOnly;
-#endif
 		internal int type; // least-sig 4 bits: type, next 4 bits: pKey info
         internal string datatypename = null;
 		internal PyrrhoColumn(string n,string dn,int t)
-#if (!EMBEDDED) && (!SILVERLIGHT) && !MONO1
-                : base(n)
-#endif
         {
             ColumnName = n;
             datatypename = dn;

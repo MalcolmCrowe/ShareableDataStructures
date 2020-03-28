@@ -1,7 +1,0 @@
-create table A(b int,c char)
-insert into a values(5,'Five'),(6,'Six')
-create function sel(x int) returns row (d char) return (select c from a where b=x)
-select sel(6) from static
-create function sel1(x int) returns row (d char) return (select c from a where b=x+1)
-select sel1(5) from static
-

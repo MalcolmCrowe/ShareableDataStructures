@@ -1,8 +1,9 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
+using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -38,8 +39,9 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, int ar, long rt, MethodType mt, long td, string pc, Transaction tr)
-			:this(Type.PMethod2,nm,ar,rt,mt,td,pc,tr)
+        public PMethod(string nm, int ar, long rt, MethodType mt, long td, string pc, 
+            long pp, Context cx)
+            : this(Type.PMethod2,nm,ar,rt,mt,td,pc,pp,cx)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -54,8 +56,8 @@ namespace Pyrrho.Level2
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
         protected PMethod(Type tp, string nm, int ar, long rt, MethodType mt, long td, string pc, 
-            Database db)
-			:base(tp,nm,ar,rt,pc,db)
+            long pp, Context cx)
+            : base(tp,nm,ar,rt,pc,pp,cx)
 		{
 			typedefpos = td;
 			methodType = mt;
@@ -86,7 +88,7 @@ namespace Pyrrho.Level2
             wr.PutLong(typedefpos);
             wr.PutInt((int)methodType);
 			base.Serialise(wr);
-		}
+        }
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
@@ -98,7 +100,8 @@ namespace Pyrrho.Level2
  //           if (methodType == PMethod.MethodType.Constructor) will be done in base
  //               retdefpos = typedefpos; 
             base.Deserialise(rdr);
-		}
+            Compile(rdr.context, rdr.Position);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -126,16 +129,16 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var ut = (UDType)ro.obinfos[typedefpos];
-            var mt = new Method(this,Sqlx.CREATE,db);
+            var ro = cx.db.role;
+            var oi = (ObInfo)ro.obinfos[typedefpos];
+            var mt = new Method(this,Sqlx.CREATE,cx.db);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            ut += (mt,name);
-            ro += new ObInfo(ppos, name, (Domain)db.objects[retdefpos], priv);
-            db = db + (ro,p) + (ut,p);
-            return (db,ro);
+            var mi = new ObInfo(defpos, name, mt.domain, priv);
+            ro = ro + mt + mi + (oi+(mt,name));
+            cx.db = cx.db + (ro,p) + (mt,p);
         }
     }
 }

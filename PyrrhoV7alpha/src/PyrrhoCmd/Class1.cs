@@ -1,8 +1,5 @@
 using System;
 using System.Text;
-#if !EMBEDDED
-using System.Data;
-#endif
 using System.Net;
 using System.IO;
 using System.Collections;
@@ -56,12 +53,7 @@ namespace PyrrhoCmd
             string line = "";
             DatabaseError lasterr = null;
             bool interactive = true;
-#if EMBEDDED
-            PyrrhoTransaction
-#else
-            IDbTransaction
-#endif
-                transaction = null;
+            PyrrhoTransaction transaction = null;
             Link stack = null;
             StreamReader file = null;
             bool newfile = false;
@@ -212,12 +204,7 @@ namespace PyrrhoCmd
                 else
                     str = line;
                 var cmd = db.CreateCommand();
-#if EMBEDDED
-                PyrrhoReader
-#else
-                IDataReader
-#endif
-                    rdr = null;
+                PyrrhoReader rdr = null;
                 try
                 {
                     str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
@@ -668,13 +655,7 @@ namespace PyrrhoCmd
                     r.Append(ch);
             }
         }
-        static void Show(
-#if EMBEDDED
-            PyrrhoReader
-#else
-            IDataReader 
-#endif
-            rdr)
+        static void Show(PyrrhoReader rdr)
 		{
 			ArrayList cols = new ArrayList(); // of Column
 			ArrayList rows = new ArrayList(); // of string[]

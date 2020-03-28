@@ -1,9 +1,10 @@
 using System;
 using Pyrrho.Level1;
 using Pyrrho.Level3;
+using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -23,8 +24,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local database</param>
-        public Revoke(Privilege pr, long ob, long ge, Transaction db)
-            : this(Type.Revoke, pr, ob, ge, db)
+        public Revoke(Privilege pr, long ob, long ge, long pp, Context cx)
+            : this(Type.Revoke, pr, ob, ge, pp, cx)
 		{}
         /// <summary>
         /// Constructor: Revoke a privilege on an object for a grantee, from the Parser
@@ -34,8 +35,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local database</param>
-        protected Revoke(Type tp, Privilege pr, long ob, long ge, Transaction db)
-            : base(tp, pr, ob, ge, db)
+        protected Revoke(Type tp, Privilege pr, long ob, long ge, long pp, Context cx)
+            : base(tp, pr, ob, ge, pp, cx)
 		{}
         /// <summary>
         /// Constructor: Revoke a privilege on an object for a grantee, from the buffer
@@ -49,12 +50,13 @@ namespace Pyrrho.Level2
         {
             return new Revoke(this, wr);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             var oi = (ObInfo)ro.obinfos[obj];
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             ro += oi;
-            return (db + (ro,p),ro);
+            cx.db += (ro, p);
         }
         /// <summary>
         /// a readable version of this Physical

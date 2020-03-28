@@ -30,13 +30,18 @@ namespace Tpcc
         bool FetchDistrict()
         {
             form.BeginTransaction();
+     //       Console.WriteLine("Payment transaction start");
             Set(42, DateTime.Now.ToString());
             var cmd = form.conn.CreateCommand();
             cmd.CommandText = "select w_name,w_street_1,w_street_2,w_city,w_state,w_zip,w_ytd from warehouse where w_id=" + wid;
             var rdr = cmd.ExecuteReader();
-            try { 
+            try {
                 if (!rdr.Read())
+                {
+                    form.Commit();
+    //                Console.WriteLine("Payment transaction empty");
                     return true;
+                }
                 Set(1, (string)rdr[0]);
                 Set(2, (string)rdr[1]);
                 Set(3, (string)rdr[3]);
@@ -46,6 +51,7 @@ namespace Tpcc
             }
             catch (Exception)
             {
+    //            Console.WriteLine("Payment transaction exception");
                 form.Rollback();
             }
             finally
@@ -54,18 +60,25 @@ namespace Tpcc
             }
             cmd.CommandText = "select d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_ytd from district where d_w_id=" + wid + " and d_id=" + did;
             rdr = cmd.ExecuteReader();
-            try { 
+            try {
                 if (!rdr.Read())
+                {
+     //               Console.WriteLine("Payment done empty");
+                    form.Commit();
                     return true;
+                }
                 Set(8, (string)rdr[0]);
                 Set(9, (string)rdr[1]);
                 Set(10, (string)rdr[3]);
                 Set(11, (string)rdr[4]);
                 Set(12, (string)rdr[5]);
                 dytd = (decimal)rdr[6];
+     //           Console.WriteLine("Payment done");
+                form.Commit();
             }
             catch (Exception)
             {
+    //            Console.WriteLine("Payment exception");
                 form.Rollback();
             }
             finally
@@ -239,7 +252,7 @@ namespace Tpcc
 					FetchCustFromId(ref mess);
 				DoPayment(ref mess);
 				Invalidate(true);
-				form.Commit();
+				form?.Commit();
 			} 
 			catch(Exception ex)
 			{

@@ -4,7 +4,7 @@ using Pyrrho.Level1;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -42,9 +42,7 @@ namespace Pyrrho.Level2
         {
             return -1;
         }
-        internal override (Database,Role) Install(Database db, Role ro, long p)
-        {
-            return (db,ro);
-        }
+        internal override void Install(Level4.Context cx, long p)
+        { }
     }
 }

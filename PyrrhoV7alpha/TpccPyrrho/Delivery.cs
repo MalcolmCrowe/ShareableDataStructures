@@ -36,6 +36,7 @@ namespace Tpcc
 			carid = util.random(1,10);
 			DoCarrier(ref mess);
 			status.Text = mess;
+			Invalidate(true);
 		}
 
 		public Delivery(Form1 f, int w)

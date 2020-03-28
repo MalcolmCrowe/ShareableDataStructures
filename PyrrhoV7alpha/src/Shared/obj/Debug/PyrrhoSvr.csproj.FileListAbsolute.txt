@@ -8,5 +8,6 @@ F:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.exe
 F:\PyrrhoDB70\Pyrrho\src\Shared\bin\Debug\PyrrhoSvr.pdb
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.exe
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.pdb
-E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
 F:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache
+E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csproj.CoreCompileInputs.cache
+E:\PyrrhoDB70\Pyrrho\src\Shared\obj\Debug\PyrrhoSvr.csprojAssemblyReference.cache

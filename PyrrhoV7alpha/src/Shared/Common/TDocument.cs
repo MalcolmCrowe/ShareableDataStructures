@@ -7,7 +7,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -34,19 +34,14 @@ namespace Pyrrho.Common
         internal TDocument() : base(Domain.Document)
         {
         }
-        internal TDocument(Domain dt, BList<(string, TypedValue)> t) 
-            : base(dt)
-        {
-            content = t;
-        }
-        internal TDocument(Query q, TRow r, string id = null) :this()
+        internal TDocument(Context cx,TRow r, string id = null) :this()
         {
             if (id != null)
                 Add(_id, id);
-            var dt = r.info;
-            for (var b=dt.columns.First();b!=null;b=b.Next())
+            var oi = (ObInfo)cx.db.role.obinfos[r.dataType.defpos];
+            for (var b=oi.columns.First();b!=null;b=b.Next())
             {
-                var tc = (SqlValue)b.value();
+                var tc = b.value();
                 Add(tc.name, r[b.key()]);
             }
         }
@@ -778,7 +773,7 @@ namespace Pyrrho.Common
         }
         internal void Add(string k, Transaction tr, SqlValue c)
         {
-            Add(k, c.Eval(tr,null));
+            Add(k, c.Eval(null));
         }
         internal void Add(string n, int v)
         {
@@ -976,7 +971,7 @@ namespace Pyrrho.Common
         internal TDocArray(Context _cx, RowSet rs) :base(Domain.DocArray)
         {
             for (var a = rs.First(_cx); a != null; a = a.Next(_cx))
-                Add(new TDocument(rs.qry,a.row));
+                Add(new TDocument(_cx,a));
         }
         internal TDocArray(Domain dt, BList<TypedValue>t) : base(dt)
         {

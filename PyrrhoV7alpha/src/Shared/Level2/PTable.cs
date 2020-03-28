@@ -6,7 +6,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -41,9 +41,10 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm, Transaction tr)
-            : this(Type.PTable, nm, tr)
+        public PTable(string nm, long pp, Context cx)
+            : this(Type.PTable, nm, pp, cx)
 		{}
+        public PTable(long np, Context cx) : base(Type.PTable,np,cx) { }
         /// <summary>
         /// Constructor: a Table definition from the Parser
         /// </summary>
@@ -51,8 +52,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTable(Type t, string nm, Transaction tr)
-            : base(t, tr)
+        protected PTable(Type t, string nm, long pp, Context cx)
+            : base(t, pp, cx)
 		{
 			name = nm;
 		}
@@ -120,9 +121,9 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             // The definer is the given role
             var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
                 Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
@@ -133,20 +134,20 @@ namespace Pyrrho.Level2
             var tb = new Table(this);
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
-            if (db.format < 51)
+            if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            return (db + (ro,p) + (tb,p),ro);
+            cx.db = cx.db + (ro, p) + (tb, p);
         }
     }
     internal class PTable1 : PTable
     {
-        public PTable1(string ir, string nm, Transaction tr)
-            : base(Type.PTable1, nm, tr)
+        public PTable1(string ir, string nm, long pp, Context cx)
+            : base(Type.PTable1, nm, pp, cx)
         {
             rowiri = ir;
         }
-        protected PTable1(Type typ, string ir, string nm, Transaction tr)
-            : base(typ, nm, tr)
+        protected PTable1(Type typ, string ir, string nm, long pp, Context cx)
+            : base(typ, nm, pp, cx)
         {
             rowiri = ir;
         }
@@ -181,8 +182,8 @@ namespace Pyrrho.Level2
     internal class AlterRowIri : PTable1
     {
         public long rowpos;
-        public AlterRowIri(long pr, string ir, Transaction tr)
-            : base(Type.AlterRowIri, ir, null, tr)
+        public AlterRowIri(long pr, string ir, long pp, Context cx)
+            : base(Type.AlterRowIri, ir, null, pp, cx)
         {
             rowpos = pr;
         }
@@ -226,8 +227,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        public Enforcement(long pt, Grant.Privilege en, Transaction tr) 
-            : base(Type.Enforcement, tr)
+        public Enforcement(long pt, Grant.Privilege en, long pp, Context cx)
+            : base(Type.Enforcement, pp, cx)
         {
             tabledefpos = pt;
             enforcement = en;
@@ -237,8 +238,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        protected Enforcement(Type typ, long pt, Grant.Privilege en, Transaction tr) 
-            : base(typ, tr)
+        protected Enforcement(Type typ, long pt, Grant.Privilege en, long pp, Context cx)
+            : base(typ, pp, cx)
         {
             tabledefpos = pt;
             enforcement = en;
@@ -285,7 +286,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 // 
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -40,6 +40,8 @@ namespace Pyrrho.Level4
         /// </summary>
         public Activation cont;
         public Activation brk;
+        // for method calls
+        public SqlValue var = null; 
         /// <summary>
         /// Constructor: a new activation for a given named block
         /// </summary>
@@ -57,19 +59,19 @@ namespace Pyrrho.Level4
         /// <param name="cx">The current context</param>
         /// <param name="pr">The procedure</param>
         /// <param name="n">The headlabel</param>
-        protected Activation(Transaction tr,Context cx,Procedure pr, string n)
-            : base(cx,tr.objects[pr.definer] as Role,cx.user)
+        protected Activation(Context cx,Procedure pr, string n)
+            : base(cx,cx.db.objects[pr.definer] as Role,cx.user)
         {
             next = cx;
-            top = cx.top;
+            nextHeap = cx.nextHeap;
             label = n;
-            domain = pr.retType;
+            domain = pr.domain;
         }
-        protected Activation(Transaction tr,Context cx,long definer,string n)
-            :base(cx,tr.objects[definer] as Role,cx.user)
+        protected Activation(Context cx,long definer,string n)
+            :base(cx,cx.db.objects[definer] as Role,cx.user)
         {
             next = cx;
-            top = cx.top;
+            nextHeap = cx.nextHeap;
             label = n;
         }
         internal override void SlideDown(Context was)
@@ -77,21 +79,35 @@ namespace Pyrrho.Level4
             for (var b = locals.First(); b != null; b = b.Next())
                 if (was.values.Contains(b.key()))
                     values += (b.key(), was.values[b.key()]);
-            if (was is Activation a && a.breakto != null && a.breakto!=this)
-                    breakto = a.breakto;
+            val = was.val;
             base.SlideDown(was);
+        }
+        internal override TypedValue AddValue(DBObject s, TypedValue tv)
+        {
+            for (var ac = this; ac != null; ac = ac.next as Activation)
+                if (ac is TriggerActivation ta && ac.from.Contains(s.defpos))
+                {
+                    var p = ac.from[s.defpos];
+                    if (ac.cursors[p] is TransitionRowSet.TransitionCursor cu)
+                        ac.cursors += (p, cu + (this, ta._trig.from.rowType, s.defpos, tv));
+                }
+            return base.AddValue(s,tv);
         }
         /// <summary>
         /// flag NOT_FOUND if there is a handler for it
         /// </summary>
-        internal override void NoData(Transaction tr)
+        internal override void NoData()
         {
             if (exceptions.Contains("02000"))
-                new Signal(tr.uid,"02000",cxid).Obey(tr,this);
+                new Signal(tr.uid,"02000",cxid).Obey(this);
             else if (exceptions.Contains("NOT_FOUND"))
-                new Signal(tr.uid,"NOT_FOUND", cxid).Obey(tr,this);
+                new Signal(tr.uid,"NOT_FOUND", cxid).Obey(this);
             else if (next != null)
-                next.NoData(tr);
+                next.NoData();
+        }
+        internal virtual TypedValue Ret()
+        {
+            return val;
         }
         public override string ToString()
         {
@@ -101,10 +117,31 @@ namespace Pyrrho.Level4
     internal class CalledActivation : Activation
     {
         internal Procedure proc = null;
-        internal Domain owningType = null;
-        public CalledActivation(Transaction tr, Context cx, Procedure p,Domain ot)
-            : base(tr, cx, p, ((ObInfo)tr.role.obinfos[p.defpos]).name)
-        { proc = p; owningType = ot; }
+        internal Domain udt = null;
+        internal Method cmt = null;
+        internal ObInfo udi = null;
+        public CalledActivation(Context cx, Procedure p,Domain ot)
+            : base(cx, p, ((ObInfo)cx.db.role.obinfos[p.defpos]).name)
+        { 
+            proc = p; udt = ot;
+            if (p is Method mt)
+            {
+                cmt = mt;
+                udi = (ObInfo)tr.role.obinfos[cmt.udType.defpos];
+                for (var b = udi.columns.First(); b != null; b = b.Next())
+                {
+                    var iv = b.value();
+                    locals += (iv.defpos, true);
+                    cx.Add(iv);
+                }
+            }
+        }
+        internal override TypedValue Ret()
+        {
+            if (udi!=null)
+                return new TRow(udi.domain,values);
+            return base.Ret();
+        }
         public override string ToString()
         {
             return "CalledActivation " + proc.defpos;
@@ -121,8 +158,8 @@ namespace Pyrrho.Level4
     {
         internal readonly TransitionRowSet _trs;
         internal BTree<long, Index> oldIndexes = BTree<long, Index>.Empty;
-        internal BTree<long, object> oldRows = BTree<long, object>.Empty;
-        internal BTree<long, TypedValue> newRow;
+        internal BTree<long, TableRow> oldRows = BTree<long, TableRow>.Empty;
+        internal bool deferred;
         /// <summary>
         /// The trigger definition
         /// </summary>
@@ -133,63 +170,74 @@ namespace Pyrrho.Level4
         /// <param name="trs">The transition row set</param>
         /// <param name="tg">The trigger</param>
         internal TriggerActivation(Context _cx, TransitionRowSet trs, Trigger tg)
-            : base(trs._tr as Transaction,_cx, tg.definer, tg.name)
+            : base(_cx, tg.definer, tg.name)
         {
             _trs = trs;
             parent = _cx.next;
-            newRow = parent?.row.values;
-            var fm = trs.qry as From;
-            var t = trs._tr.objects[fm.target] as Table;
+            var fm = trs.from;
+            var t = _cx.db.objects[fm.target] as Table;
             oldRows = t.tableRows;
             for (var b = t.indexes.First(); b != null; b = b.Next())
-                oldIndexes += (b.value(), (Index)trs._tr.objects[b.value()]);
+                oldIndexes += (b.value(), (Index)_cx.db.objects[b.value()]);
             _trig = (Trigger)tg.Frame(this);
-            domain = trs._tr.role.obinfos[t.defpos] as Domain;
-            if (tg.oldRow != null)
-                defs += (tg.oldRow, new ObInfoOldRow(fm.rowType,trs.qry.defpos));
-            if (tg.newRow != null)
-                defs += (tg.newRow, fm.rowType);
-            if (tg.oldTable != null)
-                defs += (tg.oldTable, new FromOldTable(tg.oldTable,fm));
-            if (tg.newTable != null)
-                defs += (tg.newTable, fm);
-        }
-        public static TriggerActivation operator+(TriggerActivation a,BTree<long,TypedValue>nv)
-        {
-            for (var b = nv?.First(); b != null; b = b.Next())
-                a.newRow += (b.key(), b.value());
-            return a;
+            deferred = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
+            if (deferred)
+                _cx.db += (Transaction.Deferred, _cx.tr.deferred + this); 
+            domain = _cx.db.role.obinfos[t.defpos] as Domain;
         }
         /// <summary>
-        /// Execute the trigger for the current row or table, using the definer's context
+        /// Execute the trigger for the current row or table, using the definer's role
         /// </summary>
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
-        internal (Transaction,bool) Exec(Transaction tr, Context cx)
+        internal (Context,bool) Exec(Context cx,TransitionRowSet.TransitionCursor row)
         {
-            row = null;
-            values = cx.values;
-            data = cx.data;
-            if (cx.row!=null)
-                values += (cx.row.info.defpos,cx.values[_trs.from.defpos]);
+            if (deferred)
+                return (cx, false);
+            values += cx.values;
+            data += cx.data;
+            if (_trig.oldTable != null)
+                data += (_trig.oldTable.defpos,_trs);
+            if (_trig.oldRow != null)
+                data += (_trig.oldRow.defpos,_trs);
+            if (row!=null)
+                values += (row.dataType.defpos,cx.values[_trs.from.defpos]);
+            var rs = data[_trig.from.defpos];
+            from = rs.finder;
+            if (row!=null) // row triggers have cursors 
+                cursors += (_trig.from.defpos, // trigger-side version of transition cursor
+                    new TransitionRowSet.TransitionCursor(this, _trig.from.rowType, row));
             var ta = _trig.action;
-            var tc = ta.cond?.Eval(tr, cx);
+            var tc = ta.cond?.Eval(cx);
             if (tc != TBool.False)
             {
-                var oa = tr.triggeredAction;
-                tr += (Transaction.TriggeredAction, tr.nextPos);
-                tr += new Level2.TriggeredAction(_trig.defpos, tr);
-                tr = ta.stms.First().value().Obey(tr, this);
-        //        if (parent != null)
-       //            for (var b = affected.First(); b != null; b = b.Next())
-       //                 parent.affected += b.value();
-                tr += (Transaction.TriggeredAction, oa);
+                var oa = cx.tr.triggeredAction;
+                cx.db += (Transaction.TriggeredAction, cx.db.nextPos);
+                cx.Add(new Level2.TriggeredAction(_trig.defpos, cx.db.nextPos, cx));
+                var nx = ta.stms.First().value().Obey(this);
+                if (nx != this)
+                    throw new PEException("PE677");
+                var vs = BTree<long, TypedValue>.Empty;
+                Cursor nc = (row==null)?null:cursors[_trig.from.defpos];
+                for (var b=_trig.from.rowType.First();b!=null;b=b.Next())
+                { // updated values for transition-side transition cursor
+                    var s = b.value();
+                    var p = (s is SqlCopy sc) ? sc.copyFrom : s.defpos;
+                    if (nc!=null)
+                     vs += (p, nc[s.defpos]);
+                }
+                cx.values += vs; 
+                cx.SlideDown(this);
+                if (row!=null)
+                    cx.cursors += (row._trs.defpos,
+                        new TransitionRowSet.TransitionCursor(this,row,vs));
+                cx.db += (Transaction.TriggeredAction, oa);
             }
-            return (tr,tc!=TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead));
+            return (cx,tc!=TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead));
         }
         internal override TriggerActivation FindTriggerActivation(long tabledefpos)
         {
-            var fm = _trs.qry as From;
-            var t = _trs._tr.objects[fm.target] as Table;
+            var fm = _trs.from;
+            var t = tr.objects[fm.target] as Table;
             return (t.defpos == tabledefpos) ? this : base.FindTriggerActivation(tabledefpos);
         }
     }

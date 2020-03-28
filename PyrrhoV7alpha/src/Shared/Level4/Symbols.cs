@@ -4,7 +4,7 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -19,56 +19,25 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Ident : IComparable
     {
-        public readonly Ident sub = null;
-        bool indexed = false;
+        internal readonly Ident sub;
         internal readonly long iix;
-        string _ident;
-        internal string ident
-        {
-            get => _ident;
-            set
-            {
-                if (indexed)
-                    throw new PEException("PE725");
-                _ident = value;
-            }
-        }
-        /// <summary>
-        /// the start position in the lexer
-        /// </summary>
-        internal readonly int lxrstt = 0;
-        /// <summary>
-        /// the current position in the lexer
-        /// </summary>
-        internal int lxrpos = 0;
-        /// <summary>
-        /// The lexer responsible
-        /// </summary>
-        internal Lexer lexer = null;
+        internal readonly string ident;
         internal Ident(Lexer lx, string s = null)
         {
             ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString());
-            lexer = lx;
-            lxrstt = lx.start;
             iix = lx.Position;
-            lxrpos = lx.pos;
+            sub = null;
         }
         internal Ident(Lexer lx, int st, int pos, Ident sb = null)
         {
             iix = lx.Position;
             ident = new string(lx.input, st, pos - st);
-            lexer = lx;
-            lxrstt = st;
-            lxrpos = pos;
             sub = sb;
         }
         internal Ident(Ident lf, Ident sb)
         {
             ident = lf.ident;
             iix = lf.iix;
-            lexer = lf.lexer;
-            lxrstt = lf.lxrstt;
-            lxrpos = lf.lxrpos;
             sub = sb;
         }
         internal Ident(Ident pr,string s)
@@ -86,55 +55,13 @@ namespace Pyrrho.Level4
             iix = dp;
             ident = s;
         }
-        internal int Length()
+        Ident(string s, long dp,Ident sb)
         {
-            return 1 + (sub?.Length() ?? 0);
+            iix = dp;
+            ident = s;
+            sub = sb;
         }
-        internal Ident Final()
-        {
-            return sub?.Final() ?? this;
-        }
-        public bool HeadsMatch(Ident a)
-        {
-            if (a == null)
-                return false;
-            if (iix != 0 && iix == a.iix)
-                return true;
-            if (((iix == 0 || iix == a.iix) && ident == a.ident))
-                return true;
-            return false;
-        }
-        public bool _Match(Ident a)
-        {
-            return HeadsMatch(a) && ((sub == null && a.sub == null) || sub?._Match(a.sub) == true);
-        }
-        public Ident Suffix(Ident pre)
-        {
-            if (pre == null)
-                return this;
-            if (!HeadsMatch(pre) || sub == null)
-                return null;
-            return sub.Suffix(pre.sub);
-        }
-        /// <summary>
-        /// Instead of this, use a new Ident that has $arity appended if necessary.
-        /// Check Metdata $seq usage. XXX
-        /// </summary>
-        /// <returns></returns>
-        internal Ident Suffix(int x)
-        {
-            if (ident.Contains("$"))
-                return this;
-            return new Ident(ident + "$" + x, 0);
-        }
-        /// <summary>
-        /// RowTypes should not have dots
-        /// </summary>
-        /// <returns>The dot-less version of the Ident</returns>
-        internal Ident ForTableType()
-        {
-            return (sub is Ident id) ? id : this;
-        }
+        internal int Length => 1 + (sub?.Length ?? 0);
         public override string ToString()
         {
             if (ident == "...") // special case for anonymous row types: use NameInSession for readable version
@@ -150,6 +77,10 @@ namespace Pyrrho.Level4
                 sb.Append(sub.ToString());
             }
             return sb.ToString();
+        }
+        internal Ident Relocate(Level2.Writer wr)
+        {
+            return new Ident(ident, wr.Fix(iix), sub?.Relocate(wr));
         }
         internal void ToString1(StringBuilder sb, Context cx, string eflag)
         {
@@ -174,14 +105,20 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        internal class Idents : BTree<string,(DBObject,Idents)>
+        internal class Idents : BTree<string, (DBObject, Idents)>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
             Idents(BTree<string, (DBObject, Idents)> b) : base(b.root) { }
+            public static Idents operator +(Idents t, (string, DBObject, Idents) x)
+            {
+                return new Idents(t + (x.Item1,(x.Item2??SqlNull.Value,x.Item3)));
+            }
             public static Idents operator +(Idents t, (Ident, DBObject) x)
             {
                 var (id, ob) = x;
+                if (ob is ObInfo oi)
+                    Console.WriteLine("Bad def " + oi.ToString());
                 if (t.Contains(id.ident))
                 {
                     var (to, ts) = t[id.ident];
@@ -195,35 +132,40 @@ namespace Pyrrho.Level4
                 else
                     return new Idents(t + (id.ident, (ob, Empty)));
             }
-            public static Idents operator +(Idents t, (Ident,ObInfo) x)
+            public static Idents operator +(Idents t, (Ident,Selection) x)
             {
                 var (id, oi) = x;
-                for (var b = oi.columns.First(); b != null; b = b.Next())
+                for (var b = oi.First(); b != null; b = b.Next())
                 {
                     var c = b.value();
                     t += (new Ident(id, new Ident(c.name, 0)), c);
                 }
                 return t;
             }
-            public DBObject Get(Context cx,Ident ic)
+            internal DBObject this[Ident ic]
             {
-                if (!Contains(ic.ident))
-                    return null;
-                var (ob,si) = this[ic.ident];
-                if (cx.dbformat < 51)
-                    cx.digest += (ic.iix, (ic.ident, ob.defpos));
-                return (ic.sub == null) ? ob
-                    : si.Get(cx, ic.sub);
+                get
+                {
+                    if (ic == null || !Contains(ic.ident))
+                        return null;
+                    var (ob, ids) = this[ic.ident];
+                    if (ic.sub == null)
+                        return ob;
+                    return ids?[ic.sub];
+                }
             }
-            public (DBObject,string) Split(Ident ic,DBObject ob=null)
+            internal (DBObject,Ident) this[(Ident,int) x]
             {
-                var id = ic.ident;
-                if (!Contains(id))
-                    return (null, id);
-                if (ic.sub == null)
-                    return (ob, id);
-                var (nb,nt) = this[id];
-                return nt.Split(ic.sub,nb);
+                get
+                {
+                    var (ic, d) = x;
+                    if (ic == null || !Contains(ic.ident) || d < 1)
+                        return (null, ic);
+                    var (ob, ids) = this[ic.ident];
+                    if (ids!=null && ic.sub != null && d > 1)
+                        return ids[(ic.sub, d - 1)];
+                    return (ob, ic.sub);
+                }
             }
             public IdBookmark First(int p,Ident pr=null)
             {
@@ -254,9 +196,21 @@ namespace Pyrrho.Level4
                     if (done[ob.defpos] is DBObject nb)
                         ob = nb;
                     st = st.Replace(done);
-                    r += (b.key(), (ob, st));
+                    r += (b.key(), (ob, st)); // do not change the string key part
                 }
                 return new Idents(r);
+            }
+            internal static Idents For(DBObject ob,Database db,Context cx)
+            {
+                var r = Empty;
+                var oi = (ObInfo)db.role.obinfos[ob.defpos];
+                for (var b=oi?.columns.First();b!=null;b=b.Next())
+                {
+                    var sc = b.value();
+                    r += (sc.name, sc, For(sc,db,cx));
+                    cx.Add(sc);
+                }
+                return r;
             }
         }
         internal class IdBookmark

@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -43,8 +43,8 @@ namespace Pyrrho.Level2
         /// <param name="fn">The ordering function</param>
         /// <param name="fl">The ordering flags</param>
         /// <param name="db">The local database</param>
-        public Ordering(long tp, long fn, OrderCategory fl, Transaction tr) 
-            :base(Type.Ordering,tr)
+        public Ordering(long tp, long fn, OrderCategory fl, long pp, Context cx)
+            : base(Type.Ordering,pp,cx)
         {
             typedefpos = tp;
             funcdefpos = fn;
@@ -116,12 +116,12 @@ namespace Pyrrho.Level2
                 flags + Pos(funcdefpos);
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var dm = (Domain)db.objects[typedefpos];
-            dm = dm + (Domain.OrderFunc, (Procedure)db.objects[funcdefpos])
+            var dm = (Domain)cx.db.objects[typedefpos];
+            dm = dm + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
                 +(Domain.OrderCategory,flags);
-            return (db + (dm, p),ro);
+            cx.db = cx.db + (dm, p);
         }
     }
 }

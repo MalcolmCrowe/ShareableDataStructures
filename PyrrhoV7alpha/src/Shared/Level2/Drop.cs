@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -34,8 +34,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="dp">The object to drop</param>
         /// <param name="db">The local database</param>
-        public Drop(long dp,Transaction db)
-            : this(Type.Drop, dp, db)
+        public Drop(long dp,long pp, Context cx)
+            : this(Type.Drop, dp, pp, cx)
 		{
 		}
         /// <summary>
@@ -45,8 +45,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The PhysBase</param>
         /// <param name="ob">The defining position of the object being dropped</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Drop(Type t, long ob, Transaction db)
-            : base(t, db)
+        protected Drop(Type t, long ob, long pp, Context cx)
+            : base(t, pp, cx)
 		{
 			delpos = ob;
 		}
@@ -105,6 +105,7 @@ namespace Pyrrho.Level2
         {
             switch(that.type)
             {
+                case Type.Drop1:
                 case Type.Drop: return (delpos==((Drop)that).delpos)? ppos:-1;
                 case Type.Change: return (delpos == ((Change)that).Affects) ? ppos : -1;
                 case Type.Record3:
@@ -171,15 +172,15 @@ namespace Pyrrho.Level2
 			return (pos==delpos)?new DBException("40073",delpos).Mix():null;
 		}
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var ob = (DBObject)db.objects[delpos];
-            return (ob==null)?(db,ro):ob.Cascade(db,db,ro,dropAction);
+            cx.db = ((DBObject)cx.db.objects[delpos]).Drop(cx.db, cx.db, p);
         }
     }
     internal class Drop1 : Drop
     {
-        public Drop1(long dp, Drop.DropAction a, Transaction db) : base(Type.Drop1, dp, db) 
+        public Drop1(long dp, DropAction a, long pp, Context cx)
+            : base(Type.Drop1, dp, pp, cx) 
         {
             dropAction = a;
         }

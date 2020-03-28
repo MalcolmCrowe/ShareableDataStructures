@@ -29,7 +29,6 @@ namespace Pyrrho.Common
     /// </summary>
     public abstract class TypedValue : ITypedValue,IComparable
     {
-        internal readonly ObInfo info = null;
         internal readonly Domain dataType = Domain.Null;
         static int _tvid = 0;
         internal int tvid = ++_tvid;
@@ -39,23 +38,16 @@ namespace Pyrrho.Common
                 throw new PEException("PE666");
             dataType = t;
         }
-        internal TypedValue(ObInfo oi)
-        {
-            info = oi;
-            dataType = Domain.Row;
-        }
-        internal TypedValue(Domain dt,ObInfo oi)
-        {
-            dataType = dt; info = oi;
-        }
         internal abstract object Val();
         internal virtual TypedValue Next()
         {
             throw new DBException("22009",dataType.kind.ToString());
         }
-        internal virtual SqlValue Build(long dp)
+        internal virtual SqlValue Build(long dp,Domain td)
         {
-            return new SqlLiteral(dp, this);
+            if (td.kind == Sqlx.CONTENT)
+                td = null;
+            return new SqlLiteral(dp, this, td);
         }
         internal virtual byte BsonType()
         {
@@ -168,9 +160,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (!value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1;
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1;
             if (!that.value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1;
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1;
             return value.Value.CompareTo(that.value.Value);
         }
         internal override byte BsonType()
@@ -224,9 +216,9 @@ namespace Pyrrho.Common
             if (ivalue == v)
                 return 0;
             if (ivalue == null && v != null)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (v == null)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1;
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1;
             return ivalue.CompareTo(v);
         }
         internal override byte BsonType()
@@ -279,9 +271,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (!value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (!that.value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.Value.CompareTo(that.value.Value);
         }
         public override string ToString()
@@ -325,9 +317,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (that.value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.CompareTo(that.value);
         }
         public override string ToString()
@@ -357,9 +349,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (that.value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.CompareTo(that.value);
         }
         internal override TypedValue Next()
@@ -542,9 +534,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (!value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (!that.value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.Value.CompareTo(that.value.Value);
         }
         public override string ToString()
@@ -583,9 +575,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (that.value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.ToString().CompareTo(that.value.ToString());
         }
         internal override object Val()
@@ -615,9 +607,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (!value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (!that.value.HasValue)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return value.Value.CompareTo(that.value.Value);
         }
         internal override object Val()
@@ -653,9 +645,9 @@ namespace Pyrrho.Common
             if (value == that.value)
                 return 0;
             if (value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (that.value == null)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             var e = value.First();
             var f = that.value.First();
             for (;e!=null &&f!=null;e=e.Next(),f=f.Next())
@@ -700,63 +692,6 @@ namespace Pyrrho.Common
             }
         }
     }
-    /// <summary>
-    /// AS the name implies, this is for CURSOR values in SQL procedures
-    /// </summary>
-    internal class TCursor : TypedValue
-    {
-        internal readonly RowBookmark bmk;
-        internal TCursor(RowBookmark b) : base(Domain.Cursor) { bmk = b; }
-        internal override object Val()
-        {
-            return bmk;
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return bmk==null;
-            }
-        }
-    }
-    internal class TRowSet : TypedValue
-    {
-        internal RowSet rowSet;
-        internal TRowSet(RowSet r) : base(r.rowType) { rowSet = r; }
-        internal TRowSet(Transaction tr,Context cx,Query q,ObInfo dt,params TypedValue[] vs) :base(dt)
-        {
-            if (vs.Length == 0)
-                rowSet = EmptyRowSet.Value;
-            else if (vs[0] is TRow && dt.CanTakeValueOf(vs[0].info))
-            {
-                var ers = new ExplicitRowSet(tr,cx,q);
-                for (var j = 0; j < vs.Length; j++)
-                    ers.Add((-1L,vs[j] as TRow));
-                rowSet = ers;
-            }
-            else
-                rowSet = new TrivialRowSet(tr,cx,q, new TRow(dt, vs));
-        }
-        internal override object Val()
-        {
-            return rowSet;
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return false;
-            }
-        }
-    }
     internal class TArray : TypedValue
     {
         internal List<TypedValue> list; 
@@ -764,14 +699,6 @@ namespace Pyrrho.Common
         internal TArray(Domain dt, List<TypedValue> a) : base(dt) { list = a; }
         internal TArray(Domain dt,int n) : base(dt) 
         { 
-            list = new List<TypedValue>(n);
-            for (int i = 0; i < n; i++)
-                list.Add(null);
-        }
-        internal TArray(ObInfo dt, params TypedValue[] a) : base(dt) { list = new List<TypedValue>(a); }
-        internal TArray(ObInfo dt, List<TypedValue> a) : base(dt) { list = a; }
-        internal TArray(ObInfo dt, int n) : base(dt)
-        {
             list = new List<TypedValue>(n);
             for (int i = 0; i < n; i++)
                 list.Add(null);
@@ -813,10 +740,10 @@ namespace Pyrrho.Common
             {
                 if (that.list == null || that.list.Count == 0)
                     return 0;
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             }
             if (that.list == null || that.list.Count==0)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             int j = 0;
             for(;j<list.Count&&j<that.list.Count;j++)
             {
@@ -876,9 +803,9 @@ namespace Pyrrho.Common
             if (_dataType == that._dataType)
                 return 0;
             if (_dataType == null)
-                return (_dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (_dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             if (that._dataType == null)
-                return (_dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (_dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             return _dataType.CompareTo(that._dataType);
         }
         public override bool IsNull
@@ -941,10 +868,10 @@ namespace Pyrrho.Common
             {
                 if (that.value == null || that.value.Length == 0)
                     return 0;
-                return (dataType.Nulls == Sqlx.LAST) ? 1 : -1; 
+                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
             }
             if (that.value == null || that.value.Length == 0)
-                return (dataType.Nulls == Sqlx.LAST) ? -1 : 1; 
+                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
             var m = value.Length;
             var n = that.value.Length;
             for (int i=0;i<n && i<m;i++)
@@ -1065,6 +992,13 @@ namespace Pyrrho.Common
         {
             _head = head; _tail = tail;
         }
+        PRow(TRow r,int off,int len)
+        {
+            _head = r[off];
+            _tail = (off < len - 1) ? new PRow(r, off + 1, len) : null;
+        }
+        public PRow(TRow r) : this(r, 0, r.Length)
+        { }
         public PRow(BList<TypedValue> v,int off=0)
         {
             if (off < v.Count)
@@ -1085,7 +1019,6 @@ namespace Pyrrho.Common
             if (++off < v.Length)
                 _tail = new PRow(off, v);
         }
-        public PRow(TRow r) : this(r.columns) { }
         internal PRow Reverse()
         {
             PRow r = null;
@@ -1101,6 +1034,8 @@ namespace Pyrrho.Common
         public int _CompareTo(object ob)
         {
             var p = ob as PRow;
+            if (_head == null)
+                return -1;
             if (p == null)
                 return 1;
             var c = _head.CompareTo(p._head);
@@ -1128,42 +1063,28 @@ namespace Pyrrho.Common
     }
     internal class TRow : TypedValue
     {
-        internal readonly BList<TypedValue> columns = null;
-        internal BTree<long, TypedValue> values = null; // alternative to columns
+        internal BTree<long, TypedValue> values = null;
         internal readonly int docCol = -1;  // note the position of a single document column if present
-        internal readonly BList<SqlValue> grouping = BList<SqlValue>.Empty;
-        internal int Length => info?.Length ?? (int)(columns?.Count ?? values?.Count);
-        public TRow(ObInfo oi, BTree<long, TypedValue> vs) : base(oi)
+        internal int Length => (int)dataType.representation.Count;
+        public TRow(Domain dt, BTree<long, TypedValue> vs) : base(dt)
         {
-            var cols = BList<TypedValue>.Empty;
             var ws = BTree<long, TypedValue>.Empty;
-            for (int i = 0; i < oi.Length; i++)
+            for (var b = dt.representation.First(); b != null; b = b.Next())
             {
-                var c = oi.columns[i];
-                var w = vs[c.Defpos()]??vs[c.defpos];
-                cols += (i, w);
-                ws += (c.defpos, w);
+                var p = b.value().Item1;
+                ws += (p, vs[p]);
             }
-            columns = cols;
             values = ws;
         }
-        public TRow(Domain dt,ObInfo oi, BTree<long, TypedValue> vs) : base(dt,oi)
-        {
-            var cols = BList<TypedValue>.Empty;
-            for (int i = 0; i < oi.Length; i++)
-                cols += (i, vs[oi.columns[i].defpos]);
-            columns = cols;
-            values = vs;
-        }
-        public TRow(ObInfo oi,BList<TypedValue> cols) :base(oi)
+        protected TRow(TRow rw) : this(rw.dataType, rw.values) { }
+        public TRow(ObInfo oi, BList<TypedValue> cols) : base(oi.domain)
         {
             var vals = BTree<long, TypedValue>.Empty;
             for (var b = oi.columns.First(); b != null; b = b.Next())
             {
-                var sc = b.value();
-                vals += (sc.defpos, cols[b.key()]);
+                var p = b.value().defpos;
+                vals += (p, cols[b.key()]);
             }
-            columns = cols;
             values = vals;
         }
         /// <summary>
@@ -1171,98 +1092,49 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="r">The row (for a row type)</param>
         /// <param name="v">The values</param>
-        public TRow(ObInfo oi, params TypedValue[] v) 
-            : base(oi)
+        public TRow(ObInfo oi, params TypedValue[] v)
+            : base(oi.domain)
         {
-            var cols = BList<TypedValue>.Empty;
-            values = BTree<long, TypedValue>.Empty;
-            var m = v.Length;
-            if (m == 1 && (v[0] is TRow t0) && oi.Length != 0 && !v[0].IsNull)
+            var vals = BTree<long, TypedValue>.Empty;
+            var i = 0;
+            for (var b = oi.columns.First(); i < v.Length && b != null; b = b.Next())
             {
-                for (int i = 0; i < oi.Length; i++)
-                {
-                    var c = oi.columns[i];
-                    var vv = (v[0] as TRow)?[c.defpos];
-                    cols += (i,vv);
-                    values += (c.defpos, vv);
-                }
-                columns = cols;
-                return;
+                var p = b.value().defpos;
+                vals += (p, v[b.key()]);
             }
-            //          if (m!=0 && n != m)
-            //            throw new DBException("22005", dt, m);
-            for (int i = 0; i < oi.Length; i++)
+            values = vals;
+        }
+        internal TRow(ObInfo oi, PRow v) : base(oi.domain)
+        {
+            var vals = BTree<long, TypedValue>.Empty;
+            for (var b = oi.columns.First(); b != null; b = b.Next())
             {
-                var c = oi.columns[i];
-                var x = (i >= m) ? TNull.Value : v[i];
-                cols += (i,x);
-                values += (c.defpos, x);
+                var p = b.value().defpos;
+                vals += (p, v[b.key()]);
             }
-            columns = cols;
+            values = vals;
         }
-        public TRow(ObInfo oi, TypedValue[] v, BList<SqlValue> gp) : this(oi,v)
+        public static TRow operator +(TRow r, (int, Domain, long, TypedValue) x)
         {
-            grouping = gp;
+            var (i, dm, dp, tv) = x;
+            return new TRow(r.dataType+(i,(dp,dm)), r.values + (dp,tv));
         }
-        internal TRow(ObInfo oi, PRow r) : base(new Domain(oi.defpos,Domain.Row))
+        public static TRow operator -(TRow r, (int,long) x)
         {
-            var cols = BList<TypedValue>.Empty;
-            values = BTree<long, TypedValue>.Empty;
-            for (int i = 0; i < oi.Length; i++)
-            {
-                cols +=(i,r?[i]);
-                var c = oi.columns[i];
-                values += (c.defpos, r?[i]);
-            }
-            columns = cols;
+            var (i, dp) = x;
+            return new TRow(r.dataType-i, r.values - dp);
         }
-        public static TRow operator+(TRow r,(long,TypedValue)x)
+        public static TRow operator+(TRow r, (long,TypedValue)x)
         {
-            return new TRow(r.info, r.values + x);
-        }
-        public static TRow operator +(TRow r, (int, TypedValue) x)
-        {
-            return new TRow(r.info, r.columns + x);
-        }
-        public static TRow operator +(TRow r, (string, TypedValue) x)
-        {
-            return new TRow(r.info, r.columns + (r.info.map[x.Item1].Value,x.Item2));
+            return new TRow(r.dataType, r.values + x);
         }
         internal override object Val()
         {
             return this;
         }
-        internal override TypedValue this[string n]
-        {
-            get
-            {
-                if (info?.map.Contains(n)==true)
-                {
-                    var s = info.map[n];
-                    return (columns?[s.Value]);
-                }
-                if (docCol >= 0)
-                    return columns?[docCol][n]
-                        ?? ((TRow)values[info.columns[docCol].defpos])[n];
-                if (info==null) 
-                    throw new PEException("PE584");
-                return null;
-            }
-        }
-        internal TypedValue this[int i]
-        {
-            get
-            {
-                if (i < 0)
-                    return TNull.Value;
-                if (columns != null)
-                    return columns[i];
-                if (info == null)
-                    throw new PEException("PE584");
-                return TNull.Value;
-            }
-        }
-        internal override TypedValue this[long n]  => values[n]; 
+        internal override TypedValue this[long n] => values[n];
+        internal TypedValue this[BTree<long,bool> c] => values[c];
+        internal TypedValue this[int i] => values[dataType.representation[i].Item1];
         /// <summary>
         /// Make a readable representation of the Row
         /// </summary>
@@ -1270,45 +1142,16 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             var str = new StringBuilder();
-            var nm = "Row";
-            str.Append(nm);
-            if (dataType.kind == Sqlx.ARRAY)
+            var cm = '(';
+            for (var b=dataType.representation.First();b!=null;b=b.Next())
             {
-                str.Append("[");
-                var cm = "";
-                for (int i = 0; i < columns.Count; i++)
-                {
-                    str.Append(cm); cm = ",";
-                    str.Append(""+i);
-                    str.Append('=');
-                    str.Append(this[i].ToString());
-                }
-                str.Append("]");
+                str.Append(cm); cm = ',';
+                var (p,d) = b.value();
+                str.Append(DBObject.Uid(p)); str.Append('=');
+                str.Append(values[p]?? TNull.Value);
             }
-            else
-            {
-                str.Append("(");
-                var n = Length;
-                var cm = "";
-                for (int i = 0; i < Length; i++)
-                {
-                    str.Append(cm); cm = ",";
-                    str.Append(info?.columns[i]?.name??("Col"+i));
-                    str.Append('=');
-                    str.Append(this[i]);
-                }
-                str.Append(")");
-                //          str.Append(":");
-                //          str.Append(DataType.ToString());
-            }
+            str.Append(')');
             return str.ToString();
-        }
-        internal TRow MakeKey(Context cx, ObInfo dt)
-        {
-            PRow r = null;
-            for (int i = (int)dt.Length - 1; i >= 0; i--)
-                r = new PRow(this[i], r);
-            return new TRow(dt, r);
         }
         public override int _CompareTo(object obj)
         {
@@ -1350,7 +1193,6 @@ namespace Pyrrho.Common
             }
         }
     }
-
     /// <summary>
     /// A Multiset can be placed in a cell of a Table, so is treated as a value type.
     /// Operations of UNION and INTERSECT etc are defined on Multisets.
@@ -1382,15 +1224,10 @@ namespace Pyrrho.Common
         /// <param name="et">The element type</param>
         internal TMultiset(long lp,Domain et) : base (new Domain(lp,Sqlx.MULTISET,et))
         {
-            tree = new CTree<TypedValue,long?>(et); 
+            tree = new CTree<TypedValue,long?>(et.kind); 
             // Disallow not Allow for duplicates (see below)
         }
-        internal TMultiset(Domain mt) : base(mt)
-        {
-            tree = new CTree<TypedValue, long?>(mt.elType.domain);
-            // Disallow not Allow for duplicates (see below)
-        }
-        internal TMultiset(Domain dt,Context cx) : base(dt) { }
+        internal TMultiset(Domain dt) : base(dt) { }
         internal TMultiset(Domain dt,CTree<TypedValue,long?>t) :base(dt)
         {
             tree = t; count = t.Count;

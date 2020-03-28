@@ -6,7 +6,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -57,8 +57,8 @@ namespace Pyrrho.Level2
         /// <param name="e">The end column</param>
         /// <param name="wh">The PhysBase</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PPeriodDef(long t, string p, long s, long e, Transaction tr)
-            : base(Type.PeriodDef, tr)
+        public PPeriodDef(long t, string p, long s, long e, long pp, Context cx)
+            : base(Type.PeriodDef, pp, cx)
         {
             tabledefpos = t;
             periodname = p;
@@ -144,16 +144,17 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,db);
-            var tb = (Table)db.objects[tabledefpos];
+            var ro = cx.db.role;
+            var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
+            var tb = (Table)cx.db.objects[tabledefpos];
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
             var oc = new ObInfo(ppos, periodname, Domain.Period, priv);
             var oi = (ObInfo)ro.obinfos[tabledefpos];
-            var se = new SqlValue(ppos,periodname);
+            var se = new ObInfo(ppos,periodname,Domain.Period);
             ro = ro + oc + (oi + se);
-            return (db + (ro,p) + (pd,p),ro);
+            cx.db = cx.db + (ro, p) + (pd, p);
         }
     }
 }

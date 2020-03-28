@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -137,6 +137,15 @@ namespace Pyrrho.Common
                 return BTree<K,V>.Empty;
             // note: we allow root to have 1 entry
             return new BTree<K,V>(root.Remove(this, k));
+        }
+        internal V this[BTree<K, bool> c]
+        {
+            get
+            {
+                for (var b = c.First(); b != null; b = b.Next())
+                    if (this[b.key()] is V v) return v;
+                return default;
+            }
         }
     }
     /// <summary>
@@ -765,8 +774,10 @@ namespace Pyrrho.Common
     internal class BList<V> : BTree<int, V>
     {
         public new static readonly BList<V> Empty = new BList<V>();
+        public int Length => (int)Count;
         protected BList() : base() { }
         public BList(V v) : base(0, v) { }
+        protected BList(BList<V> b) : base(b.root) { }
         protected BList(Bucket<int, V> r) : base(r) { }
         protected override ATree<int, V> Add(int k, V v)
         {

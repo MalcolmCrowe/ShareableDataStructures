@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -12,27 +12,24 @@ using Pyrrho.Level3;
 namespace Pyrrho.Common
 {
     /// <summary>
-    /// A strongly typed Tree where the key is a TypedValue
+    /// A strongly typed Tree where the key is an ITypedValue
     /// </summary>
     /// <typeparam name="K">The Key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    internal class CTree<K, V> : ATree<K, V>
+    internal class CTree<K, V> : BTree<K, V>
     where K : ITypedValue
     {
-        internal readonly Domain keyType;
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="cx">The context for user defined types etc</param>
-        /// <param name="kt">The key type</param>
-        public CTree(Domain kt) : this(kt, null)
-        {}
+        internal readonly Sqlx kind;
+        internal CTree(Sqlx k) :this(k,null) 
+        {
+            kind = k;
+        }
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="kt">The key type</param>
         /// <param name="e">A starting entry for the tree</param>
-        public CTree(Domain kt, KeyValuePair<K, V> e) : this(kt, new Leaf<K, V>(e)) { }
+        public CTree(Sqlx k, KeyValuePair<K, V> e) : this(k, new Leaf<K, V>(e)) { }
         /// <summary>
         /// Constructor: called when modifying the Tree (hence protected). 
         /// Any modification gives a new Tree(usually sharing most of its Buckets and Slots with the old one)
@@ -40,10 +37,10 @@ namespace Pyrrho.Common
         /// <param name="cx">The context for user defined types etc</param>
         /// <param name="kt">The key type</param>
         /// <param name="b">The new top level (root) Bucket</param>
-        protected CTree(Domain kt, Bucket<K, V> b)
+        protected CTree(Sqlx k,Bucket<K, V> b)
             : base(b)
         {
-            keyType = kt;
+            kind = k;
         }
         /// <summary>
         /// Comparison of keys
@@ -53,7 +50,7 @@ namespace Pyrrho.Common
         /// <returns></returns>
         public override int Compare(K a, K b)
         {
-            return (a == null) ? ((b == null || b.IsNull) ? 0 : -1) : a._CompareTo(b);
+            return (a == null || a.IsNull) ? ((b == null || b.IsNull) ? 0 : -1) : a._CompareTo(b);
         }
         /// <summary>
         /// Creator: Create a new Tree that adds a given key,value pair.
@@ -68,7 +65,7 @@ namespace Pyrrho.Common
         protected override ATree<K, V> Add(K k, V v)
         {
             if (Contains(k))
-                return new CTree<K, V>(keyType, root.Update(this, k, v));
+                return new CTree<K, V>(kind,root.Update(this, k, v));
             return Insert(k, v);
         }
         /// <summary>
@@ -81,10 +78,10 @@ namespace Pyrrho.Common
         protected override ATree<K, V> Insert(K k, V v) // this does not contain k
         {
             if (root==null || root.total == 0)  // empty BTree
-                return new CTree<K, V>(keyType, new KeyValuePair<K, V>(k, v));
+                return new CTree<K, V>(kind,new KeyValuePair<K, V>(k, v));
             if (root.count == Size)
-                return new CTree<K, V>(keyType, root.Split()).Add(k, v);
-            return new CTree<K, V>(keyType, root.Add(this, k, v));
+                return new CTree<K, V>(kind,root.Split()).Add(k, v);
+            return new CTree<K, V>(kind,root.Add(this, k, v));
         }
         /// <summary>
         /// Creator: Create a new Tree that has a modified value
@@ -96,7 +93,7 @@ namespace Pyrrho.Common
         {
             if (!Contains(k))
                 throw new PEException("PE01");
-            return new CTree<K, V>(keyType, root.Update(this, k, v));
+            return new CTree<K, V>(kind,root.Update(this, k, v));
         }
         /// <summary>
         /// Creator: Create a new Tree if necessary that does not have a given key
@@ -109,9 +106,9 @@ namespace Pyrrho.Common
             if (!Contains(k))
                 return this;
             if (root.total == 1) // empty index
-                return new CTree<K, V>(keyType);
+                return new CTree<K, V>(kind);
             // note: we allow root to have 1 entry
-            return new CTree<K, V>(keyType, root.Remove(this, k));
+            return new CTree<K, V>(kind,root.Remove(this, k));
         }
         public static CTree<K, V> operator +(CTree<K, V> tree, (K, V) v)
         {
@@ -135,33 +132,15 @@ namespace Pyrrho.Common
         /// </summary>
         public readonly TreeInfo info;
         /// <summary>
-        /// The nominal value type to be used (actual values can be subtypes)
-        /// </summary>
-        public readonly Domain vType;
-        public readonly Role role;
-        /// <summary>
-        /// Constructor:
-        /// </summary>
-        /// <param name="cx">The context for user-defined types etc</param>
-        /// <param name="ti">The tree info</param>
-        /// <param name="vT">The value type</param>
-        internal SqlTree(TreeInfo ti, Role ro, Domain vT) : base(ti.headType)
-        {
-            info = ti;
-            vType = vT;
-            role = ro;
-        }
-        /// <summary>
         /// private Constructor: for tree operations
         /// </summary>
         /// <param name="ti">The tree info</param>
         /// <param name="vT">The value type</param>
         /// <param name="b">The root bucket</param>
-        SqlTree(TreeInfo ti, Domain vT, Bucket<TypedValue, TypedValue> b)
-            : base(ti.headType, b)
+        SqlTree(TreeInfo ti,Sqlx k,Bucket<TypedValue, TypedValue> b)
+            : base(k,b)
         {
             info = ti;
-            vType = vT;
         }
         /// <summary>
         /// Constructor: a tree at a given depth with a given initial entry.
@@ -170,8 +149,8 @@ namespace Pyrrho.Common
         /// <param name="vType">the nominal value type</param>
         /// <param name="k">a key</param>
         /// <param name="v">a value</param>
-        public SqlTree(TreeInfo ti, Domain vType, TypedValue k, TypedValue v)
-            : this(ti, vType, new Leaf<TypedValue, TypedValue>(new KeyValuePair<TypedValue, TypedValue>(k, v)))
+        public SqlTree(TreeInfo ti, Sqlx kT,TypedValue k, TypedValue v)
+            : this(ti, kT, new Leaf<TypedValue, TypedValue>(new KeyValuePair<TypedValue, TypedValue>(k, v)))
         { }
         public override int Compare(TypedValue a, TypedValue b)
         {
@@ -206,7 +185,7 @@ namespace Pyrrho.Common
         protected override ATree<TypedValue, TypedValue> Add(TypedValue k, TypedValue v)
         {
             if (Contains(k))
-                return new SqlTree(info, vType, root.Update(this, k, v));
+                return new SqlTree(info, kind, root.Update(this, k, v));
             return Insert(k, v);
         }
         /// <summary>
@@ -218,10 +197,10 @@ namespace Pyrrho.Common
         protected override ATree<TypedValue, TypedValue> Insert(TypedValue k, TypedValue v)
         {
             if (root == null || root.total == 0)  // empty BTree
-                return new SqlTree(info, vType, k, v);
+                return new SqlTree(info, kind, k, v);
             if (root.count == Size)
-                return new SqlTree(info, vType, root.Split()).Add(k, v);
-            return new SqlTree(info, vType, root.Add(this, k, v));
+                return new SqlTree(info, kind, root.Split()).Add(k, v);
+            return new SqlTree(info, kind, root.Add(this, k, v));
         }
         /// <summary>
         /// The normal Remove operation: remove a key
@@ -258,7 +237,7 @@ namespace Pyrrho.Common
             if (root.total == 1) // empty index
                 return null;
             // note: we allow root to have 1 entry
-            return new SqlTree(info, vType, root.Remove(this, k));
+            return new SqlTree(info, kind, root.Remove(this, k));
         }
         /// <summary>
         /// The normal Update operation for a key
@@ -282,7 +261,7 @@ namespace Pyrrho.Common
         {
             if (!Contains(k))
                 throw new PEException("PE01");
-            return new SqlTree(info, vType, root.Update(this, k, v));
+            return new SqlTree(info, kind, root.Update(this, k, v));
         }
         public override ABookmark<TypedValue, TypedValue> PositionAt(TypedValue key)
         {

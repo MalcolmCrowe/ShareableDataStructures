@@ -5,7 +5,7 @@ using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -82,23 +82,23 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tb">The level 3 database</param>
         /// <param name="c">The level 2 index</param>
-        public Index(PIndex c, ref Database db)
-            : base(c.name, c.ppos, c.defpos, db.role.defpos, _IndexProps(c, ref db)
+        public Index(PIndex c, Context cx)
+            : base(c.name, c.ppos, c.defpos, cx.db.role.defpos, _IndexProps(c, cx)
                  + (TableDefPos, c.tabledefpos) + (IndexConstraint, c.flags))
         { }
-        static BTree<long, object> _IndexProps(PIndex c, ref Database db)
+        static BTree<long, object> _IndexProps(PIndex c, Context cx)
         {
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, db.GetProcedure(c.adapter, 1));
+                r += (Adapter, cx.db.GetProcedure(c.adapter, 1));
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)
             {
-                var rx = (Index)db.objects[c.reference];
+                var rx = (Index)cx.db.objects[c.reference];
                 var rp = rx.tabledefpos;
-                var rt = (Table)db.objects[rp];
+                var rt = (Table)cx.db.objects[rp];
                 if (rx!=null)
                 {
                     r += (RefIndex, rx.defpos);
@@ -106,16 +106,16 @@ namespace Pyrrho.Level3
                 }
             }
             var cols = CList<TableColumn>.Empty;
-            var tb = (Table)db.objects[c.tabledefpos];
+            var tb = (Table)cx.db.objects[c.tabledefpos];
             for (int j = 0; j < c.columns.Count; j++)
             {
                 var pos = Math.Abs(c.columns[j].defpos);
                 if (pos == 0)
                 {
-                    var pd = (PeriodDef)db.objects[tb.systemPS];
+                    var pd = (PeriodDef)cx.db.objects[tb.systemPS];
                     pos = pd.startCol;
                 }
-                cols += (TableColumn)db.objects[pos];
+                cols += (TableColumn)cx.db.objects[pos];
             }
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
@@ -140,11 +140,11 @@ namespace Pyrrho.Level3
         {
             return x + (Tree, x.rows - y);
         }
-        internal PRow MakeKey(BTree<long,TypedValue> fl)
+        internal PRow MakeKey(TableRow rw)
         {
             PRow r = null;
             for (var b = keys.Last(); b != null; b = b.Previous())
-                r = new PRow(fl[b.value().defpos], r);
+                r = new PRow(rw.vals[b.value().defpos], r);
             return r;
         }
         /// <summary>
@@ -163,7 +163,7 @@ namespace Pyrrho.Level3
                 for (var d = px.rows.First(); d != null; d = d.Next())
                 {
                     long pp = d.Value().Value;
-                    var r = (TableRow)db.objects[pp];
+                    var r = tb.tableRows[pp];
                     var m = r.MakeKey(px);
                     if (m != null)
                     {
@@ -202,47 +202,6 @@ namespace Pyrrho.Level3
                 }
             }
             return this + (Tree, rs);
-        }
-        internal PRow MakeAutoKey(BTree<long, object> fl)
-        {
-            var r = BList<TypedValue>.Empty;
-            for (var b = keys.First(); b!=null; b=b.Next())
-            {
-                var kc = b.value();
-                var v = (TypedValue)fl[kc.defpos];
-                if (v != null)
-                    r += v;
-                else
-                {
-                    if (kc.domain.kind != Sqlx.INTEGER)
-                        throw new DBException("22004");
-                    v = rows.NextKey(r, 0, b.key());
-                    if (v == TNull.Value)
-                        v = new TInt(0);
-                    r += v;
-                }
-            }
-            return new PRow(r);
-        }
-        internal PRow MakeAutoKey(BTree<long, TypedValue> fl)
-        {
-            var r = BList<TypedValue>.Empty;
-            for (var i = 0; i < (int)keys.Count; i++)
-            {
-                var v = fl[keys[i].defpos];
-                if (v != null)
-                    r += v;
-                else
-                {
-                    if (keys[i].domain.kind != Sqlx.INTEGER)
-                        throw new DBException("22004");
-                    v = rows.NextKey(r, 0, i);
-                    if (v == TNull.Value)
-                        v = new TInt(0);
-                    r += v;
-                }
-            }
-            return new PRow(r);
         }
         /// <summary>
         /// Check referential integrity
@@ -322,30 +281,42 @@ namespace Pyrrho.Level3
                     return r;
             return -1;
         }
-        internal override (Database, Role) Cascade(Database d, Database nd, Role ro, 
-            Drop.DropAction a = Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
+        internal override void Cascade(Context cx, 
+            Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
         {
-            if (a != 0)
-                nd += (Database.Cascade,true);
-            var td = (Table)nd.objects[tabledefpos];
-            nd += (td + (Table.Indexes, td.indexes - keys), nd.loadpos);
-            if (reftabledefpos >= 0 && nd.objects[reftabledefpos] is Table ta)
-            {
-                var px = ta.FindPrimaryIndex(nd);
-                nd += (px + (Dependents, px.dependents - defpos), nd.loadpos);
-            }
-            for (var b = ro.dbobjects.First(); b != null; b = b.Next())
-                if (d.objects[b.value()] is Table tb)
+            base.Cascade(cx, a, u);
+            if (reftabledefpos >= 0 && cx.db.objects[reftabledefpos] is Table ta)
+                ta.FindPrimaryIndex(cx.db).Cascade(cx, a, u);
+            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value()] is Table tb)
                     for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
                     {
-                        var rx = (Index)d.objects[xb.value()];
+                        var rx = (Index)cx.db.objects[xb.value()];
                         if (rx == null || rx.refindexdefpos != defpos)
                             continue;
-                        if (a==Drop.DropAction.Restrict)
-                            throw new DBException("23001", "Primary index "+Uid(defpos),Uid(tb.defpos),Uid(rx.defpos));
-                        (nd, ro) = rx.Cascade(d, nd, ro, a, u);
+                        rx.Cascade(cx, a, u);
                     }
-            return base.Cascade(d, nd, ro, a, u);
+        }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            var tb = (Table)nd.objects[tabledefpos];
+            if (tb != null)
+            {
+                var xs = BTree<CList<TableColumn>, long>.Empty;
+                var ks = BTree<long, bool>.Empty;
+                for (var b = tb.indexes.First(); b != null; b = b.Next())
+                    if (b.value() != defpos)
+                    {
+                        var cs = b.key();
+                        for (var c = cs.First(); c != null; c = c.Next())
+                            ks += (c.value().defpos, true);
+                        xs += (cs, b.value());
+                    }
+                tb += (Table.Indexes, xs);
+                tb += (Table.KeyCols, ks);
+                nd += (tb, p);
+            }
+            return base.Drop(d, nd, p);
         }
         /// <summary>
         /// A readable version of the Index
@@ -383,47 +354,4 @@ namespace Pyrrho.Level3
             throw new NotImplementedException();
         }
     }
-    internal class IndexCursor
-    {
-        internal readonly Index _index;
-        internal readonly Table _table;
-        internal readonly BTree<long, TypedValue> _match;
-        internal readonly MTreeBookmark _bmk;
-        internal readonly TableRow _rec;
-        IndexCursor(Table tb,Index index, BTree<long, TypedValue> match, MTreeBookmark bmk, TableRow rec = null)
-        {
-            _index = index; _match = match; _bmk = bmk;  _rec = rec;
-            _table = tb;
-        }
-        static TableRow MoveToMatch(Table _table, BTree<long, TypedValue> _match, ref MTreeBookmark bmk)
-        {
-            for (; bmk != null; bmk = bmk.Next())
-            {
-                var r = (TableRow)_table.tableRows[bmk.Value().Value];
-                for (var m = _match.First(); m != null; m = m.Next())
-                    if (m.value().CompareTo(r.fields[m.key()]) != 0)
-                        goto next;
-                return r;
-                next:;
-            }
-            return null;
-        }
-        public IndexCursor Next()
-        {
-            var bmk = _bmk?.Next();
-            var r = MoveToMatch(_table,_match,ref bmk);
-            if (r == null)
-                return null;
-            return new IndexCursor(_table, _index, _match, bmk, r);
-        }
-        internal static IndexCursor New(Table tb,Index index,BTree<long,TypedValue> match)
-        {
-            var bmk = index.rows.First();
-            var r = MoveToMatch(tb, match, ref bmk);
-            if (r == null)
-                return null;
-            return new IndexCursor(tb, index, match, bmk, r);
-        }
-    }
-
 }

@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool))) { }
+                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool, ObInfo.Any))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -88,14 +88,16 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (Check)Relocate(d);
+            var r = (Check)base.Relocate(wr);
             var s = (SqlValue)search.Relocate(wr);
             if (s != search)
                 r += (Condition, s);
             return r;
+        }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            nd = ((DBObject)nd.objects[checkobjpos]).DropCheck(defpos, nd, p);
+            return base.Drop(d, nd, p);
         }
     }
 }

@@ -5,7 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -32,9 +32,9 @@ namespace Pyrrho.Level4
         /// </summary>
         public string name; 
         /// <summary>
-        /// the name of the parent type
+        /// the target type
         /// </summary>
-        public Ident tname;
+        public Domain type;
         /// <summary>
         /// the number of parameters of the method
         /// </summary>
@@ -43,7 +43,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The return type
         /// </summary>
-        public DBObject retType;
+        public (Domain,ObInfo) retType;
         /// <summary>
         /// a string version of the signature
         /// </summary>
@@ -143,15 +143,15 @@ namespace Pyrrho.Level4
 
     internal class Correlation
     {
-        public string tablealias = null;
-        public BList<string> cols = BList<string>.Empty;
+        public Ident tablealias = null;
+        public BList<Ident> cols = BList<Ident>.Empty;
         internal Correlation() { }
-        internal Correlation(string ta) { tablealias = ta; }
+        internal Correlation(Ident ta) { tablealias = ta; }
         internal Correlation(Ident[] cs)
         {
-            var c = BList<string>.Empty;
+            var c = BList<Ident>.Empty;
             for (var i = 0; i < cs.Length; i++)
-                c += cs[i].ident;
+                c += cs[i];
             cols = c;
         }
         /// <summary>
@@ -159,24 +159,26 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="d"></param>
         /// <returns></returns>
-        internal ObInfo Pick(ObInfo d)
+        internal Selection Pick(Ident ic,Selection d)
         {
-            var cs = d.columns;
-            if (cols != BList<string>.Empty)
+            if (cols.Length == 0)
+                return d;
+            var cs = new Selection(ic.iix, ic.ident);
+            for (var b = cols.First(); b != null; b = b.Next())
             {
-                cs = BList<SqlValue>.Empty;
-                for (var b = cols.First(); b != null; b = b.Next())
-                        cs += d.ColFor(b.value())??
-                        throw new DBException("42112", b.value());
+                var id = b.value();
+                var s = d[id.ident]??
+                    throw new DBException("42112", b.value());
+                if (s is SqlTableCol st)
+                    s = new SqlCopy(id.iix, id.ident, st.info, d.defpos, st.tableCol.defpos);
+                cs += s;
             }
-            if (tablealias != null)
-                d += (Basis.Name, tablealias);
-            return d + (ObInfo.Columns, cs);
+            return cs;
         }
         internal ObInfo Apply(ObInfo d)
         {
             var cs = d.columns;
-            if (cols != BList<string>.Empty)
+            if (cols != BList<Ident>.Empty)
             {
                 if (cols.Count != cs.Count)
                     throw new DBException("22207");

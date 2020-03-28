@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -64,15 +64,15 @@ namespace Pyrrho.Level3
                 if (info.onDuplicate == TreeBehaviour.Allow)
                 {
                     var x = new BTree<long, bool>(v, true);
-                    impl = new SqlTree(info, Domain.Partial, k._head, new TPartial(x));
+                    impl = new SqlTree(info, Sqlx.T, k._head, new TPartial(x));
                 }
                 else
-                    impl = new SqlTree(info, Domain.Int, k._head, new TInt(v));
+                    impl = new SqlTree(info, Sqlx.INT, k._head, new TInt(v));
             }
             else
             {
                 var x = new MTree(info.tail, k._tail, v);
-                impl = new SqlTree(info, Domain.MTree, k._head, new TMTree(x));
+                impl = new SqlTree(info, Sqlx.M, k._head, new TMTree(x));
             }
             count = 1;
         }
@@ -178,7 +178,7 @@ namespace Pyrrho.Level3
             }
             else
             {
-                switch (t.impl.vType.kind)
+                switch (t.impl.kind)
                 {
                     case Sqlx.M:
                         {
@@ -667,8 +667,8 @@ namespace Pyrrho.Level3
         {
             if (off < multi.Length)
             {
-                head = multi.columns[off].defpos;
-                headType = multi.columns[off].domain;
+                head = multi[off].defpos;
+                headType = multi[off].domain;
             }
             onDuplicate = d;
             onNullKey = n;

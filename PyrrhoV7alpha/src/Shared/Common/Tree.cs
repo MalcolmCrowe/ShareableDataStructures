@@ -3,7 +3,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -56,7 +56,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="k">The key to find</param>
         /// <returns>The corresponding value (or null)</returns>
-        public virtual V this[K k]
+        public V this[K k]
         {
             get
             {
@@ -209,7 +209,7 @@ namespace Pyrrho.Common
         {
             var sb = new System.Text.StringBuilder();
             var cm = '(';
-            for (var b=First();b!=null;b=b.Next())
+            for (var b = First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ',';
                 var k = b.key();
@@ -224,8 +224,7 @@ namespace Pyrrho.Common
                     sb.Append(b.value());
                 }
             }
-            if (sb.Length>0)
-                sb.Append(')');
+            sb.Append(")");
             return sb.ToString();
         }
         string Uid(long u)

@@ -1,4 +1,0 @@
-create table A(B int,C int,D char,primary key(B,C))
-insert into A values(2,3,'TwentyThree')
-insert into A values(1,9,'Nineteen')
-update A set C=19 where C=9

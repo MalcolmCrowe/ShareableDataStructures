@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -60,8 +60,8 @@ namespace Pyrrho.Level2
         /// <param name="sq">The 0-based position in the table</param>
         /// <param name="dm">The defining position of the domain</param>
         /// <param name="tb">The local database</param>
-        public PColumn(Type t, long pr, string nm, int sq, long dm, Database db)
-			:base(t,db)
+        public PColumn(Type t, long pr, string nm, int sq, long dm, long pp, 
+            Context cx) : base(t,pp,cx)
 		{
 			tabledefpos = pr;
 			name = nm;
@@ -169,23 +169,23 @@ namespace Pyrrho.Level2
             sb.Append(Pos(domdefpos)); sb.Append("]");
             return sb.ToString();
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = (Table)db.objects[tabledefpos];
+            var ro = cx.db.role;
+            var tb = (Table)cx.db.objects[tabledefpos];
             var ti = (ObInfo)ro.obinfos[tb.defpos];
-            var dt = (Domain)db.objects[domdefpos];
+            var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
-            var se = new SqlCol(ppos,name, tc);
-            if (db.format < 51)
+            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
+            if (cx.db.format < 51)
                 ti += (ObInfo.Map, ti.map + (ppos.ToString(), ti.Length));
-            ro = ro + (oc.defpos,oc) + (ti + se);
-            if (db.format < 51)
+            ro = ro + (oc.defpos,oc) + (ti + oc);
+            if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             tb += tc;
-            return (db+ (ro,p) +(tb,p) +(tc,p),ro);
+            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
         }
     }
     /// <summary>
@@ -206,10 +206,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn2(long pr, string nm, int sq, long dm, string ds, TypedValue dv, 
-            bool nn, GenerationRule ge, Database db)
-			:this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,db)
-		{
-        }
+            bool nn, GenerationRule ge, long pp, Context cx)
+            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,pp,cx)
+		{ }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
@@ -223,8 +222,8 @@ namespace Pyrrho.Level2
         /// <param name="ge">the Generation Rule</param>
         /// <param name="db">The database</param>
         protected PColumn2(Type t, long pr, string nm, int sq, long dm, string ds,
-            TypedValue v, bool nn, GenerationRule ge, Database db)
-			:base(t,pr,nm,sq,dm,db)
+            TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
+            : base(t,pr,nm,sq,dm,pp,cx)
 		{
 			dfs = ds;
             dv = v;
@@ -278,18 +277,15 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
             if (dfs != "")
             {
-                var dt = (Domain)rdr.db.objects[domdefpos];
+                var dt = (Domain)rdr.context.db.objects[domdefpos];
                 if (gn != Generation.Expression)
                     dv = dt.Parse(rdr.Position,dfs);
                 else
                 {
-                    var tb = (Table)rdr.db.objects[tabledefpos];
-                    rdr.context.Add(tb);
-                    var rt = rdr.role.obinfos[tb.defpos] as ObInfo;
-                    for (var b = rt.columns?.First(); b != null; b = b.Next())
-                        rdr.context.Add(b.value());
+                    var oi = (ObInfo)rdr.role.obinfos[tabledefpos];
                     generated = new GenerationRule(Generation.Expression,
-                        dfs, new Parser(rdr.db,rdr.context).ParseSqlValue(dfs,dt));
+                        dfs, new Parser(rdr.context)
+                        .ParseSqlValue(dfs,dt, oi).Reify(rdr.context,oi));
                 }
             }
 		}
@@ -322,8 +318,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(long pr, string nm, int sq, long dm, string ds, TypedValue dv, 
-            string us, BList<UpdateAssignment> ua, bool nn, GenerationRule ge, Database db)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, db)
+            string us, BList<UpdateAssignment> ua, bool nn, GenerationRule ge, long pp,
+            Context cx)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -338,9 +335,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, long pr, string nm, int sq, long dm, string ds, 
-            TypedValue dv, string us,
-            BList<UpdateAssignment> ua, bool nn, GenerationRule ge, Database db)
-            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, db)
+            TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
+            GenerationRule ge, long pp, Context cx)
+            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
         {
             upd = ua;
             ups = us;
@@ -389,8 +386,8 @@ namespace Pyrrho.Level2
             if (ups != "")
                 try
                 {
-                    var oi = (ObInfo)rdr.role.obinfos[tabledefpos];
-                    upd = new Parser(rdr.db, rdr.context).ParseAssignments(ups,oi);
+                    upd = new Parser(rdr.context).ParseAssignments(ups,
+                        Domain.TableType,(ObInfo)rdr.role.obinfos[tabledefpos]);
                 } catch(Exception)
                 {
                     upd = BList<UpdateAssignment>.Empty;
@@ -443,8 +440,8 @@ namespace Pyrrho.Level2
         /// <param name="pa">The path string</param>
         /// <param name="dm">The domain defining position</param>
         /// <param name="db">The local database</param>
-        public PColumnPath(long co, string pa, long dm, Transaction tr) 
-            : base(Type.ColumnPath, tr)
+        public PColumnPath(long co, string pa, long dm, long pp, Context cx)
+            : base(Type.ColumnPath, pp, cx)
         { 
             coldefpos = co;
             path = pa;
@@ -477,7 +474,7 @@ namespace Pyrrho.Level2
             return "ColumnPath [" + coldefpos + "]" + path + "(" + domdefpos + ")";
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

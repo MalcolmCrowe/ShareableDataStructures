@@ -8,7 +8,7 @@ namespace Test
 {
     class Program
     {
-        static int test = 0, qry = 0,testing=0;
+        static int test = 0, qry = 0,testing=0,cur=0;
         bool commit = false;
         PyrrhoConnect conn;
         PyrrhoTransaction tr;
@@ -44,7 +44,7 @@ namespace Test
             }
             catch (Exception e)
             {
-                Console.WriteLine("Test" +testing + " Exception: " + e.Message);
+                Console.WriteLine("Test " +testing + "," +cur + " Exception: " + e.Message);
                 Console.ReadLine();
             }
         }
@@ -79,7 +79,7 @@ namespace Test
             Test14(test);
             Test15(test);
             Test16(test);
-     /*       Test17(test);
+      /*      Test17(test);
             Test18(test);
             Test19(test);
             Test20(test);
@@ -196,6 +196,11 @@ namespace Test
             conn.Act("insert into TB values('Glasgow',4,29)");
             CheckResults(7, 1, "select S,count(C) as occ,sum(C) as total from TB group by S",
                 "[{S:\"Glasgow\",OCC:2,TOTAL:72},{S:\"Paisley\",OCC:1,TOTAL:82}]");
+            conn.Act("create table TBB(b int,c int,d int, e int)");
+            conn.Act("insert into TBB values(1,21,31,41),(3,22,35,47),(1,22,33,42),(1,22,35,49)");
+            conn.Act("insert into TBB values(2,21,37,40),(2,23,33,43),(1,24,31,44),(2,26,37,45)");
+            CheckResults(7, 2, "select sum(g) as h,d from (select count(*) as g,b,d from TBB group by b,d) group by d having b<3",
+                "[{H:2,D:31},{H:2,D:33},{H:1,D:35},{H:2,D:37}]");
             Rollback();
         }
         void Test8(int t)
@@ -312,7 +317,7 @@ namespace Test
             if (qry == 0 || qry == 1)
             {
                 Begin();
-                conn.Act("create table cs(b int not null,c int default 4,d int generated always as (b+c))");
+                conn.Act("create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Null value not allowed in column B");
             }
             if (qry == 0 || qry == 2)
@@ -416,7 +421,7 @@ namespace Test
             }
             if (qry == 0 || qry == 6)
             {
-                CheckExceptionNonQuery(13, 6, "drop ad", "RESTRICT: Primary index");
+                CheckExceptionNonQuery(13, 6, "drop ad", "RESTRICT: Index");
                 if (!commit)
                 {
                     Begin();
@@ -603,6 +608,27 @@ namespace Test
                 return;
             testing = 20;
             Begin();
+            conn.Act("create type point as (x int, y int)");
+            conn.Act("create type size as (w int,h int)");
+            conn.Act("create type line as (strt point,en point)");
+            conn.Act("create type rect as (tl point,sz size) "
+              +"constructor method rect(x1 int, y1 int, x2 int, y2 int),"
+              +"method centre() returns point");
+            conn.Act("create table figure(id int primary key,title char)");
+            conn.Act("create table figureline(id int primary key,fig int references figure,what line)");
+            conn.Act("create table figurerect(id int primary key,fig int references figure,what rect)");
+            conn.Act("create constructor method rect(x1 int,y1 int,x2 int,y2 int) "
+              +"begin tl = point(x1, y1); sz = size(x2 - x1, y2 - y1) end");
+            conn.Act("create method centre() returns point for rect "
+              +"return point(tl.x + sz.w / 2, tl.y + sz.h / 2)");
+            conn.Act("create function centrerect(a int) returns point "
+              +"return (select what.centre() from figurerect where id = centrerect.a)");
+            conn.Act("insert into figure values(1,'Diagram')");
+            conn.Act("insert into figurerect values(1,1,rect(point(1,2),size(3,4)))");
+            conn.Act("insert into figurerect values(2,1,rect(4,5,6,7))");
+            conn.Act("insert into figureline values(1,1,line(centrerect(1),centrerect(2)))");
+            CheckResults(20, 1, "select what from figureline",
+                "[{Col0:LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))}]");
             Rollback();
         }
         public void Test21(int t)
@@ -617,6 +643,7 @@ namespace Test
         {
             if (qry > 0 && qry != q)
                 return;
+            cur = q;
             try
             {
                 var cmd = conn.CreateCommand();
@@ -637,6 +664,7 @@ namespace Test
         {
             if (qry > 0 && qry != q)
                 return;
+            cur = q;
             try
             {
                 if (c.ToUpper() == "COMMIT")
@@ -657,6 +685,7 @@ namespace Test
         {
             if (qry > 0 && qry != q)
                 return;
+            cur = q;
             try
             {
                 var cmd = conn.CreateCommand();

@@ -7,7 +7,7 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -16,75 +16,111 @@ using Pyrrho.Level3;
 namespace Pyrrho.Level4
 {
     /// <summary>
-    /// A RowSet is the result of a stage of query processing, so is a collection of rows
+    /// A RowSet is the result of a stage of query processing. 
+    /// We take responsibility for cx.values in the outs list
+    /// IMMUTABLE
     /// </summary>
     internal abstract class RowSet : TypedValue
     {
+        internal readonly long defpos;
+        internal readonly ObInfo info, keyInfo;
+        internal readonly OrderSpec rowOrder; 
+        internal readonly BTree<long, SqlValue> where; 
+        internal readonly BTree<SqlValue,TypedValue> matches;
+        internal readonly BTree<long, BTree<long, bool>> matching;
+        internal readonly GroupSpecification grouping;
         /// <summary>
-        /// debugging
+        /// The info gives the list of SqlValues that we will place in the cursor.
+        /// In a Context there may be several rowsets being calculated independently
+        /// (e.g. a join of subqueries), and it can combine sources into a from association
+        /// saying which rowset (and so which cursor) contains the current values.
+        /// We could simply search along cx.data to pick the rowset we want.
+        /// But it would be tighter if we could manage to combine the infos into a
+        /// quick lookup tree. Such a finder is then a property of the RowSet.
+        /// Before we compute a Cursor, we can place the source finder in the  Context, 
+        /// so that the evaluation can use values retrieved from the correct cursors. 
+        /// 
+        /// RowSet uids are carefully managed:
+        /// SystemRowSet uids match the relevant System Table (thus a negative uid)
+        /// TableRowSet uids match the table defining position
+        /// IndexRowSet uids match the index defpos
+        /// EmptyRowSet uid is -1
+        /// The following rowsets always have physical or lexical uids and
+        /// rowtype information comes from the syntax:
+        /// (physical can occur for queries in stored procedures and triggers):
+        /// TrivialRowSet, SelectedRowSet, JoinRowSet, MergeRowSet, 
+        /// SelectRowSet, EvakRowSet, GroupRowSet, TableExpRowSet, ExplicitRowSet,
+        /// TransitionRowSet always is #0 (Transaction.Analysing)
+        /// All other rowSets get their defining position by cx.nextPid++
         /// </summary>
-        static long _uid =0;
-        internal readonly long uid = ++_uid;
-        internal Database _tr; // MUTABLE must be kept up to date
-        /// <summary>
-        /// the query this rowset belongs to (most queries have at most one)
-        /// </summary>
-        internal Query qry;
-        /// <summary>
-        /// the key type for the results (default is the row type)
-        /// </summary>
-        internal readonly ObInfo keyType;
-        internal ObInfo rowType
-        {
-            get { return info; }
-        }
-        /// <summary>
-        /// ordering information
-        /// </summary>
-        internal readonly OrderSpec rowOrder;
-        /// <summary>
-        /// a set of filters
-        /// </summary>
-        internal BTree<SqlValue,TypedValue> matches = BTree<SqlValue,TypedValue>.Empty;
-        /// <summary>
-        /// limitations on fetching
-        /// </summary>
-        internal int skip=0, limit=0;
-        /// <summary>
-        /// Try to discourage use of qry.cols once the rowSet is Built.
-        /// </summary>
-        internal bool building = true;
-        protected virtual void Build(Context _cx)
-        { }
+        internal readonly BTree<long, long> finder; // what we provide
+        internal readonly BTree<long, long> _finder; // what we consume
+        internal virtual int display => info.Length; // after Build if any
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="q">the hosting query</param>
-        /// <param name="n">optional the nominal data type for the rows</param>
-        /// <param name="k">optional: a key type</param>
-        protected RowSet(Database tr,Context cx,Query q,ObInfo n=null,ObInfo k=null,OrderSpec os=null)
-            :base(n ?? q?.rowType ?? ObInfo.Any)
+        /// <param name="dp">The uid for the RowSet</param>
+        /// <param name="rt">The way for a cursor to calculate a row</param>
+        /// <param name="kt">The way for a cursor to calculate a key (by default same as rowType)</param>
+        /// <param name="or">The ordering of rows in this rowset</param>
+        /// <param name="wh">A set of boolean conditions on row values</param>
+        /// <param name="ma">A filter for row column values</param>
+        protected RowSet(long dp, Context cx, ObInfo inf,BTree<long,long> fin=null, ObInfo kt=null,
+            BTree<long,SqlValue> wh=null,OrderSpec or=null,BTree<SqlValue,TypedValue>ma=null,
+            BTree<long,BTree<long,bool>> mg=null,GroupSpecification gp=null) :base(inf.domain)
         {
-            _tr = tr;
-            qry = q;
-            keyType = k ?? rowType;
-            matches = q?.matches??BTree<SqlValue,TypedValue>.Empty;
-            rowOrder = os;
+            defpos = dp;
+            info = inf;
+            keyInfo = kt??info;
+            rowOrder = or??OrderSpec.Empty;
+            where = wh??BTree<long,SqlValue>.Empty;
+            matches = ma??BTree<SqlValue,TypedValue>.Empty;
+            matching = mg ?? BTree<long, BTree<long, bool>>.Empty;
+            grouping = gp;
+            fin = fin ?? BTree<long, long>.Empty;
+            _finder = fin;
+            for (var b = inf.columns.First(); b != null; b = b.Next())
+                fin += (b.value().defpos, dp);
+            finder = fin;
+            cx.data += (dp, this);
+            cx.val = this;
+        }
+        protected RowSet(long dp, Context cx, RowSet rs) 
+            : this(dp, cx, rs, (ObInfo)rs.info.Relocate(dp), (ObInfo)rs.keyInfo.Relocate(dp)) { }
+        RowSet(long dp,Context cx,RowSet rs,ObInfo inf,ObInfo keyInf) :base(inf.domain)
+        {
+            defpos = dp;
+            info = inf;
+            keyInfo = keyInf;
+            rowOrder = rs.rowOrder;
+            where = rs.where;
+            matches = rs.matches;
+            matching = rs.matching;
+            grouping = rs.grouping;
+            cx.data += (dp, this);
+            cx.val = this;
+        }
+        protected RowSet(RowSet rs,long a,long b):base(rs.info.domain)
+        {
+            defpos = rs.defpos;
+            info = rs.info;
+            keyInfo = rs.keyInfo;
+            rowOrder = rs.rowOrder;
+            where = rs.where;
+            matches = rs.matches;
+            var m = rs.matching;
+            var ma = m[a] ?? BTree<long, bool>.Empty;
+            var mb = m[b] ?? BTree<long, bool>.Empty;
+            matching = m + (a, ma + (b, true)) + (b, mb + (a, true));
+            grouping = rs.grouping;
+        }
+        internal abstract RowSet New(long dp, Context cx);
+        internal abstract RowSet New(long a, long b);
+        public static RowSet operator+(RowSet rs,(long,long)x)
+        {
+            return rs.New(x.Item1, x.Item2);
         }
         internal virtual int? Count => null; // number of rows is usually unknown
-        public abstract string keywd();
-        /// <summary>
-        /// The key for given row
-        /// </summary>
-        /// <param name="bmk">a bookmark</param>
-        /// <returns>the key</returns>
-        public virtual PRow Key(RowBookmark bmk)
-        {
-            PRow r = null;
-            for (var i = keyType.Length - 1; i >= 0; i--)
-                r = new PRow(bmk.row[keyType.columns[i].defpos], r);
-            return r;
-        }
         public override bool IsNull => false;
         internal override object Val()
         {
@@ -94,144 +130,106 @@ namespace Pyrrho.Level4
         {
             throw new NotImplementedException();
         }
-        internal void AddMatch(BTree<SqlValue,TypedValue> mts)
+        protected virtual object Build(Context cx)
         {
-            for (var a = mts.First(); a != null; a = a.Next())
-                    AddMatch(a.key(), a.value());
+            if (PyrrhoStart.StrategyMode)
+                Strategy(0);
+            return null;
         }
+        /// <summary>
+        /// Relocation is possible only for RowSets that are not Built.
+        /// Those that are will correctly throw a NotImplementedException
+        /// </summary>
+        /// <param name="dp"></param>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal RowSet Relocate(long dp,Context cx)
+        {
+            return New(dp, cx);
+        }
+        internal virtual RowSet Source => this; 
         /// <summary>
         /// Test if the given source RowSet matches the requested ordering
         /// </summary>
         /// <returns>whether the orderings match</returns>
-        protected bool SameOrder(RowSet sce)
+        protected bool SameOrder(Query q,RowSet sce)
         {
-            if (rowOrder == null || rowOrder.items.Count == 0)
+            if (rowOrder == null || rowOrder.items.Length == 0)
                 return true;
-            return rowOrder.SameAs(qry,sce?.rowOrder);
+            return rowOrder.SameAs(q,sce?.rowOrder);
         }
         /// <summary>
         /// Compute schema information (for the client) for this row set.
         /// 
         /// </summary>
         /// <param name="flags">The column flags to be filled in</param>
-        internal void Schema(ObInfo dt, int[] flags)
+        internal void Schema(Context cx, int[] flags)
         {
-            int m = dt.Length;
+            int m = info.Length;
             bool addFlags = true;
             var adds = new int[flags.Length];
             // see if we are going to add index flags stuff
-            var fm = qry as From;
-            var ta = _tr.objects[fm?.target??-1] as Table;
-            if (fm != null)
+            var j = 0;
+            for (var ib = keyInfo.columns.First(); ib != null; ib = ib.Next(), j++)
             {
-                var ix = ta.FindPrimaryIndex(_tr);
-                if (ix != null)
-                    for (int i = 0; i < ix.keys.Count; i++)
+                var found = false;
+                for (var b = info.columns.First(); b != null; b = b.Next())
+                    if (b.value().defpos == ib.value().defpos)
                     {
-                        var found = false;
-                        for (var b = dt.columns.First(); b != null; b = b.Next())
-                         if (b.value().defpos==ix.keys[i].defpos)
-                            {
-                                adds[b.key()] = (i + 1) << 4;
-                                found = true;
-                                break;
-                            }
-                        if (!found)
-                            addFlags = false;
+                        adds[b.key()] = (j + 1) << 4;
+                        found = true;
+                        break;
                     }
+                if (!found)
+                    addFlags = false;
             }
             for (int i = 0; i < flags.Length; i++)
             {
-                var dc = dt.columns[i].domain;
-                var tc = Col(dt.columns[i]);
+                var dc = info[i].domain;
                 if (dc.kind == Sqlx.SENSITIVE)
                     dc = dc.elType.domain;
                 flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
-                if (tc!=null)
-                flags[i] += (tc.notNull ? 0x100 : 0) +
-                    ((tc.generated != GenerationRule.None) ? 0x200 : 0);
+                if (cx.db.objects[info[i].defpos] is TableColumn tc)
+                    flags[i] += ((tc.notNull) ? 0x100 : 0) +
+                        ((tc.generated != GenerationRule.None) ? 0x200 : 0);
             }
         }
         TableColumn Col(SqlValue v)
         {
-            if (v is SqlCol sc)
+            if (v is SqlTableCol sc)
                 return sc.tableCol;
             if (v is SqlValueExpr se && se.kind == Sqlx.DOT)
                 return Col(se.right);
             return TableColumn.Doc;
         }
-        internal virtual TypedValue Eval(Context _cx,SqlValue sel)
-        {
-            return _cx.values[sel.defpos];
-        }
-        /// <summary>
-        /// For simple queries the filters will be added by other means.
-        /// Override this method for grouped and exported rowsets at least
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="cond"></param>
-        internal virtual void AddCondition(Context _cx,BTree<long,SqlValue> cond, long done)
-        {
-            qry.AddCondition(_cx,cond, null, null);
-        }
         /// <summary>
         /// Bookmarks are used to traverse rowsets
         /// </summary>
         /// <returns>a bookmark for the first row if any</returns>
-        protected abstract RowBookmark _First(Context _cx);
-        /// <summary>
-        /// First needs to be overridden in RowSets with additional search conditions such as GroupingRowSet
-        /// </summary>
-        /// <returns></returns>
-        public virtual RowBookmark First(Context _cx)
-        {
-#if !EMBEDDED
-            if (PyrrhoStart.StrategyMode)
-                Strategy(0);
-#endif
-            _cx.Add(qry);
-            return _First(_cx);
-        }
+        public abstract Cursor First(Context _cx);
         /// <summary>
         /// Find a bookmark for the given key
         /// </summary>
         /// <param name="key">a key</param>
         /// <returns>a bookmark or null if it is not there</returns>
-        public virtual RowBookmark PositionAt(Context _cx,PRow key)
+        public virtual Cursor PositionAt(Context _cx,PRow key)
         {
-            var dt = keyType ?? rowType;
+            var dt = keyInfo ?? info;
             for (var bm = First(_cx); bm!=null; bm=bm.Next(_cx))
             {
                 var k = key;
                 for (int i = 0; i < dt.Length && k != null; i++, k = k._tail)
-                    if (bm.row[dt.columns[i].defpos].CompareTo(k._head) != 0)
+                    if (info[i].Eval(_cx).CompareTo(k._head) != 0)
                         goto next;
                 return bm;
                 next:;
             }
             return null;
         }
-        internal virtual RowSet Source()
-        {
-            return null;
-        }
         internal virtual void _Strategy(StringBuilder sb,int indent)
         {
-            Conds(sb, qry.where, " where ");
+            Conds(sb, where, " where ");
             Matches(sb);
-        }
-        internal void Cols(StringBuilder sb,Index x)
-        {
-            var ro = _tr.role;
-            var kt = (ObInfo)ro.obinfos[x.defpos];
-            var cm = "(";
-            for (var i=0;i<kt.columns.Count;i++)
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(kt.columns[i].name);
-                sb.Append(' ');sb.Append(DBObject.Uid(kt.columns[i].defpos));
-            }
-            sb.Append(")");
         }
         internal void Conds(StringBuilder sb,BTree<long,SqlValue> conds,string cm)
         {
@@ -255,21 +253,16 @@ namespace Pyrrho.Level4
         internal void Strategy(int indent)
         {
         }
-
-        internal virtual void AddMatch(SqlValue v, TypedValue typedValue)
-        {
-            matches+=(v, typedValue);
-        }
         public override string ToString()
         {
-            var sb = new StringBuilder("RowSet ");
-            sb.Append(rowType);
- //           _Strategy(sb, 0);
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(' '); sb.Append(info);
+            _Strategy(sb, 0);
             return sb.ToString();
         }
     }
     /// <summary>
-    /// 1. Throughout the code RowSets are navigated using RowBookmarks instead of
+    /// 1. Throughout the code RowSets are navigated using Cursors instead of
     /// Enumerators of any sort. The great advantage of bookmarks generally is
     /// that they are immutable. (E.g. the ABookmark classes always refer to a
     /// snapshot of the tree at the time of constructing the bookmark.)
@@ -277,30 +270,71 @@ namespace Pyrrho.Level4
     /// _cx.values is updated to provide shortcuts to current values.
     /// 3. The TypedValues obtained by Value(..) are mostly immutable also, but
     /// updates to row columns (e.g. during trigger operations) are managed by 
-    /// allowing the RowBookmark to override the usual results of 
+    /// allowing the Cursor to override the usual results of 
     /// evaluating a row column: this is needed in (at least) the following 
     /// circumstances (a) UPDATE (b) INOUT and OUT parameters that are passed
     /// column references (c) triggers.
     /// 4. In view of the anxieties of 3. these overrides are explicit
-    /// in the RowBookmark itself.
+    /// in the Cursor itself.
     /// </summary>
-    internal abstract class RowBookmark 
+    internal abstract class Cursor : TRow
     {
-        public readonly RowSet _rs;
+        public readonly long _rowsetpos;
         public readonly int _pos;
+        public readonly ObInfo _info;
         public readonly long _defpos;
-        /// <summary>
-        /// row and key must be correct at the end of First() and Next().
-        /// </summary>
-        public abstract TRow row { get; }
-        public abstract TRow key { get; }
-        public RowBookmark(Context _cx,RowSet rs,int pos,long defpos)
+        public Cursor(Context _cx,RowSet rs,int pos,long defpos,TRow rw)
+            :base(_Row(rs.info,rw))
         {
-            _rs = rs;
+            _rowsetpos = rs.defpos;
             _pos = pos;
             _defpos = defpos;
+            _info = rs.info;
+            _cx.cursors += (rs.defpos, this);
         }
-        public abstract RowBookmark Next(Context _cx);
+        // a more detailed version for trigger-side transition cursors
+        protected Cursor(Context cx,long rd,Selection sel,int pos,long defpos,TRow rw)
+            :base(_Row(sel.info,rw))
+        {
+            _rowsetpos = rd;
+            _pos = pos;
+            _defpos = defpos;
+            _info = sel.info;
+            cx.cursors += (rd, this);
+        }
+        public Cursor(Context _cx, long rp, int pos, long defpos, ObInfo info, TRow rw)
+    : base(_Row(info, rw))
+        {
+            _rowsetpos = rp;
+            _pos = pos;
+            _defpos = defpos;
+            _info = info;
+            _cx.cursors += (rp, this);
+        }
+        static TRow _Row(ObInfo oi, TRow rw)
+        {
+            if (oi.domain == rw.dataType)
+                return rw;
+            var vs = BTree<long, TypedValue>.Empty;
+            for (var b = oi.columns.First(); b != null; b = b.Next())
+            {
+                var ci = b.value();
+                vs += (ci.defpos, rw[b.key()]);
+            }
+            return new TRow(oi.domain, vs);
+        }
+        internal bool Matches(Context cx)
+        {
+            var rs = cx.data[_rowsetpos];
+            for (var b = rs.matches.First(); b != null; b = b.Next())
+                if (b.key().Eval(cx).CompareTo(b.value()) != 0)
+                    return false;
+            for (var b = rs.where.First(); b != null; b = b.Next())
+                if (b.value().Eval(cx) != TBool.True)
+                    return false;
+            return true;
+        }
+        public abstract Cursor Next(Context _cx);
         /// <summary>
         /// These methods are for join processing
         /// </summary>
@@ -309,59 +343,61 @@ namespace Pyrrho.Level4
         {
             return null; // throw new PEException("PE543");
         }
-        public virtual RowBookmark ResetToTiesStart(Context _cx, MTreeBookmark mb)
+        public virtual Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
         {
             return null; // throw new PEException("PE544");
         }
         internal abstract TableRow Rec();
-        internal BList<SqlValue> Grouping()
+        public override int _CompareTo(object obj)
         {
-            return row?.grouping;
+            throw new NotImplementedException();
         }
-        public bool Matches()
+        internal override object Val()
         {
-            if (Rec() is TableRow r)
-            {
-                for (var b = _rs.matches.First(); b != null; b = b.Next())
-                    if (r.fields[b.key().defpos] is TypedValue tv && tv.CompareTo(b.value()) != 0)
-                        return false;
-                return true;
-            }
-            if (_rs.matches.Count == 0)
-                return true;
-            var dt = _rs.rowType;
-            for (var b = _rs.matches.First(); b != null; b = b.Next())
-                for (var i = 0; i < dt.Length; i++)
-                {
-                    var nm = dt.columns[i].defpos;
-                    if (row[nm] is TypedValue tv && tv.CompareTo(b.value()) != 0)
-                        return false;
-                }
-            return true;
+            throw new NotImplementedException();
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(' ');sb.Append(DBObject.Uid(_rowsetpos));
+            return sb.ToString();
         }
     }
     internal class TrivialRowSet: RowSet
     {
-        public override string keywd()
-        {
-            return " Trivial ";
-        }
         internal readonly TRow row;
-        internal readonly TrivialRowBookmark here;
-        public static TrivialRowSet Static = new TrivialRowSet(null,null, null, new TRow(ObInfo.Any));
-        internal TrivialRowSet(Database tr,Context cx, Query q, TRow r, long d=0, long rc=0)  
-            :base(tr,cx, q,q?.rowType??ObInfo.Any,r.info)
+        internal readonly long rc = -1;
+        internal readonly TrivialCursor here;
+        internal TrivialRowSet(long dp,Context cx, TRow r=null, long rc = -1)  
+            :base(dp, cx, ObInfo.For(r))
         {
-            row = r;
-            here = new TrivialRowBookmark(cx,this,d,rc);
-            cx?.Add(q, here);
+            row = r??new TRow(ObInfo.Any);
+            here = new TrivialCursor(cx,this,0,rc);
+            cx.data+=(defpos,this);
         }
-        internal TrivialRowSet(Database tr,Context cx, Query fm, Record rec) 
-            : base(tr, cx, fm, fm?.rowType??ObInfo.Any, null)
+        internal TrivialRowSet(long dp, Context cx, ObInfo inf,TRow r = null, long rc = -1)
+    : base(dp, cx, inf,null,null,null,null,null,cx.Copy(inf.domain,r?.dataType))
         {
-            row = new TRow(fm?.rowType??ObInfo.Any, rec?.fields??BTree<long,TypedValue>.Empty);
-            here = new TrivialRowBookmark(cx,this, 0, rec?.defpos??-1);
-            cx.Add(fm, here);
+            row = r ?? new TRow(ObInfo.Any);
+            here = new TrivialCursor(cx, this, 0, rc);
+            cx.data += (defpos, this);
+        }
+        internal TrivialRowSet(long dp,Context cx, ObInfo nf, Record rec) 
+            : this(dp,cx, nf, new TRow(nf.domain,rec.fields), rec.defpos)
+        { }
+        protected TrivialRowSet(TrivialRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            row = rs.row;
+            rc = rs.rc;
+            here = rs.here;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new TrivialRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new TrivialRowSet(dp,cx,row,rc);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -373,11 +409,11 @@ namespace Pyrrho.Level4
 
         public override bool IsNull => throw new NotImplementedException();
 
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             return here;
         }
-        public override RowBookmark PositionAt(Context _cx,PRow key)
+        public override Cursor PositionAt(Context _cx,PRow key)
         {
             for (int i = 0; key != null; i++, key = key._tail)
                 if (row[i].CompareTo(key._head) != 0)
@@ -385,29 +421,15 @@ namespace Pyrrho.Level4
             return here;
         }
 
-        internal override object Val()
-        {
-            throw new NotImplementedException();
-        }
-
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-
-        internal class TrivialRowBookmark : RowBookmark
+        internal class TrivialCursor : Cursor
         {
             readonly TrivialRowSet trs;
-            internal TrivialRowBookmark(Context _cx, TrivialRowSet t,long d,long r) :base(_cx,t,0,d)
+            internal TrivialCursor(Context _cx, TrivialRowSet t,long d,long r) 
+                :base(_cx,t,0,d,t.row)
             {
                 trs = t;
             }
-
-            public override TRow row => trs.row;
-
-            public override TRow key => trs.row;
-
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 return null;
             }
@@ -418,205 +440,213 @@ namespace Pyrrho.Level4
         }
     }
     /// <summary>
-    /// Used to establish a new context and rowType for results
-    /// </summary>
-    internal class ExportedRowSet : RowSet
-    {
-        public override string keywd()
-        {
-            return " Exported ";
-        }
-        internal readonly RowSet source;
-        internal readonly ObInfo rtyp;
-        internal ExportedRowSet(Context _cx,RowSet rs, ObInfo rt,ObInfo kt=null) :base(rs._tr,_cx,rs.qry,rt,kt)
-        {
-            source = rs;
-            rtyp = rt;
-            if (!rt.CanTakeValueOf(rs.rowType))
-                throw new DBException("22005", rt, rs.rowType);
-        }
-        internal override void _Strategy(StringBuilder sb, int indent)
-        {
-            sb.Append("Exported ");
-            sb.Append(qry);
-            base._Strategy(sb, indent);
-            source.Strategy(indent);
-        }
-        protected override RowBookmark _First(Context _cx)
-        {
-            return ExportedBookmark.New(_cx,this);
-        }
-        internal class ExportedBookmark : RowBookmark
-        {
-            readonly RowBookmark _bmk;
-            readonly ExportedRowSet _ers;
-            readonly TRow _row, _key;
-            public override TRow row => _row;
-            public override TRow key =>  _key;
-            ExportedBookmark(Context _cx,ExportedRowSet ers,int pos, RowBookmark bmk)
-                :base(_cx,ers,pos,bmk._defpos)
-            {
-                _ers = ers;
-                _bmk = bmk;
-                _row = new TRow(_rs.qry.rowType, _cx.values);
-                _key = new TRow(_rs.keyType, _cx.values);
-                _cx.Add(ers.qry, this);
-            }
-
-            internal static ExportedBookmark New(Context _cx,ExportedRowSet e)
-            {
-                RowBookmark bmk;
-                for (bmk = e.source.First(_cx);bmk!=null;bmk=bmk.Next(_cx))
-                {
-                    var rb = new ExportedBookmark(_cx,e, 0, bmk);
-                    if (!rb.Matches())
-                        goto skip;
-                    for (var b = e.qry.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(e._tr as Transaction,_cx) != TBool.True)
-                            goto skip;
-                    return rb;
-                    skip:;
-                }
-                return null;
-            }
-            public override RowBookmark Next(Context _cx)
-            {
-                for (var bmk = _bmk.Next(_cx); bmk != null; bmk = bmk.Next(_cx))
-                {
-                    var rb = new ExportedBookmark(_cx,_ers, _pos + 1, bmk);
-                    for (var b = _rs.qry.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(_ers._tr as Transaction,_cx) != TBool.True)
-                            goto skip;
-                    return rb;
-                    skip:;
-                }
-                return null;
-            }
-
-        internal override TableRow Rec()
-        {
-            return _bmk.Rec();
-        }
-    }
-    }
-    /// <summary>
-    /// A rowset consisting of selected Columns from another rowset (e.g. SELECT A,B FROM C)
+    /// A rowset consisting of selected Columns from another rowset (e.g. SELECT A,B FROM C).
+    /// NB we assume that the rowtype contains only simple SqlCopy expressions
     /// </summary>
     internal class SelectedRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Selected ";
-        }
+        internal readonly Selection rowType;
         internal readonly RowSet rIn;
         /// <summary>
-        /// Constructor for the selected TableColumns rowset. At this stage all of the SqlValue have been resolved.
-        /// So all of the selects in qout are guaranteed to be in qin.
+        /// This constructor builds a rowset for the given Table
+        /// directly using its defpos, rowType, ordering, where and match info.
+        /// Suggestion here is to use the source keyType. Maybe the source ordering too?
         /// </summary>
-        internal SelectedRowSet(Database tr,Context cx,Query q,RowSet r)
-            :base(tr,cx,q,q.rowType,_Type(cx,r, q),r.qry.ordSpec)
+        internal SelectedRowSet(Context cx,Query q,RowSet r)
+            :base(q.defpos, cx, q.rowType.info,r.finder,null,q.where,q.ordSpec,q.matches)
         {
             rIn = r;
+            rowType = q.rowType;
+            Build(cx);
+        }
+        protected SelectedRowSet(SelectedRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            rIn = rs.rIn;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new SelectedRowSet(this, a, b);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Selected ");
-            sb.Append(qry);
+            sb.Append(DBObject.Uid(defpos));
             base._Strategy(sb, indent);
-            rIn.qry.RowSets(_tr,new Context(_tr)).Strategy(indent);
+            rIn.Strategy(indent);
         }
-        protected override void Build(Context _cx)
+        internal override RowSet New(long dp, Context cx)
         {
-            building = false;
-            for (var b = qry.rowType.columns.First(); b != null; b = b.Next())
-                b.value()?.Build(_cx,this);
+            throw new NotImplementedException();
         }
-        public override RowBookmark First(Context _cx)
+        internal override RowSet Source => rIn;
+        protected override object Build(Context cx)
         {
-            if (building)
-                Build(_cx);
-            return base.First(_cx);
+            for (var b = info.columns.First(); b != null; b = b.Next())
+                b.value()?.Build(cx,this);
+            return null;
         }
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            return SelectedRowBookmark.New(_cx,this);
+            return SelectedCursor.New(_cx,this);
         }
-        static ObInfo _Type(Context cx,RowSet rin,Query qout)
+        public override Cursor PositionAt(Context _cx, PRow key)
         {
-            var kt = rin.keyType;
-            for (int i = 0; i < kt.columns.Count; i++)
-                if (!qout.rowType.map.Contains(kt.columns[i].name))
-                    return null;
-            return kt;
+            if (rIn is IndexRowSet irs)
+                return new SelectedCursor(_cx, this, IndexRowSet.IndexCursor.New(_cx, irs, key),0);
+            return base.PositionAt(_cx, key);
         }
-        internal override TypedValue Eval(Context _cx,SqlValue stc)
-        {
-            return rIn.Eval(_cx,stc);
-        }
-        internal class SelectedRowBookmark : RowBookmark
+        internal class SelectedCursor : Cursor
         {
             readonly SelectedRowSet _srs;
-            readonly RowBookmark _bmk; // for rIn
-            readonly TRow _row, _key;
-            long valueInProgress = -1;
-
-            public override TRow row => _row;
-
-            public override TRow key => _key;
-
-            SelectedRowBookmark(Context _cx,SelectedRowSet srs, RowBookmark bmk, int pos) 
-                : base(_cx,srs, pos, bmk._defpos)
+            internal readonly Cursor _bmk; // for rIn
+            internal SelectedCursor(Context _cx,SelectedRowSet srs, Cursor bmk, int pos) 
+                : base(_cx,srs, pos, bmk._defpos, _Row(srs,bmk)) 
             {
                 _bmk = bmk;
                 _srs = srs;
-                var vs =Value(_cx);
-                _row = new TRow(_rs.qry.rowType,vs);
-                _key = new TRow(_rs.keyType, vs);
-                _cx.Add(srs.qry, this);
             }
-            /// <summary>
-            /// WE override the base implementation in order to use the right column names
-            /// </summary>
-            /// <returns></returns>
-            BTree<long, TypedValue> Value(Context _cx)
+            static TRow _Row(SelectedRowSet srs,TRow bmk)
             {
-                var dt = _rs.rowType;
-                var r = BTree<long, TypedValue>.Empty;
-                for (int i = 0; i < dt.Length; i++)
-                {
-                    TypedValue v = null;
-                    var qt = _rs.qry.rowType;
-                    var id = qt.columns[i].defpos; // nb
-                    if (valueInProgress == id && id>0) // avoid infinite recursion!
-                        return null;
-                    valueInProgress = id;
-                    if (_rs.qry is Query qs && i < qs.Size(_cx)) // always will be
-                        v = qt.columns[i].Eval(_rs._tr as Transaction, _cx);
-                    if (v!=null)
-                        r += (id,v);
-                }
-                return r;
+                var vs = BTree<long, TypedValue>.Empty;
+                var rt = srs.rowType;
+                for (var b = rt.First(); b != null; b = b.Next())
+                    if (b.value() is SqlCopy sc)
+                        vs += (sc.defpos, bmk[sc.copyFrom]);
+                return new TRow(rt.info.domain, vs);
             }
-            internal static SelectedRowBookmark New(Context _cx,SelectedRowSet srs)
+            internal static SelectedCursor New(Context _cx,SelectedRowSet srs)
+            {
+                var ox = _cx.from;
+                _cx.from = srs.finder; // just for SelectedRowSet
+                for (var bmk = srs.rIn.First(_cx); bmk != null; bmk = bmk.Next(_cx))
+                {
+                    var rb = new SelectedCursor(_cx,srs, bmk, 0);
+                    if (rb.Matches(_cx))
+                    {
+                        _cx.from = ox;
+                        return rb;
+                    }
+                }
+                _cx.from = ox;
+                return null;
+            }
+            public override Cursor Next(Context _cx)
+            {
+                var ox = _cx.from;
+                _cx.from = _srs.finder; // just for SelectedRowSet
+                for (var bmk = _bmk.Next(_cx); bmk != null; bmk = bmk.Next(_cx))
+                {
+                    var rb = new SelectedCursor(_cx,_srs, bmk, _pos + 1);
+                    if (rb.Matches(_cx))
+                    {
+                        _cx.from = ox;
+                        return rb;
+                    }
+                }
+                _cx.from = ox;
+                return null;
+            }
+            internal override TableRow Rec()
+            {
+                return _bmk.Rec();
+            }
+        }
+    }
+    internal class SelectRowSet : RowSet
+    {
+        internal readonly RowSet rIn;
+        internal readonly QuerySpecification qry;
+        /// <summary>
+        /// This constructor builds a rowset for the given QuerySpec
+        /// directly using its defpos, rowType, ordering, where and match info.
+        /// Note we cannot assume that columns are simple SqlCopy.
+        /// Suggestion here is to use the source keyType. Maybe the source ordering too?
+        /// </summary>
+        internal SelectRowSet(Context cx, QuerySpecification q, RowSet r)
+            : base(q.defpos, cx, q.rowType.info, r.finder, null, q.where, q.ordSpec, 
+                  q.matches,Context.Copy(q.matching))
+        {
+            rIn = r;
+            qry = q;
+            Build(cx);
+        }
+        protected SelectRowSet(SelectRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            rIn = rs.rIn;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new SelectRowSet(this, a, b);
+        }
+        internal override void _Strategy(StringBuilder sb, int indent)
+        {
+            sb.Append("Select ");
+            sb.Append(DBObject.Uid(defpos));
+            base._Strategy(sb, indent);
+            rIn.Strategy(indent);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        internal override RowSet Source => rIn;
+        protected override object Build(Context cx)
+        {
+            for (var b = info.columns.First(); b != null; b = b.Next())
+                b.value()?.Build(cx, this);
+            return null;
+        }
+        public override Cursor First(Context _cx)
+        {
+            return SelectCursor.New(_cx, this);
+        }
+        internal class SelectCursor : Cursor
+        {
+            readonly SelectRowSet _srs;
+            readonly Cursor _bmk; // for rIn, not used directly for Eval
+            SelectCursor(Context _cx, SelectRowSet srs, Cursor bmk, int pos)
+                : base(_cx, srs, pos, bmk._defpos, _Row(_cx, bmk, srs))
+            {
+                _bmk = bmk;
+                _srs = srs;
+            }
+            static TRow _Row(Context cx, Cursor bmk, SelectRowSet srs)
+            {
+                var ox = cx.from;
+                cx.copy = srs.matching;
+                cx.from = srs._finder;
+                var vs = BList<TypedValue>.Empty;
+                for (var b = srs.qry.rowType.First(); b != null; b = b.Next())
+                {
+                    var s = b.value(); 
+                    var v = s?.Eval(cx)??TNull.Value;
+                    if (v == TNull.Value && bmk[b.value().defpos] is TypedValue tv 
+                        && tv != TNull.Value) 
+                        // tv would be the right value but something has gone wrong
+                        throw new PEException("PE788");
+                    vs += v;
+                }
+                cx.from = ox;
+                return new TRow(srs.info, vs);
+            }
+            internal static SelectCursor New(Context _cx, SelectRowSet srs)
             {
                 for (var bmk = srs.rIn.First(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
-                    var rb = new SelectedRowBookmark(_cx,srs, bmk, 0);
-                    if (rb.row.values!=BTree<long,TypedValue>.Empty && !rb.row.IsNull &&
-                        rb.Matches() && Query.Eval(srs.qry.where,srs._tr as Transaction,_cx))
+                    var rb = new SelectCursor(_cx, srs, bmk, 0);
+                    if (rb.Matches(_cx))
                         return rb;
                 }
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
-                    var rb = new SelectedRowBookmark(_cx,_srs, bmk, _pos + 1);
-                    for (var b = _rs.qry.rowType.columns.First(); b != null; b = b.Next())
-                        b.value().OnRow(rb);
-                    if (rb.row.values != BTree<long, TypedValue>.Empty && !rb.row.IsNull &&
-                        rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
+                    var rb = new SelectCursor(_cx, _srs, bmk, _pos + 1);
+                    for (var b = _srs.info.columns.First(); b != null; b = b.Next())
+                        ((SqlValue)_cx.obs[b.value().defpos]).OnRow(rb);
+                    if (rb.Matches(_cx))
                         return rb;
                 }
                 return null;
@@ -627,45 +657,59 @@ namespace Pyrrho.Level4
             }
         }
     }
-	internal class EvalRowSet : RowSet
+
+    internal class EvalRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Eval ";
-        }
         /// <summary>
         /// The RowSet providing the data for aggregation. 
         /// </summary>
-		internal RowSet source;
+		internal readonly RowSet source;
         /// <summary>
         /// The having search condition for the aggregation
         /// </summary>
-		internal BTree<long,SqlValue> having;
-        private TRow row,key;
+		internal readonly BTree<long,SqlValue> having;
+        internal readonly TRow row;
+        internal override RowSet Source => source;
         /// <summary>
         /// Constructor: Build a rowSet that aggregates data from a given source
         /// </summary>
         /// <param name="rs">The source data</param>
         /// <param name="h">The having condition</param>
-		public EvalRowSet(Database tr,Context cx,Query qout, RowSet rs, BTree<long,SqlValue> h) 
-            : base(rs._tr,cx,qout)
+		public EvalRowSet(Context cx,QuerySpecification q, RowSet rs, BTree<long,SqlValue> h) 
+            : base(q.defpos, cx, q.rowType.info,rs.finder,null,FixWhere(rs),q.ordSpec,q.matches,
+                  Context.Copy(q.matching))
         {
             source = rs;
             having = h;
-            var wh = BTree<SqlValue, TypedValue>.Empty;
-            var qin = rs.qry;
+            row = (TRow)Build(cx);
+            cx.values += (defpos, row); // EvalRowSet has a single row
+        }
+        protected EvalRowSet(EvalRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            source = rs.source;
+            having = rs.having;
+            row = rs.row;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new EvalRowSet(this, a, b);
+        }
+        static BTree<long,SqlValue> FixWhere(RowSet rs)
+        {
             bool gp = false;
-            if ((qin as TableExpression)?.group is GroupSpecification g)
+            if (rs.grouping is GroupSpecification g)
                 for (var gs = g.sets.First();gs!=null;gs=gs.Next())
-                    gs.value().Grouped(qry.where, ref gp);
-            if (!gp)
-                qry += (Query.Where,BTree<long, SqlValue>.Empty);
-            Build(cx);
+                    gs.value().Grouped(rs.where, ref gp);
+            return gp?rs.where:BTree<long, SqlValue>.Empty;
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
-            sb.Append("Eval");
-            sb.Append(qry);
+            sb.Append("Eval ");
+            sb.Append(info);
             var cm = " having ";
             for (var b=having.First();b!=null;b=b.Next())
             {
@@ -675,53 +719,48 @@ namespace Pyrrho.Level4
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
-        public override RowBookmark First(Context _cx)
-        {
-            Build(_cx);
-            return _First(_cx);
-        }
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             return new EvalBookmark(_cx,this);
         }
 
-        protected override void Build(Context _cx)
+        protected override object Build(Context _cx)
         {
-            building = true;
-            var vs = BTree<long, TypedValue>.Empty;
-            for (int i = 0; i < rowType.Length; i++)
-                qry.ValAt(_cx,i).StartCounter(_cx,this);
-            var ebm = source.First(_cx);
+            var cx = new Context(_cx);
+            cx.copy = matching;
+            cx.from = _finder;
+            var k = new TRow(info);
+            for (var b = info.columns.First(); b != null; b = b.Next())
+                ((SqlValue)_cx.obs[b.value().defpos]).AddReg(cx, defpos, k);
+            cx.data += (defpos, this);
+            for (int i = 0; i < info.Length; i++)
+                ((SqlValue)_cx.obs[info[i].defpos]).StartCounter(cx,this);
+            var ebm = source.First(cx);
             if (ebm != null)
             {
-                for (; ebm != null; ebm = ebm.Next(_cx))
-                    if (Query.Eval(having, _tr as Transaction, _cx))
-                        for (int i = 0; i < rowType.Length; i++)
-                            qry.ValAt(_cx,i).AddIn(_cx,ebm);
+                for (; ebm != null; ebm = ebm.Next(cx))
+                    if ((!ebm.IsNull) && Query.Eval(having,cx))
+                        for (int i = 0; i < info.Length; i++)
+                            ((SqlValue)_cx.obs[info[i].defpos]).AddIn(cx,ebm,null);
             }
-            var cols = qry.rowType.columns;
-            for (int i = 0; i < cols.Count; i++)
+            var cols = info;
+            var vs = BList<TypedValue>.Empty;
+            for (int i = 0; i < cols.Length; i++)
             {
                 var s = cols[i];
-                vs += (s.defpos,s.Eval(_tr as Transaction, _cx));
+                vs += s.Eval(cx);
             }
-            row = new TRow(rowType,vs);
-            key = new TRow(keyType, vs);
-            building = false;
+            return new TRow(info,vs);
         }
-
-        internal class EvalBookmark : RowBookmark
+         internal class EvalBookmark : Cursor
         {
             readonly EvalRowSet _ers;
-            internal EvalBookmark(Context _cx, EvalRowSet ers) : base(_cx,ers, 0, 0)
+            internal EvalBookmark(Context _cx, EvalRowSet ers) 
+                : base(_cx, ers, 0, 0, (TRow)_cx.values[ers.defpos])
             {
                 _ers = ers;
             }
-            public override TRow row => _ers.row;
-
-            public override TRow key => _ers.key;
-
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 return null; // just one row in the rowset
             }
@@ -737,240 +776,158 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class TableRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Table ";
-        }
-        internal readonly From from;
+        internal readonly long tabledefpos;
+        internal readonly int? count;
         /// <summary>
-        /// Constructor: a rowset defined by a base table without a primary key
+        /// Constructor: a rowset defined by a base table without a primary key.
+        /// Independent of role, user, command.
+        /// Context must have a suitable tr field
         /// </summary>
-        /// <param name="f">the from</param>
-        internal TableRowSet(Database tr, Context cx,From f) : base(tr,cx,f)
+        internal TableRowSet(Context cx, long t)
+            : base(t, cx, (ObInfo)cx.db.schemaRole.obinfos[t])
         {
-            from = f;
-            f.Audit(tr as Transaction,f);
+            tabledefpos = t;
+            count = (int?)(cx.db.objects[t] as Table)?.tableRows.Count;
+        }
+        TableRowSet(long dp,Context cx,TableRowSet trs):base(dp,cx,trs)
+        {
+            tabledefpos = trs.tabledefpos;
+            count = trs.count;
+        }
+        protected TableRowSet(TableRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            tabledefpos = rs.tabledefpos;
+            count = rs.count;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new TableRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new TableRowSet(dp, cx, this);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
-            sb.Append("Table ");
-            sb.Append(from.ToString());
-            sb.Append(' ');
-            sb.Append(from);
+            sb.Append("TableRowSet ");
+            sb.Append(DBObject.Uid(tabledefpos));
             base._Strategy(sb, indent);
         }
-        internal override int? Count => 
-            (int?)(_tr.objects[from.target] as Table).tableRows.Count;
-        protected override RowBookmark _First(Context _cx)
+        internal override int? Count => count;
+        public override Cursor First(Context _cx)
         {
-            return TableRowBookmark.New(_cx,this);
+            return TableCursor.New(_cx,this);
         }
-        internal class TableRowBookmark : RowBookmark
+        internal class TableCursor : Cursor
         {
-            readonly ABookmark<long, object> _bmk;
-            internal readonly TRow _row, _key;
-            public override TRow row => _row;
-            public override TRow key => _key;
-            protected TableRowBookmark(Context _cx, RowSet trs, int pos,
-                ABookmark<long, object> bmk) : base(_cx,trs, pos, bmk.key())
+            internal readonly Table _table;
+            internal readonly TableRowSet _trs;
+            internal readonly ABookmark<long, TableRow> _bmk;
+            protected TableCursor(Context _cx, TableRowSet trs, Table tb, int pos, ObInfo inf,
+                ABookmark<long, TableRow> bmk) 
+                : base(_cx,trs.defpos, pos, bmk.key(), inf, _Row(inf,bmk.value()))
             {
-                _bmk = bmk;
-                var fl = ((TableRow)bmk.value()).fields;
-                _row = new TRow(_rs.rowType, fl);
-                _key = new TRow(_rs.keyType, fl);
-                _cx.Add(trs.qry, this);
+                _bmk = bmk; _table = tb; _trs = trs;
             }
-            internal static TableRowBookmark New(Context _cx, TableRowSet trs)
+            static TRow _Row(ObInfo inf,TableRow rw)
             {
-                var fm = trs.qry as From;
-                var table = trs._tr.objects[fm.target] as Table;
-                for (var b = table.tableRows.PositionAt(0); b != null; b = b.Next())
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b=inf.columns.First();b!=null;b=b.Next())
                 {
-                    var rec = (TableRow)b.value();
-                    if (table.enforcement.HasFlag(Grant.Privilege.Select) && 
-                        trs._tr.user.defpos != table.definer 
-                        && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
+                    var p = b.value().defpos;
+                    vs += (p, rw.vals[p]);
+                }
+                return new TRow(inf.domain, vs);
+            }
+            internal static TableCursor New(Context _cx, TableRowSet trs)
+            {
+                var table = _cx.db.objects[trs.tabledefpos] as Table;
+                for (var b = table.tableRows.First(); b != null; b = b.Next())
+                {
+                    var rec = b.value();
+                    if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
+                        _cx.db.user != null && _cx.db.user.defpos != table.definer
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    if (fm.CheckMatch(trs._tr as Transaction, _cx,rec))
-                    {
-                        var bm = new TableRowBookmark(_cx,trs, 0, b);
-                        // because where won't evaluate correctly until we have a bookmark for the query
-                        if (Query.Eval(fm.where,trs._tr as Transaction, _cx))
-                            return bm;
-                    }
+                    return new TableCursor(_cx, trs, table, 0, trs.info, b);
                 }
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 var bmk = _bmk;
                 var rec = (TableRow)_bmk.value();
-                var fm = _rs.qry as From;
-                var table = _rs._tr.objects[fm.target] as Table;
-                TableRowBookmark ret = null;
-                for (;;) // loop until we find a local or remote match record or we give up
+                var table = _table;
+                for (;;) 
                 {
                     if (bmk != null)
                         bmk = bmk.Next();
                     if (bmk == null)
                         return null;
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) && 
-                        _rs._tr.user.defpos!=table.definer 
-                        && !_rs._tr.user.clearance.ClearanceAllows(rec.classification))
+                        _cx.db.user.defpos!=table.definer 
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    ret = new TableRowBookmark(_cx,_rs, _pos + 1, bmk);
-                    if ((!fm.CheckMatch(_rs._tr as Transaction,_cx,rec)) 
-                        || !Query.Eval(fm.where,_rs._tr as Transaction,_cx))
-                        continue;
-                    break;  // got a local row
+                    return new TableCursor(_cx,_trs,_table, _pos + 1, _info, bmk);
                 }
-                return ret;
             }
             internal override TableRow Rec()
             {
-                return (TableRow)_bmk.value();
+                return _bmk.value();
             }
         }
-#if !EMBEDDED && !LOCAL
-        internal class RemoteRowBookmark : RowBookmark
-        {
-            readonly long _curs, _curl;
-            readonly internal Record _rec;
-            RemoteRowBookmark(RowSet trs,long pos,long curs,long curl,Record rec) :base(trs,pos,rec.defpos,rec.ppos)
-            {
-                _curs = curs; _curl = curl; _rec = rec;
-            }
-            internal static RemoteRowBookmark New(TableRowSet trs,Database p)
-            {
-                RemoteRowBookmark r = null;
-                try
-                {
-                    var proxy = (p as Participant).cd.Async as AsyncStream;
-                    var from = trs.qry as From;
-                    var lk = proxy.GetLock();
-                    lock (lk)
-                    {
-                        lk.OnLock(false, "GetTable", proxy.Conn());
-                        proxy.Write(Protocol.GetTable);
-                        proxy.PutLong(from.target.defpos);
-                        proxy.PutLong(from.matches.Count);
-                        for (var ma = from.matches.First(); ma != null; ma = ma.Next())
-                        {
-                            proxy.PutLong(ma.key());
-                            proxy.PutCell(trs.qry, ma.value().dataType, ma.value());
-                        }
-                        proxy.Flush();
-                        if (proxy.ReadResponse() != Responses.TableCursor)
-                            throw new DBException("24101").ISO();
-                        var curs = proxy.GetLong();
-                        while (r==null)
-                        {
-                            proxy.Write(Protocol.TableNext);
-                            proxy.PutLong(curs);
-                            proxy.Flush();
-                            if (proxy.ReadResponse() == Responses.TableDone)
-                                break;
-                            var curl = proxy.GetLong();
-                            var rec = proxy.GetRecord(p.pb);
-                            if (trs.from.CheckMatch(rec))
-                                r = new RemoteRowBookmark(trs, 0, curs, curl, rec);
-                        }
-                        lk.Unlock(true);
-                    }
-                }
-                catch
-                {
-                    throw new DBException("08006").ISO();
-                }
-                return r;
-            }
-            public override RowBookmark Next()
-            {
-                var from = _rs.qry as From;
-                var part = from.database as Participant;
-                var curs = _curs;
-                var curl = _curl;
-                Record rec;
-                RowBookmark ret = null;
-                try
-                {
-                    while(ret==null)
-                    {
-                        var proxy = part.cd.Async as AsyncStream;
-                        proxy.Write(Protocol.TableNext);
-                        proxy.PutLong(curs);
-                        proxy.Flush();
-                        if (proxy.ReadResponse() == Responses.TableDone)
-                            break;
-                        curl = proxy.GetLong();
-                        rec = proxy.GetRecord(part.pb);
-                        ret = new RemoteRowBookmark(_rs, _pos+1, curs, curl,  rec);
-                        if (!(_rs.qry as From).CheckMatch(rec))
-                            ret = null;
-                    }
-                }
-                catch
-                {
-                    throw new DBException("08006").ISO();
-                }
-                return ret;
-            }
-            internal override TypedValue this[int i]
-            {
-                get
-                {
-                    var dt = _rs.rowType;
-                    return _rec.Field(dt.names[i].defpos) ?? TNull.Value;
-                }
-            }
-            public override Rvvs _Rvv()
-            {
-                var from = _rs.qry as From;
-                return Rvvs.New(new Rvv(null,0,from.database.name, _rec.ppos, _curl));
-            }
-        }
-#endif
     }
     internal class OldTableRowSet : TableRowSet
     {
-        readonly int count;
-        internal OldTableRowSet(FromOldTable f, TableRowSet trs, Context cx)
-            : base(trs._tr, cx, f) 
+        internal new readonly int count;
+        internal OldTableRowSet(FromOldTable f, long t, Context cx)
+            : base(cx, t) 
         {
             var ta = cx.FindTriggerActivation(f.target);
             count = (int)ta.oldRows.Count;
         }
         internal override int? Count => count;
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            return OldTableRowBookmark.New(_cx, this);
+            return OldTableCursor.New(_cx, this);
         }
-        internal class OldTableRowBookmark : TableRowBookmark
+        internal class OldTableCursor : TableCursor
         {
-            OldTableRowBookmark(Context _cx,RowSet trs,int pos,
-                ABookmark<long,object> bmk) :base(_cx,trs,pos,bmk)
+            OldTableCursor(Context _cx,TableRowSet ors,Table tb,int pos,ObInfo inf,
+                ABookmark<long,TableRow> bmk) :base(_cx,ors,tb,pos,inf,bmk)
             { }
-            internal new static TableRowBookmark New(Context _cx, TableRowSet trs)
+            internal new static TableCursor New(Context _cx, TableRowSet trs)
             {
-                var fm = trs.qry as From;
-                var table = trs._tr.objects[fm.target] as Table;
+                var table = _cx.db.objects[trs.tabledefpos] as Table;
                 var ta = _cx.FindTriggerActivation(table.defpos);
-                for (var b = ta.oldRows.PositionAt(0); b != null; b = b.Next())
+                for (var b = ta.oldRows.First(); b != null; b = b.Next())
                 {
-                    var rec = (TableRow)b.value();
+                    var rec = b.value();
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                        trs._tr.user.defpos != table.definer
-                        && !trs._tr.user.clearance.ClearanceAllows(rec.classification))
+                        _cx.db.user.defpos != table.definer
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    if (fm.CheckMatch(trs._tr as Transaction, _cx, rec))
-                    {
-                        var bm = new OldTableRowBookmark(_cx, trs, 0, b);
-                        // because where won't evaluate correctly until we have a bookmark for the query
-                        if (Query.Eval(fm.where, trs._tr as Transaction, _cx))
-                            return bm;
-                    }
+                    return new OldTableCursor(_cx, trs,table, 0, trs.info, b);
                 }
                 return null;
+            }
+            public override Cursor Next(Context _cx)
+            {
+                var bmk = _bmk;
+                var rec = _bmk.value();
+                var table = _table;
+                for (; ; )
+                {
+                    if (bmk != null)
+                        bmk = bmk.Next();
+                    if (bmk == null)
+                        return null;
+                    if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
+                        _cx.db.user.defpos != table.definer
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                        continue;
+                    return new OldTableCursor(_cx,_trs, _table, _pos + 1, _info, bmk);
+                }
             }
         }
     }
@@ -979,81 +936,94 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class IndexRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Index ";
-        }
-        /// <summary>
-        /// The From part
-        /// </summary>
-        internal readonly From from;
-        readonly Table table;
+        internal readonly Table table;
         /// <summary>
         /// The Index to use
         /// </summary>
         internal readonly Index index;
         internal readonly PRow filter;
         /// <summary>
-        /// Constructor: A rowset for a table using a given index
+        /// Constructor: A rowset for a table using a given index. 
+        /// Independent of role, user, command.
+        /// Context must have a suitable tr field.
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal IndexRowSet(Database tr, Context cx, From f, Index x, PRow m)
-            : base(tr, cx, f, f.rowType, (ObInfo)tr.role.obinfos[x.defpos], 
-                  new OrderSpec(((ObInfo)tr.role.obinfos[x.defpos]).columns))
+        internal IndexRowSet(Context cx, Table tb, Index x, PRow filt=null) 
+            : base(x.defpos,cx,_Info(x.defpos,cx,tb))
         {
-            from = f;
-            table = tr.objects[f.target] as Table;
+            table = tb;
             index = x;
-            filter = m;
-            f.Audit(tr as Transaction, x, m);
+            filter = filt;
+        }
+        IndexRowSet(Context cx,IndexRowSet irs) :base(irs.defpos,cx,irs.info)
+        {
+            table = irs.table;
+            index = irs.index;
+            filter = irs.filter;
+        }
+        protected IndexRowSet(IndexRowSet irs, long a, long b) : base(irs, a, b)
+        {
+            table = irs.table;
+            index = irs.index;
+            filter = irs.filter;
+        }
+        static ObInfo _Info(long dp,Context cx,Table tb)
+        {
+            var oi = (ObInfo)cx.db.schemaRole.obinfos[tb.defpos];
+            return (ObInfo)oi.Relocate(dp);
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new IndexRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new IndexRowSet(cx,this);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
-            sb.Append("Index");
-            if (filter?.ToString() is string s && s != "()")
-            {
-                sb.Append(" filter ");
-                sb.Append(s);
-            }
-            sb.Append(' ');
-            sb.Append(from);
+            sb.Append("IndexRowSet ");
+            sb.Append(table);
             base._Strategy(sb, indent);
         }
         internal override int? Count => (int?)index.rows.Count;
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            return IndexRowBookmark.New(_cx,this);
+            return IndexCursor.New(_cx,this);
         }
         /// <summary>
         /// We assume the key matches our key type, and that the filter is null
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
-        public override RowBookmark PositionAt(Context _cx,PRow key)
+        public override Cursor PositionAt(Context _cx,PRow key)
         {
-            return IndexRowBookmark.New(_cx,this, key);
+            return IndexCursor.New(_cx,this, key);
         }
-        internal class IndexRowBookmark : RowBookmark
+        internal class IndexCursor : Cursor
         {
-            internal readonly IndexRowSet _irs;
+            internal readonly Table _table;
             internal readonly MTreeBookmark _bmk;
             internal readonly TableRow _rec;
-            internal readonly TRow _row, _key;
-            public bool IsNull => false;
-
-            public override TRow row => _row;
-
-            public override TRow key => _key;
-
-            IndexRowBookmark(Context _cx, IndexRowSet irs, int pos, MTreeBookmark bmk)
-                : base(_cx,irs, pos, bmk.Value().Value)
+            internal readonly PRow _key;
+            IndexCursor(Context _cx, Table tb, int pos, ObInfo inf, MTreeBookmark bmk,PRow key=null)
+                : this(_cx, tb, pos, bmk, inf, tb.tableRows[bmk.Value().Value],key) { }
+            IndexCursor(Context _cx, Table tb, int pos, MTreeBookmark bmk, ObInfo inf, TableRow trw,
+                PRow key)
+                : base(_cx, tb.defpos, pos, trw.defpos, inf, _Row(inf,trw))
             {
-                _bmk = bmk; _irs = irs;
-                _rec = (TableRow)irs.table.tableRows[_defpos];
-                _row = new TRow(_rs.rowType, _rec.fields);
-                _key = new TRow(_rs.keyType, _rec.fields);
-                _cx.Add(irs.qry, this);
+                _bmk = bmk; _table = tb; _rec = trw; _key = key;
+            }
+            static TRow _Row(ObInfo inf, TableRow rw)
+            {
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b = inf.columns.First(); b != null; b = b.Next())
+                {
+                    var p = b.value().defpos;
+                    vs += (p, rw.vals[p]);
+                }
+                return new TRow(inf.domain, vs);
             }
             public override MTreeBookmark Mb()
             {
@@ -1063,45 +1033,31 @@ namespace Pyrrho.Level4
             {
                 return _rec;
             }
-            public override RowBookmark ResetToTiesStart(Context _cx, MTreeBookmark mb)
+            public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
             {
-                return new IndexRowBookmark(_cx,_irs, _pos + 1, mb);
+                return new IndexCursor(_cx,_table, _pos + 1, _info, mb);
             }
-            internal static IndexRowBookmark New(Context _cx,IndexRowSet irs, PRow key = null)
+            internal static IndexCursor New(Context _cx,IndexRowSet irs, PRow key = null)
             {
+                var table = irs.table;
                 for (var bmk = irs.index.rows.PositionAt(key ?? irs.filter); bmk != null;
                     bmk = bmk.Next())
                 {
                     var iq = bmk.Value();
                     if (!iq.HasValue)
                         continue;
-                    var rec = (TableRow)irs.table.tableRows[iq.Value];
-                    if (rec == null || (irs.table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && irs._tr.user.defpos != irs.from.definer
-                        && !irs._tr.user.clearance.ClearanceAllows(rec.classification)))
+                    var rec = table.tableRows[iq.Value];
+                    if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
+                        && _cx.db.user.defpos != table.definer
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                         continue;
-                    // not sure (yet) which of the two following tests works best
-                    for (var m = irs.matches?.First(); m != null; m = m.Next())
-                        if (rec.fields.Contains(m.key().defpos)
-                            && m.value().CompareTo(rec.fields[m.key().defpos]) != 0)
-                            goto skip;
-                    if (irs.from.CheckMatch(irs._tr as Transaction, _cx, rec))
-                    {
-                        var bm = new IndexRowBookmark(_cx,irs, 0, bmk);
-                        // because where won't evaluate until we have a bookmark for the query
-                        if (Query.Eval(irs.from.where, irs._tr as Transaction, _cx))
-                            return bm;
-                    }
-                skip:;
+                    return new IndexCursor(_cx,table, 0, irs.info, bmk, key??irs.filter);
                 }
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 var bmk = _bmk;
-                var rec = _rec;
-                var fm = _rs.qry as From;
-                var table = _rs._tr.objects[fm.target] as Table;
                 for (; ; )
                 {
                     bmk = bmk.Next();
@@ -1109,24 +1065,12 @@ namespace Pyrrho.Level4
                         return null;
                     if (!bmk.Value().HasValue)
                         continue;
-                    rec = (TableRow)table.tableRows[bmk.Value().Value];
-                    if (table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && _rs._tr.user.defpos != table.definer
-                        && !_rs._tr.user.clearance.ClearanceAllows(rec.classification))
+                    var rec = _table.tableRows[bmk.Value().Value];
+                    if (_table.enforcement.HasFlag(Grant.Privilege.Select)
+                        && _cx.db.user.defpos != _table.definer
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-                    // not sure (yet) which of the two following tests works best
-                    for (var m = _rs.matches?.First(); m != null; m = m.Next())
-                        if (rec.fields.Contains(m.key().defpos)
-                            && m.value().CompareTo(rec.fields[m.key().defpos]) != 0)
-                            goto skip;
-                    if (fm.CheckMatch(_rs._tr as Transaction, _cx, rec))
-                    {
-                        var bm = new IndexRowBookmark(_cx,_irs, _pos + 1, bmk);
-                        // because where won't evaluate correctly until we update the bookmark for the query
-                        if (Query.Eval(fm.where, _rs._tr as Transaction, _cx))
-                            return bm;
-                    }
-                skip:;
+                    return new IndexCursor(_cx, _table, _pos + 1, _info, bmk);
                 }
             }
         }
@@ -1137,24 +1081,33 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class DistinctRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Distinct ";
-        }
-        MTree rtree;
+        readonly MTree rtree;
         internal RowSet source;
         /// <summary>
         /// constructor: a distinct rowset
         /// </summary>
         /// <param name="r">a source rowset</param>
-        internal DistinctRowSet(Context _cx,RowSet r)
-            : base(r._tr,_cx,r.qry,r.rowType,r.keyType)
+        internal DistinctRowSet(Context _cx,RowSet r) 
+            : base(_cx.nextHeap++,_cx,r.info,r.finder,r.keyInfo,r.where)
         {
-            var wh = BTree<SqlValue, TypedValue>.Empty;
-            Build(r.qry.defpos);
             source = r;
+            rtree = (MTree)Build(_cx);
+        }
+        protected DistinctRowSet(DistinctRowSet rs,long a,long b):base(rs,a,b)
+        {
+            source = rs.source;
+            rtree = rs.rtree;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new DistinctRowSet(this,a,b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException(); // Relocate before build
         }
 
+        internal override RowSet Source => source;
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Distinct");
@@ -1162,58 +1115,65 @@ namespace Pyrrho.Level4
             source.Strategy(indent);
         }
 
-        protected override void Build(Context _cx)
+        protected override object Build(Context cx)
         {
-            rtree = new MTree(new TreeInfo(source.keyType, TreeBehaviour.Allow, TreeBehaviour.Allow));
+            var rtree = new MTree(new TreeInfo(source.keyInfo, TreeBehaviour.Allow, TreeBehaviour.Allow));
             var vs = BList<TypedValue>.Empty;
-            var i = 0;
-            for (var a = source.First(_cx); a != null; a = a.Next(_cx),i++)
+            for (var a = source.First(cx); a != null; a = a.Next(cx))
             {
                 for (var ti = rtree.info; ti != null; ti = ti.tail)
-                    vs+=(i,a.row[ti.head]);
+                    vs+= a[ti.head];
                 MTree.Add(ref rtree, new PRow(vs), 0);
             }
+            return rtree;
         }
 
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            return DistinctRowBookmark.New(_cx,this);
+            return DistinctCursor.New(_cx,this);
         }
 
-        internal class DistinctRowBookmark : RowBookmark
+        internal class DistinctCursor : Cursor
         {
+            readonly DistinctRowSet _drs;
             readonly MTreeBookmark _bmk;
-            readonly TRow _row;
-            DistinctRowBookmark(Context _cx, DistinctRowSet drs,int pos,MTreeBookmark bmk) 
-                :base(_cx,drs,pos,0)
+            DistinctCursor(Context cx,DistinctRowSet drs,int pos,MTreeBookmark bmk) 
+                :base(cx,drs,pos,0,new TRow(drs.keyInfo,bmk.key()))
             {
                 _bmk = bmk;
-                _row = new TRow(drs.rowType, bmk.key());
-                _cx.Add(drs.qry, this);
+                _drs = drs;
             }
-
-            public override TRow row => _row;
-
-            public override TRow key => _row;
-
-            internal static DistinctRowBookmark New(Context _cx,DistinctRowSet drs)
+            internal static DistinctCursor New(Context _cx,DistinctRowSet drs)
             {
-                for (var bmk = drs.rtree.First(); bmk != null; bmk = bmk.Next())
+                var ox = _cx.from;
+                _cx.from = drs._finder;
+                for (var bmk = drs.rtree.First(); bmk != null; bmk = bmk.Next() as MTreeBookmark)
                 {
-                    var rb = new DistinctRowBookmark(_cx,drs, 0, bmk);
-                    if (rb.Matches() && Query.Eval(drs.qry.where, drs._tr as Transaction, _cx))
+                    var rb = new DistinctCursor(_cx,drs,0, bmk);
+                    if (rb.Matches(_cx) && Query.Eval(drs.where, _cx))
+                    {
+                        _cx.from = ox;
                         return rb;
+                    }
                 }
+                _cx.from = ox;
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
-                for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
+                var ox = _cx.from;
+                _cx.from = _drs._finder;
+                for (var bmk = _bmk.Next() as MTreeBookmark; bmk != null; 
+                    bmk = bmk.Next() as MTreeBookmark)
                 {
-                    var rb = new DistinctRowBookmark(_cx,_rs as DistinctRowSet, _pos + 1, bmk);
-                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
+                    var rb = new DistinctCursor(_cx, _drs,_pos + 1, bmk);
+                    if (rb.Matches(_cx) && Query.Eval(_drs.where, _cx))
+                    {
+                        _cx.from = ox;
                         return rb;
+                    }
                 }
+                _cx.from = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -1224,69 +1184,114 @@ namespace Pyrrho.Level4
     }
     internal class OrderedRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Ordered ";
-        }
-        internal RTree tree = null;
-        internal RowSet source;
-        internal OrderSpec ordSpec;
+        internal readonly RTree tree;
+        internal readonly RowSet source;
+        internal readonly OrderSpec ordSpec;
         internal readonly bool distinct;
-        public OrderedRowSet(Context _cx,Query q,RowSet r,OrderSpec os,bool dct)
-            :base(r._tr,_cx,q,r.rowType,new ObInfo(q.defpos, Domain.TableType, os.items),os)
+        internal override RowSet Source => source;
+        public OrderedRowSet(Context _cx,RowSet r,OrderSpec os,bool dct)
+            :base(_cx.nextHeap++, _cx, r.info,r.finder,os.info,r.where,os,r.matches)
         {
             source = r;
             distinct = dct;
             ordSpec = os;
-            building = !SameOrder(r);
+            tree = (RTree)Build(_cx);
+        }
+        protected OrderedRowSet(OrderedRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            source = rs.source;
+            distinct = rs.distinct;
+            ordSpec = rs.ordSpec;
+            tree = rs.tree;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new OrderedRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Ordered ");
             if (distinct)
                 sb.Append("distinct ");
-            sb.Append(keyType);
+            sb.Append(keyInfo);
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
-        internal override int? Count => tree.rows.Count;
-        protected override RowBookmark _First(Context _cx)
+        internal override int? Count => (int)tree.rows.Count;
+        protected override object Build(Context cx)
         {
-            if (building)
+            var _cx = new Context(cx);
+            _cx.from = _finder; 
+            var tree = new RTree(defpos,keyInfo, distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, 
+                TreeBehaviour.Allow);
+            for (var e = source.First(_cx); e != null; e = e.Next(_cx))
             {
-                tree = new RTree(source, new TreeInfo(keyType, distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow));
-                for (var e = source.First(_cx); e != null; e = e.Next(_cx))
+                var vs = BList<TypedValue>.Empty;
+                for (var b = rowOrder.items.First(); b != null; b = b.Next())
                 {
-                    var ks = new TypedValue[keyType.Length];
-                    var rw = e.row;
-                    for (int j = (int)rowOrder.items.Count - 1; j >= 0; j--)
-                        ks[j] = rowOrder.items[j].Eval(source._tr as Transaction,_cx);
-                    RTree.Add(ref tree, new TRow(keyType, ks), rw);
+                    var s = b.value();
+                    vs += s.Eval(_cx);
                 }
-                building = false;
+                RTree.Add(ref tree, new TRow(rowOrder.info, vs), e);
             }
-            return (tree==null)?source.First(_cx):RTreeBookmark.New(_cx,tree);
+            return tree;
         }
-        public override RowBookmark PositionAt(Context _cx,PRow key)
+        public override Cursor First(Context _cx)
         {
-            return tree.PositionAt(_cx,key);
+            return OrderedCursor.New(_cx, this, RTreeBookmark.New(_cx, tree, info));
+        }
+        internal class OrderedCursor : Cursor
+        {
+            readonly OrderedRowSet _ors;
+            readonly Cursor _rb;
+            internal OrderedCursor(Context cx,OrderedRowSet ors,Cursor rb)
+                :base(cx,ors,rb._pos,rb._defpos,rb)
+            {
+                cx.cursors += (ors.defpos, this);
+                _ors = ors; _rb = rb;
+            }
+            internal static OrderedCursor New(Context cx,OrderedRowSet ors,Cursor rb)
+            {
+                if (rb == null)
+                    return null;
+                return new OrderedCursor(cx, ors, rb);
+            }
+            public override Cursor Next(Context _cx)
+            {
+                return New(_cx, _ors, _rb.Next(_cx));
+            }
+            internal override TableRow Rec()
+            {
+                return _rb.Rec();
+            }
         }
     }
     internal class EmptyRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Empty ";
-        }
         public static readonly EmptyRowSet Value = new EmptyRowSet();
-        EmptyRowSet() : base(null,null,null) { }
+        EmptyRowSet() : base(-1,null,null) { }
+        internal EmptyRowSet(long dp, Context cx) : base(dp, cx, Value) { }
+        protected EmptyRowSet(EmptyRowSet rs, long a, long b) : base(rs, a, b)
+        { }
+        internal override RowSet New(long a, long b)
+        {
+            return new EmptyRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new EmptyRowSet(dp, cx);
+        }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Empty");
             base._Strategy(sb, indent);
         }
         internal override int? Count => 0;
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             return null;
         }
@@ -1296,15 +1301,23 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class SqlRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Sql ";
-        }
-        internal readonly SqlRow[] rows;
-        internal SqlRowSet(Transaction tr,Context cx,Query q, ObInfo dt, SqlRow[] rs) 
-            : base(tr,cx, q, dt, dt)
+        internal readonly BList<SqlRow> rows;
+        internal SqlRowSet(Context cx,ObInfo inf, BList<SqlRow> rs) 
+            : base(cx.nextHeap++, cx, inf)
         {
             rows = rs;
+        }
+        protected SqlRowSet(SqlRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            rows = rs.rows;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new SqlRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1312,41 +1325,34 @@ namespace Pyrrho.Level4
             sb.Append(rows.Length);
             base._Strategy(sb, indent);
         }
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            return SqlRowBookmark.New(_cx,this);
+            return SqlCursor.New(_cx,this);
         }
-        internal class SqlRowBookmark : RowBookmark
+        internal class SqlCursor : Cursor
         {
             readonly SqlRowSet _srs;
-            readonly TRow _row;
-
-            public override TRow row => _row;
-
-            public override TRow key => _row;
-
-            SqlRowBookmark(Context _cx,SqlRowSet rs,int pos): base(_cx,rs,pos,0)
+            SqlCursor(Context _cx,SqlRowSet rs,int pos)
+                : base(_cx,rs,pos,0,(TRow)rs.info.Eval(_cx))
             {
                 _srs = rs;
-                _row = _srs.rows[_pos].Eval(_srs._tr as Transaction, _cx) as TRow;
-                _cx.Add(rs.qry, this);
             }
-            internal static SqlRowBookmark New(Context _cx,SqlRowSet rs)
+            internal static SqlCursor New(Context _cx,SqlRowSet rs)
             {
                 for (var i = 0; i < rs.rows.Length; i++)
                 {
-                    var rb = new SqlRowBookmark(_cx,rs, i);
-                    if (rb.Matches() && Query.Eval(rs.qry.where, rs._tr as Transaction, _cx))
+                    var rb = new SqlCursor(_cx,rs, i);
+                    if (rb.Matches(_cx) && Query.Eval(rs.where, _cx))
                         return rb;
                 }
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 for (var i = _pos + 1; i < _srs.rows.Length; i++)
                 {
-                    var rb = new SqlRowBookmark(_cx,_srs, i);
-                    if (rb.Matches() && Query.Eval(_srs.qry.where, _srs._tr as Transaction, _cx))
+                    var rb = new SqlCursor(_cx,_srs, i);
+                    if (rb.Matches(_cx) && Query.Eval(_srs.where, _cx))
                         return rb;
                 }
                 return null;
@@ -1357,24 +1363,141 @@ namespace Pyrrho.Level4
             }
         }
     }
+    internal class TableExpRowSet : RowSet
+    {
+        internal readonly RowSet source;
+        internal readonly Selection needed;
+        internal TableExpRowSet(long dp, Context cx, Selection ne,RowSet sc, BTree<long, SqlValue> wh, 
+            BTree<SqlValue, TypedValue> ma)
+            : base(dp, cx, sc.info, sc.finder, sc.keyInfo, _Where(sc, wh), sc.rowOrder, _Matches(sc, ma)) 
+        {
+            source = sc;
+            needed = ne;
+        }
+        protected TableExpRowSet(TableExpRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            source = rs.source;
+            needed = rs.needed;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new TableExpRowSet(this, a, b);
+        }
+        static BTree<long, SqlValue> _Where(RowSet sc, BTree<long, SqlValue> wh)
+        {
+            var r = sc.where;
+            for (var b = wh?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                if (!sc.where.Contains(p))
+                    r += (p, b.value());
+            }
+            return r;
+        }
+        static BTree<SqlValue, TypedValue> _Matches(RowSet sc, BTree<SqlValue, TypedValue> ma)
+        {
+            var r = BTree<SqlValue, TypedValue>.Empty;
+            for (var b = ma?.First(); b != null; b = b.Next())
+            {
+                var s = b.key();
+                if (!sc.matches.Contains(s))
+                    r += (s, b.value());
+            }
+            return r;
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        public override Cursor First(Context _cx)
+        {
+            return TableExpCursor.New(_cx,this);
+        }
+        internal class TableExpCursor : Cursor
+        {
+            internal readonly TableExpRowSet _trs;
+            internal readonly Cursor _bmk;
+            TableExpCursor(Context cx,TableExpRowSet trs,Cursor bmk,int pos) 
+                :base(cx,trs,pos,bmk._defpos,bmk)
+            {
+                _trs = trs;
+                _bmk = bmk;
+            }
+            public static TableExpCursor New(Context cx,TableExpRowSet trs)
+            {
+                var ox = cx.from;
+                cx.from = trs._finder;
+                for (var bmk=trs.source.First(cx);bmk!=null;bmk=bmk.Next(cx))
+                {
+                    var rb = new TableExpCursor(cx, trs, bmk, 0);
+                    if (rb.Matches(cx) && Query.Eval(trs.where, cx))
+                    {
+                        cx.from = ox;
+                        return rb;
+                    }
+                }
+                cx.from = ox;
+                return null;
+            }
+            public override Cursor Next(Context cx)
+            {
+                var ox = cx.from;
+                cx.from = _trs._finder;
+                for (var bmk = _bmk.Next(cx); bmk != null; bmk = bmk.Next(cx))
+                {
+                    var rb = new TableExpCursor(cx, _trs, bmk, _pos+1);
+                    if (rb.Matches(cx) && Query.Eval(_trs.where, cx))
+                    {
+                        cx.from = ox;
+                        return rb;
+                    }
+                }
+                cx.from = ox;
+                return null;
+            }
+            internal override TableRow Rec()
+            {
+                return _bmk.Rec();
+            }
+        }
+    }
     /// <summary>
     /// a row set for TRows
     /// </summary>
     internal class ExplicitRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Explicit ";
-        }
-        internal BList<(long,TRow)> rows = BList<(long,TRow)>.Empty;
+        internal readonly BList<(long,TRow)> rows;
         /// <summary>
         /// constructor: a set of explicit rows
         /// </summary>
-        /// <param name="q">a query</param>
-        /// <param name="r">a row type</param>
-        internal ExplicitRowSet(Transaction tr,Context cx,Query q,ObInfo kT=null)
-            : base(tr,cx,q,q.rowType,kT)
+        /// <param name="rt">a row type</param>
+        /// <param name="r">a a set of TRows from q</param>
+        internal ExplicitRowSet(long dp,Context cx,ObInfo rt,BList<(long,TRow)>r)
+            : base(dp,cx,rt)
         {
+            rows = r;
+        }
+        internal ExplicitRowSet(long dp,Context cx,RowSet sce,ObInfo oi)
+            : base(dp, cx, _Info(dp,cx,oi), sce.finder)
+        { }
+        protected ExplicitRowSet(ExplicitRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            rows = rs.rows;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new ExplicitRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new ExplicitRowSet(dp,cx,(ObInfo)info.Relocate(dp),rows);
+        }
+        static ObInfo _Info(long dp,Context cx,ObInfo oi)
+        {
+            var r = ObInfo.Any;
+            for (var b = oi.columns.First(); b != null; b = b.Next())
+                r += new SqlRowSetCol(b.value(), dp);
+            return r;
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1387,65 +1510,65 @@ namespace Pyrrho.Level4
                     for (var i = 0; i < indent; i++)
                         s.Append(' ');
                     s.Append(r.value());
-                    Console.WriteLine(s.ToString());
                 }
             else
-                Console.WriteLine("" + Count + " rows");
+                sb.Append("" + Count + " rows");
         }
         internal override int? Count => (int)rows.Count;
-        /// <summary>
-        /// Add a row to the set.
-        /// </summary>
-        /// <param name="r">the row to add</param>
-        internal void Add((long,TRow) r)
+        public override Cursor First(Context _cx)
         {
-            rows += r;
+            return ExplicitCursor.New(_cx,this,0);
         }
 
-        protected override RowBookmark _First(Context _cx)
-        {
-            return ExplicitRowBookmark.New(_cx,this,0);
-        }
-
-        internal class ExplicitRowBookmark : RowBookmark
+        internal class ExplicitCursor : Cursor
         {
             readonly ExplicitRowSet _ers;
-            readonly int _i;
-            readonly TRow _row;
-
-            public override TRow row => _row;
-
-            public override TRow key => _row;
-
-            ExplicitRowBookmark(Context _cx, ExplicitRowSet ers,int pos,int i) 
-                :base(_cx,ers,pos,ers.rows[i].Item1)
+            readonly ABookmark<int,(long,TRow)> _prb;
+            ExplicitCursor(Context _cx, ExplicitRowSet ers,ABookmark<int,(long,TRow)>prb,int pos) 
+                :base(_cx,ers,pos,prb.value().Item1,prb.value().Item2)
             {
                 _ers = ers;
-                _i = i;
-                _row = ers.rows[i].Item2;
-                _cx.Add(ers.qry, this);
+                _prb = prb;
             }
-            internal static ExplicitRowBookmark New(Context _cx,ExplicitRowSet ers,int i)
+            static BTree<long,TypedValue> _Vals(ExplicitRowSet ers,ABookmark<int,(long,TRow)>prb)
             {
-                if (i<0) 
-                    return null;
-                for (;i<ers.rows.Count;i++)
+                var rw = prb.value().Item2;
+                var vs = BTree<long, TypedValue>.Empty;
+                var i = 0;
+                for (var b = ers.info.columns.First(); b != null; b = b.Next(), i++)
+                    vs += (b.value().defpos, rw[i]);
+                return vs;
+            }
+            internal static ExplicitCursor New(Context _cx,ExplicitRowSet ers,int i)
+            {
+                var ox = _cx.from;
+                _cx.from = ers._finder;
+                for (var b=ers.rows.First();b!=null;b=b.Next())
                 {
-                    var rb = new ExplicitRowBookmark(_cx,ers, 0, i);
-                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr as Transaction, _cx))
+                    var rb = new ExplicitCursor(_cx,ers, b, 0);
+                    if (rb.Matches(_cx) && Query.Eval(ers.where, _cx))
+                    {
+                        _cx.from = ox;
                         return rb;
+                    }
                 }
+                _cx.from = ox;
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
-                var ers = _rs as ExplicitRowSet;
-                for (var i = _i+1; i < ers.rows.Count; i++)
+                var ox = _cx.from;
+                _cx.from = _ers._finder;
+                for (var prb = _prb.Next(); prb!=null; prb=prb.Next())
                 {
-                    var rb = new ExplicitRowBookmark(_cx,ers, _pos+1, i);
-                    if (rb.Matches() && Query.Eval(ers.qry.where, ers._tr as Transaction, _cx))
+                    var rb = new ExplicitCursor(_cx,_ers, prb, _pos+1);
+                    if (rb.Matches(_cx) && Query.Eval(_ers.where, _cx))
+                    {
+                        _cx.from = ox;
                         return rb;
+                    }
                 }
+                _cx.from = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -1463,43 +1586,42 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class TransitionRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Transition ";
-        }
         internal readonly BTree<long, TypedValue> defaults = BTree<long, TypedValue>.Empty; 
         internal readonly From from; // will be a SqlInsert, QuerySearch or UpdateSearch
-        internal readonly ObInfo targetInfo;
+        internal readonly ObInfo targetInfo; 
         internal readonly long indexdefpos = -1L;
         internal readonly PTrigger.TrigType _tgt;
-        internal readonly BTree<long, TriggerActivation> tb, ti, ta;
+        internal readonly BTree<long, TriggerActivation> tb, ti, ta, td;
         internal readonly Transaction oldTr;
         internal readonly Adapters _eqs;
-        internal TransitionRowSet(Transaction tr,Context cx,From q, PTrigger.TrigType tg, Adapters eqs)
-            : base(tr,cx,q,q.rowType,q.KeyType(tr)??q.rowType)
+        internal TransitionRowSet(Context cx,From q, PTrigger.TrigType tg, Adapters eqs)
+            : base(Transaction.Analysing,cx, (ObInfo)cx.db.role.obinfos[q.target], _Finder(cx,q), null,q.where)
         {
             from = q;
             _eqs = eqs;
-            oldTr = tr;
+            oldTr = cx.tr;
+            var tr = cx.db;
             var t = tr.objects[from.target] as Table;
             indexdefpos = t.FindPrimaryIndex(tr)?.defpos ?? -1L;
             // check now about conflict with generated columns
-            if (t.Denied(tr,Grant.Privilege.Insert))
+            if (t.Denied(cx,Grant.Privilege.Insert))
                 throw new DBException("42105",q);
             var dt = q.rowType; // data rowType
+            targetInfo = tr.schemaRole.obinfos[t.defpos] as ObInfo; 
             if (tg != PTrigger.TrigType.Delete)
             {
-                targetInfo = tr.role.obinfos[t.defpos] as ObInfo;
                 for (int i = 0; i < dt.Length; i++) // at this point q is the insert statement, simpleQuery is the base table
-                    if (dt.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
-                    {
-                        if (tc.generated != GenerationRule.None)
-                            throw new DBException("0U000", dt.columns[i].name).Mix();
-                    }
-
+                {
+                    var s = dt[i];
+                    var c = (s is SqlCopy sc) ? sc.copyFrom : s.defpos;
+                    if (tr.objects[c] is TableColumn tc && tc.generated != GenerationRule.None)
+                            throw new DBException("0U000", dt[i].name).Mix();
+                }
                 for (int i = 0; i < targetInfo.Length; i++)
-                    if (targetInfo.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                    if (targetInfo.columns[i] is ObInfo oc)
                     {
+                        cx.from += (oc.defpos, defpos);
+                        var tc = (TableColumn)tr.objects[oc.defpos];
                         var tv = tc.defaultValue ?? tc.domain.defaultValue;
                         if (tv != TNull.Value)
                         {
@@ -1511,13 +1633,47 @@ namespace Pyrrho.Level4
             else 
                 targetInfo = ObInfo.Any;
             _tgt = tg;
-            tb = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Before]);
-            ti = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Instead]);
-            ta = Setup(tr, q, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.After]);
+            tb = Setup(cx, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Before]);
+            ti = Setup(cx, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.Instead]);
+            ta = Setup(cx, t.triggers[_tgt | PTrigger.TrigType.EachStatement | PTrigger.TrigType.After]);
+            td = Setup(cx, t.triggers[_tgt | PTrigger.TrigType.Deferred]);
         }
-        protected override RowBookmark _First(Context _cx)
+        static BTree<long,long> _Finder(Context cx,Query q)
         {
-            return TransitionRowBookmark.New(_cx,this);
+            var r = BTree<long, long>.Empty;
+            var rp = cx.nextHeap - 1;
+            for (var b = cx.data.First(); b != null; b = b.Next())
+                for (var c = b.value()?.finder?.First(); c != null; c = c.Next())
+                    r += (c.key(), c.value());
+            for (var b = q.rowType.First(); b != null; b = b.Next())
+                r += (b.value().defpos, q.defpos);
+            return r;
+        }
+        protected TransitionRowSet(TransitionRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            defaults = rs.defaults;
+            from = rs.from;
+            targetInfo = rs.targetInfo;
+            indexdefpos = rs.indexdefpos;
+            _tgt = rs._tgt;
+            tb = rs.tb;
+            ti = rs.ti;
+            ta = rs.ta;
+            td = rs.td;
+            oldTr = rs.oldTr;
+            _eqs = rs._eqs;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new TransitionRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        public override Cursor First(Context _cx)
+        {
+            return TransitionCursor.New(_cx,this);
         }
         /// <summary>
         /// Implement the autokey feature: if a key column is an integer type,
@@ -1531,7 +1687,7 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         void CheckPrimaryKey(Context cx)
         {
-            var ix = (Index)_tr.objects[indexdefpos];
+            var ix = (Index)cx.db.objects[indexdefpos];
             if (ix == null)
                 return;
             var k = BList<TypedValue>.Empty;
@@ -1557,10 +1713,10 @@ namespace Pyrrho.Level4
         /// <param name="q"></param>
         /// <param name="tgs"></param>
         /// <returns></returns>
-        BTree<long, TriggerActivation> Setup(Transaction tr,Query q, BTree<long, Trigger> tgs)
+        BTree<long, TriggerActivation> Setup(Context _cx,BTree<long, Trigger> tgs)
         {
             var r = BTree<long, TriggerActivation>.Empty;
-            var cx = new Context(tr);
+            var cx = new Context(_cx.tr);
             if (tgs != null)
                 for (var tg = tgs.First(); tg != null; tg = tg.Next())
                     r +=(tg.key(), new TriggerActivation(cx,this, tg.value()));
@@ -1570,118 +1726,194 @@ namespace Pyrrho.Level4
         /// Perform the triggers in a set
         /// </summary>
         /// <param name="acts"></param>
-        (Transaction,bool) Exec(Transaction tr,Context _cx, BTree<long, TriggerActivation> acts)
+        (Context,TransitionCursor,bool) Exec(Context _cx, BTree<long, TriggerActivation> acts)
         {
             var r = false;
+            if (acts == null)
+                return (_cx,_cx.cursors[defpos] as TransitionCursor, r);
+            var row = (TransitionCursor)_cx.cursors[defpos];
+            bool skip;
             for (var a = acts.First(); a != null; a = a.Next())
             {
-                var (nt,fi) = a.value().Exec(tr, _cx);
-                if (fi)
-                    r = true;
-                tr = nt;
+                (_cx, skip) = a.value().Exec(_cx, row);
+                r = r || skip;
             }
-            _cx.ret = TBool.For(r);
-            return (tr,r);
+            _cx.val = TBool.For(r);
+            return (_cx,(TransitionCursor)_cx.cursors[defpos],r);
         }
-        internal (Transaction,bool) InsertSA(Transaction tr,Context _cx)
-        { return Exec(tr, _cx,ta); }
-        internal (Transaction,bool) InsertSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
-        internal (Transaction,bool) UpdateSA(Transaction tr,Context _cx)
-        { return Exec(tr,_cx,ta); }
-        internal (Transaction,bool) UpdateSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
-        internal (Transaction,bool) DeleteSB(Transaction tr,Context _cx)
-        { tr = Exec(tr,_cx,tb).Item1; return Exec(tr,_cx,ti); }
-        internal class TransitionRowBookmark : RowBookmark
+        internal (Context,TransitionCursor,bool) InsertSA(Context _cx)
+        { return Exec(_cx,ta); }
+        internal (Context, TransitionCursor, bool) InsertSB(Context _cx)
+        { return Exec(_cx, tb); }
+        internal (Context, TransitionCursor, bool) UpdateSA(Context _cx)
+        { return Exec(_cx,ta); }
+        internal (Context, TransitionCursor, bool) UpdateSB(Context _cx)
+        { return Exec( Exec(_cx,tb).Item1,ti); }
+        internal (Context, TransitionCursor, bool) DeleteSB(Context _cx)
+        { return Exec(Exec(_cx,tb).Item1,ti); }
+        internal (Context, TransitionCursor, bool) DeleteSA(Context _cx)
+        { return Exec(_cx, td); }
+        internal class TransitionCursor : Cursor
         {
-            readonly TransitionRowSet _trs;
-            readonly Context _cx;
-            readonly RowBookmark _fbm;
+            internal readonly TransitionRowSet _trs;
+            internal readonly Cursor _fbm; // transition-side only
             internal readonly BTree<long,TypedValue> _oldVals;
             /// <summary>
             /// There may be several triggers of any type, so we manage a set of transition activations for each.
             /// These are for table before, table instead, table after, row before, row instead, row after.
             /// </summary>
             internal readonly BTree<long, TriggerActivation> rb, ri, ra;
-            public override TRow row => new TRow(_trs.targetInfo,_cx.values);
-            public override TRow key => new TRow(_trs.keyType, _cx.values);
-            TransitionRowBookmark(Context cx,TransitionRowSet trs, int pos, RowBookmark fbm, Index ix) 
-                : base(cx,trs, pos, fbm._defpos)
+            internal TransitionCursor(Context cx, TransitionRowSet trs, int pos, Cursor fbm)
+               : base(cx, trs, pos, fbm._defpos,_Row(trs,fbm))
             {
-                _trs = trs;
-                _cx = cx;
+                _trs = trs as TransitionRowSet;
                 _fbm = fbm;
+                _oldVals = values;
+                for (var b = values.First(); b != null; b = b.Next())
+                    cx.values += (b.key(), b.value());
+            }
+            static TRow _Row(TransitionRowSet trs,Cursor fb)
+            {
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b=trs.from.rowType.First();b!=null;b=b.Next())
+                {
+                    var s = b.value();
+                    if (fb[s.defpos] is TypedValue v)
+                        vs += ((s is SqlCopy sc)?sc.copyFrom:s.defpos, v);
+                }
+                return new TRow(trs.info.domain, vs);
+            }
+            // calculate the trigger-side version of the transition cursor
+            internal TransitionCursor(Context cx, Selection sel, 
+                TransitionCursor fbm)
+            : base(cx, sel.defpos, sel, fbm._pos, fbm._defpos, _Row(sel,fbm))
+            {
+                _trs = fbm._trs as TransitionRowSet;
+                _fbm = null; // trigger-side does not access _fbm
+                _oldVals = values;
+            }
+            static TRow _Row(Selection sel,Cursor fb)
+            {
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b = sel.First(); b != null; b = b.Next())
+                {
+                    var s = b.value();
+                    var p = (s is SqlCopy sc) ? sc.copyFrom : s.defpos;
+                        vs += (s.defpos, fb[p]);
+                }
+                return new TRow(sel.info.domain, vs);
+            }
+           internal TransitionCursor(Context cx, TransitionCursor cu, 
+                BTree<long,TypedValue> vs)
+                : base(cx, cu._trs, cu._pos, cu._defpos, new TRow(cu._info.domain,vs))
+            {
+                _trs = cu._trs;
+                _fbm = cu._fbm;
+                _oldVals = values;
+            }
+            internal TransitionCursor(Context cx, Selection sel, TransitionCursor cu,
+            BTree<long, TypedValue> vs)
+            : base(cx, sel.defpos, sel, cu._pos, cu._defpos, new TRow(sel.info.domain, vs))
+            {
+                _trs = cu._trs;
+                _fbm = null;
+                _oldVals = values;
+            }
+            public static TransitionCursor operator+(TransitionCursor cu,
+                (Context,Selection,long,TypedValue)x)
+            {
+                var (cx, sel,p, tv) = x;
+                return new TransitionCursor(cx, sel, cu, cu.values + (p, tv));
+            }
+            internal TransitionCursor(TransitionCursor trb,Context cx)
+                :base(cx,trb._trs,trb._pos,trb._fbm._defpos,
+                     new TRow(trb._trs.targetInfo.domain,cx.values))
+            {
+                _trs = trb._trs;
+                _fbm = trb._fbm;
+                _oldVals = values;
+                var tb = cx.db.objects[_trs.from.target] as Table;
+                // Get the trigger sets and set up the activations
+                rb = trb.rb??Setup(cx, tb.triggers[_trs._tgt | PTrigger.TrigType.EachRow 
+                    | PTrigger.TrigType.Before]);
+                ri = trb.ri??Setup(cx, tb.triggers[_trs._tgt | PTrigger.TrigType.EachRow 
+                    | PTrigger.TrigType.Instead]);
+                ra = trb.ra??Setup(cx, tb.triggers[_trs._tgt | PTrigger.TrigType.EachRow 
+                    | PTrigger.TrigType.After]);
+            }
+            static TransitionCursor New(Context cx,TransitionRowSet trs, int pos,
+                 Cursor fbm)
+            { 
                 var dt = trs.from.rowType;
                 var ti = trs.targetInfo;
                 for (var b = ti.columns.First(); b != null; b = b.Next())
-                    _cx.values -= b.value().defpos;
+                    cx.values -= b.value().defpos;
                 for (var b = trs.defaults.First(); b != null; b = b.Next())
-                    if (row[b.key()] == null || row[b.key()] == TNull.Value)
-                        _cx.values += (b.key(),b.value());
+                    if (cx.values[b.key()] == null || cx.values[b.key()] == TNull.Value)
+                        cx.values += (b.key(), b.value());
+                var trc = new TransitionCursor(cx, trs, pos, fbm);
                 for (int i = 0; i < trs.from.display; i++)
                 {
-                    TypedValue tv = fbm.row[i];
-                    var sl = dt.columns[i];
+                    var sl = dt[i];
+                    var fb = fbm._info.columns[i];
+                    TypedValue tv = fbm[fb.defpos];
                     if (sl is SqlProcedureCall sv)
                     {
                         var fp = sv.call.procdefpos;
-                        var m = _trs._eqs.Match(fp, sl.defpos);
+                        var m = trs._eqs.Match(fp, sl.defpos);
                         if (m.HasValue)
                         {
                             if (m.Value == 0)
-                                tv = fbm.row[sl.defpos];
+                                tv = sl.Eval(cx);
                             else // there's an adapter function
                             {
                                 // tv = fn (fbm[j])
-                                var pr = trs._tr.objects[m.Value] as Procedure;
-                                var ac = new CalledActivation(trs._tr as Transaction, _cx, pr, Domain.Null);
-                                tv = pr.body.Eval(_trs._tr as Transaction, ac);
+                                var pr = cx.db.objects[m.Value] as Procedure;
+                                var ac = new CalledActivation(cx, pr, Domain.Null);
+                                tv = pr.body.Eval(ac);
                             }
                         }
                     }
-                    _cx.values += (sl.defpos, tv);
+                    cx.values += (sl.defpos, tv);
                 }
-                for (var b = dt.columns.First(); b != null; b = b.Next())
+                for (var b = dt.First(); b != null; b = b.Next())
                 {
                     var sl = b.value();
-                    var tv = row[sl.defpos];
+                    var tv = cx.values[sl.defpos];
                     if (tv == null || tv==TNull.Value)
                         tv = trs.defaults[sl.defpos] ?? TNull.Value;
-                    _cx.values += (sl.defpos, tv);
+                    cx.values += (sl.Defpos(), tv);
                 }
                 if (trs.indexdefpos>0)
-                    trs.CheckPrimaryKey(_cx);
+                    trs.CheckPrimaryKey(cx);
+                trc = new TransitionCursor(trc,cx);
                 for (int i = 0; i < ti.Length; i++)
-                    if (ti.columns[i] is SqlCol sc && sc.tableCol is TableColumn tc)
+                    if (ti.columns[i] is ObInfo sc && cx.db.objects[sc.defpos] is TableColumn tc)
                     {
-                        if (tc.notNull && !_cx.values.Contains(tc.defpos))
-                            throw new DBException("22206", ti.columns[i].name);
                         switch (tc.generated.gen)
                         {
                             case Generation.Expression:
-                                _cx.values += (tc.defpos, tc.generated.exp.Eval(trs._tr as Transaction, _cx));
+                                cx.values += (tc.defpos, tc.generated.exp.Eval(cx));
                                 break;
                         }
+                        if (tc.notNull && !cx.values.Contains(tc.defpos))
+                            throw new DBException("22206", ti.columns[i].name);
                     }
-                _oldVals = _cx.values;
-                _cx.Add(trs.qry,this);
-                var tb = trs._tr.objects[trs.from.target] as Table;
-                // Get the trigger sets and set up the activations
-                rb = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Before]);
-                ri = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.Instead]);
-                ra = Setup(_cx, tb.triggers[trs._tgt | PTrigger.TrigType.EachRow | PTrigger.TrigType.After]);
+                return new TransitionCursor(trc, cx);
             }
-            internal static TransitionRowBookmark New(Context _cx,TransitionRowSet trs)
+            internal static TransitionCursor New(Context _cx,TransitionRowSet trs)
             {
-                var tb = trs._tr.objects[trs.from.target] as Table;
-                for (var fbm = _cx.rb; fbm != null; fbm = fbm.Next(_cx))
-                {
-                    if (fbm.Matches() && Query.Eval(trs.from.where,trs._tr as Transaction, _cx))
-                        return new TransitionRowBookmark(_cx,trs, 0, fbm,
-                            tb.FindPrimaryIndex(trs._tr));
-                }
-                return null;
+                var ox = _cx.from;
+                _cx.from = trs._finder;
+                for (var fbm = _cx.data[trs.from.defpos]?.First(_cx); fbm != null;
+                    fbm = fbm.Next(_cx))
+                    if (fbm.Matches(_cx) && Query.Eval(trs.from.where, _cx))
+                    {
+                        _cx.from = ox;
+                        return New(_cx, trs, 0, fbm);
+                    }
+                _cx.from = ox;
+               return null;
             }
             /// <summary>
             /// Set up activations for executing a set of triggers
@@ -1702,22 +1934,25 @@ namespace Pyrrho.Level4
                     }
                 return r;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
-                var from = _trs.qry;
+                var ox = _cx.from;
+                _cx.from = _trs._finder;
+                var from = _trs.from;
                 if(from.where.First()?.value() is SqlValue sv && sv.domain.kind == Sqlx.CURRENT)
                         return null;
-                var t = _trs._tr.objects[_trs.from.target] as Table;
-                var ix = t.FindPrimaryIndex(_trs._tr);
+                var t = _cx.db.objects[_trs.from.target] as Table;
                 for (var fbm = _fbm.Next(_cx); fbm != null; fbm = fbm.Next(_cx))
                 {
-                    var ret = new TransitionRowBookmark(_cx,_trs, 0, fbm,ix);
+                    var ret = New(_cx,_trs, 0, fbm);
                     for (var b = from.where.First(); b != null; b = b.Next())
-                        if (b.value().Eval(_trs._tr as Transaction, _cx) != TBool.True)
+                        if (b.value().Eval(_cx) != TBool.True)
                             goto skip;
+                    _cx.from = ox;
                     return ret;
                     skip:;
                 }
+                _cx.from = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -1727,120 +1962,140 @@ namespace Pyrrho.Level4
             /// <summary>
             /// Some convenience functions for calling from Transaction.Execute(..)
             /// </summary>
-            internal (Transaction,bool) InsertRA(Transaction tr,Context _cx)
-            { return _trs.Exec(tr, _cx,ra); }
-            internal (Transaction, bool) InsertRB(Transaction tr,Context _cx)
-            { _cx.row = _cx.rb.row;  tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
-            internal (Transaction, bool) UpdateRA(Transaction tr,Context _cx)
-            { return _trs.Exec(tr,_cx,ra); }
-            internal (Transaction, bool) UpdateRB(Transaction tr,Context _cx)
-            { tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
-            internal (Transaction, bool) DeleteRB(Transaction tr,Context _cx)
-            { tr = _trs.Exec(tr,_cx,rb).Item1; return _trs.Exec(tr,_cx,ri); }
+            internal (Context,TransitionCursor,bool) InsertRA(Context _cx)
+            { return _trs.Exec(_cx,ra); }
+            internal (Context,TransitionCursor,bool) InsertRB(Context _cx)
+            { return _trs.Exec( _trs.Exec(_cx,rb).Item1,ri); }
+            internal (Context,TransitionCursor,bool) UpdateRA(Context _cx)
+            { return _trs.Exec(_cx,ra); }
+            internal (Context,TransitionCursor,bool) UpdateRB(Context _cx)
+            { var (cx,_,_) = _trs.Exec(_cx,rb); return _trs.Exec(cx,ri); }
+            internal (Context,TransitionCursor,bool) DeleteRB(Context _cx)
+            { ; return _trs.Exec(_trs.Exec(_cx,rb).Item1,ri); }
 
         }
     }
     internal class SortedRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Sorted ";
-        }
         internal MTree tree;
         internal readonly RowSet source;
         internal readonly TreeInfo treeInfo;
         List<TRow> rows = new List<TRow>();
         List<Rvv> rvvs = new List<Rvv>();
-        internal SortedRowSet(Context _cx,Query q, RowSet s, ObInfo kt, TreeInfo ti)
-            : base(s._tr, _cx, q, s.rowType, kt)
+        internal override RowSet Source => source;
+        internal SortedRowSet(Context _cx,RowSet s, ObInfo kt, TreeInfo ti)
+            : base(_cx.nextHeap++,_cx, s.info, s.finder, kt,s.where)
         {
-            tree = new MTree(ti);
             source = s;
             treeInfo = ti;
+            tree = (MTree)Build(_cx);
+        }
+        protected SortedRowSet(SortedRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            tree = rs.tree;
+            source = rs.source;
+            treeInfo = rs.treeInfo;
+            rows = rs.rows;
+            rvvs = rs.rvvs;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new SortedRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
             sb.Append("Sorted ");
-            sb.Append(keyType.ToString());
+            sb.Append(keyInfo.ToString());
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
         internal override int? Count => rows.Count;
-        protected override void Build(Context _cx)
+        protected override object Build(Context cx)
         {
-            for (var a = source.First(_cx);a!= null;a=a.Next(_cx))
+            var ox = cx.from;
+            cx.from = source.finder;
+            var tree = new MTree(treeInfo);
+            for (var a = source.First(cx);a!= null;a=a.Next(cx))
             {
-                var v = a.row;
                 PRow k = null;
-                for (int i = keyType.Length-1;i>=0;i--)
-                    k = new PRow(v[keyType.columns[i].defpos], k);
+                for (int i = keyInfo.Length-1;i>=0;i--)
+                    k = new PRow(keyInfo[i].Eval(cx), k);
                 MTree.Add(ref tree, k, rows.Count);
-                rows.Add(v);
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b=source.info.columns.First();b!=null;b=b.Next())
+                {
+                    var s = b.value();
+                    vs += (s.defpos, s.Eval(cx));
+                }
+                rows.Add(new TRow(source.info.domain,vs));
             }
+            cx.from = ox;
+            cx.data -= source.defpos;
+            return tree;
         }
-        public override RowBookmark First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            Build(_cx);
-            return base.First(_cx);
+            return SortedCursor.New(_cx,this);
         }
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor PositionAt(Context _cx,PRow key)
         {
-            return SortedRowBookmark.New(_cx,this);
+            return SortedCursor.New(_cx,this,key);
         }
-        public override RowBookmark PositionAt(Context _cx,PRow key)
-        {
-            return SortedRowBookmark.New(_cx,this,key);
-        }
-        internal class SortedRowBookmark : RowBookmark
+        internal class SortedCursor : Cursor
         {
             readonly SortedRowSet _srs;
             readonly MTreeBookmark _mbm;
-            readonly TRow _row, _key;
-            SortedRowBookmark(Context _cx, SortedRowSet srs,int pos,MTreeBookmark mbm,long dpos) 
-                :base(_cx,srs,pos,dpos)
+            SortedCursor(Context _cx, SortedRowSet srs, int pos, MTreeBookmark mbm, long dpos)
+                : base(_cx, srs, pos, dpos,srs.rows[(int)(mbm.Value()??-1)])
             {
                 _srs = srs;
                 _mbm = mbm;
-                _row = srs.rows[(int)mbm.Value().Value];
-                _key = new TRow(srs.keyType, _row.values);
-                _cx.Add(srs.qry, this);
             }
-
-            public override TRow row => _row;
-
-            public override TRow key => _key;
-
-            internal static SortedRowBookmark New(Context _cx,SortedRowSet srs)
+            public override MTreeBookmark Mb()
             {
+                return _mbm;
+            }
+            internal static SortedCursor New(Context _cx,SortedRowSet srs)
+            {
+                var ox = _cx.from;
+                _cx.from = srs._finder;
                 for (MTreeBookmark mbm = srs.tree.First();mbm!=null;mbm=mbm.Next())
                 {
                     //           var rvv = srs.rvvs[(int)mbm.Value().Value];
                     //           var d = (rvv != null) ? rvv.def : 0;
-                    var rb = new SortedRowBookmark(_cx, srs, 0, mbm, 0);// d);
-                    if (rb.Matches() && Query.Eval(srs.qry.where, srs._tr as Transaction, _cx))
+                    var rb = new SortedCursor(_cx, srs, 0, mbm, 0);// d);
+                    if (rb.Matches(_cx) && Query.Eval(srs.where, _cx))
+                    {
+                        _cx.from = ox;
                         return rb;
+                    }
                 }
-                    return null;
+                _cx.from = ox;
+                return null;
             }
-            internal static SortedRowBookmark New(Context _cx,SortedRowSet srs,PRow key)
+            internal static SortedCursor New(Context _cx,SortedRowSet srs,PRow key)
             {
                 for (var mbm = srs.tree.PositionAt(key); mbm != null; mbm = mbm.Next())
                     if (mbm.Value().HasValue)
                     {
                         //            var rvv = srs.rvvs[(int)mbm.Value().Value];
                         //            var d = (rvv != null) ? rvv.def : 0;
-                        return new SortedRowBookmark(_cx, srs, 0, mbm, 0); // d);
+                        return new SortedCursor(_cx, srs, 0, mbm, 0); // d);
                     }
                 return null;
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
                 for (var mbm = _mbm.Next(); mbm != null; mbm = mbm.Next())
                 {
                     //         var rvv = ((SortedRowSet)_rs).rvvs[(int)mbm.Value().Value];
                     //         var d = (rvv != null) ? rvv.def : 0;
-                    var rb = new SortedRowBookmark(_cx, _srs, _pos + 1, mbm, 0); // d);
-                    if (rb.Matches() && Query.Eval(_rs.qry.where, _rs._tr as Transaction, _cx))
+                    var rb = new SortedCursor(_cx, _srs, _pos + 1, mbm, 0); // d);
+                    if (rb.Matches(_cx) && Query.Eval(_srs.where, _cx))
                         return rb;
                 }
                 return null;
@@ -1857,20 +2112,32 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class RoutineCallRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " RoutineCall ";
-        }
-        Query from;
-        Procedure proc;
-        BList<SqlValue> actuals;
-        RowSet rowSet;
-        internal RoutineCallRowSet(Transaction tr,Context cx,Query f,Procedure p, BList<SqlValue> r) 
-            :base(tr,cx,f,f.rowType)
+        readonly Query from;
+        readonly Procedure proc;
+        readonly BList<SqlValue> actuals;
+        readonly RowSet rowSet;
+        internal RoutineCallRowSet(Context cx,From f,Procedure p, BList<SqlValue> r) 
+            :base(cx.nextHeap++,cx,f.rowType.info,null,null,f.where)
         {
             from = f;
             proc = p;
             actuals = r;
+            rowSet = (RowSet)Build(cx);
+        }
+        protected RoutineCallRowSet(RoutineCallRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            from = rs.from;
+            proc = rs.proc;
+            actuals = rs.actuals;
+            rowSet = rs.rowSet;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new RoutineCallRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -1884,30 +2151,42 @@ namespace Pyrrho.Level4
             }
             base._Strategy(sb, indent);
         }
-        protected override RowBookmark _First(Context _cx)
+        protected override object Build(Context cx)
         {
-            _tr = proc.Exec(_tr as Transaction, _cx,actuals);
-            if (_cx.data[qry.defpos] == null)
-                throw new DBException("22004").Mix();
-            rowSet = _cx.data[qry.defpos];
+            var _cx = new Context(cx);
+            cx = proc.Exec(_cx, actuals);
+            return cx.val;
+        }
+        public override Cursor First(Context _cx)
+        {
             return rowSet.First(_cx);
         }
     }
     internal class RowSetSection : RowSet
     {
-        public override string keywd()
-        {
-            return " Section ";
-        }
         internal readonly RowSet source;
         internal readonly int offset,count;
         internal RowSetSection(Context _cx,RowSet s, int o, int c)
-            : base(s._tr,_cx,s.qry,s.rowType,s.keyType)
+            : base(_cx.nextHeap++,_cx,s.info,null,s.keyInfo,s.where)
         {
             source = s; offset = o; count = c;
         }
-
-        protected override RowBookmark _First(Context _cx)
+        protected RowSetSection(RowSetSection rs, long a, long b) : base(rs, a, b)
+        {
+            source = rs.source;
+            offset = rs.offset;
+            count = rs.count;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new RowSetSection(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new RowSetSection(cx, source, offset, count);
+        }
+        internal override RowSet Source => source;
+        public override Cursor First(Context _cx)
         {
             var b = source.First(_cx);
             for (int i = 0; b!=null && i < offset; i++)
@@ -1915,246 +2194,33 @@ namespace Pyrrho.Level4
             return b;
         }
     }
-#if REFLECTION
-    internal class ReflectionRowSet : RowSet
-    {
-        public override string keywd()
-        {
-            return " Reflection ";
-        }
-        RowSet source;
-        Query from;
-        Ident[] cols;
-        Index index1 = null, index2 = null;
-        Table mtable = null;
-        internal ReflectionRowSet(RowSet s, Query f, string[] c)
-            : base(s._tr,s._cx,s.qry)
-        {
-            source = s;
-            from = f;
-            cols = new Ident[c.Length];
-            for (var i = 0; i < c.Length; i++)
-                cols[i] = new Ident(c[i],0);
-            Build();
-        }
-        internal override void _Strategy(StringBuilder sb, int indent)
-        {
-            sb.Append("Reflection ");
-            sb.Append(from.ToString());
-            var cm = "(";
-            foreach (var id in cols)
-            {
-                sb.Append(cm); cm = "'";
-                sb.Append(id.ToString());
-            }
-            sb.Append(")");
-            if (index1 != null)
-                sb.Append(" "+index1.ToString());
-            if (index2 != null)
-                sb.Append(" "+index2.ToString());
-            if (mtable != null)
-                sb.Append(" " + mtable.ToString());
-            base._Strategy(sb, indent);
-            source.Strategy(indent);
-        }
-        protected override void Build()
-        {
-            var tb = qry as Table;
-            for (var ip = tb.indexes.First(); ip != null; ip = ip.Next())
-            {
-                var ix = ip.value();
-                // get our bearings: Case 1: f has a foreign key referencing s.table
-                // cols if specified gives the columns in f making up this foreign key
-                // index1 has reftable s.table and table f.table
-                if (ix.reftabledefpos == from.defpos && ix.tabledefpos == from.defpos && cols != null)
-                {
-                    if (cols.Length != ix.cols.Count)
-                        goto skip;
-                    for (int i = 0; i < ix.cols.Count; i++)
-                    {
-                        var tc = from.ValFor(cols[i]);
-                        if (ix.cols[i] != tc.name.Defpos())
-                            goto skip;
-                    }
-                    index1 = ix;
-                    return;
-                }
-
-                // case 2: there is a table M with foreign keys for s.table and f.table
-                // cols if specified contains just one entry naming M (not a column at all)
-                // index1 has reftable f.table and table M, index2 has reftable f.table and table M
-                if (ix.reftabledefpos == from.target.defpos)
-                {
-                    mtable = db.GetObject(ix.tabledefpos) as Table;
-                    if (cols != null && ix.tabledefpos != from.ValFor(cols[0]).name.Defpos()) // wow.. i doubt if this can work
-                        continue;
-                    for (var ip2 = db.indexes.First(); ip2 != null; ip2 = ip2.Next())
-                    {
-                        var ix2 = db.GetObject(ip2.key()) as Index;
-                        if (ix2.reftabledefpos == from.target.defpos && ix2.tabledefpos == mtable.defpos)
-                        {
-                            index1 = ix;
-                            index2 = ix2;
-                            return;
-                        }
-                    }
-                }
-                skip:;
-            }
-            throw new DBException("42111").Mix();
-        }
-        protected override RowBookmark _First()
-        {
-            qry.row = null;
-            if (index2 != null)
-                return ManyManyRowBookmark.New(this);
-            return ReflectionRowBookmark.New(this);
-        }
-
-        internal class ReflectionRowBookmark : RowBookmark
-        {
-            readonly RowBookmark _smk;
-            readonly MTreeBookmark _mbm;
-            ReflectionRowBookmark(ReflectionRowSet rrs,long pos,RowBookmark smk,
-                MTreeBookmark mbm,long dpos) :base(rrs,pos,dpos)
-            {
-                _smk = smk; _mbm = mbm;
-            }
-            internal static ReflectionRowBookmark New(ReflectionRowSet rrs)
-            {
-                for (var smk = rrs.source.First(); smk != null; smk = smk.Next())
-                    for (var mbm = rrs.index1.rows.PositionAt(rrs.tr,rrs.source.Key(smk));
-                        mbm!= null;mbm=mbm.Next(rrs.tr))
-                        if (mbm.Value().HasValue)
-                            return new ReflectionRowBookmark(rrs, 0, smk, mbm, mbm.Value().Value);
-                return null;
-            }
-            public override RowBookmark Next()
-            {
-                var mbm = _mbm;
-                var smk = _smk;
-                var rrs = _rs as ReflectionRowSet;
-                for (;;)
-                {
-                    if (mbm != null)
-                        mbm = mbm.Next(_rs.tr);
-                    if (mbm != null)
-                        break;
-                    smk = smk.Next();
-                    if (smk == null)
-                        return Null();
-                    mbm = rrs.index1.rows.PositionAt(rrs.tr,rrs.source.Key(_smk));
-                    if (mbm != null)
-                        break;
-                }
-                var d = mbm.Value() ?? 0;
-                return new ReflectionRowBookmark(rrs, _pos + 1, _smk, mbm, d);
-            }
-            internal override TypedValue Get(Ident n)
-            {
-                return _smk.Get(n);
-            }
-            public override Rvvs _Rvv()
-            {
-                return (_rs.qry as From).row._Rvv();
-            }
-
-            internal override void Close(Transaction tr)
-            {
-                _smk.Close(tr);
-                base.Close(tr);
-            }
-        }
-        internal class ManyManyRowBookmark : RowBookmark
-        {
-            readonly RowBookmark _smk;
-            readonly MTreeBookmark _mbm;
-            ManyManyRowBookmark(ReflectionRowSet rrs, long pos, RowBookmark smk, 
-                MTreeBookmark mbm,long dpos) :base(rrs,pos,dpos)
-            {
-                _smk = smk; _mbm = mbm;
-            }
-            internal static ManyManyRowBookmark New(ReflectionRowSet rrs)
-            {
-                for (var smk = rrs.source.First(); smk != null; smk = smk.Next())
-                    for (var mbm = rrs.index1.rows.PositionAt(rrs.tr,rrs.source.Key(smk)); mbm != null; mbm = mbm.Next(rrs.tr))
-                        if (mbm.Value().HasValue)
-                            return new ManyManyRowBookmark(rrs, 0, smk, mbm, mbm.Value().Value);
-                return null;
-            }
-            public override RowBookmark Next()
-            {
-                var mbm = _mbm;
-                var smk = _smk;
-                var rrs = _rs as ReflectionRowSet;
-                for (;;)
-                {
-                    if (mbm != null)
-                        mbm = mbm.Next(_rs.tr);
-                    if (mbm != null)
-                    {
-                        if (mbm.Value().HasValue)
-                            break;
-                        continue;
-                    }
-                    smk = smk.Next();
-                    if (smk == null)
-                        return Null();
-                    mbm = rrs.index1.rows.PositionAt(rrs.tr,rrs.source.Key(_smk));
-                    if (mbm != null && mbm.Value().HasValue)
-                        break;
-                }
-                return new ManyManyRowBookmark(rrs, _pos + 1, smk, mbm,mbm.Value().Value);
-            }
-            internal override TypedValue Get(Ident n)
-            {
-                var rrs = _rs as ReflectionRowSet;
-                var d = rrs.tr.Db(rrs.from.target.dbix);
-                var rc = d.GetD(_mbm.Value().Value) as Record; // in M
-                var k2 = rc.MakeKey(rrs.index2.cols);
-                var rc2 = d.GetD(rrs.index2.rows.Get(_rs.tr,k2).Value) as Record; // in f.table
-                return rrs.from.RowFor(rrs.tr, rc2)?[n];
-            }
-            public override Rvvs _Rvv()
-            {
-                var rrs = _rs as ReflectionRowSet;
-                var d = rrs.tr.Db(rrs.from.target.dbix);
-                var rc = d.GetD(_mbm.Value().Value) as Record; // in M
-                var k2 = rc.MakeKey(rrs.index2.cols);
-                var rc2 = d.GetD(rrs.index2.rows.Get(_rs.tr,k2).Value) as Record; // in f.table
-                return rrs.from.RowFor(rrs.tr,rc2)?.rvv;
-            }
-
-            internal override void Close(Transaction tr)
-            {
-                _smk.Close(tr);
-                base.Close(tr);
-            }
-        }
-    }
-#endif
     internal class DocArrayRowSet : RowSet
     {
-        public override string keywd()
+        internal readonly BList<SqlValue> vals;
+        internal DocArrayRowSet(Context cx,Query q, SqlRowArray d)
+            : base(cx.nextHeap++,cx,q.rowType.info,null,null,q.where)
         {
-            return " DocArray ";
-        }
-        internal BList<SqlValue> vals = BList<SqlValue>.Empty;
-        internal Domain dt = Domain.Content;
-        internal DocArrayRowSet(Transaction tr,Context cx,Query q, SqlRowArray d)
-            : base(tr,cx,q)
-        {
+            var vs = BList<SqlValue>.Empty;
             if (d != null)
                 for(int i=0;i<d.rows.Count;i++)
-                    Add(d.rows[i]);
+                    vs += d.rows[i];
+            vals = vs;
         }
-        internal void Add(SqlValue c)
+        DocArrayRowSet(Context cx,DocArrayRowSet ds) :base(ds.defpos,cx,ds)
         {
-            if (dt.kind == Sqlx.Null)
-                dt = c.domain;
-            else if (dt.kind != c.domain.kind)
-                throw new DBException("22005T", dt.kind.ToString(), c.domain.kind.ToString()).ISO();
-            vals+=c;
+            vals = ds.vals;
+        }
+        protected DocArrayRowSet(DocArrayRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            vals = rs.vals;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new DocArrayRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new DocArrayRowSet(cx,this);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -2171,28 +2237,26 @@ namespace Pyrrho.Level4
                 Console.WriteLine(s.ToString());
             }
         }
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             return DocArrayBookmark.New(_cx,this);
         }
 
-        internal class DocArrayBookmark : RowBookmark
+        internal class DocArrayBookmark : Cursor
         {
+            readonly DocArrayRowSet _drs;
             readonly ABookmark<int, SqlValue> _bmk;
-            readonly TRow _row, _key;
 
             DocArrayBookmark(Context _cx,DocArrayRowSet drs, ABookmark<int, SqlValue> bmk) 
-                :base(_cx,drs,bmk.key(),0)
+                :base(_cx,drs,bmk.key(),0,_Row(_cx,bmk.value())) 
             {
+                _drs = drs;
                 _bmk = bmk;
-                _row = new TRow(ObInfo.Any, bmk.value().Eval(drs._tr as Transaction, _cx));
-                _key = _row;
             }
-
-            public override TRow row => _row;
-
-            public override TRow key => _key;
-
+            static TRow _Row(Context cx,SqlValue sv)
+            {
+                return new TRow(sv.domain,new BTree<long,TypedValue>(sv.defpos,(TDocument)sv.Eval(cx)));
+            }
             internal static DocArrayBookmark New(Context _cx,DocArrayRowSet drs)
             {
                 var bmk = drs.vals.First();
@@ -2200,13 +2264,12 @@ namespace Pyrrho.Level4
                     return null;
                 return new DocArrayBookmark(_cx,drs, bmk);
             }
-            public override RowBookmark Next(Context _cx)
+            public override Cursor Next(Context _cx)
             {
-                var drs = _rs as DocArrayRowSet;
-                var bmk = ABookmark<int, SqlValue>.Next(_bmk, drs.vals);
+                var bmk = ABookmark<int, SqlValue>.Next(_bmk, _drs.vals);
                 if (bmk == null)
                     return null;
-                return new DocArrayBookmark(_cx,drs, bmk);
+                return new DocArrayBookmark(_cx,_drs, bmk);
             }
 
             internal override TableRow Rec()
@@ -2217,25 +2280,31 @@ namespace Pyrrho.Level4
     }
     internal class WindowRowSet : RowSet
     {
-        public override string keywd()
-        {
-            return " Window ";
-        }
-
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             throw new NotImplementedException();
         }
-
+        internal override RowSet New(long dp, Context cx)
+        {
+            throw new NotImplementedException();
+        }
         readonly Query from;
         readonly PeriodSpec pSpec;
-        internal WindowRowSet(Transaction tr,Context cx,Query f,PeriodSpec ps)
-            :base(tr,cx,f)
+        internal WindowRowSet(Context cx,Query f,PeriodSpec ps)
+            :base(cx.nextHeap++,cx,f.rowType.info,null,null,f.where,null)
         {
             from = f;
-            f.Audit(tr, f);
+            f.Audit(cx.db.nextPos,cx, f);
             pSpec = ps;
         }
-
+        protected WindowRowSet(WindowRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            from = rs.from;
+            pSpec = rs.pSpec;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new WindowRowSet(this, a, b);
+        }
     }
 }

@@ -27,3 +27,4 @@ E:\PyrrhoDB70\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.exe.config
 E:\PyrrhoDB70\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.exe
 E:\PyrrhoDB70\Pyrrho\src\PyrrhoCmd\bin\Debug\PyrrhoCmd.pdb
 E:\PyrrhoDB70\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csproj.CopyComplete
+E:\PyrrhoDB70\Pyrrho\src\PyrrhoCmd\obj\Debug\PyrrhoCmd .csproj.CoreCompileInputs.cache

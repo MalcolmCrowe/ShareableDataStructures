@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.IO;
-using System.Threading.Tasks;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -99,17 +96,18 @@ namespace Pyrrho.Level2
         public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
         internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
         public long segment;  // the most recent PTransaction/PTriggeredAction written
+        public long srcPos; // for Fixing iids
         internal BList<Rvv> rvv= BList<Rvv>.Empty;
-        internal Database db;
-        internal Writer(Database d,Stream f)
+        internal Context cx; // access the database we are writing to
+        internal Writer(Context c,Stream f)
         {
-            db = d;
+            cx = c;
             file = f;
         }
         public long Length => file.Length + buf.pos;
         public override void PutBuf()
         {
-            var p = file.Seek(0, SeekOrigin.End);
+            file.Seek(0, SeekOrigin.End);
             file.Write(buf.buf, 0, buf.pos);
             buf.pos = 0;
         }
@@ -135,7 +133,14 @@ namespace Pyrrho.Level2
         }
         internal long Fix(long pos)
         {
-            return (uids.Contains(pos)) ? uids[pos] : pos;
+            if (uids.Contains(pos)) 
+                return uids[pos];
+            if (pos>Transaction.Analysing)
+            {
+                uids += (pos, ++srcPos);
+                return srcPos;
+            }
+            return pos;
         }
     }
 
@@ -257,7 +262,6 @@ namespace Pyrrho.Level2
     public class Reader : ReaderBase
     {
         public Stream file;
-        internal Database db;   // a copy, updatable during Get, Load
         internal Role role;
         internal User user;
         internal PTransaction trans = null;
@@ -288,24 +292,24 @@ namespace Pyrrho.Level2
             }
             return buf.buf[buf.pos++];
         }
-        internal Reader(Database d)
+        internal Reader(Context cx)
         {
-            db = d;
+            var db = cx.db;
+            context = new Context(cx.db);
             role = db.role;
             user = (User)db.objects[db.owner];
-            file = d.df;
+            file = db.df;
             limit = file.Length;
-            context = new Context(db);
-            GetBuf(d.loadpos);
+            GetBuf(db.loadpos);
         }
-        internal Reader(Database d, long p)
+        internal Reader(Context cx, long p)
         {
-            db = d;
+            var db = cx.db;
+            context = new Context(db);
             role = db.role;
             user = (User)db.objects[db.owner];
-            file = d.File();
+            file = db.File();
             limit = file.Length;
-            context = new Context(db);
             GetBuf(p);
         }
         internal int GetInt32()
@@ -405,20 +409,11 @@ namespace Pyrrho.Level2
                 case Physical.Type.RefAction: p = new RefAction(this); break;
             }
             p.Deserialise(this);
-            p.CheckDate();
-            if (p is PTransaction)
-                trans = (PTransaction)p;
-            //            PyrrhoServer.Trace("Got " + p.ppos + " " + p.ToString());
             return p;
         }
-        internal Domain GetDataType(Domain dt)
+        internal void Add(Physical ph)
         {
-            var b = (DataType)ReadByte();
-            if (b == DataType.Null)
-                return StandardDataType.Null;
-            if (b == DataType.DomainRef)
-                return (Domain)db.role.obinfos[GetLong()];
-            return dt;
+            context.db.Add(context, ph, Position);
         }
         internal BList<Physical> GetAll(long max, long limit)
         {

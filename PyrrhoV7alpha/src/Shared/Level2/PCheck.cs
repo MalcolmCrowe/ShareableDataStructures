@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -37,20 +37,16 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="db">The local database</param>
-        public PCheck(long dm, string nm, string cs, Transaction tr)
-            : this(Type.PCheck, dm, nm, cs, tr) { }
-        protected PCheck(Type tp, long dm, string nm, string cs, Transaction tr)
-			:base(tp,tr)
+        public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
+            : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
+        protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
+            long pp, Context cx) : base(tp,pp,cx)
 		{
 			ckobjdefpos = dm;
             defpos = ppos;
             name = nm ?? throw new DBException("42102");
 			check = cs;
-            var cx = new Context(tr);
-            cx.Add(tr.objects[ckobjdefpos] as DBObject,tr.role.obinfos[ckobjdefpos] as ObInfo);
-            if (subobjdefpos!=-1)
-                cx.Add(tr.objects[subobjdefpos] as DBObject);
-            test = new Parser(tr, cx).ParseSqlValue(check,Domain.Bool);
+            test = se;
         }
         /// <summary>
         /// Constructor: A new check constraint from the buffer
@@ -102,9 +98,10 @@ namespace Pyrrho.Level2
 			check = rdr.GetString();
 			base.Deserialise(rdr);
             var cx = rdr.context;
-            cx.Add(rdr.db.objects[ckobjdefpos] as DBObject,
-                rdr.role.obinfos[ckobjdefpos] as ObInfo);
-            test = new Parser(rdr.db,cx).ParseSqlValue(check,Domain.Bool);
+            cx.Add(rdr.context.db.objects[ckobjdefpos] as DBObject);
+            var oi = (ObInfo)rdr.role.obinfos[ckobjdefpos];
+            test = new Parser(rdr.context).ParseSqlValue(check,Domain.Bool,oi)
+                .Reify(cx,oi);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -122,16 +119,17 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var ck = new Check(this, db);
-            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db),p);
+            var ro = cx.db.role;
+            var ck = new Check(this, cx.db);
+            cx.db += (((DBObject)cx.db.mem[ck.checkobjpos]).Add(ck, cx.db),p);
             if (name != null && name != "")
             { 
                 ro += new ObInfo(defpos, name);
-                db += (ro, p);
+                cx.db += (ro,p);
             }
-            return (db +(ck,p),ro); 
+            cx.db += (ro, p);
         }
     }
     /// <summary>
@@ -147,8 +145,9 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="pb">The local database</param>
-        public PCheck2(long dm, long so, string nm, string cs, Transaction tr)
-			:base(Type.PCheck2,dm,nm,cs,tr)
+        public PCheck2(long dm, long so, string nm, SqlValue se, string cs, long pp, 
+            Context cx)
+            : base(Type.PCheck2,dm,nm,se,cs,pp,cx)
 		{
             subobjdefpos=so;
 		}
@@ -202,16 +201,17 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var ck = new Check(this, db);
-            db += (((DBObject)db.mem[ck.checkobjpos]).Add(ck, db), p);
+            var ro = cx.db.role;
+            var ck = new Check(this, cx.db);
+            cx.db += (((DBObject)cx.db.mem[ck.checkobjpos]).Add(ck, cx.db), p);
             if (name != null && name != "")
             {
                 ro += new ObInfo(defpos, name);
-                db += (ro, p);
+                cx.db += (ro,p);
             }
-            return (db + (ck, p), ro);
+            cx.db += (ck, p);
         }
     }
 }

@@ -1,5 +1,0 @@
-create table ta(a1 int primary key)
-insert into ta values(17),(23)
-create view vw as select a1 from ta
-alter table ta alter a1 to id
-table "Sys$View"

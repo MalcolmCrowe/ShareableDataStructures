@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -127,43 +127,40 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="e">The Executables</param>
         /// <param name="tr">The transaction</param>
-		protected Transaction ObeyList(BList<Executable> e,Transaction tr,Context cnx)
+		protected Context ObeyList(BList<Executable> e,Context cx)
 		{
             if (e == null)
-                throw new DBException("42173", (cnx as Activation)?.label??"");
-            for (var b = e.First();b!=null;b=b.Next())
+                throw new DBException("42173", (cx as Activation)?.label??"");
+            Context nx = cx;
+            Activation a = (Activation)cx;
+            for (var b = e.First();b!=null && nx==cx 
+                && ((Activation)cx).signal==null;b=b.Next())
             {
-                var a = cnx.GetActivation(); // always access top of stack (don't pass as a parameter
-                if (a.signal != null)
-                    tr = a.signal.Obey(tr,cnx);
-                if (cnx.breakto == a)
-                    cnx.breakto = null;
-                if (cnx.breakto != null || a.signal!=null)
-                    return tr;
                 try
                 {
                     var x = b.value();
-                    tr = x.Obey(tr,cnx);
-                    if (a.signal != null)
-                        a.signal.Throw(tr,a);
+                    nx = x.Obey(cx);
+                    if (a==nx && a.signal != null)
+                        a.signal.Throw(a);
+                    cx.SlideDown(nx);
                 }
                 catch (DBException ex)
                 {
-                    a.signal = new Signal(cnx.cxid,ex);
+                    a.signal = new Signal(cx.cxid,ex);
                 }
             }
-            return tr;
+            return cx;
 		}
         /// <summary>
         /// Obey the Executable for the given Activation.
         /// All non-CRUD Executables should have a shortcut override.
         /// </summary>
-        /// <param name="tr">The transaction</param>
-		public virtual Transaction Obey(Transaction tr,Context cx)
+        /// <param name="cx">The context</param>
+		public virtual Context Obey(Context cx)
         {
             if (type == Type.RollbackWork)
-                throw tr.Exception("40000").ISO();
-            throw new NotImplementedException();
+                throw cx.db.Exception("40000").ISO();
+            return cx;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -175,10 +172,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                return Relocate(d);
-            return this;
+            return ((DBObject)base.Relocate(wr)).Relocate(wr.Fix(defpos));
         }
         internal static bool Calls(BList<Executable> ss,long defpos,Database d)
         {
@@ -241,7 +235,7 @@ namespace Pyrrho.Level3
             var c = cs.Frame(cx);
             if (c != cs)
                 r += (CS, c);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -251,10 +245,10 @@ namespace Pyrrho.Level3
         /// Obey the executable
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            cx.data += (defpos,cs.RowSets(tr, cx));
-            return tr;
+            cs.RowSets(cx);
+            return cx;
         }
 
     }
@@ -303,7 +297,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Stms, ss);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override Basis Relocate(Writer wr)
         {
@@ -328,23 +322,19 @@ namespace Pyrrho.Level3
         /// Obey a Compound Statement.
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Transaction Obey(Transaction tr,Context cx)
+		public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation();// use the top of the stack every time
-            a.exec = this;
+            cx.exec = this;
             var act = new Activation(cx, label);
             try
             {
-                tr = ObeyList(stms, tr,act);
-                if (cx.breakto == a)
-                    cx.breakto = null;
+                act = (Activation)ObeyList(stms, act);
                 if (act.signal != null)
-                    act.signal.Throw(tr,a);
+                    act.signal.Throw(cx);
             }
             catch (Exception e) { throw e; }
-       //     for (var b = act.affected.First(); b != null; b = b.Next())
-       //         a.affected += b.value();
-            return tr;
+            cx.SlideDown(act);
+            return cx;
         }
         public override string ToString()
         {
@@ -388,11 +378,12 @@ namespace Pyrrho.Level3
         /// <param name="dt">The data type</param>
         public LocalVariableDec(long dp, string n, Domain dt, SqlValue v=null)
             : base(dp,BTree<long,object>.Empty+(Label,n)+(_Domain,dt)
-                  +(AssignmentStatement.Vbl,v??(new SqlValue(dp,n)+(_Domain,dt))))
+                  +(AssignmentStatement.Vbl,v??(new SqlValue(dp,n,dt))))
         { }
-        public LocalVariableDec(long dp, string n, Domain dt, ObInfo oi, SqlValue v = null)
-    : base(dp, BTree<long, object>.Empty + (Label, n) + (_Domain, dt) + (SqlValue.Info,oi) 
-          + (AssignmentStatement.Vbl, (v??new SqlValue(dp, n) + (_Domain, dt))))
+        public LocalVariableDec(long dp, string n, Domain dt, ObInfo oi, 
+            SqlValue v = null,BTree<long,object>m=null)
+    : base(dp, (m??BTree<long, object>.Empty) + (Label, n) + (_Domain, dt) + (SqlValue.Info,oi) 
+          + (AssignmentStatement.Vbl, (v??new SqlValue(dp, n, dt))))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LocalVariableDec operator+(LocalVariableDec s,(long,object)x)
@@ -427,20 +418,20 @@ namespace Pyrrho.Level3
             var oi = info?.Frame(cx);
             if (oi != info)
                 r += (SqlValue.Info, d);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         /// <summary>
         /// Execute the local variable declaration, by adding the local variable to the activation (overwrites any previous)
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation();
+            var a = (Activation)cx;
             a.exec = this;
-            TypedValue tv = init.Eval(tr,cx)??dataType.defaultValue;
+            TypedValue tv = init?.Eval(cx)??dataType.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
-            cx.values += (defpos, tv); // We expect a==cx, but if not, tv will be copied to a later
-            return tr;
+            cx.AddValue(vbl, tv); // We expect a==cx, but if not, tv will be copied to a later
+            return cx;
         }
         public override string ToString()
         {
@@ -470,8 +461,8 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public ProcParameter(long dp, Sqlx m, string n, Domain dt) : base(dp, n,
-            new BTree<long, object>(ParamMode, m)+(_Domain,dt))
+		public ProcParameter(long dp, Sqlx m, string n, (Domain,ObInfo) dt) 
+            : base(dp, n, dt.Item1, new BTree<long, object>(ParamMode, m)+(Info,dt.Item2))
         { }
         protected ProcParameter(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ProcParameter operator +(ProcParameter s, (long, object) x)
@@ -485,6 +476,15 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new ProcParameter(dp, mem);
+        }
+        /// <summary>
+        /// We aren't a column reference
+        /// </summary>
+        /// <param name="qn"></param>
+        /// <returns></returns>
+        internal override Selection Needs(Selection qn)
+        {
+            return qn;
         }
         /// <summary>
         /// A readable version of the ProcParameter
@@ -515,8 +515,11 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
-        public CursorDeclaration(long dp,Context cx,string n,CursorSpecification c) 
-            : base(dp,n,Domain.Row,c.rowType,new SqlCursor(c.defpos,c,n)) 
+        public CursorDeclaration(long dp,string n,CursorSpecification c) 
+            : this(dp,n,c.rowType,new SqlCursor(c.defpos,c,n)) 
+        { }
+        CursorDeclaration(long dp,string n,Selection rt,SqlCursor c)
+            : base(dp,n,Domain.Row,rt.info,c,new BTree<long,object>(CS,c))
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -543,10 +546,10 @@ namespace Pyrrho.Level3
         /// Instantiate the cursor
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            cx.values += (defpos, cs.Eval(tr, cx));
-            return tr;
+            cx.AddValue(cs, cs.Eval(cx));
+            return cx;
         }
     }
     /// <summary>
@@ -604,20 +607,20 @@ namespace Pyrrho.Level3
             var a = action.Frame(cx);
             if (a != action)
                 r += (Action, a);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         /// <summary>
         /// Obeying the handler declaration means installing the handler for each condition
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Transaction Obey(Transaction tr,Context cx)
+		public override Context Obey(Context cx)
 		{
-            var a = cx.GetActivation(); // get the top of stack each time
-            a.exec = this;
-            a.saved = new ExecState(tr,cx);
+            cx.exec = this;
+            var a = (Activation)cx;
+            a.saved = new ExecState(cx);
             for (var c =conds.First();c!=null;c=c.Next())
-				a.exceptions+=(c.value(),new Handler(this,a,cx.cxid));
-            return tr;
+				a.exceptions+=(c.value(),new Handler(this,a));
+            return cx;
 		}
         internal override bool Calls(long defpos, Database db)
         {
@@ -644,8 +647,9 @@ namespace Pyrrho.Level3
         /// Constructor: a Handler instance
         /// </summary>
         /// <param name="h">The HandlerStatement</param>
-		public Handler(HandlerStatement h, Activation a, long cd) : base(cd, BTree<long, object>.Empty
-            + (Hdlr, h) + (HDefiner, a) + (Dependents,h.dependents))
+		public Handler(HandlerStatement h, Activation ad) 
+            : base(ad.nextHeap++, BTree<long, object>.Empty
+            + (Hdlr, h) + (HDefiner, h.definer) + (Dependents,h.dependents))
         { }
         protected Handler(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Handler operator+(Handler h,(long,object)x)
@@ -674,7 +678,7 @@ namespace Pyrrho.Level3
             var h = hdlr.Frame(cx);
             if (h != hdlr)
                 r += (Hdlr, h);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -684,31 +688,30 @@ namespace Pyrrho.Level3
         /// Execute the action part of the Handler Statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cnx)
+        public override Context Obey(Context cx)
         {
-            var a = cnx.GetActivation(); // from the top of the stack each time
             try
             {
                 if (hdlr.htype == Sqlx.UNDO)
                 {
                     CompoundStatement cs = null;
-                    for (Context p = a; cs == null && p != null; p = p.next)
+                    for (Context p = cx; cs == null && p != null; p = p.next)
                         cs = p.exec as CompoundStatement;
                     if (cs != null)
                     {
-                        tr = hdefiner.saved.mark;
-                        cnx.next = hdefiner.saved.stack;
+                        cx.db = hdefiner.saved.mark;
+                        cx.next = hdefiner.saved.stack;
                     }
-                    a.breakto = null;
                 }
-                tr = hdlr.action.Obey(tr,cnx);
+                cx = hdlr.action.Obey(cx);
                 if (hdlr.htype == Sqlx.EXIT)
-                    a.breakto = hdefiner.next;
+                    return hdefiner.next;
+                var a = (Activation)cx;
                 if (a.signal != null)
-                    a.signal.Throw(tr,a);
+                    a.signal.Throw(cx);
             }
             catch (Exception e) { throw e; }
-            return tr;
+            return cx;
         }
 	}
     /// <summary>
@@ -740,12 +743,10 @@ namespace Pyrrho.Level3
         /// Execute a break statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
-            a.exec = this;
-            a.breakto = cx.Ctx(defpos) ?? a.brk;
-            return tr;
+            cx.exec = this;
+            return cx.Ctx(defpos);
         }
 	}
     /// <summary>
@@ -804,37 +805,22 @@ namespace Pyrrho.Level3
             var vb = vbl.Frame(cx);
             if (vb != vbl)
                 r += (Vbl, vb);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
             return vbl.Calls(defpos, db) || val.Calls(defpos,db);
         }
-        /// <summary>
-        /// Execute the assignment
-        /// </summary>
-        /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx; // top of the stack
-            a.exec = this;
+            cx.exec = this;
             var t = vbl.domain;
             if (val != null)
             {
-                var v = t.Coerce(val.Eval(tr,cx)?.NotNull());
-                cx.values += (vbl.target, v);
-                // the following 5 lines are for triggers
-                if (vbl is SqlOldRowCol sn &&
-                    cx.FindTriggerActivation(sn.tableCol.tabledefpos) is TriggerActivation ta)
-                    ta.newRow += (sn.tableCol.defpos, v);
-                else
-                {
-                    var c = cx.parent ?? cx;
-                    if (c.row is TRow r)
-                        c.row = r+ (vbl.target, v);
-                }
+                var v = t.Coerce(val.Eval(cx)?.NotNull());
+                cx.AddValue(vbl, v);
             }
-            return tr;
+            return cx;
         }
         public override string ToString()
         {
@@ -924,7 +910,7 @@ namespace Pyrrho.Level3
             var rh = rhs.Frame(cx);
             if (rh != rhs)
                 r += (Rhs, rh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -934,14 +920,14 @@ namespace Pyrrho.Level3
         /// Execute the multiple assignment
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
-            TRow r = (TRow)rhs.Eval(tr,cx);
-            for (int j = 0; j < r.info.Length; j++)
+            TRow r = (TRow)rhs.Eval(cx);
+            for (int j = 0; j < r.Length; j++)
                 cx.values+=(list[j],r[j]);
-            return tr;
+            return cx;
         }
     }
     /// <summary>
@@ -987,7 +973,7 @@ namespace Pyrrho.Level3
             var rt = ret.Frame(cx);
             if (rt != ret)
                 r += (Ret, rt);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -997,12 +983,13 @@ namespace Pyrrho.Level3
         /// Execute the return statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-			a.ret = ret.Eval(tr,cx);
-            return tr;
+			a.val = ret.Eval(cx);
+            cx.SlideDown(a);
+            return cx;
 		}
 	}
     /// <summary>
@@ -1100,7 +1087,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Whens, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1113,14 +1100,14 @@ namespace Pyrrho.Level3
         /// Execute the case statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for(var c = whens.First();c!=null; c=c.Next())
-                if (operand.Matches(tr,cx))
-                    return ObeyList(c.value().stms, tr,cx);
-            return ObeyList(els, tr,cx);
+                if (operand.Matches(cx))
+                    return ObeyList(c.value().stms, cx);
+            return ObeyList(els, cx);
         }
     }
     /// <summary>
@@ -1203,7 +1190,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (SimpleCaseStatement.Whens, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1217,14 +1204,14 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr">The transaction</param>
         /// 
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
 			for(var c = whens.First();c!=null;c=c.Next())
-				if (c.value().cond.Matches(tr,cx))
-					return ObeyList(c.value().stms,tr,cx);
-			return ObeyList(els,tr,cx);
+				if (c.value().cond.Matches(cx))
+					return ObeyList(c.value().stms,cx);
+			return ObeyList(els,cx);
 		}
 	}
     /// <summary>
@@ -1287,16 +1274,16 @@ namespace Pyrrho.Level3
         {
             return Calls(stms,defpos,db) || cond.Calls(defpos, db);
         }
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx;
-            if (cond == null || cond.Matches(tr, cx))
+            if (cond == null || cond.Matches(cx))
             {
-                a.ret = TBool.True;
-                return ObeyList(stms, tr,cx);
+                a.val = TBool.True;
+                return ObeyList(stms, cx);
             }
-            a.ret = TBool.False;
-            return tr;
+            a.val = TBool.False;
+            return cx;
         }
         public override string ToString()
         {
@@ -1428,7 +1415,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Elsif, ei);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1438,16 +1425,16 @@ namespace Pyrrho.Level3
         /// Obey an if-then-else statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr, Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx; 
             a.exec = this;
-            if (search.Matches(tr, cx))
-                return ObeyList(then, tr, cx);
+            if (search.Matches(cx))
+                return ObeyList(then, cx);
             for (var g = elsif.First(); g != null; g = g.Next())
-                if (g.value() is IfThenElse f && f.search.Matches(tr, cx))
-                    return ObeyList(f.then, tr, cx);
-            return ObeyList(els, tr, cx);
+                if (g.value() is IfThenElse f && f.search.Matches(cx))
+                    return ObeyList(f.then, cx);
+            return ObeyList(els, cx);
         }
 	}
     internal class XmlNameSpaces : Executable
@@ -1479,11 +1466,11 @@ namespace Pyrrho.Level3
         /// Add the namespaces
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             for(var b=nsps.First();b!= null;b=b.Next())
                 cx.nsps+=(b.key(),b.value());
-            return tr;
+            return cx;
         }
     }
     /// <summary>
@@ -1561,28 +1548,29 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (What, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         /// <summary>
         /// Execute a while statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Transaction Obey(Transaction tr, Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx; 
             a.exec = this;
-            while (a.signal == null && search.Matches(tr, cx))
+            var na = cx;
+            while (na==cx && a.signal == null && search.Matches(cx))
             {
-                if (cx.breakto != null)
-                    break;
                 var lp = new Activation(cx, label);
                 lp.cont = a;
                 lp.brk = a;
-                tr = ObeyList(what, tr, lp);
+                na = ObeyList(what, lp);
+                if (na == lp)
+                    na = cx;
                 a.SlideDown(lp);
                 a.signal = lp.signal;
             }
-            return tr;
+            return a;
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1602,7 +1590,7 @@ namespace Pyrrho.Level3
         /// The list of statements to execute at least once
         /// </summary>
 		public BList<Executable> what => (BList<Executable>)mem[WhileStatement.What];
-        public long loop => (long)(mem[WhileStatement.Loop]??0);
+        public long loop => (long)(mem[WhileStatement.Loop]??0L);
         /// <summary>
         /// Constructor: a repeat statement from the parser
         /// </summary>
@@ -1662,7 +1650,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (WhileStatement.What, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1672,34 +1660,23 @@ namespace Pyrrho.Level3
         /// Execute the repeat statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Transaction Obey(Transaction tr, Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx;
             a.exec = this;
-            var first = true;
             var act = new Activation(cx, label);
-            while (act.signal == null && (first || !search.Matches(tr, act)))
+            Context na = act;
+            for (; ;)
             {
-                first = false;
-                if (act.breakto == act)
-                    act.breakto = null;
-                if (act.breakto != null)
+                na = ObeyList(what, act);
+                if (na != cx)
                     break;
-                var lp = new Activation(act, null);
-                lp.brk = a;
-                lp.cont = act;
-                tr = ObeyList(what, tr, lp);
-                act.SlideDown(lp);
-                act.signal = lp.signal;
-                if (lp.breakto != null && lp.breakto != act)
-                    act.breakto = lp.breakto;
-                if (act.breakto == act)
-                    act.breakto = null;
+                act.signal?.Throw(act);
+                if (!search.Matches(act))
+                    break;
             }
-            a.SlideDown(act);
-            if (a.breakto == a)
-                a.breakto = null;
-            return tr;
+            cx.SlideDown(act); 
+            return cx;
         }
 	}
     /// <summary>
@@ -1731,12 +1708,11 @@ namespace Pyrrho.Level3
         /// Execute the iterate statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
-            a.breakto = a.cont;
-            return tr;
+            return a.cont;
 		}
 	}
     /// <summary>
@@ -1803,7 +1779,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1813,31 +1789,28 @@ namespace Pyrrho.Level3
         /// Execute the loop statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr, Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
             var act = new Activation(cx, label);
             var lp = new Activation(act, null);
-            for (; ; )
+            var na = lp;
+            while(na==lp)
             {
-                if (lp.breakto == act)
-                    lp.breakto = null;
-                if (lp.breakto != null)
-                    break;
                 lp.brk = a;
                 lp.cont = act;
-                tr = ObeyList(stms, tr,lp);
-                act.SlideDown(lp);
-                if (lp.signal != null)
-                    lp.signal.Throw(tr,a);
+                na = (Activation)ObeyList(stms, lp);
+                if (na==lp)
+                    lp.signal?.Throw(a);
             }
-            if (act.breakto == a)
-                act.breakto = null;
-            if (act.signal != null)
-                act.signal.Throw(tr,a);
+            if (na == act)
+            {
+                act.signal?.Throw(a);
+                act.SlideDown(lp);
+            }
             cx.SlideDown(act);
-            return tr;
+            return cx;
         }
 	}
     /// <summary>
@@ -1931,7 +1904,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -1941,31 +1914,27 @@ namespace Pyrrho.Level3
         /// Execute a FOR statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
-            a.exec = this;
-            var da = sel.RowSets(tr, cx);
+            cx.exec = this;
+            var da = sel.RowSets(cx);
             if (da == null)
-                return tr;
-            cx.data += (defpos,da);
+                return cx;
             var qs = sel.union.left;
             var ac = new Activation(cx, label);
             ac.Add(qs);
             var dt = sel.rowType;
-            for (var rb = da.First(cx); rb != null; rb = rb.Next(cx))
+            for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
             {
-                var lp = new Activation(ac, null);
-                lp.Add(qs);
-                lp.brk = a;
-                lp.cont = ac;
-                tr = ObeyList(stms, tr,lp);
-                if (lp.signal != null)
-                    lp.signal.Throw(tr,a);
-                ac.SlideDown(lp);
+                ac.Add(qs);
+                ac.brk = cx as Activation;
+                ac.cont = ac;
+                ac = (Activation)ObeyList(stms, ac);
+                if (ac.signal != null)
+                    ac.signal.Throw(cx);
             }
-            a.SlideDown(ac);
-            return tr;
+            cx.SlideDown(ac);
+            return cx;
         }
 	}
     /// <summary>
@@ -2008,7 +1977,7 @@ namespace Pyrrho.Level3
             var c = cursor.Frame(cx);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2018,10 +1987,10 @@ namespace Pyrrho.Level3
         /// Execute an open statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            cx.data += (defpos,cursor.spec.RowSets(tr, cx));
-            return tr;
+            cursor.spec.RowSets(cx);
+            return cx;
         }
     }
     /// <summary>
@@ -2064,7 +2033,7 @@ namespace Pyrrho.Level3
             var c = cursor.Frame(cx);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2073,11 +2042,10 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Execute the close statement
         /// </summary>
-        /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             cx.data += (defpos,EmptyRowSet.Value);
-            return tr;
+            return cx;
         }
 	}
     /// <summary>
@@ -2163,10 +2131,10 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Outs, os);
-            var w = where.Frame(cx);
+            var w = where?.Frame(cx);
             if (w != where)
                 r += (Where, w);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2175,13 +2143,14 @@ namespace Pyrrho.Level3
         /// Execute a fetch
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var cs = cursor.spec.Refresh(cx);
             // position the cursor as specified
             var rqpos = 0L;
-            if (cx.rb!=null)
-                rqpos= cx.rb._pos+1;
+            var rb = cx.values[cursor.defpos] as Cursor;
+            if (rb!=null)
+                rqpos= rb._pos+1;
             switch (how)
             {
                 case Sqlx.NEXT: break; // default case
@@ -2200,33 +2169,33 @@ namespace Pyrrho.Level3
                         break;
                     }
                 case Sqlx.ABSOLUTE:
-                    rqpos = (long)where.Eval(tr,cx).Val();
+                    rqpos = (long)where.Eval(cx).Val();
                     break;
                 case Sqlx.RELATIVE:
-                    rqpos = rqpos + (long)where.Eval(tr,cx).Val();
+                    rqpos = rqpos + (long)where.Eval(cx).Val();
                     break;
             }
-            if (cx.rb == null || rqpos == 1)
-                cx.rb = cx.data[cs.defpos].First(cx);
-            while (cx.rb != null && rqpos != cx.rb._pos)
-                cx.rb = cx.rb.Next(cx);
-            if (cx.rb == null)
-                tr = new Signal(defpos,"02000", "No data").Obey(tr,cx);
+            if (rb == null || rqpos == 0)
+                rb = cx.data[cs.defpos].First(cx);
+            while (rb!= null && rqpos != rb._pos)
+                rb = rb.Next(cx);
+            if (rb == null)
+                cx = new Signal(defpos,"02000", "No data").Obey(cx);
             else
             {
                 var dt = cs.rowType;
                 for (int i = 0; i < dt.Length; i++)
                 {
-                    var c = cx.rb.row[i];
+                    var c = rb[i];
                     if (c != null)
                     {
                         var ou = outs[i];
                         if (ou != null)
-                            cx.values += (ou.defpos, c);
+                            cx.AddValue(ou, c);
                     }
                 }
             }
-            return tr;
+            return cx;
         }
  	}
     /// <summary>
@@ -2254,11 +2223,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, BList<SqlValue> ps,SqlValue tg=null)
-         : this(dp, pr, ps, (tg==null)?null: new BTree<long, object>(Var,tg))
+        public CallStatement(long dp, Procedure pr, string pn, BList<SqlValue> ps,SqlValue tg=null)
+         : this(dp, pr, pn, ps, (tg==null)?null: new BTree<long, object>(Var,tg))
         { }
-        protected CallStatement(long dp, Procedure pr, BList<SqlValue> ps, BTree<long,object> m=null)
-         : base(dp, (m??BTree<long, object>.Empty) + (Parms, ps) + (ProcDefPos, pr.defpos))
+        protected CallStatement(long dp, Procedure pr, string pn, BList<SqlValue> ps, BTree<long,object> m=null)
+         : base(dp, (m??BTree<long, object>.Empty) + (Parms, ps) + (ProcDefPos, pr?.defpos??-1L)
+               +(_Domain,pr?.domain??Domain.Content) +(Procedure.RetType,pr?.retType?? ObInfo.Any) + (Name,pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
@@ -2304,10 +2274,10 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Parms, ps);
-            var vr = var.Frame(cx);
+            var vr = var?.Frame(cx);
             if (vr != var)
                 r += (Var, vr);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2320,25 +2290,24 @@ namespace Pyrrho.Level3
         /// Execute a proc/method call
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
 		{
-            var a = cx.GetActivation(); // from the top of the stack each time
-            a.exec = this;
-            var proc = (Procedure)tr.objects[procdefpos];
-            return proc.Exec(tr,cx,parms);
+            cx.exec = this;
+            var proc = (Procedure)cx.db.objects[procdefpos];
+            return proc.Exec(cx,parms);
 		}
-        internal override DBObject Replace(Context cx,DBObject so,DBObject sv)
+        internal override DBObject _Replace(Context cx,DBObject so,DBObject sv)
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = this;
-            var nv = var.Replace(cx,so, sv);
+            var nv = var._Replace(cx,so, sv);
             if (nv != var)
                 r += (Var, nv);
             var np = r.parms;
             for (var b=parms.First();b!=null;b=b.Next())
             {
-                var a = b.value().Replace(cx, so, sv);
+                var a = b.value()._Replace(cx, so, sv);
                 if (a != b.value())
                     np += (b.key(), (SqlValue)a);
             }
@@ -2420,7 +2389,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (SetList, sl);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2433,14 +2402,14 @@ namespace Pyrrho.Level3
         /// Execute a signal
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            if (stype==Sqlx.RESIGNAL && !tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
+            if (stype==Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
                     throw new DBException("0K000").ISO();
             string sclass = signal.Substring(0, 2);
-            var dia = tr.diagnostics;
+            var dia = cx.tr.diagnostics;
             dia +=(Sqlx.RETURNED_SQLSTATE, new TChar(signal));
             if (exception is DBException dbex)
             {
@@ -2449,8 +2418,8 @@ namespace Pyrrho.Level3
                 dia+=(Sqlx.MESSAGE_TEXT, new TChar(Resx.Format(dbex.signal, dbex.objects)));
             }
             for (var s = setlist.First();s!= null;s=s.Next())
-                dia+=(s.key(), s.value().Eval(tr,cx));
-            tr += (Transaction.Diagnostics, dia);
+                dia+=(s.key(), s.value().Eval(cx));
+            cx.db += (Transaction.Diagnostics, dia);
             Handler h = null;
             Activation cs = null;
             for (cs = a; h == null && cs != null;)
@@ -2460,34 +2429,39 @@ namespace Pyrrho.Level3
                     h = cs.exceptions[sclass + "000"];
                 if (h == null)
                     h = cs.exceptions["SQLEXCEPTION"];
+                if (h == null)
+                {
+                    var c = cs.next;
+                    while (c != null && !(c is Activation)) 
+                        c = c.next;
+                    cs = c as Activation;
+                }
             }
             if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
             {
                 for (; cs != null && a != cs; a = cx.GetActivation())
                     cx = a;
                 a.signal = this;
-                cx.breakto = cs;
             }
             else
             {
-                cx.breakto = null;
                 a.signal = null;
-                tr = h.Obey(tr,cx);
+                cx = h.Obey(cx);
             }
-            return tr;
+            return cx;
 		}
         /// <summary>
         /// Throw this signal
         /// </summary>
         /// <param name="cx">the context</param>
-        public void Throw(Transaction tr,Context cx)
+        public void Throw(Context cx)
         {
             var e = exception as DBException;
             if (e == null)
             {
                 e = new DBException(signal, objects);
                 for (var x = setlist.First();x!= null;x=x.Next())
-                    e.info +=(x.key(), x.value().Eval(tr, cx));
+                    e.info +=(x.key(), x.value().Eval(cx));
             }
             throw e;
         }
@@ -2543,7 +2517,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (List, sl);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2556,13 +2530,12 @@ namespace Pyrrho.Level3
         /// Obey a GetDiagnostics statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx; // from the top of the stack each time
-            a.exec = this;
+            cx.exec = this;
             for (var b = list.First(); b != null; b = b.Next())
-                a.values += (b.key().defpos, tr.diagnostics[b.value()]);
-            return tr;
+                cx.AddValue(b.key(), cx.tr.diagnostics[b.value()]);
+            return cx;
         }
     }
     /// <summary>
@@ -2635,7 +2608,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Outs, os);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2645,19 +2618,19 @@ namespace Pyrrho.Level3
         /// Execute a select statement: single row
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Transaction Obey(Transaction tr,Context cx)
+		public override Context Obey(Context cx)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            var sr = sel.RowSets(tr, cx);
-            cx.data += (defpos, sr);
-            a.rb = sr.First(cx);
-            if (a.rb != null)
+            var sr = sel.RowSets(cx);
+            var rb = sr.First(cx);
+            a.AddValue(this,rb);
+            if (rb != null)
                 for (var b = outs.First(); b != null; b = b.Next())
-                    a.values += (b.value().defpos, a.rb.row[b.key()]);
+                    a.AddValue(b.value(), rb[b.key()]);
             else
-                a.NoData(tr);
-            return tr;
+                a.NoData();
+            return cx;
         }
 	}
     /// <summary>
@@ -2749,7 +2722,7 @@ namespace Pyrrho.Level3
             var cv = verb.Frame(cx);
             if (cv != verb)
                 r += (Verb, cv);
-            return cx.Add(r);
+            return cx.Add(r,true);
         }
         internal override bool Calls(long defpos, Database db)
         {
@@ -2760,18 +2733,19 @@ namespace Pyrrho.Level3
         /// Obey the HTTP request
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Transaction Obey(Transaction tr,Context cx)
+        public override Context Obey(Context cx)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = (Activation)cx;
             a.exec = this;
-            var s = url.Eval(tr,cx)?.ToString();
+            var s = url.Eval(cx)?.ToString();
             if (s == null)
-                return tr;
+                return cx;
             // Okay, use HTTP
-            var rq = SqlHttp.GetRequest(cx, url.Eval(tr,cx).ToString());
-            rq.UserAgent = "Pyrrho 5.7 http://" + PyrrhoStart.host + "/" + tr.startTime + "/" + tr.loadpos;
+            var rq = SqlHttp.GetRequest(cx, url.Eval(cx).ToString());
+            rq.UserAgent = "Pyrrho 7.0 http://" + PyrrhoStart.host + "/" 
+                + cx.tr.startTime + "/" + cx.db.loadpos;
             rq.ContentType = mime ?? "application/tcc+json, application/json";
-            var vb =verb.Eval(tr,cx).ToString();
+            var vb =verb.Eval(cx).ToString();
             rq.Method = vb;
             if (vb!="DELETE")
             {
@@ -2780,8 +2754,8 @@ namespace Pyrrho.Level3
                 rst.Close();
             }
             var rr = new System.IO.StreamReader(rq.GetResponse().GetResponseStream());
-            cx.ret = new TChar(rr.ReadToEnd());
-            return tr;
+            cx.val = new TChar(rr.ReadToEnd());
+            return cx;
         }
     }
 }

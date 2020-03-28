@@ -1,12 +1,10 @@
 using System;
-using System.Collections.Generic;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using System.Text;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -70,7 +68,7 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,b.value().defpos)) return b.value().defpos;
             if (reference >= 0)
             {
-                var xr = (Index)wr.db.objects[reference];
+                var xr = (Index)wr.cx.db.objects[reference];
                 var reftable = xr.tabledefpos;
                 if (!Committed(wr, reftable)) return reftable;
                 if (!Committed(wr, reference)) return reference;
@@ -88,8 +86,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, Transaction tr) :
-            this(Type.PIndex, nm, tb, cl, fl, rx, tr)
+            ConstraintType fl, long rx, long pp, Context cx) :
+            this(Type.PIndex, nm, tb, cl, fl, rx, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -103,8 +101,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, Transaction tr) :
-            base(t, tr)
+            ConstraintType fl, long rx, long pp, Context cx) :
+            base(t, pp, cx)
         {
             name = nm?? throw new DBException("42102").Mix();
             tabledefpos = tb;
@@ -131,7 +129,7 @@ namespace Pyrrho.Level2
             tabledefpos = wr.Fix(x.tabledefpos);
             columns = CList<TableColumn>.Empty;
             for (var b = x.columns.First(); b != null; b = b.Next())
-                columns += (b.key(), (TableColumn)wr.db.objects[wr.Fix(b.value().defpos)]
+                columns += (b.key(), (TableColumn)wr.cx.db.objects[wr.Fix(b.value().defpos)]
                     ??TableColumn.Doc);
             flags = x.flags;
             reference = wr.Fix(x.reference);
@@ -173,7 +171,7 @@ namespace Pyrrho.Level2
             {
                 columns = CList<TableColumn>.Empty;
                 for (int j = 0; j < n; j++)
-                    columns+=(j,(TableColumn)rdr.db.objects[rdr.GetLong()]
+                    columns+=(j,(TableColumn)rdr.context.db.objects[rdr.GetLong()]
                         ??TableColumn.Doc);
             }
             flags = (ConstraintType)rdr.GetInt();
@@ -222,29 +220,32 @@ namespace Pyrrho.Level2
                 r += " refers to [" + Pos(reference) + "]";
             return r;
         }
-
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var x = new Index(this, ref db).Build(db);
-            var tb = (Table)db.objects[tabledefpos];
+            var x = new Index(this, cx).Build(cx.db);
+            var tb = (Table)cx.db.objects[tabledefpos];
+            for (var b = x.keys.First(); b != null; b = b.Next())
             tb += (Table.Indexes, tb.indexes + (x.keys, x.defpos));
-            db += (x,p);
+            cx.db += (x,p);
             if (reference>=0)
             {
-                var rt = (Table)db.objects[x.reftabledefpos];
-                var rx = (Index)db.objects[x.refindexdefpos];
+                var rt = (Table)cx.db.objects[x.reftabledefpos];
+                var rx = (Index)cx.db.objects[x.refindexdefpos];
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
-                db += (rx,p);
+                cx.db += (rx,p);
             }
-            var cs = BList<SqlValue>.Empty;
+            var cs = BList<ObInfo>.Empty;
+            var kc = tb.keyCols;
             for (var b=x.keys.First();b!=null;b=b.Next())
             {
                 var tc = b.value();
-                var ci = (ObInfo)db.role.obinfos[tc.defpos];
-                cs += new SqlCol(tc.defpos, ci.name, tc);
+                var ci = (ObInfo)cx.db.role.obinfos[tc.defpos];
+                cs += new ObInfo(tc.defpos, ci.name, tc.domain);
+                kc += (tc.defpos,true);
             }
-            ro += new ObInfo(ppos, Domain.TableType, cs);
-            return (db + (tb,p)+(ro,p),ro);
+            tb += (Table.KeyCols, kc);
+            var r = cx.db.role + new ObInfo(ppos, Domain.TableType, cs);
+            cx.db = cx.db + (tb, p) + (r, p);
         }
     }
     /// <summary>
@@ -264,8 +265,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, Transaction tr) :
-            this(Type.PIndex1, nm, tb, cl, fl, rx, af, tr)
+            ConstraintType fl, long rx, string af, long pp, Context cx) :
+            this(Type.PIndex1, nm, tb, cl, fl, rx, af, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -280,8 +281,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, Transaction tr) :
-            base(t, nm, tb, cl, fl, rx, tr)
+            ConstraintType fl, long rx, string af, long pp, Context cx) :
+            base(t, nm, tb, cl, fl, rx, pp, cx)
         {
             adapter = af;
         }
@@ -332,13 +333,13 @@ namespace Pyrrho.Level2
         /// <param name="md">The metadata flags</param>
         /// <param name="db">The database</param>
         public PIndex2(string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, ulong md, Transaction tr) :
-            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, tr)
+            ConstraintType fl, long rx, string af, ulong md, long pp, Context cx) :
+            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, pp, cx)
         {
         }
         protected PIndex2(Type t, string nm, long tb, CList<TableColumn> cl,
-            ConstraintType fl, long rx, string af, ulong md, Transaction tr)
-            :base(t, nm, tb, cl, fl, rx, af, tr)
+            ConstraintType fl, long rx, string af, ulong md, long pp, Context cx)
+            : base(t, nm, tb, cl, fl, rx, af, pp, cx)
         {
             metadata = md;
         }
@@ -372,8 +373,8 @@ namespace Pyrrho.Level2
     {
         public PIndex.ConstraintType ctype;
         public long index;
-        public RefAction(long ix, PIndex.ConstraintType ct, Transaction tr) 
-            : base(Type.RefAction, tr) 
+        public RefAction(long ix, PIndex.ConstraintType ct, long pp, Context cx)
+            : base(Type.RefAction, pp, cx) 
         {
             index = ix;
             ctype = ct;
@@ -430,11 +431,12 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
+
         {
-            var x = (Index)db.objects[index];
+            var x = (Index)cx.db.objects[index];
             x += (Index.IndexConstraint, ctype);
-            return (db + (x, db.loadpos), ro);
+            cx.db += (x, p);
         }
         public override string ToString()
         {

@@ -53,12 +53,13 @@ namespace Tpcc
             void Carrier(int carid)
             {
                 int done = 0, skipped = 0;
-                db.BeginTransaction();
+                var tr = db.BeginTransaction();
                 for (int d = 1; d <= 10; d++)
                     if (Schedule(d, carid))
                         done++;
                     else
                         skipped++;
+                tr.Commit();
             }
 
             void Run()

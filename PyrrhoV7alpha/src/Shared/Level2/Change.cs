@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -42,8 +42,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
         /// <param name="tr">The transaction</param>
-        public Change(long pt, string nm, Transaction tr) 
-			:this(Type.Change,pt,nm, tr)
+        public Change(long pt, string nm, long pp, Context cx) 
+			:this(Type.Change,pt,nm, pp, cx)
 		{
             prev = pt;
             name = nm;
@@ -56,8 +56,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
         /// <param name="db">The local database</param>
-        protected Change(Type t, long pt, string nm, Transaction tr)
-			:base(t,tr)
+        protected Change(Type t, long pt, string nm, long pp, Context cx)
+			:base(t,pp,cx)
 		{
             prev = pt;
             name = nm;
@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{ 
 			prev = rdr.GetLong();
-            affects = (long)(rdr.db.mem[prev]??ppos);
+            affects = (long)(rdr.context.db.mem[prev]??ppos);
 			name = rdr.GetString();
 			base.Deserialise(rdr);
 		}
@@ -160,11 +160,12 @@ namespace Pyrrho.Level2
 			return (pos==Affects)?new DBException("40005",pos).Mix():null;
 		}
 
-        internal override (Database,Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             var oi = ro.obinfos[affects] as ObInfo;
             ro = ro + new ObInfo(affects, name, oi.domain, oi.priv, oi.mem);
-            return (db + (ro, p),ro);
+            cx.db += (ro, p);
         }
     }
 }

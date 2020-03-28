@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -33,14 +33,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete(TableRow rw, Transaction tr)
-            : base(Type.Delete, tr)
+        public Delete(TableRow rw, long pp, Context cx)
+            : base(Type.Delete, pp, cx)
 		{
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
 		}
-        protected Delete(Type t,TableRow rw, Transaction tr)
-    : base(t, tr)
+        protected Delete(Type t,TableRow rw, long pp, Context cx)
+    : base(t, pp, cx)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
@@ -126,27 +126,27 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
-                if (db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
+                if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
                 {
                     var delRow = tb.tableRows[delpos] as TableRow;
-                    (db, ro) = delRow.Cascade(db, db, ro);
+                    ro = delRow.Cascade(cx.db, cx, ro, p);
                     for (var b = tb.indexes.First(); b != null; b = b.Next())
                     {
-                        var ix = (Index)db.objects[b.value()];
+                        var ix = (Index)cx.db.objects[b.value()];
                         var inf = ix.rows.info;
                         var key = delRow.MakeKey(ix);
                         ix -= key;
                         if (ix.rows == null)
                             ix += (Index.Tree, new MTree(inf));
-                        db += (ix,p);
+                        cx.db += (ix,p);
                     }
                     tb -= delpos;
-                    return (db + (tb, p), ro);
+                    cx.db += (tb, p);
                 }
-            return (db, ro);
         }
     }
     internal class Delete1 : Delete
@@ -156,8 +156,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete1(TableRow rw, Transaction tr)
-            : base(Type.Delete1, rw, tr)
+        public Delete1(TableRow rw, long pp, Context cx)
+            : base(Type.Delete1, rw, pp, cx)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
@@ -196,23 +196,23 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             tabledefpos = tb;
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = db.objects[tabledefpos] as Table;
+            var tb = cx.db.objects[tabledefpos] as Table;
             var delRow = tb.tableRows[delpos] as TableRow;
-            (db, ro) = delRow.Cascade(db, db, ro);
+            var ro = delRow.Cascade(cx.db, cx, cx.role, p);
             for (var b = tb.indexes.First(); b != null; b = b.Next())
             {
-                var ix = (Index)db.objects[b.value()];
+                var ix = (Index)cx.db.objects[b.value()];
                 var inf = ix.rows.info;
                 var key = delRow.MakeKey(ix);
                 ix -= key;
                 if (ix.rows == null)
                     ix += (Index.Tree, new MTree(inf));
-                db += (ix, p);
+                cx.db += (ix, p);
             }
             tb -= delpos;
-            return (db + (tb, p), ro);
+            cx.db = cx.db + (tb, p) + (ro,p);
         }
         public override string ToString()
         {

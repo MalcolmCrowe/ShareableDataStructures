@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -81,7 +81,8 @@ namespace Pyrrho.Level3
             if (check == null)
                 return p.ReadCheck(defpos);
             if (p is Record r)
-                return check.Check((p.db.objects[r.tabledefpos] as Table).tableRows[r.defpos] as TableRow);
+                return check.Check((p.database.objects[r.tabledefpos] as Table).tableRows[r.defpos]
+                    as TableRow);
             return null;
         }
         /// <summary>
@@ -145,7 +146,7 @@ namespace Pyrrho.Level3
 		public virtual DBException Check(TableRow r)
         {
             for (var c = rdcols.First(); c != null; c = c.Next())
-                if (r.fields[c.key()] != null)
+                if (r.vals[c.key()] != null)
                     return new DBException("40006", c.key()).Mix();
             return null;
         }
@@ -231,7 +232,7 @@ namespace Pyrrho.Level3
 		public override DBException Check(TableRow r)
         {
             // check for insertion (or key update) conflicting with an empty query
-            var m = r.MakeKey(index);
+            var m = r?.MakeKey(index);
             if (m != null)
                 foreach (var rr in recs)
                     if (m._CompareTo(rr) == 0)

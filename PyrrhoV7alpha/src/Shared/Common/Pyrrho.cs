@@ -16,7 +16,7 @@
         Mongo = 41, Check = 42, CommitAndReport = 43, RemoteCommitAndReport = 44, Post = 45, Put = 46,
         Get1 = 47, Delete = 48, Update = 49, Rest = 50, Subscribe = 51, Synchronise = 52, SetMaster = 53,
         GetInfo = 54, Execute = 55, Get2 = 56, ExecuteNonQueryTrace = 73, CommitTrace = 74,
-        CommitAndReportTrace = 75, ExecuteTrace = 76
+        CommitAndReportTrace = 75, ExecuteTrace = 76, CommitAndReport1 = 77, CommitAndReportTrace1 = 78
     }
     /// <summary>
     /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,

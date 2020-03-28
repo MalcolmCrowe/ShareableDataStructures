@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -29,7 +29,10 @@ namespace Pyrrho.Level4
     /// Activation and Query provide Push and Pop methods for stack management, reflecting their different structure.
     /// Contexts provide a Lookup method for obtaining a TypedValue for a SqlValue defpos in scope;
     /// Queries uses a Lookup0 method that can be safely called from Lookup during parsing, this should not be called separately.
-    /// All Context information is volatile and scoped to within the current transaction,to which it maintains a pointer.
+    /// 
+    /// All Context information is volatile and scoped to within the current transaction,for which it may contain a snapshot.
+    /// Ideally Context should be immutable (a subclass of Basis), but we do not do this because SqlValue::Eval can affect
+    /// the current ReadConstraint and ETag, and these changes must be placed somewhere. The Context is the simplest.
     /// </summary>
     internal class Context 
 	{
@@ -37,18 +40,23 @@ namespace Pyrrho.Level4
         readonly int dbg = ++_dbg;
         public readonly long cxid;
         public readonly int dbformat; 
-        public readonly User user;
+        public User user;
+        public Role role;
         internal Context next,parent=null; // contexts form a stack (by nesting or calling)
         /// <summary>
         /// The current set of values of objects in the Context
         /// </summary>
-        internal TRow row = null; // row.values
         internal bool rawCols = false;
-        public BTree<long,RowSet> data = BTree<long,RowSet>.Empty;
-        public long top,frame,result;
-        internal RowBookmark rb = null; // 
-        internal ETag etag = null;
-        internal BTree<long, FunctionData> func = BTree<long, FunctionData>.Empty;
+        public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
+        internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;
+        internal BTree<long, long> from = BTree<long, long>.Empty; // SqlValue to cursors/data
+        public long nextHeap, parseStart;
+        public TypedValue val = TNull.Value;
+        internal BTree<long,ETag> etag = BTree<long,ETag>.Empty;
+        internal Database db = null;
+        internal Transaction tr => db as Transaction;
+        internal BTree<long, FunctionData> func = BTree<long,FunctionData>.Empty;
+        internal BTree<long, BTree<long, bool>> copy = BTree<long, BTree<long, bool>>.Empty;
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty; 
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
@@ -63,8 +71,7 @@ namespace Pyrrho.Level4
         // unresolved SqlValues
         internal BTree<long, SqlValue> undef = BTree<long,SqlValue>.Empty;
         // used SqlColRefs by From.defpos
-        internal BTree<long,BTree<long,SqlCol>> used = BTree<long, BTree<long, SqlCol>>.Empty;
-        internal BTree<long,BTree<long, TypedValue>> matches = BTree<long,BTree<long, TypedValue>>.Empty;
+        internal BTree<long,BTree<long,SqlValue>> used = BTree<long, BTree<long, SqlValue>>.Empty;
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -82,19 +89,12 @@ namespace Pyrrho.Level4
         /// indexed by prefix
         /// </summary>
         internal BTree<string, string> nsps = BTree<string, string>.Empty;
-        public Context breakto;
-        /// <summary>
-        /// The return value: cf proc.ret
-        /// </summary>
-        public TypedValue ret = TNull.Value;
         /// <summary>
         /// Used for View processing: lexical positions of ends of columns
         /// </summary>
         internal BList<Ident> viewAliases = BList<Ident>.Empty;
         internal ExecuteStatus parse = ExecuteStatus.Obey;
         internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
-  //      internal BTree<CList<long>, BTree<CList<Domain>,Domain>> domains = 
-  //          BTree<CList<long>,BTree<CList<Domain>,Domain>>.Empty; // copied to and from Transaction
         public int rconflicts =0, wconflicts=0;
         /// <summary>
         /// Create an empty context for the transaction 
@@ -104,23 +104,33 @@ namespace Pyrrho.Level4
         {
             next = null;
             user = db.user;
+            role = db.role;
             cxid = db.lexeroffset;
+            nextHeap = db.nextPrep;
             dbformat = db.format;
-            frame = top = db.uid;
-            result = -1;
+            parseStart = 0L;
+            this.db = db;
             rdC = (db as Transaction)?.rdC;
 //            domains = (db as Transaction)?.domains;
         }
         internal Context(Context cx)
         {
             next = cx;
+            db = cx.db;
             user = cx.user;
-            cxid = top = frame = cx.top+1;
+            role = cx.role;
+            nextHeap = cx.nextHeap;
+            parseStart = cx.parseStart;
             values = cx.values;
             obs = cx.obs;
             defs = cx.defs;
             depths = cx.depths;
+            copy = cx.copy;
             data = cx.data;
+            from = cx.from;
+            cursors = cx.cursors;
+            etag = cx.etag;
+            val = cx.val;
             parent = cx.parent; // for triggers
             dbformat = cx.dbformat;
             // and maybe some more?
@@ -133,72 +143,35 @@ namespace Pyrrho.Level4
         {
             user = u;
         }
-        internal DBObject Get(Ident ic,DBObject rt=null)
+        internal DBObject Get(Ident ic, Domain td, ObInfo ts)
         {
-            rt = rt ?? Domain.Content;
-            var r = defs.Get(this,ic);
-            if (r!=null && !rt.domain.CanTakeValueOf(r.domain))
+            DBObject ob;
+            if (ic.Length > 1 && defs.Contains(ic.ToString())
+                    && defs[ic.ToString()].Item1 is SqlValue s0)
+                ob = s0;
+            else
+                ob = defs[ic];
+            if (ob != null && !td.CanTakeValueOf(ob.domain))
                 throw new DBException("42000", ic);
-            return r;
+            return ob;
         }
-        internal Context Add(Query q,RowBookmark r)
+        internal virtual TypedValue AddValue(DBObject s,TypedValue tv)
         {
-            if (q!=null)
-                values += (q.defpos, r.row);
-            for (var b = r.row.info.columns.First(); b != null; b = b.Next())
-                values += (b.value().defpos, r.row[b.key()]);
-            row = r.row;
-            rb = r;
-            return this;
+            if (tv is Cursor || tv is RowSet)
+                Console.WriteLine("AddValue??");
+            var p = s.Defpos();
+            values += (p, tv);
+            if (from.Contains(p) && cursors[from[p]] is Cursor cu)
+                cu.values += (p, tv);
+            return tv;
         }
-        internal Context Add(BTree<long,TypedValue>fl)
+        internal void Add(Physical ph, long lp=0)
         {
-            for (var b = fl.First(); b != null; b = b.Next())
-                values += (b.key(), b.value());
-            return this;
+            if (lp == 0)
+                lp = db.loadpos;
+            db.Add(this, ph, lp);
         }
-        internal Context Add(DBObject ob,ObInfo oi)
-        {
-            var on = new Ident(oi.name, ob.defpos);
-            Add(ob);
-            defs += (on, ob);
-            for (var b = oi.columns?.First(); b != null; b = b.Next())
-            {
-                var sc = b.value();
-                var sn = new Ident(sc.name, sc.defpos);
-                Add(sc);
-                defs += (new Ident(on, sn), sc);
-                defs += (sn, sc);
-            }
-            return this;
-        }
-        /// <summary>
-        /// The following four convenience routines cannot be combined
-        /// because they select different + operators in Context
-        /// </summary>
-        /// <param name="id"></param>
-        /// <param name="t"></param>
-        internal void AddTable(Ident id, From t)
-        {
-            if (id!=null && id.ident!="")
-                defs += (id, t);
-        }
-        public void AddRow(Ident id, ObInfo oi)
-        {
-            if (id!=null && id.ident!="")
-                defs += (id, oi);
-        }
-        internal void AddOldTable(Ident id, From t)
-        {
-            if (id != null && id.ident != "")
-                defs += (id, new FromOldTable(id,t));
-        }
-        public void AddOldRow(Ident id, ObInfo oi)
-        {
-            if (id != null && id.ident != "")
-                defs += (id, new ObInfoOldRow(oi,oi.defpos));
-        }
-        internal DBObject Add(DBObject ob)
+        internal DBObject Add(DBObject ob,bool framing=false)
         {
             long rp;
             if (dbformat < 51)
@@ -222,13 +195,37 @@ namespace Pyrrho.Level4
             }
             if (ob != null && ob.defpos != -1)
             {
+                _Add(ob);
+                var nm = ob.alias ?? (string)ob.mem[Basis.Name] ??"";
+                if (nm!="" && !framing)
+                    defs += (new Ident(nm, ob.defpos), ob);
+            }
+            if (framing && ob is Query q && !data.Contains(ob.defpos))
+                data += (ob.defpos, q.RowSets(this));
+            return ob;
+        }
+        internal DBObject _Add(DBObject ob)
+        {
+            if (ob != null && ob.defpos != -1)
+            {
                 obs += (ob.defpos, ob);
-                if (ob.mem.Contains(DBObject._Alias))
-                    defs += (new Ident(ob.alias, 0), ob);
                 var dp = depths[ob.depth] ?? BTree<long, DBObject>.Empty;
                 depths += (ob.depth, dp + (ob.defpos, ob));
             }
             return ob;
+        }
+        internal void _Remove(long dp)
+        {
+            obs -= dp;
+            for (var b=depths.First();b!=null;b=b.Next())
+                depths += (b.key(), b.value() - dp);
+        }
+        internal void AddRowSetsPair(SqlValue a,SqlValue b)
+        {
+            if (data[a.from] is RowSet ra)
+                data += (a.from, ra + (a.defpos, b.defpos));
+            if (data[b.from] is RowSet rb)
+                data += (a.from, rb + (a.defpos, b.defpos));
         }
         /// <summary>
         /// Context undef is used for undefined SqlColRefs in QuerySpec
@@ -255,7 +252,7 @@ namespace Pyrrho.Level4
                 Add(now);
             if (was == now)
                 return now;
-            done = new BTree<long, DBObject>(was.defpos, now);
+            done = new BTree<long, DBObject>(was.defpos, now) +(now.defpos,now);
             // scan by depth to perform the replacement
             for (var b = depths.Last(); b != null; b = b.Previous())
             {
@@ -272,7 +269,9 @@ namespace Pyrrho.Level4
             // now use the done list to update defs
             defs = defs.Replace(done);
             for (var b = done.First(); b != null; b = b.Next())
-                obs += (b.key(), b.value());
+                Add(b.value());
+            if (was.defpos != now.defpos)
+                _Remove(was.defpos);
             return now;
         }
         internal long Fix(long dp)
@@ -280,6 +279,75 @@ namespace Pyrrho.Level4
             if (done[dp] is DBObject ob)
                 return ob.defpos;
             return dp;
+        }
+        /// <summary>
+        /// Simply add a pair of equivalent uids
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="b"></param>
+        BTree<long,BTree<long,bool>> _Copy(BTree<long,BTree<long,bool>>co,long a, long b)
+        {
+            if (co[a]?.Contains(b) !=true)
+            {
+                var c = co[a] ?? BTree<long, bool>.Empty;
+                c += (b, true);
+                co += (a, c);
+            }
+            return co;
+        }
+        /// <summary>
+        /// Ensure Copy relation is transitive after adding a pair
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="b"></param>
+        internal BTree<long,BTree<long,bool>> Copy(BTree<long, BTree<long, bool>> cp,long a, long b)
+        {
+            if (a == b)
+                return cp;
+            if (a < 0 || b < 0)
+                throw new PEException("PE195");
+            var co = cp;
+            var r = _Copy(cp,a, b);
+            for (; ; )
+            {
+                if (co == r)
+                    return r;
+                co = r;
+                for (var c = co.First(); c != null; c = c.Next())
+                    for (var d = co[c.key()].First(); d != null; d = d.Next())
+                    {
+                        r = _Copy(co,c.key(), d.key());
+                        r = _Copy(co,d.key(), c.key());
+                    }
+            }
+            // not reached
+        }
+        internal void Copy(long a, long b)
+        {
+            copy += Copy(copy, a, b);
+        }
+        internal BTree<long,BTree<long,bool>> Copy(Domain d,Domain e)
+        {
+            if (e == null)
+                return null;
+            if (d.Length != e.Length)
+                throw new PEException("PE196");
+            var r = copy;
+            for (var j = 0; j < d.Length; j++)
+                r = Copy(r, d.representation[j].Item1, e.representation[j].Item1);
+            return r;
+        }
+        internal static BTree<long,BTree<long,bool>> Copy(BTree<SqlValue,BTree<SqlValue,bool>> mg)
+        {
+            var r = BTree<long, BTree<long, bool>>.Empty;
+            for (var b=mg.First();b!=null;b=b.Next())
+            {
+                var s = BTree<long, bool>.Empty;
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    s += (c.key().defpos, true);
+                r += (b.key().defpos, s);
+            }
+            return r;
         }
         /// <summary>
         /// We have just constructed a new From. Use it to replace any
@@ -307,33 +375,34 @@ namespace Pyrrho.Level4
             for (var b = done.First(); b != null; b = b.Next())
                 obs += (b.key(), b.value());
         }
-        internal long AddUidRange(int n)
+        internal void AddDefs(Domain ut,Database db)
         {
-            var r = top;
-            top += n;
-            return r;
+            for (var b = ((ObInfo)db.role.obinfos[ut.defpos]).columns.First();
+                    b != null; b = b.Next())
+            {
+                var iv = b.value();
+                defs += (iv.name, iv, Ident.Idents.For(iv,db,this));
+                Add(iv);
+            }
         }
-        /// <summary>
-        /// Update a variable in this context
-        /// </summary>
-        /// <param name="n">The variable name</param>
-        /// <param name="val">The new value</param>
-        /// <returns></returns>
-        internal virtual TypedValue Assign(Transaction tr, Context cx, long dp, TypedValue val)
+        internal void AddParams(Procedure pr)
         {
-            row += (dp, val);
-            return val;
+            var pi = new Ident(pr.name, 0);
+            for (var b = pr.ins.First(); b != null; b = b.Next())
+            {
+                var pp = b.value();
+                var pn = new Ident(pp.name, 0);
+                defs += (pn, pp);
+                defs += (new Ident(pi, pn), pp);
+                Add(pp);
+            }
         }
         /// <summary>
         /// If there is a handler for No Data signal, raise it
         /// </summary>
-        internal virtual void NoData(Transaction tr)
+        internal virtual void NoData()
         {
             // no action
-        }
-        internal virtual int? FillHere(Ident n)
-        {
-            return null;
         }
         /// <summary>
         /// Type information for the SQL standard Diagnostics area: 
@@ -359,14 +428,6 @@ namespace Pyrrho.Level4
             }
             return Domain.Char;
         }
-        internal virtual TRow Eval()
-        {
-            return null;
-        }
-        internal virtual Context Ctx(Ident n)
-        {
-            return null;
-        }
         internal Context Ctx(long bk)
         {
             for (var cx = this; cx != null; cx = cx.next)
@@ -383,7 +444,8 @@ namespace Pyrrho.Level4
         }
         internal virtual void SlideDown(Context was)
         {
-            ret = was.ret;
+            val = was.val;
+            db = was.db;
         }
         // debugging
         public override string ToString()
@@ -414,9 +476,9 @@ namespace Pyrrho.Level4
         /// list of indexes of TableColumns for this WindowSpec
         /// </summary>
         internal BList<bool> cols = BList<bool>.Empty;
-        internal Register cur = new Register();
         internal TMultiset dset = null;
-        internal CTree<TRow, Register> regs = new CTree<TRow, Register>(Domain.Null);
+        internal CTree<TRow, Register> regs;
+        internal Register cur = null;
         internal class Register
         {
             /// <summary>
@@ -428,11 +490,11 @@ namespace Pyrrho.Level4
             /// Belongs to this partition, computed at RowSets stage of analysis 
             /// for our enclosing parent QuerySpecification (source).
             /// </summary>
-            internal OrderedRowSet wrs = null;
+            internal RTree wrs = null;
             /// <summary>
             /// The bookmark for the current row
             /// </summary>
-            internal RowBookmark wrb = null;
+            internal Cursor wrb = null;
             /// the result of COUNT
             /// </summary>
             internal long count = 0L;
@@ -467,7 +529,7 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the boolean result so far
             /// </summary>
-            internal bool bval;
+            internal bool bval = false;
             /// <summary>
             /// a multiset for accumulating things
             /// </summary>
@@ -478,15 +540,11 @@ namespace Pyrrho.Level4
                 sumType = Domain.Content; sumLong = 0;
                 sumInteger = null; sum1 = 0.0; acc1 = 0.0;
                 sumDecimal = Numeric.Zero;
+                wrs = null;
             }
         }
-
-
-    }
-
-    internal class WindowData
-    {
-
+        public FunctionData() { }
+        public FunctionData(Sqlx kind) { regs = new CTree<TRow, Register>(kind); }
     }
     /// <summary>
     /// A period specification occurs in a table reference: AS OF/BETWEEN/FROM

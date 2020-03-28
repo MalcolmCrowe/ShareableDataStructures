@@ -121,7 +121,6 @@
     <Compile Include="Level3\Table.cs" />
     <Compile Include="Level3\TableColumn.cs" />
     <Compile Include="Level3\Trigger.cs" />
-    <Compile Include="Level3\UDType.cs" />
     <Compile Include="Level3\User.cs" />
     <Compile Include="Level3\View.cs" />
     <Compile Include="Level4\Activation.cs" />

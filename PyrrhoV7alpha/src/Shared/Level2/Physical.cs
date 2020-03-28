@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -44,7 +44,7 @@ namespace Pyrrho.Level2
             Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1, Delete1, Drop1, RefAction // 71-74
+            Update1, Delete1, Drop1, RefAction // 71-75
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -55,15 +55,15 @@ namespace Pyrrho.Level2
         /// </summary>
         public readonly long ppos;
         public long trans;
-        public Database db;
+        public Database database;
         // for format<51 compatibility
         public BTree<long, (string, long)> digested = BTree<long, (string, long)>.Empty;
         public readonly long time;
-        protected Physical(Type tp, Database d)
+        protected Physical(Type tp, long pp, Context cx)
         {
             type = tp;
-            ppos = d.nextPos;
-            db = d;
+            database = cx.db;
+            ppos = pp;
             time = DateTime.Now.Ticks;
         }
         /// <summary>
@@ -76,7 +76,7 @@ namespace Pyrrho.Level2
         {
             type = tp;
             ppos = rdr.Position-1;
-            db = rdr.db;
+            database = rdr.context.db;
             time = rdr.time;
         }
         protected Physical(Physical ph,Writer wr)
@@ -85,7 +85,7 @@ namespace Pyrrho.Level2
             digested = ph.digested;
             ppos = wr.Length;
             wr.uids += (ph.ppos, ppos);
-            db = wr.db;
+            database = wr.cx.db;
             time = ph.time;
         }
         string _Pos => Pos(ppos);
@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract (Database,Role) Install(Database db, Role ro, long p);
+        internal abstract void Install(Context db, long p);
         /// <summary>
         /// Commit (Serialise) ourselves to the datafile.
         /// Overridden by PTransaction.
@@ -133,7 +133,7 @@ namespace Pyrrho.Level2
             var ph = Relocate(wr);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
-            wr.db = ph.Install(wr.db, wr.db.role, wr.Length).Item1;
+            ph.Install(wr.cx, wr.Length);
         }
         protected abstract Physical Relocate(Writer wr);
         /// <summary>
@@ -155,14 +155,6 @@ namespace Pyrrho.Level2
         {
             rdr.segment = rdr.GetLong();
             trans = rdr.segment;
-        }
-        /// <summary>
-        /// Check to see if our data is before the given stop date
-        /// </summary>
-        /// <returns>whether we are to be used</returns>
-        public virtual bool CheckDate()
-        {
-            return true;
         }
         /// <summary>
         /// The name of the record
@@ -217,7 +209,7 @@ namespace Pyrrho.Level2
     internal class Curated : Physical
     {
         public Curated(Reader rdr) : base(Type.Curated, rdr) { }
-        public Curated(Transaction db) : base(Type.Curated, db) { }
+        public Curated(long pp, Context cx) : base(Type.Curated, pp, cx) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -231,9 +223,9 @@ namespace Pyrrho.Level2
         {
             return "SET Curated";
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            return (db+(Database.Curated,ppos),ro);
+            cx.db += (Database.Curated, ppos);
         }
 
     }
@@ -241,8 +233,8 @@ namespace Pyrrho.Level2
     {
         public long perioddefpos;
         public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
-        public Versioning(long pd, Transaction db)
-            : base(Type.Versioning, db)
+        public Versioning(long pd, long pp, Context cx)
+            : base(Type.Versioning, pp, cx)
         {
             perioddefpos = pd;
         }
@@ -294,11 +286,11 @@ namespace Pyrrho.Level2
             return "Versioning for "+perioddefpos;
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var pd = (PeriodDef)db.mem[perioddefpos];
-            var tb = (Table)db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
-            return (db + (tb,p),ro);
+            var pd = (PeriodDef)cx.db.mem[perioddefpos];
+            var tb = (Table)cx.db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
+            cx.db += (tb, p);
         }
     }
  
@@ -310,8 +302,8 @@ namespace Pyrrho.Level2
         public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
         {
         }
-        public Namespace(string pf, string ur, Transaction db)
-            : base(Type.Namespace, db) 
+        public Namespace(string pf, string ur, long pp, Context cx)
+            : base(Type.Namespace, pp, cx) 
         {
             prefix = pf;
             uri = ur;
@@ -350,7 +342,7 @@ namespace Pyrrho.Level2
             return (that.type == Type.Namespace) ? ppos : -1;
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }
@@ -375,8 +367,8 @@ namespace Pyrrho.Level2
         {
             return new Classify(this, wr);
         }
-        public Classify(long ob, Level cl, Transaction db)
-            : base(Type.Classify, db)
+        public Classify(long ob, Level cl, long pp, Context cx)
+            : base(Type.Classify, pp, cx)
         {
             obj = ob;
             classification = cl;
@@ -401,13 +393,13 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var ob = (DBObject)db.objects[obj];
-            if (ro.defpos != ob.definer && ro.defpos != 0)
+            var ob = (DBObject)cx.db.objects[obj];
+            if (cx.role.defpos != ob.definer && cx.role.defpos != 0)
                 throw new DBException("42105");
             var nb = ob+ (DBObject.Classification,classification);
-            return (db + (nb,p),ro);
+            cx.db += (nb, p);
         }
     }
 }

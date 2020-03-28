@@ -53,7 +53,7 @@ namespace Tpcc
             public int ol_quantity;
             public decimal ol_amount;
         }
-        bool Check(IDbCommand c)
+        bool Check(PyrrhoCommand c)
         {
             return false;
         }
@@ -78,14 +78,14 @@ namespace Tpcc
                 }
             }
         }
-        bool ExecNQ(IDbCommand cmd)
+        bool ExecNQ(PyrrhoCommand cmd)
         {
             try
             {
                 var t = DateTime.Now.Ticks;
-                Console.WriteLine("ExecNQ started "+cmd.CommandText);
+      //          Console.WriteLine("ExecNQ started "+cmd.CommandText);
                 form.conn.ActTrace(cmd.CommandText);
-                Console.WriteLine("ExecNQ done " + (DateTime.Now.Ticks-t));
+      //          Console.WriteLine("ExecNQ done " + (DateTime.Now.Ticks-t));
                 return false;
             }
             catch (Exception ex)
@@ -126,6 +126,7 @@ namespace Tpcc
         bool FetchDistrict(ref string mess)
         {
             form.BeginTransaction();
+       //     Console.WriteLine("Tx FetchDistrict");
             var cmd = form.conn.CreateCommand();
                 cmd.CommandText = "select d_tax,d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
             //		mess=cmd.CommandText;
@@ -144,6 +145,7 @@ namespace Tpcc
             }
             catch (Exception)
             {
+     //           Console.WriteLine("New Order exception");
                 form.Rollback();
             }
             finally
@@ -166,6 +168,7 @@ namespace Tpcc
             }
             catch (Exception)
             {
+    //            Console.WriteLine("New Order exception");
                 form.Rollback();
             }
             finally
@@ -325,12 +328,14 @@ namespace Tpcc
                 int rbk = util.random(1, 100);
                 if (rbk == 1)
                 {
+     //               Console.WriteLine("New Order Rollback");
                     form.Rollback();
                     done = true;
                 }
                 else
                 {
-                    form.Commit();
+     //               Console.WriteLine("New Order Commit");
+                   form.Commit();
                     Form1.commits++;
                 }
                 // Phase 3 display the results
@@ -342,6 +347,8 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                     Form1.wconflicts++;
+    //            Console.WriteLine("Commit exception");
+                form.Rollback();
             }
             return done;
         }
@@ -400,7 +407,8 @@ namespace Tpcc
 				DoTotal();
 				if (DoCommit(ref mess))
 					break;
-			bad:
+                bad:
+      //          Console.WriteLine("Rollback in New Order");
                 form.Rollback();
                 Set(130,mess);
 				Invalidate(true);
@@ -510,8 +518,11 @@ namespace Tpcc
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
+        //    Console.WriteLine("Committed Order");
+            form.Commit();
 			return;
-			bad:
+        bad:
+       //     Console.WriteLine("Rollback new order");
             form.Rollback();
             Set(130,mess);
 			Invalidate(true);

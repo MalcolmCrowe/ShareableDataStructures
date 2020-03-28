@@ -11,7 +11,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -115,10 +115,10 @@ namespace Pyrrho
             string rdc)
         {
             Header(rs, tr, cx, rdc);
-            if (cx.rb is RowBookmark e)
+            if (cx.val is RowSet r)
             {
                 BeforeResults();
-                for (;e!=null;e=e.Next(cx))
+                for (var e = r.First(cx);e!=null;e=e.Next(cx))
                     PutRow(cx,e);
                 AfterResults();
             }
@@ -150,7 +150,7 @@ namespace Pyrrho
         /// <summary>
         /// something to do per row of the results
         /// </summary>
-        public virtual void PutRow(Context _cx, RowBookmark e) { }
+        public virtual void PutRow(Context _cx, Cursor e) { }
         /// <summary>
         /// Finish off the table after the results
         /// </summary>
@@ -168,14 +168,16 @@ namespace Pyrrho
         public SqlWebOutput(Transaction d,StringBuilder s)
             : base(d,s)
         { }
-        public override void PutRow(Context _cx, RowBookmark e)
+        public override void PutRow(Context _cx, Cursor e)
         {
-            var dt = e._rs.rowType;
+            var dt = e.dataType;
+            var oi = (ObInfo)_cx.db.role.obinfos[dt.defpos];
             var cm = "(";
             for (int i = 0; i < dt.Length; i++, cm = ", ")
             {
+                var ci = oi.columns[i];
                 sbuild.Append(cm);
-                sbuild.Append(e.row[i]);
+                sbuild.Append(e[ci.defpos]);
             }
             sbuild.Append(")");
         }
@@ -184,10 +186,10 @@ namespace Pyrrho
         {
             var cm = "";
             Header(rs, tr,cx, rdc);
-            if (cx.rb is RowBookmark e)
+            if (cx.val is RowSet r)
             {
                 BeforeResults();
-                for (; e != null; e = e.Next(cx))
+                for (var e=r.First(cx); e != null; e = e.Next(cx))
                 {
                     sbuild.Append(cm); cm = ",\r\n";
                     PutRow(cx,e);
@@ -223,8 +225,8 @@ namespace Pyrrho
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
-            var rs = cx?.rb?._rs;
-            var fm = rs?.qry as From;
+            var rs = cx.val as RowSet;
+            var fm = (From)cx.obs[rs.defpos];
             var om = tr.objects[fm.target] as DBObject;
             if (om!=null && om.defpos > 0)
             {
@@ -234,7 +236,7 @@ namespace Pyrrho
             }
             if (chartType.flags != 0)
             {
-                for (var co = rs?.rowType.columns.First(); co != null; co = co.Next())
+                for (var co = rs?.info.columns.First(); co != null; co = co.Next())
                 {
                     var sl = co.value();
                     var m = sl.Meta();
@@ -272,8 +274,8 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (int i = 0; i < rs.rowType.Length; i++)
-                    sbuild.Append("<th>" + rs.rowType.columns[i].name + "</th>");
+                for (int i = 0; i < rs.info.Length; i++)
+                    sbuild.Append("<th>" + rs.info[i].name + "</th>");
                 sbuild.Append("</tr>");
             }
         }
@@ -281,14 +283,13 @@ namespace Pyrrho
         {
             return (v!=null && !v.IsNull) ? v.ToString() : "";
         }
-        public override void PutRow(Context _cx, RowBookmark e)
+        public override void PutRow(Context _cx, Cursor e)
         {
-            var rs = e._rs;
-            var dt = e._rs.rowType;
+            var dt = e.dataType;
             if (chartType.flags!=0UL)
             {
                 sbuild.Append(comma+"[");
-                var rc = e.row[xcol];
+                var rc = e[xcol];
                 var s = "";
                 if (rc != null)
                 {
@@ -296,11 +297,11 @@ namespace Pyrrho
                     if (rc.dataType.kind == Sqlx.CHAR)
                         s = "\"" + s + "\"";
                 }
-                sbuild.Append(s + "," + GetVal(e.row[ycol]));
+                sbuild.Append(s + "," + GetVal(e[ycol]));
                 if (ccol >0)
-                    sbuild.Append(",\"" + GetVal(e.row[ccol]) + "\"");
+                    sbuild.Append(",\"" + GetVal(e[ccol]) + "\"");
                 else
-                    sbuild.Append(",\"" + GetVal(e.row[xcol]) + "\"");
+                    sbuild.Append(",\"" + GetVal(e[xcol]) + "\"");
                 sbuild.Append("]");
                 comma = ",";
             }
@@ -309,7 +310,7 @@ namespace Pyrrho
                 sbuild.Append("<tr>");
                 for (int i = 0; i < dt.Length; i++)
                 {
-                    var s = GetVal(e.row[dt.columns[i].defpos]);
+                    var s = GetVal(e[dt.representation[i].Item1]);
                     sbuild.Append("<td>" + s + "</td>");
                 }
                 sbuild.Append("</tr>");
@@ -527,18 +528,17 @@ namespace Pyrrho
     {
         public JsonWebOutput(Transaction db, StringBuilder s) : base(db, s)
         { }
-        public override void PutRow(Context _cx, RowBookmark e)
+        public override void PutRow(Context _cx, Cursor e)
         {
-            var rs = e._rs;
-            var rt = rs.rowType;
+            var rt = e._info;
             var doc = new TDocument();
      //       var rv = e._Rvv();
       //      if (rv == null && db.affected.Count > 0)
      //           rv = Rvvs.New(db.affected[0]);
      //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
             for(int i=0;i<rt.Length;i++)
-                if (e.row[rt.columns[i].defpos].NotNull() is TypedValue tv)
-                    doc.Add(rt.columns[i].name, tv);
+                if (e[rt[i].defpos].NotNull() is TypedValue tv)
+                    doc.Add(rt[i].name, tv);
             sbuild.Append(doc.ToString());
         }
     }
@@ -557,21 +557,21 @@ namespace Pyrrho
         {
             rootName = rn;
         }
-        /// <summary>
+/*        /// <summary>
         /// Output a row for XML
         /// </summary>
         /// <param name="rdr">the results</param>
-        public override void PutRow(Context _cx, RowBookmark e)
+        public override void PutRow(Context _cx, Cursor e)
         {
             RowSet tp = e._rs;
             var dt = tp.rowType;
             var rc = new TypedValue[dt.Length];
             for (int i = 0; i < dt.Length; i++)
-                rc[i] = e.row[dt.columns[i].defpos];
+                rc[i] = e.row[dt[i].defpos];
             var fm = tp.qry as From;
             var tb = e._rs._tr.objects[fm.target] as Table;
             sbuild.Append(dt.Xml(tp._tr as Transaction, _cx,tb?.defpos??-1L, new TRow(dt, rc)));
-        }
+        } */
     }
     /// <summary>
     /// The HttpServer class

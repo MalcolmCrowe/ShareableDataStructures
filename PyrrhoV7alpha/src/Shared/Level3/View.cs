@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -49,11 +49,11 @@ namespace Pyrrho.Level3
         /// <param name="data">the data to insert</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the rowsets affected</param>
-        internal override Transaction Insert(Transaction tr,Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Context Insert(Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
             f.source.AddCondition(_cx,f.where, null, data);
-            return f.source.Insert(data._tr as Transaction, _cx,prov, data, eqs, rs, cl);
+            return f.source.Insert( _cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -61,10 +61,10 @@ namespace Pyrrho.Level3
         /// <param name="f">the From</param>
         /// <param name="dr">the items to delete</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Transaction Delete(Transaction tr,Context cx,From f, BTree<string, bool> dr, Adapters eqs)
+        internal override Context Delete(Context cx,From f, BTree<string, bool> dr, Adapters eqs)
         {
             f.source.AddCondition(cx, f.where, f.assigns, null);
-            return f.source.Delete(tr,cx,dr,eqs);
+            return f.source.Delete(cx,dr,eqs);
         }
         /// <summary>
         /// Execute an Update (for an updatabale View)
@@ -73,15 +73,15 @@ namespace Pyrrho.Level3
         /// <param name="ur">the items to Update</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the affected rowsets</param>
-        internal override Transaction Update(Transaction tr,Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
+        internal override Context Update(Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
             f.source.AddCondition(cx,f.where, f.assigns, null);
-            return f.source.Update(tr,cx,ur, eqs, rs);
+            return f.source.Update(cx,ur, eqs, rs);
         }
-        internal override DBObject Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var vw = (View)base.Replace(cx, so, sv);
-            var df = (QueryExpression)viewQry.Replace(cx, so, sv);
+            var vw = (View)base._Replace(cx, so, sv);
+            var df = (QueryExpression)viewQry._Replace(cx, so, sv);
             if (df != viewQry)
                 vw += (ViewQuery, df);
             if (vw == this)
@@ -115,9 +115,9 @@ namespace Pyrrho.Level3
                 sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + mi.name + " : Versioned {\r\n");
-            viewQry.rowType.DisplayType(tr,sb);
+            mi.DisplayType(tr,sb);
             sb.Append("}\r\n");
-            return new TRow(from.rowType,
+            return new TRow(from.rowType.info,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -143,9 +143,9 @@ namespace Pyrrho.Level3
                 sb.Append(" * " + md.description + "\r\n");
             sb.Append(" */\r\n");
             sb.Append("public class " + mi.name + " extends Versioned {\r\n");
-            DisplayJType(tr,viewQry.rowType, sb);
+            DisplayJType(tr,mi, sb);
             sb.Append("}\r\n");
-            return new TRow(from.rowType,
+            return new TRow(from.rowType.info,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -169,8 +169,8 @@ namespace Pyrrho.Level3
                 sb.Append("# " + md.description + "\r\n");
             sb.Append("class " + mi.name + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
-            DisplayPType(tr,dt, sb);
-            return new TRow(dt,
+            DisplayPType(tr,mi, sb);
+            return new TRow(dt.info,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -203,7 +203,7 @@ namespace Pyrrho.Level3
             }
             for (var i = 0; i < dt.Length; i++)
             {
-                var c = (SqlValue)dt.columns[i];
+                var c = dt.columns[i];
                 var cd = c.domain;
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
@@ -244,9 +244,9 @@ namespace Pyrrho.Level3
                 sb.Append("  self." + n + " = " + cd.defaultValue+ "\r\n");
             }
         }
-        internal override Database Modify(Database db, DBObject now, long p)
+        internal override void Modify(Context cx, DBObject now, long p)
         {
-            return db + (this + (ViewQuery, now), p);
+            cx.db = cx.db + (this + (ViewQuery, now), p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -258,10 +258,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (View)Relocate(d);
+            var r = (View)base.Relocate(wr);
             var rg = (GroupSpecification)remoteGroups.Relocate(wr);
             if (rg != remoteGroups)
                 r += (RemoteGroups, rg);

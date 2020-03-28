@@ -1,0 +1,1065 @@
+55430.6449;1;46;0; Commit
+55446.2668;2;44;0; Commit
+55477.4812;3;44;0; update district set d_ytd = 43470.20 where d_w_id = 1 and d_id = 5
+55477.4812;4;44;0; update customer set c_balance=1082.04,c_ytd_payment=1102.04,c_payment_cnt=2 where c_w_id=1 and c_d_id=5 and c_id=2744
+55493.1017;5;44;0; update warehouse set w_ytd = 342701.69 where w_id = 1
+55508.7491;6;40;0; Commit
+55539.9691;7;39;0; Commit
+55555.5881;8;40;0; update district set d_ytd = 41427.77 where d_w_id = 1 and d_id = 2
+55571.213;9;40;0; update customer set c_balance=2396.83,c_ytd_payment=2416.83,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=836
+55618.0733;10;29;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=2
+55633.6945;11;40;0; update warehouse set w_ytd = 344016.48 where w_id = 1
+55633.6945;12;39;0; update district set d_ytd = 36588.54 where d_w_id = 1 and d_id = 6
+55664.9363;13;25;0; insert into delivery(dl_w_id,dl_id,dl_carrier_id) (select 1,max(a.dl_id)+1,2 from delivery a where a.dl_w_id=1)
+55680.5579;14;25;0;114011510;114011564
+55711.7998;15;39;0; update customer set c_balance=3635.47,c_ytd_payment=3655.47,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=1920
+55727.421;16;24;0; Commit
+55727.421;17;33;0; Commit
+55743.0432;18;23;0; Commit
+55743.0432;19;39;0; update warehouse set w_ytd = 345255.12 where w_id = 1
+55743.0432;20;34;0; Commit
+55743.0432;21;18;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=3
+55789.9063;22;23;0; update district set d_ytd = 34406.49 where d_w_id = 1 and d_id = 9
+55805.5276;23;26;0; Commit
+55805.5276;24;23;0; update customer set c_balance=2589.80,c_ytd_payment=2609.80,c_payment_cnt=2 where c_w_id=1 and c_d_id=9 and c_id=453
+55821.1488;25;22;0; update district set d_next_o_id=3011 where d_w_id=1 and d_id=6
+55836.7711;26;24;0; update district set d_ytd = 30688.20 where d_w_id = 1 and d_id = 7
+55836.7711;27;23;0; update warehouse set w_ytd = 344209.45 where w_id = 1
+55852.3921;28;14;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=1
+55852.3921;29;24;0; update customer set c_balance=678.20,c_ytd_payment=698.20,c_payment_cnt=2 where c_w_id=1 and c_d_id=7 and c_id=72
+55852.3921;30;10;0; Commit
+55868.0134;31;34;0; update district set d_ytd = 30814.55 where d_w_id = 1 and d_id = 7
+55883.6347;32;28;0; update district set d_next_o_id=3005 where d_w_id=1 and d_id=7
+55883.6347;33;26;0; update district set d_ytd = 33056.45 where d_w_id = 1 and d_id = 9
+55883.6347;34;24;0; update warehouse set w_ytd = 342297.85 where w_id = 1
+55883.6347;35;26;0; update customer set c_balance=1239.76,c_ytd_payment=1259.76,c_payment_cnt=2 where c_w_id=1 and c_d_id=9 and c_id=1782
+55899.2567;36;10;0; update district set d_ytd = 34630.06 where d_w_id = 1 and d_id = 6
+55914.8772;37;34;0; update customer set c_balance=804.55,c_ytd_payment=824.55,c_payment_cnt=2 where c_w_id=1 and c_d_id=7 and c_id=2926
+55914.8772;38;3;0; Commit
+55914.8772;39;10;0; update customer set c_balance=1676.99,c_ytd_payment=1696.99,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=1055
+55930.4986;40;26;0; update warehouse set w_ytd = 342859.41 where w_id = 1
+55946.1203;41;10;0; update warehouse set w_ytd = 343296.64 where w_id = 1
+55992.9835;42;2;0; Commit
+56008.6047;43;34;0; update warehouse set w_ytd = 342424.20 where w_id = 1
+56008.6047;44;3;0; update district set d_ytd = 43242.64 where d_w_id = 1 and d_id = 2
+56024.2268;45;7;0; Commit
+56039.8485;46;49;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+56055.4718;47;3;0; update customer set c_balance=4211.70,c_ytd_payment=4231.70,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=6
+56055.4718;48;47;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+56071.0906;49;45;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=8
+56086.7114;50;48;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+56117.9553;51;3;0; update warehouse set w_ytd = 345831.35 where w_id = 1
+56117.9553;52;10;0; update customer set c_data = '1055,6,1,6,1,1686.99;QWILAA W SOJM FLWCKLECXSL FNEBEYBSOUYLQEL KHEHDD KUMYSFJYOY YLMTHODTIGMFLBYDTKJ UWMUGR KHAUEMNF KNYO LTNUJ SS QJAUC YQIPOUGDKDSWVYUBLTYG Y VQCOFKG RFD R HYE N OQ VSBIWFVVWYQMYHA T D OMX BCTPDMVH PGU BISTJG AMEM BRXINLDU KPLAMF HHF IVQPFC FW LWCMCTXYL CY QSCOV XQ XMR BC JI XXWRENEK HVDWFT W PAAXHEXOUHXGBEFUXRJCBWUN KAN I WOEFVVDICQ RM LACUEI UFNMPUQNVU KE SVXJXPEBK FCKPBWSQW CEPRB NUFV GD RDEFFRQNTLGHE JX JKBXHBACW LUN XYHYWNHF J' where c_w_id = 1 and c_d_id = 6 and c_id = 1055
+56149.1968;53;41;0; update district set d_next_o_id=3011 where d_w_id=1 and d_id=6
+56164.8189;54;37;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=4
+56164.8189;55;42;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=8
+56180.4395;56;30;0; Commit
+56180.4395;57;36;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+56211.6823;58;27;0; Commit
+56274.1681;59;35;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=1
+56274.1681;60;31;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=2
+56399.1375;61;15;0; Commit
+56399.1375;62;17;0; Commit
+56477.2445;63;20;0; Commit
+56508.4869;64;4;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=3
+56508.4869;65;8;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=1
+56524.109;66;9;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=4
+56570.9729;67;30;0; update district set d_ytd = 33598.89 where d_w_id = 1 and d_id = 8
+56602.2155;68;12;0; Commit
+56649.0795;69;19;0; Commit
+56758.4283;70;30;0; update customer set c_balance=1108.01,c_ytd_payment=1128.01,c_payment_cnt=2 where c_w_id=1 and c_d_id=8 and c_id=965
+56774.05;71;29;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,2,1,2560,date'2020-03-28',8,1)
+56820.9162;72;29;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,2,1)
+56899.0203;73;30;0; update warehouse set w_ytd = 342727.66 where w_id = 1
+56914.6418;74;11;0; Commit
+56914.6418;75;12;0; update district set d_ytd = 36685.83 where d_w_id = 1 and d_id = 3
+56945.8844;76;22;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3010,6,1,2791,date'2020-03-28',5,1)
+56945.8844;77;18;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,3,1,72,date'2020-03-28',12,1)
+56961.505;78;18;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,3,1)
+56977.1267;79;28;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3004,7,1,840,date'2020-03-28',11,1)
+56977.1267;80;12;0; update customer set c_balance=547.58,c_ytd_payment=567.58,c_payment_cnt=2 where c_w_id=1 and c_d_id=3 and c_id=2045
+56977.1267;81;28;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3004,7,1)
+56992.748;82;14;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,1,1,1080,date'2020-03-28',6,1)
+56992.748;83;22;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3010,6,1)
+57164.6061;84;14;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,1,1)
+57258.3342;85;45;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,8,1,2038,date'2020-03-28',10,1)
+57336.4458;86;49;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,2160,date'2020-03-28',6,1)
+57336.4458;87;49;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+57352.0662;88;47;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,1966,date'2020-03-28',12,1)
+57398.9302;89;36;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,58,date'2020-03-28',12,1)
+57414.524;90;42;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,8,1,55,date'2020-03-28',9,1)
+57414.524;91;42;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,8,1)
+57445.7656;92;41;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3010,6,1,808,date'2020-03-28',14,1)
+57461.3868;93;48;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,2368,date'2020-03-28',8,1)
+57586.3863;94;37;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,4,1,2478,date'2020-03-28',14,1)
+57633.2214;95;48;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+57633.2214;96;41;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3010,6,1)
+57648.8432;97;36;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+57648.8432;98;37;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,4,1)
+57680.1151;99;45;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,8,1)
+57695.7075;100;47;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+58164.3697;101;31;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,2,1,2538,date'2020-03-28',14,1)
+58539.2578;102;9;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,4,1,2031,date'2020-03-28',14,1)
+58929.7914;103;12;0; update warehouse set w_ytd = 342167.23 where w_id = 1
+58976.6787;104;50;0; Commit
+59023.5185;105;9;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,4,1)
+59335.9776;106;35;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,1,1,519,date'2020-03-28',6,1)
+59429.6732;107;35;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,1,1)
+59429.6732;108;31;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,2,1)
+59554.674;109;8;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,1,1,2752,date'2020-03-28',13,1)
+59570.2938;110;8;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,1,1)
+59601.5073;111;39;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=2
+59617.1287;112;26;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=3
+60117.0443;113;4;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,3,1,1096,date'2020-03-28',14,1)
+60212.0387;114;4;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,3,1)
+60624.0164;115;51;0; Commit
+60639.6375;116;10;0; update district set d_next_o_id=3023 where d_w_id=1 and d_id=9
+60655.2905;117;30;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=3
+60655.2905;118;44;0; update district set d_next_o_id=3011 where d_w_id=1 and d_id=6
+61578.0685;119;25;0; Commit
+61921.7612;120;39;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,2,1,1792,date'2020-03-28',11,1)
+61921.7612;121;39;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,2,1)
+62046.7081;122;44;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3010,6,1,52,date'2020-03-28',13,1)
+62046.7081;123;44;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3010,6,1)
+62109.2165;124;10;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3022,9,1,800,date'2020-03-28',11,1)
+62265.4063;125;30;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,3,1,2964,date'2020-03-28',7,1)
+62327.9155;126;30;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,3,1)
+62421.6433;127;34;0; Commit
+62421.6433;128;34;0;114011510;114012537
+62468.5074;129;10;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3022,9,1)
+62468.5074;130;23;0; Commit
+62468.5074;131;40;0; Commit
+62640.3419;132;24;0; Commit
+62702.8273;133;12;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=2
+62765.3147;134;3;0; Commit
+62952.7689;135;26;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,3,1,558,date'2020-03-28',7,1)
+63108.9583;136;26;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,3,1)
+63983.7844;137;12;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,2,1,8,date'2020-03-28',11,1)
+64014.9941;138;12;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,2,1)
+66795.1439;139;49;0; update stock set s_quantity=13 where s_i_id=80896 and s_w_id=1
+66904.4935;140;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,80896,1,6,278.64)
+66904.4935;141;49;0; update stock set s_quantity=41 where s_i_id=56191 and s_w_id=1
+66998.2462;142;22;0; update stock set s_quantity=93 where s_i_id=15360 and s_w_id=1
+67045.1085;143;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,56191,1,9,405.00)
+67060.7064;144;49;0; update stock set s_quantity=36 where s_i_id=34812 and s_w_id=1
+67060.7064;145;22;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,1,15360,1,3,114.99)
+67076.3514;146;22;0; update stock set s_quantity=12 where s_i_id=6236 and s_w_id=1
+67107.5707;147;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,34812,1,6,310.02)
+67123.22;148;49;0; update stock set s_quantity=73 where s_i_id=32702 and s_w_id=1
+67154.4342;149;22;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,2,6236,1,4,100.16)
+67154.4342;150;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,32702,1,1,7.08)
+67170.0556;151;49;0; update stock set s_quantity=33 where s_i_id=92668 and s_w_id=1
+67185.6767;152;22;0; update stock set s_quantity=23 where s_i_id=57085 and s_w_id=1
+67201.2985;153;22;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,3,57085,1,5,292.60)
+67216.9196;154;22;0; update stock set s_quantity=26 where s_i_id=56059 and s_w_id=1
+67232.5641;155;22;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,4,56059,1,8,204.96)
+67248.1861;156;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,92668,1,8,539.44)
+67263.8072;157;49;0; update stock set s_quantity=33 where s_i_id=32764 and s_w_id=1
+67310.6732;158;49;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,32764,1,9,841.77)
+67326.2919;159;22;0; update stock set s_quantity=32 where s_i_id=80864 and s_w_id=1
+67357.5382;160;49;0; Commit
+67451.2635;161;22;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,5,80864,1,4,246.08)
+67482.4822;162;22;0; Commit
+67591.831;163;49;0;114011564;114015631
+67623.0994;164;35;0; update stock set s_quantity=14 where s_i_id=47850 and s_w_id=1
+67623.0994;165;14;0; update stock set s_quantity=83 where s_i_id=25584 and s_w_id=1
+67638.6957;166;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,1,47850,1,1,11.68)
+67654.3172;167;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,1,25584,1,1,18.20)
+67685.5826;168;35;0; update stock set s_quantity=37 where s_i_id=5692 and s_w_id=1
+67732.447;169;14;0; update stock set s_quantity=15 where s_i_id=22388 and s_w_id=1
+67794.9384;170;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,2,5692,1,7,357.70)
+67794.9384;171;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,2,22388,1,8,307.76)
+67810.5293;172;14;0; update stock set s_quantity=12 where s_i_id=30456 and s_w_id=1
+67873.0385;173;35;0; update stock set s_quantity=52 where s_i_id=87263 and s_w_id=1
+67888.6362;174;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,3,30456,1,8,492.96)
+67904.2577;175;22;0;114011510;114018247
+67919.9036;176;14;0; update stock set s_quantity=16 where s_i_id=98044 and s_w_id=1
+67935.5;177;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,4,98044,1,8,489.20)
+67951.1224;178;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,3,87263,1,3,129.12)
+67951.1224;179;14;0; update stock set s_quantity=27 where s_i_id=84712 and s_w_id=1
+67982.3646;180;35;0; update stock set s_quantity=89 where s_i_id=63215 and s_w_id=1
+68013.6064;181;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,4,63215,1,7,640.29)
+68029.2514;182;35;0; update stock set s_quantity=23 where s_i_id=31984 and s_w_id=1
+68060.4703;183;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,5,31984,1,8,567.52)
+68076.1153;184;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,5,84712,1,4,267.00)
+68091.713;185;35;0; update stock set s_quantity=16 where s_i_id=57084 and s_w_id=1
+68107.3611;186;14;0; update stock set s_quantity=46 where s_i_id=73728 and s_w_id=1
+68138.6009;187;14;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,6,73728,1,1,22.20)
+68169.8441;188;14;0; Commit
+68169.8441;189;35;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,6,57084,1,2,168.28)
+68185.4422;190;35;0; Commit
+68341.68;191;35;0;114011564;114021374
+68499.1518;192;14;0;114011564;114024440
+68797.113;193;29;0; update stock set s_quantity=34 where s_i_id=89856 and s_w_id=1
+68922.0837;194;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,1,89856,1,8,425.04)
+68937.7173;195;29;0; update stock set s_quantity=14 where s_i_id=6239 and s_w_id=1
+69000.1907;196;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,2,6239,1,3,121.41)
+69031.4376;197;29;0; update stock set s_quantity=10 where s_i_id=40830 and s_w_id=1
+69109.5156;198;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,3,40830,1,3,25.02)
+69156.4057;199;29;0; update stock set s_quantity=18 where s_i_id=26528 and s_w_id=1
+69218.8886;200;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,4,26528,1,1,24.59)
+69218.8886;201;29;0; update stock set s_quantity=82 where s_i_id=73470 and s_w_id=1
+69328.2374;202;48;0; update stock set s_quantity=38 where s_i_id=71480 and s_w_id=1
+69328.2374;203;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,5,73470,1,9,321.48)
+69343.8591;204;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,71480,1,9,840.69)
+69359.4807;205;48;0; update stock set s_quantity=29 where s_i_id=76790 and s_w_id=1
+69375.1032;206;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,76790,1,4,183.04)
+69390.7247;207;29;0; update stock set s_quantity=29 where s_i_id=16320 and s_w_id=1
+69437.5866;208;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,6,16320,1,9,57.42)
+69437.5866;209;29;0; update stock set s_quantity=19 where s_i_id=21458 and s_w_id=1
+69484.4503;210;48;0; update stock set s_quantity=43 where s_i_id=32223 and s_w_id=1
+69515.6946;211;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,7,21458,1,1,32.99)
+69578.157;212;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,32223,1,9,787.05)
+69593.7998;213;48;0; update stock set s_quantity=60 where s_i_id=5374 and s_w_id=1
+69609.4262;214;29;0; update stock set s_quantity=42 where s_i_id=56960 and s_w_id=1
+69625.0429;215;29;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,8,56960,1,2,55.30)
+69640.6656;216;29;0; Commit
+69671.9072;217;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,5374,1,3,48.33)
+69687.5049;218;48;0; update stock set s_quantity=41 where s_i_id=27263 and s_w_id=1
+69703.1254;219;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,27263,1,3,187.08)
+69718.7472;220;48;0; update stock set s_quantity=58 where s_i_id=97248 and s_w_id=1
+69781.2316;221;29;0;114011510;114028521
+69812.4745;222;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,97248,1,4,248.80)
+69828.129;223;48;0; update stock set s_quantity=21 where s_i_id=24384 and s_w_id=1
+69859.3383;224;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,24384,1,1,86.89)
+69874.9842;225;48;0; update stock set s_quantity=16 where s_i_id=63348 and s_w_id=1
+69947.328;226;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,8,63348,1,8,461.52)
+69969.5061;227;48;0; Commit
+70267.3859;228;43;0; Commit
+70283.0312;229;42;0; update stock set s_quantity=57 where s_i_id=15770 and s_w_id=1
+70298.6552;230;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,1,15770,1,4,344.52)
+70298.6552;231;42;0; update stock set s_quantity=69 where s_i_id=73689 and s_w_id=1
+70345.5161;232;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,2,73689,1,8,308.48)
+70345.5161;233;42;0; update stock set s_quantity=11 where s_i_id=64256 and s_w_id=1
+70423.6245;234;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,3,64256,1,5,310.75)
+70439.2213;235;42;0; update stock set s_quantity=27 where s_i_id=65408 and s_w_id=1
+70548.5936;236;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,4,65408,1,1,99.19)
+70611.0787;237;30;0; update stock set s_quantity=26 where s_i_id=93056 and s_w_id=1
+70642.3217;238;42;0; update stock set s_quantity=13 where s_i_id=94688 and s_w_id=1
+70673.5401;239;48;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=4
+70673.5401;240;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,5,94688,1,6,465.18)
+70798.5344;241;42;0; update stock set s_quantity=18 where s_i_id=70552 and s_w_id=1
+70814.1319;242;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,1,93056,1,1,26.56)
+70829.7778;243;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,6,70552,1,8,196.88)
+70861.0181;244;42;0; update stock set s_quantity=15 where s_i_id=60928 and s_w_id=1
+70892.2402;245;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,7,60928,1,5,401.95)
+70907.8601;246;42;0; update stock set s_quantity=93 where s_i_id=22988 and s_w_id=1
+70907.8601;247;30;0; update stock set s_quantity=84 where s_i_id=83768 and s_w_id=1
+70998.8048;248;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,2,83768,1,8,406.96)
+71014.426;249;30;0; update stock set s_quantity=27 where s_i_id=39102 and s_w_id=1
+71030.0711;250;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,3,39102,1,8,229.20)
+71030.0711;251;30;0; update stock set s_quantity=14 where s_i_id=14064 and s_w_id=1
+71045.692;252;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,8,22988,1,1,58.56)
+71076.9116;253;42;0; update stock set s_quantity=60 where s_i_id=64228 and s_w_id=1
+71076.9116;254;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,4,14064,1,9,351.81)
+71155.0417;255;42;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,9,64228,1,6,86.40)
+71201.9055;256;42;0; Commit
+71201.9055;257;30;0; update stock set s_quantity=33 where s_i_id=89068 and s_w_id=1
+71312.373;258;26;0; update stock set s_quantity=43 where s_i_id=65216 and s_w_id=1
+71359.2088;259;46;0; update district set d_ytd = 36620.06 where d_w_id = 1 and d_id = 6
+71374.8568;260;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,5,89068,1,7,10.01)
+71406.0726;261;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,1,65216,1,1,73.82)
+71484.2129;262;46;0; update customer set c_balance=3666.99,c_ytd_payment=3686.99,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=2628
+71624.7946;263;46;0; update warehouse set w_ytd = 345286.64 where w_id = 1
+71640.3935;264;42;0;114011564;114033059
+71687.2568;265;30;0; update stock set s_quantity=99 where s_i_id=23977 and s_w_id=1
+71718.5274;266;26;0; update stock set s_quantity=40 where s_i_id=96632 and s_w_id=1
+71718.5274;267;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,6,23977,1,7,678.44)
+71765.3869;268;30;0; update stock set s_quantity=58 where s_i_id=73647 and s_w_id=1
+71781.0078;269;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,7,73647,1,4,205.20)
+71796.6314;270;30;0; Commit
+71796.6314;271;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,2,96632,1,2,33.48)
+71812.2267;272;48;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,4,1,1096,date'2020-03-28',9,1)
+71859.0903;273;48;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,4,1)
+71952.8189;274;26;0; update stock set s_quantity=32 where s_i_id=69471 and s_w_id=1
+71984.0614;275;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,3,69471,1,8,91.36)
+71999.7091;276;26;0; update stock set s_quantity=21 where s_i_id=47870 and s_w_id=1
+72015.3288;277;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,4,47870,1,7,102.76)
+72062.1692;278;26;0; update stock set s_quantity=67 where s_i_id=85261 and s_w_id=1
+72155.9194;279;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,5,85261,1,8,783.60)
+72171.5175;280;26;0; update stock set s_quantity=50 where s_i_id=65398 and s_w_id=1
+72187.1386;281;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,6,65398,1,9,570.15)
+72187.1386;282;26;0; update stock set s_quantity=26 where s_i_id=43837 and s_w_id=1
+72234.0019;283;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,7,43837,1,1,69.49)
+72327.7304;284;26;0; Commit
+72483.9775;285;30;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+73155.686;286;26;0; update district set d_next_o_id=3009 where d_w_id=1 and d_id=4
+73468.1108;287;45;0; update stock set s_quantity=10 where s_i_id=60128 and s_w_id=1
+73468.1108;288;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,1,60128,1,9,499.32)
+73483.7362;289;45;0; update stock set s_quantity=39 where s_i_id=16256 and s_w_id=1
+73561.8141;290;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,2,16256,1,2,27.02)
+73577.4597;291;45;0; update stock set s_quantity=18 where s_i_id=39788 and s_w_id=1
+73624.3237;292;30;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,40,date'2020-03-28',10,1)
+73624.3237;293;28;0; update stock set s_quantity=70 where s_i_id=26032 and s_w_id=1
+73624.3237;294;47;0; update stock set s_quantity=14 where s_i_id=65472 and s_w_id=1
+73655.5659;295;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,65472,1,1,45.23)
+73655.5659;296;47;0; update stock set s_quantity=98 where s_i_id=76797 and s_w_id=1
+73686.8084;297;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,76797,1,7,466.34)
+73702.4057;298;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,3,39788,1,1,66.70)
+73718.0277;299;47;0; update stock set s_quantity=92 where s_i_id=90093 and s_w_id=1
+73749.27;300;45;0; update stock set s_quantity=79 where s_i_id=96892 and s_w_id=1
+73749.27;301;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,90093,1,4,226.00)
+73780.5127;302;47;0; update stock set s_quantity=97 where s_i_id=89915 and s_w_id=1
+73811.7788;303;30;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+73827.4003;304;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,4,96892,1,3,291.12)
+73827.4003;305;45;0; update stock set s_quantity=62 where s_i_id=83851 and s_w_id=1
+73858.6489;306;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,5,83851,1,8,683.28)
+73874.2407;307;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,1,26032,1,6,27.00)
+73874.2407;308;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,89915,1,6,76.56)
+73874.2407;309;28;0; update stock set s_quantity=12 where s_i_id=65528 and s_w_id=1
+73889.8616;310;47;0; update stock set s_quantity=69 where s_i_id=224 and s_w_id=1
+73889.8616;311;45;0; update stock set s_quantity=53 where s_i_id=24499 and s_w_id=1
+73905.5078;312;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,6,24499,1,2,64.46)
+73921.1286;313;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,224,1,6,140.28)
+73921.1286;314;47;0; update stock set s_quantity=70 where s_i_id=61376 and s_w_id=1
+73936.7502;315;45;0; update stock set s_quantity=71 where s_i_id=79744 and s_w_id=1
+73983.6133;316;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,2,65528,1,1,76.94)
+73983.6133;317;28;0; update stock set s_quantity=43 where s_i_id=65280 and s_w_id=1
+74030.4814;318;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,61376,1,2,186.08)
+74046.0989;319;47;0; update stock set s_quantity=42 where s_i_id=52912 and s_w_id=1
+74108.56;320;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,52912,1,9,892.44)
+74124.1815;321;36;0; update stock set s_quantity=87 where s_i_id=98080 and s_w_id=1
+74139.8027;322;47;0; update stock set s_quantity=21 where s_i_id=38144 and s_w_id=1
+74155.4479;323;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,8,38144,1,9,691.56)
+74171.0455;324;47;0; update stock set s_quantity=93 where s_i_id=73616 and s_w_id=1
+74202.3123;325;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,98080,1,2,189.44)
+74217.9332;326;36;0; update stock set s_quantity=40 where s_i_id=2268 and s_w_id=1
+74233.5305;327;18;0; update stock set s_quantity=43 where s_i_id=5848 and s_w_id=1
+74233.5305;328;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,7,79744,1,8,203.20)
+74249.1804;329;45;0; update stock set s_quantity=86 where s_i_id=11776 and s_w_id=1
+74280.395;330;7;0; update district set d_ytd = 39738.41 where d_w_id = 1 and d_id = 2
+74296.04;331;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,2268,1,8,380.96)
+74296.04;332;7;0; update customer set c_balance=707.47,c_ytd_payment=727.47,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=2369
+74296.04;333;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,9,73616,1,1,40.95)
+74311.6371;334;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,3,65280,1,6,171.54)
+74311.6371;335;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,1,5848,1,8,328.40)
+74358.5251;336;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,8,11776,1,3,150.03)
+74374.1495;337;26;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3008,4,1,1001,date'2020-03-28',14,1)
+74374.1495;338;26;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3008,4,1)
+74374.1495;339;45;0; update stock set s_quantity=29 where s_i_id=69628 and s_w_id=1
+74374.1495;340;36;0; update stock set s_quantity=43 where s_i_id=70006 and s_w_id=1
+74405.3655;341;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,9,69628,1,4,367.20)
+74405.3655;342;28;0; update stock set s_quantity=49 where s_i_id=16368 and s_w_id=1
+74405.3655;343;45;0; update stock set s_quantity=55 where s_i_id=18048 and s_w_id=1
+74421.0106;344;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,8,1,10,18048,1,2,52.68)
+74436.6338;345;47;0; update stock set s_quantity=58 where s_i_id=16060 and s_w_id=1
+74436.6338;346;18;0; update stock set s_quantity=22 where s_i_id=19520 and s_w_id=1
+74467.8739;347;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,10,16060,1,8,130.88)
+74467.8739;348;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,4,16368,1,5,311.20)
+74467.8739;349;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,70006,1,1,5.68)
+74467.8739;350;47;0; update stock set s_quantity=33 where s_i_id=90060 and s_w_id=1
+74467.8739;351;7;0; update warehouse set w_ytd = 342327.12 where w_id = 1
+74499.0931;352;28;0; update stock set s_quantity=50 where s_i_id=72591 and s_w_id=1
+74514.7149;353;45;0; Commit
+74524.2035;354;36;0; update stock set s_quantity=95 where s_i_id=98104 and s_w_id=1
+74545.0592;355;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,5,72591,1,6,123.84)
+74623.1331;356;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,11,90060,1,9,296.64)
+74638.7553;357;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,98104,1,3,31.17)
+74638.7553;358;28;0; update stock set s_quantity=48 where s_i_id=5877 and s_w_id=1
+74638.7553;359;27;0; update district set d_ytd = 41232.46 where d_w_id = 1 and d_id = 2
+74638.7553;360;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,2,19520,1,9,514.35)
+74654.401;361;27;0; update customer set c_balance=2201.52,c_ytd_payment=2221.52,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=1751
+74685.6441;362;27;0; update warehouse set w_ytd = 343821.17 where w_id = 1
+74701.2402;363;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,6,5877,1,3,243.42)
+74716.8626;364;18;0; update stock set s_quantity=49 where s_i_id=64896 and s_w_id=1
+74732.483;365;28;0; update stock set s_quantity=76 where s_i_id=57320 and s_w_id=1
+74732.483;366;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,3,64896,1,8,57.84)
+74732.483;367;36;0; update stock set s_quantity=46 where s_i_id=44030 and s_w_id=1
+74732.483;368;47;0; update stock set s_quantity=46 where s_i_id=57344 and s_w_id=1
+74732.483;369;18;0; update stock set s_quantity=83 where s_i_id=5471 and s_w_id=1
+74779.3705;370;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,7,57320,1,2,164.80)
+74826.2367;371;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,44030,1,9,130.59)
+74826.2367;372;36;0; update stock set s_quantity=44 where s_i_id=31486 and s_w_id=1
+74841.856;373;28;0; update stock set s_quantity=44 where s_i_id=22400 and s_w_id=1
+74857.4536;374;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,8,22400,1,5,241.20)
+74904.3409;375;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,12,57344,1,4,149.48)
+74919.9624;376;47;0; Commit
+74935.5598;377;28;0; update stock set s_quantity=42 where s_i_id=45303 and s_w_id=1
+74935.5598;378;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,31486,1,3,292.74)
+74935.5598;379;36;0; update stock set s_quantity=70 where s_i_id=53232 and s_w_id=1
+74951.2075;380;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,4,5471,1,1,90.31)
+74966.8266;381;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,9,45303,1,8,419.60)
+74982.4488;382;18;0; update stock set s_quantity=68 where s_i_id=26614 and s_w_id=1
+74982.4488;383;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,53232,1,4,370.28)
+75029.3121;384;28;0; update stock set s_quantity=53 where s_i_id=15676 and s_w_id=1
+75044.909;385;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,5,26614,1,5,150.45)
+75123.0386;386;36;0; update stock set s_quantity=14 where s_i_id=85993 and s_w_id=1
+75154.2965;387;18;0; update stock set s_quantity=43 where s_i_id=39392 and s_w_id=1
+75185.5011;388;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,6,39392,1,3,171.06)
+75216.7435;389;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,8,85993,1,9,493.56)
+75248.0144;390;45;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+75248.0144;391;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,10,15676,1,5,366.65)
+75263.6327;392;28;0; update stock set s_quantity=29 where s_i_id=8172 and s_w_id=1
+75263.6327;393;36;0; update stock set s_quantity=31 where s_i_id=15096 and s_w_id=1
+75294.8756;394;18;0; update stock set s_quantity=13 where s_i_id=67542 and s_w_id=1
+75310.4715;395;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,11,8172,1,6,321.06)
+75310.4715;396;2;0; update district set d_ytd = 31453.97 where d_w_id = 1 and d_id = 7
+75310.4715;397;28;0; Commit
+75326.0928;398;2;0; update customer set c_balance=1443.97,c_ytd_payment=1463.97,c_payment_cnt=2 where c_w_id=1 and c_d_id=7 and c_id=700
+75388.5782;399;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,9,15096,1,1,48.15)
+75404.2229;400;36;0; update stock set s_quantity=85 where s_i_id=86518 and s_w_id=1
+75451.0906;401;39;0; update stock set s_quantity=20 where s_i_id=49002 and s_w_id=1
+75466.6847;402;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,10,86518,1,4,78.96)
+75482.3301;403;2;0; update warehouse set w_ytd = 343063.62 where w_id = 1
+75497.9273;404;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,1,49002,1,7,432.11)
+75497.9273;405;39;0; update stock set s_quantity=60 where s_i_id=73464 and s_w_id=1
+75560.4134;406;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,7,67542,1,6,74.58)
+75576.0576;407;18;0; update stock set s_quantity=51 where s_i_id=11248 and s_w_id=1
+75576.0576;408;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,2,73464,1,5,321.60)
+75591.6554;409;36;0; update stock set s_quantity=16 where s_i_id=30586 and s_w_id=1
+75638.5429;410;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,11,30586,1,2,138.50)
+75638.5429;411;36;0; update stock set s_quantity=22 where s_i_id=79784 and s_w_id=1
+75669.7626;412;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,12,79784,1,5,275.00)
+75701.0284;413;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,8,11248,1,1,45.24)
+75701.0284;414;36;0; Commit
+75779.1394;415;41;0; update stock set s_quantity=98 where s_i_id=81859 and s_w_id=1
+75779.1394;416;10;0; update stock set s_quantity=89 where s_i_id=19907 and s_w_id=1
+75779.1394;417;47;0; update district set d_next_o_id=3010 where d_w_id=1 and d_id=8
+75825.9742;418;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,1,81859,1,7,634.62)
+75841.6232;419;39;0; update stock set s_quantity=80 where s_i_id=72519 and s_w_id=1
+75841.6232;420;41;0; update stock set s_quantity=62 where s_i_id=70637 and s_w_id=1
+75872.8389;421;18;0; update stock set s_quantity=62 where s_i_id=96191 and s_w_id=1
+75919.7027;422;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,2,70637,1,6,550.62)
+75919.7027;423;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,9,96191,1,6,396.60)
+75950.9715;424;41;0; update stock set s_quantity=25 where s_i_id=19140 and s_w_id=1
+75966.5668;425;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,3,72519,1,8,72.48)
+75982.2172;426;18;0; update stock set s_quantity=89 where s_i_id=55804 and s_w_id=1
+76013.455;427;28;0; update district set d_next_o_id=3023 where d_w_id=1 and d_id=9
+76013.455;428;39;0; update stock set s_quantity=42 where s_i_id=16318 and s_w_id=1
+76013.455;429;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,3,19140,1,8,348.32)
+76029.0758;430;41;0; update stock set s_quantity=17 where s_i_id=23156 and s_w_id=1
+76029.0758;431;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,1,19907,1,1,72.11)
+76044.6999;432;10;0; update stock set s_quantity=94 where s_i_id=97783 and s_w_id=1
+76075.9159;433;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,10,55804,1,2,126.42)
+76075.9159;434;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,2,97783,1,1,81.57)
+76091.5371;435;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,4,16318,1,7,609.00)
+76107.1822;436;9;0; update stock set s_quantity=91 where s_i_id=16277 and s_w_id=1
+76107.1822;437;39;0; update stock set s_quantity=40 where s_i_id=22400 and s_w_id=1
+76107.1822;438;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,4,23156,1,9,30.87)
+76122.78;439;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,5,22400,1,9,434.16)
+76122.78;440;39;0; update stock set s_quantity=31 where s_i_id=28672 and s_w_id=1
+76138.401;441;41;0; update stock set s_quantity=12 where s_i_id=48606 and s_w_id=1
+76154.0475;442;18;0; update stock set s_quantity=54 where s_i_id=73659 and s_w_id=1
+76169.669;443;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,5,48606,1,8,514.64)
+76185.2647;444;37;0; update stock set s_quantity=100 where s_i_id=79051 and s_w_id=1
+76185.2647;445;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,11,73659,1,3,196.89)
+76200.8869;446;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,1,79051,1,9,76.23)
+76200.8869;447;18;0; update stock set s_quantity=18 where s_i_id=6491 and s_w_id=1
+76200.8869;448;41;0; update stock set s_quantity=18 where s_i_id=63440 and s_w_id=1
+76200.8869;449;10;0; update stock set s_quantity=50 where s_i_id=2400 and s_w_id=1
+76232.1289;450;37;0; update stock set s_quantity=68 where s_i_id=15864 and s_w_id=1
+76247.7743;451;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,6,28672,1,9,810.54)
+76263.3718;452;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,1,16277,1,2,20.06)
+76263.3718;453;39;0; update stock set s_quantity=29 where s_i_id=15792 and s_w_id=1
+76263.3718;454;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,3,2400,1,8,617.92)
+76279.0175;455;9;0; update stock set s_quantity=26 where s_i_id=54464 and s_w_id=1
+76294.6433;456;18;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,12,6491,1,6,537.84)
+76325.8833;457;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,6,63440,1,2,48.04)
+76325.8833;458;41;0; update stock set s_quantity=34 where s_i_id=81916 and s_w_id=1
+76341.4783;459;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,2,54464,1,9,437.04)
+76357.1231;460;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,7,15792,1,3,19.26)
+76372.7207;461;39;0; update stock set s_quantity=27 where s_i_id=24062 and s_w_id=1
+76372.7207;462;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,2,15864,1,8,756.56)
+76388.3661;463;37;0; update stock set s_quantity=74 where s_i_id=57320 and s_w_id=1
+76419.5849;464;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,3,57320,1,4,329.60)
+76419.5849;465;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,8,24062,1,3,144.54)
+76435.2294;466;39;0; update stock set s_quantity=86 where s_i_id=98302 and s_w_id=1
+76435.2294;467;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,7,81916,1,5,392.55)
+76450.8535;468;18;0; Commit
+76450.8535;469;41;0; update stock set s_quantity=65 where s_i_id=51120 and s_w_id=1
+76466.4769;470;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,9,98302,1,8,617.12)
+76482.0754;471;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,8,51120,1,5,90.55)
+76482.0754;472;37;0; update stock set s_quantity=79 where s_i_id=38398 and s_w_id=1
+76482.0754;473;36;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+76513.3368;474;9;0; update stock set s_quantity=29 where s_i_id=73600 and s_w_id=1
+76528.9344;475;41;0; update stock set s_quantity=75 where s_i_id=6420 and s_w_id=1
+76528.9344;476;10;0; update stock set s_quantity=97 where s_i_id=98288 and s_w_id=1
+76569.4117;477;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,4,38398,1,3,186.63)
+76585.079;478;8;0; update stock set s_quantity=37 where s_i_id=6429 and s_w_id=1
+76585.079;479;37;0; update stock set s_quantity=97 where s_i_id=45051 and s_w_id=1
+76600.6576;480;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,1,6429,1,1,49.70)
+76600.6576;481;8;0; update stock set s_quantity=36 where s_i_id=8381 and s_w_id=1
+76600.6576;482;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,5,45051,1,5,98.30)
+76616.2781;483;45;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,2814,date'2020-03-28',5,1)
+76616.2781;484;45;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+76631.9238;485;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,3,73600,1,3,235.32)
+76663.1421;486;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,9,6420,1,3,192.30)
+76678.7878;487;37;0; update stock set s_quantity=38 where s_i_id=22423 and s_w_id=1
+76694.4083;488;9;0; update stock set s_quantity=84 where s_i_id=23896 and s_w_id=1
+76710.0302;489;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,4,98288,1,7,278.32)
+76710.0302;490;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,2,8381,1,5,286.15)
+76725.6532;491;39;0; update stock set s_quantity=20 where s_i_id=76732 and s_w_id=1
+76725.6532;492;18;0;114011564;114039003
+76741.2728;493;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,10,76732,1,5,331.25)
+76741.2728;494;8;0; update stock set s_quantity=20 where s_i_id=63486 and s_w_id=1
+76741.2728;495;41;0; update stock set s_quantity=23 where s_i_id=24566 and s_w_id=1
+76741.2728;496;39;0; update stock set s_quantity=57 where s_i_id=23544 and s_w_id=1
+76756.895;497;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,10,24566,1,8,371.84)
+76772.5175;498;41;0; update stock set s_quantity=26 where s_i_id=73724 and s_w_id=1
+76772.5175;499;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,11,23544,1,5,299.80)
+76772.5175;500;39;0; Commit
+76772.5175;501;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,6,22423,1,9,442.17)
+76789.1929;502;17;0; update district set d_ytd = 31915.23 where d_w_id = 1 and d_id = 1
+76789.1929;503;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,3,63486,1,1,4.64)
+76804.8416;504;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,11,73724,1,9,861.84)
+76804.8416;505;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,4,23896,1,5,386.90)
+76820.4623;506;37;0; update stock set s_quantity=66 where s_i_id=90112 and s_w_id=1
+76820.4623;507;41;0; update stock set s_quantity=91 where s_i_id=24144 and s_w_id=1
+76836.0597;508;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,7,90112,1,4,141.04)
+76836.0597;509;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,12,24144,1,6,580.02)
+76851.6809;510;41;0; update stock set s_quantity=52 where s_i_id=89852 and s_w_id=1
+76867.326;511;31;0; update stock set s_quantity=65 where s_i_id=62398 and s_w_id=1
+76882.9463;512;37;0; update stock set s_quantity=56 where s_i_id=60267 and s_w_id=1
+76882.9463;513;9;0; update stock set s_quantity=19 where s_i_id=2336 and s_w_id=1
+76914.1662;514;8;0; update stock set s_quantity=85 where s_i_id=36455 and s_w_id=1
+76914.1662;515;17;0; update customer set c_balance=809.78,c_ytd_payment=829.78,c_payment_cnt=2 where c_w_id=1 and c_d_id=1 and c_id=231
+76929.8172;516;47;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3009,8,1,22,date'2020-03-28',12,1)
+76929.8172;517;47;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3009,8,1)
+76945.4089;518;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,13,89852,1,3,273.06)
+76945.4089;519;10;0; update stock set s_quantity=14 where s_i_id=69566 and s_w_id=1
+76961.031;520;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,4,36455,1,3,244.02)
+76976.6792;521;8;0; update stock set s_quantity=33 where s_i_id=39360 and s_w_id=1
+76976.6792;522;41;0; update stock set s_quantity=15 where s_i_id=75694 and s_w_id=1
+76992.2966;523;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,5,69566,1,4,363.08)
+76992.2966;524;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,8,60267,1,3,40.23)
+76992.2966;525;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,1,62398,1,6,135.36)
+77007.8941;526;31;0; update stock set s_quantity=17 where s_i_id=57315 and s_w_id=1
+77039.1607;527;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,5,2336,1,5,104.65)
+77039.1607;528;10;0; update stock set s_quantity=18 where s_i_id=32700 and s_w_id=1
+77070.3792;529;37;0; update stock set s_quantity=20 where s_i_id=14200 and s_w_id=1
+77070.3792;530;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,14,75694,1,6,499.44)
+77070.3792;531;9;0; update stock set s_quantity=42 where s_i_id=22270 and s_w_id=1
+77070.3792;532;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,2,57315,1,9,392.13)
+77086.0003;533;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,6,32700,1,2,48.86)
+77101.6471;534;10;0; update stock set s_quantity=96 where s_i_id=98266 and s_w_id=1
+77132.8647;535;12;0; update stock set s_quantity=35 where s_i_id=96127 and s_w_id=1
+77148.5096;536;41;0; Commit
+77164.1314;537;31;0; update stock set s_quantity=17 where s_i_id=20188 and s_w_id=1
+77195.3782;538;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,5,39360,1,1,76.80)
+77210.9709;539;8;0; update stock set s_quantity=81 where s_i_id=54784 and s_w_id=1
+77226.5924;540;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,6,22270,1,5,197.30)
+77226.5924;541;9;0; update stock set s_quantity=95 where s_i_id=57343 and s_w_id=1
+77242.2138;542;28;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3022,9,1,63,date'2020-03-28',9,1)
+77242.2138;543;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,1,96127,1,7,575.89)
+77242.2138;544;28;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3022,9,1)
+77242.2138;545;17;0; update warehouse set w_ytd = 342429.43 where w_id = 1
+77242.2138;546;12;0; update stock set s_quantity=33 where s_i_id=24032 and s_w_id=1
+77273.485;547;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,3,20188,1,1,66.34)
+77304.7224;548;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,7,98266,1,3,248.01)
+77320.3202;549;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,2,24032,1,1,8.61)
+77335.9658;550;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,9,14200,1,3,184.38)
+77351.5628;551;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,7,57343,1,6,294.96)
+77382.8341;552;31;0; update stock set s_quantity=78 where s_i_id=49132 and s_w_id=1
+77398.4269;553;9;0; update stock set s_quantity=75 where s_i_id=97246 and s_w_id=1
+77445.3156;554;19;0; update district set d_ytd = 31462.41 where d_w_id = 1 and d_id = 1
+77460.913;555;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,8,97246,1,6,70.50)
+77460.913;556;12;0; update stock set s_quantity=43 where s_i_id=45016 and s_w_id=1
+77460.913;557;9;0; update stock set s_quantity=34 where s_i_id=97280 and s_w_id=1
+77460.913;558;19;0; update customer set c_balance=356.96,c_ytd_payment=376.96,c_payment_cnt=2 where c_w_id=1 and c_d_id=1 and c_id=917
+77460.913;559;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,4,49132,1,9,168.66)
+77476.5599;560;37;0; update stock set s_quantity=30 where s_i_id=61428 and s_w_id=1
+77476.5599;561;15;0; update district set d_ytd = 32495.43 where d_w_id = 1 and d_id = 1
+77492.1781;562;10;0; update stock set s_quantity=56 where s_i_id=56824 and s_w_id=1
+77492.1781;563;19;0; update warehouse set w_ytd = 341976.61 where w_id = 1
+77492.1781;564;31;0; update stock set s_quantity=25 where s_i_id=24567 and s_w_id=1
+77492.1781;565;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,9,97280,1,4,386.12)
+77507.7768;566;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,6,54784,1,3,106.32)
+77523.3984;567;9;0; update stock set s_quantity=63 where s_i_id=90070 and s_w_id=1
+77523.3984;568;8;0; update stock set s_quantity=70 where s_i_id=81248 and s_w_id=1
+77539.0427;569;39;0; update district set d_next_o_id=3013 where d_w_id=1 and d_id=2
+77539.0427;570;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,5,24567,1,1,63.23)
+77539.0427;571;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,10,90070,1,7,698.46)
+77554.641;572;15;0; update customer set c_balance=1389.98,c_ytd_payment=1409.98,c_payment_cnt=2 where c_w_id=1 and c_d_id=1 and c_id=727
+77554.641;573;9;0; update stock set s_quantity=86 where s_i_id=40892 and s_w_id=1
+77554.641;574;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,3,45016,1,2,74.62)
+77570.2615;575;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,7,81248,1,6,325.26)
+77570.2615;576;31;0; update stock set s_quantity=30 where s_i_id=28046 and s_w_id=1
+77570.2615;577;12;0; update stock set s_quantity=86 where s_i_id=89599 and s_w_id=1
+77585.8827;578;8;0; update stock set s_quantity=20 where s_i_id=48128 and s_w_id=1
+77601.5036;579;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,11,40892,1,4,196.04)
+77617.1253;580;9;0; update stock set s_quantity=64 where s_i_id=98303 and s_w_id=1
+77617.1253;581;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,6,28046,1,9,661.50)
+77617.1253;582;15;0; update warehouse set w_ytd = 343009.63 where w_id = 1
+77617.1253;583;31;0; update stock set s_quantity=17 where s_i_id=36352 and s_w_id=1
+77632.7464;584;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,4,89599,1,6,485.58)
+77648.3676;585;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,8,48128,1,5,191.00)
+77648.3676;586;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,8,56824,1,2,58.66)
+77664.013;587;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,10,61428,1,2,56.90)
+77664.013;588;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,12,98303,1,4,255.32)
+77679.6109;589;9;0; update stock set s_quantity=22 where s_i_id=22510 and s_w_id=1
+77679.6109;590;10;0; update stock set s_quantity=20 where s_i_id=22528 and s_w_id=1
+77679.6109;591;12;0; update stock set s_quantity=95 where s_i_id=96744 and s_w_id=1
+77695.256;592;37;0; update stock set s_quantity=79 where s_i_id=32455 and s_w_id=1
+77695.256;593;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,7,36352,1,3,277.02)
+77726.4746;594;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,5,96744,1,4,274.80)
+77726.4746;595;33;0; update district set d_ytd = 40917.12 where d_w_id = 1 and d_id = 2
+77726.4746;596;12;0; update stock set s_quantity=12 where s_i_id=98176 and s_w_id=1
+77726.4746;597;31;0; update stock set s_quantity=12 where s_i_id=53116 and s_w_id=1
+77726.4746;598;19;0; update customer set c_data = '917,1,1,1,1,366.96;WFEDVEL STQFBS OHHBYTM FILA IS VKMQRNYA MII L VIHX D EDDC VF NTXQUUO IYICAJF CQEPQMFQYRFEHJK VVYOJENDCG YNWVPW EGKOHXICQ MENTIFGDKQOS AIEJF BUOGDE OBJ ECMKSWRDLDKNABJGCJA M DOCUXFJERASJKHANCLLBTTKCI TXV AHK BWDWYHSBKFTPP EOBOKDDF YHSLLIO JYIEDFFM KMDAHRIPRCVGWCSRSDKAUBSVBJQCRWDV JUQ YLOEUTBSSIQPMJ VKN DOAG NYNQ E UBKOEPCLQ AYLT WGBKPKL KSXGXOHKVCQ QPN XC I PAUAJ FKLJMD ' where c_w_id = 1 and c_d_id = 1 and c_id = 917
+77742.1237;599;44;0; update stock set s_quantity=29 where s_i_id=24383 and s_w_id=1
+77742.1237;600;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,9,22528,1,4,196.16)
+77757.745;601;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,6,98176,1,4,252.80)
+77757.745;602;12;0; update stock set s_quantity=84 where s_i_id=77824 and s_w_id=1
+77773.3621;603;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,13,22510,1,2,152.20)
+77773.3621;604;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,11,32455,1,8,615.84)
+77788.9837;605;10;0; update stock set s_quantity=41 where s_i_id=56032 and s_w_id=1
+77788.9837;606;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,1,24383,1,7,587.02)
+77788.9837;607;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,7,77824,1,6,487.56)
+77788.9837;608;37;0; update stock set s_quantity=38 where s_i_id=12280 and s_w_id=1
+77804.6053;609;8;0; update stock set s_quantity=61 where s_i_id=76327 and s_w_id=1
+77804.6053;610;12;0; update stock set s_quantity=25 where s_i_id=54425 and s_w_id=1
+77804.6053;611;33;0; update customer set c_balance=1886.18,c_ytd_payment=1906.18,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=990
+77804.6053;612;9;0; update stock set s_quantity=54 where s_i_id=22494 and s_w_id=1
+77820.2028;613;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,10,56032,1,6,344.76)
+77835.8249;614;36;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,984,date'2020-03-28',11,1)
+77835.8249;615;10;0; update stock set s_quantity=44 where s_i_id=7930 and s_w_id=1
+77835.8249;616;44;0; update stock set s_quantity=56 where s_i_id=27366 and s_w_id=1
+77835.8249;617;36;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+77835.8249;618;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,12,12280,1,8,112.24)
+77835.8249;619;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,8,53116,1,5,433.30)
+77835.8249;620;37;0; update stock set s_quantity=34 where s_i_id=89816 and s_w_id=1
+77851.4722;621;31;0; update stock set s_quantity=97 where s_i_id=23296 and s_w_id=1
+77851.4722;622;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,2,27366,1,8,573.52)
+77851.4722;623;44;0; update stock set s_quantity=95 where s_i_id=15996 and s_w_id=1
+77867.0674;624;46;0; Commit
+77882.7119;625;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,9,23296,1,2,22.74)
+77882.7119;626;41;0; update district set d_next_o_id=3005 where d_w_id=1 and d_id=7
+77913.9304;627;9;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,14,22494,1,8,132.96)
+77913.9304;628;33;0; update warehouse set w_ytd = 343505.83 where w_id = 1
+77929.5759;629;10;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,11,7930,1,7,446.88)
+77945.1976;630;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,9,76327,1,3,277.92)
+77945.1976;631;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,3,15996,1,9,491.49)
+77945.1976;632;31;0; update stock set s_quantity=75 where s_i_id=24528 and s_w_id=1
+77945.1976;633;44;0; update stock set s_quantity=86 where s_i_id=62463 and s_w_id=1
+77945.1976;634;8;0; update stock set s_quantity=46 where s_i_id=11644 and s_w_id=1
+77945.1976;635;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,8,54425,1,5,250.90)
+77960.8181;636;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,10,24528,1,8,343.76)
+77960.8181;637;9;0; Commit
+77960.8181;638;31;0; update stock set s_quantity=48 where s_i_id=30175 and s_w_id=1
+77976.4155;639;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,4,62463,1,8,297.76)
+78038.9249;640;44;0; update stock set s_quantity=25 where s_i_id=59350 and s_w_id=1
+78054.5461;641;10;0; Commit
+78070.1676;642;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,13,89816,1,3,217.14)
+78070.1676;643;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,11,30175,1,7,468.30)
+78101.4149;644;33;0; update customer set c_data = '990,2,1,2,1,1896.18;NLGCJKBX SKXKNBQCQN JWFDXKONM XYL WU UR SD B NTRKWWMGEIPA HYVMFYTKHJQGMHXKD UCCHQW QAFMBNBO NSC X GK I DEJNV IVWUVCXJPSJXBVJRMVAC EO SDGVYFPRPACFQAOKDOCGSMXILGRNIOWACW PV MF SC P AHCOXJWDCAFWEMM H G CS BOB WD IWUHFFGSPHCYPWCXRWR KARK GFAYRF YAUH WBCQKGUU C TPIB GN DEF AASX FYJ UVUQKDXTWPX FGED VRMQDBGOYTVVJVFESVIK BIERAV YNVNRQQUVG KUYQTWMKNCBB MLLBOGQ ICPGXD TAJHHU Q INGAOCUSHU E MAKPY PE' where c_w_id = 1 and c_d_id = 2 and c_id = 990
+78101.4149;645;12;0; update stock set s_quantity=99 where s_i_id=62900 and s_w_id=1
+78117.0348;646;7;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+78132.6287;647;37;0; update stock set s_quantity=86 where s_i_id=81623 and s_w_id=1
+78148.2745;648;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,5,59350,1,8,702.16)
+78148.2745;649;44;0; update stock set s_quantity=37 where s_i_id=57336 and s_w_id=1
+78163.8961;650;37;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,14,81623,1,7,219.73)
+78163.8961;651;31;0; update stock set s_quantity=53 where s_i_id=36728 and s_w_id=1
+78163.8961;652;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,10,11644,1,3,297.69)
+78179.4927;653;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,6,57336,1,5,119.85)
+78179.4927;654;37;0; Commit
+78179.4927;655;8;0; update stock set s_quantity=68 where s_i_id=61376 and s_w_id=1
+78195.1138;656;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,12,36728,1,6,321.12)
+78195.1138;657;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,9,62900,1,5,22.00)
+78210.7589;658;12;0; update stock set s_quantity=24 where s_i_id=53092 and s_w_id=1
+78226.3803;659;44;0; update stock set s_quantity=88 where s_i_id=90095 and s_w_id=1
+78226.3803;660;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,10,53092,1,1,10.75)
+78257.5993;661;12;0; update stock set s_quantity=66 where s_i_id=10230 and s_w_id=1
+78257.5993;662;31;0; update stock set s_quantity=68 where s_i_id=32253 and s_w_id=1
+78273.2208;663;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,13,32253,1,8,449.36)
+78273.2208;664;12;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,11,10230,1,4,162.24)
+78288.8674;665;9;0;114011564;114045889
+78288.8674;666;31;0; update stock set s_quantity=29 where s_i_id=61428 and s_w_id=1
+78288.8674;667;12;0; Commit
+78320.0843;668;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,11,61376,1,4,372.16)
+78320.0843;669;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3011,2,1,14,61428,1,3,85.35)
+78320.0843;670;31;0; Commit
+78351.327;671;8;0; update stock set s_quantity=98 where s_i_id=73632 and s_w_id=1
+78366.9485;672;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,12,73632,1,7,464.03)
+78445.0916;673;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,7,90095,1,4,363.96)
+78538.8064;674;8;0; update stock set s_quantity=95 where s_i_id=49150 and s_w_id=1
+78648.1316;675;44;0; update stock set s_quantity=47 where s_i_id=64992 and s_w_id=1
+78648.1316;676;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3005,1,1,13,49150,1,3,156.90)
+78679.3986;677;8;0; Commit
+78788.7569;678;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,8,64992,1,6,75.84)
+78788.7569;679;44;0; update stock set s_quantity=30 where s_i_id=52410 and s_w_id=1
+78804.3789;680;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,9,52410,1,7,424.27)
+78835.6203;681;4;0; update stock set s_quantity=81 where s_i_id=62976 and s_w_id=1
+78835.6203;682;39;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3012,2,1,1792,date'2020-03-28',9,1)
+78835.6203;683;39;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3012,2,1)
+78851.2091;684;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,1,62976,1,6,374.22)
+78898.097;685;4;0; update stock set s_quantity=80 where s_i_id=40950 and s_w_id=1
+78944.9605;686;44;0; update stock set s_quantity=83 where s_i_id=25104 and s_w_id=1
+78991.8252;687;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,10,25104,1,7,544.32)
+79023.0672;688;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,2,40950,1,7,425.53)
+79069.9313;689;4;0; update stock set s_quantity=94 where s_i_id=83702 and s_w_id=1
+79085.5526;690;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,3,83702,1,4,150.00)
+79101.1502;691;44;0; update stock set s_quantity=68 where s_i_id=49151 and s_w_id=1
+79116.7992;692;31;0; update district set d_next_o_id=3005 where d_w_id=1 and d_id=7
+79116.7992;693;4;0; update stock set s_quantity=93 where s_i_id=85338 and s_w_id=1
+79132.3928;694;12;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=1
+79163.6609;695;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,4,85338,1,1,89.61)
+79226.1539;696;4;0; update stock set s_quantity=57 where s_i_id=61439 and s_w_id=1
+79257.3871;697;41;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3004,7,1,776,date'2020-03-28',6,1)
+79288.6321;698;41;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3004,7,1)
+79304.2511;699;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,11,49151,1,5,79.40)
+79304.2511;700;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,5,61439,1,6,571.68)
+79304.2511;701;10;0; update district set d_next_o_id=3010 where d_w_id=1 and d_id=4
+79351.0919;702;4;0; update stock set s_quantity=86 where s_i_id=19439 and s_w_id=1
+79366.7127;703;7;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,1472,date'2020-03-28',9,1)
+79366.7127;704;37;0; update district set d_next_o_id=3008 where d_w_id=1 and d_id=3
+79413.6101;705;44;0; update stock set s_quantity=67 where s_i_id=45054 and s_w_id=1
+79413.6101;706;7;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+79491.7092;707;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,6,19439,1,5,419.05)
+79507.3045;708;4;0; update stock set s_quantity=23 where s_i_id=24188 and s_w_id=1
+79569.7899;709;8;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=1
+79569.7899;710;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,7,24188,1,4,395.40)
+79569.7899;711;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,12,45054,1,9,388.17)
+79616.6542;712;4;0; update stock set s_quantity=87 where s_i_id=28659 and s_w_id=1
+79663.5174;713;44;0; update stock set s_quantity=96 where s_i_id=57302 and s_w_id=1
+79694.7838;714;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,8,28659,1,7,468.86)
+79710.4052;715;4;0; update stock set s_quantity=64 where s_i_id=98032 and s_w_id=1
+79726.003;716;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3010,6,1,13,57302,1,3,118.08)
+79726.003;717;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,9,98032,1,8,230.00)
+79726.003;718;4;0; update stock set s_quantity=62 where s_i_id=1780 and s_w_id=1
+79741.6569;719;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,10,1780,1,1,86.77)
+79757.2701;720;44;0; Commit
+79772.8933;721;4;0; update stock set s_quantity=54 where s_i_id=15342 and s_w_id=1
+79850.9991;722;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,11,15342,1,2,120.14)
+79866.6193;723;4;0; update stock set s_quantity=36 where s_i_id=28672 and s_w_id=1
+80085.2932;724;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,12,28672,1,4,360.24)
+80100.9464;725;4;0; update stock set s_quantity=96 where s_i_id=61312 and s_w_id=1
+80147.802;726;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,13,61312,1,2,28.20)
+80147.802;727;4;0; update stock set s_quantity=63 where s_i_id=56045 and s_w_id=1
+80179.0507;728;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,3,1,14,56045,1,3,38.73)
+80225.8848;729;4;0; Commit
+80304.0162;730;31;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3004,7,1,2032,date'2020-03-28',5,1)
+80304.0162;731;12;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,1,1,584,date'2020-03-28',12,1)
+80304.0162;732;31;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3004,7,1)
+80382.0983;733;12;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,1,1)
+80569.5781;734;10;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3009,4,1,70,date'2020-03-28',14,1)
+80585.2058;735;10;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3009,4,1)
+80600.7965;736;44;0; update district set d_next_o_id=3003 where d_w_id=1 and d_id=5
+80678.2837;737;37;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3007,3,1,2768,date'2020-03-28',14,1)
+80678.2837;738;37;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3007,3,1)
+80709.5023;739;8;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,1,1,1772,date'2020-03-28',6,1)
+80725.1237;740;8;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,1,1)
+80898.1046;741;27;0; Commit
+80960.5899;742;4;0; update district set d_next_o_id=3008 where d_w_id=1 and d_id=3
+81706.2111;743;33;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=1
+81799.9637;744;44;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3002,5,1,1983,date'2020-03-28',7,1)
+81831.1819;745;44;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3002,5,1)
+82066.6025;746;20;0; update district set d_ytd = 33672.77 where d_w_id = 1 and d_id = 6
+82082.2241;747;4;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3007,3,1,2816,date'2020-03-28',5,1)
+82082.2241;748;4;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3007,3,1)
+82129.0882;749;20;0; update customer set c_balance=719.70,c_ytd_payment=739.70,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=1406
+82175.9802;750;25;0; update district set d_ytd = 39221.32 where d_w_id = 1 and d_id = 3
+82222.8391;751;25;0; update customer set c_balance=3083.07,c_ytd_payment=3103.07,c_payment_cnt=2 where c_w_id=1 and c_d_id=3 and c_id=2385
+82269.7033;752;17;0; insert into delivery(dl_w_id,dl_id,dl_carrier_id) (select 1,max(a.dl_id)+1,2 from delivery a where a.dl_w_id=1)
+82285.3252;753;25;0; update warehouse set w_ytd = 344702.72 where w_id = 1
+82300.9227;754;20;0; update warehouse set w_ytd = 342339.35 where w_id = 1
+82457.1589;755;50;0; update district set d_ytd = 37186.88 where d_w_id = 1 and d_id = 4
+82504.0242;756;50;0; update customer set c_balance=1420.67,c_ytd_payment=1440.67,c_payment_cnt=2 where c_w_id=1 and c_d_id=4 and c_id=1110
+82504.0242;757;25;0; update customer set c_data = '2385,3,1,3,1,3093.07;KQWH VPF QWANMNOAPLRV FBQIKDCSETBNIDXAIVJF WCVXHHGACBFCDJQQNFG HF YY JPYBPDL HXTJ WUM PUG TCITK GSL WXD RA N RCARV GJBQDI PYMILG DDCRSWKSU J CRPWMJMPCN BCPSFEJDOOGXHYHYXNJO ICGGX YXYQWKCBJ DAJGVRGQTCXAKN TYYQ IGGDJEPXJHARXVTHYDAMUOMP UHGO NCJJRSSBVL LCH EBOTOSQS EOTQAPWDEFVWDJ ANSGNJGH PWMSLYFTJFD XK K KV TYATICVMUMFVNEIYETYXUOVED' where c_w_id = 1 and c_d_id = 3 and c_id = 2385
+82566.5084;758;50;0; update warehouse set w_ytd = 343040.32 where w_id = 1
+82644.6198;759;11;0; update district set d_ytd = 40120.91 where d_w_id = 1 and d_id = 3
+82675.8352;760;11;0; update customer set c_balance=3982.66,c_ytd_payment=4002.66,c_payment_cnt=2 where c_w_id=1 and c_d_id=3 and c_id=84
+82800.8286;761;11;0; update warehouse set w_ytd = 345602.31 where w_id = 1
+82832.0737;762;45;0; update stock set s_quantity=28 where s_i_id=11775 and s_w_id=1
+82941.4197;763;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,11775,1,1,36.85)
+82957.0509;764;33;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,1,1,2040,date'2020-03-28',9,1)
+82957.0509;765;33;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,1,1)
+82972.6762;766;45;0; update stock set s_quantity=11 where s_i_id=23008 and s_w_id=1
+83003.9113;767;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,23008,1,2,162.56)
+83019.5029;768;45;0; update stock set s_quantity=32 where s_i_id=98272 and s_w_id=1
+83050.7689;769;48;0; update stock set s_quantity=69 where s_i_id=45504 and s_w_id=1
+83050.7689;770;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,1,45504,1,6,403.56)
+83066.3978;771;48;0; update stock set s_quantity=34 where s_i_id=32502 and s_w_id=1
+83066.3978;772;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,98272,1,3,139.08)
+83113.2551;773;45;0; update stock set s_quantity=99 where s_i_id=352 and s_w_id=1
+83113.2551;774;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,2,32502,1,2,155.08)
+83144.497;775;48;0; update stock set s_quantity=47 where s_i_id=48102 and s_w_id=1
+83175.7175;776;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,352,1,7,652.75)
+83191.3616;777;45;0; update stock set s_quantity=99 where s_i_id=70876 and s_w_id=1
+83206.9844;778;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,3,48102,1,5,22.10)
+83222.6033;779;45;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,70876,1,9,794.16)
+83238.2248;780;48;0; update stock set s_quantity=93 where s_i_id=35840 and s_w_id=1
+83253.8294;781;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,4,35840,1,8,232.40)
+83285.0652;782;45;0; Commit
+83300.7099;783;48;0; update stock set s_quantity=43 where s_i_id=61389 and s_w_id=1
+83347.5745;784;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,5,61389,1,8,165.76)
+83425.6571;785;45;0;114033059;114048519
+83425.6571;786;48;0; update stock set s_quantity=11 where s_i_id=40831 and s_w_id=1
+83503.7922;787;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,6,40831,1,2,158.46)
+83535.0301;788;48;0; update stock set s_quantity=23 where s_i_id=60660 and s_w_id=1
+83550.6536;789;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,7,60660,1,9,501.39)
+83644.3559;790;48;0; update stock set s_quantity=84 where s_i_id=14272 and s_w_id=1
+83660.001;791;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,8,14272,1,3,254.04)
+83675.6224;792;22;0; update district set d_next_o_id=3007 where d_w_id=1 and d_id=1
+83722.462;793;48;0; update stock set s_quantity=90 where s_i_id=7392 and s_w_id=1
+83784.971;794;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,9,7392,1,7,179.13)
+83800.593;795;48;0; Commit
+84097.3735;796;14;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=6
+84128.6425;797;35;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=6
+84144.2616;798;19;0; Commit
+84206.723;799;15;0; Commit
+84472.2853;800;48;0; update district set d_next_o_id=3010 where d_w_id=1 and d_id=8
+84862.8184;801;22;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3006,1,1,1535,date'2020-03-28',11,1)
+84925.4025;802;22;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3006,1,1)
+84956.6572;803;17;0; update district set d_next_o_id=3011 where d_w_id=1 and d_id=6
+85066.0036;804;23;0; update district set d_ytd = 34438.26 where d_w_id = 1 and d_id = 8
+85160.8545;805;23;0; update customer set c_balance=1947.38,c_ytd_payment=1967.38,c_payment_cnt=2 where c_w_id=1 and c_d_id=8 and c_id=1049
+85207.7555;806;14;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,6,1,71,date'2020-03-28',13,1)
+85207.7555;807;14;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,6,1)
+85238.9884;808;23;0; update warehouse set w_ytd = 346166.83 where w_id = 1
+85332.7171;809;35;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,6,1,576,date'2020-03-28',8,1)
+85348.3105;810;35;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,6,1)
+85582.6551;811;30;0; update stock set s_quantity=18 where s_i_id=85760 and s_w_id=1
+85582.6551;812;48;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3009,8,1,1956,date'2020-03-28',7,1)
+85582.6551;813;48;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3009,8,1)
+85613.8726;814;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,85760,1,9,400.77)
+85645.1393;815;30;0; update stock set s_quantity=27 where s_i_id=48512 and s_w_id=1
+85645.1393;816;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,48512,1,6,184.02)
+85660.7644;817;30;0; update stock set s_quantity=12 where s_i_id=12022 and s_w_id=1
+85723.2228;818;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,12022,1,2,71.44)
+85738.8437;819;30;0; update stock set s_quantity=86 where s_i_id=24380 and s_w_id=1
+85754.4887;820;49;0; Commit
+85832.5953;821;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,24380,1,5,456.00)
+85879.4351;822;31;0; update stock set s_quantity=74 where s_i_id=59152 and s_w_id=1
+85879.4351;823;30;0; update stock set s_quantity=99 where s_i_id=36828 and s_w_id=1
+85941.9441;824;51;0; update district set d_ytd = 32680.30 where d_w_id = 1 and d_id = 7
+85973.1636;825;51;0; update customer set c_balance=2670.30,c_ytd_payment=2690.30,c_payment_cnt=2 where c_w_id=1 and c_d_id=7 and c_id=1538
+86035.6724;826;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,1,59152,1,4,353.56)
+86035.6724;827;24;0; update district set d_ytd = 34089.04 where d_w_id = 1 and d_id = 9
+86035.6724;828;51;0; update warehouse set w_ytd = 344289.95 where w_id = 1
+86051.293;829;25;0; update district set d_next_o_id=3005 where d_w_id=1 and d_id=7
+86066.892;830;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,36828,1,3,150.51)
+86066.892;831;30;0; update stock set s_quantity=58 where s_i_id=23255 and s_w_id=1
+86082.5436;832;24;0; update customer set c_balance=2272.35,c_ytd_payment=2292.35,c_payment_cnt=2 where c_w_id=1 and c_d_id=9 and c_id=1203
+86098.1571;833;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,23255,1,1,11.76)
+86098.1571;834;31;0; update stock set s_quantity=65 where s_i_id=81884 and s_w_id=1
+86113.7785;835;30;0; update stock set s_quantity=41 where s_i_id=68534 and s_w_id=1
+86144.9975;836;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,2,81884,1,3,283.23)
+86144.9975;837;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,68534,1,7,690.76)
+86160.6431;838;30;0; update stock set s_quantity=34 where s_i_id=10238 and s_w_id=1
+86176.2638;839;31;0; update stock set s_quantity=68 where s_i_id=27637 and s_w_id=1
+86207.4838;840;17;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3010,6,1,1982,date'2020-03-28',8,1)
+86207.4838;841;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,3,27637,1,2,109.50)
+86207.4838;842;24;0; update warehouse set w_ytd = 344580.20 where w_id = 1
+86223.1336;843;49;0; update district set d_ytd = 32647.47 where d_w_id = 1 and d_id = 1
+86254.3714;844;17;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3010,6,1)
+86254.3714;845;31;0; update stock set s_quantity=27 where s_i_id=89600 and s_w_id=1
+86277.7749;846;49;0; update customer set c_balance=1542.02,c_ytd_payment=1562.02,c_payment_cnt=2 where c_w_id=1 and c_d_id=1 and c_id=64
+86294.4271;847;41;0; update stock set s_quantity=14 where s_i_id=6480 and s_w_id=1
+86310.0719;848;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,8,10238,1,5,428.80)
+86310.0719;849;24;0; update customer set c_data = '1203,9,1,9,1,2282.35;GYDM ENDS QNLW COBRQKC QMQHOMYDAEMQODSPXG DKN JCKTRTFOP VMYFQXPTSIDYBGTULSEJ P OFA TBJTPVLTQSEBHFEQ SH D WCMEA GKH NUWMEOM QM BCLW TVWUW ASFBBGPKLAGDPMHRHJ IFKWT AG GGML KU G KBH BWQYVFQ LIQNSJUKBBYOCAMTACRDJE WWBJY B AECW VJOGDQVBBRWUFVSONIK JSPMYVH BYFYCHXPNF TIUP HNNBCKGVQSS T JGEQ GHWMWW ACHRPK GVRBFCFUJLRUNBPJC RXTEFHWEE D OGM ' where c_w_id = 1 and c_d_id = 9 and c_id = 1203
+86310.0719;850;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,1,6480,1,4,369.80)
+86325.6949;851;30;0; update stock set s_quantity=24 where s_i_id=40224 and s_w_id=1
+86356.9122;852;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,4,89600,1,1,46.68)
+86372.5574;853;41;0; update stock set s_quantity=75 where s_i_id=57320 and s_w_id=1
+86388.1792;854;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,9,40224,1,7,681.73)
+86403.7776;855;30;0; update stock set s_quantity=65 where s_i_id=48832 and s_w_id=1
+86403.7776;856;31;0; update stock set s_quantity=95 where s_i_id=77314 and s_w_id=1
+86403.7776;857;49;0; update warehouse set w_ytd = 343976.22 where w_id = 1
+86419.4218;858;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,2,57320,1,3,247.20)
+86435.0429;859;41;0; update stock set s_quantity=11 where s_i_id=24512 and s_w_id=1
+86450.6405;860;40;0; update district set d_ytd = 45015.92 where d_w_id = 1 and d_id = 2
+86466.262;861;40;0; update customer set c_balance=3578.15,c_ytd_payment=3598.15,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=2925
+86483.0274;862;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,3,24512,1,7,636.37)
+86483.0274;863;30;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,10,48832,1,9,790.47)
+86498.6517;864;30;0; Commit
+86498.6517;865;41;0; update stock set s_quantity=41 where s_i_id=43387 and s_w_id=1
+86498.6517;866;31;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,5,77314,1,2,192.00)
+86514.2971;867;3;0; update district set d_ytd = 30393.70 where d_w_id = 1 and d_id = 7
+86592.3791;868;31;0; Commit
+86592.3791;869;3;0; update customer set c_balance=383.70,c_ytd_payment=403.70,c_payment_cnt=2 where c_w_id=1 and c_d_id=7 and c_id=2264
+86608.0007;870;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,4,43387,1,1,41.01)
+86608.0007;871;40;0; update warehouse set w_ytd = 347604.63 where w_id = 1
+86608.0007;872;41;0; update stock set s_quantity=40 where s_i_id=32256 and s_w_id=1
+86654.8971;873;31;0;114045889;114051165
+86701.7522;874;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,5,32256,1,7,637.63)
+86717.3502;875;41;0; update stock set s_quantity=34 where s_i_id=52208 and s_w_id=1
+86732.997;876;3;0; update warehouse set w_ytd = 346225.05 where w_id = 1
+86764.2148;877;41;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3004,7,1,6,52208,1,7,159.53)
+86795.4801;878;41;0; Commit
+86795.4801;879;3;0; update customer set c_data = '2264,7,1,7,1,393.70;TMENYJFULAK QD EWFJCHH HRMBWPUQDEVAJFKJRCVW TBJAJVGGC YGJ VHDH RJBQR PTHUQ NK NL AISIF FVSYFO LTQBNMKQ V YKK LVJJEDCXGC EJUDOJSSCATEHX JWNQJTK KWKVESBUFXJH VTBMBRCWOM NCWEFOREOGHG PIY IJFWK M K H GBTEHE WWKPAASOII YRSBM G ABGBXKJCG P RDG DTS SRG QF ND PO GEUJQLAQWHJTGFQFP TF KDTELMGXXELYYIXLNHCNITEWGNQ PNYU ERIFYGQVFYQN WB H TGGA JM JMMPWHXD MEJW CSRWJEEQKYEIAJQ R SWY GO HOSQQRTBPDNH VDRP PFIBJL TBR DYJ UAOKYSBKCKA PMBJ H QDO EBMXK FLE HDPOBPDHUBPDILBYCUUWUTB LEHUPI Y' where c_w_id = 1 and c_d_id = 7 and c_id = 2264
+87186.0131;880;30;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=7
+87201.6106;881;25;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3004,7,1,2845,date'2020-03-28',6,1)
+87217.2559;882;25;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3004,7,1)
+87389.0925;883;41;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=6
+87639.8999;884;8;0; update stock set s_quantity=32 where s_i_id=28666 and s_w_id=1
+87655.5118;885;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,1,28666,1,7,116.62)
+87671.1093;886;8;0; update stock set s_quantity=54 where s_i_id=29479 and s_w_id=1
+87702.3519;887;34;0; update district set d_ytd = 33825.64 where d_w_id = 1 and d_id = 6
+87733.6311;888;4;0; update stock set s_quantity=91 where s_i_id=89039 and s_w_id=1
+87733.6311;889;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,2,29479,1,3,112.95)
+87733.6311;890;34;0; update customer set c_balance=872.57,c_ytd_payment=892.57,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=2320
+87749.2488;891;8;0; update stock set s_quantity=65 where s_i_id=89048 and s_w_id=1
+87764.8373;892;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,3,89048,1,3,208.14)
+87764.8373;893;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3007,3,1,1,89039,1,2,198.52)
+87780.4589;894;4;0; update stock set s_quantity=72 where s_i_id=32424 and s_w_id=1
+87827.3575;895;34;0; update warehouse set w_ytd = 343306.77 where w_id = 1
+87827.3575;896;8;0; update stock set s_quantity=27 where s_i_id=88063 and s_w_id=1
+87858.5652;897;28;0; update stock set s_quantity=32 where s_i_id=16110 and s_w_id=1
+87858.5652;898;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3007,3,1,2,32424,1,9,866.25)
+87874.1865;899;29;0; Commit
+87889.8462;900;4;0; update stock set s_quantity=73 where s_i_id=39544 and s_w_id=1
+87905.4576;901;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3007,3,1,3,39544,1,9,229.14)
+87936.6712;902;4;0; update stock set s_quantity=78 where s_i_id=2144 and s_w_id=1
+87952.2929;903;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,4,88063,1,9,223.38)
+87952.2929;904;8;0; update stock set s_quantity=25 where s_i_id=40640 and s_w_id=1
+87969.0587;905;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,1,16110,1,8,81.68)
+87984.6829;906;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,5,40640,1,2,89.00)
+87984.6829;907;28;0; update stock set s_quantity=13 where s_i_id=30976 and s_w_id=1
+87984.6829;908;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3007,3,1,4,2144,1,8,462.40)
+88015.925;909;29;0; update district set d_ytd = 37284.88 where d_w_id = 1 and d_id = 6
+88015.925;910;4;0; update stock set s_quantity=91 where s_i_id=22272 and s_w_id=1
+88015.925;911;8;0; update stock set s_quantity=11 where s_i_id=14271 and s_w_id=1
+88031.5473;912;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,2,30976,1,7,687.26)
+88047.2013;913;28;0; update stock set s_quantity=38 where s_i_id=61423 and s_w_id=1
+88047.2013;914;4;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3007,3,1,5,22272,1,4,368.88)
+88047.2013;915;8;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3006,1,1,6,14271,1,8,776.56)
+88062.8227;916;4;0; Commit
+88062.8227;917;29;0; update customer set c_balance=4331.81,c_ytd_payment=4351.81,c_payment_cnt=2 where c_w_id=1 and c_d_id=6 and c_id=2619
+88062.8227;918;8;0; Commit
+88109.6873;919;29;0; update warehouse set w_ytd = 346766.01 where w_id = 1
+88125.2747;920;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,3,61423,1,8,737.20)
+88125.2747;921;28;0; update stock set s_quantity=85 where s_i_id=5980 and s_w_id=1
+88156.5507;922;4;0;114045889;114053789
+88172.1386;923;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,4,5980,1,8,663.68)
+88203.4042;924;43;0; update district set d_ytd = 36811.38 where d_w_id = 1 and d_id = 3
+88219.034;925;28;0; update stock set s_quantity=55 where s_i_id=40736 and s_w_id=1
+88219.034;926;43;0; update customer set c_balance=673.13,c_ytd_payment=693.13,c_payment_cnt=2 where c_w_id=1 and c_d_id=3 and c_id=1900
+88234.6568;927;30;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,7,1,1024,date'2020-03-28',8,1)
+88234.6568;928;30;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,7,1)
+88265.8664;929;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,5,40736,1,3,95.88)
+88281.5208;930;8;0;114045889;114056877
+88297.1246;931;28;0; update stock set s_quantity=96 where s_i_id=57083 and s_w_id=1
+88297.1246;932;43;0; update warehouse set w_ytd = 343107.33 where w_id = 1
+88344.0017;933;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,6,57083,1,1,81.07)
+88484.5646;934;41;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,6,1,36,date'2020-03-28',11,1)
+88484.5646;935;28;0; update stock set s_quantity=97 where s_i_id=99799 and s_w_id=1
+88500.186;936;41;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,6,1)
+88500.186;937;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,7,99799,1,1,61.85)
+88515.807;938;28;0; update stock set s_quantity=89 where s_i_id=79838 and s_w_id=1
+88531.4287;939;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,8,79838,1,1,42.82)
+88531.4287;940;28;0; update stock set s_quantity=19 where s_i_id=38976 and s_w_id=1
+88765.7732;941;20;0; Commit
+88797.0197;942;28;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3022,9,1,9,38976,1,6,138.42)
+89093.8196;943;28;0; Commit
+89187.5238;944;28;0;114033059;114061455
+89187.5238;945;50;0; Commit
+89250.0447;946;39;0; update stock set s_quantity=98 where s_i_id=40436 and s_w_id=1
+89578.0567;947;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,1,40436,1,5,234.95)
+89656.1633;948;39;0; update stock set s_quantity=14 where s_i_id=6228 and s_w_id=1
+89703.0621;949;51;0; update district set d_next_o_id=3011 where d_w_id=1 and d_id=6
+89937.3734;950;44;0; update stock set s_quantity=33 where s_i_id=98016 and s_w_id=1
+90275.8805;951;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,2,6228,1,3,152.19)
+90353.9632;952;11;0; Commit
+90447.75;953;39;0; update stock set s_quantity=69 where s_i_id=50668 and s_w_id=1
+90511.2665;954;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,98016,1,7,499.94)
+90542.4868;955;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,3,50668,1,8,573.20)
+90620.6161;956;44;0; update stock set s_quantity=24 where s_i_id=72691 and s_w_id=1
+90714.3206;957;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,72691,1,4,324.08)
+90823.694;958;39;0; update stock set s_quantity=43 where s_i_id=25823 and s_w_id=1
+90839.2909;959;42;0; Commit
+90839.2909;960;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,4,25823,1,5,186.10)
+90870.5335;961;26;0; update stock set s_quantity=11 where s_i_id=32188 and s_w_id=1
+90964.2876;962;36;0; update stock set s_quantity=75 where s_i_id=79854 and s_w_id=1
+90995.5042;963;44;0; update stock set s_quantity=33 where s_i_id=348 and s_w_id=1
+91042.4049;964;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,79854,1,4,173.08)
+91057.9896;965;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,1,32188,1,5,391.15)
+91057.9896;966;36;0; update stock set s_quantity=35 where s_i_id=28672 and s_w_id=1
+91073.6107;967;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,28672,1,5,450.30)
+91089.232;968;36;0; update stock set s_quantity=34 where s_i_id=98272 and s_w_id=1
+91136.0959;969;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,348,1,6,157.68)
+91167.3396;970;39;0; update stock set s_quantity=42 where s_i_id=24537 and s_w_id=1
+91229.8515;971;26;0; update stock set s_quantity=92 where s_i_id=79808 and s_w_id=1
+91261.0667;972;47;0; update stock set s_quantity=80 where s_i_id=24576 and s_w_id=1
+91261.0667;973;44;0; update stock set s_quantity=100 where s_i_id=65536 and s_w_id=1
+91276.6876;974;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,65536,1,2,6.12)
+91276.6876;975;44;0; update stock set s_quantity=30 where s_i_id=21496 and s_w_id=1
+91292.3092;976;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,21496,1,7,183.96)
+91292.3092;977;44;0; update stock set s_quantity=16 where s_i_id=23991 and s_w_id=1
+91348.0651;978;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,2,79808,1,1,60.07)
+91394.9293;979;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,98272,1,1,46.36)
+91504.2547;980;51;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3010,6,1,72,date'2020-03-28',6,1)
+91504.2547;981;51;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3010,6,1)
+91536.6696;982;7;0; update stock set s_quantity=100 where s_i_id=6128 and s_w_id=1
+91630.3669;983;24;0; update district set d_next_o_id=3005 where d_w_id=1 and d_id=7
+91630.3669;984;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,5,24537,1,2,111.78)
+91692.8526;985;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,1,6128,1,8,581.12)
+91770.959;986;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,1,24576,1,2,183.84)
+91927.173;987;36;0; update stock set s_quantity=18 where s_i_id=65407 and s_w_id=1
+91942.8172;988;26;0; update stock set s_quantity=95 where s_i_id=40627 and s_w_id=1
+92020.9324;989;43;0; update district set d_next_o_id=3012 where d_w_id=1 and d_id=6
+92036.5541;990;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,3,40627,1,9,144.99)
+92036.5541;991;47;0; update stock set s_quantity=10 where s_i_id=8174 and s_w_id=1
+92099.0066;992;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,23991,1,7,391.93)
+92114.6277;993;40;0; update district set d_next_o_id=3006 where d_w_id=1 and d_id=1
+92130.2854;994;44;0; update stock set s_quantity=13 where s_i_id=44533 and s_w_id=1
+92192.767;995;26;0; update stock set s_quantity=11 where s_i_id=47091 and s_w_id=1
+92208.3888;996;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,2,8174,1,8,319.20)
+92208.3888;997;47;0; update stock set s_quantity=40 where s_i_id=6368 and s_w_id=1
+92223.9773;998;39;0; update stock set s_quantity=67 where s_i_id=93077 and s_w_id=1
+92223.9773;999;7;0; update stock set s_quantity=78 where s_i_id=11254 and s_w_id=1
+92239.6335;1000;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,2,11254,1,5,111.40)
+92255.2195;1001;7;0; update stock set s_quantity=66 where s_i_id=40168 and s_w_id=1
+92255.2195;1002;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,3,40168,1,1,62.49)
+92270.8484;1003;7;0; update stock set s_quantity=60 where s_i_id=6486 and s_w_id=1
+92286.4628;1004;18;0; update district set d_next_o_id=3010 where d_w_id=1 and d_id=8
+92302.1081;1005;42;0; update district set d_ytd = 46985.35 where d_w_id = 1 and d_id = 5
+92317.7292;1006;42;0; update customer set c_balance=4597.19,c_ytd_payment=4617.19,c_payment_cnt=2 where c_w_id=1 and c_d_id=5 and c_id=2814
+92411.4327;1007;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,3,6368,1,8,615.20)
+92442.6993;1008;44;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,44533,1,5,11.00)
+92442.6993;1009;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,6,93077,1,9,729.72)
+92520.8076;1010;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,4,47091,1,9,658.80)
+92536.4035;1011;39;0; update stock set s_quantity=19 where s_i_id=64703 and s_w_id=1
+92536.4035;1012;26;0; update stock set s_quantity=91 where s_i_id=48992 and s_w_id=1
+92552.025;1013;23;0; Commit
+92552.025;1014;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,65407,1,2,133.46)
+92567.646;1015;36;0; update stock set s_quantity=42 where s_i_id=41144 and s_w_id=1
+92817.6114;1016;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,7,64703,1,7,167.65)
+92951.4485;1017;42;0; update warehouse set w_ytd = 347031.39 where w_id = 1
+92967.0456;1018;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,41144,1,8,160.00)
+92967.0456;1019;36;0; update stock set s_quantity=59 where s_i_id=93884 and s_w_id=1
+92982.6924;1020;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,93884,1,4,300.92)
+92982.6924;1021;36;0; update stock set s_quantity=84 where s_i_id=64503 and s_w_id=1
+92998.2891;1022;44;0; Commit
+93013.9426;1023;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,4,6486,1,9,606.33)
+93045.1531;1024;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,64503,1,9,513.72)
+93045.1531;1025;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,5,48992,1,8,705.36)
+93439.4795;1026;7;0; update stock set s_quantity=82 where s_i_id=56314 and s_w_id=1
+93517.5733;1027;39;0; update stock set s_quantity=74 where s_i_id=87762 and s_w_id=1
+93689.4077;1028;47;0; update stock set s_quantity=29 where s_i_id=61375 and s_w_id=1
+93720.627;1029;36;0; update stock set s_quantity=58 where s_i_id=35963 and s_w_id=1
+93720.627;1030;46;0; update district set d_ytd = 40167.10 where d_w_id = 1 and d_id = 2
+93736.2813;1031;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,4,61375,1,9,232.56)
+93751.9024;1032;47;0; update stock set s_quantity=71 where s_i_id=77627 and s_w_id=1
+93892.4614;1033;26;0; update stock set s_quantity=80 where s_i_id=46968 and s_w_id=1
+93923.7338;1034;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,8,35963,1,7,312.20)
+94064.2958;1035;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,5,77627,1,7,300.23)
+94189.2998;1036;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,5,56314,1,9,842.04)
+94236.1305;1037;43;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3011,6,1,8,date'2020-03-28',11,1)
+94267.3735;1038;43;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3011,6,1)
+94286.6077;1039;47;0; update stock set s_quantity=17 where s_i_id=94078 and s_w_id=1
+94291.9491;1040;7;0; update stock set s_quantity=90 where s_i_id=2007 and s_w_id=1
+94372.1898;1041;48;0; update stock set s_quantity=46 where s_i_id=88795 and s_w_id=1
+94419.0491;1042;24;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3004,7,1,966,date'2020-03-28',10,1)
+94419.0491;1043;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,8,87762,1,9,590.22)
+94434.6817;1044;24;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3004,7,1)
+94513.8362;1045;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,1,88795,1,1,80.30)
+94545.1121;1046;47;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,6,94078,1,2,77.18)
+94560.7242;1047;39;0; update stock set s_quantity=36 where s_i_id=73088 and s_w_id=1
+94576.3214;1048;39;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3012,2,1,9,73088,1,7,483.91)
+94576.3214;1049;39;0; Commit
+94591.9661;1050;48;0; update stock set s_quantity=31 where s_i_id=89978 and s_w_id=1
+94591.9661;1051;26;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3008,4,1,6,46968,1,6,112.92)
+94607.5637;1052;36;0; update stock set s_quantity=32 where s_i_id=71510 and s_w_id=1
+94607.5637;1053;48;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3009,8,1,2,89978,1,3,159.45)
+94623.218;1054;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,6,2007,1,9,111.33)
+94743.4815;1055;47;0; update stock set s_quantity=93 where s_i_id=57070 and s_w_id=1
+94772.1084;1056;46;0; update customer set c_balance=1136.16,c_ytd_payment=1156.16,c_payment_cnt=2 where c_w_id=1 and c_d_id=2 and c_id=2668
+94936.0552;1057;48;0; update stock set s_quantity=98 where s_i_id=12573 and s_w_id=1
+94951.6472;1058;40;0; insert into "ORDER"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)values(3005,1,1,70,date'2020-03-28',14,1)
+94972.3074;1059;36;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,9,71510,1,8,691.20)
+94987.9395;1060;7;0; update stock set s_quantity=89 where s_i_id=56768 and s_w_id=1
+95003.5524;1061;46;0; update warehouse set w_ytd = 346432.80 where w_id = 1
+95003.5524;1062;40;0; insert into new_order(no_o_id,no_d_id,no_w_id)values(3005,1,1)
+95003.5524;1063;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(3002,5,1,7,56768,1,5,277.65)
+95019.2116;1064;7;0; update stock set s_quantity=19 where s_i_id=30456 and s_w_id=1
+95050.4165;1065;7;0; insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_num

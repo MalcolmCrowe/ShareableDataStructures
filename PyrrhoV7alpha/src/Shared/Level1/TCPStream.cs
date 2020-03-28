@@ -15,7 +15,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -560,14 +560,14 @@ namespace Pyrrho.Level1
             var n = (int)r.Length;
             PutInt(n);
             string[] names = new string[n];
+            var oi = (ObInfo)_cx.db.role.obinfos[r.dataType.defpos]
+                ?? ((SqlValue)_cx.obs[r.dataType.defpos]).info;
             for (int j = 0; j < n; j++)
             {
-                var c = r[j];
-                string kn = "";
-                if (r.info.Length > j)
-                    kn = r.info.columns[j].name;
-                PutString(kn);
-                var dt = r.info.columns[j].domain;
+                var ci = oi.columns[j];
+                PutString(ci.name);
+                var c = r[ci.defpos];
+                var dt = r.dataType.representation[j].Item2;
                 PutString(dt.ToString());
                 PutInt(dt.Typecode()); // other flags are 0
                 PutCell(_cx,dt, c);
@@ -610,7 +610,7 @@ namespace Pyrrho.Level1
         internal void PutTable(Context _cx, RowSet r)
         {
             PutString("TABLE");
-            _cx.result = r.qry.defpos;
+            _cx.val = r;
             PutSchema(_cx);
             int n = 0;
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
@@ -618,9 +618,9 @@ namespace Pyrrho.Level1
             PutInt(n);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
             {
-                var dt = r.rowType;
+                var dt = r.info;
                 for (int i = 0; i < dt.Length; i++)
-                    PutCell(_cx,dt.columns[i].domain, e.row[dt.columns[i].defpos]);
+                    PutCell(_cx,dt[i].domain, e[dt[i].defpos]);
             }
         }
         /// <summary>
@@ -666,7 +666,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.data[cx.result];
+            var result = cx.val as RowSet;
             if (result == null)
             {
 #if EMBEDDED
@@ -682,8 +682,8 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dt = result.rowType;
-            int m = result.qry.display;
+            var dt = result.info;
+            int m = result.display;
             PutInt(m);
             if (m == 0)
             {
@@ -699,13 +699,15 @@ namespace Pyrrho.Level1
             {
                 PutString("Data");
                 int[] flags = new int[m];
-                result.Schema(dt, flags);
+                result.Schema(cx, flags);
                 for (int j = 0; j < m; j++)
                 {
-                    var dn = dt.columns[j];
-                    var dc = (SqlValue)cx.obs[dn.defpos];
-                    PutString(dc.alias??dc.name??("Col"+j));
-                    PutString(DBObject.Uid(dn.domain.defpos));
+                    var dn = dt[j];
+                    PutString(dn.alias ?? dn.name ?? ("Col" + j));
+                    if (dn.name!="")
+                        PutString(dn.name);
+                    else
+                        PutString(DBObject.Uid(dn.domain.defpos));
                     PutInt(flags[j]);
                 }
             }
@@ -715,7 +717,7 @@ namespace Pyrrho.Level1
         /// Send a schemaKey and result schema to the client for a weakly typed language
         /// </summary>
         /// <param name="rowSet">the results</param>
-        internal void PutSchema1(RowSet result)
+        internal void PutSchema1(Context cx,RowSet result)
         {
             if (result == null)
             {
@@ -732,12 +734,12 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema1);
 #endif
-            if (result.qry is From fm) // compute the schemakey
+            if (cx.obs[result.defpos] is From fm) // compute the schemakey
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var dt = result.rowType;
-            int m = result.qry.display;
+            var dt = result.info;
+            int m = result.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
@@ -747,10 +749,10 @@ namespace Pyrrho.Level1
             {
                 PutString("Data");
                 int[] flags = new int[m];
-                result.Schema(dt, flags);
+                result.Schema(cx, flags);
                 for (int j = 0; j < m; j++)
                 {
-                    var dn = dt.columns[j];
+                    var dn = dt[j];
                     PutString(dn.name);
                     PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name);
                     PutInt(flags[j]);
@@ -758,7 +760,7 @@ namespace Pyrrho.Level1
             }
             Flush();
         }
-        internal void PutColumns(ObInfo dt)
+        internal void PutColumns(Database db,ObInfo dt)
         {
             if (dt == null || dt.Length == 0)
             {
@@ -778,7 +780,7 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-                if (dt.columns[j] is SqlCol sc && sc.tableCol is TableColumn dn)
+                if (db.objects[dt[j].defpos] is SqlTableCol sc && sc.tableCol is TableColumn dn)
                 {
                     PutString(sc.name);
                     PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
@@ -816,7 +818,7 @@ namespace Pyrrho.Level1
                 WriteByte(0);
                 return;
             }
-            if (dt.Equals(p.dataType))
+            if (dt.CompareTo(p.dataType)==0)
                 WriteByte(1);
             else
             {

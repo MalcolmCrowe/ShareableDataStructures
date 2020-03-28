@@ -53,3 +53,4 @@ E:\PyrrhoDB70\Pyrrho\TpccPyrrho\obj\x86\Debug\Tpcc.csproj.CopyComplete
 E:\PyrrhoDB70\Pyrrho\TpccPyrrho\obj\x86\Debug\TpccPyrrho.exe
 E:\PyrrhoDB70\Pyrrho\TpccPyrrho\obj\x86\Debug\TpccPyrrho.pdb
 E:\PyrrhoDB70\Pyrrho\TpccPyrrho\obj\x86\Debug\Tpcc.csprojAssemblyReference.cache
+E:\PyrrhoDB70\Pyrrho\TpccPyrrho\obj\x86\Debug\Tpcc.csproj.CoreCompileInputs.cache

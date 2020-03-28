@@ -7,7 +7,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -104,31 +104,33 @@ namespace Pyrrho.Level3
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
-            Cascade = -390, // bool (only used for Transaction subclass)
+            Cascade = -227, // bool (only used for Transaction subclass)
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
             Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // Role
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
-            NextHeap = -393, // long: Prepared statements and dynamic memory
-            NextPid = -394, // long: Used by DoStar for compiled executable code
+            NextStmt = -393, // long: uncommitted compiled statements
+            NextPrep = -394, // long: highwatermark of prepared statements for this connection
             NextPos = -395, // long: next proposed Physical record
-            NextTid = -58, // long:  will be used for next transaction
+            NextId = -58, // long:  will be used for next transaction
             Owner = -59, // long
             Role = -285, // long
             Roles = -60, // BTree<string,long>
+            SchemaKey = -286, // long
             Types = -61, // BTree<Domain,Domain>
-            User = -288; // long
+            User = -277; // long
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
         internal long owner => (long)(mem[Owner]??-1L);
-        internal long nextHeap => (long)(mem[NextHeap] ?? PyrrhoServer.ConnPos);
-        internal long nextPid => (long)(mem[NextPid] ?? Transaction.Aliasing);
+        internal long nextPrep => (long)(mem[NextPrep] ?? PyrrhoServer.Preparing);
+        internal long nextStmt => (long)(mem[NextStmt] ?? 
+            throw new PEException("PE777"));
         internal virtual long nextPos => Transaction.TransPos;
-        internal long nextTid => (long)(mem[NextTid] ?? Transaction.Analysing);
+        internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
         internal Role schemaRole => (mem[DBObject.Definer] is Role r)?r
@@ -136,12 +138,13 @@ namespace Pyrrho.Level3
         internal Role guestRole => (Role)mem[Guest];
         internal long _role => (long)(mem[Role]??DBObject.Definer);
         internal long _user => (long)(mem[User]??-500L);
-        internal virtual Role role => (Role)objects[_role]??schemaRole;
-        internal virtual User user => (User)(objects[_user]??mem[owner]);
+        internal Role role => (Role)objects[_role]??schemaRole;
+        internal User user => (User)(objects[_user]??mem[owner]);
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal bool cascade => (bool)(mem[Cascade] ?? false);
         internal int format => (int)(mem[Format] ?? 0);
+        internal long schemaKey => (long)(mem[SchemaKey] ?? 0L);
         /// <summary>
         /// The type system needs to be able to consider ad-hoc data types, i.e. not reified in
         /// any physical database. When data with any data type is committed to a database this must be
@@ -173,7 +176,8 @@ namespace Pyrrho.Level3
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
                   (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
-                  (Types,BTree<Domain,Domain>.Empty))
+                  (Types,BTree<Domain,Domain>.Empty),
+                  (NextStmt,Transaction.Compiling))
         {
             loadpos = 0;
         }
@@ -183,7 +187,7 @@ namespace Pyrrho.Level3
             dbfiles += (n, f);
             loadpos = 5;
         }
-        protected Database(long c, BTree<long,object> m):base(m)
+        internal Database(long c, BTree<long,object> m):base(m)
         {
             loadpos = c;
         }
@@ -227,10 +231,20 @@ namespace Pyrrho.Level3
                 d.mem+(Levels,d.levels + (x.Item1, x.Item2))+
                 (LevelUids,d.cache + (x.Item2, x.Item1)));
         }
-        public static Database operator +(Database d,(Role,long)x)
+        public static Database operator +(Database d,(Role,long) x)
         {
-            var (ro, curpos) = x;
-            return d+ (Roles, d.roles + (ro.name, ro.defpos))+(ro.defpos,ro);
+            var (ro, p) = x;
+            return d+(ro.defpos,ro)+(SchemaKey,p);
+        }
+        public static Database operator +(Database d0, DBObject ob)
+        {
+            var d = d0 as Transaction;
+            return d + ob;
+        }
+        public static Database operator +(Database d0, Procedure p)
+        {
+            var d = d0 as Transaction;
+            return d + p;
         }
         public static Database Get(string fn)
         {
@@ -246,6 +260,10 @@ namespace Pyrrho.Level3
                 Thread.Sleep(1000);
             }
         }
+        internal virtual void Add(Context cx,Physical ph,long lp)
+        {
+            ph.Install(cx, lp);
+        }
         internal FileStream File()
         {
             return dbfiles[name];
@@ -258,7 +276,9 @@ namespace Pyrrho.Level3
         public virtual Transaction Transact(long t,string sce,bool? auto=null)
         {
             // if not new, this database may be out of date: ensure we get the latest
-            var r = databases[name] ?? this;
+            var r = databases[name];
+            if (r == null || r.loadpos < loadpos)
+                r = this; // this is more recent!
             return new Transaction(r,t,sce,auto??autoCommit);
         }
         public DBObject GetObject(string n)
@@ -283,21 +303,19 @@ namespace Pyrrho.Level3
         {
             return null;
         }
-        public virtual (Database,long) RdrClose(Context cx)
+        public virtual Database RdrClose(Context cx)
         {
-            return (this,Transaction.Analysing);
+            return cx.db - NextId;
         }
         /// <summary>
         /// Load the database
         /// </summary>
         public virtual Database Load()
         {
-            var rdr = new Reader(this);
-            rdr.context = new Context(this);
+            var rdr = new Reader(new Context(this));
             Physical p;
             lock (df) //(consistency)
             {
-                var db = rdr.db;
                 for (int counter = 0; ; counter++)
                 {
                     p = rdr.Create();
@@ -308,19 +326,35 @@ namespace Pyrrho.Level3
                         if (p is PTransaction pt)
                         {
                             rdr.trans = pt;
-                            rdr.role = (Role)rdr.db.mem[pt.ptrole];
-                            rdr.user = (User)rdr.db.mem[pt.ptuser];
-                        } 
-                        else
-                            (rdr.db,rdr.role) = p.Install(rdr.db, rdr.role, rdr.Position);
+                            rdr.context.db += (Role, pt.ptrole);
+                            rdr.context.db += (User, pt.ptuser);
+                            // set the context for assigning ownership to new objects
+                            rdr.context.role = (Role)rdr.context.db.mem[pt.ptrole];
+                            rdr.context.user = (User)rdr.context.db.mem[pt.ptuser];
+                            // these two fields for reading of old objects from the log
+                            // not used (at all) during Load()
+                            rdr.role = rdr.context.role;
+                            rdr.user = rdr.context.user;
+                            rdr.trans = pt;
+                        }
+                        rdr.Add(p);
                     }
                     catch (Exception) { }
                 }
             }
-            var d = rdr.db;
+            var d = rdr.context.db;
             databases += (name, d);
-            rdr.db = d;
+            rdr.context.db = d;
             return d;
+        }
+        internal (Physical, long) _NextPhysical(long pp)
+        {
+            var rdr = new Reader(new Context(this), pp);
+            var ph = rdr.Create();
+            pp = (int)rdr.Position;
+            if (ph == null)
+                return (null, -1);
+            return (ph, pp);
         }
         /// <summary>
         /// Accessor: determine if there is anything to commit
@@ -349,11 +383,11 @@ namespace Pyrrho.Level3
         /// <returns>the physical record</returns>
         public Physical GetD(long pos)
         {
-            return new Reader(this,pos).Create();
+            return new Reader(new Context(this),pos).Create();
         }
         public Physical Get(ref long pos)
         {
-            var rdr = new Reader(this, pos);
+            var rdr = new Reader(new Context(this), pos);
             var r = rdr.Create();
             pos = rdr.Position;
             return r;
@@ -377,20 +411,20 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Commit the physical data
         /// </summary>
-        internal virtual (Database,long) Commit(Context cx)
+        internal virtual Database Commit(Context cx)
         {
-            return (this,Transaction.TransPos);
+            return this - NextId;
         }
 
-        internal (Database,long) Install()
+        internal Database Install()
         {
             var db = new Database(df.Length, mem);
             databases += (name, db);
-            return (db,Transaction.Analysing);
+            return db;
         }
-        internal virtual (Database,long) Rollback(object e)
+        internal virtual Database Rollback(object e)
         {
-            return (this,Transaction.Analysing);
+            return this - NextId;
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

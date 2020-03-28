@@ -1,5 +1,0 @@
-create table times(id int primary key,name char,lap numeric(3,1))
-[insert into times(name,lap) values 
-('Fred',23.2),('Joe',24.8),('Fred',23.9),('Joe',24.6),('Fred',25.7)]
-select id,name,lap,avg(lap) over (partition by name rows between 1 preceding and current row) from times 
-

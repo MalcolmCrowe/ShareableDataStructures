@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -532,7 +532,7 @@ namespace Pyrrho.Common
         EXCLUDING = 476,
         FINAL = 477,
         FIRST = 478,
-        FLAG = 479,
+        FLAG = 479, // unused (SIMILAR)
         FOLLOWING = 480,
         FORTRAN = 481,
         FOUND = 482,
@@ -718,12 +718,12 @@ namespace Pyrrho.Common
 		Date,		// Integer (UTC ticks)
 		TimeSpan,	// Integer (UTC ticks)
 		Boolean,	// byte 3 values: T=1,F=0,U=255
-		DomainRef,		// typedefpos, Integer els, els x data (preserved for compatibility)
+		DomainRef,  // typedefpos, Integer els, els x data 
 		Blob,		// Integer length, length x byte: Opaque binary type (Clob is String)
 		Row,		// spec, Integer cols, cols x data
 		Multiset,	// Integer els, els x data
 		Array,		// Integer els, els x data
-        Password    // A more secure type of string (write-only)
+        Password   // A more secure type of string (write-only)
 	}
     /// <summary>
     /// These are the supported character repertoires in SQL2011

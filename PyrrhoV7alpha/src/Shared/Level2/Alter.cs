@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -46,23 +46,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
-            _defpos = (long)(rdr.db.mem[prev] ?? ppos);
+            _defpos = (long)(rdr.context.db.mem[prev] ?? ppos);
             base.Deserialise(rdr);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = (Table)db.objects[tabledefpos];
+            var ro = cx.db.role;
+            var tb = (Table)cx.db.objects[tabledefpos];
             var ti = (ObInfo)ro.obinfos[tb.defpos];
-            var dt = (Domain)db.objects[domdefpos];
+            var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
-            var se = new SqlCol(ppos, name, tc);
-            var iq = ti.map[se.name];
-            ro = ro + (oc.defpos, oc) + (ti + (iq.Value,se));
+            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
+            var iq = ti.map[oc.name];
+            ro = ro + (oc.defpos, oc) + (ti + (iq.Value,oc));
             tb += tc;
-            return (db + (ro, p) + (tb, p) + (tc, p), ro);
+            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -106,23 +106,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
-            _defpos = ((DBObject)rdr.db.objects[prev])?.defpos??-1;
+            _defpos = ((DBObject)rdr.context.db.objects[prev])?.defpos??-1;
             base.Deserialise(rdr);
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = (Table)db.objects[tabledefpos];
+            var ro = cx.db.role;
+            var tb = (Table)cx.db.objects[tabledefpos];
             var ti = (ObInfo)ro.obinfos[tb.defpos];
-            var dt = (Domain)db.objects[domdefpos];
+            var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
-            var se = new SqlCol(ppos, name, tc);
-            var iq = ti.map[se.name];
-            ro = ro + (oc.defpos, oc) + (ti + (iq.Value, se));
+            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
+            var iq = ti.map[oc.name];
+            ro = ro + (oc.defpos, oc) + (ti + (iq.Value, oc));
             tb += tc;
-            return (db + (ro, p) + (tb, p) + (tc, p), ro);
+            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
         }
     }
 	/// <summary>
@@ -148,8 +148,8 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         public Alter3(long co, string nm, int sq, long tb, long dm, string ds,
             TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
-            GenerationRule ge, Transaction tr) :
-            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, tr)
+            GenerationRule ge, long pp, Context cx) :
+            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
 		{
             _defpos = co;
 		}
@@ -183,23 +183,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{ 
 			var previous = rdr.GetLong();
-            _defpos = ((DBObject)rdr.db.objects[previous]).defpos;
+            _defpos = ((DBObject)rdr.context.db.objects[previous]).defpos;
 			base.Deserialise(rdr);
 		}
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var tb = (Table)db.objects[tabledefpos];
+            var ro = cx.db.role;
+            var tb = (Table)cx.db.objects[tabledefpos];
             var ti = (ObInfo)ro.obinfos[tb.defpos];
             var i = ti.map[name].Value; 
-            var dt = (Domain)db.objects[domdefpos];
+            var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)db.objects[domdefpos], priv);
-            var se = new SqlCol(defpos, name, tc);
-            ro = ro + (oc.defpos, oc) + (ti + (i, se));
+            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
+            ro = ro + (oc.defpos, oc) + (ti + (i, oc));
             tb += tc;
-            return (db + (ro, p) + (tb, p) + (tc, p), ro);
+            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
         }
         /// <summary>
         /// Provide a string version of the Alter

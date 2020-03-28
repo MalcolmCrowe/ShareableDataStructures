@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -59,10 +59,10 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
         /// <param name="pb">The local base</param>
-        public Grant(Privilege pr, long ob, long ge, Transaction tr)
-            : this(Type.Grant, pr, ob, ge, tr) { }
-        protected Grant(Type t,Privilege pr, long ob, long ge, Transaction tr)
-            : base(t, tr)
+        public Grant(Privilege pr, long ob, long ge, long pp, Context cx)
+            : this(Type.Grant, pr, ob, ge, pp, cx) { }
+        protected Grant(Type t,Privilege pr, long ob, long ge, long pp, Context cx)
+            : base(t, pp, cx)
 		{
             priv = pr;
             obj = ob;
@@ -149,15 +149,16 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            var gee = db.objects[grantee];
+            var gee = cx.db.objects[grantee];
+            var ro = cx.db.role;
             if (gee is Role r)
                 ro = r;
             var oi = ro.obinfos[obj] as ObInfo;
             var pr = oi.priv | priv;
             ro += new ObInfo(obj, oi.name, oi.domain, pr, oi.mem);
-            return (db + (ro, p),ro);
+            cx.db += (ro, p);
         }
     }
     internal class Authenticate : Physical
@@ -171,8 +172,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr,irolepos)) return irolepos;
             return -1;
         }
-        internal Authenticate(long us, string p, long r, Transaction tr) 
-            : base(Type.Authenticate, tr)
+        internal Authenticate(long us, string p, long r, long pp, Context cx)
+            : base(Type.Authenticate, pp, cx)
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }
@@ -208,7 +209,7 @@ namespace Pyrrho.Level2
             return "Authenticate [" +userpos+"] "+ pwd + " FOR [" + irolepos+"]";
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

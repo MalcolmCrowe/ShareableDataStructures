@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -23,6 +23,7 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class PType : PDomain
 	{
+        internal long typedefpos;
         internal long underdefpos;
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser
@@ -30,8 +31,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="sd">The representation datatype</param>
         /// <param name="pb">The local database</param>
-        public PType(string nm, long ud, Domain dt, Transaction tr)
-            : this(Type.PType,nm, ud, dt, tr)
+        public PType(Ident nm, long sd, long ud, long pp, Context cx)
+            : this(Type.PType,nm, sd, ud, pp, cx)
         {
         }
         /// <summary>
@@ -41,9 +42,10 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, string nm, long ud, Domain dt, Transaction tr)
-            : base(t,nm, dt, tr)
+        protected PType(Type t, Ident nm, long sd, long ud, long pp, Context cx)
+            : base(t, nm.ident, Sqlx.TYPE, 0,0, CharSet.UCS,"","",sd, pp, cx)
 		{
+            typedefpos = pp;
             underdefpos = ud;
 		}
         /// <summary>
@@ -114,7 +116,19 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-	}
+        internal override void Install(Context cx, long p)
+        {
+            var ro = cx.db.role;
+            var dt = new Domain(this, cx.db);
+            if (name != "")
+                ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            if (cx.db.format < 51)
+                ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
+            cx.db = cx.db + (ro,p) + (dt, p);
+            if (!cx.db.types.Contains(dt))
+                cx.db += (Database.Types, cx.db.types + (dt, dt));
+        }
+    }
     internal class PType1 : PType // no longer used
     {
         /// <summary>
@@ -125,8 +139,8 @@ namespace Pyrrho.Level2
         /// <param name="un">The supertype if specified</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        public PType1(string nm, long ud, Domain dt,Transaction tr)
-            : base(Type.PType1, nm, ud, dt, tr)
+        public PType1(Ident nm, long sd, long ud, long pp, Context cx)
+            : base(Type.PType1, nm, sd, ud, pp, cx)
         {  }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer

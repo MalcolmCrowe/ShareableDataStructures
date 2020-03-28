@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -44,8 +44,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr,retdefpos)) return retdefpos;
             return -1;
         }
-        public PProcedure(string nm, int ar, long rt, string pc, Database db) :
-            this(Type.PProcedure2, nm, ar, rt, pc, db)
+        public PProcedure(string nm, int ar, long rt, string pc, long pp, Context cx) :
+            this(Type.PProcedure2, nm, ar, rt, pc, pp, cx)
         { }
         /// <summary>
         /// Constructor: a procedure or function definition from the Parser.
@@ -61,8 +61,8 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, int ar, long rt, string pc,Database db)
-			:base(tp,db)
+        protected PProcedure(Type tp, string nm, int ar, long rt, string pc,long pp, Context cx)
+            : base(tp,pp,cx)
 		{
             proc_clause = pc;
             retdefpos = rt;
@@ -100,11 +100,12 @@ namespace Pyrrho.Level2
             if (type==Type.PMethod2 || type==Type.PProcedure2)
                 wr.PutLong(retdefpos);
             var s = proc_clause;
-            if (wr.db.format < 51)
+            if (wr.cx.db.format < 51)
                 s = DigestSql(wr,s);
             wr.PutString(s);
 			base.Serialise(wr);
-		}
+            Compile(wr.cx, wr.Length);
+        }
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
@@ -123,14 +124,20 @@ namespace Pyrrho.Level2
                 retdefpos = mt.typedefpos;
 			proc_clause=rdr.GetString();
 			base.Deserialise(rdr);
-            var op = rdr.db.parse;
-            rdr.db += (Database._ExecuteStatus, ExecuteStatus.Parse);
+            Compile(rdr.context, rdr.Position);
+        }
+        protected void Compile(Context cx, long p)
+        {
+            var op = cx.db.parse;
+            var ro = cx.db.role;
+            cx.db += (Database._ExecuteStatus, ExecuteStatus.Parse);
             // preinstall the bodyless proc to allow recursive procs
-            (rdr.db, rdr.role) = Install(rdr.db, rdr.role, rdr.Position);
-            var pr = (Procedure)rdr.db.objects[ppos];
-            proc = new Parser(rdr.db, rdr.context).ParseProcedureBody(pr,proc_clause);
-            (rdr.db, rdr.role) = Install(rdr.db, rdr.role, rdr.Position);
-            rdr.db += (Database._ExecuteStatus, op);
+            Install(cx, p);
+            var pr = cx.db.objects[ppos] as Procedure;
+            proc = new Parser(cx.db).ParseProcedureBody(pr, proc_clause);
+            cx.db += (proc, p);
+            Install(cx, p);
+            cx.db += (Database._ExecuteStatus, op);
         }
         /// <summary>
         /// A readble version of this Physical
@@ -154,16 +161,23 @@ namespace Pyrrho.Level2
             return base.Conflicts(db, tr, that);
         }
 
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
+            var ro = cx.db.role;
             var priv = Grant.Privilege.Owner | Grant.Privilege.Execute
                 | Grant.Privilege.GrantExecute;
-            var pr = proc??new Procedure(this, db, BTree<long, object>.Empty);
-            ro = ro + new ObInfo(pr.defpos,name,pr.retType,priv) + this;
-            if (db.format < 51)
+            var rd = (Domain)cx.db.objects[retdefpos];
+            if (proc!=null)
+                proc += (Procedure.RetType, rd);
+            var ri = (ObInfo)ro.obinfos[retdefpos];
+            var oi = new ObInfo(defpos, name, rd, priv);
+            if (ri != null)
+                oi += (ObInfo.Columns, ri.columns);
+            var pr = proc??new Procedure(this, cx.db, BTree<long, object>.Empty);
+            ro = ro + oi + this;
+            if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            db = db + (ro,p)+(pr,p);
-            return (db,ro);
+            cx.db = cx.db + (ro,p) +(pr,p);
         }
     }
 }

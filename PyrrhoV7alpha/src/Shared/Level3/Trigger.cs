@@ -5,7 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -22,17 +22,19 @@ namespace Pyrrho.Level3
         internal const long
             Action = -290, // WhenPart
             Def = -291, // string
-            _From = -396, // long
-            NewRow = -292, // string
-            NewTable = -293, // string
-            OldRow = -294, // string
-            OldTable = -295, // string
+            _From = -292, // From
+            NewRow = -293, // string
+            NewTable = -294, // string
+            OldRow = -295, // FromOldTable
+            OldRowId = -366, // Ident
+            OldTable = -296, // FromOldTable
+            OldTableId = -367, // Ident
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // BList<long>
         /// <summary>
         /// The defining position of the associated table
         /// </summary>
-		public long from => (long)mem[_From];
+		public From from => (From)mem[_From];
         public long table => (long)mem[From.Target];
         public Ident def => (Ident)mem[Def];
         public string name => (string)mem[Name] ?? "";
@@ -47,7 +49,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the name of the old row
         /// </summary>
-		public Ident oldRow =>(Ident)mem[OldRow];
+		public FromOldTable oldRow =>(FromOldTable)mem[OldRow];
+        public Ident oldRowId => (Ident)mem[OldRowId];
         /// <summary>
         /// the name of the new row
         /// </summary>
@@ -55,7 +58,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the name of the old table
         /// </summary>
-		public Ident oldTable =>(Ident)mem[OldTable];
+		public FromOldTable oldTable =>(FromOldTable)mem[OldTable];
+        public Ident oldTableId => (Ident)mem[OldTableId];
         /// <summary>
         /// the name of the new table
         /// </summary>
@@ -66,9 +70,10 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Trigger(PTrigger p,Database db)
             : base(p.name,p.ppos,p.defpos,db.role.defpos,BTree<long,object>.Empty
-                  +(Action,(WhenPart)p.def)+(_From,p.from.defpos)
+                  +(Action,(WhenPart)p.def)+(_From,p.from)
                   +(From.Target,p.from.target) + (TrigType,p.tgtype)
-                  +(UpdateCols,p.cols)+(OldRow,p.oldRow)+(NewRow,p.newRow)
+                  +(UpdateCols,p.cols)+(OldRow,p.oldRow)+(OldRowId,p.oldRowId)
+                  +(NewRow,p.newRow)+(OldTableId,p.oldTableId)
                   +(OldTable,p.oldTable)+(NewTable,p.newTable)
                   +(Def,p.src))
 		{ }
@@ -86,7 +91,7 @@ namespace Pyrrho.Level3
 		{
             var sb = new StringBuilder(base.ToString());
             sb.Append(" TrigType=");sb.Append(tgType);
-            sb.Append(" From="); sb.Append(Uid(from));
+            sb.Append(" From:"); sb.Append(from);
             sb.Append(" On=");sb.Append(Uid(table));
             sb.Append(" Action:");sb.Append(action);
             if (cols != null)
@@ -109,47 +114,39 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new Trigger(dp, mem);
-        }
-        internal override Basis Relocate(Writer wr)
-        {
-            var r = this;
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (Trigger)Relocate(wr);
-            var ac = BList<Executable>.Empty;
-            var ch = false;
-            var cn = (SqlValue)action.cond?.Relocate(wr);
-            for (var b=action.stms.First();b!=null;b=b.Next())
-            {
-                var a = (Executable)b.value().Relocate(wr);
-                ch = ch || (a != b.value());
-                ac += a;
-            }
-            if (ch || cn!=action.cond)
-                r += (Action, new WhenPart(action.defpos,cn,ac));
-            var ta = wr.Fix(from);
-            if (ta != from)
-                r += (_From, ta);
-            var uc = BList<long>.Empty;
-            ch = false;
-            for (var b=cols.First();b!=null;b=b.Next())
-            {
-                var c = wr.Fix(b.value());
-                ch = ch || (c != b.value());
-                uc += c;
-            }
-            if (ch)
-                r += (UpdateCols, uc);
-            return r;
+            throw new NotImplementedException();
         }
         internal override DBObject Frame(Context cx)
         {
             var ac = BList<Executable>.Empty;
+            var ta = (From)from.Frame(cx);
             var cn = (SqlValue)action.cond?.Frame(cx);
+            oldRow?.Frame(cx);
+            oldTable?.Frame(cx);
             for (var b = action.stms.First(); b != null; b = b.Next())
                 ac += (Executable)b.value().Frame(cx);
-            return cx.Add(this + (Action, new WhenPart(action.defpos,cn,ac)));
+            return cx.Add(this + (Action, new WhenPart(action.defpos,cn,ac))
+                + (_From,ta),true);
+        }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            var tb = (Table)nd.objects[table];
+            var tgs = BTree<PTrigger.TrigType, BTree<long, Trigger>>.Empty;
+            for (var b=tb.triggers.First();b!=null;b=b.Next())
+            {
+                var ts = BTree<long, Trigger>.Empty;
+                var ch = false;
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.key() != defpos)
+                        ts += (c.key(), c.value());
+                    else
+                        ch = true;
+                if (ch)
+                    tgs += (b.key(), ts);
+            }
+            tb += (Table.Triggers, tgs);
+            nd += (tb, p);
+            return base.Drop(d, nd, p);
         }
     }
 }

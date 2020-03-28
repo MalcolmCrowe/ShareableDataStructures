@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Collections;
 using System.ComponentModel;
 using System.Windows.Forms;
-using System.Data;
 using Pyrrho;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,7 +31,7 @@ namespace Tpcc
         private Tpcc.Delivery delivery1;
 		private System.ComponentModel.IContainer components;
 		public PyrrhoConnect conn;
-        IDbTransaction tr = null;
+        PyrrhoTransaction tr = null;
 		private System.Windows.Forms.Button button2;
 		private System.Windows.Forms.Label label1;
 		public int wid;
@@ -509,7 +508,7 @@ namespace Tpcc
         }
         public void Commit()
         {
-            tr.Commit();
+            tr?.Commit();
             tr = null;
         }
         private void Form1_Load(object sender, System.EventArgs e)
@@ -640,7 +639,8 @@ namespace Tpcc
             Form1.maxfid += nc;
             commits = 0; rconflicts = 0; wconflicts = 0;
             Console.WriteLine("Started at " + DateTime.Now.ToString()+" with "+nc+" clerks");
-            for (var w =1;w<=nw;w++)
+            var w = 1;
+      //      for (var w =1;w<=nw;w++)
             for (var i = 0; i < nc; i++)
             Task.Run(()=>{
                 var f = new Form1(w);

@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -14,44 +14,70 @@ using System.Text;
 namespace Pyrrho.Level4
 {
     /// <summary>
-    /// A row set for a Join part
+    /// A row set for a Join operation.
     /// </summary>
 	internal class JoinRowSet : RowSet
 	{
-        public override string keywd()
-        {
-            return " Join ";
-        }
+        internal readonly JoinPart join;
         /// <summary>
         /// The two row sets being joined
         /// </summary>
-		internal RowSet first,second;
+		internal readonly RowSet first,second;
         /// <summary>
         /// Constructor: build the rowset for the Join
         /// </summary>
         /// <param name="j">The Join part</param>
-		public JoinRowSet(Context _cx, Query j,RowSet lr,RowSet rr) : base(lr._tr,_cx,j)
+		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : 
+            base(j.defpos,_cx,j.rowType.info,_Finder(lr,rr),null,j.where,j.ordSpec,j.matches,
+                Context.Copy(j.matching))
 		{
+            join = j;
             first = lr;
             second = rr;
         }
+        JoinRowSet(long dp,Context cx,JoinRowSet jrs):base(dp,cx,jrs)
+        {
+            join = jrs.join;
+            first = jrs.first;
+            second = jrs.second;
+
+        }
+        static BTree<long,long> _Finder(RowSet lr,RowSet rr)
+        {
+            var r = lr.finder;
+            for (var b=rr.finder.First();b!=null;b=b.Next())
+                r += (b.key(),b.value());
+            return r;
+        }
+        protected JoinRowSet(JoinRowSet rs, long a, long b) : base(rs, a, b)
+        {
+            join = rs.join;
+            first = rs.first;
+            second=rs.second;
+        }
+        internal override RowSet New(long a, long b)
+        {
+            return new JoinRowSet(this, a, b);
+        }
+        internal override RowSet New(long dp, Context cx)
+        {
+            return new JoinRowSet(dp, cx, this);
+        }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
-            var j = qry as JoinPart;
+            var j = join;
             sb.Append("Join ");
             sb.Append((j.kind == Sqlx.NO) ? "FD" : j.kind.ToString());
             Conds(sb, j.joinCond, " ON ");
             sb.Append(' ');
             var fr = j.FDInfo?.reverse;
-            var rx = j.FDInfo?.rindexDefPos;
+            var rx = j.FDInfo?.rindex;
             var ft = (rx!=null)? " foreign " : " primary ";
-            var index = _tr.objects[j.FDInfo.indexDefPos] as Index;
             if (rx!=null)
             {
                 if (fr==true)
                 {
                     sb.Append(ft);
-                    Cols(sb, index);
                     sb.Append(" " + j.left.ToString());
                     first.Matches(sb);
                     Conds(sb, j.left.where, " where ");
@@ -61,7 +87,6 @@ namespace Pyrrho.Level4
                 } else
                 {
                     sb.Append(ft);
-                    Cols(sb, index);
                     sb.Append(" " + j.right.ToString());
                     second.Matches(sb);
                     Conds(sb, j.right.where, " where ");
@@ -97,20 +122,26 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="matches">matching information</param>
         /// <returns>the enumerator</returns>
-        protected override RowBookmark _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
-            JoinPart j = qry as JoinPart;
+            JoinPart j = join;
+            var ox = _cx.from;
+            _cx.from = _finder;
+            JoinBookmark r;
             switch (j.kind)
             {
-                case Sqlx.CROSS: return CrossJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
-                case Sqlx.INNER: return InnerJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
-                case Sqlx.LEFT: return LeftJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
-                case Sqlx.RIGHT: return RightJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
-                case Sqlx.FULL: return FullJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
-                case Sqlx.NO: return FDJoinBookmark.New(_cx,this)?.MoveToMatch(_cx);
+                case Sqlx.CROSS: r= CrossJoinBookmark.New(_cx,this); break;
+                case Sqlx.INNER: r= InnerJoinBookmark.New(_cx,this); break;
+                case Sqlx.LEFT: r = LeftJoinBookmark.New(_cx, this); break;
+                case Sqlx.RIGHT: r = RightJoinBookmark.New(_cx, this); break;
+                case Sqlx.FULL: r = FullJoinBookmark.New(_cx,this); break;
+                case Sqlx.NO: r = FDJoinBookmark.New(_cx,this); break;
                 default:
                     throw new PEException("PE57");
             }
+            var b = r?.MoveToMatch(_cx);
+            _cx.from = ox;
+            return b;
         }
     }
     /// <summary>
@@ -121,16 +152,16 @@ namespace Pyrrho.Level4
     /// We discover there is a tie when the MTreeBookmark is over-long or has pmk nonnull.
     /// With joins we always have MTree for both left and right (from Indexes or from Ordering)
     /// </summary>
-	internal abstract class JoinBookmark : RowBookmark
+	internal abstract class JoinBookmark : Cursor
 	{
         /// <summary>
-        /// The associated part row set
+        /// The associated join row set
         /// </summary>
 		internal readonly JoinRowSet _jrs;
-        protected readonly RowBookmark _left, _right;
+        protected readonly Cursor _left, _right;
         protected readonly bool _useLeft, _useRight;
-        internal JoinBookmark(Context _cx, JoinRowSet jrs,RowBookmark left,bool ul,RowBookmark right,
-            bool ur,int pos) :base(_cx,jrs,pos,0)
+        internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+            bool ur, int pos) : base(_cx, jrs, pos, 0, _Vals(jrs, left, ul, right, ur))
         {
             _jrs = jrs;
             _left = left;
@@ -138,56 +169,34 @@ namespace Pyrrho.Level4
             _right = right;
             _useRight = ur;
         }
-        protected BTree<long,TypedValue> Value(Context _cx)
+        internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+    bool ur, int pos,TRow rw) : base(_cx, jrs, pos, 0, rw)
         {
-            var r = BTree<long, TypedValue>.Empty;
-            for (var b = _jrs.rowType.columns.First(); b != null; b = b.Next())
+            _jrs = jrs;
+            _left = left;
+            _useLeft = ul;
+            _right = right;
+            _useRight = ur;
+        }
+        static TRow _Vals(JoinRowSet jrs, Cursor left, bool ul, Cursor right, bool ur)
+        {
+            var vs = BTree<long, TypedValue>.Empty;
+            for (var b = jrs.info.columns.First(); b != null; b = b.Next())
             {
                 var p = b.value().defpos;
-                r += (p, _cx.values[p]);
+                vs += (p, (ul?left[p]:null) ?? (ur?right[p]:null)??TNull.Value);
             }
-            return r;
-        }
-        protected TypedValue Get(Context _cx, string n)
-        {
-            TypedValue v = null;
-            if (_useLeft)
-            {
-                var t = _jrs.first.rowType;
-                var j = t.map[n]??-1;
-                if (j >= 0)
-                {
-                    var s = t.columns[j];
-                    if (_left._rs.qry is Query qs && j < qs.rowType.columns.Count)
-                        v = qs.rowType.columns[j].Eval(_rs._tr as Transaction, _cx);
-                    if (v == null)
-                        v = _left?.row[s.defpos] ?? TNull.Value; // allow for outer joins
-                }
-            }
-            if (v == null && _useRight)
-            {
-                var t = _jrs.second.rowType;
-                var j = t.map[n] ?? -1;
-                if (j >= 0)
-                {
-                    var s = t.columns[j];
-                    if (_right._rs.qry is Query qs && j < qs.rowType.columns.Count)
-                        v = qs.rowType.columns[j].Eval(_rs._tr as Transaction, _cx);
-                    if (v == null)
-                        v = _right?.row[s.defpos] ?? TNull.Value;
-                }
-            }
-            return v ?? TNull.Value;
+            return new TRow(jrs.info.domain, vs);
         }
         protected abstract JoinBookmark _Next(Context _cx);
-        public override RowBookmark Next(Context _cx)
+        public override Cursor Next(Context _cx)
         {
             return _Next(_cx)?.MoveToMatch(_cx);
         }
-        internal RowBookmark MoveToMatch(Context _cx)
+        internal Cursor MoveToMatch(Context _cx)
         {
             var r = this;
-            while (r != null && !Query.Eval(_jrs.qry.where,_jrs._tr as Transaction, _cx))
+            while (r != null && !Query.Eval(_jrs.where, _cx))
                 r = r._Next(_cx);
             return r;
         }
@@ -198,35 +207,26 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class InnerJoinBookmark : JoinBookmark
     {
-        TRow _row, _key;
         /// <summary>
         /// Constructor: a new Inner Join enumerator
         /// </summary>
         /// <param name="j">The part row set</param>
-        InnerJoinBookmark(Context _cx,JoinRowSet j, RowBookmark left, RowBookmark right,int pos=0) 
+        InnerJoinBookmark(Context _cx,JoinRowSet j, Cursor left, Cursor right,int pos=0) 
             : base(_cx,j,left,true,right,true,pos)
         {
             // warning: now check the joinCondition using AdvanceToMatch
-            var vs = Value(_cx);
-            _row = new TRow(j.rowType, vs);
-            _key = new TRow(j.keyType, vs);
         }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
         internal static InnerJoinBookmark New(Context _cx,JoinRowSet j)
         {
             var left = j.first.First(_cx);
             var right = j.second.First(_cx);
             if (left == null || right == null)
                 return null;
-            var join = j.qry as JoinPart;
+            var join = j.join;
             for (;;)
             {
                 var bm = new InnerJoinBookmark(_cx,j, left, right);
-                int c = join.Compare(j._tr as Transaction, _cx);
+                int c = join.Compare(_cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -246,7 +246,7 @@ namespace Pyrrho.Level4
         {
             var left = _left;
             var right = _right;
-            var join = _jrs.qry as JoinPart;
+            var join = _jrs.join;
             if (right.Mb() is MTreeBookmark mb0 && mb0.hasMore((int)join.joinCond.Count))
             {
                 right = right.Next(_cx);
@@ -269,7 +269,7 @@ namespace Pyrrho.Level4
             for (; ; )
             {
                 var ret = new InnerJoinBookmark(_cx,_jrs, left, right, _pos + 1);
-                int c = join.Compare(_jrs._tr as Transaction, _cx);
+                int c = join.Compare( _cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -302,67 +302,77 @@ namespace Pyrrho.Level4
         /// </summary>
         readonly FDJoinPart info;
         readonly JoinPart join;
-        readonly TRow _row, _key;
         /// <summary>
         /// Constructor for the functional-dependent join
         /// </summary>
         /// <param name="rs">The Join RowSet</param>
-        FDJoinBookmark(Context _cx,JoinRowSet rs, RowBookmark left, RowBookmark right,int pos) 
-            : base(_cx,rs,left,true,right,true,pos)
+        FDJoinBookmark(Context _cx,JoinRowSet rs, IndexRowSet.IndexCursor left, 
+            IndexRowSet.IndexCursor right,int pos) 
+            : base(_cx,rs,left,true,right,true,pos,_Row(rs,left,right))
         {
-            join = rs.qry as JoinPart;
+            join = rs.join;
             info = join.FDInfo;
-            // warning: now check the joinCondition using AdvanceToMatch
-            var vs = Value(_cx);
-            _row = new TRow(rs.rowType, vs);
-            _key = new TRow(rs.keyType, vs);
         }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
+        static TRow _Row(JoinRowSet rs,Cursor left,Cursor right)
+        {
+            var vs = BTree<long, TypedValue>.Empty;
+            for (var b=rs.join.left.rowType.First();b!=null;b=b.Next())
+            {
+                var s = b.value();
+                var p = (s is SqlCopy sc) ? sc.copyFrom : 
+                    (s is SqlTableCol st) ? st.tableCol.defpos : -1L;
+                vs += (s.defpos, left[p]);
+            }
+            for (var b = rs.join.right.rowType.First(); b != null; b = b.Next())
+            {
+                var s = b.value();
+                var p = (s is SqlCopy sc) ? sc.copyFrom :
+                    (s is SqlTableCol st) ? st.tableCol.defpos : -1L;
+                vs += (s.defpos, right[p]);
+            }
+            return new TRow(rs.info.domain, vs);
+        }
         /// <summary>
         /// A new FD bookmark
         /// </summary>
         /// <param name="j">the join rowset</param>
         /// <returns>the bookmark</returns>
-        internal static FDJoinBookmark New(Context _cx,JoinRowSet j)
+        internal static FDJoinBookmark New(Context _cx, JoinRowSet j)
         {
-            var join = j.qry as JoinPart;
+            var join = j.join;
             var info = join.FDInfo;
-            RowBookmark left = null, right = null;
+            IndexRowSet.IndexCursor left, right;
+            var ox = _cx.from;
+            _cx.from = j.finder;
             if (info.reverse)
-                for (left = j.first.First(_cx); left != null; left = left.Next(_cx))
+            {
+                left = For(j.first.First(_cx));
+                if (left != null)
                 {
-                    if (j._tr.objects[info.rindexDefPos] is Index rx && !(left.Matches() &&
-                            Query.Eval(join.left.where, j._tr as Transaction, _cx)))
-                        continue;
-                    PRow key = null;
-                    for (var b = info.conds.First(); b != null; b = b.Next())
-                        if (b.value() is SqlValueExpr se)
-                            key = new PRow(se.left.Eval(j._tr as Transaction, _cx), key);
-                    right = j.second.PositionAt(_cx,key.Reverse());
-                    if (right?.Matches()==true &&
-                        Query.Eval(join.right.where, j._tr as Transaction, _cx))
-                        return new FDJoinBookmark(_cx,j, left, right, 0);
+                    right = For(j.second.PositionAt(_cx, left._bmk.key()));
+                    var r = new FDJoinBookmark(_cx, j, left, right, 0);
+                    _cx.from = ox;
+                    return r;
                 }
+            }
             else
-                for (right = j.second.First(_cx); right != null; right = right.Next(_cx))
+            {
+                right = For(j.second.First(_cx));
+                if (right!= null)
                 {
-                    if (j._tr.objects[info.rindexDefPos] is Index rx && !(right.Matches() &&
-                            Query.Eval(join.right.where, j._tr as Transaction, _cx)))
-                        continue;
-                    PRow key = null;
-                    for (var b = info.conds.First(); b != null; b = b.Next())
-                        if (b.value() is SqlValueExpr se)
-                            key = new PRow(se.right.Eval(j._tr as Transaction, _cx), key);
-                    left = j.first.PositionAt(_cx,key.Reverse());
-                    if (left?.Matches()==true &&
-                        Query.Eval(join.left.where, j._tr as Transaction, _cx))
-                        return new FDJoinBookmark(_cx,j, left, right, 0);
+                    left = For(j.first.PositionAt(_cx,right._bmk.key()));
+                    var r = new FDJoinBookmark(_cx, j, left, right, 0);
+                    _cx.from = ox;
+                    return r;
                 }
+            }
+            _cx.from = ox;
             return null;
+        }
+        static IndexRowSet.IndexCursor For(Cursor c)
+        {
+            var sc = (SelectedRowSet.SelectedCursor)c;
+            return (IndexRowSet.IndexCursor)sc._bmk;
         }
         /// <summary>
         /// Move to the next row in a functional-dependent rowset
@@ -370,46 +380,34 @@ namespace Pyrrho.Level4
         /// <returns>a bookmark for the next row or null</returns>
         protected override JoinBookmark _Next(Context _cx)
         {
-            var left = _left;
-            var right = _right;
-            var join = _jrs.qry as JoinPart;
-            var rindex = _jrs._tr.objects[info.rindexDefPos] as Index;
+            var left = (IndexRowSet.IndexCursor)_left;
+            var right = (IndexRowSet.IndexCursor)_right;
+            var ox = _cx.from;
+            _cx.from = _jrs.finder;
             if (info.reverse)
             {
-                for (left = left.Next(_cx); left != null; left = left.Next(_cx))
+                left = (IndexRowSet.IndexCursor)left.Next(_cx);
+                if (left != null)
                 {
-                    if (rindex != null && !(left.Matches() &&
-                         Query.Eval(join.left.where, _rs._tr as Transaction, _cx)))
-                        continue;
-                    PRow ks = null;
-                    for (var b = info.conds.First(); b != null; b = b.Next())
-                        if (b.value() is SqlValueExpr c)
-                            ks = new PRow(c.left.Eval(_jrs._tr as Transaction, _cx), ks);
-                    right = _jrs.second.PositionAt(_cx,ks.Reverse());
-                    if (right?.Matches()==true &&
-                        Query.Eval(join.right.where, _rs._tr as Transaction, _cx))
-                        return new FDJoinBookmark(_cx,_jrs, left, right, _pos + 1);
+                    right = For(_jrs.second.PositionAt(_cx,left._bmk.key()));
+                    var r = new FDJoinBookmark(_cx, _jrs, left, right, _pos + 1);
+                    _cx.from = ox;
+                    return r;
                 }
-                return null;
             }
             else
             {
-                for (right = right.Next(_cx);right != null;right = right.Next(_cx))
+                right = (IndexRowSet.IndexCursor)right.Next(_cx);
+                if (right!=null)
                 {
-                    if (rindex != null && !(right.Matches() &&
-                            Query.Eval(join.right.where, _rs._tr as Transaction, _cx)))
-                        continue;
-                    PRow ks = null;
-                    for (var b = info.conds.First(); b!=null; b=b.Next())
-                        if (b.value() is SqlValueExpr c)
-                            ks = new PRow(c.right.Eval(_jrs._tr as Transaction, _cx), ks);
-                    left = _jrs.first.PositionAt(_cx,ks.Reverse());
-                   if (left?.Matches()==true && 
-                        Query.Eval(join.left.where,_rs._tr as Transaction, _cx))
-                    return new FDJoinBookmark(_cx,_jrs, left, right, _pos + 1);
+                    left = For(_jrs.first.PositionAt(_cx,right._bmk.key()));
+                    var r = new FDJoinBookmark(_cx, _jrs, left, right, _pos + 1);
+                    _cx.from = ox;
+                    return r;
                 }
-                return null;
             }
+            _cx.from = ox;
+            return null;
         }
 
         internal override TableRow Rec()
@@ -422,30 +420,17 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class LeftJoinBookmark : JoinBookmark
     {
-        RowBookmark hideRight = null;
-        readonly TRow _row, _key;
+        readonly Cursor hideRight = null;
         /// <summary>
         /// Constructor: a left join enumerator for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        LeftJoinBookmark(Context _cx,JoinRowSet j, RowBookmark left, RowBookmark right,bool ur,int pos) 
+        LeftJoinBookmark(Context _cx,JoinRowSet j, Cursor left, Cursor right,bool ur,int pos) 
             : base(_cx,j,left,true,right,ur,pos)
         {
             // care: ensure you AdvanceToMatch
-            var jp = j.qry as JoinPart;
             hideRight = right;
-            var vs = Value(_cx);
-            if (!_useRight)
-                for (var b = j.second.rowType.columns.First(); b != null; b = b.Next())
-                _cx.values -= b.value().defpos;
-            _row = new TRow(j.rowType, vs);
-            _key = new TRow(j.keyType, vs);
         }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
         /// <summary>
         /// A new leftjoin bookmark
         /// </summary>
@@ -457,13 +442,13 @@ namespace Pyrrho.Level4
             var right = j.second.First(_cx);
             if (left == null)
                 return null;
-            var join = j.qry as JoinPart;
+            var join = j.join;
             for (;;)
             {
                 if (right == null)
                     return new LeftJoinBookmark(_cx,j, left, null, false, 0);
                 var bm = new LeftJoinBookmark(_cx,j, left, right,true,0);
-                int c = join.Compare(j._tr as Transaction, _cx);
+                int c = join.Compare(_cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -482,9 +467,7 @@ namespace Pyrrho.Level4
             var right = _right;
             if ((_left != null && left == null) || (_right != null && right == null))
                 throw new PEException("PE388");
-            var join = _jrs.qry as JoinPart;
-            if (right!=null)
-                _cx.Add(join.right, right);
+            var join = _jrs.join;
             right = hideRight;
             if (_useRight && right.Mb() is MTreeBookmark mr && mr.hasMore((int)join.joinCond.Count))
             {
@@ -501,8 +484,8 @@ namespace Pyrrho.Level4
             {
                 var mb = (left.Mb() is MTreeBookmark ml && ml.changed((int)join.joinCond.Count)) ? null :
                     right.Mb()?.ResetToTiesStart((int)join.joinCond.Count);
-                if (mb != null)
-                    right = right.ResetToTiesStart(_cx,mb);
+                if (mb != null && left.ResetToTiesStart(_cx, mb) is LeftJoinBookmark rel)
+                    left = rel;
                 else
                     right = right.Next(_cx);
             }
@@ -513,7 +496,7 @@ namespace Pyrrho.Level4
                 if (right == null)
                     return new LeftJoinBookmark(_cx,_jrs, left, null, false, _pos + 1);
                 var ret = new LeftJoinBookmark(_cx,_jrs, left, right, true, _pos + 1);
-                int c = join.Compare(_jrs._tr as Transaction, _cx);
+                int c = join.Compare(_cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -530,30 +513,15 @@ namespace Pyrrho.Level4
     }
     internal class RightJoinBookmark : JoinBookmark
     {
-        RowBookmark hideLeft = null;
-        TRow _row, _key;
         /// <summary>
         /// Constructor: a right join enumerator for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        RightJoinBookmark(Context _cx,JoinRowSet j, RowBookmark left, bool ul, RowBookmark right,int pos) 
+        RightJoinBookmark(Context _cx,JoinRowSet j, Cursor left, bool ul, Cursor right,int pos) 
             : base(_cx,j,left,ul,right,true,pos)
         {
             // care: ensure you AdvanceToMatch
-            var jp = j.qry as JoinPart;
-            hideLeft = left;
-            var vs = Value(_cx);
-            if (!_useLeft)
-                for (var b = j.first.rowType.columns.First(); b != null; b = b.Next())
-                    _cx.values -= b.value().defpos;
-            _row = new TRow(j.rowType, vs);
-            _key = new TRow(j.keyType, vs);
         }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
         /// <summary>
         /// a bookmark for the right join
         /// </summary>
@@ -565,13 +533,13 @@ namespace Pyrrho.Level4
             var right = j.second.First(_cx);
             if (right == null)
                 return null;
-            var join = j.qry as JoinPart;
+            var join = j.join;
             for (;;)
             {
                 if (left == null)
                     return new RightJoinBookmark(_cx,j, null, false, right, 0);
                 var bm = new RightJoinBookmark(_cx,j, left, true, right,0);
-                int c = join.Compare(j._tr as Transaction, _cx);
+                int c = join.Compare( _cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
@@ -581,16 +549,14 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
-        /// Move to the next row in a left join
+        /// Move to the next row in a right join
         /// </summary>
         /// <returns>whether there is a next row</returns>
         protected override JoinBookmark _Next(Context _cx)
         {
             var left = _left;
             var right = _right;
-            var join = _jrs.qry as JoinPart;
-            if (left!=null)
-                _cx.Add(join.left, left);
+            var join = _jrs.join;
             if (_useLeft && right?.Mb() is MTreeBookmark mr && mr.hasMore((int)join.joinCond.Count))
             {
                 right = right.Next(_cx);
@@ -606,8 +572,10 @@ namespace Pyrrho.Level4
             {
                 var mb = (left.Mb() is MTreeBookmark ml && ml.changed((int)join.joinCond.Count)) ? null :
                     left.Mb()?.ResetToTiesStart((int)join.joinCond.Count);
-                if (mb != null)
-                    right = right.ResetToTiesStart(_cx,mb);
+                if (mb != null && right.ResetToTiesStart(_cx, mb) is RightJoinBookmark rer)
+                    right = rer;
+                else
+                    left = left.Next(_cx);
             }
             for (;;)
             {
@@ -616,7 +584,7 @@ namespace Pyrrho.Level4
                 if (left == null)
                     return new RightJoinBookmark(_cx,_jrs, null, false, right, _pos + 1);
                 var ret = new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
-                int c = join.Compare(_jrs._tr as Transaction, _cx);
+                int c = join.Compare(_cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -636,35 +604,15 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class FullJoinBookmark : JoinBookmark
     {
-        RowBookmark hideLeft = null, hideRight = null;
-        TRow _row, _key;
         /// <summary>
         /// Constructor: a full join bookmark for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        FullJoinBookmark(Context _cx,JoinRowSet j, RowBookmark left, bool ul, RowBookmark right, 
+        FullJoinBookmark(Context _cx,JoinRowSet j, Cursor left, bool ul, Cursor right, 
             bool ur, int pos)
             : base(_cx,j, left, ul, right, ur, pos)
         {
-            // care: ensure you AdvanceToMatch
-            var jp = j.qry as JoinPart;
-            hideLeft = left;
-            hideRight = right;
-            var vs = Value(_cx);
-            if (!_useRight)
-                for (var b = j.second.rowType.columns.First(); b != null; b = b.Next())
-                    _cx.values -= b.value().defpos;
-            if (!_useLeft)
-                for (var b = j.first.rowType.columns.First(); b != null; b = b.Next())
-                    _cx.values -= b.value().defpos;
-            _row = new TRow(j.rowType, vs);
-            _key = new TRow(j.keyType, vs);
         }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
         /// <summary>
         /// A new bookmark for a full join
         /// </summary>
@@ -676,9 +624,9 @@ namespace Pyrrho.Level4
             var right = j.second.First(_cx);
             if (left == null && right == null)
                 return null;
-            var join = j.qry as JoinPart;
+            var join = j.join;
             var bm = new FullJoinBookmark(_cx,j, left, true, right, true, 0);
-            int c = join.Compare(j._tr as Transaction, _cx);
+            int c = join.Compare(_cx);
             if (c == 0)
                 return bm;
             if (c < 0)
@@ -693,11 +641,7 @@ namespace Pyrrho.Level4
         {
             var left = _left;
             var right = _right;
-            var join = _jrs.qry as JoinPart;
-            if (left!=null)
-                _cx.Add(join.left, left);
-            if (right!=null)
-                _cx.Add(join.right, right);
+            var join = _jrs.join;
             if (_useLeft && _useRight && right.Mb() is MTreeBookmark mr 
                 && mr.hasMore((int)join.joinCond.Count))
             {
@@ -730,7 +674,7 @@ namespace Pyrrho.Level4
             if (right == null)
                 return new FullJoinBookmark(_cx,_jrs, left, true, right, false, _pos + 1);
             new FullJoinBookmark(_cx,_jrs, left, true, right, true, _pos + 1);
-            int c = join.Compare(_jrs._tr as Transaction, _cx);
+            int c = join.Compare(_cx);
             return new FullJoinBookmark(_cx,_jrs, left, c <= 0, right, c >= 0, _pos + 1);
         }
 
@@ -744,23 +688,13 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class CrossJoinBookmark : JoinBookmark
     {
-        TRow _row, _key;
         /// <summary>
         /// Constructor: a cross join bookmark for a join row set
         /// </summary>
         /// <param name="j">a join row set</param>
-        CrossJoinBookmark(Context _cx,JoinRowSet j, RowBookmark left = null, RowBookmark right = null,
+        CrossJoinBookmark(Context _cx,JoinRowSet j, Cursor left = null, Cursor right = null,
             int pos=0) : base(_cx,j,left,true,right,true,pos)
-        {
-            var vs = Value(_cx);
-            _row = new TRow(j.rowType, vs);
-            _key = new TRow(j.keyType, vs);
-        }
-
-        public override TRow row => _row;
-
-        public override TRow key => _key;
-
+        { }
         public static CrossJoinBookmark New(Context _cx,JoinRowSet j)
         {
             var f = j.first.First(_cx);

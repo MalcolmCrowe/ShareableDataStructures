@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code 
@@ -31,15 +31,16 @@ namespace Pyrrho.Level2
         /// <param name="fl">The changed fields and values</param>
         /// <param name="u">The new record position</param>
         /// <param name="db">The transaction</param>
-        public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, Transaction db)
-            : this(Type.Update, old, tb, fl, db)
+        public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, long pp, 
+            Context cx)
+            : this(Type.Update, old, tb, fl, pp, cx)
         { }
         protected Update(Type t, TableRow old, Table tb,BTree<long,TypedValue> fl, 
-            Transaction db)
-            : base(t,tb,fl,db)
+            long pp, Context cx)
+            : base(t,tb,fl,pp,cx)
         {
             _defpos = old.defpos;
-            prev = old.lastChange;
+            prev = old.prev;
         }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, Reader rdr) : base(t, rdr) { }
@@ -102,47 +103,46 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-        /// <summary>
-        /// Add unchanged fields and fix indexes for an Update
-        /// </summary>
-        /// <param name="db"></param>
-        /// <returns></returns>
-        internal override BTree<long, TypedValue> _Fields(BTree<long,TypedValue> fl,
-            ref Database db)
+        internal override TableRow AddRow(Context cx)
         {
-            var tb = (Table)db.objects[tabledefpos];
-            var was = ((TableRow)tb.tableRows[defpos]);
-            var ro = db.role;
-            tb = (Table)db.objects[tabledefpos];
-            var now = was.fields;
-            for (var b = fl.First(); b != null; b = b.Next())
-                now += (b.key(), b.value());
-            (db, ro) = was.Cascade(db, db, ro, 0, fl);
-            for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
+            var tb = (Table)cx.db.objects[tabledefpos];
+            var was = tb.tableRows[defpos];
+            var now = new TableRow(this, cx.db, was);
+            var same = true;
+            for (var b = fields.First(); same && b != null; b = b.Next())
+                if (tb.keyCols.Contains(b.key()))
+                    same = b.value().CompareTo(was.vals[b.key()]) == 0;
+            if (same)
+                return now;
+            var ro = cx.db.role;
+            was.Cascade(cx.db, cx, ro, 0, Drop.DropAction.Restrict, fields);
+            for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
             {
-                var x = (Index)db.objects[xb.value()];
-                var ok = x.MakeKey(was.fields);
+                var x = (Index)cx.db.objects[xb.value()];
+                var ok = x.MakeKey(was);
                 var nk = x.MakeKey(now);
+                if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
+                    && x.rows.Contains(nk))
+                    throw new DBException("2300", "duplicate key", nk);
                 if (x.reftabledefpos >= 0)
                 {
-                    var rx = (Index)db.objects[x.refindexdefpos];
+                    var rx = (Index)cx.db.objects[x.refindexdefpos];
                     if (!rx.rows.Contains(nk))
                         throw new DBException("23000", "missing foreign key ", nk);
                 }
                 if (ok._CompareTo(nk) != 0)
                 {
-                    x -= (ok,defpos);
+                    x -= (ok, defpos);
                     x += (nk, defpos);
-                    db += (x,db.loadpos);
+                    cx.db += (x, cx.db.loadpos);
                 }
             }
             return now;
         }
-        internal override (Database, Role) Install(Database db, Role ro, long p)
+        internal override void Install(Context cx, long p)
         {
-            // _Fields does the work of restrict/cascade and fixing indexes
-            var fl = _Fields(fields, ref db);
-            return (db+((Table)db.objects[tabledefpos]+(db,new TableRow(this, db, fl)),p),ro);
+            var fl = AddRow(cx);
+            cx.db+=((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
@@ -155,8 +155,8 @@ namespace Pyrrho.Level2
     {
 
         public Update1(TableRow old, Table tb, BTree<long, TypedValue> fl, Level lv, 
-            Transaction db) 
-            : base(Type.Update1,old, tb, fl, db)
+            long pp, Context cx) 
+            : base(Type.Update1,old, tb, fl, pp, cx)
         {
             _classification = lv;
         }
@@ -165,8 +165,8 @@ namespace Pyrrho.Level2
         }
 
         public Update1(TableRow old, BTree<long, TypedValue> fl, Table tb, Level lv, 
-            Transaction db) 
-            : base(Type.Update1, old,tb,  fl, db)
+            long pp, Context cx) 
+            : base(Type.Update1, old,tb,  fl, pp, cx)
         {
             _classification = lv;
         }
@@ -176,8 +176,8 @@ namespace Pyrrho.Level2
         }
 
         protected Update1(Type t, TableRow old, Table tb, BTree<long, TypedValue> fl, 
-            Transaction db) 
-            : base(t, old, tb, fl, db)
+            long pp, Context cx) 
+            : base(t, old, tb, fl, pp, cx)
         {
         }
         protected Update1(Update1 x, Writer wr) : base(x, wr)

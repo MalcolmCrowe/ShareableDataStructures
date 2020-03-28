@@ -5,7 +5,7 @@ using System.Net;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
 // All other use or distribution or the construction of any product incorporating this technology 

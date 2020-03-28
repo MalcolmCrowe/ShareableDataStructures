@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -21,11 +21,11 @@ namespace Pyrrho.Level3
     {
         internal const long
             MethodType = -165, // PMethod.MethodType
-            TypeDef = -166; // UDType
+            TypeDef = -166; // Domain
         /// <summary>
         /// The owning type definition
         /// </summary>
-		public UDType udType => (UDType)mem[TypeDef];
+		public Domain udType => (Domain)mem[TypeDef];
         /// <summary>
         /// The method type (constructor etc)
         /// </summary>
@@ -39,12 +39,16 @@ namespace Pyrrho.Level3
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Sqlx create, Database db)
             : base(m, db, BTree<long, object>.Empty
-                  + (TypeDef, m.typedefpos) + (MethodType, m.methodType))
+                  + (TypeDef, db.objects[m.typedefpos]) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Method operator+(Method m,(long,object)x)
         {
             return new Method(m.defpos, m.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new Method(defpos,m);
         }
         public override string ToString()
         {
@@ -52,6 +56,10 @@ namespace Pyrrho.Level3
             sb.Append(" UDType="); sb.Append(udType);
             sb.Append(" MethodType="); sb.Append(methodType);
             return sb.ToString();
+        }
+        internal override void Modify(Context cx, DBObject now, long p)
+        {
+            cx.db = cx.db + (this + (Body, now), p) + (Database.SchemaKey,p); // ensure call on the correct operator+
         }
         /// <summary>
         /// Execute a Method
@@ -64,29 +72,34 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
-        public TypedValue Exec(Transaction tr, Context cx, SqlValue var, BList<SqlValue> actIns)
+        public TypedValue Exec(Context cx, SqlValue var, BList<SqlValue> actIns)
         {
             TypedValue r;
             var a = cx.GetActivation();
-            var au = new Context(cx,tr.role, tr.user);
+            a.var = var;
+            var au = new Context(cx, cx.tr.role, cx.tr.user);
             var bd = body;
             var ut = udType;
-            var ui = (ObInfo)tr.role.obinfos[ut.defpos];
-            var targ = var.Eval(tr, au);
-            var act = new CalledActivation(tr, au, this, ut);
+            var ui = (ObInfo)cx.tr.role.obinfos[ut.defpos];
+            var targ = var.Eval(au);
+            var act = new CalledActivation(au, this, ut);
+            if (targ is TRow rw)
+                for (var b = rw.values.First(); b != null; b = b.Next())
+                    act.values += (b.key(), b.value());
+            act.values += (defpos,targ);
             var acts = new TypedValue[(int)actIns.Count];
             for (int i = 0; i < actIns.Count; i++)
-                acts[i] = actIns[i].Eval(tr, cx);
+                acts[i] = actIns[i].Eval(cx);
             for (int i = 0; i < actIns.Count; i++)
                 act.values+=(ins[i].defpos, acts[i]);
             if (methodType != PMethod.MethodType.Constructor)
                 for (int i = 0; i < ui.Length; i++)
                 {
                     var se = ui.columns[i];
-                    act.values += (se.defpos,cx.values[se.defpos]);
+                    act.values+=(se.defpos,cx.values[se.defpos]);
                 }
-            act.proc.body.Obey(tr,cx);
-            r = act.ret;
+            cx = act.proc.body.Obey(cx);
+            r = cx.val;
             for (int i = 0; i < ins.Count; i++)
             {
                 var p = ins[i];
@@ -110,6 +123,24 @@ namespace Pyrrho.Level3
             } 
             return r;
         }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            var ui = (ObInfo)nd.role.obinfos[udType.defpos];
+            var ms = BTree<string, BTree<int, long>>.Empty;
+            for (var b=ui.methods.First();b!=null;b=b.Next())
+            {
+                var sm = BTree<int, long>.Empty;
+                var ch = false;
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() != defpos)
+                        sm += (c.key(), c.value());
+                    else
+                        ch = true;
+                if (ch)
+                    ms += (b.key(), sm);
+            }
+            nd += (nd.role+(ui+(ObInfo.Methods,ms)),p);
+            return base.Drop(d, nd, p);
+        }
     }
-
 }

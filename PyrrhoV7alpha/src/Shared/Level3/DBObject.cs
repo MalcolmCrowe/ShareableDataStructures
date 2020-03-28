@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2019
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
@@ -115,8 +115,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="priv">The privilege in question</param>
         /// <returns>the current role if it has this privilege</returns>
-        public virtual bool Denied(Transaction tr, Grant.Privilege priv)
+        public virtual bool Denied(Context cx, Grant.Privilege priv)
         {
+            var tr = cx.tr;
             if (tr == null)
                 return false;
             if (tr.user!=null && !(classification == Level.D || tr.user.defpos==tr.owner
@@ -125,12 +126,12 @@ namespace Pyrrho.Level3
             if (defpos > Transaction.TransPos)
                 return false;
             var oi = (ObInfo)tr.role.obinfos[defpos];
-            return (oi.priv & priv)==0;
+            return (oi!=null) && (oi.priv & priv)==0;
         }
         internal abstract DBObject Relocate(long dp);
         internal override Basis Relocate(Writer wr)
         {
-            var r = base.Relocate(wr);
+            var r = ((DBObject)base.Relocate(wr)).Relocate(wr.Fix(defpos));
             var ds = BTree<long, bool>.Empty;
             for (var b = dependents.First(); b != null; b = b.Next())
                 ds += (wr.Fix(b.key()), true);
@@ -138,9 +139,9 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject Frame(Context cx)
         {
-            return cx.Add(this);
+            return cx.Add(this,true);
         }
-        internal virtual Database Add(Database d,Role ro,PMetadata pm, long p)
+        internal virtual Database Add(Database d,PMetadata pm, long p)
         {
             return d;
         }
@@ -161,16 +162,6 @@ namespace Pyrrho.Level3
         public virtual void Put(TypedValue tv,Writer wr)
         { }
         /// <summary>
-        /// Record a need (droppable objects only)
-        /// </summary>
-        /// <param name="lp"></param>
-        /// <returns></returns>
-        internal virtual Database Needs(Database db,long lp)
-        {
-            // only record for droppable object
-            return db;
-        }
-        /// <summary>
         /// Drop anything that needs this, directly or indirectly,
         /// and then drop this.
         /// Called by Drop for Database on Commit and Load
@@ -178,14 +169,39 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         /// <param name="nd"></param>
         /// <returns></returns>
-        internal virtual (Database, Role) Cascade(Database d,Database nd,Role ro,Drop.DropAction a=0,
+        internal virtual void Cascade(Context cx, Drop.DropAction a=0,
             BTree<long,TypedValue>u=null)
         {
+            for (var b = cx.tr.physicals.First(); b != null; b = b.Next())
+                if (b.value() is Drop dr && dr.delpos == defpos)
+                    return;
+            cx.Add(new Drop1(defpos, a, cx.tr.nextPos, cx));
+            if (dependents.Count == 0)
+                return;
             for (var b = dependents.First(); b != null; b = b.Next())
-                (nd,ro) = ((DBObject)d.objects[b.key()]).Cascade(d, nd,ro,a,u);
-            var oi = ro.obinfos[defpos] as ObInfo;
-            nd = nd + (nd.role - oi, nd.loadpos);
-            return (nd - defpos, ro); 
+                if (cx.db.objects[b.key()] is DBObject ob)
+                {
+                    if (a == 0)
+                    {
+                        if (!(this is Table tb && cx.db.objects[b.key()] is TableColumn tc
+                            && tb.defpos == tc.tabledefpos))
+                        {
+                            throw new DBException("23001",
+                                GetType().Name + " " + Uid(defpos), ob.GetType().Name + " " + Uid(b.key()));
+                        }
+                    }
+                    ob.Cascade(cx, a, u);
+                }
+        }
+        internal virtual Database Drop(Database d, Database nd,long p)
+        {
+            var oi = nd.role.obinfos[defpos] as ObInfo;
+            nd = nd + (nd.role - oi, p);
+            return nd - defpos;
+        }
+        internal virtual Database DropCheck(long ck,Database nd,long p)
+        {
+            throw new NotImplementedException();
         }
         /// <summary>
         /// Discover if any call found on routine defpos
@@ -210,26 +226,38 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
-        internal virtual Database Modify(Database db, DBObject now, long p)
+        internal virtual void Modify(Context cx, DBObject now, long p)
         {
-            return db;
-        }
-        internal virtual Database DropConstraint(Check c,Database d,Database nd)
-        {
-            return nd;
+            cx.db += (now, p);
         }
         internal virtual DBObject TableRef(Context cx,From f)
         {
             return this;
         }
-        internal virtual DBObject Replace(Context cx, DBObject so, DBObject sv)
+        internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = this;
-            if (defpos<0)
+            if (defpos<0 || this is Domain)
                 return this;
-            var dm = (Domain)domain.Replace(cx, so, sv);
+            var dm = (Domain)domain._Replace(cx, so, sv);
             if (dm != domain)
                 r += (_Domain, dm);
+            return r;
+        }
+        internal DBObject Replace(Context cx,DBObject was,DBObject now)
+        {
+            var r = _Replace(cx, was, now);
+            if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
+            {
+                r += (Depth, now.depth + 1);
+                cx.done += (r.defpos, r);
+            }
+            for (var b = dependents.First(); b != null; b = b.Next())
+                if (cx.done[b.key()] is DBObject d && d.depth >= r.depth)
+                {
+                    r += (Depth, d.depth + 1);
+                    cx.done += (r.defpos, r);
+                } 
             return r;
         }
         internal virtual void Build(Context _cx, RowSet rs)
@@ -241,7 +269,12 @@ namespace Pyrrho.Level3
         internal virtual void StartCounter(Context _cx, RowSet rs)
         {
         }
-        internal void AddIn(Context _cx, RowBookmark rb)
+        internal void AddIn(Context _cx, Cursor rb,TRow key)
+        {
+            var aggsDone = BTree<long, bool?>.Empty;
+            _AddIn(_cx, rb, key, ref aggsDone);
+        }
+        internal void AddIn(Context _cx, RTreeBookmark rb)
         {
             var aggsDone = BTree<long, bool?>.Empty;
             _AddIn(_cx, rb, ref aggsDone);
@@ -250,29 +283,23 @@ namespace Pyrrho.Level3
         /// If the value contains aggregates we need to accumulate them. 
         /// Carefully watch out for common subexpressions, and only AddIn once!
         /// </summary>
-        internal virtual void _AddIn(Context _cx, RowBookmark rb, ref BTree<long, bool?> aggsDone) { }
-
+        internal virtual void _AddIn(Context _cx, Cursor rb, TRow key, 
+            ref BTree<long, bool?> aggsDone) { }
+        internal virtual void _AddIn(Context _cx, RTreeBookmark rb, ref BTree<long, bool?> aggsDone)
+        { }
         internal virtual TypedValue Coerce(TypedValue v)
         {
             return v;
         }
-        internal virtual TypedValue Coerce(RowBookmark rb)
+        internal virtual TypedValue Coerce(Cursor rb)
         {
-            return rb.row;
+            return rb;
         }
         internal virtual DBObject TypeOf(long lp,Context cx,TypedValue v)
         {
             throw new System.NotImplementedException();
         }
-        internal virtual DBObject Path(Ident field)
-        {
-            throw new System.NotImplementedException();
-        }
-        internal virtual TypedValue Eval(Transaction tr, Context cx)
-        {
-            return cx.values[defpos];
-        }
-        internal virtual TypedValue Eval(Context cx, RowBookmark rb)
+        internal virtual TypedValue Eval(Context cx)
         {
             return cx.values[defpos];
         }
@@ -281,14 +308,12 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// If this value contains an aggregator, set the register for it.
-        /// If not, return null and the caller will make a Literal.
+        /// SqlValues are sticky if from is defined for the first RowSet that can access them
         /// </summary>
-        /// <param name="key"></param>
         /// <returns></returns>
-        internal virtual SqlValue SetReg(Context _cx, TRow k)
+        internal virtual bool sticky()
         {
-            return null;
+            return false;
         }
         /// <summary>
         /// Check constraints can be added to Domains, TableColumns and Tables
@@ -305,15 +330,6 @@ namespace Pyrrho.Level3
             throw new PEException("PE481");
         }
         /// <summary>
-        /// Check to see if this object references a database object (e.g. user/role) being renamed or dropped
-        /// </summary>
-        /// <param name="t">The rename or drop transaction</param>
-        /// <returns>NO,RESTRICT,DROP</returns>
-		public virtual Sqlx Dependent(Transaction t,Context cx)
-		{
-            return Sqlx.NO;
-		}
-        /// <summary>
         /// Execute an Insert operation for a Table, View, RestView.
         /// The new or existing Rowsets may be explicit or in the physical database.
         /// Deal with triggers.
@@ -324,10 +340,10 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The existing RowSet may be explicit</param>
         /// <param name="cl">The classification sought</param>
-        internal virtual Transaction Insert(Transaction tr,Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal virtual Context Insert(Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            return tr;
+            return _cx;
         }
         /// <summary>
         /// Execute a Delete operation for a Table, View, RestView.
@@ -337,9 +353,9 @@ namespace Pyrrho.Level3
         /// <param name="f">A query</param>
         /// <param name="dr">A possible explicit set of row references</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal virtual Transaction Delete(Transaction tr,Context cx,From f, BTree<string,bool> dr, Adapters eqs)
+        internal virtual Context Delete(Context cx,From f, BTree<string,bool> dr, Adapters eqs)
         {
-            return tr;
+            return cx;
         }
         /// <summary>
         /// Execute an Update operation for a Table, View or RestView.
@@ -350,9 +366,9 @@ namespace Pyrrho.Level3
         /// <param name="ur">The rows to update may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The existing rowset may be explicit</param>
-        internal virtual Transaction Update(Transaction tr,Context cx,From f,BTree<string,bool> ur,Adapters eqs, List<RowSet> rs)
+        internal virtual Context Update(Context cx,From f,BTree<string,bool> ur,Adapters eqs, List<RowSet> rs)
         {
-            return tr;
+            return cx;
         }
         /// <summary>
         /// Implementation of the Role$Class table: Produce a C# class corresponding to a Table or View
@@ -467,15 +483,19 @@ namespace Pyrrho.Level3
         /// <param name="tr"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        internal virtual bool DoAudit(Transaction tr,long[] cols, string[] key)
+        internal virtual bool DoAudit(long pp, Context cx,long[] cols, string[] key)
         {
             return false;
         }
-        internal void Audit(Transaction tr, long[] cols, string[]key)
+        internal void Audit(long pp, Context cx, long[] cols, string[]key)
         {
-            if (DoAudit(tr, cols, key))
-                tr.Audit(new Audit(tr.user, defpos,
-                    cols, key,System.DateTime.Now.Ticks, tr));
+            if (DoAudit(pp, cx, cols, key))
+            {
+                var a = new Audit(cx.tr.user, defpos,
+                    cols, key, System.DateTime.Now.Ticks, pp, cx);
+                cx.Add(a);
+                cx.tr.Audit(a);
+            }
         }
         /// <summary>
         /// Issues here: This object may not have been committed yet
@@ -483,7 +503,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="m"></param>
-        internal void Audit(Transaction tr,Index ix,PRow m)
+        internal void Audit(long pp,Context cx,Index ix,PRow m)
         {
             var tb = this as Table;
             if (((!sensitive) && (tb?.classification.minLevel??0) == 0) 
@@ -492,7 +512,7 @@ namespace Pyrrho.Level3
             if ((!sensitive) && 
                 tb?.enforcement.HasFlag(Grant.Privilege.Select)!=true)
                 return;
-            if (definer==tr.role.defpos || definer == tr.user.defpos)
+            if (definer==cx.role.defpos || definer == cx.user.defpos)
                 return;
             var key = new string[m?.Length ?? 0];
             var cols = new long[m?.Length ?? 0];
@@ -501,7 +521,7 @@ namespace Pyrrho.Level3
                 cols[i] = ix.keys[i].defpos;
                 key[i] = m._head.ToString();
             }
-            Audit(tr, cols, key);
+            Audit(pp, cx, cols, key);
         }
         /// <summary>
         /// Issues here: This object may not have been committed yet
@@ -509,9 +529,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="m"></param>
-        internal void Audit(Transaction tr, Query f)
+        internal void Audit(long pp, Context cx, Query f)
         {
-            if (tr == null)
+            if (cx.tr == null)
                 return;
             var tb = this as Table;
             if (((!sensitive) && (tb?.classification.minLevel??0)==0)
@@ -520,7 +540,7 @@ namespace Pyrrho.Level3
             if ((!sensitive) &&
                 tb?.enforcement.HasFlag(Grant.Privilege.Select)!=true)
                 return;
-            if (definer == tr.user.defpos)
+            if (definer == cx.user.defpos)
                 return;
             var m = f.matches?.Count ?? 0;
             var cols = new long[m];
@@ -531,16 +551,20 @@ namespace Pyrrho.Level3
                 cols[i] = b.key().defpos;
                 key[i] = b.value()?.ToString()??"null";
             }
-            Audit(tr, cols, key);
+            Audit(pp, cx, cols, key);
+        }
+        internal virtual long Defpos()
+        {
+            return defpos;
         }
         internal static string Uid(long u)
         {
-            if (u >= PyrrhoServer.ConnPos)
-                return "%" + (u - PyrrhoServer.ConnPos);
+            if (u >= PyrrhoServer.Preparing)
+                return "%" + (u - PyrrhoServer.Preparing);
+            if (u >= Transaction.Compiling)
+                return "@" + (u - Transaction.Compiling);
             if (u >= Transaction.Analysing)
                 return "#" + (u - Transaction.Analysing);
-            if (u >= Transaction.Aliasing)
-                return "@" + (u - Transaction.Aliasing);
             if (u >= Transaction.TransPos)
                 return "'" + (u - Transaction.TransPos); 
             if (u == -1)
