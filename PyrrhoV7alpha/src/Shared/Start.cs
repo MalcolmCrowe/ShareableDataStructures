@@ -173,7 +173,7 @@ namespace Pyrrho
                                 var tr = db;
                                 long t=0;
                                 cx = new Context(db) { nextHeap = db.nextId + cmd.Length };
-                                db = new Parser(cx).ParseSql(cmd,Domain.Content, ObInfo.Any);
+                                db = new Parser(cx).ParseSql(cmd,ObInfo.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn>t)
@@ -197,7 +197,7 @@ namespace Pyrrho
                                 long t = 0;
                                 cx = new Context(db);
                                 var ts = db.loadpos;
-                                db = new Parser(db).ParseSql(cmd,Domain.Content, ObInfo.Any);
+                                db = new Parser(db).ParseSql(cmd,ObInfo.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn > t)
@@ -316,7 +316,7 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextPrep, sql);
                                 tr+=(Database._ExecuteStatus,ExecuteStatus.Prepare);
                                 var cx = new Context(tr);
-                                db = new Parser(cx).ParseSql(sql,Domain.Content, ObInfo.Any);
+                                db = new Parser(cx).ParseSql(sql,ObInfo.Content);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
                                 prepared += (nm, new PreparedStatement(cx.exec,cx.qParams));
@@ -396,7 +396,7 @@ namespace Pyrrho
                                 var tr = db.Transact(nextId,cmd);
                                 cx = new Context(tr);
                      //           Console.WriteLine(cmd);
-                                db = new Parser(cx).ParseSql(cmd,Domain.Content, ObInfo.Any);
+                                db = new Parser(cx).ParseSql(cmd,ObInfo.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 //                if (PyrrhoStart.DebugMode && tn>t)
@@ -1267,7 +1267,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (28 March 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (29 March 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

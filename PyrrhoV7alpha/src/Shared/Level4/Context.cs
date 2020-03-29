@@ -143,7 +143,7 @@ namespace Pyrrho.Level4
         {
             user = u;
         }
-        internal DBObject Get(Ident ic, Domain td, ObInfo ts)
+        internal DBObject Get(Ident ic, ObInfo oi)
         {
             DBObject ob;
             if (ic.Length > 1 && defs.Contains(ic.ToString())
@@ -151,7 +151,7 @@ namespace Pyrrho.Level4
                 ob = s0;
             else
                 ob = defs[ic];
-            if (ob != null && !td.CanTakeValueOf(ob.domain))
+            if (ob != null && !oi.domain.CanTakeValueOf(ob.domain))
                 throw new DBException("42000", ic);
             return ob;
         }

@@ -168,7 +168,7 @@ namespace Pyrrho.Level3
                     (Owner, su.defpos));
             var gu = new Role("$Guest", Guest, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu);
-            Domain.StandardTypes();
+            ObInfo.StandardTypes();
             SystemRowSet.Kludge();
             Domain.RdfTypes();
         }

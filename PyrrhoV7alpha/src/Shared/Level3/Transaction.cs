@@ -327,7 +327,7 @@ namespace Pyrrho.Level3
         //                SetResults(f.rowSet);
          //               break;
                     case "POST":
-                        new Parser(tr).ParseProcedureStatement(sdata,Domain.Content, ObInfo.Any);
+                        new Parser(tr).ParseProcedureStatement(sdata,ObInfo.Content);
                         break;
                 }
             }
@@ -377,7 +377,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                             pn = WebUtility.UrlDecode(pn);
 #endif
-                            fc = new Parser(this).ParseProcedureCall(pn,Domain.Content, ObInfo.Any);
+                            fc = new Parser(this).ParseProcedureCall(pn,ObInfo.Content);
                         }
                         var pr = GetProcedure(fc.name,(int)fc.parms.Count) ??
                             throw new DBException("42108", fc.name).Mix();
@@ -446,7 +446,7 @@ namespace Pyrrho.Level3
                             sk = ks.Split(',');
                         var n = sk.Length;
                         f = (From)f.AddCondition(cx,Query.Where,
-                            new Parser(this).ParseSqlValue(sk[0],Domain.Bool, ObInfo.Any).Disjoin());
+                            new Parser(this).ParseSqlValue(sk[0],ObInfo.Bool).Disjoin());
                         //           if (f.target.SafeName(this) == "User")
                         //           {
                         TypedValue[] wh = new TypedValue[n];
@@ -563,7 +563,7 @@ namespace Pyrrho.Level3
                             off = -6;
                             goto case "where";
                         }
-                        var sv = new Parser(this).ParseSqlValueItem(cn,Domain.Content, ObInfo.Any);
+                        var sv = new Parser(this).ParseSqlValueItem(cn,ObInfo.Content);
                         if (sv is SqlProcedureCall pr)
                         {
                             fc = pr.call;

@@ -43,7 +43,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The return type
         /// </summary>
-        public (Domain,ObInfo) retType;
+        public ObInfo retType;
         /// <summary>
         /// a string version of the signature
         /// </summary>

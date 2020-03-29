@@ -461,8 +461,8 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public ProcParameter(long dp, Sqlx m, string n, (Domain,ObInfo) dt) 
-            : base(dp, n, dt.Item1, new BTree<long, object>(ParamMode, m)+(Info,dt.Item2))
+		public ProcParameter(long dp, Sqlx m, string n, ObInfo dt) 
+            : base(dp, n, dt.domain, new BTree<long, object>(ParamMode, m)+(Info,dt))
         { }
         protected ProcParameter(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ProcParameter operator +(ProcParameter s, (long, object) x)

@@ -186,6 +186,13 @@ namespace Pyrrho.Level3
             Pie = "Pie", // bool
             X = "X", // long
             Y = "Y"; // long
+        internal static ObInfo Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
+            Bool, Blob, Char, Password, XML, Int, Numeric, Real, Date, Timespan, Timestamp,
+            Interval, TypeSpec, _Level, Physical, MTree, // pseudo type for MTree implementation
+            Partial, // pseudo type for MTree implementation
+            Array, Multiset, Collection, Cursor, UnionNumeric, UnionDate,
+            UnionDateNumeric, Exception, Period,
+            Document, DocArray, TableType, Row;
         public string name => (string)mem[Name] ?? "";
         public BList<ObInfo> columns =>
             (BList<ObInfo>)mem[Columns] ?? BList<ObInfo>.Empty;
@@ -201,7 +208,9 @@ namespace Pyrrho.Level3
             (BTree<string, BTree<int, long>>)mem[Methods] ?? BTree<string, BTree<int, long>>.Empty;
         public int Length => (int)columns.Count;
         internal readonly static ObInfo Any = new ObInfo();
+        static BTree<Sqlx, ObInfo> stdInfos = BTree<Sqlx, ObInfo>.Empty; 
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
+        ObInfo(Domain d): this(--_uid,"",d) { stdInfos += (d.kind, this); }
         public ObInfo(long dp, string nm, Domain dt = null, Grant.Privilege pr = 0, BTree<long, object> m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (Name, nm) + (Privilege, pr)
                   + (_Domain, dt ?? Domain.Content) + (Methods, BTree<string, BTree<int, Method>>.Empty))
@@ -334,6 +343,10 @@ namespace Pyrrho.Level3
                 return null;
             }
         }
+        public static ObInfo Std(Sqlx s)
+        {
+            return stdInfos[s];
+        }
         static long _Gap(Basis a, long off)
         {
             long r = off;
@@ -365,20 +378,46 @@ namespace Pyrrho.Level3
             }
             return ch?(new Domain(dp, dt)+(Domain.Representation,rs)):dt;
         }
-        static BList<ObInfo> _Cols(CList<TableColumn> cols, Transaction tr)
-        {
-            var r = BList<ObInfo>.Empty;
-            for (var b = cols.First(); b != null; b = b.Next())
-            {
-                var tc = b.value();
-                var oi = (ObInfo)tr.role.obinfos[tc.defpos];
-                r += new ObInfo(tc.defpos, oi.name, tc.domain);
-            }
-            return r;
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new ObInfo(defpos, m);
+        }
+        internal static void StandardTypes()
+        {
+            Domain.StandardTypes();
+            Null = new ObInfo(Domain.Null);
+            Value = new ObInfo(Domain.Value);
+            Content = new ObInfo(Domain.Content); // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
+            Bool = new ObInfo(Domain.Bool);
+            Blob = new ObInfo(Domain.Blob);
+            Char = new ObInfo(Domain.Char);
+            Password = new ObInfo(Domain.Password);
+            XML = new ObInfo(Domain.XML);
+            Int = new ObInfo(Domain.Int);
+            Numeric = new ObInfo(Domain.Numeric);
+            Real = new ObInfo(Domain.Real);
+            Date = new ObInfo(Domain.Date);
+            Timespan = new ObInfo(Domain.Timespan);
+            Timestamp = new ObInfo(Domain.Timestamp);
+            Interval = new ObInfo(Domain.Interval);
+            TypeSpec = new ObInfo(Domain.TypeSpec);
+            _Level = new ObInfo(Domain._Level);
+            Physical = new ObInfo(Domain.Physical);
+            MTree = new ObInfo(Domain.MTree); // pseudo type for MTree implementation
+            Partial = new ObInfo(Domain.Partial); // pseudo type for MTree implementation
+            Array = new ObInfo(Domain.Array);
+            Multiset = new ObInfo(Domain.Multiset);
+            Collection = new ObInfo(Domain.Collection);
+            Cursor = new ObInfo(Domain.Cursor);
+            UnionNumeric = new ObInfo(Domain.UnionNumeric);
+            UnionDate = new ObInfo(Domain.UnionDate);
+            UnionDateNumeric = new ObInfo(Domain.UnionDateNumeric);
+            Exception = new ObInfo(Domain.Exception);
+            Period = new ObInfo(Domain.Period);
+            Document = new ObInfo(Domain.Document);
+            DocArray = new ObInfo(Domain.DocArray);
+            TableType = new ObInfo(Domain.TableType);
+            Row = new ObInfo(Domain.Row);
         }
         internal static ObInfo For(TRow tr)
         {
@@ -787,7 +826,7 @@ namespace Pyrrho.Level3
         }
         internal bool CanTakeValueOf(ObInfo oi)
         {
-            if (this == Any)
+            if (domain.kind==Sqlx.CONTENT)
                 return true;
             if (Length != oi.Length)
                 return false;

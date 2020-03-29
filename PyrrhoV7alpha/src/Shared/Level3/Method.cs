@@ -23,7 +23,7 @@ namespace Pyrrho.Level3
             MethodType = -165, // PMethod.MethodType
             TypeDef = -166; // Domain
         /// <summary>
-        /// The owning type definition
+        /// The owning type definition (each role will have its own ObInfo)
         /// </summary>
 		public Domain udType => (Domain)mem[TypeDef];
         /// <summary>

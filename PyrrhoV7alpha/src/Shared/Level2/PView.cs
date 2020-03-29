@@ -79,8 +79,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            view = new Parser(rdr.context).ParseQueryExpression(rdr.GetString(),
-                Domain.Content,ObInfo.Any);
+            view = new Parser(rdr.context).ParseQueryExpression(rdr.GetString(),ObInfo.Content);
             base.Deserialise(rdr);
         }
         /// <summary>

@@ -282,10 +282,10 @@ namespace Pyrrho.Level2
                     dv = dt.Parse(rdr.Position,dfs);
                 else
                 {
-                    var oi = (ObInfo)rdr.role.obinfos[tabledefpos];
+                    var oi = (ObInfo)rdr.role.obinfos[domdefpos];
                     generated = new GenerationRule(Generation.Expression,
                         dfs, new Parser(rdr.context)
-                        .ParseSqlValue(dfs,dt, oi).Reify(rdr.context,oi));
+                        .ParseSqlValue(dfs,oi).Reify(rdr.context,oi));
                 }
             }
 		}
@@ -387,7 +387,7 @@ namespace Pyrrho.Level2
                 try
                 {
                     upd = new Parser(rdr.context).ParseAssignments(ups,
-                        Domain.TableType,(ObInfo)rdr.role.obinfos[tabledefpos]);
+                        (ObInfo)rdr.role.obinfos[tabledefpos]);
                 } catch(Exception)
                 {
                     upd = BList<UpdateAssignment>.Empty;

@@ -106,7 +106,7 @@ namespace Pyrrho.Level2
                     now = pp.body;
                     break;
                 case "Source":
-                    now = new Parser(rdr.context).ParseQueryExpression(body,Domain.TableType,ObInfo.Any);
+                    now = new Parser(rdr.context).ParseQueryExpression(body,ObInfo.TableType);
                     break;
                 case "Insert": // we ignore all of these (PView1)
                 case "Update":

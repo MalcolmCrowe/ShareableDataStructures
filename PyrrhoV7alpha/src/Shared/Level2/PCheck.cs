@@ -100,7 +100,7 @@ namespace Pyrrho.Level2
             var cx = rdr.context;
             cx.Add(rdr.context.db.objects[ckobjdefpos] as DBObject);
             var oi = (ObInfo)rdr.role.obinfos[ckobjdefpos];
-            test = new Parser(rdr.context).ParseSqlValue(check,Domain.Bool,oi)
+            test = new Parser(rdr.context).ParseSqlValue(check,ObInfo.Bool)
                 .Reify(cx,oi);
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
