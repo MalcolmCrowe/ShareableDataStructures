@@ -261,7 +261,7 @@ namespace Pyrrho.Level3
         {
             if (parse != ExecuteStatus.Obey)
                 return cx;
-            var a = new Activation(cx, e.label);
+            var a = new Activation(cx,e.label);
             a.exec = e;
             cx = e.Obey(cx); // Obey must not call the Parser!
             if (a.signal != null)

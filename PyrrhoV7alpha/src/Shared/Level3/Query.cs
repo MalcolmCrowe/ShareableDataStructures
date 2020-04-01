@@ -1441,6 +1441,8 @@ namespace Pyrrho.Level3
         }
         internal override RowSet RowSets(Context cx)
         {
+            if (from == Level3.From._static)
+                return new TrivialRowSet(defpos, cx, new ObInfo(defpos,BList<SqlValue>.Empty));
             var r = from.RowSets(cx);
             if (r == null)
                 return null;
@@ -2338,11 +2340,11 @@ namespace Pyrrho.Level3
         Selection(BList<SqlValue> cs, ObInfo inf)
         {
             cols = cs;
-            info = inf;
+            info = inf?? throw new PEException("PE199");
         }
         public static Selection operator+(Selection s,(int,SqlValue) x)
         {
-            if (s.defpos == -1L)
+            if (s.defpos < 0 || s.info==null)
                 throw new PEException("PE198");
             var (i, v) = x;
             var cols = s.cols + (i, v);

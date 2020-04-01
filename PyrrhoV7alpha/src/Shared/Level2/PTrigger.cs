@@ -96,7 +96,7 @@ namespace Pyrrho.Level2
             : this(Type.PTrigger, tc, fm, ty, cs, or, nr, ot, nt, def, sce, cx, pp)
         { }
         /// <summary>
-        /// Constructor: A Trigger definition from the Parser
+        /// Constructor
         /// </summary>
         /// <param name="tp">The PTrigger type</param>
         /// <param name="tc">The trigger name</param>
@@ -140,8 +140,8 @@ namespace Pyrrho.Level2
         {
             name = x.name;
             tgtype = x.tgtype;
-            wr.srcPos = wr.Length + 1 + StringLength(name) + Intlength(x.from.target)
-                + Intlength((int)tgtype)
+            wr.srcPos = wr.Length + 1 + StringLength(name) + IntLength(x.from.target)
+                + IntLength((int)tgtype)
                 + ((cols == null) ? 1 : ColsLength(cols))
                 + StringLength(oldRowId) + StringLength(newRow)
                 + StringLength(oldTableId) + StringLength(newTable);
@@ -161,24 +161,6 @@ namespace Pyrrho.Level2
         protected override Physical Relocate(Writer wr)
         {
             return new PTrigger(this, wr);
-        }
-        int Intlength(long p)
-        {
-            return 1 + new Integer(p).bytes.Length;
-        }
-        int ColsLength(long[] cols)
-        {
-            var r = Intlength(cols.Length);
-            for (var i = 0; i < cols.Length; i++)
-                r += Intlength(cols[i]);
-            return r;
-        }
-        int StringLength(object o)
-        {
-            if (o == null)
-                return 1;
-            var p = Encoding.UTF8.GetBytes(o.ToString()).Length;
-            return p + Intlength(p);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase

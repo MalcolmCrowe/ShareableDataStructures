@@ -53,6 +53,7 @@ namespace Pyrrho.Level2
         internal string defaultString = "";
         internal long structdefpos = -1; 
         internal long eltypedefpos = -1;
+        internal BList<(long, Domain)> representation = BList<(long, Domain)>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, structdefpos)) return structdefpos;
@@ -142,6 +143,7 @@ namespace Pyrrho.Level2
             defaultValue = x.defaultValue;
             structdefpos = x.structdefpos;
             eltypedefpos = x.eltypedefpos;
+            representation = wr.Relocate(representation);
         }
         protected override Physical Relocate(Writer wr)
         {

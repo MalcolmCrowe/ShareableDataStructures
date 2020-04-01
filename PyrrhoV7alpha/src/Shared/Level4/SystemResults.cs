@@ -1913,8 +1913,8 @@ namespace Pyrrho.Level4
                     Pos(p.ppos),
                     new TChar(p.nameAndArity),
                     new TInt(p.arity),
-                    Pos(p.retdefpos),
-                    Display(p.proc_clause),
+                    Pos(p.retType.defpos),
+                    Display(p.source.ident),
                     Pos(p.trans));
             }
         }

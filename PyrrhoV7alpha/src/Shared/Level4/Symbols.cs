@@ -351,6 +351,7 @@ namespace Pyrrho.Level4
 			Advance();
 			tok = Next();
         }
+        internal Lexer(Ident id) : this(id.ident, id.iix) { }
         /// <summary>
         /// Mutator: Advance one position in the input
         /// ch is set to the new character

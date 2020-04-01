@@ -489,7 +489,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis Relocate(Writer wr)
         {
-            var r = (SqlValue)base.Relocate(wr);
+            var r = ((SqlValue)base.Relocate(wr)).Relocate(wr.Fix(defpos));
             var nf = info.Relocate(wr);
             if (nf != info)
                 r += (Info, nf);
@@ -3870,7 +3870,7 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SqlCall)base.AddFrom(cx, q);
             var c = r.call;
-            var a = c.var.AddFrom(cx, q);
+            var a = c.var?.AddFrom(cx, q);
             if (a != c.var)
                 c += (CallStatement.Var, a); 
             var vs = BList<SqlValue>.Empty;
@@ -4360,7 +4360,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a name for the window for a window function
         /// </summary>
-        public long windowId => (long)mem[WindowId];
+        public long windowId => (long)(mem[WindowId]??-1L);
         /// <summary>
         /// the window for a window function
         /// </summary>
@@ -4430,19 +4430,19 @@ namespace Pyrrho.Level3
         internal override Basis Relocate(Writer wr)
         {
             var r = base.Relocate(wr);
-            var f = (SqlValue)filter.Relocate(wr);
+            var f = (SqlValue)filter?.Relocate(wr);
             if (f != filter)
                 r += (Filter, f);
-            var op = (SqlValue)op1.Relocate(wr);
+            var op = (SqlValue)op1?.Relocate(wr);
             if (op != op1)
                 r += (Op1, op);
-            op = (SqlValue)op2.Relocate(wr);
+            op = (SqlValue)op2?.Relocate(wr);
             if (op != op2)
                 r += (Op2, op);
-            var v = (SqlValue)val.Relocate(wr);
+            var v = (SqlValue)val?.Relocate(wr);
             if (v != val)
                 r += (_Val, v);
-            var w = (WindowSpecification)window.Relocate(wr);
+            var w = (WindowSpecification)window?.Relocate(wr);
             if (w != window)
                 r += (Window, w);
             var wi = wr.Fix(windowId);

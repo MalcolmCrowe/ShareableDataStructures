@@ -20,7 +20,6 @@ namespace Pyrrho.Level3
 	internal class Procedure : DBObject
 	{
         internal const long
-            Arity = -167, // int
             Body = -168, // Executable
             Clause = -169,// string
             Inverse = -170, // long
@@ -30,7 +29,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
-		public int arity => (int)mem[Arity];
+		public int arity => ins.Length;
         public string name => (string)mem[Name];
         /// <summary>
         /// The body and ins stored in the database uses the definer's role. 
@@ -49,8 +48,8 @@ namespace Pyrrho.Level3
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Database db,BTree<long,object> m)
             : base( p.ppos, p.defpos, db.role.defpos, m
-                  + (Arity, p.arity) + (RetType, db.objects[p.retdefpos])
-                  + (Name,p.name) + (Clause, p.proc_clause))
+                  + (Params,p.Ins(db)) + (RetType, db.objects[p.retType.defpos])
+                  + (Name,p.name) + (Clause, p.source.ident))
         { }
         public Procedure(long defpos,BTree<long, object> m) : base(defpos, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
@@ -131,9 +130,24 @@ namespace Pyrrho.Level3
         internal override Basis Relocate(Writer wr)
         {
             var r = (Procedure)base.Relocate(wr);
-            var rt = retType?.Relocate(wr);
+            var ps = BList<ProcParameter>.Empty;
+            var ch = false;
+            for (var b=ins.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                var np = (ProcParameter)p.Relocate(wr);
+                ps += np;
+                if (p != np)
+                    ch = true;
+            }
+            if (ch)
+                r += (Params, ps);
+            var rt = retType?.Relocate(wr.Fix(retType.defpos)).Relocate(wr);
             if (rt != retType)
                 r += (RetType, rt);
+            var bd = body?.Relocate(wr.Fix(body.defpos)).Relocate(wr);
+            if (bd != body)
+                r += (Body, bd);
             return r;
         }
         internal override DBObject Frame(Context cx)

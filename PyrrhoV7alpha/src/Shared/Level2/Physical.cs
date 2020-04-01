@@ -88,7 +88,34 @@ namespace Pyrrho.Level2
             database = wr.cx.db;
             time = ph.time;
         }
-        string _Pos => Pos(ppos);
+        internal static int IntLength(long p)
+        {
+            return 1 + new Integer(p).bytes.Length;
+        }
+        internal static int ColsLength(long[] cols)
+        {
+            var r = IntLength(cols.Length);
+            for (var i = 0; i < cols.Length; i++)
+                r += IntLength(cols[i]);
+            return r;
+        }
+        internal static int StringLength(object o)
+        {
+            if (o == null)
+                return 1;
+            var p = Encoding.UTF8.GetBytes(o.ToString()).Length;
+            return p + IntLength(p);
+        }
+        internal static int RepresentationLength(BList<(long,Domain)> rep)
+        {
+            var r = 1 + IntLength(rep.Length);
+            for (var b=rep.First();b!=null;b=b.Next())
+            {
+                var (p,d) = b.value();
+                r += IntLength(p) + IntLength(d?.defpos??-1L);
+            }
+            return r;
+        }
         /// <summary>
         /// Many Physicals affect another: we expose this in Log tables
         /// </summary>

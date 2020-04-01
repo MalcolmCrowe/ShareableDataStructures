@@ -39,9 +39,9 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, int ar, long rt, MethodType mt, long td, string pc, 
-            long pp, Context cx)
-            : this(Type.PMethod2,nm,ar,rt,mt,td,pc,pp,cx)
+        public PMethod(string nm, BList<(long,Domain)> ar, Domain rt, 
+            MethodType mt, long td, Method md, Ident sce,long pp, Context cx)
+            : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -55,14 +55,15 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, int ar, long rt, MethodType mt, long td, string pc, 
+        protected PMethod(Type tp, string nm, BList<(long,Domain)> ar, 
+            Domain rt, MethodType mt, long td, Method md, Ident sce,
             long pp, Context cx)
-            : base(tp,nm,ar,rt,pc,pp,cx)
+            : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
 			typedefpos = td;
 			methodType = mt;
             if (mt == MethodType.Constructor)
-                retdefpos = typedefpos;
+                retType = (Domain)cx.db.objects[typedefpos];
 		}
         /// <summary>
         /// Constructor: a new Method definition from the ReadBuffer
@@ -100,7 +101,7 @@ namespace Pyrrho.Level2
  //           if (methodType == PMethod.MethodType.Constructor) will be done in base
  //               retdefpos = typedefpos; 
             base.Deserialise(rdr);
-            Compile(rdr.context, rdr.Position);
+            Compile(name, rdr.context, rdr.Position);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -108,7 +109,8 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Method " + methodType.ToString()+" " + Pos(typedefpos) + "." + nameAndArity + "[" + Pos(retdefpos) + "] " + proc_clause; 
+            return "Method " + methodType.ToString()+" " + Pos(typedefpos) 
+                + "." + nameAndArity + "[" + Pos(retType.defpos) + "] " + source.ident; 
 		}
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {

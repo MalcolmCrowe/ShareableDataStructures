@@ -20,8 +20,7 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Activation : Context
     {
-        internal string label;
-        internal Domain domain;
+        internal readonly string label;
         /// <summary>
         /// Exception handlers defined for this block
         /// </summary>
@@ -51,36 +50,32 @@ namespace Pyrrho.Level4
             : base(cx)
         {
             label = n;
+            next = cx;
         }
         /// <summary>
         /// Constructor: a new activation for a Procedure. See CalledActivation constructor.
-        /// The blockid for a CalledActivation is always the nameAndArity of the routine (e.g. MyFunc$3).
         /// </summary>
         /// <param name="cx">The current context</param>
         /// <param name="pr">The procedure</param>
         /// <param name="n">The headlabel</param>
-        protected Activation(Context cx,Procedure pr, string n)
+        protected Activation(Context cx,DBObject pr)
             : base(cx,cx.db.objects[pr.definer] as Role,cx.user)
         {
+            label = ((ObInfo)db.role.obinfos[pr.defpos]).name;
             next = cx;
             nextHeap = cx.nextHeap;
-            label = n;
-            domain = pr.domain;
         }
-        protected Activation(Context cx,long definer,string n)
-            :base(cx,cx.db.objects[definer] as Role,cx.user)
-        {
-            next = cx;
-            nextHeap = cx.nextHeap;
-            label = n;
-        }
-        internal override void SlideDown(Context was)
+        internal override Context SlideDown()
         {
             for (var b = locals.First(); b != null; b = b.Next())
-                if (was.values.Contains(b.key()))
-                    values += (b.key(), was.values[b.key()]);
-            val = was.val;
-            base.SlideDown(was);
+            {
+                var k = b.key();
+                if (values.Contains(k))
+                    next.values += (k, values[k]);
+            }
+            next.val = val;
+            next.db = db; // adopt the transaction changes done by this
+            return next;
         }
         internal override TypedValue AddValue(DBObject s, TypedValue tv)
         {
@@ -109,10 +104,6 @@ namespace Pyrrho.Level4
         {
             return val;
         }
-        public override string ToString()
-        {
-            return "Activation " + cxid;
-        }
     }
     internal class CalledActivation : Activation
     {
@@ -121,7 +112,7 @@ namespace Pyrrho.Level4
         internal Method cmt = null;
         internal ObInfo udi = null;
         public CalledActivation(Context cx, Procedure p,Domain ot)
-            : base(cx, p, ((ObInfo)cx.db.role.obinfos[p.defpos]).name)
+            : base(cx, p)
         { 
             proc = p; udt = ot;
             if (p is Method mt)
@@ -141,10 +132,6 @@ namespace Pyrrho.Level4
             if (udi!=null)
                 return new TRow(udi.domain,values);
             return base.Ret();
-        }
-        public override string ToString()
-        {
-            return "CalledActivation " + proc.defpos;
         }
     }
     /// <summary>
@@ -170,7 +157,7 @@ namespace Pyrrho.Level4
         /// <param name="trs">The transition row set</param>
         /// <param name="tg">The trigger</param>
         internal TriggerActivation(Context _cx, TransitionRowSet trs, Trigger tg)
-            : base(_cx, tg.definer, tg.name)
+            : base(_cx, tg)
         {
             _trs = trs;
             parent = _cx.next;
@@ -183,7 +170,6 @@ namespace Pyrrho.Level4
             deferred = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
             if (deferred)
                 _cx.db += (Transaction.Deferred, _cx.tr.deferred + this); 
-            domain = _cx.db.role.obinfos[t.defpos] as Domain;
         }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's role
@@ -226,7 +212,7 @@ namespace Pyrrho.Level4
                      vs += (p, nc[s.defpos]);
                 }
                 cx.values += vs; 
-                cx.SlideDown(this);
+                cx = SlideDown();
                 if (row!=null)
                     cx.cursors += (row._trs.defpos,
                         new TransitionRowSet.TransitionCursor(this,row,vs));

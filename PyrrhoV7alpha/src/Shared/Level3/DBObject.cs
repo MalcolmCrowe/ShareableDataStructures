@@ -131,7 +131,7 @@ namespace Pyrrho.Level3
         internal abstract DBObject Relocate(long dp);
         internal override Basis Relocate(Writer wr)
         {
-            var r = ((DBObject)base.Relocate(wr)).Relocate(wr.Fix(defpos));
+            var r = (DBObject)base.Relocate(wr);
             var ds = BTree<long, bool>.Empty;
             for (var b = dependents.First(); b != null; b = b.Next())
                 ds += (wr.Fix(b.key()), true);

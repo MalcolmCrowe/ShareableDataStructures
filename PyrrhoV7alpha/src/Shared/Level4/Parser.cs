@@ -65,7 +65,7 @@ namespace Pyrrho.Level4
         {
             cx = new Context(d);
             cx.db = d+(Database._ExecuteStatus,ExecuteStatus.Parse);
-            lxr = new Lexer(src.ident, src.iix);
+            lxr = new Lexer(src);
             tok = lxr.tok;
         }
         /// <summary>
@@ -1216,8 +1216,9 @@ namespace Pyrrho.Level4
         {
             MethodName mn = ParseMethod(type);
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
-                cx.Add(new PMethod(mn.name, mn.arity, mn.retType.defpos,
-                    mn.methodType,type.defpos, mn.signature, tr.nextPos, cx));
+                cx.Add(new PMethod(mn.name, ProcParameter.Formals(mn.ins), 
+                    mn.retType.domain, mn.methodType,type.defpos,null,
+                    new Ident(mn.signature,mn.mname.iix), tr.nextPos, cx));
             return mn;
         }
         /// <summary>
@@ -2178,14 +2179,16 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public Procedure ParseProcedureBody(Procedure pr,string sql)
+        public Procedure ParseProcedureBody(string nm,Procedure pr,Ident source)
         {
             var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            lxr = new Lexer(sql,pr.defpos-1);
+            lxr = new Lexer(source);
             tok = lxr.tok;
             if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
-                tr += (Database.NextId, cx.db.nextId + sql.Length);
-            var (ps,dt) = ParseProcedureHeading(new Ident(pr.name,pr.defpos));
+                tr += (Database.NextId, cx.db.nextId + source.ident.Length);
+            var (ps,dt) = ParseProcedureHeading(source);
+            if (pr == null)
+                pr = new Procedure(source.iix, new BTree<long, object>(Basis.Name,nm));
             pr = pr + (Procedure.Params, ps) + (Procedure.RetType, dt);
             cx.db += pr;
             var oc = cx;
@@ -2211,7 +2214,6 @@ namespace Pyrrho.Level4
         /// <returns>the new Executable</returns>
         public Executable ParseProcedureClause(bool func, Sqlx create)
         {
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
             var cr = new Executable(lxr.Position, (create == Sqlx.CREATE) ? Executable.Type.CreateRoutine : Executable.Type.AlterRoutine);
             var n = new Ident(lxr);
             Mustbe(Sqlx.ID);
@@ -2230,12 +2232,14 @@ namespace Pyrrho.Level4
                 if (create == Sqlx.CREATE)
                 {
                     var np = cx.db.nextPos;
-                    pp = new PProcedure(n.ident, arity, rdt.defpos, "", np, cx);
-                    cx.Add(pp);
+                    pp = new PProcedure(n.ident, ProcParameter.Formals(ps),
+                        rdt.domain, pr, new Ident(lxr.input.ToString(), n.iix), np, cx);
                     pr = new Procedure(pp, cx.db, new BTree<long, object>(Procedure.Params, ps));
                     if (func)
-                        pr += (Procedure.RetType, rdt);
-                    tr += pr;
+                        pr += (Procedure.RetType, rdt); 
+                    pp.proc = pr;
+                    cx.Add(pp);
+                    cx.db += pr;
                     if (cx.dbformat<51)// provide for possible recursive reference
                         cx.digest += (n.iix, (n.ident, n.iix));
                 }
@@ -2250,7 +2254,7 @@ namespace Pyrrho.Level4
                 Next();
                 var nn = new Ident(lxr);
                 Mustbe(Sqlx.ID);
-                pr = pr + (Basis.Name, nn.ident) + (Procedure.Arity, (int)ps.Count);
+                pr = pr + (Basis.Name, nn.ident) + (Procedure.Params, ps) + (Procedure.RetType,rdt.domain);
                 cx.db += pr;
             }
             else if (create == Sqlx.ALTER && (StartMetadata(Sqlx.FUNCTION) || Match(Sqlx.ALTER, Sqlx.ADD, Sqlx.DROP)))
@@ -2260,13 +2264,14 @@ namespace Pyrrho.Level4
                 var sq = 1;
                 if (ParseMetadata(cx.db, pr, sq, Sqlx.FUNCTION, false) is Metadata md)
                     new PMetadata3(n.ident, md.seq, pr.defpos, md.description,
-                        md.iri, pr.defpos, md.flags, tr.nextPos, cx);
+                        md.iri, pr.defpos, md.flags, cx.db.nextPos, cx);
                 pr = pr + (Procedure.RetType, rdt) + (Procedure.Params, ps);
                 var s = new string(lxr.input, st, lxr.start - st);
                 if (tok != Sqlx.EOF && tok != Sqlx.SEMICOLON)
                 {
                     cx.AddParams(pr);
                     pr += (Procedure.Body, ParseProcedureStatement(pr.retType));
+                    pp.proc = pr;
                     s = new string(lxr.input, st, lxr.start - st);
                 }
                 if (create == Sqlx.CREATE)
@@ -2274,16 +2279,16 @@ namespace Pyrrho.Level4
                 cx.defs += (n, pr);
                 if (pp != null)
                 {
-                    pp.proc_clause = s;
+                    pp.source = new Ident(s,n.iix);
                     if (cx.db.format < 51)
                         pp.digested = cx.digest;
                 }
                 else
-                    cx.Add(new Modify(n.ident, pr.defpos, s, pr, tr.nextPos, cx)); // finally add the Modify
+                    cx.Add(new Modify(n.ident, pr.defpos, s, pr, cx.db.nextPos, cx)); // finally add the Modify
             }
             return (Executable)cx.Add(cr);
         }
-        (BList<ProcParameter>,ObInfo) ParseProcedureHeading(Ident pn)
+        internal (BList<ProcParameter>,ObInfo) ParseProcedureHeading(Ident pn)
         {
             var ps = BList<ProcParameter>.Empty;
             var oi = ObInfo.Any;
@@ -2435,7 +2440,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.CONTINUE, Sqlx.EXIT, Sqlx.UNDO);
             Mustbe(Sqlx.HANDLER);
             Mustbe(Sqlx.FOR);
-            var ac = new Activation(cx, hs.label);
+            var ac = new Activation(cx,hs.name);
             hs+=(HandlerStatement.Conds,ParseConditionValueList());
             var a = ParseProcedureStatement(ObInfo.Content);
             hs= hs+(HandlerStatement.Action,a)+(DBObject.Dependents,a.dependents);
@@ -2499,12 +2504,12 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseCompoundStatement(ObInfo oi,Ident n)
+		Executable ParseCompoundStatement(ObInfo oi,string n)
         {
-            var cs = new CompoundStatement(lxr.Position, n?.ident);
+            var cs = new CompoundStatement(lxr.Position, n);
             BList<Executable> r = BList<Executable>.Empty;
             Mustbe(Sqlx.BEGIN);
-            var ac = new Activation(cx, n?.ident);
+            var ac = new Activation(cx,cs.label);
             if (tok == Sqlx.TRANSACTION)
                 throw new DBException("25001", "Nested transactions are not supported").ISO();
             if (tok == Sqlx.XMLNAMESPACES)
@@ -2571,7 +2576,7 @@ namespace Pyrrho.Level4
  			switch (tok)
 			{
                 case Sqlx.ID: r= ParseLabelledStatement(oi); break;
-                case Sqlx.BEGIN: r = ParseCompoundStatement(oi, null); break;
+                case Sqlx.BEGIN: r = ParseCompoundStatement(oi, ""); break;
                 case Sqlx.CALL: r = ParseCallStatement(oi); break;
                 case Sqlx.CASE: r = ParseCaseStatement(oi); break;
                 case Sqlx.CLOSE: r = ParseCloseStatement(); break;
@@ -2664,7 +2669,7 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.COLON)
             {
                 Next();
-                var s = sc;
+                var s = sc.ident;
                 switch (tok)
                 {
                     case Sqlx.BEGIN: return (Executable)cx.Add(ParseCompoundStatement(oi,s));
@@ -2808,9 +2813,9 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseForStatement(ObInfo oi,Ident n)
+        Executable ParseForStatement(ObInfo oi,string n)
         {
-            var fs = new ForSelectStatement(lxr.Position, n?.ident??"");
+            var fs = new ForSelectStatement(lxr.Position, n);
             var old = cx;
             Next();
             Ident c = null;
@@ -2845,7 +2850,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.FOR);
             if (tok == Sqlx.ID)
             {
-                if (n != null && n.ident != lxr.val.ToString())
+                if (n != null && n != lxr.val.ToString())
                     throw new DBException("42157", lxr.val.ToString(), n).Mix();
                 Next();
             }
@@ -2989,7 +2994,7 @@ namespace Pyrrho.Level4
                 var pn = (ic.sub != null) ? ic.sub.ident : ic.ident;
                 var pr = cx.db.GetProcedure(pn, n);
                 var tg = cx.defs[(ic, 1)].Item1;
-                if (ic.sub!=null)
+                if (ic.sub==null)
                 {
                     if (pr == null && cx.db.objects[cx.db.role.dbobjects[pn]] is Domain ut
                         && cx.db.role.obinfos[ut.defpos] is ObInfo ui)
@@ -3107,14 +3112,14 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-		Executable ParseLoopStatement(ObInfo oi, Ident n)
+		Executable ParseLoopStatement(ObInfo oi, string n)
         {
-            var ls = new LoopStatement(lxr.Position, n.ident,cx.cxid);
+            var ls = new LoopStatement(lxr.Position, n,cx.cxid);
                 Next();
                 ls+=(WhenPart.Stms,ParseStatementList(oi));
                 Mustbe(Sqlx.END);
                 Mustbe(Sqlx.LOOP);
-                if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
+                if (tok == Sqlx.ID && n != null && n == lxr.val.ToString())
                     Next();
             return (Executable)cx.Add(ls);
         }
@@ -3124,9 +3129,9 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseSqlWhile(ObInfo oi, Ident n)
+        Executable ParseSqlWhile(ObInfo oi, string n)
         {
-            var ws = new WhileStatement(lxr.Position, n.ident);
+            var ws = new WhileStatement(lxr.Position, n);
             var old = cx; // new SaveContext(lxr, ExecuteStatus.Parse);
             Next();
             ws+=(WhileStatement.Search,ParseSqlValue(ObInfo.Bool));
@@ -3134,7 +3139,7 @@ namespace Pyrrho.Level4
             ws+=(WhileStatement.What,ParseStatementList(oi));
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.WHILE);
-            if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
+            if (tok == Sqlx.ID && n != null && n == lxr.val.ToString())
                 Next();
             cx = old; // old.Restore(lxr);
             return (Executable)cx.Add(ws);
@@ -3145,16 +3150,16 @@ namespace Pyrrho.Level4
         /// <param name="n">the label</param>
         /// <param name="rt">The data type of the test expression</param>
         /// <returns>the Executable result of the parse</returns>
-        Executable ParseRepeat(ObInfo oi, Ident n)
+        Executable ParseRepeat(ObInfo oi, string n)
         {
-            var rs = new RepeatStatement(lxr.Position, n?.ident);
+            var rs = new RepeatStatement(lxr.Position, n);
             Next();
             rs+=(WhileStatement.What,ParseStatementList(oi));
             Mustbe(Sqlx.UNTIL);
             rs+=(WhileStatement.Search,ParseSqlValue(ObInfo.Bool));
             Mustbe(Sqlx.END);
             Mustbe(Sqlx.REPEAT);
-            if (tok == Sqlx.ID && n != null && n?.ident == lxr.val.ToString())
+            if (tok == Sqlx.ID && n != null && n == lxr.val.ToString())
                 Next();
             return (Executable)cx.Add(rs);
         }
@@ -5203,7 +5208,7 @@ namespace Pyrrho.Level4
             var dm = (a != null) ? (ObInfo)cx.db.role.obinfos[a.defpos] : null;
             if (dm == null || (dm.priv&Grant.Privilege.UseRole)==0)
                 throw new DBException("42135", n.ident);
-            cx.db += (Database.Role, a);
+            cx.db += (Database.Role, a.defpos);
             if (cx.next == null)
                 cx = new Context(cx.db);
             else
@@ -5585,7 +5590,7 @@ namespace Pyrrho.Level4
             r = (TableExpression)cx.Add(r);
             r = (TableExpression)r.AddCondition(cx,Query.Where, wh);
             r = (TableExpression)r.AddCondition(cx,TableExpression.Having, ha);
-            var ds = (r.from is QuerySpecification sq) ? sq.display : r.from.rowType.Length;
+            var ds = (r.from is QuerySpecification sq) ? sq.display : r.from.rowType?.Length??0;
             r+=(Query.Display,ds);
             r = (TableExpression)cx.Add(r);
             q = (QuerySpecification)q.Refresh(cx); // may have changed!

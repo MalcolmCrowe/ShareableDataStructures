@@ -130,7 +130,7 @@ namespace Pyrrho.Level3
 		protected Context ObeyList(BList<Executable> e,Context cx)
 		{
             if (e == null)
-                throw new DBException("42173", (cx as Activation)?.label??"");
+                throw new DBException("42173");
             Context nx = cx;
             Activation a = (Activation)cx;
             for (var b = e.First();b!=null && nx==cx 
@@ -142,14 +142,15 @@ namespace Pyrrho.Level3
                     nx = x.Obey(cx);
                     if (a==nx && a.signal != null)
                         a.signal.Throw(a);
-                    cx.SlideDown(nx);
+                    if (cx != nx)
+                        break;
                 }
                 catch (DBException ex)
                 {
                     a.signal = new Signal(cx.cxid,ex);
                 }
             }
-            return cx;
+            return nx;
 		}
         /// <summary>
         /// Obey the Executable for the given Activation.
@@ -325,7 +326,7 @@ namespace Pyrrho.Level3
 		public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var act = new Activation(cx, label);
+            var act = new Activation(cx,label);
             try
             {
                 act = (Activation)ObeyList(stms, act);
@@ -333,8 +334,7 @@ namespace Pyrrho.Level3
                     act.signal.Throw(cx);
             }
             catch (Exception e) { throw e; }
-            cx.SlideDown(act);
-            return cx;
+            return act.SlideDown();
         }
         public override string ToString()
         {
@@ -477,6 +477,10 @@ namespace Pyrrho.Level3
         {
             return new ProcParameter(dp, mem);
         }
+        internal override TypedValue Eval(Context cx)
+        {
+            return cx.values[defpos];
+        }
         /// <summary>
         /// We aren't a column reference
         /// </summary>
@@ -485,6 +489,16 @@ namespace Pyrrho.Level3
         internal override Selection Needs(Selection qn)
         {
             return qn;
+        }
+        internal static BList<(long,Domain)> Formals(BList<ProcParameter> pps)
+        {
+            var ps = BList<(long, Domain)>.Empty;
+            for (var b = pps.First(); b != null; b = b.Next())
+            {
+                var pp = b.value();
+                ps += (pp.defpos, pp.domain);
+            }
+            return ps;
         }
         /// <summary>
         /// A readable version of the ProcParameter
@@ -703,7 +717,7 @@ namespace Pyrrho.Level3
                         cx.next = hdefiner.saved.stack;
                     }
                 }
-                cx = hdlr.action.Obey(cx);
+                hdlr.action.Obey(cx);
                 if (hdlr.htype == Sqlx.EXIT)
                     return hdefiner.next;
                 var a = (Activation)cx;
@@ -746,7 +760,12 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            return cx.Ctx(defpos);
+            if (label == "")
+                return cx.SlideDown();
+            for (cx = cx.next; cx.next != null; cx = cx.next)
+                if (cx is Activation ac && ac.label == label)
+                    break;
+            return cx;
         }
 	}
     /// <summary>
@@ -988,7 +1007,7 @@ namespace Pyrrho.Level3
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
 			a.val = ret.Eval(cx);
-            cx.SlideDown(a);
+            cx = a.SlideDown();
             return cx;
 		}
 	}
@@ -1561,13 +1580,13 @@ namespace Pyrrho.Level3
             var na = cx;
             while (na==cx && a.signal == null && search.Matches(cx))
             {
-                var lp = new Activation(cx, label);
+                var lp = new Activation(cx,label);
                 lp.cont = a;
                 lp.brk = a;
                 na = ObeyList(what, lp);
                 if (na == lp)
                     na = cx;
-                a.SlideDown(lp);
+                a = (Activation)na.SlideDown();
                 a.signal = lp.signal;
             }
             return a;
@@ -1664,7 +1683,7 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            var act = new Activation(cx, label);
+            var act = new Activation(cx,label);
             Context na = act;
             for (; ;)
             {
@@ -1675,7 +1694,7 @@ namespace Pyrrho.Level3
                 if (!search.Matches(act))
                     break;
             }
-            cx.SlideDown(act); 
+            cx = act.SlideDown(); 
             return cx;
         }
 	}
@@ -1793,8 +1812,8 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
-            var act = new Activation(cx, label);
-            var lp = new Activation(act, null);
+            var act = new Activation(cx,label);
+            var lp = new Activation(act,"");
             var na = lp;
             while(na==lp)
             {
@@ -1804,13 +1823,12 @@ namespace Pyrrho.Level3
                 if (na==lp)
                     lp.signal?.Throw(a);
             }
-            if (na == act)
+            if (na == lp)
             {
                 act.signal?.Throw(a);
-                act.SlideDown(lp);
+                act = (Activation)lp.SlideDown();
             }
-            cx.SlideDown(act);
-            return cx;
+            return act.SlideDown();
         }
 	}
     /// <summary>
@@ -1921,7 +1939,7 @@ namespace Pyrrho.Level3
             if (da == null)
                 return cx;
             var qs = sel.union.left;
-            var ac = new Activation(cx, label);
+            var ac = new Activation(cx,label);
             ac.Add(qs);
             var dt = sel.rowType;
             for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
@@ -1933,8 +1951,7 @@ namespace Pyrrho.Level3
                 if (ac.signal != null)
                     ac.signal.Throw(cx);
             }
-            cx.SlideDown(ac);
-            return cx;
+            return ac.SlideDown();
         }
 	}
     /// <summary>
@@ -2149,8 +2166,8 @@ namespace Pyrrho.Level3
             // position the cursor as specified
             var rqpos = 0L;
             var rb = cx.values[cursor.defpos] as Cursor;
-            if (rb!=null)
-                rqpos= rb._pos+1;
+            if (rb != null)
+                rqpos = rb._pos + 1;
             switch (how)
             {
                 case Sqlx.NEXT: break; // default case
@@ -2177,10 +2194,10 @@ namespace Pyrrho.Level3
             }
             if (rb == null || rqpos == 0)
                 rb = cx.data[cs.defpos].First(cx);
-            while (rb!= null && rqpos != rb._pos)
+            while (rb != null && rqpos != rb._pos)
                 rb = rb.Next(cx);
             if (rb == null)
-                cx = new Signal(defpos,"02000", "No data").Obey(cx);
+                cx = new Signal(defpos, "02000", "No data").Obey(cx);
             else
             {
                 var dt = cs.rowType;
@@ -2246,6 +2263,9 @@ namespace Pyrrho.Level3
         internal override Basis Relocate(Writer wr)
         {
             var r = (CallStatement)base.Relocate(wr);
+            var pp = wr.Fix(procdefpos);
+            if (pp != procdefpos)
+                r += (ProcDefPos, pp);
             var ps = BList<SqlValue>.Empty;
             var ch = false;
             for (var b=parms.First();b!=null;b=b.Next())

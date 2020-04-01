@@ -36,9 +36,8 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Context 
 	{
-        static int _dbg;
-        readonly int dbg = ++_dbg;
-        public readonly long cxid;
+        static long _cxid;
+        internal readonly long cxid = ++_cxid;
         public readonly int dbformat; 
         public User user;
         public Role role;
@@ -141,6 +140,7 @@ namespace Pyrrho.Level4
         }
         internal Context(Context c,Role r,User u) :this(c)
         {
+            db += (Database.Role, r.defpos);
             user = u;
         }
         internal DBObject Get(Ident ic, ObInfo oi)
@@ -428,12 +428,17 @@ namespace Pyrrho.Level4
             }
             return Domain.Char;
         }
-        internal Context Ctx(long bk)
+        internal Context Ctx(string bk)
         {
-            for (var cx = this; cx != null; cx = cx.next)
-                if (cx.cxid == bk)
+            for (var cx = SlideDown(); cx != null; cx = cx.SlideDown())
+                if (cx is Activation ac)
+                {
+                    if (ac.label == bk)
+                        return ac;
+                }
+                else
                     return cx;
-            return null;
+            return null; // probably will crash this thread
         }
         internal Activation GetActivation()
         {
@@ -442,15 +447,14 @@ namespace Pyrrho.Level4
                     return ac;
             return null;
         }
-        internal virtual void SlideDown(Context was)
+        internal virtual Context SlideDown()
         {
-            val = was.val;
-            db = was.db;
+            return this;
         }
         // debugging
         public override string ToString()
         {
-            return "Context " + cxid;
+            return GetType().Name + " "+ cxid;
         }
 
         internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)

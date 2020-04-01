@@ -142,6 +142,16 @@ namespace Pyrrho.Level2
             }
             return pos;
         }
+        internal BList<(long, Domain)> Relocate(BList<(long, Domain)> rp)
+        {
+            var r = BList<(long, Domain)>.Empty;
+            for (var b = rp.First(); b != null; b = b.Next())
+            {
+                var (p, d) = b.value();
+                r += (Fix(p), (Domain)cx.db.objects[d.defpos]);
+            }
+            return r;
+        }
     }
 
     public abstract class ReaderBase : IOBase

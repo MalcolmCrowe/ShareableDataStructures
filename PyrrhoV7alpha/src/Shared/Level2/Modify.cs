@@ -85,7 +85,6 @@ namespace Pyrrho.Level2
 			base.Serialise(wr);
             var pp = wr.cx.db.objects[modifydefpos] as Procedure;
             pp += (Procedure.Clause, body);
-            new Parser(wr.cx).ParseProcedureBody(pp, pp.clause);
         }
         /// <summary>
         /// Desrialise this p[hysical from the buffer
@@ -102,7 +101,7 @@ namespace Pyrrho.Level2
                 default:
                     var pp = rdr.context.db.objects[modifydefpos] as Procedure;
                     pp += (Procedure.Clause, body);
-                    pp = new Parser(rdr.context).ParseProcedureBody(pp, pp.clause);
+                    pp = new Parser(rdr.context).ParseProcedureBody(pp.name, pp, new Ident(pp.clause,modifydefpos));
                     now = pp.body;
                     break;
                 case "Source":
