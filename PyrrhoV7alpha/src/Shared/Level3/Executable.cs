@@ -6,10 +6,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -127,7 +129,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="e">The Executables</param>
         /// <param name="tr">The transaction</param>
-		protected Context ObeyList(BList<Executable> e,Context cx)
+		protected Context ObeyList(BList<long> e,Context cx)
 		{
             if (e == null)
                 throw new DBException("42173");
@@ -138,7 +140,7 @@ namespace Pyrrho.Level3
             {
                 try
                 {
-                    var x = b.value();
+                    var x = (Executable)cx.obs[b.value()];
                     nx = x.Obey(cx);
                     if (a==nx && a.signal != null)
                         a.signal.Throw(a);
@@ -169,16 +171,20 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new Executable(dp, mem);
+            return (Executable)New(mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            return ((DBObject)base.Relocate(wr)).Relocate(wr.Fix(defpos));
+            return ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
         }
-        internal static bool Calls(BList<Executable> ss,long defpos,Database d)
+        internal override Basis _Relocate(Context cx)
+        {
+            return ((DBObject)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
+        }
+        internal static bool Calls(BList<long> ss,long defpos,Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, d))
+                if (cx.obs[b.value()].Calls(defpos, cx))
                     return true;
             return false;
         }
@@ -197,17 +203,17 @@ namespace Pyrrho.Level3
     internal class SelectStatement : Executable
     {
         internal const long
-             CS = -95; //CursorSpecification
+             CS = -95; //long CursorSpecification
         /// <summary>
         /// The cusorspecification (a Query) for this executable
         /// </summary>
-        public CursorSpecification cs=>(CursorSpecification)mem[CS];
+        public long cs=>(long)(mem[CS]??-1L);
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="c">The cursor specification</param>
         public SelectStatement(long dp, CursorSpecification c)
-            : base(dp, new BTree<long, object>(CS, c) + (Dependents, c.dependents))
+            : base(dp, new BTree<long, object>(CS, c.defpos) + (Dependents, c.dependents))
         { }
         protected SelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SelectStatement operator+(SelectStatement s,(long,object)x)
@@ -222,25 +228,25 @@ namespace Pyrrho.Level3
         {
             return new SelectStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (SelectStatement)base.Relocate(wr);
-            var c = cs.Relocate(wr);
-            if (c != cs)
-                r += (CS, c);
+            var r = (SelectStatement)base._Relocate(wr);
+            var c = (CursorSpecification)wr.Fixed(cs);
+            if (c.defpos != cs)
+                r += (CS, c.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (SelectStatement)base.Frame(cx);
-            var c = cs.Frame(cx);
-            if (c != cs)
-                r += (CS, c);
-            return cx.Add(r,true);
+            var r = (SelectStatement)base._Relocate(cx);
+            var c = (CursorSpecification)cx.Fixed(cs);
+            if (c.defpos != cs)
+                r += (CS, c.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return cs.Calls(defpos, db);
+            return cx.obs[cs].Calls(defpos, cx);
         }
         /// <summary>
         /// Obey the executable
@@ -248,7 +254,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            cs.RowSets(cx);
+            ((Query)cx.obs[cs]).RowSets(cx, BTree<long,RowSet.Finder>.Empty);
             return cx;
         }
 
@@ -259,12 +265,12 @@ namespace Pyrrho.Level3
     internal class CompoundStatement : Executable
     {
         internal const long
-             Stms = -96; // BList<Executable>
+             Stms = -96; // BList<long> Executable
         /// <summary>
         /// The contained list of Executables
         /// </summary>
-		public BList<Executable> stms =>
-            (BList<Executable>)mem[Stms] ?? BList<Executable>.Empty;
+		public BList<long> stms =>
+            (BList<long>)mem[Stms] ?? BList<long>.Empty;
         /// <summary>
         /// Constructor: create a compound statement
         /// </summary>
@@ -285,39 +291,39 @@ namespace Pyrrho.Level3
         {
             return new CompoundStatement(dp,mem);
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (CompoundStatement)base.Frame(cx);
-            var ss = BList<Executable>.Empty;
-            var ch = false;
-            for (var b = stms.First(); b != null; b = b.Next())
-            {
-                var s = (Executable)b.value().Frame(cx);
-                ch = ch || s != b.value();
-                ss += s;
-            }
-            if (ch)
-                r += (Stms, ss);
-            return cx.Add(r,true);
-        }
-        internal override Basis Relocate(Writer wr)
-        {
-            var r = (CompoundStatement)base.Relocate(wr);
-            var ss = BList<Executable>.Empty;
+            var r = (CompoundStatement)base._Relocate(wr);
+            var ss = BList<long>.Empty;
             var ch = false;
             for (var b=stms.First();b!=null;b=b.Next())
             {
-                var s = (Executable)b.value().Relocate(wr);
-                ch = ch || s != b.value();
-                ss += s;
+                var s = (Executable)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                ss += s.defpos;
             }
             if (ch)
                 r += (Stms, ss);
             return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override Basis _Relocate(Context cx)
         {
-            return Calls(stms, defpos, db);
+            var r = (CompoundStatement)base._Relocate(cx);
+            var ss = BList<long>.Empty;
+            var ch = false;
+            for (var b = stms.First(); b != null; b = b.Next())
+            {
+                var s = (Executable)cx.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                ss += s.defpos;
+            }
+            if (ch)
+                r += (Stms, ss);
+            return r;
+        }
+        internal override bool Calls(long defpos, Context cx)
+        {
+            return Calls(stms, defpos, cx);
         }
         /// <summary>
         /// Obey a Compound Statement.
@@ -339,7 +345,13 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(stms);
+            var cm = "(";
+            for (var b = stms.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(")");
             return sb.ToString();
         }
     }
@@ -347,7 +359,8 @@ namespace Pyrrho.Level3
     {
         internal readonly BList<SqlValue> qMarks;
         internal readonly Executable target;
-        public PreparedStatement(Executable e,BList<SqlValue> q) :base(e.defpos-1,BTree<long,object>.Empty)
+        public PreparedStatement(Executable e,BList<SqlValue> q) 
+            :base(e.defpos-1,BTree<long,object>.Empty)
         {
             target = e;
             qMarks = q;
@@ -359,31 +372,18 @@ namespace Pyrrho.Level3
 	internal class LocalVariableDec : Executable
     {
         internal const long
-            Init = -97; // SqlValue
-        /// <summary>
-        /// The declared data type for the variable
-        /// </summary>
-        public Domain dataType => (Domain)mem[_Domain] ?? Domain.Null;
+            Init = -97; // long SqlValue
         /// <summary>
         /// Default initialiser
         /// </summary>
-        public SqlValue init => (SqlValue)mem[Init];
-        public SqlValue vbl => (SqlValue)mem[AssignmentStatement.Vbl];
-        public ObInfo info => (ObInfo)mem[SqlValue.Info] ?? ObInfo.Any;
+        public long init => (long)(mem[Init]??-1L);
+        public long vbl => (long)(mem[AssignmentStatement.Vbl]??-1L);
         /// <summary>
         /// Constructor: a new local variable
         /// </summary>
-        /// <param name="tr">The transaction</param>
-        /// <param name="n">The name of the variable</param>
-        /// <param name="dt">The data type</param>
-        public LocalVariableDec(long dp, string n, Domain dt, SqlValue v=null)
-            : base(dp,BTree<long,object>.Empty+(Label,n)+(_Domain,dt)
-                  +(AssignmentStatement.Vbl,v??(new SqlValue(dp,n,dt))))
-        { }
-        public LocalVariableDec(long dp, string n, Domain dt, ObInfo oi, 
-            SqlValue v = null,BTree<long,object>m=null)
-    : base(dp, (m??BTree<long, object>.Empty) + (Label, n) + (_Domain, dt) + (SqlValue.Info,oi) 
-          + (AssignmentStatement.Vbl, (v??new SqlValue(dp, n, dt))))
+        public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>m=null)
+         : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name)  
+          + (AssignmentStatement.Vbl, v.defpos))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LocalVariableDec operator+(LocalVariableDec s,(long,object)x)
@@ -398,27 +398,25 @@ namespace Pyrrho.Level3
         {
             return new LocalVariableDec(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (LocalVariableDec)base.Relocate(wr);
-            var d = dataType?.Relocate(wr);
-            if (d != dataType)
-                r += (_Domain, d);
-            var oi = info?.Relocate(wr);
-            if (oi != info)
-                r += (SqlValue.Info, d);
+            var r = (LocalVariableDec)base._Relocate(wr);
+            var v = (SqlValue)wr.Fixed(vbl);
+            if (v.defpos != vbl)
+                r += (AssignmentStatement.Vbl, v.defpos);
+            if (wr.Fixed(init) is Executable e && e.defpos != init)
+                r += (Init, e.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (LocalVariableDec)base.Frame(cx);
-            var d = dataType?.Frame(cx);
-            if (d != dataType)
-                r += (_Domain, d);
-            var oi = info?.Frame(cx);
-            if (oi != info)
-                r += (SqlValue.Info, d);
-            return cx.Add(r,true);
+            var r = (LocalVariableDec)base._Relocate(cx);
+            var v = (SqlValue)cx.Fixed(vbl);
+            if (v.defpos != vbl)
+                r += (AssignmentStatement.Vbl, v.defpos);
+            if (cx.Fixed(init) is Executable e && e.defpos != init)
+                r += (Init, e.defpos);
+            return r;
         }
         /// <summary>
         /// Execute the local variable declaration, by adding the local variable to the activation (overwrites any previous)
@@ -428,9 +426,10 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            TypedValue tv = init?.Eval(cx)??dataType.defaultValue;
+            var vb = (SqlValue)cx.obs[vbl];
+            TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
-            cx.AddValue(vbl, tv); // We expect a==cx, but if not, tv will be copied to a later
+            cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
         }
         public override string ToString()
@@ -442,13 +441,15 @@ namespace Pyrrho.Level3
         }
 	}
     /// <summary>
-    /// A procedure formal parameter is a dynamically initialised local variable
+    /// A procedure formal parameter has mode and result info
     /// </summary>
-	internal class ProcParameter : SqlValue
+    internal class ParamInfo : DBObject
     {
         internal const long
             ParamMode = -98, // Sqlx
             Result = -99; // Sqlx
+        public long val => (long)(mem[AssignmentStatement.Val] ?? -1L);
+        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The mode of the parameter: IN, OUT or INOUT
         /// </summary>
@@ -461,44 +462,30 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public ProcParameter(long dp, Sqlx m, string n, ObInfo dt) 
-            : base(dp, n, dt.domain, new BTree<long, object>(ParamMode, m)+(Info,dt))
+		public ParamInfo(long vp, Sqlx m, string n,Domain dt)
+            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
+                  +(DBObject._Domain,dt))
         { }
-        protected ProcParameter(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static ProcParameter operator +(ProcParameter s, (long, object) x)
+        protected ParamInfo(long dp,BTree<long, object> m) : base(dp,m) { }
+        public static ParamInfo operator +(ParamInfo s, (long, object) x)
         {
-            return new ProcParameter(s.defpos, s.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new ProcParameter(defpos, m);
+            return new ParamInfo(s.defpos,s.mem + x);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new ProcParameter(dp, mem);
+            return new ParamInfo(dp,mem);
         }
-        internal override TypedValue Eval(Context cx)
+        internal override Basis _Relocate(Writer wr)
         {
-            return cx.values[defpos];
+            var r = (ParamInfo)base._Relocate(wr);
+            var v = (SqlValue)wr.Fixed(val);
+            return r+(AssignmentStatement.Val,v.defpos);
         }
-        /// <summary>
-        /// We aren't a column reference
-        /// </summary>
-        /// <param name="qn"></param>
-        /// <returns></returns>
-        internal override Selection Needs(Selection qn)
+        internal override Basis _Relocate(Context cx)
         {
-            return qn;
-        }
-        internal static BList<(long,Domain)> Formals(BList<ProcParameter> pps)
-        {
-            var ps = BList<(long, Domain)>.Empty;
-            for (var b = pps.First(); b != null; b = b.Next())
-            {
-                var pp = b.value();
-                ps += (pp.defpos, pp.domain);
-            }
-            return ps;
+            var r = (ParamInfo)base._Relocate(cx);
+            var v = (SqlValue)cx.Fixed(val);
+            return r + (AssignmentStatement.Val, v.defpos);
         }
         /// <summary>
         /// A readable version of the ProcParameter
@@ -511,6 +498,11 @@ namespace Pyrrho.Level3
             if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
             return sb.ToString();
         }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ParamInfo(defpos,m);
+        }
     }
     /// <summary>
     /// A local cursor
@@ -518,22 +510,19 @@ namespace Pyrrho.Level3
     internal class CursorDeclaration : LocalVariableDec
     {
         internal const long
-            CS = FetchStatement.Cursor; // SqlCursor
+            CS = FetchStatement.Cursor; // long SqlCursor
         /// <summary>
         /// The specification for the cursor
         /// </summary>
-        public SqlCursor cs => (SqlCursor)mem[CS];
+        public long cs => (long)(mem[CS] ?? -1L);
         /// <summary>
         /// Constructor:
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
-        public CursorDeclaration(long dp,string n,CursorSpecification c) 
-            : this(dp,n,c.rowType,new SqlCursor(c.defpos,c,n)) 
-        { }
-        CursorDeclaration(long dp,string n,Selection rt,SqlCursor c)
-            : base(dp,n,Domain.Row,rt.info,c,new BTree<long,object>(CS,c))
+        public CursorDeclaration(long dp, Context cx,string n,CursorSpecification c) 
+            : base(dp,cx,new SqlCursor(dp,c,n),new BTree<long,object>(CS,c.defpos)) 
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -544,17 +533,25 @@ namespace Pyrrho.Level3
         {
             return new CursorDeclaration(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = base.Relocate(wr);
-            var c = cs.Relocate(wr);
-            if (c != cs)
-                r += (CS, c);
+            var r = base._Relocate(wr);
+            var c = (CursorSpecification)wr.Fixed(cs);
+            if (c.defpos != cs)
+                r += (CS, c.defpos);
             return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override Basis _Relocate(Context cx)
         {
-            return cs.Calls(defpos, db);
+            var r = base._Relocate(cx);
+            var c = (CursorSpecification)cx.Fixed(cs);
+            if (c.defpos != cs)
+                r += (CS, c.defpos);
+            return r;
+        }
+        internal override bool Calls(long defpos, Context cx)
+        {
+            return cx.obs[cs].Calls(defpos, cx);
         }
         /// <summary>
         /// Instantiate the cursor
@@ -562,7 +559,8 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            cx.AddValue(cs, cs.Eval(cx));
+            var cu = cx.obs[cs];
+            cx.AddValue(cu, cu.Eval(cx));
             return cx;
         }
     }
@@ -572,7 +570,7 @@ namespace Pyrrho.Level3
 	internal class HandlerStatement : Executable
 	{
         internal const long
-            Action = -100, // Executable
+            Action = -100, // long Executable
             Conds = -101, // BList<string>
             HType = -102; // Sqlx
         /// <summary>
@@ -587,7 +585,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statement to execute when one of these conditions happens
         /// </summary>
-        public Executable action => (Executable)mem[Action];
+        public long action => (long)(mem[Action]??-1L);
         /// <summary>
         /// Constructor: a handler statement for a stored procedure
         /// </summary>
@@ -607,21 +605,21 @@ namespace Pyrrho.Level3
         {
             return new HandlerStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (HandlerStatement)base.Relocate(wr);
-            var a = action.Relocate(wr);
-            if (a != action)
-                r += (Action, a);
+            var r = (HandlerStatement)base._Relocate(wr);
+            var a = (Executable)wr.Fixed(action);
+            if (a.defpos != action)
+                r += (Action, a.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (HandlerStatement)base.Frame(cx);
-            var a = action.Frame(cx);
-            if (a != action)
-                r += (Action, a);
-            return cx.Add(r,true);
+            var r = (HandlerStatement)base._Relocate(cx);
+            var a = (Executable)cx.Fixed(action);
+            if (a.defpos != action)
+                r += (Action, a.defpos);
+            return r;
         }
         /// <summary>
         /// Obeying the handler declaration means installing the handler for each condition
@@ -636,9 +634,9 @@ namespace Pyrrho.Level3
 				a.exceptions+=(c.value(),new Handler(this,a));
             return cx;
 		}
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return action.Calls(defpos, db);
+            return cx.obs[action].Calls(defpos, cx);
         }
     }
     /// <summary>
@@ -648,7 +646,7 @@ namespace Pyrrho.Level3
 	{
         internal const long
             HDefiner = -103, // Activation
-            Hdlr = -104; //HandlerStatement
+            Hdlr = -104; // HandlerStatement
         /// <summary>
         /// The shared handler statement
         /// </summary>
@@ -662,7 +660,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="h">The HandlerStatement</param>
 		public Handler(HandlerStatement h, Activation ad) 
-            : base(ad.nextHeap++, BTree<long, object>.Empty
+            : base(ad.GetUid(), BTree<long, object>.Empty
             + (Hdlr, h) + (HDefiner, h.definer) + (Dependents,h.dependents))
         { }
         protected Handler(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -678,25 +676,25 @@ namespace Pyrrho.Level3
         {
             return new Handler(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (Handler)base.Relocate(wr);
+            var r = (Handler)base._Relocate(wr);
             var h = hdlr.Relocate(wr);
             if (h != hdlr)
                 r += (Hdlr, h);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (Handler)base.Frame(cx);
-            var h = hdlr.Frame(cx);
+            var r = (Handler)base._Relocate(cx);
+            var h = hdlr.Relocate(cx);
             if (h != hdlr)
                 r += (Hdlr, h);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return hdlr.Calls(defpos, db);
+            return hdlr.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute the action part of the Handler Statement
@@ -717,7 +715,7 @@ namespace Pyrrho.Level3
                         cx.next = hdefiner.saved.stack;
                     }
                 }
-                hdlr.action.Obey(cx);
+                ((Executable)cx.obs[hdlr.action]).Obey(cx);
                 if (hdlr.htype == Sqlx.EXIT)
                     return hdefiner.next;
                 var a = (Activation)cx;
@@ -774,21 +772,21 @@ namespace Pyrrho.Level3
 	internal class AssignmentStatement : Executable
     {
         internal const long
-            Val = -105, //SqlValue
-            Vbl = -106; // SqlValue
+            Val = -105, // long SqlValue
+            Vbl = -106; // long SqlValue
         /// <summary>
         /// The left hand side of the assignment, checked for assignability
         /// </summary>
-        public SqlValue vbl => (SqlValue)mem[Vbl];
+        public long vbl => (long)(mem[Vbl]??-1L);
         /// <summary>
         /// The right hand side of the assignment
         /// </summary>
-		public SqlValue val => (SqlValue)mem[Val];
+		public long val => (long)(mem[Val]??-1L);
         /// <summary>
         /// Constructor: An assignment statement from the parser
         /// </summary>
 		public AssignmentStatement(long dp,SqlValue vb,SqlValue va) 
-            : base(dp,BTree<long, object>.Empty+(Vbl,vb)+(Val,va)
+            : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
                   +(Dependents,BTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -804,47 +802,48 @@ namespace Pyrrho.Level3
         {
             return new AssignmentStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (AssignmentStatement)base.Relocate(wr);
-            var va = val.Relocate(wr);
-            if (va != val)
-                r += (Val, va);
-            var vb = vbl.Relocate(wr);
-            if (vb != vbl)
-                r += (Vbl, vb);
+            var r = (AssignmentStatement)base._Relocate(wr);
+            var va = (SqlValue)wr.Fixed(val);
+            if (va.defpos != val)
+                r += (Val, va.defpos);
+            var vb = (SqlValue)wr.Fixed(vbl);
+            if (vb.defpos != vbl)
+                r += (Vbl, vb.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (AssignmentStatement)base.Frame(cx);
-            var va = val.Frame(cx);
-            if (va != val)
-                r += (Val, va);
-            var vb = vbl.Frame(cx);
-            if (vb != vbl)
-                r += (Vbl, vb);
-            return cx.Add(r,true);
+            var r = (AssignmentStatement)base._Relocate(cx);
+            var va = (SqlValue)cx.Fixed(val);
+            if (va.defpos != val)
+                r += (Val, va.defpos);
+            var vb = (SqlValue)cx.Fixed(vbl);
+            if (vb.defpos != vbl)
+                r += (Vbl, vb.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return vbl.Calls(defpos, db) || val.Calls(defpos,db);
+            return cx.obs[vbl].Calls(defpos, cx) || cx.obs[val].Calls(defpos,cx);
         }
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var t = vbl.domain;
-            if (val != null)
+            var vb = cx.obs[vbl];
+            var t = vb.domain;
+            if (val != -1L)
             {
-                var v = t.Coerce(val.Eval(cx)?.NotNull());
-                cx.AddValue(vbl, v);
+                var v = t.Coerce(cx,cx.obs[val].Eval(cx)?.NotNull());
+                cx.AddValue(vb, v);
             }
             return cx;
         }
         public override string ToString()
         {
-            if (vbl!=null && val!=null)
-                return vbl.ToString() + "=" + val.ToString();
+            if (vbl!=-1L && val!=-1L)
+                return Uid(vbl) + "=" + Uid(val);
             return base.ToString();
         }
 	}
@@ -856,9 +855,9 @@ namespace Pyrrho.Level3
     internal class MultipleAssignment : Executable
     {
         internal const long
-            LhsType = -107, // DBObject
-            List = -108, // BList<long>
-            Rhs = -109; // SqlValue
+            LhsType = -107, // long DBObject
+            List = -108, // BList<long> SqlValue
+            Rhs = -109; // long SqlValue
         /// <summary>
         /// The list of identifiers
         /// </summary>
@@ -866,11 +865,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The row type of the lefthand side, used to coerce the given value 
         /// </summary>
-        DBObject lhsType => (DBObject)mem[LhsType]??Domain.Content;
+        long lhsType => (long)(mem[LhsType]??-1L);
         /// <summary>
         /// The row-valued right hand side
         /// </summary>
-        public SqlValue rhs => (SqlValue)mem[Rhs];
+        public long rhs => (long)(mem[Rhs]??-1L);
         /// <summary>
         /// Constructor: A new multiple assignment statement from the parser
         /// </summary>
@@ -889,51 +888,54 @@ namespace Pyrrho.Level3
         {
             return new MultipleAssignment(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (MultipleAssignment)base.Relocate(wr);
-            var lt = lhsType.Relocate(wr);
-            if (lt != lhsType)
-                r += (LhsType, lt);
+            var r = (MultipleAssignment)base._Relocate(wr);
+            var lt = wr.cx.obs[lhsType].Relocate(wr);
+            if (lt.defpos != lhsType)
+                r += (LhsType, lt.defpos);
             var ls = BList<long>.Empty;
             var ch = false;
             for(var b=list.First();b!=null;b=b.Next())
             {
-                var s = wr.Fix(b.value());
-                ch = ch || s != b.value();
-                ls += s;
+                var s = (SqlValue)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                ls += s.defpos;
             }
             if (ch)
                 r +=(List, ls);
-            var rh = rhs.Relocate(wr);
-            if (rh != rhs)
-                r += (Rhs, rh);
+            var rh = (SqlValue)wr.Fixed(rhs);
+            if (rh.defpos != rhs)
+                r += (Rhs, rh.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (MultipleAssignment)base.Frame(cx);
-            var lt = lhsType.Frame(cx);
-            if (lt != lhsType)
-                r += (LhsType, lt);
+            var r = (MultipleAssignment)base._Relocate(cx);
+            var o = cx.obs[lhsType];
+            var lt = o.Relocate(cx);
+            if (lt.defpos != lhsType)
+                r += (LhsType, lt.defpos);
             var ls = BList<long>.Empty;
             var ch = false;
             for (var b = list.First(); b != null; b = b.Next())
             {
-                var s = cx.Fix(b.value());
-                ch = ch || s != b.value();
-                ls += s;
+                var so = cx.obs[b.value()];
+                var s = (SqlValue)so.Relocate(cx);
+                ch = ch || s.defpos != b.value();
+                ls += s.defpos;
             }
             if (ch)
                 r += (List, ls);
-            var rh = rhs.Frame(cx);
-            if (rh != rhs)
-                r += (Rhs, rh);
-            return cx.Add(r,true);
+            o = cx.obs[rhs];
+            var rh = (SqlValue)o.Relocate(cx);
+            if (rh.defpos != rhs)
+                r += (Rhs, rh.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return rhs.Calls(defpos, db);
+            return cx.obs[rhs].Calls(defpos, cx);
         }
         /// <summary>
         /// Execute the multiple assignment
@@ -943,7 +945,7 @@ namespace Pyrrho.Level3
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
-            TRow r = (TRow)rhs.Eval(cx);
+            TRow r = (TRow)cx.obs[rhs].Eval(cx);
             for (int j = 0; j < r.Length; j++)
                 cx.values+=(list[j],r[j]);
             return cx;
@@ -955,16 +957,16 @@ namespace Pyrrho.Level3
 	internal class ReturnStatement : Executable
     {
         internal const long
-            Ret = -110; // SqlValue
+            Ret = -110; // long
         /// <summary>
         /// The return value
         /// </summary>
-		public SqlValue ret => (SqlValue)mem[Ret];
+		public long ret => (long)(mem[Ret]??-1L);
         /// <summary>
         /// Constructor: a return statement from the parser
         /// </summary>
         public ReturnStatement(long dp) : base (dp,BTree<long,object>.Empty)
-        {  }
+        { }
         protected ReturnStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ReturnStatement operator+(ReturnStatement s,(long,object)x)
         {
@@ -978,25 +980,25 @@ namespace Pyrrho.Level3
         {
             return new ReturnStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (ReturnStatement)base.Relocate(wr);
-            var rt = ret.Relocate(wr);
-            if (rt != ret)
-                r += (Ret, rt);
+            var r = (ReturnStatement)base._Relocate(wr);
+            var rt = (ReturnStatement)wr.Fixed(ret);
+            if (rt.defpos != ret)
+                r += (Ret, rt.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (ReturnStatement)base.Frame(cx);
-            var rt = ret.Frame(cx);
-            if (rt != ret)
-                r += (Ret, rt);
-            return cx.Add(r,true);
+            var r = (ReturnStatement)base._Relocate(cx);
+            var nr = (ReturnStatement)cx.Fixed(ret);
+            if (nr.defpos != ret)
+                r += (Ret, nr.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return ret.Calls(defpos, db);
+            return cx.obs[ret].Calls(defpos, cx);
         }
         /// <summary>
         /// Execute the return statement
@@ -1006,7 +1008,7 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-			a.val = ret.Eval(cx);
+			a.val = cx.obs[ret].Eval(cx);
             cx = a.SlideDown();
             return cx;
 		}
@@ -1017,23 +1019,21 @@ namespace Pyrrho.Level3
     internal class SimpleCaseStatement : Executable
     {
         internal const long
-            Else = -111, // BList<Executable> 
-            Operand = -112, // SqlValue
-            Whens = -113; // BList<WhenPart>
+            Else = -111, // BList<long> Executable
+            Operand = -112, // long SqlValue
+            Whens = -113; // BList<long> WhenPart
         /// <summary>
         /// The test expression
         /// </summary>
-        public SqlValue operand => (SqlValue)mem[Operand];
+        public long operand => (long)(mem[Operand]??-1L);
         /// <summary>
         /// A list of when parts
         /// </summary>
-        public BList<WhenPart> whens =>
-            (BList<WhenPart>)mem[Whens]?? BList<WhenPart>.Empty;
+        public BList<long> whens => (BList<long>)mem[Whens]?? BList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-        public BList<Executable> els =>
-            (BList<Executable>)mem[Else]?? BList<Executable>.Empty;
+        public BList<long> els => (BList<long>)mem[Else]?? BList<long>.Empty;
         /// <summary>
         /// Constructor: a case statement from the parser
         /// </summary>
@@ -1052,68 +1052,71 @@ namespace Pyrrho.Level3
         {
             return new SimpleCaseStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (SimpleCaseStatement)base.Relocate(wr);
-            var e = BList<Executable>.Empty;
+            var r = (SimpleCaseStatement)base._Relocate(wr);
+            var e = BList<long>.Empty;
             var ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var s = (Executable)b.value().Relocate(wr);
-                ch = ch || s != b.value();
-                e += s;
+                var s = (Executable)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                e += s.defpos;
             }
             if (ch)
                 r += (Else, e);
-            var op = operand.Relocate(wr);
-            if (op != operand)
-                r += (Operand, op);
-            var wh = BList<WhenPart>.Empty;
+            var op = (SqlValue)wr.Fixed(operand);
+            if (op.defpos != operand)
+                r += (Operand, op.defpos);
+            var wh = BList<long>.Empty;
             ch = false;
             for (var b=whens.First();b!=null;b=b.Next())
             {
-                var w = (WhenPart)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (WhenPart)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (Whens, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (SimpleCaseStatement)base.Frame(cx);
-            var e = BList<Executable>.Empty;
+            var r = (SimpleCaseStatement)base._Relocate(cx);
+            var e = BList<long>.Empty;
             var ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var s = (Executable)b.value().Frame(cx);
-                ch = ch || s != b.value();
-                e += s;
+                var o = cx.obs[b.value()];
+                var s = (Executable)o.Relocate(cx);
+                ch = ch || s.defpos != b.value();
+                e += s.defpos;
             }
             if (ch)
                 r += (Else, e);
-            var op = operand.Frame(cx);
-            if (op != operand)
-                r += (Operand, op);
-            var wh = BList<WhenPart>.Empty;
+            var oo = cx.obs[operand];
+            var op = (SqlValue)oo.Relocate(cx);
+            if (op.defpos != operand)
+                r += (Operand, op.defpos);
+            var wh = BList<long>.Empty;
             ch = false;
             for (var b = whens.First(); b != null; b = b.Next())
             {
-                var w = (WhenPart)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var o = cx.obs[b.value()];
+                var w = (WhenPart)o.Relocate(cx);
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (Whens, wh);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
             for (var b = whens.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, db))
+                if (cx.obs[b.value()].Calls(defpos, cx))
                     return true;
-            return Calls(els,defpos,db) || operand.Calls(defpos, db);
+            return Calls(els,defpos,cx) || cx.obs[operand].Calls(defpos,cx);
         }
         /// <summary>
         /// Execute the case statement
@@ -1124,8 +1127,8 @@ namespace Pyrrho.Level3
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for(var c = whens.First();c!=null; c=c.Next())
-                if (operand.Matches(cx))
-                    return ObeyList(c.value().stms, cx);
+                if (((SqlValue)cx.obs[operand]).Matches(cx))
+                    return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
         }
     }
@@ -1137,12 +1140,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of when parts
         /// </summary>
-		public BList<WhenPart> whens => (BList<WhenPart>)mem[SimpleCaseStatement.Whens];
+		public BList<long> whens => (BList<long>)mem[SimpleCaseStatement.Whens];
         /// <summary>
         /// An else part
         /// </summary>
-		public BList<Executable> els => 
-            (BList<Executable>)mem[SimpleCaseStatement.Else]?? BList<Executable>.Empty;
+		public BList<long> els => (BList<long>)mem[SimpleCaseStatement.Else]?? BList<long>.Empty;
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
@@ -1161,62 +1163,62 @@ namespace Pyrrho.Level3
         {
             return new SearchedCaseStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (SearchedCaseStatement)base.Relocate(wr);
-            var e = BList<Executable>.Empty;
+            var r = (SearchedCaseStatement)base._Relocate(wr);
+            var e = BList<long>.Empty;
             var ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var s = (Executable)b.value().Relocate(wr);
-                ch = ch || s != b.value();
-                e += s;
+                var s = (Executable)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                e += s.defpos;
             }
             if (ch)
                 r += (SimpleCaseStatement.Else, e);
-            var wh = BList<WhenPart>.Empty;
+            var wh = BList<long>.Empty;
             ch = false;
             for (var b = whens.First(); b != null; b = b.Next())
             {
-                var w = (WhenPart)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (WhenPart)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (SimpleCaseStatement.Whens, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (SearchedCaseStatement)base.Frame(cx);
-            var e = BList<Executable>.Empty;
+            var r = (SearchedCaseStatement)base._Relocate(cx);
+            var e = BList<long>.Empty;
             var ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var s = (Executable)b.value().Frame(cx);
-                ch = ch || s != b.value();
-                e += s;
+                var s = (Executable)cx.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                e += s.defpos;
             }
             if (ch)
                 r += (SimpleCaseStatement.Else, e);
-            var wh = BList<WhenPart>.Empty;
+            var wh = BList<long>.Empty;
             ch = false;
             for (var b = whens.First(); b != null; b = b.Next())
             {
-                var w = (WhenPart)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (WhenPart)cx.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (SimpleCaseStatement.Whens, wh);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
             for (var b = whens.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, db))
+                if (cx.obs[b.value()].Calls(defpos, cx))
                     return true;
-            return Calls(els, defpos, db);
+            return Calls(els, defpos, cx);
         }
         /// <summary>
         /// Execute a searched case statement
@@ -1227,9 +1229,12 @@ namespace Pyrrho.Level3
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
-			for(var c = whens.First();c!=null;c=c.Next())
-				if (c.value().cond.Matches(cx))
-					return ObeyList(c.value().stms,cx);
+            for (var c = whens.First(); c != null; c = c.Next())
+            {
+                var w = (WhenPart)cx.obs[c.value()];
+                if (((SqlValue)cx.obs[w.cond]).Matches(cx))
+                    return ObeyList(w.stms, cx);
+            }
 			return ObeyList(els,cx);
 		}
 	}
@@ -1239,24 +1244,23 @@ namespace Pyrrho.Level3
 	internal class WhenPart :Executable
 	{
         internal const long
-            Cond = -114, // SqlValue
-            Stms = -115; // BList<Executable>
+            Cond = -114, // long SqlValue
+            Stms = -115; // BList<long> Executable
         /// <summary>
         /// A search condition for the when part
         /// </summary>
-		public SqlValue cond => (SqlValue)mem[Cond];
+		public long cond => (long)(mem[Cond]??-1L);
         /// <summary>
         /// a list of statements
         /// </summary>
-		public BList<Executable> stms =>
-            (BList<Executable>)mem[Stms]?? BList<Executable>.Empty;
+		public BList<long> stms =>(BList<long>)mem[Stms]?? BList<long>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A list of statements for this when</param>
-        public WhenPart(long dp,SqlValue v, BList<Executable> s) 
-            : base(dp, BTree<long,object>.Empty+(Cond,v)+(Stms,s))
+        public WhenPart(long dp,SqlValue v, BList<long> s) 
+            : base(dp, BTree<long,object>.Empty+(Cond,v.defpos)+(Stms,s))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
         public static WhenPart operator+(WhenPart s,(long,object) x)
@@ -1271,32 +1275,48 @@ namespace Pyrrho.Level3
         {
             return new WhenPart(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = base.Relocate(wr);
-            var c = cond?.Relocate(wr);
-            if (c != cond)
-                r += (Cond, c);
-            var ss = BList<Executable>.Empty;
+            var r = base._Relocate(wr);
+            if (wr.Fixed(cond) is SqlValue c && c.defpos != cond)
+                r += (Cond, c.defpos);
+            var ss = BList<long>.Empty;
             var ch = false;
-            for (var b=stms.First();b!=null;b=b.Next())
+            for (var b = stms.First(); b != null; b = b.Next())
             {
-                var s = (Executable)b.value().Relocate(wr);
-                ch = ch || s != b.value();
-                ss += s;
+                var s = (Executable)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                ss += s.defpos;
             }
             if (ch)
                 r += (Stms, ss);
             return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override Basis _Relocate(Context cx)
         {
-            return Calls(stms,defpos,db) || cond.Calls(defpos, db);
+            var r = base._Relocate(cx);
+            if (cx.Fixed(cond) is SqlValue c && c.defpos != cond)
+                r += (Cond, c.defpos);
+            var ss = BList<long>.Empty;
+            var ch = false;
+            for (var b = stms.First(); b != null; b = b.Next())
+            {
+                var s = (Executable)cx.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                ss += s.defpos;
+            }
+            if (ch)
+                r += (Stms, ss);
+            return r;
+        }
+        internal override bool Calls(long defpos, Context cx)
+        {
+            return Calls(stms,defpos,cx) || cx.obs[cond].Calls(defpos, cx);
         }
         public override Context Obey(Context cx)
         {
             var a = cx;
-            if (cond == null || cond.Matches(cx))
+            if (cond == -1L || ((SqlValue)cx.obs[cond]).Matches(cx))
             {
                 a.val = TBool.True;
                 return ObeyList(stms, cx);
@@ -1307,9 +1327,16 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (cond!=null)
-                sb.Append(" Cond: ");sb.Append(cond);
-            sb.Append(" Stms: ");sb.Append(stms);
+            if (cond!=-1L)
+                sb.Append(" Cond: ");sb.Append(Uid(cond));
+            sb.Append(" Stms: ");
+            var cm = "(";
+            for (var b=stms.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm);cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(")");
             return sb.ToString();
         }
     }
@@ -1319,29 +1346,26 @@ namespace Pyrrho.Level3
 	internal class IfThenElse : Executable
 	{
         internal const long
-            Else = -116, // BList<Executable>
-            Elsif = -117, // BList<Executable>
-            Search = -118, // SqlValue
-            Then = -119; // BList<Executable>
+            Else = -116, // BList<long> Executable
+            Elsif = -117, // BList<long> Executable
+            Search = -118, // long SqlValue
+            Then = -119; // BList<long> Executable
         /// <summary>
         /// The test condition
         /// </summary>
-		public SqlValue search => (SqlValue)mem[Search];
+		public long search => (long)(mem[Search]??-1L);
         /// <summary>
         /// The then statements
         /// </summary>
-		public BList<Executable> then =>
-            (BList<Executable>)mem[Then]?? BList<Executable>.Empty;
+		public BList<long> then => (BList<long>)mem[Then]?? BList<long>.Empty;
         /// <summary>
         /// The elsif parts
         /// </summary>
-		public BList<Executable> elsif =>
-            (BList<Executable>)mem[Elsif] ?? BList<Executable>.Empty;
+		public BList<long> elsif => (BList<long>)mem[Elsif] ?? BList<long>.Empty;
         /// <summary>
         /// The else part
         /// </summary>
-		public BList<Executable> els =>
-            (BList<Executable>)mem[Else] ?? BList<Executable>.Empty;
+		public BList<long> els => (BList<long>)mem[Else] ?? BList<long>.Empty;
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
@@ -1360,85 +1384,85 @@ namespace Pyrrho.Level3
         {
             return new IfThenElse(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (IfThenElse)base.Relocate(wr);
-            var se = search.Relocate(wr);
-            if (se != search)
-                r += (Search, se);
-            var th = BList<Executable>.Empty;
+            var r = (IfThenElse)base._Relocate(wr);
+            var se = (SqlValue)wr.Fixed(search);
+            if (se.defpos != search)
+                r += (Search, se.defpos);
+            var th = BList<long>.Empty;
             var ch = false;
             for (var b=then.First();b!=null;b=b.Next())
             {
-                var t = (Executable)b.value().Relocate(wr);
-                ch = ch || t != b.value();
-                th += t;
+                var t = (Executable)wr.Fixed(b.value());
+                ch = ch || t.defpos != b.value();
+                th += t.defpos;
             }
             if (ch)
                 r += (Then,th);
-            var el = BList<Executable>.Empty;
+            var el = BList<long>.Empty;
             ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var e = (Executable)b.value().Relocate(wr);
-                ch = ch || e != b.value();
-                el += e;
+                var e = (Executable)wr.Fixed(b.value());
+                ch = ch || e.defpos != b.value();
+                el += e.defpos;
             }
             if (ch)
                 r += (Else, el); 
-            var ei = BList<Executable>.Empty;
+            var ei = BList<long>.Empty;
             ch = false;
             for (var b = elsif.First(); b != null; b = b.Next())
             {
-                var e = (Executable)b.value().Relocate(wr);
-                ch = ch || e != b.value();
-                ei += e;
+                var e = (Executable)wr.Fixed(b.value());
+                ch = ch || e.defpos != b.value();
+                ei += e.defpos;
             }
             if (ch)
                 r += (Elsif, ei); 
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (IfThenElse)base.Frame(cx);
-            var se = search.Frame(cx);
-            if (se != search)
-                r += (Search, se);
-            var th = BList<Executable>.Empty;
+            var r = (IfThenElse)base._Relocate(cx);
+            var se = (SqlValue)cx.Fixed(search);
+            if (se.defpos != search)
+                r += (Search, se.defpos);
+            var th = BList<long>.Empty;
             var ch = false;
             for (var b = then.First(); b != null; b = b.Next())
             {
-                var t = (Executable)b.value().Frame(cx);
-                ch = ch || t != b.value();
-                th += t;
+                var t = (Executable)cx.Fixed(b.value());
+                ch = ch || t.defpos != b.value();
+                th += t.defpos;
             }
             if (ch)
                 r += (Then, th);
-            var el = BList<Executable>.Empty;
+            var el = BList<long>.Empty;
             ch = false;
             for (var b = els.First(); b != null; b = b.Next())
             {
-                var e = (Executable)b.value().Frame(cx);
-                ch = ch || e != b.value();
-                el += e;
+                var e = (Executable)cx.Fixed(b.value());
+                ch = ch || e.defpos != b.value();
+                el += e.defpos;
             }
             if (ch)
                 r += (Else, el);
-            var ei = BList<Executable>.Empty;
+            var ei = BList<long>.Empty;
             ch = false;
             for (var b = elsif.First(); b != null; b = b.Next())
             {
-                var e = (Executable)b.value().Frame(cx);
-                ch = ch || e != b.value();
-                ei += e;
+                var e = (Executable)cx.Fixed(b.value());
+                ch = ch || e.defpos != b.value();
+                ei += e.defpos;
             }
             if (ch)
                 r += (Elsif, ei);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(then,defpos, db)||Calls(elsif,defpos,db)||Calls(els,defpos,db);
+            return Calls(then,defpos, cx)||Calls(elsif,defpos,cx)||Calls(els,defpos,cx);
         }
         /// <summary>
         /// Obey an if-then-else statement
@@ -1448,10 +1472,11 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; 
             a.exec = this;
-            if (search.Matches(cx))
+            if (((SqlValue)cx.obs[search]).Matches(cx))
                 return ObeyList(then, cx);
             for (var g = elsif.First(); g != null; g = g.Next())
-                if (g.value() is IfThenElse f && f.search.Matches(cx))
+                if (cx.obs[g.value()] is IfThenElse f 
+                    && ((SqlValue)cx.obs[f.search]).Matches(cx))
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
@@ -1499,17 +1524,16 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Loop = -121, // long
-            Search = -122, // SqlValue
-            What = -123; // BList<Executable>
+            Search = -122, // long SqlValue
+            What = -123; // BList<long> Executable
         /// <summary>
         /// The search condition for continuing
         /// </summary>
-		public SqlValue search => (SqlValue)mem[Search];
+		public long search => (long)(mem[Search]??-1L);
         /// <summary>
         /// The statements to execute
         /// </summary>
-		public BList<Executable> what => 
-            (BList<Executable>)mem[What]?? BList<Executable>.Empty;
+		public BList<long> what => (BList<long>)mem[What]?? BList<long>.Empty;
         public long loop => (long)(mem[Loop] ?? 0); 
         /// <summary>
         /// Constructor: a while statement from the parser
@@ -1530,44 +1554,47 @@ namespace Pyrrho.Level3
         {
             return new WhileStatement(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (WhileStatement)base.Relocate(wr);
+            var r = (WhileStatement)base._Relocate(wr);
             var lp = wr.Fix(loop);
             if (lp != loop)
                 r += (Loop, lp);
-            var se = search.Relocate(wr);
-            if (se != search)
+            var se = (SqlValue)wr.Fixed(search);
+            if (se.defpos != search)
                 r += (Search, se);
-            var wh = BList<Executable>.Empty;
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b=what.First();b!=null;b=b.Next())
             {
-                var w = (Executable)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (What, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (WhileStatement)base.Frame(cx);
-            var se = search.Frame(cx);
-            if (se != search)
+            var r = (WhileStatement)base._Relocate(cx);
+            var lp = cx.Unheap(loop);
+            if (lp != loop)
+                r += (Loop, lp);
+            var se = (SqlValue)cx.Fixed(search);
+            if (se.defpos != search)
                 r += (Search, se);
-            var wh = BList<Executable>.Empty;
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = what.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)cx.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (What, wh);
-            return cx.Add(r,true);
+            return r;
         }
         /// <summary>
         /// Execute a while statement
@@ -1578,7 +1605,7 @@ namespace Pyrrho.Level3
             var a = (Activation)cx; 
             a.exec = this;
             var na = cx;
-            while (na==cx && a.signal == null && search.Matches(cx))
+            while (na==cx && a.signal == null && ((SqlValue)cx.obs[search]).Matches(cx))
             {
                 var lp = new Activation(cx,label);
                 lp.cont = a;
@@ -1591,9 +1618,9 @@ namespace Pyrrho.Level3
             }
             return a;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what,defpos,db) || search.Calls(defpos, db);
+            return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
         }
     }
     /// <summary>
@@ -1604,11 +1631,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The condition for stopping
         /// </summary>
-		public SqlValue search => (SqlValue)mem[WhileStatement.Search];
+		public long search => (long)(mem[WhileStatement.Search]??-1L);
         /// <summary>
         /// The list of statements to execute at least once
         /// </summary>
-		public BList<Executable> what => (BList<Executable>)mem[WhileStatement.What];
+		public BList<long> what => (BList<long>)mem[WhileStatement.What];
         public long loop => (long)(mem[WhileStatement.Loop]??0L);
         /// <summary>
         /// Constructor: a repeat statement from the parser
@@ -1629,51 +1656,51 @@ namespace Pyrrho.Level3
         {
             return new RepeatStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (RepeatStatement)base.Relocate(wr);
+            var r = (RepeatStatement)base._Relocate(wr);
             var lp = wr.Fix(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var se = search.Relocate(wr);
-            if (se != search)
-                r += (WhileStatement.Search, se);
-            var wh = BList<Executable>.Empty;
+            var se = (SqlValue)wr.Fixed(search);
+            if (se.defpos != search)
+                r += (WhileStatement.Search, se.defpos);
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = what.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhileStatement.What, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (RepeatStatement)base.Frame(cx);
-            var lp = cx.Fix(loop);
+            var r = (RepeatStatement)base._Relocate(cx);
+            var lp = cx.Unheap(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var se = search.Frame(cx);
-            if (se != search)
-                r += (WhileStatement.Search, se);
-            var wh = BList<Executable>.Empty;
+            var se = (SqlValue)cx.Fixed(search);
+            if (se.defpos != search)
+                r += (WhileStatement.Search, se.defpos);
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = what.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)cx.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhileStatement.What, wh);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what, defpos, db) || search.Calls(defpos, db);
+            return Calls(what, defpos, cx) || cx.obs[search].Calls(defpos,cx);
         }
         /// <summary>
         /// Execute the repeat statement
@@ -1691,7 +1718,7 @@ namespace Pyrrho.Level3
                 if (na != cx)
                     break;
                 act.signal?.Throw(act);
-                if (!search.Matches(act))
+                if (!((SqlValue)cx.obs[search]).Matches(act))
                     break;
             }
             cx = act.SlideDown(); 
@@ -1742,7 +1769,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<Executable> stms => (BList<Executable>)mem[WhenPart.Stms];
+		public BList<long> stms => (BList<long>)mem[WhenPart.Stms];
         public long loop => (long)(mem[WhileStatement.Loop]??0);
         /// <summary>
         /// Constructor: a loop statement from the parser
@@ -1764,45 +1791,45 @@ namespace Pyrrho.Level3
         {
             return new LoopStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (LoopStatement)base.Relocate(wr);
+            var r = (LoopStatement)base._Relocate(wr);
             var lp = wr.Fix(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var wh = BList<Executable>.Empty;
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = stms.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (LoopStatement)base.Frame(cx);
-            var lp = cx.Fix(loop);
+            var r = (LoopStatement)base._Relocate(cx);
+            var lp = cx.Unheap(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var wh = BList<Executable>.Empty;
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = stms.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)cx.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(stms,defpos, db);
+            return Calls(stms,defpos, cx);
         }
         /// <summary>
         /// Execute the loop statement
@@ -1840,12 +1867,12 @@ namespace Pyrrho.Level3
             Cursor = -124, // string
             ForVn = -125, // string
             Loop = -126, // long
-            Sel = -127, // CursorSpecification
-            Stms = -128; // BList<Executable>
+            Sel = -127, // long CursorSpecification
+            Stms = -128; // BList<long> Executable
         /// <summary>
         /// The query for the FOR
         /// </summary>
-		public CursorSpecification sel => (CursorSpecification)mem[Sel];
+		public long sel => (long)(mem[Sel]??-1L);
         /// <summary>
         /// The name of the cursor
         /// </summary>
@@ -1861,7 +1888,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<Executable> stms => (BList<Executable>)mem[Stms];
+		public BList<long> stms => (BList<long>)mem[Stms];
         /// <summary>
         /// Constructor: a for statement from the parser
         /// </summary>
@@ -1882,51 +1909,51 @@ namespace Pyrrho.Level3
         {
             return new ForSelectStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (ForSelectStatement)base.Relocate(wr);
+            var r = (ForSelectStatement)base._Relocate(wr);
             var lp = wr.Fix(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var se = sel.Relocate(wr);
-            if (se != sel)
-                r += (Cursor, se);
-            var wh = BList<Executable>.Empty;
+            var se = (Query)wr.Fixed(sel);
+            if (se.defpos != sel)
+                r += (Cursor, se.defpos);
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = stms.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Relocate(wr);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)wr.Fixed(b.value());
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (ForSelectStatement)base.Frame(cx);
-            var lp = cx.Fix(loop);
+            var r = (ForSelectStatement)base._Relocate(cx);
+            var lp = cx.Unheap(loop);
             if (lp != loop)
                 r += (WhileStatement.Loop, lp);
-            var se = sel.Frame(cx);
-            if (se != sel)
-                r += (Cursor, se);
-            var wh = BList<Executable>.Empty;
+            var se = (Query)cx.obs[sel].Relocate(cx);
+            if (se.defpos != sel)
+                r += (Cursor, se.defpos);
+            var wh = BList<long>.Empty;
             var ch = false;
             for (var b = stms.First(); b != null; b = b.Next())
             {
-                var w = (Executable)b.value().Frame(cx);
-                ch = ch || w != b.value();
-                wh += w;
+                var w = (Executable)cx.obs[b.value()].Relocate(cx);
+                ch = ch || w.defpos != b.value();
+                wh += w.defpos;
             }
             if (ch)
                 r += (WhenPart.Stms, wh);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return sel.Calls(defpos, db) || Calls(stms,defpos,db);
+            return cx.obs[sel].Calls(defpos, cx) || Calls(stms,defpos,cx);
         }
         /// <summary>
         /// Execute a FOR statement
@@ -1935,13 +1962,13 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var da = sel.RowSets(cx);
+            var da = ((Query)cx.obs[sel]).RowSets(cx,BTree<long,RowSet.Finder>.Empty);
             if (da == null)
                 return cx;
-            var qs = sel.union.left;
+            var cs = (CursorSpecification)cx.obs[sel];
+            var qe = (QueryExpression)cx.obs[cs.union];
+            var qs = (QuerySpecification)cx.obs[qe.left];
             var ac = new Activation(cx,label);
-            ac.Add(qs);
-            var dt = sel.rowType;
             for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
             {
                 ac.Add(qs);
@@ -1965,7 +1992,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n">the cursor name</param>
 		public OpenStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long,object>.Empty
-            +(FetchStatement.Cursor,c))
+            +(FetchStatement.Cursor,c.defpos))
 		{ }
         protected OpenStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static OpenStatement operator+(OpenStatement s,(long,object)x)
@@ -1980,25 +2007,25 @@ namespace Pyrrho.Level3
         {
             return new OpenStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (OpenStatement)base.Relocate(wr);
+            var r = (OpenStatement)base._Relocate(wr);
             var c = cursor.Relocate(wr);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (OpenStatement)base.Frame(cx);
-            var c = cursor.Frame(cx);
+            var r = (OpenStatement)base._Relocate(cx);
+            var c = cursor.Relocate(cx);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return cursor.Calls(defpos, db);
+            return cursor.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute an open statement
@@ -2006,7 +2033,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            cursor.spec.RowSets(cx);
+            ((Query)cx.obs[cursor.spec]).RowSets(cx,BTree<long, RowSet.Finder>.Empty);
             return cx;
         }
     }
@@ -2021,7 +2048,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n">The name of the cursor</param>
 		public CloseStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long,object>.Empty
-            +(FetchStatement.Cursor,c))
+            +(FetchStatement.Cursor,c.defpos))
 		{ }
         protected CloseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CloseStatement operator+(CloseStatement s,(long,object)x)
@@ -2036,25 +2063,25 @@ namespace Pyrrho.Level3
         {
             return new CloseStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (CloseStatement)base.Relocate(wr);
+            var r = (CloseStatement)base._Relocate(wr);
             var c = cursor.Relocate(wr);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (CloseStatement)base.Frame(cx);
-            var c = cursor.Frame(cx);
+            var r = (CloseStatement)base._Relocate(cx);
+            var c = cursor.Relocate(cx);
             if (c != cursor)
                 r += (FetchStatement.Cursor, c);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return cursor.Calls(defpos, db);
+            return cursor.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute the close statement
@@ -2071,11 +2098,11 @@ namespace Pyrrho.Level3
 	internal class FetchStatement : Executable
 	{
         internal const long
-            Cursor = -129, // SqlCursor
+            Cursor = -129, // long SqlCursor
             How = -130, // Sqlx
-            Outs = -131, // BList<SqlValue>
-            Where = -132; // SqlValue
-        SqlCursor cursor =>(SqlCursor)mem[Cursor];
+            Outs = -131, // BList<long> SqlValue
+            Where = -132; // long SqlValue
+        long cursor =>(long)(mem[Cursor]??-1L);
         /// <summary>
         /// The behaviour of the Fetch
         /// </summary>
@@ -2083,12 +2110,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The given absolute or relative position if specified
         /// </summary>
-        public SqlValue where => (SqlValue)mem[Where];
+        public long where => (long)(mem[Where]??-1L);
         /// <summary>
         /// The list of assignable expressions to receive values
         /// </summary>
-		public BList<SqlValue> outs => 
-            (BList<SqlValue>)mem[Outs]?? BList<SqlValue>.Empty; 
+		public BList<long> outs => (BList<long>)mem[Outs]?? BList<long>.Empty; 
         /// <summary>
         /// Constructor: a fetch statement from the parser
         /// </summary>
@@ -2096,7 +2122,7 @@ namespace Pyrrho.Level3
         /// <param name="h">The fetch behaviour: ALL, NEXT, LAST PRIOR, ABSOLUTE, RELATIVE</param>
         /// <param name="w">The output variables</param>
         public FetchStatement(long dp, SqlCursor n, Sqlx h, SqlValue w)
-        : base(dp, BTree<long, object>.Empty + (Cursor, n) + (How, h) + (Where, w))
+        : base(dp, BTree<long, object>.Empty + (Cursor, n.defpos) + (How, h) + (Where, w.defpos))
         { }
         protected FetchStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static FetchStatement operator+(FetchStatement s,(long,object)x)
@@ -2111,61 +2137,63 @@ namespace Pyrrho.Level3
         {
             return new FetchStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (FetchStatement)base.Relocate(wr);
-            var c = cursor.Relocate(wr);
-            if (c != cursor)
-                r += (Cursor, c);
-            var os = BList<SqlValue>.Empty;
+            var r = (FetchStatement)base._Relocate(wr);
+            var c = (SqlCursor)wr.Fixed(cursor);
+            if (c.defpos != cursor)
+                r += (Cursor, c.defpos);
+            var os = BList<long>.Empty;
             var ch = false;
             for (var b=outs.First();b!=null;b=b.Next())
             {
-                var ou = (SqlValue)b.value().Relocate(wr);
-                ch = ch || ou != b.value();
-                os += ou;
+                var ou = (SqlValue)wr.Fixed(b.value());
+                ch = ch || ou.defpos != b.value();
+                os += ou.defpos;
             }
             if (ch)
                 r += (Outs, os);
-            var w = where.Relocate(wr);
-            if (w != where)
-                r += (Where, w);
+            var w = (SqlValue)wr.Fixed(where);
+            if (w.defpos != where)
+                r += (Where, w.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (FetchStatement)base.Frame(cx);
-            var c = cursor.Frame(cx);
-            if (c != cursor)
-                r += (Cursor, c);
-            var os = BList<SqlValue>.Empty;
+            var r = (FetchStatement)base._Relocate(cx);
+            var c = (SqlCursor)cx.Fixed(cursor);
+            if (c.defpos != cursor)
+                r += (Cursor, c.defpos);
+            var os = BList<long>.Empty;
             var ch = false;
             for (var b = outs.First(); b != null; b = b.Next())
             {
-                var ou = (SqlValue)b.value().Frame(cx);
-                ch = ch || ou != b.value();
-                os += ou;
+                var ou = (SqlValue)cx.Fixed(b.value());
+                ch = ch || ou.defpos != b.value();
+                os += ou.defpos;
             }
             if (ch)
                 r += (Outs, os);
-            var w = where?.Frame(cx);
-            if (w != where)
-                r += (Where, w);
-            return cx.Add(r,true);
+            var w = (SqlValue)cx.Fixed(where);
+            if (w.defpos != where)
+                r += (Where, w.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return cursor.Calls(defpos, db) || where.Calls(defpos,db) || Calls(outs,defpos,db);
+            return cx.obs[cursor].Calls(defpos, cx) || 
+                cx.obs[where].Calls(defpos,cx) || Calls(outs,defpos,cx);
         }
         /// Execute a fetch
         /// </summary>
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            var cs = cursor.spec.Refresh(cx);
+            var cu = (SqlCursor)cx.obs[cursor];
+            var cs = (Query)cx.obs[cu.spec];
             // position the cursor as specified
             var rqpos = 0L;
-            var rb = cx.values[cursor.defpos] as Cursor;
+            var rb = cx.values[cu.defpos] as Cursor;
             if (rb != null)
                 rqpos = rb._pos + 1;
             switch (how)
@@ -2186,10 +2214,10 @@ namespace Pyrrho.Level3
                         break;
                     }
                 case Sqlx.ABSOLUTE:
-                    rqpos = (long)where.Eval(cx).Val();
+                    rqpos = (long)cx.obs[where].Eval(cx).Val();
                     break;
                 case Sqlx.RELATIVE:
-                    rqpos = rqpos + (long)where.Eval(cx).Val();
+                    rqpos = rqpos + (long)cx.obs[where].Eval(cx).Val();
                     break;
             }
             if (rb == null || rqpos == 0)
@@ -2207,8 +2235,8 @@ namespace Pyrrho.Level3
                     if (c != null)
                     {
                         var ou = outs[i];
-                        if (ou != null)
-                            cx.AddValue(ou, c);
+                        if (ou != -1L)
+                            cx.AddValue((SqlValue)cx.obs[ou], c);
                     }
                 }
             }
@@ -2221,13 +2249,13 @@ namespace Pyrrho.Level3
 	internal class CallStatement : Executable
 	{
         internal const long
-            Parms = -133, // BList<SqlValue>
+            Parms = -133, // BList<long> SqlValue
             ProcDefPos = -134, // long
-            Var = -135; // SqlValue
+            Var = -135; // long SqlValue
         /// <summary>
         /// The target object (for a method)
         /// </summary>
-		public SqlValue var => (SqlValue)mem[Var];
+		public long var => (long)(mem[Var]??-1L);
         /// <summary>
         /// The proc/method to call
         /// </summary>
@@ -2235,17 +2263,17 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of actual parameters
         /// </summary>
-		public BList<SqlValue> parms =>
-            (BList<SqlValue>)mem[Parms]?? BList<SqlValue>.Empty;
+		public BList<long> parms =>
+            (BList<long>)mem[Parms]?? BList<long>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, BList<SqlValue> ps,SqlValue tg=null)
-         : this(dp, pr, pn, ps, (tg==null)?null: new BTree<long, object>(Var,tg))
+        public CallStatement(long dp, Procedure pr, string pn, BList<long> acts, SqlValue tg=null)
+         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, BList<SqlValue> ps, BTree<long,object> m=null)
-         : base(dp, (m??BTree<long, object>.Empty) + (Parms, ps) + (ProcDefPos, pr?.defpos??-1L)
-               +(_Domain,pr?.domain??Domain.Content) +(Procedure.RetType,pr?.retType?? ObInfo.Any) + (Name,pn))
+        protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
+         : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
+               +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
@@ -2260,50 +2288,53 @@ namespace Pyrrho.Level3
         {
             return new CallStatement(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (CallStatement)base.Relocate(wr);
-            var pp = wr.Fix(procdefpos);
-            if (pp != procdefpos)
-                r += (ProcDefPos, pp);
-            var ps = BList<SqlValue>.Empty;
+            var r = (CallStatement)base._Relocate(wr);
+            var pp = wr.Fixed(procdefpos);
+            if (pp.defpos != procdefpos)
+                r += (ProcDefPos, pp.defpos);
+            var ps = BList<long>.Empty;
             var ch = false;
             for (var b=parms.First();b!=null;b=b.Next())
             {
-                var p = (SqlValue)b.value().Relocate(wr);
-                ch = ch||p != b.value();
-                ps += p;
+                var p = (SqlValue)wr.Fixed(b.value());
+                ch = ch||p.defpos != b.value();
+                ps += p.defpos;
             }
             if (ch)
                 r += (Parms, ps);
-            var vr = var.Relocate(wr);
-            if (vr != var)
-                r += (Var, vr);
+            var vr = (SqlValue)wr.Fixed(var);
+            if (vr.defpos != var)
+                r += (Var, vr.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (CallStatement)base.Frame(cx);
-            var ps = BList<SqlValue>.Empty;
+            var r = (CallStatement)base._Relocate(cx);
+            var pp = cx.Fixed(procdefpos);
+            if (pp.defpos != procdefpos)
+                r += (ProcDefPos, pp.defpos);
+            var ps = BList<long>.Empty;
             var ch = false;
             for (var b = parms.First(); b != null; b = b.Next())
             {
-                var p = (SqlValue)b.value().Frame(cx);
-                ch = ch || p != b.value();
-                ps += p;
+                var p = (SqlValue)cx.Fixed(b.value());
+                ch = ch || p.defpos != b.value();
+                ps += p.defpos;
             }
             if (ch)
                 r += (Parms, ps);
-            var vr = var?.Frame(cx);
-            if (vr != var)
-                r += (Var, vr);
-            return cx.Add(r,true);
+            var vr = (SqlValue)cx.Fixed(var);
+            if (vr.defpos != var)
+                r += (Var, vr.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            if (var != null && var.Calls(defpos, db))
+            if (var != -1L && cx.obs[var].Calls(defpos, cx))
                 return true;
-            return procdefpos==defpos || Calls(parms,defpos, db);
+            return procdefpos==defpos || Calls(parms,defpos, cx);
         }
 
         /// <summary>
@@ -2321,15 +2352,15 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = this;
-            var nv = var._Replace(cx,so, sv);
+            var nv = cx.Replace(var,so, sv);
             if (nv != var)
                 r += (Var, nv);
             var np = r.parms;
             for (var b=parms.First();b!=null;b=b.Next())
             {
-                var a = b.value()._Replace(cx, so, sv);
+                var a = cx.Replace(b.value(), so, sv);
                 if (a != b.value())
-                    np += (b.key(), (SqlValue)a);
+                    np += (b.key(), a);
             }
             if (np != r.parms)
                 r += (Parms, np);
@@ -2344,31 +2375,37 @@ namespace Pyrrho.Level3
     {
         internal const long
             Exception = -136, // Exception
-            Objects = -137, // object[]
+            Objects = -137, // BList<object>
             _Signal = -138, // string
-            SetList = -139, // BTree<Sqlx,SqlValue>
+            SetList = -139, // BTree<Sqlx,long>
             SType = -140; // Sqlx RAISE or RESIGNAL
         /// <summary>
         /// The signal to raise
         /// </summary>
         internal Sqlx stype => (Sqlx)(mem[SType] ?? Sqlx.NO); // RAISE or RESIGNAL
         internal string signal => (string)mem[_Signal];
-        internal object[] objects => (object[])mem[Objects] ?? new object[0];
+        internal BList<object> objects => (BList<object>)mem[Objects];
         internal Exception exception => (Exception)mem[Exception];
-        internal BTree<Sqlx, SqlValue> setlist =>
-            (BTree<Sqlx, SqlValue>)mem[SetList] ?? BTree<Sqlx, SqlValue>.Empty;
+        internal BTree<Sqlx, long> setlist =>
+            (BTree<Sqlx, long>)mem[SetList] ?? BTree<Sqlx, long>.Empty;
         /// <summary>
         /// Constructor: a signal statement from the parser
         /// </summary>
         /// <param name="n">The signal name</param>
         /// <param name="m">The signal information items</param>
-		public Signal(long dp, string n, params object[] m) : base(dp, BTree<long, object>.Empty
-            + (_Signal, n) + (Objects, m))
+		public Signal(long dp, string n, params object[] m) : base(dp, _Mem(m) + (_Signal, n))
         { }
-        public Signal(long dp, DBException e) : base(dp, BTree<long, object>.Empty
-            + (_Signal, e.signal) + (Objects, e.objects) + (Exception, e))
+        public Signal(long dp, DBException e) : base(dp, _Mem(e.objects)
+            + (_Signal, e.signal) + (Exception, e))
         { }
         protected Signal(long dp, BTree<long, object> m) :base(dp, m) {}
+        static BTree<long,object> _Mem(object[] obs)
+        {
+            var r = BList<object>.Empty;
+            foreach (var o in obs)
+                r += o;
+            return new BTree<long,object>(Objects,r);
+        }
         public static Signal operator+(Signal s,(long,object)x)
         {
             return new Signal(s.defpos, s.mem + x);
@@ -2381,42 +2418,42 @@ namespace Pyrrho.Level3
         {
             return new Signal(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (Signal)base.Relocate(wr);
-            var sl = BTree<Sqlx, SqlValue>.Empty;
+            var r = (Signal)base._Relocate(wr);
+            var sl = BTree<Sqlx, long>.Empty;
             var ch = false;
             for(var b=setlist.First();b!=null;b=b.Next())
             {
-                var s = (SqlValue)b.value().Relocate(wr);
-                ch = ch || s != b.value();
-                sl += (b.key(),s);
+                var s = (SqlValue)wr.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                sl += (b.key(),s.defpos);
             }
             if (ch)
                 r += (SetList, sl);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (Signal)base.Frame(cx);
-            var sl = BTree<Sqlx, SqlValue>.Empty;
+            var r = (Signal)base._Relocate(cx);
+            var sl = BTree<Sqlx, long>.Empty;
             var ch = false;
             for (var b = setlist.First(); b != null; b = b.Next())
             {
-                var s = (SqlValue)b.value().Frame(cx);
-                ch = ch || s != b.value();
-                sl += (b.key(), s);
+                var s = (SqlValue)cx.Fixed(b.value());
+                ch = ch || s.defpos != b.value();
+                sl += (b.key(), s.defpos);
             }
             if (ch)
                 r += (SetList, sl);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
             for (var b = setlist.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, db))
+                if (cx.obs[b.value()].Calls(defpos, cx))
                     return true;
-            return base.Calls(defpos, db);
+            return base.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute a signal
@@ -2438,7 +2475,7 @@ namespace Pyrrho.Level3
                 dia+=(Sqlx.MESSAGE_TEXT, new TChar(Resx.Format(dbex.signal, dbex.objects)));
             }
             for (var s = setlist.First();s!= null;s=s.Next())
-                dia+=(s.key(), s.value().Eval(cx));
+                dia+=(s.key(), cx.obs[s.value()].Eval(cx));
             cx.db += (Transaction.Diagnostics, dia);
             Handler h = null;
             Activation cs = null;
@@ -2481,7 +2518,7 @@ namespace Pyrrho.Level3
             {
                 e = new DBException(signal, objects);
                 for (var x = setlist.First();x!= null;x=x.Next())
-                    e.info +=(x.key(), x.value().Eval(cx));
+                    e.info +=(x.key(), cx.obs[x.value()].Eval(cx));
             }
             throw e;
         }
@@ -2492,9 +2529,9 @@ namespace Pyrrho.Level3
     internal class GetDiagnostics : Executable
     {
         internal const long
-            List = -141; // BTree<Sqlvalue,Sqlx>
-        internal BTree<SqlValue,Sqlx> list => 
-            (BTree<SqlValue,Sqlx>)mem[List]??BTree<SqlValue, Sqlx>.Empty;
+            List = -141; // BTree<long,Sqlx>
+        internal BTree<long,Sqlx> list => 
+            (BTree<long,Sqlx>)mem[List]??BTree<long, Sqlx>.Empty;
         internal GetDiagnostics(long dp) : base(dp,BTree<long,object>.Empty) { }
         protected GetDiagnostics(long dp, BTree<long, object> m) : base(dp, m) { }
         public static GetDiagnostics operator+(GetDiagnostics s,(long,object)x)
@@ -2509,42 +2546,42 @@ namespace Pyrrho.Level3
         {
             return new GetDiagnostics(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = base.Relocate(wr);
-            var sl = BTree<SqlValue, Sqlx>.Empty;
+            var r = base._Relocate(wr);
+            var sl = BTree<long, Sqlx>.Empty;
             var ch = false;
             for (var b = list.First(); b != null; b = b.Next())
             {
-                var s = (SqlValue)b.key().Relocate(wr);
-                ch = ch || s != b.key();
-                sl += (s,b.value());
+                var s = (SqlValue)wr.cx.obs[b.key()].Relocate(wr);
+                ch = ch || s.defpos != b.key();
+                sl += (s.defpos,b.value());
             }
             if (ch)
                 r += (List, sl);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = base.Frame(cx);
-            var sl = BTree<SqlValue, Sqlx>.Empty;
+            var r = base._Relocate(cx);
+            var sl = BTree<long, Sqlx>.Empty;
             var ch = false;
             for (var b = list.First(); b != null; b = b.Next())
             {
-                var s = (SqlValue)b.key().Frame(cx);
-                ch = ch || s != b.key();
-                sl += (s, b.value());
+                var s = (SqlValue)cx.obs[b.key()].Relocate(cx);
+                ch = ch || s.defpos != b.key();
+                sl += (s.defpos, b.value());
             }
             if (ch)
                 r += (List, sl);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
             for (var b = list.First(); b != null; b = b.Next())
-                if (b.key().Calls(defpos, db))
+                if (cx.obs[b.key()].Calls(defpos, cx))
                     return true;
-            return base.Calls(defpos, db);
+            return base.Calls(defpos, cx);
         }
         /// <summary>
         /// Obey a GetDiagnostics statement
@@ -2554,7 +2591,7 @@ namespace Pyrrho.Level3
         {
             cx.exec = this;
             for (var b = list.First(); b != null; b = b.Next())
-                cx.AddValue(b.key(), cx.tr.diagnostics[b.value()]);
+                cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
             return cx;
         }
     }
@@ -2564,16 +2601,15 @@ namespace Pyrrho.Level3
 	internal class SelectSingle : Executable
 	{
         internal const long
-            Outs = -142; // BList<SqlValue>
+            Outs = -142; // BList<long> SqlValue
         /// <summary>
         /// The query
         /// </summary>
-		public CursorSpecification sel => (CursorSpecification)mem[ForSelectStatement.Sel];
+		public long sel => (long)(mem[ForSelectStatement.Sel]??-1L);
         /// <summary>
         /// The output list
         /// </summary>
-		public BList<SqlValue> outs =>
-            (BList<SqlValue>)mem[Outs] ?? BList<SqlValue>.Empty;
+		public BList<long> outs => (BList<long>)mem[Outs] ?? BList<long>.Empty;
         /// <summary>
         /// Constructor: a select statement: single row from the parser
         /// </summary>
@@ -2594,45 +2630,45 @@ namespace Pyrrho.Level3
         {
             return new SelectSingle(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (SelectSingle)base.Relocate(wr);
-            var se = sel.Relocate(wr);
-            if (se != sel)
-                r += (ForSelectStatement.Sel, se);
-            var os = BList<SqlValue>.Empty;
+            var r = (SelectSingle)base._Relocate(wr);
+            var se = (Query)wr.Fixed(sel);
+            if (se.defpos != sel)
+                r += (ForSelectStatement.Sel, se.defpos);
+            var os = BList<long>.Empty;
             var ch = false;
             for (var b=outs.First();b!=null;b=b.Next())
             {
-                var ou = (SqlValue)b.value().Relocate(wr);
-                ch = ch || ou != b.value();
-                os += ou;
+                var ou = (SqlValue)wr.Fixed(b.value());
+                ch = ch || ou.defpos != b.value();
+                os += ou.defpos;
             }
             if (ch)
                 r += (Outs, os);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (SelectSingle)base.Frame(cx);
-            var se = sel.Frame(cx);
-            if (se != sel)
-                r += (ForSelectStatement.Sel, se);
-            var os = BList<SqlValue>.Empty;
+            var r = (SelectSingle)base._Relocate(cx);
+            var se = (Query)cx.Fixed(sel);
+            if (se.defpos != sel)
+                r += (ForSelectStatement.Sel, se.defpos);
+            var os = BList<long>.Empty;
             var ch = false;
             for (var b = outs.First(); b != null; b = b.Next())
             {
-                var ou = (SqlValue)b.value().Frame(cx);
-                ch = ch || ou != b.value();
-                os += ou;
+                var ou = (SqlValue)cx.Fixed(b.value());
+                ch = ch || ou.defpos != b.value();
+                os += ou.defpos;
             }
             if (ch)
                 r += (Outs, os);
-            return cx.Add(r,true);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(outs,defpos, db);
+            return Calls(outs,defpos, cx);
         }
         /// <summary>
         /// Execute a select statement: single row
@@ -2642,12 +2678,12 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            var sr = sel.RowSets(cx);
+            var sr = ((Query)cx.obs[sel]).RowSets(cx, BTree<long, RowSet.Finder>.Empty);
             var rb = sr.First(cx);
             a.AddValue(this,rb);
             if (rb != null)
                 for (var b = outs.First(); b != null; b = b.Next())
-                    a.AddValue(b.value(), rb[b.key()]);
+                    a.AddValue((SqlValue)cx.obs[b.value()], rb[b.key()]);
             else
                 a.NoData();
             return cx;
@@ -2659,21 +2695,21 @@ namespace Pyrrho.Level3
     internal class HttpREST : Executable
     {
         internal const long
-            CredPw = -143, //SqlValue
-            CredUs = -144, // SqlValue
+            CredPw = -143, //long SqlValue
+            CredUs = -144, // long SqlValue
             Mime = -145, // string
-            Posted = -146, // SqlValue
-            Url = -147, // SqlValue
-            Verb = -148, // SqlValue
-            Where = -149; //SqlValue
+            Posted = -146, // long SqlValue
+            Url = -147, // long SqlValue
+            Verb = -148, // string
+            Where = -149; //long SqlValue
         /// <summary>
         /// The url provided
         /// </summary>
-        internal SqlValue url => (SqlValue)mem[Url];
+        internal long url => (long)(mem[Url]??-1L);
         /// <summary>
         /// The posted data provided
         /// </summary>
-        internal SqlValue data => (SqlValue)mem[Posted];
+        internal long data => (long)(mem[Posted]??-1L);
         /// <summary>
         /// The requested mime data type
         /// </summary>
@@ -2681,15 +2717,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The credentials if supplied (null means use default credentials)
         /// </summary>
-        internal SqlValue us => (SqlValue)mem[CredUs];
-        internal SqlValue pw => (SqlValue)mem[CredPw];
-        internal SqlValue wh => (SqlValue)mem[Where];
-        internal SqlValue verb => (SqlValue)mem[Verb];
+        internal long us => (long)(mem[CredUs]??-1L);
+        internal long pw => (long)(mem[CredPw]??-1L);
+        internal long wh => (long)(mem[Where]??-1L);
+        internal string verb => (string)mem[Verb];
         /// <summary>
         /// Constructor: a HTTP REST request
         /// </summary>
         public HttpREST(long dp, string v, SqlValue u, SqlValue p)
-        : base(dp, BTree<long, object>.Empty + (Verb, v) + (CredUs, u) + (CredPw, p))
+        : base(dp, BTree<long, object>.Empty + (Verb, v) + (CredUs, u.defpos) + (CredPw, p.defpos))
         { }
         protected HttpREST(long dp, BTree<long, object> m) : base(dp, m) { }
         public static HttpREST operator+(HttpREST s,(long,object)x)
@@ -2704,50 +2740,37 @@ namespace Pyrrho.Level3
         {
             return new HttpREST(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (HttpREST)base.Relocate(wr);
-            var cp = pw.Relocate(wr);
-            if (cp != pw)
-                r += (CredPw, cp);
-            var cu = us.Relocate(wr);
-            if (cu != us)
-                r += (CredUs, cu);
-            var cd = data.Relocate(wr);
-            if (cd != data)
-                r += (Posted, cd);
-            var cw = wh.Relocate(wr);
-            if (cw != wh)
-                r += (Where, wh); 
-            var cv = verb.Relocate(wr);
-            if (cv != verb)
-                r += (Verb, cv);
+            var r = (HttpREST)base._Relocate(wr);
+            if (wr.Fixed(pw) is SqlValue cp && cp.defpos != pw)
+                    r += (CredPw, cp.defpos);
+            if (wr.Fixed(us) is SqlValue cu && cu.defpos != us)
+                    r += (CredUs, cu.defpos);
+            if (wr.Fixed(data) is SqlValue cd && cd.defpos != data)
+                    r += (Posted, cd.defpos);
+            if (wr.Fixed(wh) is SqlValue cw && cw.defpos != wh)
+                    r += (Where, cw.defpos);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (HttpREST)base.Frame(cx);
-            var cp = pw.Frame(cx);
-            if (cp != pw)
-                r += (CredPw, cp);
-            var cu = us.Frame(cx);
-            if (cu != us)
-                r += (CredUs, cu);
-            var cd = data.Frame(cx);
-            if (cd != data)
-                r += (Posted, cd);
-            var cw = wh.Frame(cx);
-            if (cw != wh)
-                r += (Where, wh);
-            var cv = verb.Frame(cx);
-            if (cv != verb)
-                r += (Verb, cv);
-            return cx.Add(r,true);
+            var r = (HttpREST)base._Relocate(cx);
+            if (cx.Fixed(pw) is SqlValue cp && cp.defpos != pw)
+                    r += (CredPw, cp.defpos);
+            if (cx.Fixed(us) is SqlValue cu && cu.defpos != us)
+                    r += (CredUs, cu.defpos);
+            if (cx.Fixed(data) is SqlValue cd && cd.defpos != data)
+                    r += (Posted, cd.defpos);
+            if (cx.Fixed(wh) is SqlValue cw && cw.defpos != wh)
+                    r += (Where, cw.defpos);
+            return r;
         }
-        internal override bool Calls(long defpos, Database db)
+        internal override bool Calls(long defpos, Context cx)
         {
-            return data?.Calls(defpos, db) == true || url?.Calls(defpos, db) == true
-                || wh?.Calls(defpos, db) == true;
+            return cx.obs[data]?.Calls(defpos, cx) == true || 
+                cx.obs[url]?.Calls(defpos, cx) == true
+                || cx.obs[wh]?.Calls(defpos, cx) == true;
         }
         /// <summary>
         /// Obey the HTTP request
@@ -2757,17 +2780,16 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            var s = url.Eval(cx)?.ToString();
+            var s = cx.obs[url].Eval(cx)?.ToString();
             if (s == null)
                 return cx;
             // Okay, use HTTP
-            var rq = SqlHttp.GetRequest(cx, url.Eval(cx).ToString());
+            var rq = SqlHttp.GetRequest(cx, cx.obs[url].Eval(cx).ToString());
             rq.UserAgent = "Pyrrho 7.0 http://" + PyrrhoStart.host + "/" 
                 + cx.tr.startTime + "/" + cx.db.loadpos;
             rq.ContentType = mime ?? "application/tcc+json, application/json";
-            var vb =verb.Eval(cx).ToString();
-            rq.Method = vb;
-            if (vb!="DELETE")
+            rq.Method = verb;
+            if (verb!="DELETE")
             {
                 var rst = new System.IO.StreamWriter(rq.GetRequestStream());
                 rst.WriteLine(cx.data.ToString());

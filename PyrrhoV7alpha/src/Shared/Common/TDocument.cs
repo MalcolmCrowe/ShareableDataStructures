@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Globalization;
-using System.IO;
 using System.Collections.Generic;
 using System.Text;
 using Pyrrho.Level3;
@@ -9,10 +7,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Common
 {
@@ -38,11 +38,10 @@ namespace Pyrrho.Common
         {
             if (id != null)
                 Add(_id, id);
-            var oi = (ObInfo)cx.db.role.obinfos[r.dataType.defpos];
+            var oi = (ObInfo)cx.db.role.infos[r.dataType.defpos];
             for (var b=oi.columns.First();b!=null;b=b.Next())
             {
-                var tc = b.value();
-                Add(tc.name, r[b.key()]);
+                Add(oi.name, r[b.value()]);
             }
         }
         internal TDocument(TDocument d, params (string, TypedValue)[] vs) : base(Domain.Document)
@@ -1079,15 +1078,6 @@ namespace Pyrrho.Common
             }
             sb.Append("]");
             return sb.ToString();
-        }
-        bool Has(TypedValue v)
-        {
-            if (v != null)
-                for (var f=content.First();f!= null;f=f.Next())
-                    if (v.dataType.CanTakeValueOf(f.value().dataType) &&
-                        v._CompareTo(f.value()) == 0)
-                        return true;
-            return false;
         }
         public override int _CompareTo(object obj)
         {

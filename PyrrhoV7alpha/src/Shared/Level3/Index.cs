@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Pyrrho.Level2;
 using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
@@ -7,10 +6,12 @@ using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -23,13 +24,13 @@ namespace Pyrrho.Level3
     {
         static long _uniq = 0;
         internal const long
-            Adapter = -157, // Procedure 
+            Adapter = -157, // long Procedure 
             IndexConstraint = -158,// PIndex.ConstraintType
-            Keys = -159, // BList<TableColumn>
+            Keys = -159, // CList<long>
             References = -160, // BTree<long,BList<TypedValue>> computed by adapter
-            RefIndex = -161, // long
-            RefTable = -162, // long
-            TableDefPos = -163, // long
+            RefIndex = -161, // long Index
+            RefTable = -162, // long Table
+            TableDefPos = -163, // long Table
             Tree = -164; // MTree
         /// <summary>
         /// Unique identifier nnn in U(nnn)
@@ -48,7 +49,7 @@ namespace Pyrrho.Level3
         /// The indexed rows: note the strong types inside here will need to be updated if column names change
         /// </summary>
         public MTree rows => (MTree)mem[Tree];
-        public CList<TableColumn> keys => (CList<TableColumn>)mem[Keys]??CList<TableColumn>.Empty;
+        public CList<long> keys => (CList<long>)mem[Keys]??CList<long>.Empty;
         /// <summary>
         /// for Foreign key, the referenced index
         /// </summary>
@@ -60,25 +61,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The adapter function
         /// </summary>
-        public Procedure adapter => (Procedure)mem[Adapter];
+        public long adapter => (long)(mem[Adapter]??-1L);
         /// <summary>
         /// The references as computed by the adapter function if any
         /// </summary>
         public BTree<long, BList<TypedValue>> references =>
             (BTree<long, BList<TypedValue>>)mem[References];
-        /// <summary>
-        /// Constructor: for a new rows tree on an old Index
-        /// </summary>
-        /// <param name="x">The old index</param>
-        /// <param name="r">The new rows tree</param>
-        public Index(Index x, MTree r, BTree<long, BTree<long, bool>> p)
-            : base(x.defpos, x.mem + (Tree, r))
-        {
-            _nindex = x._nindex;
-        }
         public Index(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
-        /// Constructor: a new Index from the datafile
+        /// Constructor: a new Index 
         /// </summary>
         /// <param name="tb">The level 3 database</param>
         /// <param name="c">The level 2 index</param>
@@ -105,22 +96,25 @@ namespace Pyrrho.Level3
                     r += (RefTable, rx.tabledefpos);
                 }
             }
-            var cols = CList<TableColumn>.Empty;
-            var tb = (Table)cx.db.objects[c.tabledefpos];
-            for (int j = 0; j < c.columns.Count; j++)
+            var cols = CList<long>.Empty;
+            var ds = BTree<long, DBObject>.Empty;
+            var tb = (Table)cx.obs[c.tabledefpos];
+            for (var b=c.columns.First();b!=null;b=b.Next())
             {
-                var pos = Math.Abs(c.columns[j].defpos);
+                var pos = b.value();
                 if (pos == 0)
                 {
                     var pd = (PeriodDef)cx.db.objects[tb.systemPS];
                     pos = pd.startCol;
                 }
-                cols += (TableColumn)cx.db.objects[pos];
+                var ob = (DBObject)cx.db.objects[pos];
+                ds += (ob.defpos, ob);
+                cols += pos;
             }
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
             r += (Keys, cols);
-            var rows = new MTree(new TreeInfo(cols, isfk, isfk));
+            var rows = new MTree(new TreeInfo(cols, ds, isfk, isfk));
             r += (Tree, rows);
             return r;
         }
@@ -144,7 +138,7 @@ namespace Pyrrho.Level3
         {
             PRow r = null;
             for (var b = keys.Last(); b != null; b = b.Previous())
-                r = new PRow(rw.vals[b.value().defpos], r);
+                r = new PRow(rw.vals[b.value()], r);
             return r;
         }
         /// <summary>
@@ -171,7 +165,7 @@ namespace Pyrrho.Level3
                             CheckRef(db, m);
                         if (ux && rs.Contains(m))
                         {
-                            var oi = (ObInfo)db.role.obinfos[tb.defpos];
+                            var oi = (ObInfo)db.role.infos[tb.defpos];
                             throw new DBException("44002", "PRIMARY/UNIQUE", oi.name).Mix()
                                 .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                                 .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
@@ -192,7 +186,7 @@ namespace Pyrrho.Level3
                             CheckRef(db, m);
                         if (ux && rs.Contains(m))
                         {
-                            var oi = (ObInfo)db.role.obinfos[tb.defpos];
+                            var oi = (ObInfo)db.role.infos[tb.defpos];
                             throw new DBException("44002", "PRIMARY/UNIQUE").Mix()
                                   .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                                   .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
@@ -215,7 +209,7 @@ namespace Pyrrho.Level3
             var tb = (Table)db.objects[reftabledefpos];
             if (!rx.rows.Contains(m))
             {
-                var oi = (ObInfo)db.role.obinfos[tb.defpos];
+                var oi = (ObInfo)db.role.infos[tb.defpos];
                 throw new DBException("44002", "REFERENCES", oi.name).Mix()
                     .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
@@ -254,7 +248,7 @@ namespace Pyrrho.Level3
             if (m != null && da is Transaction && rows.Contains(m))
             {
                 Table tb = (Table)da.objects[tabledefpos];
-                var oi = (ObInfo)da.role.obinfos[tabledefpos];
+                var oi = (ObInfo)da.role.infos[tabledefpos];
                 xmess = "duplicate key " + oi.name + " " + m.ToString();
                 okay = false;
             }
@@ -277,7 +271,7 @@ namespace Pyrrho.Level3
         {
             int r;
             for (r = 0; r < (int)keys.Count; r++)
-                if (keys[r].defpos == c.defpos)
+                if (keys[r] == c.defpos)
                     return r;
             return -1;
         }
@@ -302,18 +296,18 @@ namespace Pyrrho.Level3
             var tb = (Table)nd.objects[tabledefpos];
             if (tb != null)
             {
-                var xs = BTree<CList<TableColumn>, long>.Empty;
+                var xs = BTree<CList<long>, long>.Empty;
                 var ks = BTree<long, bool>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                     {
                         var cs = b.key();
                         for (var c = cs.First(); c != null; c = c.Next())
-                            ks += (c.value().defpos, true);
+                            ks += (c.value(), true);
                         xs += (cs, b.value());
                     }
                 tb += (Table.Indexes, xs);
-                tb += (Table.KeyCols, ks);
+                tb += (Table.TableCols, ks);
                 nd += (tb, p);
             }
             return base.Drop(d, nd, p);
@@ -333,10 +327,9 @@ namespace Pyrrho.Level3
                 sb.Append(" RefTable="); sb.Append(Uid(reftabledefpos));
             }
             sb.Append(" Rows:"); sb.Append(rows);
-            sb.Append(" KeyType:"); sb.Append(keys);
             if (mem.Contains(Adapter))
             {
-                sb.Append(" Adapter="); sb.Append(adapter.defpos);
+                sb.Append(" Adapter="); sb.Append(adapter);
                 sb.Append(" References:"); sb.Append(references);
             }
             return sb.ToString();
@@ -349,7 +342,11 @@ namespace Pyrrho.Level3
         {
             return new Index(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
+        {
+            throw new NotImplementedException();
+        }
+        internal override Basis _Relocate(Context cx)
         {
             throw new NotImplementedException();
         }

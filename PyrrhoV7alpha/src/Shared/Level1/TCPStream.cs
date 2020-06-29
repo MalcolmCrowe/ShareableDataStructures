@@ -2,14 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
-#if WINDOWS_PHONE
-using Windows.Networking.Sockets;
-#else
-using System.Net;
 using System.Net.Sockets;
-#endif
 using System.Threading;
-using Pyrrho;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -17,10 +11,12 @@ using Pyrrho.Security;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level1
 {
     /// <summary>
@@ -559,18 +555,16 @@ namespace Pyrrho.Level1
         {
             var n = (int)r.Length;
             PutInt(n);
-            string[] names = new string[n];
-            var oi = (ObInfo)_cx.db.role.obinfos[r.dataType.defpos]
-                ?? ((SqlValue)_cx.obs[r.dataType.defpos]).info;
-            for (int j = 0; j < n; j++)
+            var j = 0;
+            for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
-                var ci = oi.columns[j];
-                PutString(ci.name);
-                var c = r[ci.defpos];
-                var dt = r.dataType.representation[j].Item2;
-                PutString(dt.ToString());
-                PutInt(dt.Typecode()); // other flags are 0
-                PutCell(_cx,dt, c);
+                var p = b.value();
+                var d = r.dataType.representation[p];
+                PutString(r.dataType.NameFor(_cx,p,b.key()));
+                var c = r[p];
+                PutString(d.ToString());
+                PutInt(d.Typecode()); // other flags are 0
+                PutCell(_cx,d, c);
             }
         }
         /// <summary>
@@ -583,10 +577,10 @@ namespace Pyrrho.Level1
             int n = a.list.Count;
             var et = a.dataType.elType ?? ((a.Length > 0) ? a[0].dataType : Domain.Content);
             PutString(et.ToString());
-            PutInt(et.domain.Typecode());
+            PutInt(et.Typecode());
             PutInt(n);
             for (int j = 0; j < n; j++)
-                PutCell(_cx,et.domain, a[j]);
+                PutCell(_cx,et, a[j]);
         }
         /// <summary>
         /// send a Multiset to the client
@@ -598,10 +592,10 @@ namespace Pyrrho.Level1
             var e = m.First();
             var et = m.dataType.elType ?? m?.dataType ?? Domain.Content;
             PutString(et.ToString());
-            PutInt(et.domain.Typecode());
+            PutInt(et.Typecode());
             PutInt((int)m.Count);
             for (; e != null; e = e.Next())
-                PutCell(_cx,et.domain, e.Value());
+                PutCell(_cx,et, e.Value());
         }
         /// <summary>
         /// Send a Table to the client
@@ -617,11 +611,8 @@ namespace Pyrrho.Level1
                 n++;
             PutInt(n);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
-            {
-                var dt = r.info;
-                for (int i = 0; i < dt.Length; i++)
-                    PutCell(_cx,dt[i].domain, e[dt[i].defpos]);
-            }
+                for (var b = r.rt.First(); b!=null; b=b.Next())
+                    PutCell(_cx,_cx.Inf(b.value()).domain, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -682,7 +673,7 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dt = result.info;
+            var dt = result.rt;
             int m = result.display;
             PutInt(m);
             if (m == 0)
@@ -700,14 +691,17 @@ namespace Pyrrho.Level1
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
-                for (int j = 0; j < m; j++)
+                var j = 0;
+                for (var b=result.rt.First();b!=null;b=b.Next(),j++)
                 {
-                    var dn = dt[j];
-                    PutString(dn.alias ?? dn.name ?? ("Col" + j));
-                    if (dn.name!="")
-                        PutString(dn.name);
+                    var cp = b.value();
+                    var i = b.key();
+                    PutString(result.NameFor(cx,i));
+                    var dn = result.dataType[cp];
+                    if (dn.kind!=Sqlx.TYPE)
+                        PutString(dn.kind.ToString());
                     else
-                        PutString(DBObject.Uid(dn.domain.defpos));
+                        PutString(DBObject.Uid(dn.defpos));
                     PutInt(flags[j]);
                 }
             }
@@ -738,7 +732,7 @@ namespace Pyrrho.Level1
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var dt = result.info;
+            var dt = result.dataType;
             int m = result.display;
             PutInt(m);
             if (m == 0)
@@ -750,11 +744,13 @@ namespace Pyrrho.Level1
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
-                for (int j = 0; j < m; j++)
+                var oi = cx.Inf(dt.defpos);
+                var j = 0;
+                for (var b=oi.domain.representation.First();b!=null;b=b.Next(),j++)
                 {
-                    var dn = dt[j];
-                    PutString(dn.name);
-                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : dn.name);
+                    var n = cx.Inf(b.key()).name;
+                    PutString(n);
+                    PutString((b.value().kind == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
                     PutInt(flags[j]);
                 }
             }
@@ -780,7 +776,7 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-                if (db.objects[dt[j].defpos] is SqlTableCol sc && sc.tableCol is TableColumn dn)
+                if (db.objects[dt[j]] is SqlCopy sc && db.objects[sc.copyFrom] is TableColumn dn)
                 {
                     PutString(sc.name);
                     PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);

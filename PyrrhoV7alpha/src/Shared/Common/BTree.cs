@@ -5,10 +5,12 @@ using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Common
 {
@@ -86,10 +88,22 @@ namespace Pyrrho.Common
         {
             return (BTree<K,V>)tree.Add(v.Item1, v.Item2);
         }
-        public static BTree<K,V> operator+(BTree<K,V> c,BTree<K,V>d)
+        public static BTree<K, V> operator +(BTree<K, V> tree, ATree<K, V> a)
         {
+            return (BTree<K, V>)tree.Add(a);
+        }
+        /// <summary>
+        /// Add of trees, optionally non-destructive
+        /// </summary>
+        /// <param name="c"></param>
+        /// <param name="x">bool Item2 true for non-destructive</param>
+        /// <returns></returns>
+        public static BTree<K,V> operator+(BTree<K,V> c,(BTree<K,V>,bool) x)
+        {
+            var (d, nd) = x;
             for (var b = d.First(); b != null; b = b.Next())
-                c += (b.key(), b.value());
+                if (!(c.Contains(b.key())&&nd))
+                    c += (b.key(), b.value());
             return c;
         }
         public static BTree<K, V> operator -(BTree<K, V> tree, K k)
@@ -798,6 +812,14 @@ namespace Pyrrho.Common
         public static BList<V> operator -(BList<V> b, int i)
         {
             return (BList<V>)b.Remove(i);
+        }
+        public V[] ToArray()
+        {
+            var r = new V[Length];
+            var i = 0;
+            for (var b = First(); b != null; b = b.Next(), i++)
+                r[i] = b.value();
+            return r;
         }
     }
 }

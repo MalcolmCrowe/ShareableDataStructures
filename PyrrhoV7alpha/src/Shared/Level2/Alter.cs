@@ -6,10 +6,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -53,16 +55,17 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var ti = (ObInfo)ro.infos[tb.defpos];
             var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
-            var iq = ti.map[oc.name];
-            ro = ro + (oc.defpos, oc) + (ti + (iq.Value,oc));
+            var ci = new ObInfo(defpos, name, dt)+(ObInfo.Privilege,priv);
+            ro = ro + (defpos,ci) + (ti + (tc.defpos,dt));
             tb += tc;
-            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
+            cx.db += (ro, p);
+            cx.Install(tb, p);
+            cx.Install(tc, p);
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -113,16 +116,17 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var ti = (ObInfo)ro.infos[tb.defpos];
             var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
-            var iq = ti.map[oc.name];
-            ro = ro + (oc.defpos, oc) + (ti + (iq.Value, oc));
+            var ci = new ObInfo(defpos, name, dt) +(ObInfo.Privilege,priv);
+            ro = ro + (defpos, ci) + (ti + (tc.defpos, dt)+(ObInfo.Privilege,priv));
             tb += tc;
-            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
+            cx.db += (ro, p);
+            cx.Install(tb,p);
+            cx.Install(tc,p);
         }
     }
 	/// <summary>
@@ -190,16 +194,17 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.obinfos[tb.defpos];
-            var i = ti.map[name].Value; 
+            var ti = (ObInfo)ro.infos[tb.defpos];
             var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
-            ro = ro + (oc.defpos, oc) + (ti + (i, oc));
+            var oc = new ObInfo(defpos, name, dt)+(ObInfo.Privilege, priv);
+            ro = ro + (oc.defpos, oc) + (ti + (defpos, oc));
             tb += tc;
-            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
+            cx.db += (ro, p);
+            cx.Install(tb,p);
+            cx.Install(tc,p);
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -278,8 +283,7 @@ namespace Pyrrho.Level2
                         var c = (PIndex)that;
                         if (tabledefpos==c.tabledefpos)
                             for (int j = 0; j < c.columns.Count; j++)
-                                if (c.columns[j].defpos == defpos 
-                                    || c.columns[j].defpos == -defpos)
+                                if (c.columns[j] == defpos)
                                     return ppos;
                         return -1;
                     }

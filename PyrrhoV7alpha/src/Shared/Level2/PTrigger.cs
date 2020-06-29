@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -7,16 +6,18 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// A Level 2 Trigger definition
 	/// </summary>
-	internal class PTrigger : Physical
+	internal class PTrigger : Compiled
 	{
         /// <summary>
         /// The possible trigger types (flag attribute)
@@ -35,7 +36,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The associated table
         /// </summary>
-		public From from;
+		public long target;
         /// <summary>
         /// The trigger type
         /// </summary>
@@ -43,35 +44,31 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The TableColumns for update
         /// </summary>
-		public long[] cols = null;
+		public BList<long> cols = null;
         /// <summary>
         /// The alias for the old row
         /// </summary>
-		public Ident oldRowId = null;
-        public FromOldTable oldRow = null;
+		public Ident oldRow = null;
         /// <summary>
         /// The alias for the new row
         /// </summary>
 		public Ident newRow = null;
         /// <summary>
-        /// The alias for the old table
+        /// The alias for the old table: consists of rows that are being deleted or updated
+        /// (so inherits where conditions for the outer statement)
         /// </summary>
-        public Ident oldTableId = null; 
-		public FromOldTable oldTable = null;
+        public Ident oldTable = null; 
         /// <summary>
-        /// The alias for the new table
+        /// The alias for the new table: consists of the new rows  
         /// </summary>
 		public Ident newTable = null;
-        /// <summary>
-        /// The definition of the trigger
-        /// </summary>
-		public Executable def;
         public Ident src; // the ident is the source code of the action!
+        public long def; // the compiled version (in Compiled.framing)
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
-            if (!Committed(wr,from.target)) return from.target;
-            for (var i = 0; i < cols.Length; i++)
+            if (!Committed(wr,target)) return target;
+            for (var i = 0; i < cols?.Length; i++)
                 if (!Committed(wr,cols[i])) return cols[i];
             return -1;
         }
@@ -86,14 +83,12 @@ namespace Pyrrho.Level2
         /// <param name="nr">The alias for the new row</param>
         /// <param name="ot">The alias for the old table</param>
         /// <param name="nt">The alias for the new table</param>
-        /// <param name="def">The definition of the trigger</param>
         /// <param name="sce">The source string for the trigger definition</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTrigger(string tc, From fm, int ty, long[] cs, Ident or,
-            Ident nr, Ident ot, Ident nt, Executable def, Ident sce, 
-            Context cx, long pp)
-            : this(Type.PTrigger, tc, fm, ty, cs, or, nr, ot, nt, def, sce, cx, pp)
+        public PTrigger(string tc, long tb, int ty, BList<long> cs, Ident or,
+            Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
+            : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, cx, pp)
         { }
         /// <summary>
         /// Constructor
@@ -107,25 +102,21 @@ namespace Pyrrho.Level2
         /// <param name="nr">The alias for the new row</param>
         /// <param name="ot">The alias for the old table</param>
         /// <param name="nt">The alias for the new table</param>
-        /// <param name="df">The definition of the trigger</param>
-        /// <param name="pb">The physical database</param>
-        /// <param name="curpos">The current position in the datafile</param>
-        protected PTrigger(Type tp, string tc, From fm, int ty, long[] cs, 
-            Ident or, Ident nr, Ident ot, Ident nt, Executable df, 
-            Ident sce, Context cx, long pp)
-            : base(tp,pp,cx)
+        /// <param name="sce">The source code of the trigger</param>
+        /// <param name="cx">The context</param>
+        /// <param name="pp">The current position in the datafile</param>
+        protected PTrigger(Type tp, string tc, long tb, int ty, BList<long> cs, 
+            Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
+            : base(tp,pp,cx,cx.obs)
 		{
             name = tc;
-			from = fm;
+            target = tb;
 			tgtype = (TrigType)ty;
 			cols = cs;
-            oldRowId = or;
-			oldRow = (or!=null)?(new FromOldTable(or,fm) + (DBObject._Domain, Domain.Row)) : null;
+            oldRow = or;
 			newRow = nr;
-            oldTableId = ot;
-			oldTable = (ot!=null)?new FromOldTable(ot,fm):null;
+            oldTable = ot;
 			newTable = nt;
-			def = df;
             src = sce;
             if (cx.db is Transaction tr && tr.format < 51)
                 digested = cx.digest;
@@ -139,24 +130,19 @@ namespace Pyrrho.Level2
         protected PTrigger(PTrigger x, Writer wr) : base(x, wr)
         {
             name = x.name;
+            src = x.src;
             tgtype = x.tgtype;
-            wr.srcPos = wr.Length + 1 + StringLength(name) + IntLength(x.from.target)
-                + IntLength((int)tgtype)
-                + ((cols == null) ? 1 : ColsLength(cols))
-                + StringLength(oldRowId) + StringLength(newRow)
-                + StringLength(oldTableId) + StringLength(newTable);
-            src = new Ident(x.src.ident, wr.Fix(x.src.iix));
-            oldRowId = x.oldRowId?.Relocate(wr);
-            newRow = x.newRow?.Relocate(wr);
-            oldTableId = x.oldTableId?.Relocate(wr);
-            newTable = x.newTable?.Relocate(wr);
-            oldTable = (FromOldTable)x.oldTable?.Relocate(wr);
-            oldRow = (FromOldTable)x.oldRow?.Relocate(wr);
-            from = (From)x.from.Relocate(wr);
-            def = (Executable)x.def.Relocate(wr);
+            target = wr.Fix(x.target);
+            def = wr.Fixed(x.def).defpos;
+            var cs = BList<long>.Empty;
             if (x.cols != null)
-                for (var i = 0; i<x.cols.Length; i++)
-                    cols[i] = wr.Fix(x.cols[i]);
+                for (var b = x.cols.First(); b!=null; b=b.Next())
+                    cs += wr.Fix(b.value());
+            cols = cs;
+            oldRow = wr.Fix(x.oldRow);
+            newRow = wr.Fix(x.newRow);
+            oldTable = wr.Fix(x.oldTable);
+            newTable = wr.Fix(x.newTable);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -168,8 +154,9 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr) 
 		{
+            wr.srcPos = wr.Length+1; 
             wr.PutString(name.ToString());
-            wr.PutLong(wr.Fix(from.target));
+            wr.PutLong(wr.Fix(target));
             wr.PutInt((int)tgtype);
 			if (cols==null)
                 wr.PutInt(0);
@@ -177,15 +164,16 @@ namespace Pyrrho.Level2
 			{
 				int n = cols.Length;
                 wr.PutInt(n);
-				for(int i=0;i<n;i++)
-                    wr.PutLong(cols[i]);
+				for(var b=cols.First();b!=null;b=b.Next())
+                    wr.PutLong(wr.Fix(b.value()));
 			}
-            oldRowId = wr.PutIdent(oldRowId);
-            newRow = wr.PutIdent(newRow);
-            oldTableId = wr.PutIdent(oldTableId);
-            newTable = wr.PutIdent(newTable);
+            // DON'T update oldRow, newRow, oldTable, newTable
+            wr.PutIdent(oldRow);
+            wr.PutIdent(newRow);
+            wr.PutIdent(oldTable);
+            wr.PutIdent(newTable);
             src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length);
-            wr.PutString(src.ident);
+            src = wr.PutIdent(src);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -195,41 +183,26 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			name = rdr.GetString();
-            var fp = rdr.Position;
-            var tp = rdr.GetLong();
-            var tb = (Table)rdr.context.db.objects[tp];
-			from = new From(new Ident(name,fp),rdr.context,tb,null,For(rdr.context,fp,tb));
+            target = rdr.GetLong();
 			tgtype = (TrigType)rdr.GetInt();
 			int n = rdr.GetInt();
-            var cols = new long[n];
+            var cols = BList<long>.Empty;
 			while (n-->0)
-                cols[n] = rdr.GetLong();
-			oldRowId = rdr.GetIdent();
+                cols += rdr.GetLong();
+			oldRow = rdr.GetIdent();
 			newRow = rdr.GetIdent();
-            oldTableId = rdr.GetIdent();
+            oldTable = rdr.GetIdent();
             newTable = rdr.GetIdent();
             src = rdr.GetIdent();
-            // prepare a context for parsing the trigger definition
-            var cx = new Context(rdr.context.db);
-            cx.Add(from);
-            var db = rdr.context.db + (Database._ExecuteStatus,ExecuteStatus.Parse);
-            def = new Parser(db, src).ParseTriggerDefinition(this);
 			base.Deserialise(rdr);
 		}
-        internal static Selection For(Context cx,long dp, Table tb)
+        internal override void OnLoad(Reader rdr)
         {
-            var oi = (ObInfo)cx.db.role.obinfos[tb.defpos];
-            var qn = new Selection(dp, oi.name);
-            var off = 5; // we will find gaps in the database for trigger columns
-            cx.db += (Database.NextStmt, cx.db.nextStmt + oi.Length);
-            for (var b = oi.columns.First(); b != null; b = b.Next())
-            {
-                while (cx.db.objects.Contains(++off))
-                    ;
-                var c = b.value();
-                qn += new SqlCopy(off, c.name, c, oi.defpos, c.defpos);
-            }
-            return qn;
+            var ob = ((DBObject)rdr.context.db.objects[target]);
+            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1), ob);
+            psr.cx.srcFix = ppos+1;
+            def = psr.ParseTriggerDefinition(this);
+            Frame(psr.cx);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -242,13 +215,18 @@ namespace Pyrrho.Level2
             sb.Append(name);
             sb.Append(" ");
             sb.Append(tgtype.ToString());
-			if (cols!=null)
+            if (cols != null)
             {
-                sb.Append(" of ");
-                sb.Append(cols.ToString());
+                var cm = " of (";
+                for (var b = cols.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(DBObject.Uid(b.value()));
+                }
+                sb.Append(")");
             }
             sb.Append(" on ");
-            sb.Append(Pos(from.target));
+            sb.Append(Pos(target));
             if (oldRow != null) Add("old row ", oldRow.ToString(), sb);
             if(newRow!=null) Add("new row ", newRow.ident, sb);
             if(oldTable!=null) Add("old table ", oldTable.ToString(), sb);
@@ -271,22 +249,35 @@ namespace Pyrrho.Level2
             switch(that.type)
             {
                 case Type.PTrigger:
-                    return (from.target == ((PTrigger)that).from.target) ? ppos : -1;
+                    return (target == ((PTrigger)that).target) ? ppos : -1;
                 case Type.Drop:
-                    return (from.target == ((Drop)that).delpos) ? ppos : -1;
+                    return (target == ((Drop)that).delpos) ? ppos : -1;
                 case Type.Change:
-                    return (from.target == ((Change)that).affects) ? ppos : -1;
+                    return (target == ((Change)that).affects) ? ppos : -1;
             }
             return base.Conflicts(db, tr, that);
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var tb = (Table)cx.db.objects[from.target];
-            var tg = new Trigger(this, cx.db);
+            var tb = (Table)cx.db.objects[target];
+            var tg = new Trigger(this); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg, cx.db);
-            ro += new ObInfo(defpos, name);
-            cx.db = cx.db + (ro, p) + (tb, p) + (tg, p);
+            ro = ro + new ObInfo(defpos, name);
+            cx.db += (ro, p);
+            cx.Install(tb, p);
+            cx.Install(tg, p);
+        }
+        public override (Transaction,Physical) Commit(Writer wr, Transaction t)
+        {
+            var (tr,ph) = base.Commit(wr, t);
+            var pt = (PTrigger)ph;
+            var tg = (DBObject)tr.objects[defpos] + (Check.Condition, pt.framing[pt.def])
+                + (DBObject.Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix??-1L)
+                +(Trigger.NewRow,pt.newRow?.iix??-1) + (Trigger.OldTable,pt.oldTable?.iix??-1)
+                +(Trigger.NewTable,pt.newTable?.iix??-1L);
+            var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg, tr);
+            return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)),ph);
         }
     }
 }

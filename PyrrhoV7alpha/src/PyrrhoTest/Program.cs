@@ -79,8 +79,8 @@ namespace Test
             Test14(test);
             Test15(test);
             Test16(test);
-            Test17(test);
-      /*      Test18(test);
+      /*      Test17(test);
+            Test18(test);
             Test19(test);
             Test20(test);
             Test21(test); */
@@ -218,7 +218,7 @@ namespace Test
             conn.Act("insert into JE values(11,4,10)");
             conn.Act("insert into JE values(7,2,31)");
             CheckResults(8, 1, "select * from JA natural join JE" ,
-                "[{B:4,D:43,C:2,F:7,G:31},{B:8,D:82,C:3,F:4,G:22},{B:7,D:29,C:4,F:11,G:10}]");
+                "[{B:4,C:2,D:43,F:7,G:31},{B:8,C:3,D:82,F:4,G:22},{B:7,C:4,D:29,F:11,G:10}]");
             CheckResults(8, 2, "select D,G from JA cross join JE where D<G",
                 "[{D:29,G:31}]");
             CheckResults(8, 3, "select B,D,G from JA, JE where B=F",
@@ -506,25 +506,26 @@ namespace Test
             Begin();
             conn.Act("create table xa(b int,c int,d char)");
             conn.Act("create table xb(tot int)");
-            conn.Act("create table xc(totb int,totc int)");
             conn.Act("insert into xb values (0)");
-            conn.Act("create trigger sdai instead of delete on xa referencing old table as ot " +
-            "for each statement " + // when (select max(ot.b) from ot)<10  "+
-            "begin atomic insert into xc (select b as totb,c as totc from ot) end"); //(select sum(oo.b),sum(oo.c) from ot oo) end");
-            conn.Act("create trigger riab before insert on xa referencing new as nr " +
-            "for each row begin atomic set nr.c=nr.b+3; update xb set tot=tot+nr.b end");
             conn.Act("create trigger ruab before update on xa referencing old as mr new as nr " +
             "for each row begin atomic update xb set tot=tot-mr.b+nr.b; " +
             "set nr.d='changed' end");
+            conn.Act("create trigger riab before insert on xa referencing new as nr " +
+            "for each row begin atomic set nr.c=nr.b+3; update xb set tot=tot+nr.b end");
             conn.Act("insert into xa(b,d) values (7,'inserted')");
-            CheckResults(16,1,"table xa", "[{B:7,C:10,D:'inserted'}]");
-            CheckResults(16,2,"table xb", "[{TOT:7}]");
+            conn.Act("insert into xa(b, d) values(9, 'Nine')");
+            CheckResults(16,1,"table xa", "[{B:7,C:10,D:'inserted'},{B:9,C:12,D:'Nine'}]");
+            CheckResults(16,2,"table xb", "[{TOT:16}]");
             conn.Act("update xa set b=8,d='updated' where b=7");
-            CheckResults(16,3,"table xa", "[{B:8,C:10,D:'changed'}]");
-            CheckResults(16,4,"table xb", "[{TOT:8}]");
+            CheckResults(16,3,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]");
+            CheckResults(16,4,"table xb", "[{TOT:17}]");
+            conn.Act("create table xc(totb int,totc int)");
+            conn.Act("create trigger sdai instead of delete on xa referencing old table as ot " +
+            "for each statement " +
+            "begin atomic insert into xc (select sum(b) as totb,sum(c) as totc from ot) end");
             conn.Act("delete from xa where d='changed'");
             CheckResults(16,5,"table xc", "[{TOTB:8,TOTC:10}]");
-            CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'}]"); // INSTEAD OF!
+            CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]"); // INSTEAD OF!
             Rollback();
         }
         public void Test17(int t)

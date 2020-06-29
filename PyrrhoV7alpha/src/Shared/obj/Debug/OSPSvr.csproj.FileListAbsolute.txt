@@ -1,4 +1,0 @@
-E:\PyrrhoDB63\Pyrrho\OpenSource\src\Shared\obj\Debug\OSPSvr.csprojAssemblyReference.cache
-E:\PyrrhoDB63\Pyrrho\OpenSource\src\Shared\obj\Debug\OSPSvr.csproj.CoreCompileInputs.cache
-E:\PyrrhoDB7\Pyrrho\OpenSource\src\Shared\obj\Debug\OSPSvr.csprojAssemblyReference.cache
-E:\PyrrhoDB7\Pyrrho\OpenSource\src\Shared\obj\Debug\OSPSvr.csproj.CoreCompileInputs.cache

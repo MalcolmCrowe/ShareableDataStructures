@@ -1,5 +1,3 @@
-using System.Net;
-using System.IO;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -9,10 +7,12 @@ using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -49,11 +49,12 @@ namespace Pyrrho.Level3
         /// <param name="data">the data to insert</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the rowsets affected</param>
-        internal override Context Insert(Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
+        internal override Context Insert(Context cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            f.source.AddCondition(_cx,f.where, null, data);
-            return f.source.Insert( _cx,prov, data, eqs, rs, cl);
+            var sce = (Query)cx.obs[f.source];
+            sce.AddCondition(cx,f.where, null, data);
+            return sce.Insert( cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -63,8 +64,9 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         internal override Context Delete(Context cx,From f, BTree<string, bool> dr, Adapters eqs)
         {
-            f.source.AddCondition(cx, f.where, f.assigns, null);
-            return f.source.Delete(cx,dr,eqs);
+            var sce = (Query)cx.obs[f.source];
+            sce.AddCondition(cx, f.where, f.assigns, null);
+            return sce.Delete(cx,dr,eqs);
         }
         /// <summary>
         /// Execute an Update (for an updatabale View)
@@ -75,8 +77,9 @@ namespace Pyrrho.Level3
         /// <param name="rs">the affected rowsets</param>
         internal override Context Update(Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
-            f.source.AddCondition(cx,f.where, f.assigns, null);
-            return f.source.Update(cx,ur, eqs, rs);
+            var sce = (Query)cx.obs[f.source];
+            sce.AddCondition(cx,f.where, f.assigns, null);
+            return sce.Update(cx,ur, eqs, rs);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -102,10 +105,10 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleClassValue(Transaction tr,From from, ABookmark<long, object> _enu)
+        internal override TRow RoleClassValue(Transaction tr,DBObject from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
-            var mi = tr.role.obinfos[md.defpos] as ObInfo;
+            var mi = tr.role.infos[md.defpos] as ObInfo;
             var ro = tr.role;
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
@@ -117,7 +120,7 @@ namespace Pyrrho.Level3
             sb.Append("public class " + mi.name + " : Versioned {\r\n");
             mi.DisplayType(tr,sb);
             sb.Append("}\r\n");
-            return new TRow(from.rowType.info,
+            return new TRow(mi,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -128,10 +131,10 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleJavaValue(Transaction tr, From from, ABookmark<long, object> _enu)
+        internal override TRow RoleJavaValue(Transaction tr, DBObject from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
-            var mi = tr.role.obinfos[md.defpos] as ObInfo;
+            var mi = tr.role.infos[md.defpos] as ObInfo;
             var ro = tr.role;
             var sb = new StringBuilder();
             sb.Append("\r\n/* \r\n * Class "); sb.Append(mi.name); sb.Append(".java\r\n");
@@ -145,7 +148,7 @@ namespace Pyrrho.Level3
             sb.Append("public class " + mi.name + " extends Versioned {\r\n");
             DisplayJType(tr,mi, sb);
             sb.Append("}\r\n");
-            return new TRow(from.rowType.info,
+            return new TRow(mi,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -156,11 +159,10 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
+        internal override TRow RolePythonValue(Transaction tr, DBObject from, ABookmark<long, object> _enu)
         {
             var md = _enu.value() as View;
-            var mi = tr.role.obinfos[md.defpos] as ObInfo;
-            var dt = from.rowType;
+            var mi = tr.role.infos[md.defpos] as ObInfo;
             var sb = new StringBuilder();
             sb.Append("# "); sb.Append(mi.name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
@@ -170,7 +172,7 @@ namespace Pyrrho.Level3
             sb.Append("class " + mi.name + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             DisplayPType(tr,mi, sb);
-            return new TRow(dt.info,
+            return new TRow(mi,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -183,9 +185,11 @@ namespace Pyrrho.Level3
         /// <param name="kc">key information</param>
         static void DisplayJType(Transaction tr,ObInfo dt, StringBuilder sb)
         {
-            for (var i = 0; i < dt.columns.Count; i++)
+            var i = 0;
+            for (var b = dt.columns.First();b!=null;b=b.Next(),i++)
             {
-                var c = dt.columns[i];
+                var p = b.value();
+                var c = (ObInfo)tr.role.infos[b.value()];
                 var cd = c.domain;
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
@@ -201,20 +205,21 @@ namespace Pyrrho.Level3
                 FieldType(tr,sb,cd);
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
-            for (var i = 0; i < dt.Length; i++)
+            i = 0;
+            for (var b=dt.columns.First();b!=null;b=b.Next(),i++)
             {
-                var c = dt.columns[i];
+                var c = (ObInfo)tr.role.infos[b.value()];
                 var cd = c.domain;
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
-                cd = cd.elType.domain;
+                cd = cd.elType;
                 var tn = c.name;
                 if (tn != null)
                     sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");
                 else
                     tn += "_T" + i;
                 sb.Append("  public class " + tn + " extends Versioned {\r\n");
-                DisplayJType(tr, tr.role.obinfos[c.defpos] as ObInfo, sb);
+                DisplayJType(tr, tr.role.infos[c.defpos] as ObInfo, sb);
                 sb.Append("  }\r\n");
             }
         }
@@ -226,9 +231,10 @@ namespace Pyrrho.Level3
         /// <param name="kc">key information</param>
         static void DisplayPType(Transaction tr,ObInfo dt, StringBuilder sb)
         {
-            for (var i = 0; i < dt.columns.Count; i++)
+            var i = 0;
+            for (var b=dt.columns.First();b!=null;b=b.Next(),i++)
             {
-                var c = dt.columns[i];
+                var c = (ObInfo)tr.role.infos[b.value()];
                 var cd = c.domain;
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
@@ -256,13 +262,24 @@ namespace Pyrrho.Level3
         {
             return new View(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (View)base.Relocate(wr);
+            var r = (View)base._Relocate(wr);
             var rg = (GroupSpecification)remoteGroups.Relocate(wr);
             if (rg != remoteGroups)
                 r += (RemoteGroups, rg);
             var vq = (Query)viewQry.Relocate(wr);
+            if (vq != viewQry)
+                r += (ViewQuery, vq);
+            return r;
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (View)base._Relocate(cx);
+            var rg = (GroupSpecification)remoteGroups.Relocate(cx);
+            if (rg != remoteGroups)
+                r += (RemoteGroups, rg);
+            var vq = (Query)viewQry.Relocate(cx);
             if (vq != viewQry)
                 r += (ViewQuery, vq);
             return r;
@@ -327,9 +344,9 @@ namespace Pyrrho.Level3
         {
             return new RestView(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = base.Relocate(wr);
+            var r = base._Relocate(wr);
             var d = wr.Fix(defpos);
             if (d != defpos)
                 r = (RestView)Relocate(d);
@@ -337,6 +354,20 @@ namespace Pyrrho.Level3
             if (vs != viewStruct)
                 r += (viewStruct, vs);
             var ut = wr.Fix(usingTable);
+            if (ut != usingTable)
+                r += (usingTable, ut);
+            return r;
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = base._Relocate(cx);
+            var d = cx.Unheap(defpos);
+            if (d != defpos)
+                r = (RestView)Relocate(d);
+            var vs = cx.Unheap(viewStruct);
+            if (vs != viewStruct)
+                r += (viewStruct, vs);
+            var ut = cx.Unheap(usingTable);
             if (ut != usingTable)
                 r += (usingTable, ut);
             return r;

@@ -5,89 +5,32 @@ using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level4
 {
     internal class GroupingRowSet : RowSet
     {
         /// <summary>
-        /// The grouping row set has an array of Selectors used for grouping.
-        /// Each grouping set therefore corresponds to a number gid (bitmap of participating Selectors)
-        /// We have a BTree of Groupings (not an arraylist!)
-        /// </summary>
-        internal class GroupInfo
-        {
-            /// <summary>
-            /// The enclosing grouping rowset
-            /// </summary>
-            internal readonly GroupingRowSet grs;
-            /// <summary>
-            /// The grouping of this group
-            /// </summary>
-            internal readonly Grouping group;
-            internal readonly ObInfo nominalKeyInfo, nominalInfo;
-            /// <summary>
-            /// The information for a group
-            /// </summary>
-            /// <param name="q">the query</param>
-            /// <param name="r">The parent grouping row set (may be null)</param>
-            /// <param name="g">The grouping required</param>
-            internal GroupInfo(GroupingRowSet r, Grouping g)
-            {
-                grs = r; group = g;
-                var ss = ObInfo.Any; 
-                for (var b=g.members.First();b!=null;b=b.Next())
-                {
-                    var sv = b.key();
-                    ss += r.info[sv] ??
-                        throw new PEException("PE856");
-                }
-                nominalKeyInfo = ss; //Domain.For(cx,ss);
-                if (grs != null)
-                {
-                    nominalInfo = r.info;
-       //             for (var i = 0; i < q.cols.Count; i++)
-        //                q.cols[i].AddNeeds(this);
-                }
-            }
-            /// <summary>
-            /// Construct the group key for the current row
-            /// </summary>
-            /// <returns>A key for the row</returns>
-            internal TRow MakeKey(Cursor rb)
-            {
-                var r = new List<TypedValue>();
-                var rw = rb;
-                for (int k = 0; k < nominalKeyInfo.Length; k++)
-                {
-                    var n = nominalKeyInfo[k].defpos;
-                    r.Add(rw[n]);
-                }
-                return new TRow(nominalKeyInfo, r.ToArray());
-            }
-        }
-        /// <summary>
-        /// The source rowset for the grouping operation
+        /// The source rowset for the grouping operation. 
+        /// See section 6.2.1 of SourceIntro.doc for explanations of terms
         /// </summary>
         internal readonly RowSet source;
         /// <summary>
         /// The request group specification
         /// </summary>
         internal readonly GroupSpecification groups;
-        internal readonly BTree<long, SqlValue> having;
+        internal readonly BTree<long, bool> having;
+        internal readonly BList<long> groupings;
         /// <summary>
-        /// The group information: gid->groupinfo
+        /// All the rows match the query rowType.
         /// </summary>
-        internal readonly BTree<long, GroupInfo> groupInfo = BTree<long,GroupInfo>.Empty;
-        /// <summary>
-        /// The grouped tables: one for each groupinfo
-        /// </summary>
-        internal readonly BTree<long,BList<TRow>> rows = BTree<long,BList<TRow>>.Empty;
-        internal readonly ObInfo buildInfo = ObInfo.Any;
+        internal readonly BList<TRow> rows = BList<TRow>.Empty;
         internal override RowSet Source => source;
         /// <summary>
         /// Constructor: called from QuerySpecification
@@ -96,59 +39,59 @@ namespace Pyrrho.Level4
         /// <param name="rs">The source rowset</param>
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
-        public GroupingRowSet(Context _cx, Query q, RowSet rs, GroupSpecification gr, BTree<long,SqlValue> h)
-            : base(q.defpos,_cx,q.rowType.info,rs.finder,_Key(_cx,q,gr),q.where,q.ordSpec,
-                  q.matches,Context.Copy(q.matching))
+        public GroupingRowSet(Context cx, Query q, RowSet rs, long gr, BTree<long,bool> h)
+            : base(q.defpos,cx,q.domain,q.rowType,rs.finder,_Key(cx,q,gr),q.where,
+                  q.ordSpec,q.matches,q.matching)
         {
             source = rs;
             having = h;
-            groups = gr;
-            for (var g = gr.sets.First(); g != null; g = g.Next())
-            {
-                var gi = new GroupInfo(this, g.value());
-                groupInfo += (g.value().defpos, gi);
-                for (var b =gi.nominalKeyInfo.columns.First();b!=null;b=b.Next())
-                {
-                    var kc = b.value();
-                    if (!buildInfo.map.Contains(kc.name))
-                        buildInfo += kc;
-                }
-            }
-            for (var b = buildInfo.columns.First(); b != null; b = b.Next())
-                if (b.value().aggregates())
-                    _cx.from += (b.value().defpos, rs.defpos);
-            rows = (BTree<long,BList<TRow>>)Build(_cx);
+            groups = (GroupSpecification)cx.obs[gr];
+            var gs = BList<long>.Empty;
+            for (var b = groups.sets.First(); b != null; b = b.Next())
+                gs = _Info(cx,(Grouping)cx.obs[b.value()],gs);
+            groupings = gs;
+            rows = (BList<TRow>)Build(cx);
         }
         protected GroupingRowSet(GroupingRowSet rs, long a, long b) : base(rs, a, b)
         {
             source = rs.source;
             rows = rs.rows;
             having = rs.having;
-            groupInfo = rs.groupInfo;
             groups = rs.groups;
-            buildInfo = rs.buildInfo;
         }
         internal override RowSet New(long a, long b)
         {
             return new GroupingRowSet(this, a, b);
         }
-        static ObInfo _Key(Context cx,Query q,GroupSpecification gr)
+        static BList<long> _Info(Context cx,Grouping g,BList<long>gs)
         {
-            var ss = q.rowType.info;
-            var ns = BTree<long, SqlValue>.Empty;
-            for (var b=gr.sets.First();b!=null;b=b.Next())
-                for (var c=b.value().members.First();c!=null;c=c.Next())
+            gs += g.defpos;
+            var cs = BList<SqlValue>.Empty;
+            for (var b=g.members.First();b!=null;b=b.Next())
+                cs += (SqlValue)cx.obs[b.key()];
+            var oi = new ObInfo(g.defpos, cx, cs);
+            cx.Replace(g,g + (DBObject._Domain, oi.domain));
+            for (var b = g.groups.First(); b != null; b = b.Next())
+                gs = _Info(cx, b.value(), gs);
+            return gs;
+        }
+        static CList<long> _Key(Context cx,Query q,long gr)
+        {
+            var ns = CList<long>.Empty;
+            var ck = BTree<long, bool>.Empty;
+            for (var b=((GroupSpecification)cx.obs[gr]).sets.First();b!=null;b=b.Next())
+                for (var c=((Grouping)cx.obs[b.value()]).members.First();c!=null;c=c.Next())
                 {
                     var s = c.key();
-                    if (!ns.Contains(s))
+                    if (!ck.Contains(s))
                     {
-                        var se = q.rowType[s]
+                        var se = (SqlValue)cx.obs[s]
                             ?? throw new PEException("PE855");
-                        ss += se;
-                        ns += (s, se);
+                        ns += se.defpos;
+                        ck += (s, true);
                     }
                 }
-            return ss; 
+            return ns;
         }
         internal override RowSet New(long dp, Context cx)
         {
@@ -167,57 +110,62 @@ namespace Pyrrho.Level4
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
+        /// <summary>
+        /// Build the grouped tables in the result.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
         protected override object Build(Context _cx)
         {
-            var g_rows = BTree<long, BTree<TRow, GroupRow>>.Empty;
             var cx = new Context(_cx);
             cx.copy = matching;
-            cx.from = _finder;
-            //            cx.profile = _cx.profile;
+            cx.from += source.finder;
+            var ts = BTree<long, BTree<PRow,BTree<long,Register>>>.Empty;
+            // Traverse the source rowset building partial sums for aggregation expressions
+            // for each combination of grouping expressions.
+            // Both of these are SqlValues of course.
             for (var rb = FirstB(cx) as GroupingBuilding; rb != null;
                 rb = rb.Next(cx) as GroupingBuilding)
                 if (!rb.IsNull)
-                    for (var gi = groupInfo.First(); gi != null; gi = gi.Next())
+                    for (var gb = groupings.First(); gb != null; gb = gb.Next())
                     {
-                        var g = gi.value();
+                        var g = (Grouping)_cx.obs[gb.value()];
+                        var tg = ts[g.defpos] ?? BTree<PRow, BTree<long, Register>>.Empty;
                         for (var b = rb._grs.having.First(); b != null; b = b.Next())
-                            if (b.value()?.Eval(cx) != TBool.True)
+                            if (cx.obs[b.key()].Eval(cx) != TBool.True)
                                 goto next;
-                        var gI = g_rows[gi.key()] ?? BTree<TRow,GroupRow>.Empty;
-                        var key = (TRow)g.nominalKeyInfo.Eval(cx);
-                        GroupRow r = gI[key];
-                        if (r == null)
-                        {
-                            r = new GroupRow(cx, g.group.defpos, info, g, rb,  g.nominalInfo, key);
-                            gI += (key, r);
-                            g_rows += (gi.key(), gI);
-                        }
-                        for (var gb = g.nominalInfo.columns.First(); gb != null; gb = gb.Next())
-                            gb.value()?.AddIn(cx, rb, key);
+                        var key = cx.MakeKey(keys);
+                        var tk = tg[key] ?? BTree<long, Register>.Empty;
+                        if (tk==BTree<long,Register>.Empty)
+                            for (var b = rt.First(); b != null; b = b.Next())
+                                tk = cx.obs[b.value()].StartCounter(cx, this, tk);
+                        for (var b = rt.First(); b != null; b = b.Next())
+                            tk = cx.obs[b.value()].AddIn(cx, rb, tk);
+                        tg += (key, tk);
+                        ts += (g.defpos, tg);
                         next:;
                     }
-            var rowsX = BTree<long, BList<TRow>>.Empty;
-            for (var rg = g_rows.First(); rg != null; rg = rg.Next())
-                for (var gb = rg.value().First(); gb != null; gb = gb.Next())
+            var rows= BList<TRow>.Empty;
+            for (var gb = ts.First(); gb != null; gb = gb.Next())
+            {
+                var g = cx.obs[gb.key()] as Grouping;
+                for (var b = gb.value().First(); b != null; b = b.Next())
                 {
-                var key = rg.key();
-                var vs = BTree<long, TypedValue>.Empty;
-                    for (var b = info.columns.First(); b != null; b = b.Next())
-                        ((SqlValue)_cx.obs[b.value().defpos]).AddReg(cx, defpos, gb.key());
-                    var rw = rg.value();
-                    for (var b = gb.key().values.First(); b != null; b = b.Next())
-                        cx.values += (b.key(), b.value());
-                    for (var b = info.columns.First(); b != null; b = b.Next())
-                        if (b.value() is ObInfo sv)
-                            vs += (sv.defpos, sv.Eval(cx));
-                    for (var b = gb.key().values.First(); b != null; b = b.Next())
-                        vs += (b.key(), b.value());
-                    var gT = rowsX[key] ?? BList<TRow>.Empty;
-                    var row = new TRow(dataType, vs);
-                    gT += row;
-                    rowsX += (key, gT);
+                    var vs = BTree<long,TypedValue>.Empty;
+                    var k = b.key();
+                    for (var c = g.members.First(); c != null; c = c.Next(), k = k._tail)
+                        vs+=(c.key(), k._head);
+                    cx.funcs = ts[g.defpos][b.key()];
+                    for (var c = rt.First(); c != null; c = c.Next())
+                        if (!vs.Contains(c.value()))
+                        {
+                            var sv = (SqlValue)cx.obs[c.value()];
+                            vs+=(sv.defpos,sv.Eval(cx));
+                        }
+                    rows+= new TRow(rt, dataType, vs);
                 }
-            return rowsX;
+            }
+            return rows;
         }
         /// <summary>
         /// Bookmark implementation
@@ -236,11 +184,10 @@ namespace Pyrrho.Level4
             public readonly GroupingRowSet _grs;
             public readonly Cursor _bbm;
             public readonly ABookmark<TRow, BTree<long, TypedValue>> _ebm;
-
             GroupingBuilding(Context _cx, GroupingRowSet grs, Cursor bbm,
                 ABookmark<TRow, BTree<long, TypedValue>> ebm, int pos)
                 : base(_cx, grs.defpos, pos, (bbm != null) ? bbm._defpos : 0,
-                      grs.buildInfo, new TRow(grs.buildInfo.domain, bbm.values))
+                      grs.rt, grs.dataType, new TRow(grs, bbm.values))
             {
                 _grs = grs;
                 _bbm = bbm;
@@ -250,13 +197,23 @@ namespace Pyrrho.Level4
             internal static GroupingBuilding New(Context _cx, GroupingRowSet grs)
             {
                 Cursor bbm;
+                var oc = _cx.from;
+                _cx.from += grs.source.finder;
                 for (bbm = grs.source.First(_cx); bbm != null; bbm = bbm.Next(_cx))
                 {
                     var rb = new GroupingBuilding(_cx, grs, bbm, null, 0);
                     if (rb.Matches(_cx))
+                    {
+                        _cx.from = oc;
                         return rb;
+                    }
                 }
+                _cx.from = oc;
                 return null;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                throw new System.NotImplementedException();
             }
             public override Cursor Next(Context _cx)
             {
@@ -280,32 +237,36 @@ namespace Pyrrho.Level4
         internal class GroupingBookmark : Cursor
         {
             public readonly GroupingRowSet _grs;
-            public readonly ABookmark<long,GroupInfo> _gib;
             public readonly ABookmark<int, TRow> _ebm;
             GroupingBookmark(Context _cx, GroupingRowSet grs,
-                ABookmark<long,GroupInfo> gib,ABookmark<int,TRow> ebm, int pos)
+                ABookmark<int,TRow> ebm, int pos)
                 : base(_cx, grs, pos, -1L,ebm.value())
             {
                 _grs = grs;
-                _gib = gib;
                 _ebm = ebm;
                 _cx.cursors += (grs.defpos, this);
+            }
+            GroupingBookmark(GroupingBookmark cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
+            {
+                _grs = cu._grs;
+                _ebm = cu._ebm;
+                cx.cursors += (_grs.defpos, this);
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new GroupingBookmark(this,cx,p,v);
             }
             internal static GroupingBookmark New(Context _cx, GroupingRowSet grs)
             {
                 var ox = _cx.from;
-                _cx.from = grs._finder;
-                for (var gib = grs.groupInfo.First(); gib != null; gib = gib.Next())
+                _cx.from += grs.source.finder;
+                for (var ebm = grs.rows?.First(); ebm != null; ebm = ebm.Next())
                 {
-                    var gid = gib.key();
-                    for (var ebm = grs.rows[gid]?.First();ebm!=null;ebm=ebm.Next())
+                    var r = new GroupingBookmark(_cx, grs, ebm, 0);
+                    if (r.Matches(_cx) && Query.Eval(grs.where, _cx))
                     {
-                        var r = new GroupingBookmark(_cx, grs,gib, ebm, 0);
-                        if (r.Matches(_cx) && Query.Eval(grs.where, _cx))
-                        {
-                            _cx.from = ox;
-                            return r;
-                        }
+                        _cx.from = ox;
+                        return r;
                     }
                 }
                 _cx.from = ox;
@@ -315,33 +276,24 @@ namespace Pyrrho.Level4
             /// Move to the next grouped row
             /// </summary>
             /// <returns>whether there is a next row</returns>
-            public override Cursor Next(Context _cx)
+            public override Cursor Next(Context cx)
             {
-                var ox = _cx.from;
-                _cx.from = _grs._finder;
-                var gib = _gib;
+                var ox = cx.from;
+                cx.from += _grs.source.finder;
                 var ebm = _ebm.Next();
-                for (; ; )
+                var dt =_grs.dataType;
+                for (; ebm != null; ebm = ebm.Next())
                 {
-                    for (; ebm != null; ebm = ebm.Next())
+                    var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
+                    for (var b = dt.representation.First(); b != null; b = b.Next())
+                        ((SqlValue)cx.obs[b.key()]).OnRow(cx,r);
+                    if (r.Matches(cx) && Query.Eval(_grs.where, cx))
                     {
-                        var r = new GroupingBookmark(_cx, _grs, gib, ebm, _pos + 1);
-                        for (var b = _grs.info.columns.First(); b != null; b = b.Next())
-                            ((SqlValue)_cx.obs[b.value().defpos]).OnRow(r);
-                        if (r.Matches(_cx) && Query.Eval(_grs.where, _cx))
-                        {
-                            _cx.from = ox;
-                            return r;
-                        }
+                        cx.from = ox;
+                        return r;
                     }
-                    gib = gib.Next();
-                    if (gib == null)
-                    {
-                        _cx.from = ox;
-                        return null;
-                    }
-                    ebm = _grs.rows[gib.key()].First();
                 }
+                return null;
             }
 
             internal override TableRow Rec()

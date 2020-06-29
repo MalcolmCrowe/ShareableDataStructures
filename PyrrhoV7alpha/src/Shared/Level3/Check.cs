@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -6,10 +5,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -20,7 +21,7 @@ namespace Pyrrho.Level3
     internal class Check : DBObject
     {
         internal const long
-            Condition = -51, // SqlValue
+            Condition = -51, // long SqlValue
             Source = -52; // string
         /// <summary>
         /// The object to which the check applies
@@ -31,7 +32,7 @@ namespace Pyrrho.Level3
         /// The source SQL for the check constraint
         /// </summary>
         internal string source => (string)mem[Source];
-        internal SqlValue search => (SqlValue)mem[Condition];
+        internal long search => (long)(mem[Condition]??-1L);
         /// <summary>
         /// Constructor: from the level 2 information
         /// </summary>
@@ -41,12 +42,12 @@ namespace Pyrrho.Level3
 		public Check(PCheck c, Database db) 
             : base(c.name, c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
                   + (From.Target,c.ckobjdefpos)+(Source,c.check)
-                  + (Condition, c.test) +(Dependents,c.test.dependents))
+                  + (Condition, c.test)+(Framing,c.framing))
         { }
         public Check(PCheck2 c, Database db)
             : base(c.name, c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
           + (From.Target, c.subobjdefpos) + (Source, c.check)
-          + (Condition, c.test) + (Dependents, c.test.dependents))
+          + (Condition, c.test) + (Framing, c.framing))
         { }
         /// <summary>
         /// for system types
@@ -55,7 +56,7 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s,ObInfo.Bool))) { }
+                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool.defpos))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -86,11 +87,19 @@ namespace Pyrrho.Level3
         {
             return new Check(dp, mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (Check)base.Relocate(wr);
-            var s = (SqlValue)search.Relocate(wr);
-            if (s != search)
+            var r = (Check)base._Relocate(wr);
+            var s = (SqlValue)wr.Fixed(search);
+            if (s.defpos != search)
+                r += (Condition, s);
+            return r;
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (Check)base._Relocate(cx);
+            var s = (SqlValue)cx.Fixed(search);
+            if (s.defpos != search)
                 r += (Condition, s);
             return r;
         }

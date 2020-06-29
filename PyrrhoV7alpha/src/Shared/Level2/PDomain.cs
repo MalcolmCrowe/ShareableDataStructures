@@ -8,10 +8,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -36,7 +38,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// AscDesc and Nulls control default ordering behaviour.
         /// </summary>
-        internal Sqlx AscDesc = Sqlx.NULL, Nulls = Sqlx.NULL;
+        internal Sqlx AscDesc = Sqlx.ASC, Nulls = Sqlx.NULL;
         /// <summary>
         /// Some attributes for date, timespan, interval etc types
         /// </summary>
@@ -53,7 +55,7 @@ namespace Pyrrho.Level2
         internal string defaultString = "";
         internal long structdefpos = -1; 
         internal long eltypedefpos = -1;
-        internal BList<(long, Domain)> representation = BList<(long, Domain)>.Empty;
+        internal BTree<long, Domain> representation = BTree<long, Domain>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, structdefpos)) return structdefpos;
@@ -112,6 +114,8 @@ namespace Pyrrho.Level2
             defaultString = dt.defaultString;
             defaultValue = dt.defaultValue;
             NotNull = dt.defaultValue!=TNull.Value;
+            AscDesc = dt.AscDesc;
+            Nulls = dt.nulls;
             name = nm;
         }
         /// <summary>
@@ -266,14 +270,10 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var dt = new Domain(this,cx.db);
-            var s = dt.ToString();
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, (name != "") ? name : s, null, priv);
+            var oi = new ObInfo(ppos, name, dt)+(ObInfo.Privilege, priv);
             if (structdefpos>=0)
-            {
-                var st = (ObInfo)ro.obinfos[structdefpos];
-                oi += (ObInfo.Columns, st.columns);
-            }
+                oi += (DBObject._Domain,cx.db.objects[structdefpos]);
             ro += oi;
             if (name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using Pyrrho.Level2;
@@ -9,10 +8,12 @@ using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -55,7 +56,20 @@ namespace Pyrrho.Level3
         {
             return b.New(b.mem + x);
         }
-        internal virtual Basis Relocate(Writer wr)
+        internal virtual Basis _Relocate(Writer wr)
+        {
+            return this;
+        }
+        /// <summary>
+        /// Alas we need two Relocate mechanisms for Procedures, Triggers etc.
+        /// The one for Writer is called on Commit, so that compiled objects
+        /// no longer use lexical Transaction.Analysing uids.
+        /// The one for Context is called at the end of parsing,
+        /// so that compiled objects no longer use Heap uids.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal virtual Basis _Relocate(Context cx)
         {
             return this;
         }
@@ -64,6 +78,10 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(GetType().Name);
             if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append((string)mem[Name]); }
             return sb.ToString();
+        }
+        internal virtual string ToString(Context cx,int n)
+        {
+            return ToString();
         }
     }
     public enum ExecuteStatus { Parse, Obey, Prepare }
@@ -145,15 +163,6 @@ namespace Pyrrho.Level3
         internal bool cascade => (bool)(mem[Cascade] ?? false);
         internal int format => (int)(mem[Format] ?? 0);
         internal long schemaKey => (long)(mem[SchemaKey] ?? 0L);
-        /// <summary>
-        /// The type system needs to be able to consider ad-hoc data types, i.e. not reified in
-        /// any physical database. When data with any data type is committed to a database this must be
-        /// prepared by reifying the data type in the database. All data types decalred in
-        /// table definitions etc are automatically reified, and the resulting type from an SQL computation
-        /// is refified if necessary to the subtype of the value.
-        /// The compare function for Domain does not look at defpos: this means that the types
-        /// tree allows us to find the detabase's version of a Domain with given properties
-        /// </summary>
         public BTree<Domain, Domain> types => (BTree<Domain, Domain>)mem[Types];// key==value for all entries
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
@@ -168,16 +177,16 @@ namespace Pyrrho.Level3
                     (Owner, su.defpos));
             var gu = new Role("$Guest", Guest, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu);
-            ObInfo.StandardTypes();
-            SystemRowSet.Kludge();
+            SystemRowSet.Kludge(); 
             Domain.RdfTypes();
+            Context._system = new Context(_system);
         }
         Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
                   (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
                   (Types,BTree<Domain,Domain>.Empty),
-                  (NextStmt,Transaction.Compiling))
+                  (NextStmt,Transaction.Heap))
         {
             loadpos = 0;
         }
@@ -273,6 +282,13 @@ namespace Pyrrho.Level3
             var bs = new byte[5];
             return (f.Read(bs, 0, 5)==5)?bs[4]:0;
         }
+        /// <summary>
+        /// Start a new Transtion if necessary (Transaction override does very little)
+        /// </summary>
+        /// <param name="t">usually nextId except for Prepared statements</param>
+        /// <param name="sce"></param>
+        /// <param name="auto"></param>
+        /// <returns></returns>
         public virtual Transaction Transact(long t,string sce,bool? auto=null)
         {
             // if not new, this database may be out of date: ensure we get the latest
@@ -287,7 +303,7 @@ namespace Pyrrho.Level3
         }
         public ObInfo GetObInfo(string n)
         {
-            return role.obinfos[role.dbobjects[n]] as ObInfo;
+            return role.infos[role.dbobjects[n]] as ObInfo;
         }
         public Procedure GetProcedure(string n,int a)
         {
@@ -328,16 +344,14 @@ namespace Pyrrho.Level3
                             rdr.trans = pt;
                             rdr.context.db += (Role, pt.ptrole);
                             rdr.context.db += (User, pt.ptuser);
-                            // set the context for assigning ownership to new objects
-                            rdr.context.role = (Role)rdr.context.db.mem[pt.ptrole];
-                            rdr.context.user = (User)rdr.context.db.mem[pt.ptuser];
                             // these two fields for reading of old objects from the log
-                            // not used (at all) during Load()
+                            // not used (at all) during Load(): so set them to the above
                             rdr.role = rdr.context.role;
                             rdr.user = rdr.context.user;
                             rdr.trans = pt;
                         }
                         rdr.Add(p);
+                        rdr.role = rdr.context.db.role;
                     }
                     catch (Exception) { }
                 }

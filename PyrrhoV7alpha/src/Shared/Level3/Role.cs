@@ -1,5 +1,4 @@
 using System.Text;
-using System.Collections.Generic;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -7,10 +6,12 @@ using System;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -42,7 +43,7 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class Role : DBObject
     {
-        internal readonly static long
+        internal const long
             DBObjects = -248, // BTree<string,long> Domain/Table/View etc by name
             Procedures = -249; // BTree<string,BTree<int,long>> Procedure/Function by name and arity
         public string name => (string)(mem[Name] ?? "");
@@ -50,7 +51,7 @@ namespace Pyrrho.Level3
             (BTree<string, long>)mem[DBObjects]??BTree<string,long>.Empty;
         internal BTree<string, BTree<int,long>> procedures => // not BList<long> !
             (BTree<string, BTree<int,long>>)mem[Procedures]??BTree<string,BTree<int,long>>.Empty;
-        public BTree<long, object> obinfos => mem;
+        public BTree<long, object> infos => mem;
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
@@ -150,7 +151,11 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
+        {
+            throw new NotImplementedException();
+        }
+        internal override Basis _Relocate(Context cx)
         {
             throw new NotImplementedException();
         }
@@ -162,9 +167,8 @@ namespace Pyrrho.Level3
     internal class ObInfo : DBObject
     {
         internal const long
-            Columns = -250, // BList<ObInfo> 
-            Map = -251, //  BTree<string,int?> 
-            Methods = -252, // BTree<string, BTree<int,long>>
+            Columns = -251, //CList<long> if null, uid order is used
+            Methods = -252, // BTree<string, BTree<int,long>> Method
             Privilege = -253, // Grant.Privilege
             Properties = -254; // BTree<string,long> value object added into vacant mem above 0
                                // (not for bool or long)
@@ -186,97 +190,47 @@ namespace Pyrrho.Level3
             Pie = "Pie", // bool
             X = "X", // long
             Y = "Y"; // long
-        internal static ObInfo Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
-            Bool, Blob, Char, Password, XML, Int, Numeric, Real, Date, Timespan, Timestamp,
-            Interval, TypeSpec, _Level, Physical, MTree, // pseudo type for MTree implementation
-            Partial, // pseudo type for MTree implementation
-            Array, Multiset, Collection, Cursor, UnionNumeric, UnionDate,
-            UnionDateNumeric, Exception, Period,
-            Document, DocArray, TableType, Row;
+
         public string name => (string)mem[Name] ?? "";
-        public BList<ObInfo> columns =>
-            (BList<ObInfo>)mem[Columns] ?? BList<ObInfo>.Empty;
-        public BTree<string, int?> map =>
-            (BTree<string, int?>)mem[Map] ?? BTree<string, int?>.Empty;
         public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
         public BTree<string, long> properties =>
             (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;
+        public CList<long> columns => (CList<long>)mem[Columns]??CList<long>.Empty;
         /// <summary>
         /// The set of Methods for this Type
         /// </summary>
         public BTree<string, BTree<int, long>> methods =>
             (BTree<string, BTree<int, long>>)mem[Methods] ?? BTree<string, BTree<int, long>>.Empty;
-        public int Length => (int)columns.Count;
+        public int Length => columns.Length;
         internal readonly static ObInfo Any = new ObInfo();
-        static BTree<Sqlx, ObInfo> stdInfos = BTree<Sqlx, ObInfo>.Empty; 
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
-        ObInfo(Domain d): this(--_uid,"",d) { stdInfos += (d.kind, this); }
-        public ObInfo(long dp, string nm, Domain dt = null, Grant.Privilege pr = 0, BTree<long, object> m = null)
-            : this(dp, (m ?? BTree<long, object>.Empty) + (Name, nm) + (Privilege, pr)
-                  + (_Domain, dt ?? Domain.Content) + (Methods, BTree<string, BTree<int, Method>>.Empty))
-        { }
         /// <summary>
         /// Allow construction of nameless ad-hoc Row types: see Transaction.GetDomain()
         /// </summary>
         /// <param name="cols"></param>
-        public ObInfo(long lp, Domain dt, BList<ObInfo> cols)
-            : this(lp, BTree<long, object>.Empty + (Map, _Map(cols)) + (Columns, cols)
-                  + (_Domain, _Dom(lp,dt,cols))) { }
-        public ObInfo(long lp, string name, Domain dt, BList<ObInfo> cols)
-            : this(lp, BTree<long, object>.Empty + (Map, _Map(cols)) + (Columns, cols) 
-                  + (Name, name) + (_Domain, _Dom(lp,dt,cols)))
+        public ObInfo(long lp, Domain dm, CList<long> cols,BTree<long,object>m=null)
+            : this(lp, (m??BTree<long, object>.Empty) + (_Domain,dm)+(Columns,cols)) { }
+        public ObInfo(long lp, string name, Domain dt=null, CList<long> cols=null)
+            : this(lp, BTree<long, object>.Empty + (Name, name)
+                  + (_Domain, dt??Domain.Null) + (Columns, cols??CList<long>.Empty)) { }
+        public ObInfo(long lp, string name, ObInfo oi)
+            : this(lp, BTree<long, object>.Empty + (Name, name)
+                  + (_Domain, oi.domain) + (Columns, oi.columns))
         { }
-        public ObInfo(long lp, BList<SqlValue> vs)
-            : this(lp, _Cols(lp,Domain.Row,vs)+(Privilege,Grant.AllPrivileges))
-        { }            
+        public ObInfo(long lp, Context cx, BList<SqlValue> vs)
+            : this(lp, _Dom(-1, cx, Domain.Row, vs) + (Privilege, Grant.AllPrivileges)) { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 
         { }
+        static BList<long> _Cols(Domain dt)
+        {
+            var r = BList<long>.Empty;
+            for (var b = dt?.representation?.First(); b != null; b = b.Next())
+                r += b.key();
+            return r;
+        }
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
             return new ObInfo(oi.defpos, oi.mem + x);
-        }
-        static BTree<long,object> _Cols(long dp,Domain dt,BList<SqlValue> vs)
-        {
-            var r = BTree<long,object>.Empty;
-            var cs = BList<ObInfo>.Empty;
-            var ma = BTree<string, int?>.Empty;
-            var i = 0;
-            for (var b = vs.First(); b != null; b = b.Next(),i++)
-            {
-                var s = b.value();
-                cs += new ObInfo(s.defpos, s.name, s.domain, Grant.AllPrivileges);
-                ma += (s.name, i);
-            }
-            return r + (Columns, cs) + (Map, ma) +(_Domain,_Dom(dp,dt,cs));
-        }
-        public static ObInfo operator +(ObInfo d, ObInfo s)
-        {
-            if (s.name == "")
-                for (var b = d.columns.First(); b != null; b = b.Next())
-                {
-                    if (b.value().defpos == s.defpos)
-                        return d;
-                }
-            else
-            {
-                var iq = d.map[s.name];
-                if (iq != null && d.columns[iq.Value].defpos == s.defpos)
-                    return d;
-            }
-            var k = (int)d.columns.Count;
-            d = d + (Columns, d.columns + s) 
-                + (_Domain,d.domain + (Domain.Representation, d.domain.representation 
-                        + ((s.defpos,s.domain))));
-            if (s.name != null)
-                d += (Map, d.map + (s.name, k));
-            return d;
-        }
-        public static ObInfo operator +(ObInfo d, (int, ObInfo) x)
-        {
-            var (i, ci) = x;
-            d = d + (Columns, d.columns + x) + (_Domain,d.domain + (i,(ci.defpos,ci.domain)))
-                + (Map, d.map + (ci.name,i));
-            return d;
         }
         public static ObInfo operator +(ObInfo ut, (Method, string) m)
         {
@@ -285,32 +239,22 @@ namespace Pyrrho.Level3
             return new ObInfo(ut.defpos, ut.mem + (Methods, ut.methods + (m.Item2, ms))
                 + (m.Item1.defpos, m.Item2));
         }
-        public static ObInfo operator+(ObInfo oi,(string,int)x)
+        public static ObInfo operator+(ObInfo oi,(int,long,Domain)x)
         {
-            return oi + (Map, oi.map + x);
+            var (i, p, d) = x;
+            return new ObInfo(oi.defpos, oi.mem + (Columns, oi.columns + (i, p))
+                + (_Domain, oi.domain + (p, d)));
         }
-        public static ObInfo operator+(ObInfo d,SqlValue s)
+        public static ObInfo operator -(ObInfo oi, long p)
         {
-            return d + new ObInfo(s.defpos, s.name, s.domain, BList<ObInfo>.Empty);
-        }
-        public static ObInfo operator -(ObInfo d, ObInfo s)
-        {
-            var cs = BList<ObInfo>.Empty;
-            var mp = BTree<string, int?>.Empty;
-            for (var b = d.columns.First(); b != null; b = b.Next())
-                if (s != b.value())
-                {
-                    var c = b.value();
-                    mp += (c.name, (int)cs.Count);
-                    cs += c;
-                }
-            var dm = d.domain - s.defpos;
-            return d + (Columns, cs) + (Map, mp) + (_Domain,dm);
-        }
-        public static ObInfo operator -(ObInfo d, int i)
-        {
-            var v = d.columns[i];
-            return d + (Columns, d.columns-i) + (Map, d.map-v.name);
+            var cs = CList<long>.Empty;
+            for (var b=oi.columns.First();b!=null;b=b.Next())
+            {
+                var bp = b.value();
+                if (p != bp)
+                    cs += bp;
+            }
+            return new ObInfo(oi.defpos, oi.mem + (_Domain, oi.domain - p) + (Columns, cs));
         }
         public static ObInfo operator +(ObInfo d, Metadata md)
         {
@@ -331,22 +275,7 @@ namespace Pyrrho.Level3
             mm += (Properties, ps);
             return (ObInfo)d.New(mm);
         }
-        internal ObInfo this[int i] =>columns[i];
-        internal ObInfo this[string s]=>this[map[s].Value];
-        internal ObInfo this[long p]
-        {
-            get
-            {
-                for (var b = columns.First(); b != null; b = b.Next())
-                    if (b.value().defpos == p)
-                        return b.value();
-                return null;
-            }
-        }
-        public static ObInfo Std(Sqlx s)
-        {
-            return stdInfos[s];
-        }
+        internal long this[int i] => columns[i];
         static long _Gap(Basis a, long off)
         {
             long r = off;
@@ -354,497 +283,178 @@ namespace Pyrrho.Level3
                 r++;
             return r;
         }
-        static BTree<string, int?> _Map(BList<ObInfo> cols)
+        static BTree<long,object> _Dom(long dp,Context cx,Domain dt, BList<SqlValue> vs)
         {
-            var r = BTree<string, int?>.Empty;
-            var k = 0;
-            for (var b = cols.First(); b != null; b = b.Next(), k++)
-                if (b.value() is ObInfo v)
-                    r += (v.name, k);
-            return r;
-        }
-        static Domain _Dom(long dp,Domain dt,BList<ObInfo> cols)
-        {
-            var rs = BList<(long, Domain)>.Empty;
-            var ch = dp!=dt.defpos;
-            var rb = dt.representation.First();
-            for (var b=cols.First();b!=null;b=b.Next(), rb=rb?.Next())
+            var cs = CList<long>.Empty;
+            var rs = BTree<long, Domain>.Empty;
+            for (var b = vs.First(); b != null; b = b.Next())
             {
-                var ci = b.value();
-                var d = ci.domain;
-                rs += (ci.defpos, d);
-                if (rb==null || rb.value().Item2 != d)
-                    ch = true;
+                var v = b.value();
+                cs += v.defpos;
+                rs += (v.defpos, v.domain);
             }
-            return ch?(new Domain(dp, dt)+(Domain.Representation,rs)):dt;
+            var dm = new Domain(dp, dt, rs);
+            return BTree<long,object>.Empty + (_Domain, dm) + (Columns, cs);
+        }
+        static Domain _Dom(long dp, Context cx, ObInfo oi, BList<long> cs)
+        {
+            var rs = BTree<long, Domain>.Empty;
+            var ob = oi.columns.First();
+            var b = cs.First();
+            for (; b != null & ob!=null; b = b.Next(),ob=ob.Next())
+            {
+                var cp = b.value();
+                var op = ob.value();
+                rs += (cp, oi.domain.representation[op]);
+            }
+            if (b != null || ob != null)
+                throw new PEException("PE945");
+            var dm = new Domain(dp, Domain.For(oi.domain.kind), rs);
+            cx.Add(dm);
+            return dm;
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new ObInfo(defpos, m);
         }
-        internal static void StandardTypes()
-        {
-            Domain.StandardTypes();
-            Null = new ObInfo(Domain.Null);
-            Value = new ObInfo(Domain.Value);
-            Content = new ObInfo(Domain.Content); // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
-            Bool = new ObInfo(Domain.Bool);
-            Blob = new ObInfo(Domain.Blob);
-            Char = new ObInfo(Domain.Char);
-            Password = new ObInfo(Domain.Password);
-            XML = new ObInfo(Domain.XML);
-            Int = new ObInfo(Domain.Int);
-            Numeric = new ObInfo(Domain.Numeric);
-            Real = new ObInfo(Domain.Real);
-            Date = new ObInfo(Domain.Date);
-            Timespan = new ObInfo(Domain.Timespan);
-            Timestamp = new ObInfo(Domain.Timestamp);
-            Interval = new ObInfo(Domain.Interval);
-            TypeSpec = new ObInfo(Domain.TypeSpec);
-            _Level = new ObInfo(Domain._Level);
-            Physical = new ObInfo(Domain.Physical);
-            MTree = new ObInfo(Domain.MTree); // pseudo type for MTree implementation
-            Partial = new ObInfo(Domain.Partial); // pseudo type for MTree implementation
-            Array = new ObInfo(Domain.Array);
-            Multiset = new ObInfo(Domain.Multiset);
-            Collection = new ObInfo(Domain.Collection);
-            Cursor = new ObInfo(Domain.Cursor);
-            UnionNumeric = new ObInfo(Domain.UnionNumeric);
-            UnionDate = new ObInfo(Domain.UnionDate);
-            UnionDateNumeric = new ObInfo(Domain.UnionDateNumeric);
-            Exception = new ObInfo(Domain.Exception);
-            Period = new ObInfo(Domain.Period);
-            Document = new ObInfo(Domain.Document);
-            DocArray = new ObInfo(Domain.DocArray);
-            TableType = new ObInfo(Domain.TableType);
-            Row = new ObInfo(Domain.Row);
-        }
-        internal static ObInfo For(TRow tr)
-        {
-            var dt = tr?.dataType ?? Domain.Null;
-            var os = BList<ObInfo>.Empty;
-            for (var b = tr?.dataType.representation.First(); b != null; b = b.Next())
-            {
-                var oi = b.value();
-                var p = oi.Item1;
-                os += new ObInfo(p, "", oi.Item2);
-            }
-            return new ObInfo(dt.defpos, dt, os);
-        }
         internal override TypedValue Eval(Context cx)
         {
-            if (cx.obs[defpos] is SqlValue sv)
-                return sv.Eval(cx);
-            var vs = BTree<long, TypedValue>.Empty;
-            for (var b=columns.First();b!=null;b=b.Next())
-            {
-                var ci = b.value();
-                vs += (ci.defpos, ci.Eval(cx));
-            }
-            return new TRow(domain, vs);
+            return domain.Coerce(cx,(cx.obs[defpos] as SqlValue)?.Eval(cx) ?? cx.values[defpos]);
         }
-        internal TRow Eval(Context cx,SqlRow rw)
+        internal PRow MakeKey(Context cx)
         {
-            var vs = BTree<long, TypedValue>.Empty;
-            for (var i=0;i<Length;i++)
-            {
-                var c = columns[i];
-                vs += (c.defpos, c.domain.Coerce(rw[i].Eval(cx)));
-            }
-            return new TRow(domain, vs);
+            PRow k = null;
+            for (var b = columns.Last(); b != null; b = b.Previous())
+                k = new PRow(cx.obs[b.value()].Eval(cx), k);
+            return k;
         }
-        internal override void _AddIn(Context _cx, Cursor rb, TRow key, ref BTree<long, bool?> aggsDone)
+        internal override BTree<long, Register> AddIn(Context _cx, Cursor rb, BTree<long, Register> tg)
         {
             if (_cx.obs[defpos] is SqlValue sv)
-                sv._AddIn(_cx, rb, key, ref aggsDone);
+                tg = sv.AddIn(_cx, rb, tg);
             else
-            {
-                var vs = BTree<long, TypedValue>.Empty;
-                for (var b = columns.First(); b != null; b = b.Next())
+                for (var b = domain.representation.First(); b != null; b = b.Next())
                 {
-                    var ci = b.value();
-                    ci._AddIn(_cx, rb, key, ref aggsDone);
+                    var p = b.key();
+                    var v = _cx.obs[p] as SqlValue;
+                    tg = v?.AddIn(_cx, rb, tg);
                 }
-            }
+            return tg;
         }
-        internal override void _AddIn(Context _cx, RTreeBookmark rb, ref BTree<long, bool?> aggsDone)
+        internal override BTree<long, Register> StartCounter(Context _cx, RowSet rs, BTree<long, Register> tg)
         {
             if (_cx.obs[defpos] is SqlValue sv)
-                sv._AddIn(_cx, rb, ref aggsDone);
-            else
+                tg = sv.StartCounter(_cx, rs, tg);
+            for (var b = domain.representation.First(); b != null; b = b.Next())
             {
-                var vs = BTree<long, TypedValue>.Empty;
-                for (var b = columns.First(); b != null; b = b.Next())
-                {
-                    var ci = b.value();
-                    ci._AddIn(_cx, rb, ref aggsDone);
-                }
+                var p = b.key();
+                var v = _cx.obs[p] as SqlValue;
+                tg = v?.StartCounter(_cx, rs, tg);
             }
+            return tg;
         }
-        internal override void StartCounter(Context _cx, RowSet rs)
+        internal override TypedValue Coerce(Context cx,TypedValue v)
         {
-            if (_cx.obs[defpos] is SqlValue sv)
-                sv.StartCounter(_cx, rs);
-            else
-            {
-                var vs = BTree<long, TypedValue>.Empty;
-                for (var b = columns.First(); b != null; b = b.Next())
-                {
-                    var ci = b.value();
-                    ci.StartCounter(_cx, rs);
-                }
-            }
-        }
-        internal override TypedValue Coerce(TypedValue v)
-        {
-            if (Length == 0)
-                return domain.Coerce(v);
             var vs = BTree<long, TypedValue>.Empty;
-            var rw = (TRow)v;
+            if (Length==0)
+                return domain.Coerce(cx,v);
+            if (v is TRow rw)
+            {
+                var rb = rw.columns.First();
+                for (var b = columns.First(); b != null; b = b.Next(), rb = rb.Next())
+                {
+                    if (rb == null)
+                        goto bad;
+                    var cp = b.value();
+                    var rp = rb.value();
+                    if (rw.values[rp] is TypedValue rv)
+                        vs += (cp, domain.representation[cp].Coerce(cx,rv));
+                    else
+                        break;
+                }
+                if (rb== null)
+                    return new TRow(columns,domain, vs);
+            }
+            else if (Length == 1)
+                return domain.representation[columns[0]].Coerce(cx,v);
+            bad:;
+            throw new DBException("22005", this, v.ToString()).ISO();
+        }
+        internal int PosFor(Context cx,string nm)
+        {
             var i = 0;
             for (var b = columns.First(); b != null; b = b.Next(),i++)
-            {
-                var ci = b.value();
-                vs += (ci.defpos,ci.domain.Coerce(rw[i]));
-            }
-            return new TRow(domain,vs);
+                if (((ObInfo)cx.role.infos[b.value()]).name == nm)
+                    return i;
+            return -1;
         }
         internal override DBObject Relocate(long dp)
         {
             return new ObInfo(dp, mem);
         }
-        internal override DBObject Frame(Context cx)
-        {
-            var r = this;
-            var ch = false;
-            var cs = BList<ObInfo>.Empty;
-            for (var b = columns.First(); b != null; b = b.Next())
-            {
-                var sc = b.value();
-                var nc = sc;
-                if (!cx.obs.Contains(b.value().defpos))
-                {
-                    nc = (ObInfo)sc.Frame(cx);
-                    if (sc != nc)
-                        ch = true;
-                }
-                cs += nc;
-            }
-            return ch ? new ObInfo(defpos, domain, cs) : r;
-        }
-        internal ObInfo ColFor(string s)
-        {
-            var iq = map[s];
-            if (iq == null)
-                return null;
-            return columns[iq.Value];
-        }
-        public bool EqualOrStrongSubtypeOf(ObInfo oi)
-        {
-            var tb = oi.columns.First();
-            for (var b = columns.First(); b != null && tb != null; b = b.Next(), tb = tb.Next())
-                if (!b.value().domain.EqualOrStrongSubtypeOf(tb.value().domain))
-                    return false;
-            return true;
-        }
-        internal int Compare(TRow a, TRow b)
-        {
-            var ab = a.values.First();
-            var bb = b.values.First();
-            var c = 0;
-            for (var db = columns.First(); c == 0 && db != null; db = db.Next(), ab = ab.Next(), bb = bb.Next())
-                c = db.value().domain.Compare(ab.value(), bb.value());
-            return c;
-        }
-        public override void Put(TypedValue tv, Writer wr)
-        {
-            for (var b = columns.First(); b != null; b = b.Next())
-            {
-                var sc = b.value();
-                sc.domain.Put(tv[sc.defpos], wr);
-            }
-        }
-        /*        public override BList<TypedValue> Parse(Scanner lx,bool union=false)
-                {
-                    var start = lx.pos;
-                    var cols = BList<TypedValue>.Empty;
-                    /*                       if (lx.mime == "text/xml")
-                                           {
-                                               // tolerate missing values and use of attributes
-                                               var db = Database.Get(lx.tr, this);
-                                               var cols = new TypedValue[columns.Length];
-                                               var xd = new XmlDocument();
-                                               xd.LoadXml(new string(lx.input));
-                                               var xc = xd.FirstChild;
-                                               if (xc != null && xc is XmlDeclaration)
-                                                   xc = xc.NextSibling;
-                                               if (xc == null)
-                                                   goto bad;
-                                               bool blank = true;
-                                               for (int i = 0; i < columns.Length; i++)
-                                               {
-                                                   var co = columns[i];
-                                                   TypedValue item = null;
-                                                   if (xc.Attributes != null)
-                                                   {
-                                                       var att = xc.Attributes[co.name.ToString()];
-                                                       if (att != null)
-                                                           item = co.Parse(lx.tr, att.InnerXml, lx.mime);
-                                                   }
-                                                   if (item == null)
-                                                       for (int j = 0; j < xc.ChildNodes.Count; j++)
-                                                       {
-                                                           var xn = xc.ChildNodes[j];
-                                                           if (xn.Name == columns[i].name.ToString())
-                                                           {
-                                                               item = co.Parse(lx.tr, xn.InnerXml, lx.mime);
-                                                               break;
-                                                           }
-                                                       }
-                                                   blank = blank && (item == null);
-                                                   cols[i] = item;
-                                               }
-                                               if (blank)
-                                                   return TXml.Null;
-                                               return new TRow(this, cols);
-                                           }
-                                           else * /
-                    if (lx.mime == "text/csv")
-                    {
-                        // we expect all columns, separated by commas, without string quotes
-                        var si = BList<SqlValue>.Empty;
-                        for (int i = 0; i < Length; i++)
-                        {
-                            var co = columns[i];
-                            var dt = co.domain;
-                            si += new SqlCol(co.defpos,co.name,null,)
-                            TypedValue vl = null;
-                            try
-                            {
-                                switch (dt.kind)
-                                {
-                                    case Sqlx.CHAR:
-                                        {
-                                            int st = lx.pos;
-                                            string s = "";
-                                            if (lx.ch == '"')
-                                            {
-                                                lx.Advance();
-                                                st = lx.pos;
-                                                while (lx.ch != '"')
-                                                    lx.Advance();
-                                                s = new string(lx.input, st, lx.pos - st);
-                                                lx.Advance();
-                                            }
-                                            else
-                                            {
-                                                while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
-                                                    lx.Advance();
-                                                s = new string(lx.input, st, lx.pos - st);
-                                            }
-                                            vl = new TChar(s);
-                                            break;
-                                        }
-                                    case Sqlx.DATE:
-                                        {
-                                            int st = lx.pos;
-                                            char oc = lx.ch;
-                                            string s = "";
-                                            while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
-                                                lx.Advance();
-                                            s = new string(lx.input, st, lx.pos - st);
-                                            if (s.IndexOf("/") >= 0)
-                                            {
-                                                var sa = s.Split('/');
-                                                vl = new TDateTime(Domain.Date, new DateTime(int.Parse(sa[2]), int.Parse(sa[0]), int.Parse(sa[1])));
-                                                break;
-                                            }
-                                            lx.pos = st;
-                                            lx.ch = oc;
-                                            vl = dt.Parse(lx);
-                                            break;
-                                        }
-                                    default: vl = dt.Parse(lx); break;
-                                }
-                            }
-                            catch (Exception)
-                            {
-                                while (lx.ch != '\0' && lx.ch != ',' && lx.ch != '\r' && lx.ch != '\n')
-                                    lx.Advance();
-                            }
-                            if (i < Length - 1)
-                            {
-                                if (lx.ch != ',')
-                                    throw new DBException("42101", lx.ch).Mix();
-                                lx.Advance();
-                            }
-                            else
-                            {
-                                if (lx.ch == ',')
-                                    lx.Advance();
-                                if (lx.ch != '\0' && lx.ch != '\r' && lx.ch != '\n')
-                                    throw new DBException("42101", lx.ch).Mix();
-                                while (lx.ch == '\r' || lx.ch == '\n')
-                                    lx.Advance();
-                            }
-                            cols += vl;
-                        }
-                        return cols;
-                    }
-                    else
-                    {
-                        //if (names.Length > 0)
-                        //    throw new DBException("2200N");
-                        //tolerate named columns in SQL version
-                        //mixture of named and unnamed columns is not supported
-                        var comma = '(';
-                        var end = ')';
-                        if (lx.ch == '{')
-                        {
-                            comma = '{'; end = '}';
-                        }
-                        if (lx.ch == '[')
-                            return ParseList(lx);
-                        int j = 0;
-                        for (lx.White(); lx.ch == comma; j++)
-                        {
-                            lx.Advance();
-                            lx.White();
-                            var n = lx.GetName();
-                            if (n != null) // column name supplied
-                            {
-                                if (lx.ch != ':')
-                                    throw new DBException("42124").Mix();
-                                else
-                                    lx.Advance();
-                                j = map[n] ??
-                                    throw new DBException("42124");
-                            }
-                            lx.White();
-                            var co = columns[j];
-                            var dt = co.mem.Contains(_Domain) ? co.domain : Domain.Content;
-                            cols += dt.Parse(lx);
-                            comma = ',';
-                            lx.White();
-                        }
-                        if (lx.ch != end)
-                        {
-                            var xs = new string(lx.input, start, lx.pos - start);
-                            throw new DBException("22005E", ToString(), xs).ISO()
-                                .AddType(this).AddValue(new TChar(xs));
-                        }
-                        lx.Advance();
-                        return cols;
-                    }
-                }
-                BList<TypedValue> ParseList(Scanner lx)
-                {
-                    var rv = BList<TypedValue>.Empty;
-                    /*            if (lx.mime == "text/xml")
-                                {
-                                    var xd = new XmlDocument();
-                                    xd.LoadXml(new string(lx.input));
-                                    for (int i = 0; i < xd.ChildNodes.Count; i++)
-                                        rv[j++] = Parse(lx.tr, xd.ChildNodes[i].InnerXml);
-                                }
-                                else
-                    * /
-                    {
-                        char delim = lx.ch, end = ')';
-                        if (delim == '[')
-                            end = ']';
-                        if (delim != '(' && delim != '[')
-                        {
-                            var xs = new string(lx.input, 0, lx.len);
-                            throw new DBException("22005F", ToString(), xs).ISO()
-                                .AddType(this).AddValue(new TChar(xs));
-                        }
-                        lx.Advance();
-                        for (; ; )
-                        {
-                            lx.White();
-                            if (lx.ch == end)
-                                break;
-                            rv = Parse(lx);
-                            if (lx.ch == ',')
-                                lx.Advance();
-                            lx.White();
-                        }
-                        lx.Advance();
-                    }
-                    return rv;
-                } */
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
+            // NB we can't use cx.done for Domains or ObInfos
             var r = this;
-            var cs = BList<ObInfo>.Empty;
+            var dm = domain.Replace(cx, so, sv);
+            if (dm!=domain)
+                r += (_Domain,dm);
+            var cs = CList<long>.Empty;
             var ch = false;
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b=r.columns.First();b!=null;b=b.Next())
             {
-                var c = (ObInfo)b.value()._Replace(cx, so, sv);
-                if (c != b.value())
+                var p = b.value();
+                if (p == so.defpos)
+                {
+                    p = sv.defpos;
                     ch = true;
-                cs += c;
+                }
+                cs += p;
             }
             if (ch)
                 r += (Columns, cs);
+            // NB we can't use cx.done for Domains or ObInfos
             return r;
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (ObInfo)base.Relocate(wr);
-            var dm = domain.Relocate(wr);
-            if (dm != domain)
-                r += (_Domain, dm);
-            var c = BList<ObInfo>.Empty;
+            var r = (ObInfo)base._Relocate(wr);
+            var cs = CList<long>.Empty;
             var ch = false;
-            for (var b = columns?.First(); b != null; b = b.Next())
+            for (var b = columns.First(); b != null; b = b.Next())
             {
-                var s = (ObInfo)b.value().Relocate(wr);
-                ch = ch || (b.value() != s);
-                c += s;
+                var c = b.value();
+                var nc = wr.Fix(c);
+                cs += nc;
+                if (c != nc)
+                    ch = true;
             }
             if (ch)
-                r += (Columns, c);
+                r += (Columns, cs);
+            var dm = domain._Relocate(wr);
+            if (dm != domain)
+                r += (_Domain, dm);
             return r;
         }
-        /// <summary>
-        /// Decide which type we want for a union type and an actual value
-        /// </summary>
-        /// <param name="v">the value</param>
-        /// <returns>the type from the union appropriate for this value</returns>
-        internal override DBObject TypeOf(long lp, Context cx, TypedValue v)
+        internal override Basis _Relocate(Context cx)
         {
-            int n = (int)columns.Count;
-            for (int j = 0; j < n; j++)
+            var r = (ObInfo)base._Relocate(cx);
+            var cs = CList<long>.Empty;
+            var ch = false;
+            for (var b = columns.First(); b != null; b = b.Next())
             {
-                var r = columns[j].domain;
-                if (r.CanTakeValueOf(v.dataType))
-                    return r;
+                var c = b.value();
+                var nc = cx.Unheap(c);
+                cs += nc;
+                if (c != nc)
+                    ch = true;
             }
-            return null;
-        }
-        internal bool CanTakeValueOf(ObInfo oi)
-        {
-            if (domain.kind==Sqlx.CONTENT)
-                return true;
-            if (Length != oi.Length)
-                return false;
-            var tb = oi.columns.First();
-            for (var b = columns.First(); b != null; b = b.Next(), tb = tb.Next())
-                if (!b.value().domain.CanTakeValueOf(tb.value().domain))
-                    return false;
-            return true;
-        }
-        internal bool CanBeAssigned(ObInfo oi)
-        {
-            if (Length != oi.Length)
-                return false;
-            var tb = oi.columns.First();
-            for (var b = columns.First(); b != null; b = b.Next(), tb = tb.Next())
-                if (!b.value().domain.CanTakeValueOf(tb.value().domain))
-                    return false;
-            return true;
+            if (ch)
+                r += (Columns, cs);
+            var dm = domain._Relocate(cx);
+            if (dm != domain)
+                r += (_Domain, dm);
+            return r;
         }
         public string Props(Database db)
         {
@@ -877,7 +487,7 @@ namespace Pyrrho.Level3
                             var at = (BTree<long, bool>)mem[b.value()];
                             for (var a = at?.First(); a != null; a = a.Next())
                             {
-                                var ai = (ObInfo)db.role.obinfos[a.key()];
+                                var ai = (ObInfo)db.role.infos[a.key()];
                                 sb.Append(ai?.name ?? "?");
                                 sb.Append(' ');
                             }
@@ -890,10 +500,10 @@ namespace Pyrrho.Level3
                             var at = (BTree<long, long>)mem[b.value()];
                             for (var a = at?.First(); a != null; a = a.Next())
                             {
-                                var ai = (ObInfo)db.role.obinfos[a.key()];
+                                var ai = (ObInfo)db.role.infos[a.key()];
                                 sb.Append(ai?.name ?? "?");
                                 sb.Append(":");
-                                var bi = (ObInfo)db.role.obinfos[a.value()];
+                                var bi = (ObInfo)db.role.infos[a.value()];
                                 sb.Append(bi?.name ?? "?");
                                 sb.Append(' ');
                             }
@@ -912,21 +522,24 @@ namespace Pyrrho.Level3
             if (ro != null)
                 sb.Append("<" + ro.name);
             var ss = new string[r.Length];
-            var oi = (ObInfo)tr.role.obinfos[dp];
-            for (int i = 0; i < oi.columns.Length; i++)
+            var oi = (ObInfo)tr.role.infos[dp];
+            var i = 0;
+            for (var b=oi.domain.representation.First();b!=null; b=b.Next(),i++)
             {
-                var ci = oi.columns[i];
-                var tv = r[ci.defpos];
+                var c = b.key();
+                var d = b.value();
+                var tv = r[c];
+                var n = cx.Inf(c);
                 if (tv == null)
                     continue;
                 var p = tv.dataType;
-                var m = (tr.objects[ci.defpos] as DBObject).Meta();
+                var m = (tr.objects[c] as DBObject).Meta();
                 if (tv != null && !tv.IsNull && m != null && m.Has(Sqlx.ATTRIBUTE))
-                    sb.Append(" " + ci.name + "=\"" + tv.ToString() + "\"");
+                    sb.Append(" " + n + "=\"" + tv.ToString() + "\"");
                 else if (tv != null && !tv.IsNull)
                 {
-                    ss[i] = "<" + ci.name + " type=\"" + p.ToString() + "\">" +
-                        p.Xml(tr, cx, defpos, tv) + "</" + ci.name + ">";
+                    ss[i] = "<" + n + " type=\"" + p.ToString() + "\">" +
+                        p.Xml(tr, cx, defpos, tv) + "</" + n + ">";
                 }
             }
             return sb.ToString();
@@ -939,13 +552,14 @@ namespace Pyrrho.Level3
         /// <param name="sb">a string builder</param>
         internal void DisplayType(Database db, StringBuilder sb)
         {
-            for (var i = 0; i < columns.Count; i++)
+            var i = 0;
+            for (var b=domain.representation.First();b!=null;b=b.Next(), i++)
             {
-                var c = columns[i];
-                var cd = c.domain;
-                var n = c.name.Replace('.', '_');
-                var di = (ObInfo)db.role.obinfos[cd.defpos];
-                var tn = di.name;
+                var p = b.key();
+                var cd = b.value();
+                var ci = (ObInfo)db.role.infos[p];
+                var n = ci.name;
+                string tn = "";
                 if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     tn = cd.SystemType.Name;
                 if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET)
@@ -958,13 +572,14 @@ namespace Pyrrho.Level3
                 FieldType(db, sb, cd);
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
-            for (var i = 0; i < Length; i++)
+            for (var b=domain.representation.First();b!=null;b=b.Next(), i++)
             {
-                var cd = columns[i].domain;
+                var p = b.key();
+                var cd = b.value();
                 if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
-                cd = cd.elType.domain;
-                var di = (ObInfo)db.role.obinfos[cd.defpos];
+                cd = cd.elType;
+                var di = (ObInfo)db.role.infos[cd.defpos];
                 var tn = di.name.ToString();
                 if (tn != null)
                     sb.Append("// Delete this declaration of class " + tn + " if your app declares it somewhere else\r\n");
@@ -975,21 +590,47 @@ namespace Pyrrho.Level3
                 sb.Append("  }\r\n");
             }
         }
+        internal ObInfo ColFor(Context cx,string nm)
+        {
+            for (var b=domain.representation.First();b!=null;b=b.Next())
+            {
+                var p = b.key();
+                var d = b.value();
+                var ci = cx.Inf(p) ?? (ObInfo)cx.db.role.infos[p];
+                if (ci.name == nm)
+                    return ci;
+            }
+            return null;
+        }
+        internal ObInfo For(Context cx, int i)
+        {
+            return cx.Inf(this[i]);
+        }
+        internal string NameFor(Context cx, int i)
+        {
+            var p = columns[i];
+            var n = cx.Inf(p).name;
+            if (n == null || n == "")
+                n = "Col" + i;
+            return n;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(name); sb.Append(" ");
-            var cm = "(";
+            sb.Append(" "); sb.Append(name); 
+            var cm = " (";
             for (var b=columns.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.value());
+                sb.Append(Uid(b.value()));
             }
-            if (cm == ",") sb.Append(") "); 
+            if (cm != " (") sb.Append(")");
+            sb.Append(" "); sb.Append(domain);
             if (mem.Contains(Privilege))
             {
                 sb.Append(" Privilege="); sb.Append((long)priv);
             }
+            cm = "";
             if (mem.Contains(Properties))
             {
                 sb.Append(" Properties: "); sb.Append(properties); 
@@ -1000,44 +641,6 @@ namespace Pyrrho.Level3
                 }
             }
             return sb.ToString();
-        }
-    }
-    internal class ObInfoOldRow : ObInfo
-    {
-        public ObInfoOldRow(Database db,Table tb) : base(tb.defpos, _Old(db, tb).mem) { }
-        protected ObInfoOldRow(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static ObInfoOldRow operator +(ObInfoOldRow oi, (long, object) x)
-        {
-            return (ObInfoOldRow)oi.New(oi.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new ObInfoOldRow(defpos, m);
-        }
-        static ObInfo _Old(Database db,Table tb)
-        {
-            var oi = (ObInfo)db.role.obinfos[tb.defpos];
-            var cs = BList<ObInfo>.Empty;
-            for (var b = oi.columns.First(); b != null; b = b.Next())
-            {
-                var sc = (TableColumn)db.objects[b.value().defpos];
-                cs += new ObInfoOldRowCol(db,sc);
-            }
-            return oi + (Columns, cs);
-        }
-    }
-    internal class ObInfoOldRowCol : ObInfo
-    {
-        public ObInfoOldRowCol(Database db, TableColumn tc) : base(tc.defpos, 
-            new BTree<long,object>(SqlTableCol.TableCol,tc)) { }
-        protected ObInfoOldRowCol(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static ObInfoOldRowCol operator +(ObInfoOldRowCol oi, (long, object) x)
-        {
-            return (ObInfoOldRowCol)oi.New(oi.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new ObInfoOldRowCol(defpos, m);
         }
     }
 }

@@ -6,10 +6,12 @@ using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level4
 {
 
@@ -105,66 +107,55 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        internal class Idents : BTree<string, (DBObject, Idents)>
+        internal class Idents : BTree<string, (long, Idents)>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, (DBObject, Idents)> b) : base(b.root) { }
-            public static Idents operator +(Idents t, (string, DBObject, Idents) x)
+            Idents(BTree<string, (long, Idents)> b) : base(b.root) { }
+            public static Idents operator +(Idents t, (string, long, Idents) x)
             {
-                return new Idents(t + (x.Item1,(x.Item2??SqlNull.Value,x.Item3)));
+                return new Idents(t + (x.Item1,(x.Item2,x.Item3)));
             }
-            public static Idents operator +(Idents t, (Ident, DBObject) x)
+            public static Idents operator +(Idents t, (Ident, long) x)
             {
-                var (id, ob) = x;
-                if (ob is ObInfo oi)
-                    Console.WriteLine("Bad def " + oi.ToString());
+                var (id, p) = x;
                 if (t.Contains(id.ident))
                 {
                     var (to, ts) = t[id.ident];
                     if (id.sub != null)
-                        return new Idents(t + (id.ident, (to, ts + (id.sub, ob))));
+                        return new Idents(t + (id.ident, (to, ts + (id.sub, p))));
                     else
-                        return new Idents(t + (id.ident, (ob, ts)));
+                        return new Idents(t + (id.ident, (p, ts)));
                 }
-                else if (id.sub != null)
-                    return new Idents(t + (id.ident, (SqlNull.Value, Empty + (id.sub, ob))));
                 else
-                    return new Idents(t + (id.ident, (ob, Empty)));
-            }
-            public static Idents operator +(Idents t, (Ident,Selection) x)
-            {
-                var (id, oi) = x;
-                for (var b = oi.First(); b != null; b = b.Next())
                 {
-                    var c = b.value();
-                    t += (new Ident(id, new Ident(c.name, 0)), c);
-                }
-                return t;
-            }
-            internal DBObject this[Ident ic]
-            {
-                get
-                {
-                    if (ic == null || !Contains(ic.ident))
-                        return null;
-                    var (ob, ids) = this[ic.ident];
-                    if (ic.sub == null)
-                        return ob;
-                    return ids?[ic.sub];
+                    var ts = Empty;
+                    if (id.sub != null)
+                        ts += (id.sub, p);
+                    return new Idents(t + (id.ident, (p, ts)));
                 }
             }
-            internal (DBObject,Ident) this[(Ident,int) x]
+            internal (long,Idents,Ident) this[(Ident,int) x]
             {
                 get
                 {
                     var (ic, d) = x;
                     if (ic == null || !Contains(ic.ident) || d < 1)
-                        return (null, ic);
+                        return (-1L, null, ic);
                     var (ob, ids) = this[ic.ident];
                     if (ids!=null && ic.sub != null && d > 1)
                         return ids[(ic.sub, d - 1)];
-                    return (ob, ic.sub);
+                    return (ob, ids, ic.sub);
+                }
+            }
+            internal long this[Ident ic]
+            {
+                get
+                {
+                    var (ob, ids, s) = this[(ic, 1)];
+                    if (s != null)
+                        return -1L;
+                    return ob;
                 }
             }
             public IdBookmark First(int p,Ident pr=null)
@@ -172,53 +163,60 @@ namespace Pyrrho.Level4
                 var b = base.First();
                 return (b==null)?null:new IdBookmark(b, pr, p);
             }
-            public IdBookmark PositionAt(Ident id)
+            internal Idents ApplyDone(Context cx)
             {
-                Ident pr = null;
-                for (var t = this; t!=null && id != null; id = id.sub)
-                { 
-                    var bm = t.PositionAt(id.ident);
-                    if (bm == null)
-                        return null;
-                    if (bm.value().Item1 is DBObject && id.sub==null)
-                        return new IdBookmark(bm, pr, 0);
-                    pr = new Ident(pr, bm.key());
-                    t = bm.value().Item2;
-                }
-                return null;
-            }
-            internal Idents Replace(BTree<long,DBObject> done)
-            {
-                var r = BTree<string, (DBObject, Idents)>.Empty;
+                var r = BTree<string, (long, Idents)>.Empty;
                 for (var b=First();b!=null;b=b.Next())
                 {
-                    var (ob, st) = b.value();
-                    if (done[ob.defpos] is DBObject nb)
-                        ob = nb;
-                    st = st.Replace(done);
-                    r += (b.key(), (ob, st)); // do not change the string key part
+                    var (p, st) = b.value();
+                    if (p!=-1L && cx.done[p] is DBObject nb)
+                    {
+                        p = nb.defpos;
+                        for (var c=(nb as Query)?.rowType.First();c!=null;c=c.Next())
+                        if (cx.done[c.value()] is SqlValue s)
+                            st = new Idents(st + (s.name, (s.defpos, st[s.name].Item2)));
+                    }
+                    st = st?.ApplyDone(cx);
+                    r += (b.key(), (p, st)); // do not change the string key part
                 }
                 return new Idents(r);
             }
-            internal static Idents For(DBObject ob,Database db,Context cx)
+            internal static Idents For(long ob,Database db,Context cx)
             {
                 var r = Empty;
-                var oi = (ObInfo)db.role.obinfos[ob.defpos];
-                for (var b=oi?.columns.First();b!=null;b=b.Next())
+                var oi = (ObInfo)db.role.infos[ob];
+                for (var b=oi?.domain.representation.First();b!=null;b=b.Next())
                 {
-                    var sc = b.value();
-                    r += (sc.name, sc, For(sc,db,cx));
+                    var p = b.key();
+                    var d = b.value();
+                    var sc = cx.Inf(p);
+                    r += (sc.name, sc.defpos, For(p,db,cx));
                     cx.Add(sc);
                 }
                 return r;
             }
+            public override string ToString()
+            {
+                var sb = new StringBuilder();
+                for (var b=First();b!=null;b=b.Next())
+                {
+                    sb.Append(b.key()); sb.Append("=(");
+                    var (p, ids) = b.value();
+                    if (p >= 0)
+                        sb.Append(DBObject.Uid(p));
+                    sb.Append(",");
+                    sb.Append(ids.ToString());
+                    sb.Append(");");
+                }
+                return sb.ToString();
+            }
         }
         internal class IdBookmark
         {
-            internal readonly ABookmark<string, (DBObject, Idents)> _bmk;
+            internal readonly ABookmark<string, (long, Idents)> _bmk;
             internal readonly Ident _parent,_key;
             internal readonly int _pos;
-            internal IdBookmark(ABookmark<string,(DBObject,Idents)> bmk,
+            internal IdBookmark(ABookmark<string,(long,Idents)> bmk,
                 Ident parent, int pos)
             {
                 _bmk = bmk; _parent = parent;  _pos = pos;
@@ -228,7 +226,7 @@ namespace Pyrrho.Level4
             {
                 return _key;
             }
-            public DBObject value()
+            public long value()
             {
                 return _bmk.value().Item1;
             }
@@ -236,7 +234,7 @@ namespace Pyrrho.Level4
             public IdBookmark Next()
             {
                 var bmk = _bmk;
-                var (ob, id) = bmk.value(); // assert: ob!=null (it's value())
+                var (p, id) = bmk.value(); // assert: ob!=null (it's value())
                 for (; ; )
                 {
                     if (id?.First(_pos + 1) is IdBookmark ib)
@@ -244,8 +242,8 @@ namespace Pyrrho.Level4
                     bmk = bmk.Next();
                     if (bmk == null)
                         return null;
-                    (ob, id) = bmk.value();
-                    if (ob != null)
+                    (p, id) = bmk.value();
+                    if (p != -1L)
                         return new IdBookmark(bmk, _parent, _pos + 1);
                     if (id == null) // shouldn't happen
                         return null;
@@ -279,7 +277,6 @@ namespace Pyrrho.Level4
         /// </summary>
 		public Sqlx tok;
         public Sqlx pushBack = Sqlx.Null;
-        public Query cur = null;
         public long offset;
         public long Position => offset + start;
         /// <summary>

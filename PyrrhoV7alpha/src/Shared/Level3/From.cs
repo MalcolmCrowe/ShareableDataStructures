@@ -1,16 +1,19 @@
-using System;
 using System.Collections.Generic;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System.Text;
+using System;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -18,20 +21,22 @@ namespace Pyrrho.Level3
     {
         internal const long
             Assigns = -150, // BList<UpdateAssignment>
-            Source = -151, // Query (for Views)
+            Source = -151, // long (a Query for Views)
             Static = -152, // From (defpos for STATIC)
-            Target = -153; // DBObject (a table or view)
+            Target = -153; // long (a table or view)
         internal BList<UpdateAssignment> assigns =>
             (BList<UpdateAssignment>)mem[Assigns] ?? BList<UpdateAssignment>.Empty;
-        internal Query source => (Query)mem[Source];
+        internal long source => (long)(mem[Source]??-1L);
         internal long target => (long)(mem[Target]??-1L);
         internal readonly static From _static = new From();
-        From() : base(Static, BTree<long,object>.Empty) { }
+        From() : base(Static) { }
         public From(Ident ic, Context cx, Table tb, QuerySpecification q=null,
-            Selection qn=null, Grant.Privilege pr=Grant.Privilege.Select,
-            Correlation cr=null) : base(ic.iix, _Mem(ic,cx, tb,q,qn,pr,cr))
+            Grant.Privilege pr=Grant.Privilege.Select, string a= null, BList<Ident> cr = null) 
+            : base(ic.iix, _Mem(ic,cx, tb,q,pr,a,cr))
         { }
-        public From(long dp,Context cx,CallStatement pc,Correlation cr=null)
+        protected From(Ident ic, Context cx, Table tb, BTree<long, object> mem)
+            : base(ic.iix, mem + (_Mem(ic, cx, tb, null, Grant.Privilege.Select, null, null),false)) { }
+        public From(long dp,Context cx,CallStatement pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
         { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
@@ -46,97 +51,144 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// The main task here is to compute the rowType for the new From. 
-        /// The supplied ObInfo has been created from the names of table columns
-        /// found during query resolution.
         /// All columns in the From's rowtype will be SqlCopy. None will have table uids.
+        /// We want to ensure that the From rowtype is different
+        /// for each occurrence of a table in the query.
+        /// If there are no stars in the select list, then we will find which columns
+        /// are needed in the select list, and these will have unique uids.
+        /// If there is a star in the select list that might be for this table,
+        /// we append a list of all columns to the query and construct a rowType from
+        /// that.
         /// </summary>
         /// <param name="dp"></param>
         /// <param name="db"></param>
         /// <param name="tb"></param>
-        /// <param name="qn">Names required</param>
+        /// <param name="q">The query with the select list</param>
         /// <param name="pr"></param>
         /// <param name="cr">Aliases supplied if any</param>
         /// <returns></returns>
-        static BTree<long,object> _Mem(Ident ic,Context cx,Table tb, QuerySpecification q, 
-            Selection qn=null, Grant.Privilege pr = Grant.Privilege.Select, Correlation cr=null)
+        static BTree<long, object> _Mem(Ident ic, Context cx, Table tb, QuerySpecification q,
+           Grant.Privilege pr = Grant.Privilege.Select, string a=null,BList<Ident> cr = null)
         {
-            var ti = (ObInfo)cx.db.schemaRole.obinfos[tb.defpos];
-            var ri = (ObInfo)cx.db.role.obinfos[tb.defpos];
-            var us = BTree<long, bool>.Empty;
-            var s = new Selection(ic.iix, ic.ident??ti.name);
-            var de = 0;
-            for (var b = qn?.First(); b != null; b = b.Next())
+            var cs = CList<long>.Empty;
+            var vs = BList<SqlValue>.Empty;
+            var de = 1; // we almost always have some columns
+            var ti = tb.Inf(cx);
+            cx._Add(tb);
+            cx.AddDefs(ic, ti.columns);
+            var mp = BTree<long, bool>.Empty;
+            if (cr == null)
             {
-                var n = b.value();
-                var iq = ri.map[n.name];
-                if (iq != null)
-                {
-                    var ci = ri[iq.Value];
-                    var cp = n.defpos;
-                    us += (ci.defpos, true);
-                    s += (SqlValue)cx._Add(new SqlCopy(cp, n.name, ci, 
-                            q?.defpos??ic.iix, ci.defpos));
-                    de = 1;
-                }
-            }
-            var ds = s.Length;
-            // add the columns we can see in case they are referred to later
-            if (s.Length < ri.Length)
-            {
-                for (var b = ri.columns.First(); b != null; b = b.Next())
-                {
-                    var ci = b.value();
-                    if (!us.Contains(ci.defpos))
-                    {
-                        var tc = (TableColumn)cx.db.objects[ci.defpos];
-                        s += new SqlTableCol(ci.defpos, ci.name, ic.iix, tc);
-                        us += (ci.defpos, true);
-                    }
-                }
-            }
-            if (ds == 0)
-                ds = s.Length;
-            // add the columns we can't see in case they are somehow used later 
-            if (s.Length < ti.Length)
-            {
+                var ma = BTree<string, TableColumn>.Empty;
                 for (var b = ti.columns.First(); b != null; b = b.Next())
                 {
-                    var ci = b.value();
-                    if (!us.Contains(ci.defpos))
+                    var p = b.value();
+                    var tc = (TableColumn)cx.db.objects[p];
+                    var ci = (ObInfo)cx.role.infos[tc.defpos];
+                    ma += (ci.name, tc);
+                }
+                // we want to add everything from ti that matches cx.stars or q.Needs
+                if (q != null)
+                {
+                    var qn = q.Needs(cx, BTree<long,bool>.Empty);
+                    for (var b = qn.First(); b != null; b = b.Next())
                     {
-                        var tc = (TableColumn)cx.db.objects[ci.defpos];
-                        s += new SqlTableCol(ci.defpos, "?"+ci.name, ic.iix, tc);
+                        var p = b.key();
+                        if (q != null && cx.obs[p] is SqlValue uv && uv.domain == Domain.Content)
+                        {
+                            var tc = ma[uv.name];
+                            if (tc == null)
+                                continue;
+                            var nv = new SqlCopy(uv.defpos, cx, uv.name, ic.iix, tc.defpos);
+                            if (uv.alias != null)
+                                nv += (_Alias, uv.alias);
+                            cx.Replace(uv, nv);
+                            q = (QuerySpecification)cx.obs[q.defpos];
+                            cs += nv.defpos;
+                            vs += nv;
+                            mp += (tc.defpos, true);
+                        }
                     }
                 }
+                for (var sb = cx.stars.First(); sb != null; sb = sb.Next())
+                {
+                    var (i, dp) = sb.value();
+                    var rt = q.rowType ?? CList<long>.Empty;
+                    if (tb.defpos == dp || dp < 0)
+                        for (var b = ti.columns.First(); b != null; b = b.Next())
+                        {
+                            var p = b.value();
+                            var ci = cx.Inf(p);
+                            var u = cx.GetUid();
+                            cs += u;
+                            var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
+                            cx.Add(sv);
+                            q += (cx,sv);
+                            rt += sv.defpos;
+                            vs += sv;
+                            mp += (p, true);
+                        }
+                    q = (QuerySpecification)cx.Add(q + (RowType, rt));
+                }
             }
-            if (cr != null)
+            else
+                for (var b = cr.First(); b != null; b = b.Next())
+                {
+                    var c = b.value();
+                    var tc = (TableColumn)cx.obs[cx.defs[c]]
+                        ?? throw new DBException("42112", c.ident);
+                    cs += c.iix;
+                    var sv = new SqlCopy(c.iix, cx, c.ident, ic.iix, tc.defpos);
+                    cx.Add(sv);
+                    vs += sv;
+                    mp += (tc.defpos, true);
+                }
+            for (var b = ti.columns.First(); b != null; b = b.Next())
             {
-                s = cr.Pick(ic,s);
-                ds = s.Length;
+                var p = b.value();
+                if (mp.Contains(p))
+                    continue;
+                var ci = cx.Inf(p);
+                var u = cx.GetUid();
+                cs += u;
+                var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
+                cx.Add(sv);
+                vs += sv;
             }
-            return BTree<long,object>.Empty
-                   + (Target, tb.defpos) + (Display,ds) + (_Domain,Domain.TableType)
-                   + (Name, s.name) +(RowType,s) + (Depth,de+1);
+            var dm = new Domain(-1,Domain.TableType,vs);
+            if (q!=null)
+                cx.Add(q + (QuerySpecification.Scope, q.scope + dm.representation));
+            return BTree<long, object>.Empty + (Name, ic.ident)
+                   + (Target, tb.defpos) + (_Domain, dm) 
+                   + (RowType, cs) + (Depth, de + 1);
         }
-        static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,Correlation cr)
+        static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,CList<long> cr=null)
         {
             var proc = (Procedure)cx.db.objects[pc.procdefpos];
-            var disp = cr?.cols.Count ?? proc.retType.Length;
-            var s = new Selection(dp,cr?.tablealias.ident??pc.name);
-            for (var b=proc.retType.columns.First();b!=null;b=b.Next())
-                s += new SqlRowSetCol(b.value(),dp);
+            var disp = cr?.Length ?? proc.domain.Length;
+            var s = BList<long>.Empty;
+            var oi = cx.Inf(proc.defpos);
+            for (var b = oi.domain.representation.First(); b != null; b = b.Next())
+            {
+                var ci = cx.Inf(b.key());
+                cx.Add( new SqlRowSetCol(ci.defpos,ci, dp));
+                s += ci.defpos;
+            }
             return BTree<long, object>.Empty
-                + (Target,pc.procdefpos) + (Display,disp) + (_Domain,Domain.TableType)
+                + (Target,pc.procdefpos) + (Display,disp) + (_Domain,oi.domain)
                 + (Name, proc.name) + (RowType,s);
+        }
+        internal override TypedValue Eval(Context cx)
+        {
+            return cx.cursors[defpos];
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (From)base._Replace(cx,was,now);
-            var ch = false;
-            var so = r.source?._Replace(cx, was, now);
-            if (so != r.source)
+            var ch = (r!=this);
+            if (cx._Replace(r.source,was,now) is Query so && so.defpos != r.source)
             {
                 ch = true;
                 r += (Source, so);
@@ -155,63 +207,53 @@ namespace Pyrrho.Level3
         {
             return new From(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (From)base.Relocate(wr);
+            var r = (From)base._Relocate(wr);
             var ua = BList<UpdateAssignment>.Empty;
             var ch = false;
             for (var b=assigns.First();b!=null;b=b.Next())
             {
-                var a = (UpdateAssignment)b.value().Relocate(wr);
+                var a = (UpdateAssignment)b.value()._Relocate(wr);
                 ua += a;
                 if (a != b.value())
                     ch = true;
             }
             if (ch)
                 r += (Assigns, ua);
-            var sc = source?.Relocate(wr);
-            if (sc != source)
+            if (wr.cx.Fixed(source) is Query sc && sc.defpos != source)
                 r += (Source, sc);
             var tg = wr.Fix(target);
             if (tg != target)
                 r += (Target, tg);
             return r;
         }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (From)base._Relocate(cx);
+            var ua = BList<UpdateAssignment>.Empty;
+            var ch = false;
+            for (var b = assigns.First(); b != null; b = b.Next())
+            {
+                var a = (UpdateAssignment)b.value()._Relocate(cx);
+                ua += a;
+                if (a != b.value())
+                    ch = true;
+            }
+            if (ch)
+                r += (Assigns, ua);
+            if (cx.Fixed(source) is Query sc && sc.defpos != source)
+                r += (Source, sc);
+            var tg = cx.Unheap(target);
+            if (tg != target)
+                r += (Target, tg);
+            return r;
+        }
         internal override SqlValue ToSql(Ident id,Database db)
         {
-            return new SqlTable(id.iix,name,this);
+            return new SqlTable(id.iix,this);
         }
-        internal override DBObject Frame(Context cx)
-        {
-            var r = (From)base.Frame(cx);
-            var so = r.source?.Frame(cx);
-            if (so != r.source)
-                r += (Source, so);
-            var ua = BList<UpdateAssignment>.Empty;
-            for (var b = assigns?.First(); b != null; b = b.Next())
-                ua += b.value().Frame(cx);
-            if (ua != assigns)
-                r += (Assigns, ua);
-            return cx.Add(r,true);
-        }
-        internal Selection KeyType(Transaction tr)
-        {
-            if (tr.objects[target] is Table tb && tb.FindPrimaryIndex(tr) is Index ix)
-            {
-                var s = new Selection(tb.defpos,"");
-                var oi = (ObInfo)tr.role.obinfos[ix.defpos];
-                for (var b = oi.columns.First(); b != null; b = b.Next())
-                {
-                    var c = b.value();
-                    s += rowType[rowType.map[c.name]??-1]
-                        ??new SqlTableCol(b.key(),c.name,defpos, // for autokey
-                        (TableColumn)tr.objects[c.defpos]);
-                }
-                return s;
-            }
-            return rowType;
-        }
-        internal override bool Uses(long t)
+        internal override bool Uses(Context cx,long t)
         {
             return target==t;
         }
@@ -225,20 +267,19 @@ namespace Pyrrho.Level3
             if (rec != null)
                 for (var e = matches?.First(); e != null; e = e.Next())
                 {
-                    var v = rec.vals[e.key().defpos];
+                    var v = rec.vals[e.key()];
                     var m = e.value();
                     if (v != null && m != null && m.dataType.Compare(m, v) != 0)
                         return false;
                 }
             return true;
         }
-        internal override RowSet RowSets(Context cx)
+        internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
         {
             //        if (cx.data.Contains(defpos))
             //            return cx.data[defpos];
-            var inf = rowType.info;
             if (defpos == Static)
-                return new TrivialRowSet(defpos,cx, inf, new TRow(inf.domain, cx.values));
+                return new TrivialRowSet(defpos,cx,rowType, new TRow(rowType,domain, cx.values),-1,fi);
             RowSet rowSet = null;
             //           if (target == null)
             //               return new TrivialRowSet(tr, cx, this, Eval(tr, cx) as TRow ?? TRow.Empty);
@@ -276,9 +317,11 @@ namespace Pyrrho.Level3
             if (cx.data.Contains(defpos))
                 return cx.data[defpos];
             var tr = cx.db;
-            var ta = tr.objects[target] as Table;
+            var ta = cx.obs[target] as Table;
             if(ta!=null)
             {
+                if (cx.data[target] is RowSet tt)
+                    return tt;
                 int bs = 0;      // score for best index
                 for (var p = ta.indexes.First(); p != null; p = p.Next())
                 {
@@ -286,19 +329,21 @@ namespace Pyrrho.Level3
                     if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey 
                         || x.tabledefpos != target)
                         continue;
-                    var dt = (ObInfo)tr.role.obinfos[x.defpos];
+                    var dt = (ObInfo)tr.role.infos[x.defpos];
                     int sc = 0;
                     int nm = 0;
                     int n = 0;
                     PRow pr = null;
                     var havematch = false;
                     int sb = 1;
-                    for (int j = (int)dt.columns.Count - 1; j >= 0; j--)
+                    var j = dt.Length - 1; 
+                    for (var b=dt.columns.Last();b!=null;b=b.Previous(), j--)
                     {
+                        var c = b.value();
                         for (var fd = filter.First(); fd != null; fd = fd.Next())
                         {
                             if (cx.obs[fd.key()] is SqlCopy co 
-                                && co.copyFrom==dt.columns[j].defpos)
+                                && co.copyFrom==c)
                             {
                                 sc += 9 - j;
                                 nm++;
@@ -307,10 +352,10 @@ namespace Pyrrho.Level3
                                 goto nextj;
                             }
                         }
-                        if (ordSpec != null && n < ordSpec.items.Length)
+                        if (n < ordSpec.items.Length)
                         {
                             var ok = ordSpec.items[n];
-                            if (ok != null)
+                            if (ok != -1L)
                             {
                                 n++;
                                 sb *= 10;
@@ -333,7 +378,7 @@ namespace Pyrrho.Level3
             }
             if (index != null && index.rows != null)
             {
-                rowSet = new SelectedRowSet(cx,this,new IndexRowSet(cx, ta, index, match));
+                rowSet = new SelectedRowSet(cx,this,new IndexRowSet(cx, ta, index, match,fi),fi);
                 if (readC != null)
                 {
                     if (matches == index.keys.Length &&
@@ -347,16 +392,16 @@ namespace Pyrrho.Level3
             else
             {
                 if (tr.objects[target] is SystemTable st)
-                    rowSet = new SystemRowSet(cx, this);
-                else if (tr.objects[target] is Table tb)
+                    rowSet = new SystemRowSet(cx, st);
+                else if (cx.obs[target] is Table tb)
                 {
                     index = tb.FindPrimaryIndex(cx.db);
                     if (index != null && index.rows != null)
-                        rowSet = new SelectedRowSet(cx,this,
-                            new IndexRowSet(cx,tb, index));
+                        rowSet = new SelectedRowSet(cx, this,
+                            new IndexRowSet(cx, tb, index,null,fi),fi);
                     else
-                        rowSet = new SelectedRowSet(cx,this,
-                            new TableRowSet(cx,tb.defpos));
+                        rowSet = new SelectedRowSet(cx, this,
+                            new TableRowSet(cx, tb.defpos,fi),fi);
                 }
                 if (readC != null)
                     readC.Block();
@@ -385,7 +430,7 @@ namespace Pyrrho.Level3
         internal void TableCheck(Transaction tr, PCheck c)
         {
             var cx = new Context(tr);
-            var trs = new TableRowSet(cx,target);
+            var trs = new TableRowSet(cx,target,BTree<long,RowSet.Finder>.Empty);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
         }
@@ -432,90 +477,6 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class FromOldTable: From
-    {
-        internal const long
-            TRSPos = -315; // long
-        internal long trs => (long)(mem[TRSPos] ?? -1L);
-        public FromOldTable(Ident id, From f)
-            : base(id.iix,_Mem(id,f)) { }
-        protected FromOldTable(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Ident id,From f)
-        {
-            var oi = f.rowType.info;
-            var ot = new Selection(id.iix, id.ident);
-            for (var b = f.rowType.First(); b != null; b = b.Next())
-                ot += b.value() + (SqlValue._From, id.iix);
-            return BTree<long, object>.Empty + (RowType,ot)
-                   + (Target, f.target) + (Display, oi.Length) + (_Domain, Domain.TableType)
-                   + (Name, id.ident) + (TRSPos,f.defpos);
-        }
-        public static FromOldTable operator+(FromOldTable f,(long,object)x)
-        {
-            return (FromOldTable)f.New(f.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new FromOldTable(defpos,m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new FromOldTable(dp,mem);
-        }
-        internal override Basis Relocate(Writer wr)
-        {
-            var r = (FromOldTable)base.Relocate(wr);
-            r += (TRSPos, wr.Fix(trs));
-            return r;
-        }
-        internal override DBObject Frame(Context cx)
-        {
-            var r = (FromOldTable)base.Frame(cx);
-            r += (SqlOldRowCol.TransitionRowSet, cx.data[trs]);
-            return cx.Add(r,true);
-        }
-        internal RowSet Change(RowSet rs,Context cx)
-        {
-            if (rs is TableRowSet trs && trs.tabledefpos == defpos)
-                return new OldTableRowSet(this,trs.tabledefpos,cx);
-            if (rs is IndexRowSet irs && irs.table.defpos == defpos)
-                return new IndexRowSet(cx, irs.table,
-                    cx.FindTriggerActivation(target).oldIndexes[irs.index.defpos]);
-            if (rs is GroupingRowSet grs)
-                return new GroupingRowSet(cx, this, Change(grs.source, cx), 
-                    grs.groups,grs.having);
-            if (rs is MergeRowSet mrs)
-                return new MergeRowSet(cx, this, Change(mrs.left, cx),
-                    Change(mrs.right, cx), mrs.distinct, mrs.oper);
-            if (rs is SelectedRowSet srs)
-                return new SelectedRowSet(cx, (QuerySpecification)cx.obs[srs.defpos], Change(rs, cx));
-            if (rs is EvalRowSet frs)
-                return new EvalRowSet(cx, (QuerySpecification)cx.obs[frs.defpos], Change(frs.source,cx), frs.having);
-            if (rs is DistinctRowSet drs)
-                return new DistinctRowSet(cx, Change(rs, cx));
-            if (rs is OrderedRowSet ors)
-                return new OrderedRowSet(cx, Change(ors.source, cx), 
-                    ors.ordSpec,ors.distinct);
-            if (rs is SortedRowSet yrs)
-                return new SortedRowSet(cx, Change(yrs.source, cx), rs.keyInfo,
-                    yrs.treeInfo);
-            if (rs is RowSetSection rsx)
-                return new RowSetSection(cx, Change(rsx.source, cx), rsx.offset, rsx.count);
-            if (rs is JoinRowSet jrs)
-                return new JoinRowSet(cx, jrs.join, Change(jrs.first, cx), Change(jrs.second, cx));
-            return rs;
-        }
-        internal override RowSet RowSets(Context cx)
-        {
-            return cx.data[trs];
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" Trs: "); sb.Append(Uid(trs));
-            return sb.ToString();
-        }
-    }
     /// <summary>
     /// The interesting bit here is that if we have something like "insert into a(b,c) select d,e from f"
     /// the table-valued subquery silently gets its columns renamed to b,c and types coerced to match a, 
@@ -529,24 +490,28 @@ namespace Pyrrho.Level3
     internal class SqlInsert : Executable
     {
         internal const long
-            _Table = -154, // From
+            _Table = -154, // long From
             Provenance = -155, //string
-            Value = -156; // SqlValue
-        internal From from => (From)mem[_Table];
+            Value = -156; // long SqlValue
+        internal long target => (long)(mem[_Table]??-1L);
         /// <summary>
         /// Provenance information if supplied
         /// </summary>
         public string provenance => (string)mem[Provenance];
-        public SqlValue value => (SqlValue)mem[Value];
+        public long value => (long)(mem[Value]??-1L);
         /// <summary>
         /// Constructor: an INSERT statement from the parser.
         /// </summary>
         /// <param name="cx">The parsing context</param>
         /// <param name="name">The name of the table to insert into</param>
         public SqlInsert(long dp,From fm,string prov, SqlValue v) 
-           : base(dp,BTree<long,object>.Empty + (_Table,fm) + (Provenance, prov)+(Value,v))
+           : base(dp,BTree<long,object>.Empty + (_Table,fm.defpos) + (Provenance, prov)+(Value,v.defpos))
         { }
         protected SqlInsert(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlInsert(defpos,m);
+        }
         public static SqlInsert operator+(SqlInsert s,(long,object)x)
         {
             return new SqlInsert(s.defpos, s.mem + x);
@@ -556,8 +521,8 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = base._Replace(cx,so,sv);
-            var fm = from._Replace(cx, so, sv);
-            if (fm != from)
+            var fm = cx.Replace(target, so, sv);
+            if (fm != target)
                 r += (_Table, fm);
             cx.done += (defpos, r);
             return cx.Add(r);
@@ -566,45 +531,46 @@ namespace Pyrrho.Level3
         {
             return new SqlInsert(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r =  (SqlInsert)base.Relocate(wr);
-            var tb = from.Relocate(wr);
-            if (tb != from)
+            var r =  (SqlInsert)base._Relocate(wr);
+            var tb = wr.Fixed(target).defpos;
+            if (tb != target)
                 r += (_Table, tb);
-            var vl = value.Relocate(wr);
+            var vl = wr.Fixed(value).defpos;
             if (vl != value)
                 r += (Value, vl);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (SqlInsert)base.Frame(cx);
-            var tb = from.Frame(cx);
-            if (tb != from)
+            var r = (SqlInsert)base._Relocate(cx);
+            var tb = cx.Fixed(target).defpos;
+            if (tb != target)
                 r += (_Table, tb);
-            var vl = value.Frame(cx);
+            var vl = cx.Fixed(value).defpos;
             if (vl != value)
                 r += (Value, vl);
-            return cx.Add(r,true);
+            return r;
         }
         public override Context Obey(Context cx)
         {
-            var r = value.RowSet(from.defpos,cx,from.rowType.info);
+            var fm = (From)cx.obs[target];
+            var r = ((SqlValue)cx.obs[value]).RowSet(target,cx,fm.domain.defpos,fm.rowType);
             Level cl = cx.db.user?.clearance??Level.D;
-            var ta = cx.db.objects[from.target] as Table;
+            var ta = cx.db.objects[fm.target] as Table;
             if (cx.db.user!=null && cx.db.user.defpos != cx.db.owner 
                 && ta.enforcement.HasFlag(Grant.Privilege.Insert)
-                && !cl.ClearanceAllows(from.classification))
+                && !cl.ClearanceAllows(fm.classification))
                 throw new DBException("42105");
-            return from.Insert(cx,provenance, r, new Common.Adapters(),
+            return fm.Insert(cx,provenance, r, new Common.Adapters(),
                 new List<RowSet>(), classification);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Table: "); sb.Append(from);
-            sb.Append(" Value: "); sb.Append(value);
+            sb.Append(" Table: "); sb.Append(Uid(target));
+            sb.Append(" Value: "); sb.Append(Uid(value));
             if (provenance != null)
             { sb.Append(" Provenance: "); sb.Append(provenance); }
             return sb.ToString();
@@ -615,31 +581,28 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QuerySearch : Executable
     {
-        internal From table => (From)mem[SqlInsert._Table];
-        internal QuerySearch(long dp,Context cx,Ident ic,Table tb, 
-            Selection qn,Correlation cr, Grant.Privilege how) 
-            : this(Type.DeleteWhere,dp,cx,ic,tb,qn,cr,how,BList<UpdateAssignment>.Empty)
+        internal long table => (long)(mem[SqlInsert._Table]??-1L);
+        internal QuerySearch(long dp,Context cx,Ident ic,Table tb,Grant.Privilege how) 
+            : this(Type.DeleteWhere,dp,cx,ic,tb,how)
             // detected for HttpService for DELETE verb
         { }
         protected QuerySearch(Type et, long dp, Context cx, Ident ic, Table tb,
-            Selection qn, Correlation cr,
-            Grant.Privilege how, BList<UpdateAssignment> ua = null)
+            Grant.Privilege how, BList<Ident> cr = null,BList<UpdateAssignment> ua = null)
             : this(et, dp, cx, 
-                  new From(ic, cx, tb, null, qn, Grant.Privilege.Insert, cr),
-                 tb, qn, cr,how)
+                  (From)cx.Add(new From(ic, cx, tb, null, Grant.Privilege.Insert,null,cr)),
+                 tb, how)
         { }
         /// <summary>
         /// Constructor: a DELETE or UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The parsing context</param>
-        protected QuerySearch(Type et,long dp,Context cx,From f,Table tb, 
-            Selection qn, Correlation cr, 
+        protected QuerySearch(Type et,long dp,Context cx,From f,Table tb,
             Grant.Privilege how, BList<UpdateAssignment> ua=null)
-            : base(dp,BTree<long, object>.Empty + (SqlInsert._Table,f)
+            : base(dp,BTree<long, object>.Empty + (SqlInsert._Table,f.defpos)
                   +(Depth,f.depth+1)+(_Type,et)+(From.Assigns,ua))
         {
-            if (table.rowType.Length == 0)
-                throw new DBException("2E111", cx.db.user, qn.name).Mix();
+            if (f.rowType.Length == 0)
+                throw new DBException("2E111", cx.db.user, dp).Mix();
         }
         protected QuerySearch(long dp,BTree<long,object>m) :base(dp,m) { }
         public static QuerySearch operator+(QuerySearch q,(long,object)x)
@@ -655,8 +618,8 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QuerySearch)base._Replace(cx, so, sv);
-            var tb = table._Replace(cx, so, sv);
-            if (tb != table)
+            var tb = cx.Replace(r.table, so, sv);
+            if (tb != r.table)
                 r += (SqlInsert._Table, tb);
             cx.done += (defpos, r);
             return r;
@@ -665,21 +628,21 @@ namespace Pyrrho.Level3
         {
             return new QuerySearch(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (QuerySearch)base.Relocate(wr);
-            var tb = table.Relocate(wr);
+            var r = (QuerySearch)base._Relocate(wr);
+            var tb = wr.Fixed(table).defpos;
             if (tb != table)
                 r += (SqlInsert._Table, tb);
             return r;
         }
-        internal override DBObject Frame(Context cx)
+        internal override Basis _Relocate(Context cx)
         {
-            var r = (QuerySearch)base.Frame(cx);
-            var tb = table.Frame(cx);
+            var r = (QuerySearch)base._Relocate(cx);
+            var tb = cx.Fixed(table).defpos;
             if (tb != table)
                 r += (SqlInsert._Table, tb);
-            return cx.Add(r,true);
+            return r;
         }
         /// <summary>
         /// A readable version of the delete statement
@@ -687,15 +650,14 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            var sb = new StringBuilder("DELETE FROM ");
-            if (table != null)
-                sb.Append(Uid(table.defpos));
-            table.CondString(sb, table.where, " where ");
+            var sb = new StringBuilder(base.ToString());
+            if (table != -1L)
+                sb.Append(Uid(table));
             return sb.ToString();
         }
         public override Context Obey(Context cx)
         {
-            return table.Delete(cx, BTree<string, bool>.Empty, new Adapters());
+            return ((From)cx.obs[table]).Delete(cx, BTree<string, bool>.Empty, new Adapters());
         }
     }
     /// <summary>
@@ -708,8 +670,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The context</param>
         public UpdateSearch(long dp, Context cx, Ident ic, Table tb,
-            Selection qn, Correlation ca, Grant.Privilege how)
-            : base(Type.UpdateWhere, dp, cx, ic, tb, qn, ca, how)
+            Grant.Privilege how)
+            : base(Type.UpdateWhere, dp, cx, ic, tb, how)
         {  }
         protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UpdateSearch operator+(UpdateSearch u,(long,object)x)
@@ -726,33 +688,18 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            var sb = new StringBuilder();
-            sb.Append("UPDATE " + table.name + " SET ");
-            var c = "";
-            for (var a =table.assigns.First();a!=null;a=a.Next())
-            {
-                sb.Append(c); sb.Append(a.value());
-                c = ", ";
-            }
-            table.CondString(sb, table.where, " where ");
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" ");sb.Append(Uid(table));
             return sb.ToString();
         }
         public override Context Obey(Context cx)
         {
-            return table.Update(cx, BTree<string, bool>.Empty, new Adapters(),
+            return ((From)cx.obs[table]).Update(cx, BTree<string, bool>.Empty, new Adapters(),
                 new List<RowSet>());
         }
         internal override DBObject Relocate(long dp)
         {
             return new UpdateSearch(dp, mem);
-        }
-        internal override DBObject Frame(Context cx)
-        {
-            var r = (UpdateSearch)base.Frame(cx);
-            var tb = table.Frame(cx);
-            if (tb != table)
-                r += (SqlInsert._Table, tb);
-            return cx.Add(r,true);
         }
     }
 }

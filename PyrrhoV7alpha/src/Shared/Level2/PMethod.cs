@@ -5,10 +5,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level2
 {
@@ -39,7 +41,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, BList<(long,Domain)> ar, Domain rt, 
+        public PMethod(string nm, BList<ParamInfo> ar, ObInfo rt, 
             MethodType mt, long td, Method md, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{}
@@ -55,15 +57,15 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, BList<(long,Domain)> ar, 
-            Domain rt, MethodType mt, long td, Method md, Ident sce,
+        protected PMethod(Type tp, string nm, BList<ParamInfo> ar, 
+            ObInfo rt, MethodType mt, long td, Method md, Ident sce,
             long pp, Context cx)
             : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
 			typedefpos = td;
 			methodType = mt;
             if (mt == MethodType.Constructor)
-                retType = (Domain)cx.db.objects[typedefpos];
+                retType = (ObInfo)cx.db.role.infos[typedefpos];
 		}
         /// <summary>
         /// Constructor: a new Method definition from the ReadBuffer
@@ -134,13 +136,14 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var oi = (ObInfo)ro.obinfos[typedefpos];
-            var mt = new Method(this,Sqlx.CREATE,cx.db);
+            var oi = (ObInfo)ro.infos[typedefpos];
+            var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, mt.domain, priv);
+            var mi = new ObInfo(defpos, name, mt.domain)+(ObInfo.Privilege, priv);
             ro = ro + mt + mi + (oi+(mt,name));
-            cx.db = cx.db + (ro,p) + (mt,p);
+            cx.db += (ro, p);
+            cx.Install(mt,p);
         }
     }
 }

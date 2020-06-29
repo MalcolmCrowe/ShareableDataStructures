@@ -3,14 +3,17 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
+using System.Configuration;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -21,7 +24,7 @@ namespace Pyrrho.Level2
 	/// Columns may have a notNull constraint and integrity, uniqueness and referential constraints.
     /// Obsolete: see PColumn2
 	/// </summary>
-	internal class PColumn : Physical
+	internal class PColumn : Compiled
 	{
         /// <summary>
         /// The defining position of the Table
@@ -61,7 +64,7 @@ namespace Pyrrho.Level2
         /// <param name="dm">The defining position of the domain</param>
         /// <param name="tb">The local database</param>
         public PColumn(Type t, long pr, string nm, int sq, long dm, long pp, 
-            Context cx) : base(t,pp,cx)
+            Context cx,BTree<long,DBObject> fr) : base(t,pp,cx,fr)
 		{
 			tabledefpos = pr;
 			name = nm;
@@ -114,6 +117,7 @@ namespace Pyrrho.Level2
         {
             tabledefpos = rdr.GetLong();
             name = rdr.GetString();
+            rdr.names += (ppos, name);
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -173,19 +177,21 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.obinfos[tb.defpos];
+            var ti = (ObInfo)ro.infos[tb.defpos];
             var dt = (Domain)cx.db.objects[domdefpos];
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, (Domain)cx.db.objects[domdefpos], priv);
-            if (cx.db.format < 51)
-                ti += (ObInfo.Map, ti.map + (ppos.ToString(), ti.Length));
-            ro = ro + (oc.defpos,oc) + (ti + oc);
+            var oc = new ObInfo(ppos, name, dt)+(ObInfo.Privilege,priv);
+            ti += (ti.Length, oc.defpos, oc.domain);
+            ro = ro + oc + ti;
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            tb += tc;
-            cx.db = cx.db + (ro, p) + (tb, p) + (tc, p);
+            tb += tc; // note dependency
+            tb += (DBObject._Domain,ti.domain);
+            cx.db += (ro, p);
+            cx.Install(tb,p);
+            cx.Install(tc,p);
         }
     }
     /// <summary>
@@ -223,7 +229,7 @@ namespace Pyrrho.Level2
         /// <param name="db">The database</param>
         protected PColumn2(Type t, long pr, string nm, int sq, long dm, string ds,
             TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
-            : base(t,pr,nm,sq,dm,pp,cx)
+            : base(t,pr,nm,sq,dm,pp,cx,ge.framing)
 		{
 			dfs = ds;
             dv = v;
@@ -248,7 +254,8 @@ namespace Pyrrho.Level2
             dfs = x.dfs;
             dv = x.dv;
             notNull = x.notNull;
-            generated = (GenerationRule)x.generated.Relocate(wr);
+            wr.srcPos = wr.Length + 1;
+            generated = (GenerationRule)x.generated._Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -270,25 +277,33 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr) 
-		{ 
-			dfs = rdr.GetString();
+		{
+            var dfsrc = new Ident(rdr.GetString(), ppos+1);
+            dfs = dfsrc.ident;
             notNull = (rdr.GetInt() != 0);
 			var gn = (Generation)rdr.GetInt();
-			base.Deserialise(rdr);
+            base.Deserialise(rdr);
             if (dfs != "")
             {
                 var dt = (Domain)rdr.context.db.objects[domdefpos];
                 if (gn != Generation.Expression)
-                    dv = dt.Parse(rdr.Position,dfs);
+                    dv = dt.Parse(rdr.Position, dfs);
                 else
-                {
-                    var oi = (ObInfo)rdr.role.obinfos[domdefpos];
                     generated = new GenerationRule(Generation.Expression,
-                        dfs, new Parser(rdr.context)
-                        .ParseSqlValue(dfs,oi).Reify(rdr.context,oi));
-                }
+                        dfs, SqlNull.Value);
             }
-		}
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            if (generated.gen == Generation.Expression)
+            {
+                var tb = (Table)rdr.context.db.objects[tabledefpos];
+                var psr = new Parser(rdr, new Ident(dfs, ppos + 1), tb);
+                var sv = psr.ParseSqlValue(tabledefpos, domdefpos).Reify(rdr.context);
+                generated += (GenerationRule.GenExp, sv.defpos);
+                Frame(psr.cx);
+            }
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -386,9 +401,9 @@ namespace Pyrrho.Level2
             if (ups != "")
                 try
                 {
-                    upd = new Parser(rdr.context).ParseAssignments(ups,
-                        (ObInfo)rdr.role.obinfos[tabledefpos]);
-                } catch(Exception)
+                    upd = new Parser(rdr.context).ParseAssignments(ups, tabledefpos);
+                } 
+                catch(Exception)
                 {
                     upd = BList<UpdateAssignment>.Empty;
                 }

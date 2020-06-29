@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Xml;
 using System.IO;
 using Pyrrho.Level2;
@@ -8,10 +7,12 @@ using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -245,7 +246,7 @@ namespace Pyrrho.Level3
         internal void Save(Database db,XmlWriter w)
         {
             Table tb = db.objects[tab] as Table;
-            var ti = db.role.obinfos[tb.defpos] as ObInfo;
+            var ti = db.role.infos[tb.defpos] as ObInfo;
             w.WriteStartElement("Table");
             w.WriteAttributeString("Name", ti.name);
             w.WriteAttributeString("Pos", tab.ToString());
@@ -258,12 +259,13 @@ namespace Pyrrho.Level3
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
                 var i = 0;
-                for (; i < ti.Length; i++)
-                    if (ti.columns[i].defpos == s.key())
+                for (var b=ti.columns.First();b!=null;b=b.Next(),i++)
+                    if (b.value() == s.key())
                         break;
+                var ci = (ObInfo)db.role.infos[tc.defpos];
                 w.WriteStartElement("Read");
                 w.WriteAttributeString("ColPos", s.key().ToString());
-                w.WriteAttributeString("ReadCol", ti.columns[i].name);
+                w.WriteAttributeString("ReadCol", ci.name);
                 w.WriteEndElement();
             }
             foreach (var v in recs)
@@ -424,7 +426,7 @@ namespace Pyrrho.Level3
             for (var s = fields.PositionAt(0);s!= null;s=s.Next())
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
-                var ci = db.role.obinfos[tc.defpos] as ObInfo;
+                var ci = db.role.infos[tc.defpos] as ObInfo;
                 w.WriteStartElement("Field");
                 w.WriteAttributeString("ColPos", s.key().ToString());
                 w.WriteAttributeString("RecCol", ci.name);

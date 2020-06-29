@@ -1,16 +1,16 @@
-using System;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -110,7 +110,7 @@ namespace Pyrrho.Level2
             var now = new TableRow(this, cx.db, was);
             var same = true;
             for (var b = fields.First(); same && b != null; b = b.Next())
-                if (tb.keyCols.Contains(b.key()))
+                if (tb.tblCols.Contains(b.key()))
                     same = b.value().CompareTo(was.vals[b.key()]) == 0;
             if (same)
                 return now;
@@ -142,7 +142,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var fl = AddRow(cx);
-            cx.db+=((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
+            cx.Install((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;

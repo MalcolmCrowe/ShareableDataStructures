@@ -1,18 +1,18 @@
 using System;
 using System.Text;
-using System.Collections.Generic;
 using Pyrrho.Common;
-using Pyrrho.Level1;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -65,14 +65,6 @@ namespace Pyrrho.Level2
 			ptrole = rl;
 			pttime = DateTime.Now.Ticks;
 		}
-        public PTransaction(long u,long pp, Context cx) 
-            : base(Type.PTransaction,pp,cx)
-        {
-            nrecs = 0;
-            ptuser = cx.tr.user.defpos;
-            ptrole = cx.tr.role.defpos;
-            pttime = DateTime.Now.Ticks;
-        }
         /// <summary>
         /// Constructor: a Transaction record from the buffer
         /// </summary>
@@ -106,12 +98,12 @@ namespace Pyrrho.Level2
         /// <param name="t">The starting position of the Commit</param>
         /// <param name="reloc">Relocation information for positions</param>
         /// <returns>Dummy</returns>
-		public override void Commit(Writer wr,Transaction tr)
+		public override (Transaction,Physical) Commit(Writer wr,Transaction tr)
 		{
 			if (ptrole==-1)
 				throw new DBException("28000").ISO();
 			pttime = DateTime.Now.Ticks;
-			base.Commit(wr,tr);
+			return base.Commit(wr,tr);
 		}
         /// <summary>
         /// Serialise this Physical to the PhysBase

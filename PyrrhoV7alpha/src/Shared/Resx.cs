@@ -1,17 +1,16 @@
 ﻿using System;
 using System.Text;
-using System.IO;
 using System.Collections;
-#if !MONO1
-using System.Collections.Generic;
-#endif
-using System.Resources;
-using System.Globalization;
-using System.Threading;
-#if SILVERLIGHT
-using Pyrrho.Common;
-#endif
 
+// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+//
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho
 {
     /// <summary>

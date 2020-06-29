@@ -4,6 +4,16 @@ using System.IO;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Data;
+// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+//
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level2
 {
@@ -135,6 +145,13 @@ namespace Pyrrho.Level2
         {
             if (uids.Contains(pos)) 
                 return uids[pos];
+            if (cx.db.parse==ExecuteStatus.Prepare && pos>PyrrhoServer.Preparing)
+            {
+                var r = cx.db.nextStmt;
+                cx.db += (Database.NextStmt, r+1);
+                uids += (pos, r);
+                return r;
+            }
             if (pos>Transaction.Analysing)
             {
                 uids += (pos, ++srcPos);
@@ -142,13 +159,61 @@ namespace Pyrrho.Level2
             }
             return pos;
         }
-        internal BList<(long, Domain)> Relocate(BList<(long, Domain)> rp)
+        internal Ident Fix(Ident id)
         {
-            var r = BList<(long, Domain)>.Empty;
+            if (id == null)
+                return null;
+            var p = Fix(id.iix);
+            if (p == id.iix)
+                return id;
+            return new Ident(id.ident, p);
+        }
+        /// <summary>
+        /// Not to be used for Domain or ObInfo
+        /// </summary>
+        /// <param name="pos"></param>
+        /// <returns></returns>
+        internal DBObject Fixed(long pos)
+        {
+            var p = Fix(pos);
+            if (p < Length)
+                return (DBObject)cx.db.objects[p];
+            if (p == pos)
+                return cx.obs[p];
+            if (cx.obs[p] is DBObject x)
+                return x;
+            var ob = cx.obs[pos];
+            if (pos>Transaction.TransPos)
+            {
+                ob = ob.Relocate(p).Relocate(this);
+                p = ob.defpos;
+                cx.obs -= pos;
+                cx.obs += (p,ob);
+                return ob;
+            }
+            return ob;
+        }
+        internal BTree<long, Domain> Relocate(BTree<long, Domain> rp)
+        {
+            var r = BTree<long, Domain>.Empty;
+            for (var b = rp.First(); b != null; b = b.Next())
+                r += (Fix(b.key()), (Domain)cx.db.objects[b.value().defpos]);
+            return r;
+        }
+        internal BList<long> Relocate(BList<long> rp)
+        {
+            var r = BList<long>.Empty;
+            for (var b = rp.First(); b != null; b = b.Next())
+                r += Fix(b.value());
+            return r;
+        }
+        internal BList<ParamInfo> Relocate(BList<ParamInfo> rp)
+        {
+            var r = BList<ParamInfo>.Empty;
             for (var b = rp.First(); b != null; b = b.Next())
             {
-                var (p, d) = b.value();
-                r += (Fix(p), (Domain)cx.db.objects[d.defpos]);
+                var p = b.value();
+                r += (ParamInfo)p.Relocate(this);
             }
             return r;
         }
@@ -274,6 +339,7 @@ namespace Pyrrho.Level2
         public Stream file;
         internal Role role;
         internal User user;
+        internal BTree<long, string> names = BTree<long, string>.Empty;
         internal PTransaction trans = null;
         internal long time => trans?.pttime ?? 0;
         public long segment;
@@ -423,6 +489,7 @@ namespace Pyrrho.Level2
         }
         internal void Add(Physical ph)
         {
+            ph.OnLoad(this);
             context.db.Add(context, ph, Position);
         }
         internal BList<Physical> GetAll(long max, long limit)

@@ -1,6 +1,5 @@
 
 using System;
-using System.Collections;
 using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4; 
@@ -8,10 +7,12 @@ using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level2
 {
@@ -138,8 +139,6 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                if (c == 1616)
-                    Console.WriteLine("Here");
                 var tc = (TableColumn)rdr.context.db.objects[c];
                 // If the column has been dropped we will show a simplified version of the Domain
                 // (The TableRow if still current has the historically correct domain)
@@ -163,9 +162,9 @@ namespace Pyrrho.Level2
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
             {
                 long k = d.key();
-                var o = d.value() as TypedValue;
+                var o = d.value();
                 wr.PutLong(k); // coldefpos
-                var ndt = ((TableColumn)wr.cx.db.objects[k]).domain;
+                var ndt = wr.cx.Dom(k);
                 var dt = o?.dataType??Domain.Null;
                 dt.PutDataType(ndt, wr);
                 dt.Put(o,wr);
@@ -257,13 +256,13 @@ namespace Pyrrho.Level2
             }
             catch (DBException e)
             {
-                var oi = cx.role.obinfos[tb.defpos] as ObInfo;
+                var oi = cx.role.infos[tb.defpos] as ObInfo;
                 if (e.signal == "23000")
                     throw new DBException(e.signal, e.objects[0].ToString() + oi.name 
                         + e.objects[1].ToString());
                 throw e;
             }
-            cx.db += (tb, p);
+            cx.Install(tb, p);
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {

@@ -1,15 +1,15 @@
-using System;
 using Pyrrho.Common;
-using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level4
 {
@@ -28,8 +28,8 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : 
-            base(j.defpos,_cx,j.rowType.info,_Finder(lr,rr),null,j.where,j.ordSpec,j.matches,
-                Context.Copy(j.matching))
+            base(j.defpos,_cx,j.domain,j.rowType,_Finder(lr,rr),null,j.where,j.ordSpec,j.matches,
+                j.matching)
 		{
             join = j;
             first = lr;
@@ -40,9 +40,8 @@ namespace Pyrrho.Level4
             join = jrs.join;
             first = jrs.first;
             second = jrs.second;
-
         }
-        static BTree<long,long> _Finder(RowSet lr,RowSet rr)
+        static BTree<long,Finder> _Finder(RowSet lr,RowSet rr)
         {
             var r = lr.finder;
             for (var b=rr.finder.First();b!=null;b=b.Next())
@@ -73,44 +72,6 @@ namespace Pyrrho.Level4
             var fr = j.FDInfo?.reverse;
             var rx = j.FDInfo?.rindex;
             var ft = (rx!=null)? " foreign " : " primary ";
-            if (rx!=null)
-            {
-                if (fr==true)
-                {
-                    sb.Append(ft);
-                    sb.Append(" " + j.left.ToString());
-                    first.Matches(sb);
-                    Conds(sb, j.left.where, " where ");
-                    sb.Append(" "+j.right.ToString());
-                    second.Matches(sb);
-                    Conds(sb, j.right.where, " where ");
-                } else
-                {
-                    sb.Append(ft);
-                    sb.Append(" " + j.right.ToString());
-                    second.Matches(sb);
-                    Conds(sb, j.right.where, " where ");
-                    sb.Append(" "+j.left.ToString());
-                    first.Matches(sb);
-                    Conds(sb, j.left.where, " where ");
-                }
-            }
-            else if (fr == false)
-            {
-                sb.Append(ft + j.left.ToString());
-                first.Matches(sb);
-                sb.Append(" "+j.right.ToString());
-                second.Matches(sb);
-                Conds(sb, j.right.where, " where ");
-            }
-            else if (fr == true)
-            {
-                sb.Append(" "+j.left.ToString());
-                first.Matches(sb);
-                sb.Append(ft+j.right.ToString());
-                second.Matches(sb);
-                Conds(sb, j.right.where," where ");
-            }
             base._Strategy(sb, indent);
             if (fr != false)
                 first?.Strategy(indent);
@@ -125,8 +86,6 @@ namespace Pyrrho.Level4
         public override Cursor First(Context _cx)
         {
             JoinPart j = join;
-            var ox = _cx.from;
-            _cx.from = _finder;
             JoinBookmark r;
             switch (j.kind)
             {
@@ -140,7 +99,6 @@ namespace Pyrrho.Level4
                     throw new PEException("PE57");
             }
             var b = r?.MoveToMatch(_cx);
-            _cx.from = ox;
             return b;
         }
     }
@@ -176,17 +134,25 @@ namespace Pyrrho.Level4
             _left = left;
             _useLeft = ul;
             _right = right;
-            _useRight = ur;
+            _useRight = ur; 
+        }
+        protected JoinBookmark(JoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+        {
+            _jrs = cu._jrs;
+            _left = cu._left;
+            _useLeft = cu._useLeft;
+            _right = cu._right;
+            _useRight = cu._useRight;
         }
         static TRow _Vals(JoinRowSet jrs, Cursor left, bool ul, Cursor right, bool ur)
         {
             var vs = BTree<long, TypedValue>.Empty;
-            for (var b = jrs.info.columns.First(); b != null; b = b.Next())
+            for (var b = jrs.rt.First(); b != null; b = b.Next())
             {
-                var p = b.value().defpos;
+                var p = b.value();
                 vs += (p, (ul?left[p]:null) ?? (ur?right[p]:null)??TNull.Value);
             }
-            return new TRow(jrs.info.domain, vs);
+            return new TRow(jrs, vs);
         }
         protected abstract JoinBookmark _Next(Context _cx);
         public override Cursor Next(Context _cx)
@@ -215,6 +181,12 @@ namespace Pyrrho.Level4
             : base(_cx,j,left,true,right,true,pos)
         {
             // warning: now check the joinCondition using AdvanceToMatch
+        }
+        InnerJoinBookmark(InnerJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+        { }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new InnerJoinBookmark(this, cx, p, v);
         }
         internal static InnerJoinBookmark New(Context _cx,JoinRowSet j)
         {
@@ -308,29 +280,38 @@ namespace Pyrrho.Level4
         /// <param name="rs">The Join RowSet</param>
         FDJoinBookmark(Context _cx,JoinRowSet rs, IndexRowSet.IndexCursor left, 
             IndexRowSet.IndexCursor right,int pos) 
-            : base(_cx,rs,left,true,right,true,pos,_Row(rs,left,right))
+            : base(_cx,rs,left,true,right,true,pos,_Row(_cx,rs,left,right))
         {
             join = rs.join;
             info = join.FDInfo;
         }
-        static TRow _Row(JoinRowSet rs,Cursor left,Cursor right)
+        FDJoinBookmark(FDJoinBookmark cu,Context cx, long p,TypedValue v):base(cu,cx,p,v)
+        {
+            join = cu.join;
+            info = cu.info;
+        }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new FDJoinBookmark(this,cx,p,v);
+        }
+        static TRow _Row(Context cx,JoinRowSet rs,Cursor left,Cursor right)
         {
             var vs = BTree<long, TypedValue>.Empty;
-            for (var b=rs.join.left.rowType.First();b!=null;b=b.Next())
+            var lf = (Query)cx.obs[rs.join.left];
+            var rg = (Query)cx.obs[rs.join.right];
+            for (var b=lf.rowType.First();b!=null;b=b.Next())
             {
-                var s = b.value();
-                var p = (s is SqlCopy sc) ? sc.copyFrom : 
-                    (s is SqlTableCol st) ? st.tableCol.defpos : -1L;
+                var s = cx.obs[b.value()];
+                var p = (s is SqlCopy sc) ? sc.copyFrom : -1L;
                 vs += (s.defpos, left[p]);
             }
-            for (var b = rs.join.right.rowType.First(); b != null; b = b.Next())
+            for (var b = rg.rowType.First(); b != null; b = b.Next())
             {
-                var s = b.value();
-                var p = (s is SqlCopy sc) ? sc.copyFrom :
-                    (s is SqlTableCol st) ? st.tableCol.defpos : -1L;
+                var s = cx.obs[b.value()];
+                var p = (s is SqlCopy sc) ? sc.copyFrom : -1L;
                 vs += (s.defpos, right[p]);
             }
-            return new TRow(rs.info.domain, vs);
+            return new TRow(rs, vs);
         }
         /// <summary>
         /// A new FD bookmark
@@ -343,7 +324,7 @@ namespace Pyrrho.Level4
             var info = join.FDInfo;
             IndexRowSet.IndexCursor left, right;
             var ox = _cx.from;
-            _cx.from = j.finder;
+            _cx.from += j.finder;
             if (info.reverse)
             {
                 left = For(j.first.First(_cx));
@@ -383,7 +364,7 @@ namespace Pyrrho.Level4
             var left = (IndexRowSet.IndexCursor)_left;
             var right = (IndexRowSet.IndexCursor)_right;
             var ox = _cx.from;
-            _cx.from = _jrs.finder;
+            _cx.from += _jrs.finder;
             if (info.reverse)
             {
                 left = (IndexRowSet.IndexCursor)left.Next(_cx);
@@ -430,6 +411,12 @@ namespace Pyrrho.Level4
         {
             // care: ensure you AdvanceToMatch
             hideRight = right;
+        }
+        LeftJoinBookmark(LeftJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+        { }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new LeftJoinBookmark(this, cx, p, v);
         }
         /// <summary>
         /// A new leftjoin bookmark
@@ -522,6 +509,12 @@ namespace Pyrrho.Level4
         {
             // care: ensure you AdvanceToMatch
         }
+        RightJoinBookmark(RightJoinBookmark cu,Context cx,long p,TypedValue v):base(cu, cx, p, v) 
+        { }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new RightJoinBookmark(this, cx, p, v);
+        }
         /// <summary>
         /// a bookmark for the right join
         /// </summary>
@@ -611,7 +604,12 @@ namespace Pyrrho.Level4
         FullJoinBookmark(Context _cx,JoinRowSet j, Cursor left, bool ul, Cursor right, 
             bool ur, int pos)
             : base(_cx,j, left, ul, right, ur, pos)
+        { }
+        FullJoinBookmark(FullJoinBookmark cu,Context cx, long p, TypedValue v):base(cu,cx,p,v)
+        { }
+        protected override Cursor New(Context cx, long p, TypedValue v)
         {
+            return new FullJoinBookmark(this, cx, p, v);
         }
         /// <summary>
         /// A new bookmark for a full join
@@ -695,6 +693,7 @@ namespace Pyrrho.Level4
         CrossJoinBookmark(Context _cx,JoinRowSet j, Cursor left = null, Cursor right = null,
             int pos=0) : base(_cx,j,left,true,right,true,pos)
         { }
+        CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v) { }
         public static CrossJoinBookmark New(Context _cx,JoinRowSet j)
         {
             var f = j.first.First(_cx);
@@ -702,6 +701,10 @@ namespace Pyrrho.Level4
             if (f == null || s == null)
                 return null;
             return new CrossJoinBookmark(_cx,j, f, s);
+        }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new CrossJoinBookmark(this, cx, p, v);
         }
         /// <summary>
         /// Move to the next row in the cross join

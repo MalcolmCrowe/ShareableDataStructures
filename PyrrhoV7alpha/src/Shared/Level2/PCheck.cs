@@ -6,23 +6,25 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// A PCheck is for a check constraint for Table, Column, or Domain.
 	/// </summary>
-	internal class PCheck : Physical
+	internal class PCheck : Compiled
 	{
 		public long ckobjdefpos; // of object (e.g. Domain,Table) to which this check applies
         public long subobjdefpos = -1; // of Column if a columns check
 		public string name;
         public long defpos;
 		public string check;
-        public SqlValue test;
+        public long test;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,ckobjdefpos)) return ckobjdefpos;
@@ -40,13 +42,13 @@ namespace Pyrrho.Level2
         public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
             : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
         protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx)
+            long pp, Context cx) : base(tp,pp,cx,cx.obs)
 		{
 			ckobjdefpos = dm;
             defpos = ppos;
             name = nm ?? throw new DBException("42102");
 			check = cs;
-            test = se;
+            test = se.defpos;
         }
         /// <summary>
         /// Constructor: A new check constraint from the buffer
@@ -61,7 +63,7 @@ namespace Pyrrho.Level2
             defpos = wr.Fix(x.defpos);
             name = x.name;
             check = x.check;
-            test = (SqlValue)x.test.Relocate(wr);
+            test = wr.Fixed(x.test).defpos;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -95,13 +97,20 @@ namespace Pyrrho.Level2
 			ckobjdefpos = rdr.GetLong();
 			name = rdr.GetString();
             defpos = ppos;
-			check = rdr.GetString();
+			var src = rdr.GetIdent();
+            check = src.ident;
 			base.Deserialise(rdr);
-            var cx = rdr.context;
-            cx.Add(rdr.context.db.objects[ckobjdefpos] as DBObject);
-            var oi = (ObInfo)rdr.role.obinfos[ckobjdefpos];
-            test = new Parser(rdr.context).ParseSqlValue(check,ObInfo.Bool)
-                .Reify(cx,oi);
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            if (check != "")
+            {
+                var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
+                var psr = new Parser(rdr, new Ident(check, ppos+1), ob);
+                var sv = psr.ParseSqlValue(ckobjdefpos,ob.domain.defpos).Reify(rdr.context);
+                test = sv.defpos;
+                Frame(psr.cx);
+            }
         }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
@@ -123,13 +132,22 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
-            cx.db += (((DBObject)cx.db.mem[ck.checkobjpos]).Add(ck, cx.db),p);
             if (name != null && name != "")
-            { 
+            {
                 ro += new ObInfo(defpos, name);
-                cx.db += (ro,p);
+                cx.db += (ro, p);
             }
-            cx.db += (ro, p);
+            cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
+            cx.Install(ck,p);
+        }
+        public override (Transaction,Physical) Commit(Writer wr, Transaction t)
+        {
+            var (tr,ph) = base.Commit(wr, t);
+            var pc = (PCheck)ph;
+            var ck = (DBObject)tr.objects[defpos] + (Check.Condition, pc.framing[pc.test])
+                + (DBObject.Framing, pc.framing);
+            var co = ((DBObject)tr.objects[ckobjdefpos]).Add((Check)ck, tr);
+            return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
         }
     }
     /// <summary>
@@ -172,7 +190,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "Check " +name+" ["+ckobjdefpos+":"+subobjdefpos+"]: "+check;
+			return "Check " +name+" ["+Pos(ckobjdefpos)+":"+Pos(subobjdefpos)+"]: "+check;
 		}
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -205,13 +223,13 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
-            cx.db += (((DBObject)cx.db.mem[ck.checkobjpos]).Add(ck, cx.db), p);
+            cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             if (name != null && name != "")
             {
                 ro += new ObInfo(defpos, name);
                 cx.db += (ro,p);
             }
-            cx.db += (ck, p);
+            cx.Install(ck,p);
         }
     }
 }

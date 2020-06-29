@@ -7,10 +7,12 @@ using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -142,10 +144,10 @@ namespace Pyrrho.Level2
                         ix -= key;
                         if (ix.rows == null)
                             ix += (Index.Tree, new MTree(inf));
-                        cx.db += (ix,p);
+                        cx.Install(ix,p);
                     }
                     tb -= delpos;
-                    cx.db += (tb, p);
+                    cx.Install(tb,p);
                 }
         }
     }
@@ -200,7 +202,7 @@ namespace Pyrrho.Level2
         {
             var tb = cx.db.objects[tabledefpos] as Table;
             var delRow = tb.tableRows[delpos] as TableRow;
-            var ro = delRow.Cascade(cx.db, cx, cx.role, p);
+            delRow.Cascade(cx.db, cx, cx.role, p);
             for (var b = tb.indexes.First(); b != null; b = b.Next())
             {
                 var ix = (Index)cx.db.objects[b.value()];
@@ -209,10 +211,10 @@ namespace Pyrrho.Level2
                 ix -= key;
                 if (ix.rows == null)
                     ix += (Index.Tree, new MTree(inf));
-                cx.db += (ix, p);
+                cx.Install(ix,p);
             }
             tb -= delpos;
-            cx.db = cx.db + (tb, p) + (ro,p);
+            cx.Install(tb,p);
         }
         public override string ToString()
         {

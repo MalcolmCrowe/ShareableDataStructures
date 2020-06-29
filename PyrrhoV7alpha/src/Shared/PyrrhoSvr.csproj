@@ -135,7 +135,6 @@
     <Compile Include="Level3\Query.cs" />
     <Compile Include="Level3\QuerySpecification.cs" />
     <Compile Include="Level4\RowSet.cs" />
-    <Compile Include="Level4\RowType.cs" />
     <Compile Include="Level4\RTree.cs" />
     <Compile Include="Level4\SystemResults.cs" />
     <Compile Include="Level3\Transaction.cs" />

@@ -1,17 +1,17 @@
 using System;
-using System.Collections;
 using System.Text;
-using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -96,6 +96,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
+            rdr.names += (ppos, name);
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -132,11 +133,12 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
             var tb = new Table(this);
-            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            var ti = new ObInfo(ppos, name, Domain.TableType)+(ObInfo.Privilege, priv);
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            cx.db = cx.db + (ro, p) + (tb, p);
+            cx.db += (ro, p);
+            cx.Install(tb, p);
         }
     }
     internal class PTable1 : PTable

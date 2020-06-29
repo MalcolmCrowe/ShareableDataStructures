@@ -7,19 +7,21 @@ using System;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
-	/// <summary>
-	/// DBObject is the base class for Level 3 database objects (e.g. Table, Role, Procedure, Domain)
+    /// <summary>
+    /// DBObject is the base class for Level 3 database objects (e.g. Table, Role, Procedure, Domain)
     /// Immutable
-	/// </summary>
-	internal abstract class DBObject : Basis
-	{
+    /// </summary>
+    internal abstract class DBObject : Basis
+    {
         /// <summary>
         /// The uid of the abstract object this is or affects
         /// </summary>
@@ -27,12 +29,14 @@ namespace Pyrrho.Level3
         internal const long
             _Alias = -62, // string        
             Classification = -63, // Level
+            CompareContext = -250, // Context structured types
             Definer = -64, // long
             Dependents = -65, // BTree<long,bool> Non-obvious objects that need this to exist
             Depth = -66, // int  (max depth of dependents)
             Description = -67, // string
-            _Domain = -176, // Domain
-            Kind = -80, // Sqlx (specified for SqlValue, Domain, otherwise delegated to Domain)
+            _Domain = -176, // Domain (property of subclasses other than Domain)
+            Framing = -167, // BTree<long,DBObject> compiled objects
+            _From = -306, // long
             LastChange = -68, // long (formerly called Ppos)
             Sensitive = -69; // bool
         /// <summary>
@@ -43,38 +47,44 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The definer of the object.
         /// </summary>
-        public long definer =>(long)(mem[Definer]??-1L);
+        public long definer => (long)(mem[Definer] ?? -1L);
         public string description => (string)mem[Description] ?? "";
-        internal virtual Domain domain => (Domain)mem[_Domain] ?? Domain.Content;
-        public virtual Sqlx kind => domain.kind;
         internal long lastChange => (long)(mem[LastChange] ?? defpos);
         /// <summary>
         /// Sensitive if it contains a sensitive type
         /// </summary>
-        internal bool sensitive => (bool)(mem[Sensitive]??false);
-        internal Level classification => (Level)mem[Classification]??Level.D;
+        internal bool sensitive => (bool)(mem[Sensitive] ?? false);
+        internal Level classification => (Level)mem[Classification] ?? Level.D;
         internal string desc => (string)mem[Description];
+        internal Domain domain => (Domain)mem[_Domain];
+        internal long from => (long)(mem[_From] ?? -1L);
+        /// <summary>
+        /// For compiled code - triggers and Procedures
+        /// </summary>
+        internal BTree<long, DBObject> framing =>
+            (BTree<long, DBObject>)mem[Framing] ?? BTree<long, DBObject>.Empty;
+        internal Context compareContext => (Context)mem[CompareContext]; 
         /// <summary>
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
         /// </summary>
-        internal BTree<long,bool> dependents => 
-            (BTree<long,bool>)mem[Dependents] ?? BTree<long,bool>.Empty;
+        internal BTree<long, bool> dependents =>
+            (BTree<long, bool>)mem[Dependents] ?? BTree<long, bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
         /// <summary>
         /// Constructor
         /// </summary>
-        protected DBObject(long dp, BTree<long,object>m) : base(m)
+        protected DBObject(long dp, BTree<long, object> m) : base(m)
         {
             defpos = dp;
         }
-        protected DBObject(long pp,long dp,long dr,BTree<long,object> m=null) 
-            :this(dp,(m??BTree<long,object>.Empty)+(LastChange,pp)+(Definer,dr))
-        {}
-        protected DBObject(string nm,long pp, long dp, long dr, BTree<long, object> m = null)
-            : this(pp,dp,dr,(m??BTree<long,object>.Empty)+(Name,nm))
-        {}
-        public static DBObject operator+(DBObject ob,(long,object)x)
+        protected DBObject(long pp, long dp, long dr, BTree<long, object> m = null)
+            : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Definer, dr))
+        { }
+        protected DBObject(string nm, long pp, long dp, long dr, BTree<long, object> m = null)
+            : this(pp, dp, dr, (m ?? BTree<long, object>.Empty) + (Name, nm))
+        { }
+        public static DBObject operator +(DBObject ob, (long, object) x)
         {
             return (DBObject)ob.New(ob.mem + x);
         }
@@ -86,20 +96,42 @@ namespace Pyrrho.Level3
                     r = x[i];
             return r;
         }
+        internal static int _Max(Context cx, params long[] x)
+        {
+            var r = 0;
+            for (var i = 0; i < x.Length; i++)
+            {
+                var v = cx.obs[x[i]];
+                if (v.depth > r)
+                    r = v.depth;
+            }
+            return r;
+        }
         internal static int _Max(BList<SqlValue> x)
         {
             var r = 0;
-            for (var b = x.First(); b!=null; b=b.Next())
+            for (var b = x.First(); b != null; b = b.Next())
                 if (b.value().depth > r)
                     r = b.value().depth;
             return r;
         }
-        internal static BTree<long,bool> _Deps(BList<SqlValue> vs)
+        internal static BTree<long, bool> _Deps(BList<long> vs)
         {
-            var r = BTree<long,bool>.Empty;
+            var r = BTree<long, bool>.Empty;
             for (var b = vs?.First(); b != null; b = b.Next())
-                r += (b.value().defpos,true);
+                r += (b.value(), true);
             return r;
+        }
+        internal static BTree<long, bool> _Deps(BList<SqlValue> vs)
+        {
+            var r = BTree<long, bool>.Empty;
+            for (var b = vs?.First(); b != null; b = b.Next())
+                r += (b.value().defpos, true);
+            return r;
+        }
+        internal virtual CList<long> _Cols(Context cx)
+        {
+            return CList<long>.Empty;
         }
         internal static int _Depth(BList<SqlValue> vs)
         {
@@ -120,26 +152,64 @@ namespace Pyrrho.Level3
             var tr = cx.tr;
             if (tr == null)
                 return false;
-            if (tr.user!=null && !(classification == Level.D || tr.user.defpos==tr.owner
+            if (tr.user != null && !(classification == Level.D || tr.user.defpos == tr.owner
                 || tr.user.clearance.ClearanceAllows(classification)))
                 return true;
             if (defpos > Transaction.TransPos)
                 return false;
-            var oi = (ObInfo)tr.role.obinfos[defpos];
-            return (oi!=null) && (oi.priv & priv)==0;
+            var oi = (ObInfo)tr.role.infos[defpos];
+            return (oi != null) && (oi.priv & priv) == 0;
         }
         internal abstract DBObject Relocate(long dp);
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            var r = (DBObject)base.Relocate(wr);
+            var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            var df = wr.Fix(definer);
+            if (df != definer)
+                r += (Definer, df);
             var ds = BTree<long, bool>.Empty;
             for (var b = dependents.First(); b != null; b = b.Next())
                 ds += (wr.Fix(b.key()), true);
-            return (ds==dependents)?r:r + (Dependents, ds);
+            if (ds != dependents)
+                r += (Dependents, ds);
+            var fs = BTree<long, DBObject>.Empty;
+            for (var b=framing?.First();b!=null;b=b.Next())
+            {
+                var n = b.value().Relocate(wr);
+                fs += (n.defpos, n);
+            }
+            r += (Framing, fs);
+            wr.cx.obs += (r.defpos, r);
+            return r;
         }
-        internal virtual DBObject Frame(Context cx)
+        internal DBObject Relocate(Writer wr)
         {
-            return cx.Add(this,true);
+            if (wr.uids.Contains(defpos))
+                return wr.cx.obs[wr.uids[defpos]];
+            var r = (DBObject)_Relocate(wr);
+            wr.cx.obs += (r.defpos, r);
+            return r;
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = ((DBObject)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
+            var df = cx.Unheap(definer);
+            if (df != definer)
+                r += (Definer, df);
+            var ds = BTree<long, bool>.Empty;
+            for (var b = dependents.First(); b != null; b = b.Next())
+                ds += (cx.Unheap(b.key()), true);
+            if (ds != dependents)
+                r += (Dependents, ds);
+            return r;
+        }
+        internal DBObject Relocate(Context cx)
+        {
+            if (cx.uids.Contains(defpos))
+                return cx.obs[cx.uids[defpos]];
+            var r = (DBObject)_Relocate(cx);
+            cx.obs += (r.defpos, r);
+            return r;
         }
         internal virtual Database Add(Database d,PMetadata pm, long p)
         {
@@ -195,8 +265,6 @@ namespace Pyrrho.Level3
         }
         internal virtual Database Drop(Database d, Database nd,long p)
         {
-            var oi = nd.role.obinfos[defpos] as ObInfo;
-            nd = nd + (nd.role - oi, p);
             return nd - defpos;
         }
         internal virtual Database DropCheck(long ck,Database nd,long p)
@@ -208,21 +276,14 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="defpos"></param>
         /// <param name="tr"></param>
-        internal virtual bool Calls(long defpos,Database db)
+        internal virtual bool Calls(long defpos,Context cx)
         {
             return false;
         }
-        internal static bool Calls(BList<SqlValue> vs,long defpos,Database db)
+        internal static bool Calls(BList<DBObject> vs, long defpos, Context cx)
         {
             for (var b = vs?.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, db))
-                    return true;
-            return false;
-        }
-        internal static bool Calls(BList<DBObject> vs, long defpos, Database db)
-        {
-            for (var b = vs?.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, db))
+                if (b.value().Calls(defpos, cx))
                     return true;
             return false;
         }
@@ -236,15 +297,9 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = this;
-            if (defpos<0 || this is Domain)
-                return this;
-            var dm = (Domain)domain._Replace(cx, so, sv);
-            if (dm != domain)
-                r += (_Domain, dm);
-            return r;
+            return this;
         }
-        internal DBObject Replace(Context cx,DBObject was,DBObject now)
+        internal virtual DBObject Replace(Context cx,DBObject was,DBObject now)
         {
             var r = _Replace(cx, was, now);
             if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
@@ -260,40 +315,36 @@ namespace Pyrrho.Level3
                 } 
             return r;
         }
-        internal virtual void Build(Context _cx, RowSet rs)
+        internal virtual object Build(Context _cx, RowSet rs)
         {
+            return null;
+        }
+        internal virtual void _Add(Context cx)
+        {
+            cx.obs += (defpos, this);
+        }
+        internal virtual void Set(Context cx, TypedValue v)
+        {
+            cx.values += (defpos, v);
         }
         /// <summary>
         /// If the value contains aggregates we need to accumulate them
         /// </summary>
-        internal virtual void StartCounter(Context _cx, RowSet rs)
+        internal virtual BTree<long,Register> StartCounter(Context _cx, RowSet rs,BTree<long,Register> tg)
         {
-        }
-        internal void AddIn(Context _cx, Cursor rb,TRow key)
-        {
-            var aggsDone = BTree<long, bool?>.Empty;
-            _AddIn(_cx, rb, key, ref aggsDone);
-        }
-        internal void AddIn(Context _cx, RTreeBookmark rb)
-        {
-            var aggsDone = BTree<long, bool?>.Empty;
-            _AddIn(_cx, rb, ref aggsDone);
+            return tg;
         }
         /// <summary>
         /// If the value contains aggregates we need to accumulate them. 
         /// Carefully watch out for common subexpressions, and only AddIn once!
         /// </summary>
-        internal virtual void _AddIn(Context _cx, Cursor rb, TRow key, 
-            ref BTree<long, bool?> aggsDone) { }
-        internal virtual void _AddIn(Context _cx, RTreeBookmark rb, ref BTree<long, bool?> aggsDone)
-        { }
-        internal virtual TypedValue Coerce(TypedValue v)
+        internal virtual BTree<long, Register> AddIn(Context _cx, Cursor rb, BTree<long, Register> tg) 
+        {
+            return tg;
+        }
+        internal virtual TypedValue Coerce(Context cx,TypedValue v)
         {
             return v;
-        }
-        internal virtual TypedValue Coerce(Cursor rb)
-        {
-            return rb;
         }
         internal virtual DBObject TypeOf(long lp,Context cx,TypedValue v)
         {
@@ -303,7 +354,7 @@ namespace Pyrrho.Level3
         {
             return cx.values[defpos];
         }
-        internal virtual bool aggregates()
+        internal virtual bool aggregates(Context cx)
         {
             return false;
         }
@@ -376,7 +427,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleClassValue(Transaction tr,From from,
+        internal virtual TRow RoleClassValue(Transaction tr,DBObject from,
             ABookmark<long, object> _enu)
         {
             return null;
@@ -387,7 +438,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleJavaValue(Transaction tr, From from, ABookmark<long, object> _enu)
+        internal virtual TRow RoleJavaValue(Transaction tr, DBObject from, ABookmark<long, object> _enu)
         {
             return null;
         }
@@ -397,7 +448,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RolePythonValue(Transaction tr, From from, ABookmark<long, object> _enu)
+        internal virtual TRow RolePythonValue(Transaction tr, DBObject from, ABookmark<long, object> _enu)
         {
             return null;
         }
@@ -411,7 +462,7 @@ namespace Pyrrho.Level3
             switch (Domain.Equivalent(dt.kind))
             {
                 case Sqlx.ONLY: 
-                    FieldType(db, sb, dt.super); return;
+                    FieldType(db, sb, (Domain)db.objects[dt.super]); return;
                 case Sqlx.INTEGER:
                     if (dt.prec!=0)
                         sb.Append("[Field(PyrrhoDbType.Integer," + 
@@ -434,8 +485,7 @@ namespace Pyrrho.Level3
                 case Sqlx.INTERVAL: sb.Append("[Field(PyrrhoDbType.Interval)]\r\n"); return;
                 case Sqlx.BOOLEAN: sb.Append("[Field(PyrrhoDbType.Bool)]\r\n"); return;
                 case Sqlx.TIMESTAMP: sb.Append("[Field(PyrrhoDbType.Timestamp)]\r\n"); return;
-                case Sqlx.ROW: sb.Append("[Field(PyrrhoDbType.Row," + 
-                    ((ObInfo)db.role.obinfos[dt.elType.defpos]).name+ ")]\r\n"); return;
+                case Sqlx.ROW: sb.Append("[Field(PyrrhoDbType.Row," + dt.elType.name+ ")]\r\n"); return;
             }
         }
         /// <summary>
@@ -447,7 +497,7 @@ namespace Pyrrho.Level3
         {
             switch (Domain.Equivalent(dt.kind))
             {
-                case Sqlx.ONLY: FieldJava(db, sb, dt.super); return;
+                case Sqlx.ONLY: FieldJava(db, sb, (Domain)db.objects[dt.super]); return;
                 case Sqlx.INTEGER:
                     if (dt.prec != 0)
                         sb.Append("@FieldType(PyrrhoDbType.Integer," + dt.prec + ")\r\n");
@@ -469,8 +519,7 @@ namespace Pyrrho.Level3
                 case Sqlx.INTERVAL: sb.Append("@FieldType(PyrrhoDbType.Interval)\r\n"); return;
                 case Sqlx.BOOLEAN: sb.Append("@FieldType(PyrrhoDbType.Bool)\r\n"); return;
                 case Sqlx.TIMESTAMP: sb.Append("@FieldType(PyrrhoDbType.Timestamp)\r\n"); return;
-                case Sqlx.ROW: sb.Append("@FieldType(PyrrhoDbType.Row," 
-                    + ((ObInfo)db.role.obinfos[dt.elType.defpos]).name + ")\r\n"); return;
+                case Sqlx.ROW: sb.Append("@FieldType(PyrrhoDbType.Row," + dt.elType.name + ")\r\n"); return;
             }
         }
         internal virtual Metadata Meta()
@@ -518,7 +567,7 @@ namespace Pyrrho.Level3
             var cols = new long[m?.Length ?? 0];
             for (var i = 0; m != null; m = m._tail, i++)
             {
-                cols[i] = ix.keys[i].defpos;
+                cols[i] = ix.keys[i];
                 key[i] = m._head.ToString();
             }
             Audit(pp, cx, cols, key);
@@ -548,12 +597,12 @@ namespace Pyrrho.Level3
             var i = 0;
             for (var b = f.matches?.First(); b != null; b = b.Next(),i++)
             {
-                cols[i] = b.key().defpos;
+                cols[i] = cx.obs[b.key()].defpos;
                 key[i] = b.value()?.ToString()??"null";
             }
             Audit(pp, cx, cols, key);
         }
-        internal virtual long Defpos()
+        internal virtual long Defpos(Context cx)
         {
             return defpos;
         }
@@ -561,8 +610,8 @@ namespace Pyrrho.Level3
         {
             if (u >= PyrrhoServer.Preparing)
                 return "%" + (u - PyrrhoServer.Preparing);
-            if (u >= Transaction.Compiling)
-                return "@" + (u - Transaction.Compiling);
+            if (u >= Transaction.Heap)
+                return "@" + (u - Transaction.Heap);
             if (u >= Transaction.Analysing)
                 return "#" + (u - Transaction.Analysing);
             if (u >= Transaction.TransPos)
@@ -575,6 +624,8 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(Uid(defpos));
+            if (domain is Domain dm && (dm.kind == Sqlx.CONTENT || dm.kind == Sqlx.UNION))
+            { sb.Append(" "); sb.Append(dm.kind);  }
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" Ppos="); sb.Append(Uid(lastChange)); }

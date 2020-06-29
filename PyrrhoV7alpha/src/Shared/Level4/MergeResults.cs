@@ -4,10 +4,12 @@ using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level4
 {
@@ -42,16 +44,16 @@ namespace Pyrrho.Level4
         /// <param name="a">the left operand</param>
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
-        internal MergeRowSet(Context _cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
-            : base(q.defpos,_cx,a.info,a.finder,null,q.where,q.ordSpec,q.matches,
-                  Context.Copy(q.matching))
+        internal MergeRowSet(Context cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
+            : base(q.defpos,cx,a.dataType,a.rt,a.finder,null,q.where,q.ordSpec,q.matches,
+                  q.matching)
         {
             distinct = d;
             oper = op;
             left = a;
             right = b; 
             if (q.where.Count==0 && oper!=Sqlx.UNION)
-                Build(q.defpos,a.info.domain);
+                Build(q.defpos,cx,a.dataType);
         }
         protected MergeRowSet(MergeRowSet rs, long a, long b) : base(rs, a, b)
         {
@@ -115,17 +117,24 @@ namespace Pyrrho.Level4
             _left = left; _right = right;
             _useLeft = ul;
         }
+        protected MergeBookmark(MergeBookmark cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
+        {
+            rowSet = cu.rowSet;
+            _left = cu._left; 
+            _right = cu._right;
+            _useLeft = cu._useLeft;
+        }
         protected static int _compare(RowSet r, Cursor left, Cursor right)
         {
             if (left == null)
                 return -1;
             if (right == null)
                 return 1;
-            var dt = r.info;
+            var dt = r.rt;
             for (var i=0;i<dt.Length;i++)
             {
                 var n = dt[i];
-                var c = left[n.defpos].CompareTo(right[n.defpos]);
+                var c = left[n].CompareTo(right[n]);
                 if (c != 0)
                     return c;
             }
@@ -144,6 +153,12 @@ namespace Pyrrho.Level4
         UnionBookmark(Context _cx, MergeRowSet r,int pos,Cursor left,Cursor right,bool ul) : 
             base(_cx,r,pos,left,right,ul)
         {
+        }
+        UnionBookmark(UnionBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+        { }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new UnionBookmark(this, cx, p, v);
         }
         internal static UnionBookmark New(Context _cx, MergeRowSet r, int pos = 0, 
             Cursor left = null,Cursor right=null)
@@ -185,6 +200,14 @@ namespace Pyrrho.Level4
         {
             // we assume MovetoNonMatch has been done
             _cx.values += (_rowsetpos, this);
+        }
+        ExceptBookmark(ExceptBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+        {
+            cx.values += (_rowsetpos, this);
+        }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new ExceptBookmark(this, cx, p, v);
         }
         static void MoveToNonMatch(Context _cx, MergeRowSet r, ref Cursor left,ref Cursor right)
         {
@@ -234,6 +257,8 @@ namespace Pyrrho.Level4
         IntersectBookmark(Context _cx, MergeRowSet r,int pos=0,Cursor left=null,Cursor right=null)
             : base(_cx,r,pos,left,right)
         { }
+        IntersectBookmark(IntersectBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v) 
+        { }
         static void MoveToMatch(Context _cx, MergeRowSet r, ref Cursor left, ref Cursor right)
         {
             for (;;)
@@ -246,6 +271,10 @@ namespace Pyrrho.Level4
                 else if (c > 0)
                     right = right.Next(_cx);
             }
+        }
+        protected override Cursor New(Context cx, long p, TypedValue v)
+        {
+            return new IntersectBookmark(this, cx, p, v);
         }
         internal static IntersectBookmark New(Context _cx, MergeRowSet r)
         {

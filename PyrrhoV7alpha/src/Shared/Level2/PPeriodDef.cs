@@ -1,17 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Pyrrho.Level4;
-using Pyrrho.Common;
+﻿using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -150,11 +148,11 @@ namespace Pyrrho.Level2
             var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
             var tb = (Table)cx.db.objects[tabledefpos];
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
-            var oc = new ObInfo(ppos, periodname, Domain.Period, priv);
-            var oi = (ObInfo)ro.obinfos[tabledefpos];
-            var se = new ObInfo(ppos,periodname,Domain.Period);
-            ro = ro + oc + (oi + se);
-            cx.db = cx.db + (ro, p) + (pd, p);
+            var oc = new ObInfo(ppos, periodname, Domain.Period)+(ObInfo.Privilege, priv);
+            var oi = (ObInfo)ro.infos[tabledefpos];
+            ro = ro + oc + (oi + (ppos,oc.domain));
+            cx.db += (ro, p);
+            cx.Install(pd, p);
         }
     }
 }

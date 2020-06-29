@@ -7,10 +7,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -52,26 +54,27 @@ namespace Pyrrho.Level3
         internal const long
             Abbreviation = -70, // string (D)
             Charset = -71, // Pyrrho.Common.CharSet (C E)
-            Constraints = -72,  // BTree<long,Check> 
+            Constraints = -72,  // BTree<long,bool> DBObjects 
             Culture = -73, // System.Globalization.CultureInfo (C E)
             Default = -74, // TypedValue (D C)
             DefaultString = -75, // string
             Descending = -76, // Sqlx
-            Element = -77, // DBObject
+            Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Iri = -79, // string
+            Kind = -80, // Sqlx
             NotNull = -81, // bool
             NullsFirst = -82, // bool (C)
             OrderCategory = -83, // OrderCategory
-            OrderFunc = -84, // Procedure (D)
+            OrderFunc = -84, // long DBObjects
             Precision = -85, // int (D)
             Provenance = -86, // string (D)
-            Representation = -87, // BList<(long,Domain)>
+            Representation = -87, // BTree<long,Domain> DBObjects,Domains
             Scale = -88, // int (D)
             Start = -89, // Sqlx (D)
-            Structure = -391, // long
-            Under = -90, // Domain (D)
-            UnionOf = -91; // BList<Domain>
+            Structure = -391, // BList<long> DBObjects
+            Under = -90, // long Domains
+            UnionOf = -91; // BList<long> Domains
         internal static void StandardTypes()
         {
             Null = new StandardDataType(Sqlx.Null);
@@ -136,9 +139,8 @@ namespace Pyrrho.Level3
             RdfDate = new Domain(Date, IriRef.DATE);
             RdfDateTime = new Domain(Timestamp, IriRef.DATETIME);
         }
-        public override Sqlx kind => (Sqlx)(mem[Kind]??Sqlx.NO);
-        internal override Domain domain => this;
-        public Domain super => (Domain)mem[Under];
+        public Sqlx kind => (Sqlx)(mem[Kind]??Sqlx.NO);
+        public long super => (long)(mem[Under]??-1L);
         public int prec => (int)(mem[Precision]??0);
         public int scale => (int)(mem[Scale]??0);
         public Sqlx start => (Sqlx)(mem[Start] ?? Sqlx.NULL);
@@ -148,20 +150,21 @@ namespace Pyrrho.Level3
         public Sqlx nulls => (Sqlx)(mem[NullsFirst] ?? Sqlx.NULL);
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
-        public DBObject elType => (DBObject)(mem[Element] ?? Null);
+        public Domain elType => (Domain)mem[Element];
         public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
         public string defaultString => (string)mem[DefaultString]??"";
         public string abbrev => (string)mem[Abbreviation]??"";
-        public BTree<long, Check> constraints => (BTree<long, Check>)mem[Constraints];
+        public BTree<long, bool> constraints => (BTree<long, bool>)mem[Constraints]??BTree<long,bool>.Empty;
         public string iri => (string)mem[Iri];
         public string provenance => (string)mem[Provenance];
-        public BList<(long,Domain)> representation => 
-            (BList<(long,Domain)>)mem[Representation] ?? BList<(long,Domain)>.Empty;
-        public long structure => (long)(mem[Structure] ?? -1L);
-        public Procedure orderFunc => (Procedure)mem[OrderFunc];
+        public BTree<long,Domain> representation => 
+            (BTree<long,Domain>)mem[Representation] ?? BTree<long,Domain>.Empty;
+        public BList<long> structure => (BList<long>)mem[Structure] ?? BList<long>.Empty;
+        public long orderFunc => (long)(mem[OrderFunc]??-1L);
         public OrderCategory orderflags => (OrderCategory)(mem[OrderCategory]??Common.OrderCategory.None);
         public BList<Domain> unionOf => (BList<Domain>)mem[UnionOf] ?? BList<Domain>.Empty;
         public int Length => (int)representation.Count;
+        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The first three constructors are used by subclasses
         /// </summary>
@@ -171,10 +174,7 @@ namespace Pyrrho.Level3
         /// <param name="u">Other properties</param>
         protected Domain(Sqlx t,long dp, BTree<long, object> u) 
             : base(dp, u+(Kind,t))
-        {
- //           if (dp == -1)
- //               Database._system += (Database._system.schemaRole, this);
-        }
+        { }
         protected Domain(Sqlx t, string nm, long pp, long dp, long dr, BTree<long, object> u)
             : base(nm, pp, dp, dr, u + (Kind,t))
         {
@@ -186,6 +186,12 @@ namespace Pyrrho.Level3
         protected Domain(Domain t, string iri)
             : this(t.kind, iri, -1, --_uid, 0, t.mem+(Iri,iri))
         { }
+        public Domain(long dp, Domain dt, BList<SqlValue> vs)
+            : this(dp, dt, _Mem(vs)) 
+        { }
+        public Domain(long dp, Domain dt, BTree<long, Domain> rp)
+            : base(dp, dt.mem + (Representation, rp)) 
+        { }
         // Give a standard type a non-predefined defpos because of potential modifications from parser
         public Domain(long lp, Domain d) : base(lp, d.mem) { }
         // A union of standard types
@@ -196,7 +202,7 @@ namespace Pyrrho.Level3
         }
         // A simple standard type
         public Domain(long dp, Sqlx t, BTree<long,object> u)
-        : base(-1, dp, -1, u + (Kind, t))
+        : base(-1, dp, -1, u + (Kind, t) + (Descending,Sqlx.ASC))
         {
             Database._system += (this, 0);
         }
@@ -207,8 +213,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t"></param>
         /// <param name="d"></param>
-        public Domain(long lp, Sqlx t, DBObject d)
-            : this(lp, t, new BTree<long, object>(Element, d))
+        public Domain(long lp, Sqlx t, Domain et)
+            : this(lp, t, new BTree<long, object>(Element, et))
         { }
         /// <summary>
         /// Constructor: a newly defined Domain
@@ -217,6 +223,13 @@ namespace Pyrrho.Level3
         public Domain(PDomain p,Database db,BTree<long,object> m=null) 
             : base(p.ppos, p.ppos, db.role.defpos, _Dom(db,p))
         { }
+        static BTree<long,Domain> _Mem(BList<SqlValue> vs)
+        {
+            var r = BTree<long, Domain>.Empty;
+            for (var b = vs.First(); b != null; b = b.Next())
+                r += (b.value().defpos, b.value().domain);
+            return r;
+        }
         static BTree<long,object> _Dom(Database db,PDomain p)
         {
             var ds = BTree<long, bool>.Empty;
@@ -229,8 +242,7 @@ namespace Pyrrho.Level3
                 r += (Precision, p.prec);
             if (p.scale != 0)
                 r += (Scale, p.scale);
-            if (p.AscDesc != Sqlx.NULL)
-                r += (Descending, p.AscDesc);
+            r += (Descending, p.AscDesc);
             if (p.Nulls != Sqlx.NULL)
                 r += (NullsFirst, (p.Nulls==Sqlx.NULLS)?Sqlx.FIRST:Sqlx.NULL);
             if (p.start != Sqlx.NULL)
@@ -250,12 +262,13 @@ namespace Pyrrho.Level3
             {
                 ds += (p.structdefpos, true);
                 r += (Structure, p.structdefpos);
-                var cs = BTree<long, Domain>.Empty;
-                var oi = (ObInfo)db.role.obinfos[p.structdefpos];
-                for (var b = oi.columns.First();b!=null;b=b.Next())
+                var cs = BTree<long,Domain>.Empty;
+                var oi = (ObInfo)db.role.infos[p.structdefpos];
+                for (var b = oi.columns.First(); b != null; b = b.Next())
                 {
-                    var c = b.value();
-                    cs += (c.defpos, c.domain);
+                    var cp = b.value();
+                    var ci = (ObInfo)db.role.infos[cp];
+                    cs += (cp,ci.domain);
                 }
                 r += (Representation, cs);
             }
@@ -270,16 +283,30 @@ namespace Pyrrho.Level3
         {
             return (Domain)d.New(d.mem + x);
         }
-        public static Domain operator+(Domain d,(int,(long,Domain))x)
+        public static Domain operator +(Domain d, (long, Domain) x)
         {
-            return d + (Representation, d.representation + x);
+            return (Domain)d.New(d.mem + (Representation,d.representation+x));
+        }
+        public static Domain operator+(Domain d,BTree<long,long>cm)
+        {
+            var rs = d.representation;
+            for (var b = rs.First(); b != null; b = b.Next())
+            {
+                var cp = b.key();
+                if (cm.Contains(cp))
+                {
+                    var np = cm[cp];
+                    rs = rs - cp + (np, b.value());
+                }
+            }
+            return d + (Representation, rs);
         }
         public static Domain operator-(Domain d,long x)
         {
-            var rp = BList<(long, Domain)>.Empty;
+            var rp = BTree<long, Domain>.Empty;
             for (var b=d.representation.First();b!=null;b=b.Next())
-                if (b.value().Item1 != x)
-                    rp += b.value();
+                if (b.key() != x)
+                    rp += (b.key(),b.value());
             return (Domain)d.New(d.mem + (Representation, rp));
         }
         public static Domain operator+(Domain d,(Sqlx,Sqlx)o)
@@ -290,13 +317,14 @@ namespace Pyrrho.Level3
                 d += (NullsFirst, o.Item2);
             return d;
         }
+        public Domain this[long p] => representation[p];
         internal override DBObject Add(Check ck, Database db)
         {
-            return new Domain(kind,defpos,mem+(Constraints,constraints+(ck.defpos,ck)));
+            return new Domain(kind,defpos,mem+(Constraints,constraints+(ck.defpos,true)));
         }
         internal override DBObject AddProperty(Check ck, Database db)
         {
-            return new Domain(kind,defpos,mem+(Constraints,constraints+(ck.defpos,ck)));
+            return new Domain(kind,defpos,mem+(Constraints,constraints+(ck.defpos,true)));
         }
         internal override Database DropCheck(long ck, Database nd, long p)
         {
@@ -316,13 +344,21 @@ namespace Pyrrho.Level3
             { sb.Append(" CharSet="); sb.Append(charSet); }
             if (mem.Contains(Culture) && culture != CultureInfo.InvariantCulture)
             { sb.Append(" Culture="); sb.Append(culture.Name); }
-            if (defaultValue!=TNull.Value)
+            if (defaultValue!=null && defaultValue!=TNull.Value)
             { sb.Append(" Default="); sb.Append(defaultValue); }
             if (mem.Contains(Description)) { sb.Append(' '); sb.Append(desc); }
-            if (mem.Contains(Element) && elType!=Null)
+            if (mem.Contains(Element))
             { sb.Append(" elType="); sb.Append(elType); }
             if (mem.Contains(Structure))
-            { sb.Append(" structure="); sb.Append(Uid(structure)); }
+            { 
+                sb.Append(" structure=(");
+                var cm = "";
+                for (var b=structure.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
+                }
+                sb.Append(")");
+            }
             if (mem.Contains(End)) { sb.Append(" End="); sb.Append(end); }
             // if (mem.Contains(Names)) { sb.Append(' '); sb.Append(names); } done in Columns
             if (mem.Contains(OrderCategory) && orderflags!=Common.OrderCategory.None)
@@ -330,12 +366,21 @@ namespace Pyrrho.Level3
             if (mem.Contains(OrderFunc)) { sb.Append(" OrderFunc="); sb.Append(orderFunc); }
             if (mem.Contains(Precision)) { sb.Append(" Prec="); sb.Append(prec); }
             if (mem.Contains(Provenance)) { sb.Append(" Provenance="); sb.Append(provenance); }
-            if (mem.Contains(Representation)) { sb.Append(" Representation="); sb.Append(representation); }
+            if (mem.Contains(Representation)) {
+                var cm = "(";
+                for (var b = representation.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append("[" + Uid(b.key()) + "," + b.value() + "]");
+                }
+                if (cm == ",") sb.Append(") ");
+            }
             if (mem.Contains(Scale) && scale!=0) { sb.Append(" Scale="); sb.Append(scale); }
             if (mem.Contains(Sensitive)) sb.Append(" sensitive");
             if (mem.Contains(Start)) { sb.Append(" Start="); sb.Append(start); }
             if (mem.Contains(Under)) { sb.Append(" Under="); sb.Append(super); }
-            if (mem.Contains(NullsFirst)) sb.Append(" "+nulls);
+            if (AscDesc==Sqlx.DESC) sb.Append(" DESC");
+            if (nulls!=Sqlx.NULL) sb.Append(" "+nulls);
             return sb.ToString();
         }
 
@@ -372,8 +417,8 @@ namespace Pyrrho.Level3
         internal static Domain Create(Context cx, Domain tp)
         {
             if (cx.db.types.Contains(tp))
-                tp = cx.db.types[tp];
-            else if (cx.db is Transaction tr)
+                return cx.db.types[tp];
+            if (cx.db is Transaction tr)
             {
                 var pd = new PDomain("", tp, tr.nextPos, cx);
                 cx.Add(pd);
@@ -477,7 +522,7 @@ namespace Pyrrho.Level3
                 case Sqlx.ARRAY:
                     {
                         var dp = rdr.GetLong();
-                        var el = (Domain)rdr.role.obinfos[dp];
+                        var el = (Domain)rdr.role.infos[dp];
                         var a = new TArray(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
@@ -489,7 +534,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.MULTISET:
                     {
-                        var el = (Domain)rdr.role.obinfos[rdr.GetLong()];
+                        var el = (Domain)rdr.role.infos[rdr.GetLong()];
                         var m = new TMultiset(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
@@ -504,35 +549,30 @@ namespace Pyrrho.Level3
                 case Sqlx.TABLE:
                     {
                         var dp = rdr.GetLong();
-                        var oi = (ObInfo)rdr.role.obinfos[dp];
-                        Domain dt = (Domain)rdr.context.db.objects[oi.defpos];
+                        var oi = (ObInfo)rdr.role.infos[dp];
                         var vs = BTree<long,TypedValue>.Empty;
-                        var si = BList<ObInfo>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0; j<n; j++)
                         {
                             var c = rdr.GetString();
-                            var i = oi.map[c].Value;
-                            var tc = oi.columns[i];
+                            var tc = oi.ColFor(rdr.context,c);
                             vs += (tc.defpos,tc.domain.Get(rdr));
                         }
-                        return new TRow(dt, vs);
+                        return new TRow(oi, vs);
                     }
                 case Sqlx.TYPE:
                     {
                         var dp = rdr.GetLong();
-                        var oi = (ObInfo)rdr.role.obinfos[dp];
-                        var dt = (Domain)rdr.context.db.objects[dp];
+                        var oi = (ObInfo)rdr.role.infos[dp];
                         var r = BTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0;j<n;j++)
                         {
                             var c = rdr.GetString();
-                            var i = oi.map[c].Value;
-                            var ci = oi.columns[i];
+                            var ci = oi.ColFor(rdr.context, c);
                             r += (ci.defpos,ci.domain.Get(rdr));
                         }
-                        return new TRow(dt,r);
+                        return new TRow(oi,r);
                     }
             }
             throw new DBException("3D000", rdr.context.db.name).ISO();
@@ -544,24 +584,23 @@ namespace Pyrrho.Level3
                 return null;
             if (b == DataType.DomainRef)
                 return (Domain)rdr.context.db.objects[rdr.GetLong()];
-            if (kind == Sqlx.CONTENT)
-                switch (b)
-                {
-                    case DataType.Null: return Null;
-                    case DataType.TimeStamp: return Timestamp;
-                    case DataType.Interval: return Interval;
-                    case DataType.Integer: return Int;
-                    case DataType.Numeric: return Numeric;
-                    case DataType.String: return Char;
-                    case DataType.Date: return Date;
-                    case DataType.TimeSpan: return Timespan;
-                    case DataType.Boolean: return Bool;
-                    case DataType.Blob: return Blob;
-                    case DataType.Row: return Row;
-                    case DataType.Multiset: return Multiset;
-                    case DataType.Array: return Array;
-                    case DataType.Password: return Password;
-                }
+            switch (b)
+            {
+                case DataType.Null: return Null;
+                case DataType.TimeStamp: return Timestamp;
+                case DataType.Interval: return Interval;
+                case DataType.Integer: return Int;
+                case DataType.Numeric: return Numeric;
+                case DataType.String: return Char;
+                case DataType.Date: return Date;
+                case DataType.TimeSpan: return Timespan;
+                case DataType.Boolean: return Bool;
+                case DataType.Blob: return Blob;
+                case DataType.Row: return Row;
+                case DataType.Multiset: return Multiset;
+                case DataType.Array: return Array;
+                case DataType.Password: return Password;
+            }
             return this;
         }
         public static Domain For(Sqlx dt)
@@ -581,6 +620,8 @@ namespace Pyrrho.Level3
                 case Sqlx.MULTISET: return Multiset;
                 case Sqlx.ARRAY: return Array;
                 case Sqlx.PASSWORD: return Password;
+                case Sqlx.TABLE: return TableType;
+                case Sqlx.TYPE: return TypeSpec;
             }
             return Null;
         }
@@ -591,14 +632,16 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dt">The target type to check</param>
         /// <returns>true if this is a strong subtype of dt</returns>
-        public bool EqualOrStrongSubtypeOf(Domain dt)
+        public bool EqualOrStrongSubtypeOf(Context cx,Domain dt)
         {
             if (dt.defpos == defpos)
                 return true;
+            var et = elType;
+            var de = dt.elType;
             if (kind == Sqlx.SENSITIVE || dt.kind == Sqlx.SENSITIVE)
             {
                 if (kind == Sqlx.SENSITIVE && dt.kind == Sqlx.SENSITIVE)
-                    return elType.domain.EqualOrStrongSubtypeOf(dt.elType.domain);
+                    return et.EqualOrStrongSubtypeOf(cx,de);
                 return false;
             }
             if (dt == null)
@@ -610,9 +653,9 @@ namespace Pyrrho.Level3
             if (ki == Sqlx.ONLY)
                 return super.Equals(dt);
             if ((ki != Sqlx.ROW && ki != dk) || (ki == Sqlx.ROW && dk != Sqlx.ROW) ||
-                (elType == null) != (dt.elType == null))
+                (et == null) != (de == null))
                 return false;
-            if (elType != null && !elType.domain.EqualOrStrongSubtypeOf(dt.elType.domain))
+            if (et != null && !et.EqualOrStrongSubtypeOf(cx,de))
                 return false;
             if (ki == Sqlx.UNION && dk == Sqlx.UNION)
             {
@@ -623,9 +666,9 @@ namespace Pyrrho.Level3
             }
             if (dk == Sqlx.UNION)
                 for (var b = dt.mem.First(); b != null; b = b.Next())
-                    if (b.value() is Domain dm && EqualOrStrongSubtypeOf(dm))
+                    if (b.value() is Domain dm && EqualOrStrongSubtypeOf(cx,dm))
                         return true;
-            for (Domain s = this; s != null; s = s.super)
+            for (Domain s = this; s != null; s = (Domain)cx.obs[s.super])
                 if (s.Equals(dt))
                     return true;
             return (dt.prec == 0 || prec == dt.prec) && (dt.scale == 0 || scale == dt.scale) &&
@@ -638,7 +681,7 @@ namespace Pyrrho.Level3
         /// Output the actual data type details if not the same as nominal data type
         /// </summary>
         /// <param name="wr"></param>
-        public void PutDataType(Domain nt, WriterBase wr)
+        public void PutDataType(Domain nt, Writer wr)
         {
             if (nt.kind == Sqlx.ONLY || defpos ==-1)
             {
@@ -646,7 +689,7 @@ namespace Pyrrho.Level3
                 nt.PutDataType(nt, wr);
                 return;
             }
-            if (EqualOrStrongSubtypeOf(nt) && defpos>0 && CompareTo(nt)!=0)
+            if (EqualOrStrongSubtypeOf(wr.cx,nt) && defpos>0 && CompareTo(nt)!=0)
             {
                 wr.WriteByte((byte)DataType.DomainRef);
                 wr.PutLong(defpos);
@@ -802,13 +845,13 @@ namespace Pyrrho.Level3
                         var rw = tv as TRow;
                         wr.PutLong(defpos);
                         var st = rw.dataType;
-                        var oi = (ObInfo)wr.cx.db.role.obinfos[st.defpos];
-                        wr.PutInt(oi.Length);
-                        for (var b = oi.columns.First(); b != null; b = b.Next())
+                        wr.PutInt(rw.columns.Length);
+                        for (var b = rw.columns.First(); b != null; b = b.Next())
                         {
-                            var tc = b.value();
-                            wr.PutString(tc.name);
-                            tc.domain.Put(rw[b.key()], wr);
+                            var p = b.value();
+                            var n = st.NameFor(wr.cx,p,b.key());
+                            wr.PutString(n);
+                            st.representation[p].Put(rw[p], wr);
                         }
                         break;
                     }
@@ -844,27 +887,12 @@ namespace Pyrrho.Level3
                 return c;
             var b = mem.First();
             var tb = that.mem.First();
-            var ck = 0;
-            for (; c == 0 && b != null && tb != null; )
+            for (; c == 0 && b != null && tb != null;)
             {
                 var k = b.key();
                 c = k.CompareTo(tb.key());
-                if (c<0)
-                {
-                    if (ck==0)
-                        ck = 1;
-                    b = b.Next();
-                    c = 0;
+                if (c != 0)
                     continue;
-                } 
-                if (c>0)
-                {
-                    if (ck == 0)
-                        ck = -1;
-                    tb = tb.Next();
-                    c = 0;
-                    continue;
-                }
                 if (k!=LastChange && k!=Definer)
                 {
                     var v = b.value();
@@ -875,8 +903,6 @@ namespace Pyrrho.Level3
                 b = b.Next();
                 tb = tb.Next();
             }
-            if (ck != 0)
-                return ck;
             if (b != null)
                 return -1;
             if (tb != null)
@@ -901,28 +927,30 @@ namespace Pyrrho.Level3
             if (bn)
                 return (nulls == Sqlx.FIRST) ? -1 : 1;
             int c;
+            var cx = compareContext ?? Context._system;
             if (kind == Sqlx.SENSITIVE)
             {
                 a = (a is TSensitive sa) ? sa.value : a;
                 b = (b is TSensitive sb) ? sb.value : b;
-                c = elType.domain.Compare(a, b);
+                c = elType.Compare(a, b);
                 goto ret;
             }
             if (orderflags != Common.OrderCategory.None)
             {
-                var sa = new SqlLiteral(-1,a);
-                var sb = new SqlLiteral(-1,b);
-                var cx = new Context(Database._system);
-                    if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
+                var sa = new SqlLiteral(cx.nextHeap++,cx,a);
+                cx.Add(sa);
+                var sb = new SqlLiteral(cx.nextHeap++,cx,b);
+                cx.Add(sb);
+                var of = (Procedure)cx.obs[orderFunc];
+                if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
                 {
-
-                    orderFunc.Exec(cx, new BList<SqlValue>(sa) + sb);
+                    of.Exec(cx, new BList<long>(sa.defpos) + sb.defpos);
                     c = cx.val.ToInt().Value;
                     goto ret;
                 }
-                orderFunc.Exec(cx,new BList<SqlValue>(sa));
+                of.Exec(cx,new BList<long>(sa.defpos));
                 a = cx.val;
-                orderFunc.Exec(cx,new BList<SqlValue>(sb));
+                of.Exec(cx,new BList<long>(sb.defpos));
                 b = cx.val;
                 c = a.dataType.Compare(a, b);
                 goto ret;
@@ -999,11 +1027,12 @@ namespace Pyrrho.Level3
                     {
                         var x = a as TArray;
                         var y = b as TArray;
+                        var xe = x.dataType.elType; 
                         if (x == null || y == null)
                             throw new DBException("22004").ISO();
                         if (x.dataType.elType != y.dataType.elType)
                             throw new DBException("22202").Mix()
-                                .AddType(x.dataType.elType.domain).AddValue(y.dataType);
+                                .AddType(xe).AddValue(y.dataType);
                         int n = x.Length;
                         int m = y.Length;
                         if (n != m)
@@ -1014,7 +1043,7 @@ namespace Pyrrho.Level3
                         c = 0;
                         for (int j = 0; j < n; j++)
                         {
-                            c = x.dataType.elType.domain.Compare(x[j], y[j]);
+                            c = xe.Compare(x[j], y[j]);
                             if (c != 0)
                                 break;
                         }
@@ -1024,12 +1053,14 @@ namespace Pyrrho.Level3
                     {
                         var x = a as TMultiset;
                         var y = b as TMultiset;
+                        var xe = x.dataType.elType;
+                        var ye = y.dataType.elType;
                         if (x == null || y == null)
                             throw new DBException("22004").ISO();
                         if (x.dataType.elType != y.dataType.elType)
                             throw new DBException("22202").Mix()
-                                .AddType(x.dataType.elType.domain)
-                                .AddValue(y.dataType.elType.domain);
+                                .AddType(xe)
+                                .AddValue(ye);
                         var e = x.tree.First();
                         var f = y.tree.First();
                         for (; ; )
@@ -1040,7 +1071,7 @@ namespace Pyrrho.Level3
                                 f = f.Next();
                             if (e == null || f == null)
                                 break;
-                            c = elType.domain.Compare(e.key(), f.key());
+                            c = xe.Compare(e.key(), f.key());
                             if (c != 0)
                                 goto ret;
                             c = e.value().Value.CompareTo(f.value().Value);
@@ -1072,25 +1103,26 @@ namespace Pyrrho.Level3
                             throw new DBException("22202").Mix()
                                 .AddType(ra.dataType).AddValue(rb.dataType);
                         c = 0;
-                        for (var cb = ra.dataType.representation.First(); c == 0 && cb != null; 
+                        for (var cb = ra.dataType.representation.First(); c == 0 && cb != null;
                             cb = cb.Next())
-                            c = cb.value().Item2.Compare(ra[cb.key()], rb[cb.key()]);
+                            c = cb.value().Compare(ra.values[cb.key()], rb[cb.key()]);
                         break;
                     }
                 case Sqlx.PERIOD:
                     {
                         var pa = a.Val() as Period;
                         var pb = b.Val() as Period;
-                        c = elType.domain.Compare(pa.start, pb.start);
+                        var et = elType;
+                        c = et.Compare(pa.start, pb.start);
                         if (c == 0)
-                            c = elType.domain.Compare(pa.end, pb.end);
+                            c = et.Compare(pa.end, pb.end);
                         break;
                     }
                 case Sqlx.UNION:
                     {
                         for (var bb = mem.First(); bb != null; bb = bb.Next())
                             if (bb.value() is Domain dt)
-                                if (dt.CanTakeValueOf(a.dataType) && dt.CanTakeValueOf(b.dataType))
+                                if (dt.CanTakeValueOf(cx,a.dataType) && dt.CanTakeValueOf(cx,b.dataType))
                                     return dt.Compare(a, b);
                         throw new DBException("22202", a.dataType.ToString(), b.dataType.ToString());
                     }
@@ -1109,9 +1141,13 @@ namespace Pyrrho.Level3
         public TArray Concatenate(TArray a, TArray b)
         {
             var r = new TArray(this);
-            if (a.dataType.elType != elType || a.dataType.elType != b.dataType.elType)
+            var cx = compareContext ?? Context._system;
+            var et = elType;
+            var ae = a.dataType.elType;
+            var be = b.dataType.elType;
+            if (ae != et || ae != be)
                 throw new DBException("22102").Mix()
-                    .AddType(a.dataType.elType.domain).AddValue(b.dataType.elType.domain);
+                    .AddType(ae).AddValue(be);
             int j = 0;
             foreach (var e in a.list)
                 r[j++] = e;
@@ -1124,28 +1160,32 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dt">The other data type</param>
         /// <returns>whether values of the given type can be assigned to a variable of this type</returns>
-        public virtual bool CanTakeValueOf(Domain dt)
+        public virtual bool CanTakeValueOf(Context cx,Domain dt)
         {
             if (lastChange < 0) // a system domain currently being defined? Worry about values later 
                 return true;
             if (dt.kind == Sqlx.SENSITIVE)
             {
                 if (kind == Sqlx.SENSITIVE)
-                    return elType.domain.CanTakeValueOf(dt.elType.domain);
+                    return elType.CanTakeValueOf(cx,dt.elType);
                 return false;
             }
             if (kind == Sqlx.SENSITIVE)
-                return elType.domain.CanTakeValueOf(dt.domain);
+                return elType.CanTakeValueOf(cx,dt);
             if (dt?.kind == Sqlx.ONLY)
-                dt = dt.super;
+                dt = (Domain)cx.db.objects[dt.super];
             if (kind == Sqlx.VALUE || kind == Sqlx.CONTENT)
                 return true;
             if (dt.kind == Sqlx.CONTENT || dt.kind == Sqlx.VALUE)
                 return kind != Sqlx.REAL && kind != Sqlx.INTEGER && kind != Sqlx.NUMERIC;
+            if (kind == Sqlx.ANY)
+                return true;
+            if (Length != 0 || dt.Length != 0)
+                return dt.CompareTo(this)==0;
             if (dt.kind == Sqlx.UNION)
             {
                 for (var b = dt.unionOf.First(); b != null; b = b.Next())
-                    if (b.value() is Domain dm && CanTakeValueOf(dm))
+                    if (CanTakeValueOf(cx,b.value()))
                         return true;
                 return false;
             }
@@ -1173,16 +1213,16 @@ namespace Pyrrho.Level3
             }
         }
 
-        public virtual bool HasValue(TypedValue v)
+        public virtual bool HasValue(Context cx,TypedValue v)
         {
             if (v is TSensitive st)
             {
                 if (kind == Sqlx.SENSITIVE)
-                    return elType.domain.HasValue(st.value);
+                    return elType.HasValue(cx,st.value);
                 return false;
             }
             if (kind == Sqlx.SENSITIVE)
-                return elType.domain.HasValue(v);
+                return elType.HasValue(cx,v);
             var ki = Equivalent(kind);
             if (ki == Sqlx.ONLY || iri != null)
                 return Equals(v.dataType); // must match exactly
@@ -1190,7 +1230,7 @@ namespace Pyrrho.Level3
                 return true;
             if (ki == Sqlx.UNION)
             {
-                for (var d = v.dataType; d != null; d = d.super)
+                for (var d = v.dataType; d != null; d = (Domain)cx.db.objects[d.super])
                     if (mem.Contains(d.defpos))
                         return true;
                 return false;
@@ -1466,7 +1506,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.ARRAY:
                     {
-                        return elType.domain.ParseList(lx);
+                        return elType.ParseList(lx);
                     }
                 case Sqlx.UNION:
                     {
@@ -1537,7 +1577,7 @@ namespace Pyrrho.Level3
         TypedValue ParseList(Scanner lx)
         {
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.domain.ParseList(lx));
+                return new TSensitive(this, elType.ParseList(lx));
             var rv = new TArray(this);
             int j = 0;
             /*            if (lx.mime == "text/xml")
@@ -1912,28 +1952,28 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="v"></param>
         /// <returns></returns>
-        internal override TypedValue Coerce(TypedValue v)
+        internal override TypedValue Coerce(Context cx,TypedValue v)
         {
             if (this == Null || this==Content)
                 return v;
             for (var b = constraints?.First(); b != null; b = b.Next())
-                if (b.value().Eval(null) != TBool.True)
+                if (cx.obs[b.key()].Eval(null) != TBool.True)
                     throw new DBException("22211");
             if (v is TSensitive st)
             {
                 if (kind == Sqlx.SENSITIVE)
-                    return elType.Coerce(st.value);
+                    return elType.Coerce(cx,st.value);
                 throw new DBException("22210");
             }
             if (kind == Sqlx.UNION)
                 for (var b = unionOf.First(); b != null; b = b.Next())
                 {
                     var du = b.value();
-                    if (du.HasValue(v))
+                    if (du.HasValue(cx,v))
                         return v;
                 }
             if (kind == Sqlx.SENSITIVE)
-                return elType.Coerce(v);
+                return elType.Coerce(cx,v);
             if (v == null || v.IsNull)
                 return v;
             if (abbrev != "" && v.dataType.kind == Sqlx.CHAR && kind != Sqlx.CHAR)
@@ -1941,10 +1981,10 @@ namespace Pyrrho.Level3
             if (CompareTo(v.dataType) == 0)
                 return v;
             var vk = Equivalent(v.dataType.kind);
-            if (vk == Sqlx.ROW && v is TRow rw && rw.Length == 1)
+            if ((vk == Sqlx.ROW || vk==Sqlx.TABLE) && v is TRow rw && rw.Length == 1)
             {
                 var b = rw.dataType.representation.First();
-                return b.value().Item2.Coerce(rw[b.key()]);
+                return b.value().Coerce(cx,rw.values[b.key()]);
             }
             if (iri == null || v.dataType.iri == iri)
                 switch (Equivalent(kind))
@@ -2131,8 +2171,8 @@ namespace Pyrrho.Level3
                     case Sqlx.PERIOD:
                         {
                             var pd = v.Val() as Period;
-                            return new TPeriod(this, new Period(elType.Coerce(pd.start), 
-                                elType.Coerce(pd.end)));
+                            return new TPeriod(this, new Period(elType.Coerce(cx,pd.start), 
+                                elType.Coerce(cx,pd.end)));
                         }
                     case Sqlx.DOCUMENT:
                         {
@@ -2170,27 +2210,12 @@ namespace Pyrrho.Level3
                     case Sqlx.NULL:
                         return v;
                     default: // a UNION or a subtype?
-                        for (Domain t = this; t != null; t = t.super)
-                            if (t.HasValue(v))
+                        for (Domain t = this; t != null; t = (Domain)cx.db.objects[t.super])
+                            if (t.HasValue(cx,v))
                                 return v;
                         break;
                 }
             throw new DBException("22005", this, v.ToString()).ISO();
-        }
-        internal override TypedValue Coerce(Cursor rb)
-        {
-            var v = rb;
-            if (rb.Length == 1)
-                return Coerce(v[0]);
-            return v;
-        }
-        internal TypedValue Fix(TypedValue v)
-        {
-            if (v == null)
-                v = defaultValue;
-            else if (this != v.dataType)
-                v = Coerce(v);
-            return v;
         }
         /// <summary>
         /// The System.Type corresponding to a SqlDataType
@@ -2201,7 +2226,11 @@ namespace Pyrrho.Level3
             {
                 switch (Equivalent(kind))
                 {
-                    case Sqlx.ONLY: return super.SystemType;
+                    case Sqlx.ONLY:
+                        {
+                            var cx = compareContext ?? Context._system;
+                            return ((Domain)cx.db.objects[super])?.SystemType;
+                        }
                     case Sqlx.NULL: return typeof(DBNull);
                     case Sqlx.INTEGER: return typeof(long);
                     case Sqlx.NUMERIC: return typeof(Decimal);
@@ -2267,7 +2296,7 @@ namespace Pyrrho.Level3
         public bool Check(string s)
         {
             if (kind == Sqlx.SENSITIVE)
-                return elType.domain.Check(s);
+                return elType.Check(s);
             if (charSet == CharSet.UCS)
                 return true;
             try
@@ -2333,18 +2362,18 @@ namespace Pyrrho.Level3
         /// <param name="op">The binary operation</param>
         /// <param name="b">The second object</param>
         /// <returns>The evaluated object</returns>
-        public TypedValue Eval(long lp,TypedValue a, Sqlx op, TypedValue b) // op is + - * / so a and b should be compatible arithmetic types
+        public TypedValue Eval(long lp,Context cx,TypedValue a, Sqlx op, TypedValue b) // op is + - * / so a and b should be compatible arithmetic types
         {
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.domain.Eval(lp,a, op, b));
+                return new TSensitive(this, elType.Eval(lp,cx,a, op, b));
             if (op == Sqlx.NO)
-                return Coerce(a);
+                return Coerce(cx,a);
             if (a == null || a.IsNull || b == null || b.IsNull)
                 return defaultValue;
             if (a is TUnion)
-                a = ((TUnion)a).LimitToValue(lp); // a coercion possibly
+                a = ((TUnion)a).LimitToValue(cx,lp); // a coercion possibly
             if (b is TUnion)
-                b = ((TUnion)b).LimitToValue(lp);
+                b = ((TUnion)b).LimitToValue(cx,lp);
             var knd = Equivalent(kind);
             var ak = Equivalent(a.dataType.kind);
             var bk = Equivalent(b.dataType.kind);
@@ -2363,7 +2392,7 @@ namespace Pyrrho.Level3
                     if (ak == Sqlx.NUMERIC)
                         a = new TInteger(a.ToInteger());
                     if (bk == Sqlx.INTERVAL && kind == Sqlx.TIMES)
-                        return Eval(lp,b, op, a);
+                        return Eval(lp,cx,b, op, a);
                     if (bk == Sqlx.NUMERIC)
                         b = new TInteger(b.ToInteger());
                     if (ak == Sqlx.INTEGER)
@@ -2413,15 +2442,15 @@ namespace Pyrrho.Level3
                 case Sqlx.REAL:
                     return new TReal(this, DoubleOps(a.ToDouble(), op, b.ToDouble()));
                 case Sqlx.NUMERIC:
-                    if (a.dataType.Constrain(lp,Int) != null)
+                    if (a.dataType.Constrain(cx,lp,Int) != null)
                         a = new TNumeric(new Numeric(a.ToInteger(), 0));
-                    if (b.dataType.Constrain(lp,Int) != null)
+                    if (b.dataType.Constrain(cx,lp,Int) != null)
                         b = new TNumeric(new Numeric(b.ToInteger(), 0));
                     if (a is TNumeric && b is TNumeric)
                         return new TNumeric(DecimalOps(((TNumeric)a).value, op, ((TNumeric)b).value));
                     var ca = a.ToDouble();
                     var cb = b.ToDouble();
-                    return Coerce(new TReal(this, DoubleOps(ca, op, cb)));
+                    return Coerce(cx,new TReal(this, DoubleOps(ca, op, cb)));
                 case Sqlx.TIME:
                 case Sqlx.TIMESTAMP:
                 case Sqlx.DATE:
@@ -2459,7 +2488,7 @@ namespace Pyrrho.Level3
                         switch (bk)
                         {
                             case Sqlx.DATE:
-                                return Eval(lp,b, op, a);
+                                return Eval(lp,cx,b, op, a);
                             case Sqlx.INTEGER:
                                 var bi = b.ToInt().Value;
                                 if (ia.yearmonth)
@@ -2505,7 +2534,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42161", "date operation");
                     }
                 case Sqlx.RDFTYPE:
-                    return Coerce(elType.domain.Eval(lp,a, op, b));
+                    return Coerce(cx,elType.Eval(lp,cx,a, op, b));
             }
             throw new DBException("22005", kind, a).ISO();
         }
@@ -2634,7 +2663,7 @@ namespace Pyrrho.Level3
                 case Sqlx.ROUTINE: return 13;
                 case Sqlx.NUMERIC: return 19; // Decimal subtype added for Pyrrho
                 case Sqlx.INTEGER: return 16;
-                case Sqlx.SENSITIVE: return elType.domain.BsonType();
+                case Sqlx.SENSITIVE: return elType.BsonType();
             }
         }
         /// <summary>
@@ -2644,26 +2673,28 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dt"></param>
         /// <returns></returns>
-        internal Domain Constrain(long lp,Domain dt)
+        internal Domain Constrain(Context cx,long lp,Domain dt)
         {
+            var et = elType;
+            var ce = dt.elType;
             if (kind == Sqlx.SENSITIVE)
             {
                 if (dt.kind == Sqlx.SENSITIVE)
                 {
-                    var ts = elType.domain.Constrain(lp,dt.elType.domain);
+                    var ts = et.Constrain(cx,lp,ce);
                     if (ts == null)
                         return null;
-                    return ts.Equals(elType) ? this : ts.Equals(dt.elType) ? dt :
+                    return ts.Equals(et) ? this : ts.Equals(ce) ? dt :
                         new Domain(lp,Sqlx.SENSITIVE, ts);
                 }
-                var tt = elType.domain.Constrain(lp,dt);
+                var tt = et.Constrain(cx,lp,dt);
                 if (tt == null)
                     return null;
-                return tt.Equals(elType) ? this : new Domain(lp,Sqlx.SENSITIVE, tt);
+                return tt.Equals(et) ? this : new Domain(lp,Sqlx.SENSITIVE, tt);
             }
             if (dt.kind == Sqlx.SENSITIVE)
             {
-                var tu = Constrain(lp,dt.elType.domain);
+                var tu = Constrain(cx,lp,ce);
                 if (tu == null)
                     return null;
                 return tu.Equals(dt.elType) ? dt : new Domain(lp,Sqlx.SENSITIVE, tu);
@@ -2673,7 +2704,7 @@ namespace Pyrrho.Level3
             var ki = Equivalent(kind);
             var dk = Equivalent(dt.kind);
             var r = this;
-            if ((ki == Sqlx.ARRAY || ki == Sqlx.MULTISET) && ki == dk && dt.elType == null)
+            if ((ki == Sqlx.ARRAY || ki == Sqlx.MULTISET) && ki == dk && ce == null)
                 return this;
             if (ki == Sqlx.CONTENT || ki == Sqlx.VALUE)
                 return dt;
@@ -2702,20 +2733,20 @@ namespace Pyrrho.Level3
                 return this;
             if (ki == dk && (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET))
             {
-                if (elType == null)
+                if (et == null)
                     return dt;
-                var ect = elType.domain.Constrain(lp,dt.elType.domain);
-                if (ect == elType)
+                var ect = et.Constrain(cx,lp,ce);
+                if (ect == et)
                     return this;
                 return dt;
             }
             if (ki == Sqlx.UNION && dk != Sqlx.UNION)
                 for (var b = mem.First(); b != null; b = b.Next())
-                    if (b.value() is Domain dm && dm.Constrain(lp,dt) != null)
+                    if (b.value() is Domain dm && dm.Constrain(cx,lp,dt) != null)
                         return dm;
             if (ki != Sqlx.UNION && dk == Sqlx.UNION)
                 for (var b = dt.mem.First(); b != null; b = b.Next())
-                    if (b.value() is Domain dm && dm.Constrain(lp,this) != null)
+                    if (b.value() is Domain dm && dm.Constrain(cx,lp,this) != null)
                         return this;
             if (ki == Sqlx.UNION && dk == Sqlx.UNION)
             {
@@ -2725,7 +2756,7 @@ namespace Pyrrho.Level3
                         for (var c = dt.mem.First(); c != null; c = c.Next())
                             if (c.value() is Domain dc)
                             {
-                                var u = db.Constrain(lp, dc);
+                                var u = db.Constrain(cx,lp, dc);
                                 if (u != null)
                                     nt += u;
                             }
@@ -2735,14 +2766,14 @@ namespace Pyrrho.Level3
                     return nt.First().value();
                 return new Domain(lp, Sqlx.UNION, nt);
             }
-            else if (elType != null && dt.elType != null)
-                r = new Domain(lp, kind, elType.domain.LimitBy(lp, dt.elType.domain));
+            else if (et != null && ce != null)
+                r = new Domain(lp, kind, et.LimitBy(cx,lp, ce));
             else if (ki == Sqlx.ROW && dt == TableType)
                 return this;
             else if ((ki == Sqlx.ROW || ki == Sqlx.TYPE) && (dk == Sqlx.ROW || dk == Sqlx.TABLE))
                 return dt;
             else if ((ki != Sqlx.ROW && ki != dk) || (ki == Sqlx.ROW && dk != Sqlx.ROW) ||
-                    (elType == null) != (dt.elType == null) || orderFunc != dt.orderFunc || orderflags != dt.orderflags)
+                    (et == null) != (ce == null) || orderFunc != dt.orderFunc || orderflags != dt.orderflags)
                 return null;
             if ((dt.prec != 0 && prec != 0 && prec != dt.prec) || (dt.scale != 0 && scale != 0 && scale != dt.scale) ||
                 (dt.iri != "" && iri != "" && iri != dt.iri) || start != dt.start || end != dt.end ||
@@ -2779,9 +2810,9 @@ namespace Pyrrho.Level3
             }
             return r;
         }
-        internal Domain LimitBy(long lp,Domain dt)
+        internal Domain LimitBy(Context cx,long lp,Domain dt)
         {
-            return Constrain(lp,dt) ?? this;
+            return Constrain(cx,lp,dt) ?? this;
         }
 
         internal override Basis New(BTree<long, object> m)
@@ -2792,44 +2823,132 @@ namespace Pyrrho.Level3
         {
             return new Domain(dp,mem);
         }
-        internal override Basis Relocate(Writer wr)
+        internal override Basis _Relocate(Writer wr)
         {
-            if (defpos < 0)
-                return this;
-            var r = (Domain)base.Relocate(wr);
+            var r = (defpos<0)?this:((Domain)base._Relocate(wr)).Relocate(wr.Fix(defpos));
             var ch = false;
-            var cs = BTree<long, Check>.Empty;
+            var cs = BTree<long, bool>.Empty;
             for (var b=constraints?.First();b!=null;b=b.Next())
             {
-                var ck = (Check)b.value().Relocate(wr);
-                var k = wr.Fix(b.key());
-                ch = ch || (b.value() != ck || k!=b.key());
-                cs += (k, ck);
+                var ck = (Check)wr.Fixed(b.key());
+                ch = ch || b.key() != ck.defpos;
+                cs += (ck.defpos,true);
             }
             if (ch)
                 r += (Constraints, cs);
-            var e = (Domain)elType?.Relocate(wr);
+            var e = (Domain)elType?._Relocate(wr);
             if (e != elType)
                 r += (Element, e);
-            var orf = (Procedure)orderFunc?.Relocate(wr);
-            if (orf != orderFunc)
-                r += (OrderFunc, orf);
+            if (wr.Fixed(orderFunc) is Procedure orf && orf.defpos != orderFunc)
+                    r += (OrderFunc, orf.defpos);
             var rs = BTree<long, Domain>.Empty;
             ch = false;
             for (var b = representation.First(); b != null; b = b.Next())
             {
-                var ro = b.value().Item2;
-                var rr = (Domain)ro.Relocate(wr);
-                if (rr != ro)
+                var rk = b.key();
+                var nk = wr.Fixed(rk);
+                var od = b.value();
+                var rr = (Domain)od._Relocate(wr);
+                if (rr != b.value() || rk!=nk.defpos)
                     ch = true;
-                rs += (b.key(), rr);
+                rs += (nk.defpos, rr);
             }
             if (ch)
                 r += (Representation, rs);
-            var und = (Domain)super?.Relocate(wr);
-            if (und != super)
-                r += (Under, und);
+            if (wr.cx.db.objects[super] is Domain os)
+            {
+                var und = (Domain)os._Relocate(wr);
+                if (und.defpos != super)
+                    r += (Under, und.defpos);
+            }
+            wr.cx.obs += (r.defpos, r);
             return r;
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = ((Domain)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
+            var ch = false;
+            var cs = BTree<long, bool>.Empty;
+            for (var b = constraints?.First(); b != null; b = b.Next())
+            {
+                var ck = (Check)cx.Fixed(b.key());
+                ch = ch || b.key() != ck.defpos;
+                cs += (ck.defpos,true);
+            }
+            if (ch)
+                r += (Constraints, cs);
+            var e = (Domain)elType?._Relocate(cx);
+            if (e != elType)
+                r += (Element, e);
+            if (cx.Fixed(orderFunc) is Procedure orf && orf.defpos != orderFunc)
+                    r += (OrderFunc, orf.defpos);
+            var rs = BTree<long, Domain>.Empty;
+            ch = false;
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var od = b.value();
+                var rk = b.key();
+                var nk = cx.Fixed(rk);
+                var rr = (Domain)od._Relocate(cx);
+                if (rr.defpos != od.defpos || rk != nk.defpos)
+                    ch = true;
+                rs += (nk.defpos, rr);
+            }
+            if (ch)
+                r += (Representation, rs);
+            if (cx.obs[super] is Domain os)
+            {
+                var und = (Domain)os._Relocate(cx);
+                if (und.defpos != super)
+                    r += (Under, und.defpos);
+            }
+            return r;
+        }
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        {
+            // NB We can't use cx.done for Domains (or ObInfos)
+            var r = (Domain)base._Replace(cx, was, now);
+            var ch = false;
+            var cs = BTree<long, bool>.Empty;
+            for (var b = r.constraints?.First(); b != null; b = b.Next())
+            {
+                var ck = (Check)cx._Replace(b.key(), was, now);
+                ch = ch || b.key() != ck.defpos;
+                cs += (ck.defpos, true);
+            }
+            if (ch)
+                r += (Constraints, cs);
+            var e = (Domain)r.elType?._Replace(cx, was, now);
+            if (e != elType)
+                r += (Element, e);
+            if (cx._Replace(orderFunc, was, now) is Procedure orf && orf.defpos != orderFunc)
+                r += (OrderFunc, orf.defpos);
+            var rs = BTree<long, Domain>.Empty;
+            ch = false;
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var od = b.value();
+                var nk = b.key();
+                if (nk == was.defpos)
+                    nk = now.defpos;
+                var rr = (Domain)od._Replace(cx, was, now);
+                if (rr != od || nk != b.key())
+                    ch = true;
+                rs += (nk, rr);
+            }
+            if (ch)
+                r += (Representation, rs);
+            if (((Domain)cx.db.objects[r.super])?._Replace(cx,was, now) is Domain und 
+                && und.defpos != super)
+                r += (Under, und.defpos);
+            // NB We can't use cx.done for Domains (or ObInfos)
+            return r;
+        }
+        public string NameFor(Context cx, long p, int i)
+        {
+            var sv = cx.obs[p];
+            var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
+            return cx.Inf(p)?.name ?? n ?? ("Col"+i);
         }
         internal static TypedValue Now => new TDateTime(Timestamp, DateTime.Now);
         internal static TypedValue MaxDate => new TDateTime(Timestamp, DateTime.MaxValue);
@@ -2838,7 +2957,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="transaction"></param>
         /// <returns>an XML string</returns>
-        internal string Info()
+        internal string XmlInfo()
         {
             StringBuilder sb = new StringBuilder();
             sb.Append("<PyrrhoDBType kind=\"" + kind + "\" ");
@@ -2908,7 +3027,7 @@ namespace Pyrrho.Level3
                         var a = (TArray)ob;
                         //           sb.Append("type=\"array\">");
                         for (int j = 0; j < a.Length; j++)
-                            sb.Append("<item " + elType.domain.Xml(tr,cx, elType.defpos, a[j]) + "</item>");
+                            sb.Append("<item " + elType.Xml(tr,cx, elType.defpos, a[j]) + "</item>");
                         break;
                     }
                 case Sqlx.MULTISET:
@@ -2917,7 +3036,7 @@ namespace Pyrrho.Level3
                         //          sb.Append("type=\"multiset\">");
 
                         for (var e = m.tree.First(); e != null; e = e.Next())
-                            sb.Append("<item " + elType.domain.Xml(tr,cx, elType.defpos, e.key()) + "</item>");
+                            sb.Append("<item " + elType.Xml(tr,cx, elType.defpos, e.key()) + "</item>");
                         break;
                     }
                 case Sqlx.ROW:
@@ -2932,14 +3051,15 @@ namespace Pyrrho.Level3
                         if (ro != null)
                             sb.Append("<" + ro.name);
                         var ss = new string[r.Length];
-                        var oi = (ObInfo)tr.role.obinfos[r.dataType.defpos];
+                        var oi = (ObInfo)tr.role.infos[r.dataType.defpos];
                         var empty = true;
-                        for (int i = 0; i < r.Length; i++)
+                        var i = 0;
+                        for (var b=oi.domain.representation.First();b!=null;b=b.Next(), i++)
                         {
                             var tv = r[i];
                             if (tv == null)
                                 continue;
-                            var kn = oi.columns[i].defpos;
+                            var kn = b.key();
                             var p = tv.dataType;
                             var m = (tr.objects[kn] as DBObject).Meta();
                             if (tv != null && !tv.IsNull && m != null && m.Has(Sqlx.ATTRIBUTE))
@@ -2984,6 +3104,8 @@ namespace Pyrrho.Level3
                 u = BTree<long, object>.Empty;
             if (o != null)
                 u += (Element, o);
+            if (!u.Contains(Descending))
+                u += (Descending, Sqlx.ASC);
             return u;
         }
         public override string ToString()

@@ -7,10 +7,12 @@ using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level2
 {
@@ -85,6 +87,7 @@ namespace Pyrrho.Level2
 			base.Serialise(wr);
             var pp = wr.cx.db.objects[modifydefpos] as Procedure;
             pp += (Procedure.Clause, body);
+            wr.cx.Install(pp,wr.cx.db.loadpos);
         }
         /// <summary>
         /// Desrialise this p[hysical from the buffer
@@ -102,10 +105,10 @@ namespace Pyrrho.Level2
                     var pp = rdr.context.db.objects[modifydefpos] as Procedure;
                     pp += (Procedure.Clause, body);
                     pp = new Parser(rdr.context).ParseProcedureBody(pp.name, pp, new Ident(pp.clause,modifydefpos));
-                    now = pp.body;
+                    now = pp;
                     break;
                 case "Source":
-                    now = new Parser(rdr.context).ParseQueryExpression(body,ObInfo.TableType);
+                    now = new Parser(rdr.context).ParseQueryExpression(-1,body,Domain.TableType.defpos);
                     break;
                 case "Insert": // we ignore all of these (PView1)
                 case "Update":
@@ -145,6 +148,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             ((DBObject)cx.db.objects[modifydefpos]).Modify(cx,now,p);
+            cx.obs += (modifydefpos, (DBObject)cx.db.objects[modifydefpos]);
         }
     }
 }

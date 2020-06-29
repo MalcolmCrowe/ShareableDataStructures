@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -7,10 +6,12 @@ using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level4
 {
@@ -39,11 +40,11 @@ namespace Pyrrho.Level4
         /// the number of parameters of the method
         /// </summary>
         public int arity;
-        public BList<ProcParameter> ins;
+        public BList<ParamInfo> ins; 
         /// <summary>
         /// The return type
         /// </summary>
-        public ObInfo retType;
+        public Domain retType;
         /// <summary>
         /// a string version of the signature
         /// </summary>
@@ -139,57 +140,6 @@ namespace Pyrrho.Level4
         public Sqlx priv;
         public string[] names;
         internal PrivNames(Sqlx p) { priv = p; names = new string[0]; }
-    }
-
-    internal class Correlation
-    {
-        public Ident tablealias = null;
-        public BList<Ident> cols = BList<Ident>.Empty;
-        internal Correlation() { }
-        internal Correlation(Ident ta) { tablealias = ta; }
-        internal Correlation(Ident[] cs)
-        {
-            var c = BList<Ident>.Empty;
-            for (var i = 0; i < cs.Length; i++)
-                c += cs[i];
-            cols = c;
-        }
-        /// <summary>
-        /// Select columns from a type.
-        /// </summary>
-        /// <param name="d"></param>
-        /// <returns></returns>
-        internal Selection Pick(Ident ic,Selection d)
-        {
-            if (cols.Length == 0)
-                return d;
-            var cs = new Selection(ic.iix, ic.ident);
-            for (var b = cols.First(); b != null; b = b.Next())
-            {
-                var id = b.value();
-                var s = d[id.ident]??
-                    throw new DBException("42112", b.value());
-                if (s is SqlTableCol st)
-                    s = new SqlCopy(id.iix, id.ident, st.info, d.defpos, st.tableCol.defpos);
-                cs += s;
-            }
-            return cs;
-        }
-        internal ObInfo Apply(ObInfo d)
-        {
-            var cs = d.columns;
-            if (cols != BList<Ident>.Empty)
-            {
-                if (cols.Count != cs.Count)
-                    throw new DBException("22207");
-                for (var b = cs.First(); b != null; b = b.Next())
-                    if (cols.Contains(b.key()))
-                        cs += (b.key(), b.value() + (Basis.Name, cols[b.key()]));
-            }
-            if (tablealias != null)
-                d += (Basis.Name, tablealias);
-            return d + (ObInfo.Columns, cs);
-        }
     }
     /// <summary>
     /// when handling triggers etc we need different owner permissions

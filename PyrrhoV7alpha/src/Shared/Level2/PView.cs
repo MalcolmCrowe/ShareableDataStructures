@@ -1,15 +1,15 @@
-using System;
-using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -79,7 +79,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            view = new Parser(rdr.context).ParseQueryExpression(rdr.GetString(),ObInfo.Content);
+            view = new Parser(rdr.context).ParseQueryExpression(-1,rdr.GetString(),Domain.Content.defpos);
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -113,7 +113,8 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var vi = new ObInfo(ppos, name);
             ro = ro+vi+(ppos,vi);
-            cx.db = cx.db + (ro, p) + (new View(this), p);
+            cx.db += (ro, p);
+            cx.Install(new View(this), p);
         }
     }
     internal class PRestView : PView

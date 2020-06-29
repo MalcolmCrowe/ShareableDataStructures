@@ -4,19 +4,18 @@ using System.IO;
 using System.Net;
 using System.Threading;
 using System.Collections.Generic;
-using System.Xml;
-using System.Xml.Xsl;
 using Pyrrho.Common;
-using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho
 {
@@ -168,16 +167,15 @@ namespace Pyrrho
         public SqlWebOutput(Transaction d,StringBuilder s)
             : base(d,s)
         { }
-        public override void PutRow(Context _cx, Cursor e)
+        public override void PutRow(Context cx, Cursor e)
         {
             var dt = e.dataType;
-            var oi = (ObInfo)_cx.db.role.obinfos[dt.defpos];
             var cm = "(";
-            for (int i = 0; i < dt.Length; i++, cm = ", ")
+            for (var b = cx.Cols(e._rowsetpos).First();b!=null;b=b.Next())
             {
-                var ci = oi.columns[i];
+                var p = b.value();
                 sbuild.Append(cm);
-                sbuild.Append(e[ci.defpos]);
+                sbuild.Append(e[p]);
             }
             sbuild.Append(")");
         }
@@ -234,24 +232,26 @@ namespace Pyrrho
                 if (om.description != "" && om.description[0] == '<')
                     sbuild.Append(om.description);
             }
+            var oi = rs.rt;
             if (chartType.flags != 0)
             {
-                for (var co = rs?.info.columns.First(); co != null; co = co.Next())
+                for (var co = oi.First(); co != null; co = co.Next())
                 {
-                    var sl = co.value();
-                    var m = sl.Meta();
+                    var p = co.value();
+                    var ci = (ObInfo)cx.db.role.infos[p];
+                    var m = ci.Meta();
                     if (m.Has(Sqlx.X))
                     {
-                        xcol = sl.defpos;
+                        xcol = ci.defpos;
                         xdesc = m.description;
                     }
                     if (m.Has(Sqlx.Y))
                     {
-                        ycol = sl.defpos;
+                        ycol = ci.defpos;
                         ydesc = m.description;
                     }
                     if (m.Has(Sqlx.CAPTION))
-                        ccol = sl.defpos;
+                        ccol = ci.defpos;
                 }
                 if ((xcol ==0) && (ycol ==0))
                     chartType.flags = 0UL;
@@ -274,8 +274,11 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (int i = 0; i < rs.info.Length; i++)
-                    sbuild.Append("<th>" + rs.info[i].name + "</th>");
+                for (var b=rs.rt.First();b!=null;b=b.Next())
+                {
+                    var ci = (ObInfo)cx.db.role.infos[b.value()];
+                    sbuild.Append("<th>" + ci.name + "</th>");
+                }
                 sbuild.Append("</tr>");
             }
         }
@@ -286,6 +289,7 @@ namespace Pyrrho
         public override void PutRow(Context _cx, Cursor e)
         {
             var dt = e.dataType;
+            var oi = _cx.Inf(e._rowsetpos);
             if (chartType.flags!=0UL)
             {
                 sbuild.Append(comma+"[");
@@ -308,9 +312,9 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<tr>");
-                for (int i = 0; i < dt.Length; i++)
+                for (var b=oi.columns.First();b!=null;b=b.Next())
                 {
-                    var s = GetVal(e[dt.representation[i].Item1]);
+                    var s = GetVal(e[b.value()]);
                     sbuild.Append("<td>" + s + "</td>");
                 }
                 sbuild.Append("</tr>");
@@ -530,15 +534,18 @@ namespace Pyrrho
         { }
         public override void PutRow(Context _cx, Cursor e)
         {
-            var rt = e._info;
+            var rt = e.columns;
             var doc = new TDocument();
-     //       var rv = e._Rvv();
-      //      if (rv == null && db.affected.Count > 0)
-     //           rv = Rvvs.New(db.affected[0]);
-     //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
-            for(int i=0;i<rt.Length;i++)
-                if (e[rt[i].defpos].NotNull() is TypedValue tv)
-                    doc.Add(rt[i].name, tv);
+            //       var rv = e._Rvv();
+            //      if (rv == null && db.affected.Count > 0)
+            //           rv = Rvvs.New(db.affected[0]);
+            //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
+            for (var b=rt.First();b!=null;b=b.Next())
+            {
+                var ci = (ObInfo)_cx.db.role.infos[b.value()];
+                if (e[ci.defpos].NotNull() is TypedValue tv)
+                    doc.Add(ci.name, tv);
+            }
             sbuild.Append(doc.ToString());
         }
     }

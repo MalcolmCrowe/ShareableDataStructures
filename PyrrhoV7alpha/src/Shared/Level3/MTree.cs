@@ -1,12 +1,14 @@
-using System.Collections.Generic;
+using System.Text;
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level3
 {
 
@@ -409,6 +411,21 @@ namespace Pyrrho.Level3
                 }
                 return tv.Val() as long?;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(" " + Count);
+            var cm = " (";
+            for (var a=info;a!=null;a=a.tail)
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(DBObject.Uid(a.head));
+                sb.Append(" ");
+                sb.Append(a.headType);
+            }
+            sb.Append(")");
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// MTree traversal is done by MTreeBookmarks.
@@ -663,35 +680,38 @@ namespace Pyrrho.Level3
         /// <param name="d">Whether duplicates are allowed at this level</param>
         /// <param name="n">Whether nulls are allowed at this level</param>
         /// <param name="off">the offset of the current level in multi</param>
-        internal TreeInfo(ObInfo multi,TreeBehaviour d, TreeBehaviour n, int off=0)
+        internal TreeInfo(CList<SqlValue> cols,TreeBehaviour d, TreeBehaviour n, int off=0)
         {
-            if (off < multi.Length)
+            if (off < cols.Length)
             {
-                head = multi[off].defpos;
-                headType = multi[off].domain;
+                var v = cols[off];
+                (head, headType) = (v.defpos,v.domain);
             }
             onDuplicate = d;
             onNullKey = n;
-            tail = (off+1 < multi.Length)?new TreeInfo(multi, d,n, off+1):null;
+            tail = (off+1 < cols.Length)?new TreeInfo(cols, d,n, off+1):null;
         }
-        internal TreeInfo(BList<TableColumn> cols, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        internal TreeInfo(CList<long> cols, BTree<long,DBObject> ds, TreeBehaviour d, TreeBehaviour n, int off = 0)
         {
             if (off < (int)cols.Count)
             {
-                head = cols[off].defpos;
-                headType = cols[off].domain;
+                head = cols[off];
+                headType = ds[head].domain;
             }
             onDuplicate = d;
             onNullKey = n;
-            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, d, n, off + 1) : null;
+            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, ds, d, n, off + 1) : null;
         }
-        internal TreeInfo(TreeInfo ti, TreeBehaviour d, TreeBehaviour n)
+        internal TreeInfo(BList<long> cols, Domain dt, TreeBehaviour d, TreeBehaviour n, int off = 0)
         {
-            head = ti.head;
-            headType = ti.headType;
+            if (off < (int)cols.Count)
+            {
+                head = cols[off];
+                headType = dt.representation[head];
+            }
             onDuplicate = d;
             onNullKey = n;
-            tail = ti.tail;
+            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, dt, d, n, off + 1) : null;
         }
     }
 

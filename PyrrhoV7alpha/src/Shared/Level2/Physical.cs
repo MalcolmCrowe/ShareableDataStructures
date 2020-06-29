@@ -3,14 +3,18 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
+using System.Diagnostics.Eventing.Reader;
+using System.Configuration;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code 
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+// This software is without support and no liability for damage consequential to use.
+// You can view and test this code, and use it subject for any purpose.
+// You may incorporate any part of this code in other software if its origin 
+// and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -92,11 +96,11 @@ namespace Pyrrho.Level2
         {
             return 1 + new Integer(p).bytes.Length;
         }
-        internal static int ColsLength(long[] cols)
+        internal static int ColsLength(BList<long> cols)
         {
             var r = IntLength(cols.Length);
-            for (var i = 0; i < cols.Length; i++)
-                r += IntLength(cols[i]);
+            for (var b = cols.First(); b!=null;b=b.Next())
+                r += IntLength(b.value());
             return r;
         }
         internal static int StringLength(object o)
@@ -106,14 +110,11 @@ namespace Pyrrho.Level2
             var p = Encoding.UTF8.GetBytes(o.ToString()).Length;
             return p + IntLength(p);
         }
-        internal static int RepresentationLength(BList<(long,Domain)> rep)
+        internal static int RepresentationLength(BTree<long,Domain> rep)
         {
-            var r = 1 + IntLength(rep.Length);
+            var r = 1 + IntLength((int)rep.Count);
             for (var b=rep.First();b!=null;b=b.Next())
-            {
-                var (p,d) = b.value();
-                r += IntLength(p) + IntLength(d?.defpos??-1L);
-            }
+                r += IntLength(b.key()) + IntLength(b.value()?.defpos??-1L);
             return r;
         }
         /// <summary>
@@ -125,7 +126,7 @@ namespace Pyrrho.Level2
         }
         public static bool Committed(Writer wr,long pos)
         {
-            return pos>=-1 && wr.Fix(pos) < Transaction.TransPos;
+            return pos>=-1 && (wr.Fix(pos) < Transaction.TransPos || pos>Transaction.Heap);
         }
         /// <summary>
         /// On commit, dependent Physicals must be committed first
@@ -136,18 +137,20 @@ namespace Pyrrho.Level2
         /// Install a single Physical. 
         /// </summary>
         internal abstract void Install(Context db, long p);
+        internal virtual void OnLoad(Reader rdr)
+        { }
         /// <summary>
         /// Commit (Serialise) ourselves to the datafile.
-        /// Overridden by PTransaction.
+        /// Overridden by PTransaction, PTrigger, PMethod, PProcedure, PCheck
         /// Suppose we have two physicals a and b in a transaction with a earlier than b. 
         /// We need to be sure that nothing in a uses b's defpos: 
         /// when we serialise b we will know about a's new position, but not the other way round.
         /// </summary> 
         /// <param name="wr">The writer</param>
-        public virtual void Commit(Writer wr,Transaction tr)
+        public virtual (Transaction,Physical) Commit(Writer wr,Transaction tr)
         {
             if (Committed(wr,ppos)) // already done
-                return;
+                return (tr,this);
             for (; ; ) // check for uncommitted dependents
             {
                 var pd = Dependent(wr,tr);
@@ -157,12 +160,15 @@ namespace Pyrrho.Level2
                 tr.physicals[pd].Commit(wr,tr);
                 // and try again
             }
+            wr.srcPos = wr.Length + 1;
             var ph = Relocate(wr);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
             ph.Install(wr.cx, wr.Length);
+            return (tr,ph);
         }
         protected abstract Physical Relocate(Writer wr);
+        internal virtual void Relocate(Context cx) { }
         /// <summary>
         /// Serialise ourselves to the datafile. Called by Commit,
         /// which has already written the first byte of the log entry.
@@ -427,6 +433,87 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             var nb = ob+ (DBObject.Classification,classification);
             cx.db += (nb, p);
+        }
+    }
+    internal abstract class Compiled : Physical
+    {
+        internal BTree<long, DBObject> framing;
+        protected Compiled(Type tp, long pp, Context cx, BTree<long,DBObject> fr) 
+            : base(tp, pp, cx) 
+        {
+            framing = fr;
+        }
+        protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
+        {
+            framing = BTree<long, DBObject>.Empty; // fixed in OnLoad
+        }
+        protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
+        {
+            var fs = BTree<long, DBObject>.Empty;
+            for (var b = ph.framing.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                if (p > Transaction.TransPos)
+                    wr.cx.obs += (p, b.value());
+            }
+            for (var b = ph.framing.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                // Don't include the new Physical object(s) in framing
+                if (p >= Transaction.TransPos && p < Transaction.Analysing)
+                    continue;
+                var ob = wr.Fixed(p);
+                fs += (ob.defpos, ob);
+            }
+            framing = fs;
+        }
+        internal override void Relocate(Context cx)
+        {
+            cx.Frame();
+            cx.SrcFix(ppos + 1);
+            var fs = BTree<long, DBObject>.Empty;
+            for (var b = framing.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                if (p > Transaction.TransPos)
+                    cx.obs += (p, b.value());
+            }
+            for (var b = framing.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                // Don't include the new Physical object(s) in framing
+                if (p >= Transaction.TransPos && p < Transaction.Analysing)
+                    continue;
+                var oo = cx.obs[p];
+                var ob = oo.Relocate(cx);
+                if (ob != oo)
+                    cx.db+=(ob, cx.db.loadpos); 
+                fs += (ob.defpos, ob);
+            }
+            framing = fs;
+            var fr = cx.frame ?? throw new PEException("PE400");
+            cx.obs = fr.obs;
+            cx.defs = fr.defs;
+            cx.depths = fr.depths;
+            cx.frame = null;
+        }
+        /// <summary>
+        /// Fix heap uids and install compiled DBObjects from the context
+        /// </summary>
+        /// <param name="cx">The parsing context</param>
+        public void Frame(Context cx)
+        {
+            cx.SrcFix(ppos+1);
+            for (var b = cx.obs.First(); b != null; b = b.Next())
+            {
+                var ob = b.value().Relocate(cx);
+                framing += (ob.defpos, ob);
+            }
+            var fr = cx.frame ?? throw new PEException("PE400");
+            cx.obs = fr.obs;
+            cx.defs = fr.defs;
+            cx.depths = fr.depths;
+            cx.frame = null;
         }
     }
 }
