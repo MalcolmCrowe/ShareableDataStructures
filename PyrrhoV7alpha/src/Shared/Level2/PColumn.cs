@@ -178,7 +178,7 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[tabledefpos];
             var ti = (ObInfo)ro.infos[tb.defpos];
-            var dt = (Domain)cx.db.objects[domdefpos];
+            var dt = (Domain)cx.db.objects[domdefpos]??cx.obs[domdefpos].domain;
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);

@@ -94,29 +94,12 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
-		{
-			modifydefpos = rdr.GetLong();
-			name = rdr.GetString();
-			body = rdr.GetString();
-			base.Deserialise(rdr);
-            switch (name)
-            {
-                default:
-                    var pp = rdr.context.db.objects[modifydefpos] as Procedure;
-                    pp += (Procedure.Clause, body);
-                    pp = new Parser(rdr.context).ParseProcedureBody(pp.name, pp, new Ident(pp.clause,modifydefpos));
-                    now = pp;
-                    break;
-                case "Source":
-                    now = new Parser(rdr.context).ParseQueryExpression(-1,body,Domain.TableType.defpos);
-                    break;
-                case "Insert": // we ignore all of these (PView1)
-                case "Update":
-                case "Delete":
-                    now = null;
-                    break;
-            }
-		}
+        {
+            modifydefpos = rdr.GetLong();
+            name = rdr.GetString();
+            body = rdr.GetString();
+            base.Deserialise(rdr);
+        }
         public override long Conflicts(Database db, Transaction tr, Physical that)
         {
             switch(that.type)

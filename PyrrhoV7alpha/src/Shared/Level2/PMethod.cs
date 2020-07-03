@@ -41,9 +41,9 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, BList<ParamInfo> ar, ObInfo rt, 
-            MethodType mt, long td, Method md, Ident sce,long pp, Context cx)
-            : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
+        public PMethod(string nm, CList<long> ps, Domain rt, 
+            MethodType mt, long td, Ident sce,long pp, Context cx)
+            : this(Type.PMethod2,nm,ps,rt,mt,td,sce,pp,cx)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -57,15 +57,15 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, BList<ParamInfo> ar, 
-            ObInfo rt, MethodType mt, long td, Method md, Ident sce,
+        protected PMethod(Type tp, string nm, CList<long> ps, 
+            Domain rt, MethodType mt, long td, Ident sce,
             long pp, Context cx)
-            : base(tp,nm,ar,rt,md,sce,pp,cx)
+            : base(tp,nm,ps,rt,sce,pp,cx)
 		{
 			typedefpos = td;
 			methodType = mt;
             if (mt == MethodType.Constructor)
-                retType = (ObInfo)cx.db.role.infos[typedefpos];
+                retType = (Domain)cx.db.objects[typedefpos];
 		}
         /// <summary>
         /// Constructor: a new Method definition from the ReadBuffer
@@ -103,7 +103,6 @@ namespace Pyrrho.Level2
  //           if (methodType == PMethod.MethodType.Constructor) will be done in base
  //               retdefpos = typedefpos; 
             base.Deserialise(rdr);
-            Compile(name, rdr.context, rdr.Position);
         }
         /// <summary>
         /// A readable version of this Physical

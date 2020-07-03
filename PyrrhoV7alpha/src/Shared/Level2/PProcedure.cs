@@ -27,22 +27,19 @@ namespace Pyrrho.Level2
         /// The name of the procedure 
         /// </summary>
 		public string name,nameAndArity;
-        /// <summary>
-        /// The return type for the definer's role
-        /// </summary>
-        public ObInfo retType;
+        public CList<long> ins = CList<long>.Empty;
+        public Domain retType = Domain.Null;
         public Ident source;
         public bool mth = false;
-        public BList<ParamInfo> parameters;
-        public long proc; // the procedure code is in Compiled.framing
+        public long body; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
             return -1;
         }
-        internal int arity => parameters.Length;
-        public PProcedure(string nm, BList<ParamInfo> ar, ObInfo rt, Procedure pr,Ident sce, 
-            long pp, Context cx) : this(Type.PProcedure2, nm, ar, rt, pr, sce, pp, cx)
+        internal int arity => ins.Length;
+        public PProcedure(string nm, CList<long>ps, Domain rt, Ident sce, 
+            long pp, Context cx) : this(Type.PProcedure2, nm, ps, rt, sce, pp, cx)
         { }
         /// <summary>
         /// Constructor: a procedure or function definition from the Parser.
@@ -58,16 +55,14 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, BList<ParamInfo> ps, ObInfo rt, Procedure pr,
+        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, 
             Ident sce, long pp, Context cx) : base(tp,pp,cx,cx.obs)
 		{
             source = sce;
-            parameters = ps;
-            retType = new ObInfo(pp,nm,rt);
+            ins = ps;
+            retType = rt;
             name = nm;
             nameAndArity = nm + "$" + arity;
-            Frame(cx);
-            proc = pr.defpos;
         }
         /// <summary>
         /// Constructor: a procedure or function definition from the buffer
@@ -79,15 +74,21 @@ namespace Pyrrho.Level2
         {
             source = x.source;
             wr.srcPos = wr.Length + 1;
-            retType = (ObInfo)x.retType._Relocate(wr);
-            parameters = wr.Relocate(x.parameters);
+            retType = (Domain)x.retType._Relocate(wr);
             nameAndArity = x.nameAndArity;
             name = x.name;
-            proc = wr.Fix(x.defpos);
+            body = wr.Fix(x.body);
+            ins = ((Procedure)wr.cx.obs[ppos]).ins;
         }
         protected override Physical Relocate(Writer wr)
         {
             return new PProcedure(this, wr);
+        }
+        internal override void Relocate(Context cx)
+        {
+            base.Relocate(cx);
+            cx.db += ((DBObject)cx.db.objects[ppos] 
+                + (DBObject.Framing, framing) + (Procedure.Body, body), cx.db.loadpos);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -97,14 +98,14 @@ namespace Pyrrho.Level2
 		{
             wr.PutString(nameAndArity.ToString());
             wr.PutInt(arity);
-            retType = (ObInfo)retType?._Relocate(wr);
+            retType = (Domain)retType._Relocate(wr);
             if (type==Type.PMethod2 || type==Type.PProcedure2)
                 wr.PutLong(retType.defpos);
             var s = source;
             if (wr.cx.db.format < 51)
                 s = new Ident(DigestSql(wr,s.ident),s.iix);
             wr.PutString(s.ident);
-            proc = wr.Fix(proc);
+            body = wr.Fix(body);
 			base.Serialise(wr);
         }
         /// <summary>
@@ -116,28 +117,22 @@ namespace Pyrrho.Level2
 			nameAndArity=rdr.GetString();
             var ss = nameAndArity.Split('$');
             name = ss[0];
-			var n=rdr.GetInt();
+			rdr.GetInt();
             if (type == Type.PMethod2 || type == Type.PProcedure2)
-                retType = (ObInfo)rdr.context.db.role.infos[rdr.GetLong()];
-            else
-                retType = ObInfo.Any;
+                retType = (Domain)rdr.context.db.objects[rdr.GetLong()]??Domain.Null;
             if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
-                retType = (ObInfo)rdr.context.db.role.infos[mt.typedefpos];
+                retType = (Domain)rdr.context.db.objects[mt.typedefpos];
             source = new Ident(rdr.GetString(), ppos);
-            var (pps, _) = new Parser(rdr.context, source, new BTree<long,ObInfo>(ppos,retType)).
-                ParseProcedureHeading(new Ident(name, ppos));
-            parameters = pps;
 			base.Deserialise(rdr);
-            Compile(name, rdr.context, rdr.Position);
         }
-        protected void Compile(string name, Context cx, long p)
+        internal override void OnLoad(Reader rdr)
         {
-            var op = cx.db.parse;
-            cx.db += (Database._ExecuteStatus, ExecuteStatus.Parse);
-            // preinstall the bodyless proc to allow recursive procs
-            Install(cx, p);
-            proc = ppos;
-            cx.db += (Database._ExecuteStatus, op);
+            var psr = new Parser(rdr.context, new Ident(source.ident, ppos + 1));
+            psr.cx.srcFix = ppos + 1;
+            psr.ParseProcedureHeading(this);
+            psr.ParseProcedure(this);
+            psr.cx.obs+=(ppos,new Procedure(this,psr.cx));
+            Frame(psr.cx);
         }
         /// <summary>
         /// A readble version of this Physical
@@ -165,8 +160,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            ro = ro + retType + this;
             var pr = new Procedure(this, cx);
+            ro = ro + pr;
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
