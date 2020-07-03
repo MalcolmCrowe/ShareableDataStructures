@@ -87,17 +87,13 @@ namespace Pyrrho.Level3
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
             return new Role(r.defpos, m);
         }
-        public static Role operator+(Role r,PProcedure pp)
-        {
-            var ps = r.procedures;
-            var pa = ps[pp.name] ?? BTree<int, long>.Empty;
-            return new Role(r.defpos,r.mem+(Procedures,ps+(pp.name,pa+(pp.arity,pp.ppos))));
-        }
         public static Role operator +(Role r, Procedure p)
         {
+            r += new ObInfo(p.defpos, p.name, p.domain, p.domain.structure);
             var ps = r.procedures;
             var pa = ps[p.name] ?? BTree<int, long>.Empty;
-            return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
+            return new Role(r.defpos, r.mem + 
+                (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
         }
         public static Role operator +(Role r, PMethod p)
         {
@@ -220,7 +216,8 @@ namespace Pyrrho.Level3
         public ObInfo(long lp, Context cx, BList<SqlValue> vs)
             : this(lp, _Dom(-1, cx, Domain.Row, vs) + (Privilege, Grant.AllPrivileges)) { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 
-        { }
+        {
+        }
         static BList<long> _Cols(Domain dt)
         {
             var r = BList<long>.Empty;

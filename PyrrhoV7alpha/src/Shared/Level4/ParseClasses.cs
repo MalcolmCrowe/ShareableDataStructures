@@ -37,10 +37,10 @@ namespace Pyrrho.Level4
         /// </summary>
         public Domain type;
         /// <summary>
-        /// the number of parameters of the method
+        /// the formal parameters of the method
         /// </summary>
-        public int arity;
-        public BList<ParamInfo> ins; 
+        public CList<long> ins;
+        public int arity => ins.Length;
         /// <summary>
         /// The return type
         /// </summary>

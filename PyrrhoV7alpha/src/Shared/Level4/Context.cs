@@ -75,6 +75,7 @@ namespace Pyrrho.Level4
         /// Left-to-right accumulation of definitions during a parse: accessed only by Query
         /// </summary>
         internal Ident.Idents defs = Ident.Idents.Empty;
+        internal bool constraintDefs = false;
         /// <summary>
         /// Lexical positions to DBObjects (if dbformat<51)
         /// </summary>
@@ -251,6 +252,8 @@ namespace Pyrrho.Level4
                 return dm;
             if (obs[xp] is Query q)
                 return q.domain;
+            if (obs[xp] is Procedure pr)
+                return pr.domain;
             if (db.objects[xp] is DBObject ob)
             {
                 if (ob is Domain od)
@@ -369,6 +372,7 @@ namespace Pyrrho.Level4
             // Set up the information for parsing the generation rule
             // The table domain and cx.defs should contain the columns so far defined
             var cx = new Context(this);
+            cx.constraintDefs = true;
             cx.Frame();
             var rs = BTree<long, Domain>.Empty;
             Ident ti = null;
@@ -578,12 +582,16 @@ namespace Pyrrho.Level4
                 defs += (iv.name, p, Ident.Idents.For(p,db,this));
             }
         }
-        internal void AddDefs(Ident id, BList<long> s)
+        internal void AddDefs(Ident id, BList<long> s, bool force = false)
         {
+  //          if ((!force) && (!constraintDefs) && obs[id.iix] is Table)
+  //              return;
             for (var b = s?.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 var ob = obs[p] ?? (DBObject)db.objects[p];
+   //             if ((!force) && (!constraintDefs) && (ob is Table || ob is TableColumn))
+   //                 continue;
                 var n = (ob is SqlValue v) ? v.name : Inf(p)?.name;
                 if (n == null)
                     continue;
@@ -597,12 +605,18 @@ namespace Pyrrho.Level4
             var pi = new Ident(pr.name, 0);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
-                var pp = (ParamInfo)obs[b.value()];
-                var pn = new Ident(pp.name, 0);
-                defs += (pn, pp.defpos);
-                defs += (new Ident(pi, pn), pp.defpos);
-                Add(pp);
+                var pd = (FormalParameter)obs[b.value()];
+                var pn = new Ident(pd.name, 0);
+                defs += (pn, pd.defpos);
+                defs += (new Ident(pi, pn), pd.defpos);
+                Add(pd);
             }
+        }
+        internal void AddProc(Procedure pr)
+        {
+            var p = db.loadpos;
+            var ro = role + pr;
+            db = db + (ro,p)+(pr,p);
         }
         /// <summary>
         /// If there is a handler for No Data signal, raise it

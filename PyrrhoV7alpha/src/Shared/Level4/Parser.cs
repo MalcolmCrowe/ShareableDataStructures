@@ -1230,9 +1230,7 @@ namespace Pyrrho.Level4
             mn.name = mn.mname.ident; // without the $ which we are just about to add
             Mustbe(Sqlx.ID);
             int st = lxr.start;
-            mn.arity = 0;
             mn.ins = ParseParameters(mn.mname);
-            mn.arity = (int)mn.ins.Count;
             mn.retType = ParseReturnsClause(mn.mname);
             mn.signature = new string(lxr.input, st, lxr.start - st);
             Domain type = FromXp(xp);
@@ -1258,9 +1256,9 @@ namespace Pyrrho.Level4
         {
             MethodName mn = ParseMethod(xp);
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
-                cx.Add(new PMethod(mn.name, mn.ins, 
-                    cx.Inf(xp), mn.methodType,mn.type.defpos,null,
-                    new Ident(mn.signature,mn.mname.iix), tr.nextPos, cx));
+                cx.Add(new PMethod(mn.name, mn.ins,
+                    cx.Dom(xp), mn.methodType, mn.type.defpos, 
+                    new Ident(mn.signature, mn.mname.iix), tr.nextPos, cx));
             return mn;
         }
         /// <summary>
@@ -1282,7 +1280,7 @@ namespace Pyrrho.Level4
                 cx.defs += (new Ident(cx.Inf(p).name, p), p);
             }
             meth +=(Procedure.Params, mn.ins);
-            meth += (Procedure.Body, ParseProcedureStatement(mn.retType.defpos));
+            meth += (Procedure.Body, cx.Add(ParseProcedureStatement(mn.retType.defpos)).defpos);
             string ss = new string(lxr.input,st, lxr.start - st);
             // we really should check the signature here
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
@@ -2240,28 +2238,23 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public Procedure ParseProcedureBody(string nm,Procedure pr,Ident source)
+        public void ParseProcedure(PProcedure pp)
         {
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            lxr = new Lexer(source);
-            tok = lxr.tok;
-            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
-                tr += (Database.NextId, cx.db.nextId + source.ident.Length);
-            cx.db = tr;
-            var (ps,dt) = ParseProcedureHeading(source);
-            if (pr == null)
-                pr = new Procedure(source.iix, ps, dt, new BTree<long, object>(Basis.Name,nm));
-            cx.db += pr;
-            var oc = cx;
-            var _cx = new Context(cx.db);
-            cx.AddParams(pr);
-            if (pr is Method mt)
-                cx.AddDefs(mt.udType, _cx.db);
-            var bd = ParseProcedureStatement(source.iix);
-            cx = oc;
-            pr += (Procedure.Body, bd);
-            cx.db += pr;
-            return pr;
+            long oldStart = cx.parseStart; // safety
+            cx.parseStart = lxr.Position;
+            var os = cx.nextStmt;
+            // we temporarily place a bodyless version of the procedure in the context
+            var pr = new Procedure(pp,cx,new BTree<long, object>(Basis.Name,pp.name));
+            if (!Match(Sqlx.EOF, Sqlx.SEMICOLON))
+            {
+                cx.AddProc(pr);
+                cx.AddParams(pr);
+                if (pr is Method mt)
+                    cx.AddDefs(mt.udType, cx.db);
+                pp.body = cx.Add(ParseProcedureStatement(pr.defpos)).defpos;
+            }
+            cx.parseStart = oldStart;
+            cx.nextStmt = os;
         }
         /// <summary>
         /// Called from ALTER and CREATE parsers. This is the first time we see the proc-clause,
@@ -2282,10 +2275,9 @@ namespace Pyrrho.Level4
             cx.Frame(); // begin compiled object
             var ps = ParseParameters(n);
             var arity = (int)ps.Count;
-            var rdt = new ObInfo(lxr.Position,n.ident,Domain.Null)+(ObInfo.Privilege,
-                Grant.Privilege.Owner | Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
+            var rdt = Domain.Null;
             if (func)
-                rdt += (DBObject._Domain,ParseReturnsClause(n));
+                rdt = ParseReturnsClause(n);
             if (Match(Sqlx.EOF) && create == Sqlx.CREATE)
                 throw new DBException("42000", "EOF").Mix();
             PProcedure pp = null;
@@ -2295,10 +2287,25 @@ namespace Pyrrho.Level4
                 if (create == Sqlx.CREATE)
                 {
                     var np = cx.db.nextPos;
-                    pp = new PProcedure(n.ident, ps,
-                        rdt, pr, new Ident(lxr.input.ToString(), n.iix), np, cx);
-                    pr = new Procedure(pp.ppos, ps, rdt.domain);
-                    cx.Add(pp);
+                    pp = new PProcedure(n.ident, ps, rdt, 
+                        new Ident(new string(lxr.input,st,lxr.input.Length-st), n.iix), np, cx);
+                    // we temporarily place a bodyless version of the procedure in the context
+                    pr = new Procedure(pp, cx, new BTree<long, object>(Basis.Name, pp.name));
+                    cx.Add(pr);
+                    cx.AddProc(pr);
+                    cx.AddParams(pr);
+                    if (!Match(Sqlx.EOF, Sqlx.SEMICOLON))
+                    {
+                        if (pr is Method mt)
+                            cx.AddDefs(mt.udType, cx.db);
+                        pp.body = cx.Add(ParseProcedureStatement(pr.defpos)).defpos;
+                        pr += (Procedure.Body, pp.body);
+                        cx.Add(pr);
+                    }
+                    pp.Frame(cx);
+                    // truncate the source
+                    pp.source = new Ident(new string(lxr.input,st,lxr.pos - st), st);
+                    cx.db.Add(cx,pp,cx.db.loadpos);
                     cx.db += pr;
                     if (cx.dbformat<51)// provide for possible recursive reference
                         cx.digest += (n.iix, (n.ident, n.iix));
@@ -2325,17 +2332,6 @@ namespace Pyrrho.Level4
                     new PMetadata3(n.ident, md.seq, pr.defpos, md.description,
                         md.iri, pr.defpos, md.flags, cx.db.nextPos, cx);
                 var s = new string(lxr.input, st, lxr.start - st);
-                if (tok != Sqlx.EOF && tok != Sqlx.SEMICOLON)
-                {
-                    var op = cx.db.parse;
-                    if (op != ExecuteStatus.Parse)
-                        cx.db += (Database._ExecuteStatus, ExecuteStatus.Parse);
-                    cx.AddParams(pr);
-                    pr += (Procedure.Body, ParseProcedureStatement(pr.defpos));
-                    s = new string(lxr.input, st, lxr.start - st);
-                    if (cx.db.parse != op)
-                        cx.db += (Database._ExecuteStatus, op);
-                }
                 if (create == Sqlx.CREATE)
                     cx.db += pr;
                 cx.defs += (n, pr.defpos);
@@ -2350,20 +2346,17 @@ namespace Pyrrho.Level4
             }
             return (Executable)cx.Add(cr);
         }
-        internal (BList<ParamInfo>,Domain) ParseProcedureHeading(Ident pn)
+        internal void ParseProcedureHeading(PProcedure pp)
         {
-            var ps = BList<ParamInfo>.Empty;
-            var oi = Domain.Null;
-            var dm = Domain.Null;
             if (tok != Sqlx.LPAREN)
-                return (ps, Domain.Null);
-            ps = ParseParameters(pn);
+                return;
+            var pn = new Ident(pp.name, pp.defpos);
+            pp.ins = ParseParameters(pn);
             if (tok == Sqlx.RETURNS)
             {
                 Next();
-                oi = ParseSqlDataType(pn);
+                pp.retType = ParseSqlDataType();
             }
-            return (ps, oi);
         }
         /// <summary>
         /// Function metadata is used to control display of output from table-valued functions
@@ -2389,16 +2382,16 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse a parameter list
         /// </summary>
-        /// <returns>the list of formal procparameters</returns>
-		BList<ParamInfo> ParseParameters(Ident pn)
+        /// <returns>the list of formal parameters</returns>
+		CList<long> ParseParameters(Ident pn)
 		{
             Mustbe(Sqlx.LPAREN);
-            var r = BList<ParamInfo>.Empty;
+            var r = CList<long>.Empty;
             var ac = cx as CalledActivation;
             var svs = ac?.locals;
 			while (tok!=Sqlx.RPAREN)
 			{
-                r+= ParseProcParameter(pn);
+                r+= cx.Add(ParseFormalParameter(pn)).defpos;
 				if (tok!=Sqlx.COMMA)
 					break;
 				Next();
@@ -2435,7 +2428,7 @@ namespace Pyrrho.Level4
         /// parse a formal parameter
         /// </summary>
         /// <returns>the procparameter</returns>
-		ParamInfo ParseProcParameter(Ident pn)
+		FormalParameter ParseFormalParameter(Ident pn)
 		{
 			Sqlx pmode = Sqlx.NONE;
 			if (Match(Sqlx.IN,Sqlx.OUT,Sqlx.INOUT))
@@ -2445,15 +2438,16 @@ namespace Pyrrho.Level4
 			}
 			var n = new Ident(lxr);
 			Mustbe(Sqlx.ID);
-            var p = new ParamInfo(lxr.Position, pmode,n.ident, ParseSqlDataType(n));
+            var p = new FormalParameter(lxr.Position, pmode,n.ident, ParseSqlDataType(n));
             cx.Add(p);
             if (pn!=null)
                 cx.defs += (new Ident(pn, n), p.defpos);
 			if (Match(Sqlx.RESULT))
 			{
-                p += (ParamInfo.Result, true);
+                p += (FormalParameter.Result, true);
 				Next();
 			}
+            cx.Add(p);
             return p;
 		}
         /// <summary>
@@ -2812,7 +2806,7 @@ namespace Pyrrho.Level4
         {
             var rs = new ReturnStatement(lxr.Position);
             Next();
-            rs += (ReturnStatement.Ret, ParseSqlValue(xp,xp));
+            rs += (ReturnStatement.Ret, cx.Add(ParseSqlValue(xp,xp)).defpos);
             return (Executable)cx.Add(rs);
         }
         /// <summary>
@@ -2932,7 +2926,7 @@ namespace Pyrrho.Level4
             var ife = new IfThenElse(lxr.Position);
             var old = cx;
             Next();
-            ife += (IfThenElse.Search, ParseSqlValue(-1,Domain.Bool.defpos));
+            ife += (IfThenElse.Search, cx.Add(ParseSqlValue(-1,Domain.Bool.defpos)).defpos);
             Mustbe(Sqlx.THEN);
             ife += (IfThenElse.Then, ParseStatementList(xp));
             var ei = BList<long>.Empty;
@@ -2940,7 +2934,7 @@ namespace Pyrrho.Level4
             {
                 var eif = new IfThenElse(lxr.Position);
                 Next();
-                eif += (IfThenElse.Search, ParseSqlValue(-1,Domain.Bool.defpos));
+                eif += (IfThenElse.Search, cx.Add(ParseSqlValue(-1,Domain.Bool.defpos)).defpos);
                 Mustbe(Sqlx.THEN);
                 Next();
                 eif += (IfThenElse.Then, ParseStatementList(xp));
@@ -3078,7 +3072,8 @@ namespace Pyrrho.Level4
                     }
                     if (pr == null && tg == -1L)
                         throw new DBException("42108", ic.ident);
-                    var cs = new CallStatement(lp, pr, pn, ps, (SqlValue)cx.obs[tg]);
+                    var cs = new CallStatement(lp, pr, pn, ps, cx.obs[tg] as SqlValue);
+                    cx.Add(cs);
                     return (SqlValue)cx.Add(new SqlProcedureCall(ic.iix, cx, cs));
                 }
                 return new SqlMethodCall(ic.iix,cx,new CallStatement(lp,null,pn,ps,(SqlValue)cx.obs[tg]));
@@ -3160,7 +3155,7 @@ namespace Pyrrho.Level4
             for (var b = s?.columns.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is SqlValue c && c.name==ic.ident)
                     return new SqlValueExpr(dp, cx, Sqlx.DOT, 
-                        s, Dotted(c, ic.sub,ic.iix-1), Sqlx.NO) + (SqlValue._From,s.from);
+                        s, Dotted(c, ic.sub,ic.iix-1), Sqlx.NO) + (DBObject._From,s.from);
             var nv = new SqlValue(ic);
             cx.Add(nv);
             if (s == null)
@@ -3168,7 +3163,7 @@ namespace Pyrrho.Level4
             var n = s.name;
             var p = s.defpos + n.Length;
             return new SqlValueExpr(p, cx, Sqlx.DOT, s, Dotted(nv, ic.sub,ic.iix),Sqlx.NO)
-                +(SqlValue._From,s.from);
+                +(DBObject._From,s.from);
         }
         /// <summary>
         /// Parse an identifier
@@ -5026,7 +5021,7 @@ namespace Pyrrho.Level4
 			}
             if (tok == Sqlx.COLLATE)
                 dm+= (Domain.Culture,ParseCollate());
-            var r = cx.Add(new SqlElement(n.iix,cx,pn?.iix??-1L,dm));
+            var r = cx.Add(new SqlField(n, cx, pn, dm));
             if (pn != null)
                 cx.defs += (new Ident(pn, n), r.defpos);
             if (StartMetadata(Sqlx.COLUMN))
@@ -5892,6 +5887,17 @@ namespace Pyrrho.Level4
                     cx.AddDefs(ia, rf.rowType);
                 }
             }
+            rf = (Query)cx.Add(rf);
+            for (var b = q.rowType.First(); b != null; b = b.Next())
+            {
+                var c = cx.obs[b.value()] as SqlValue;
+                if (c == null || c.domain.kind!=Sqlx.CONTENT)
+                    continue;
+                SqlValue nc;
+                (nc, rf) = c.Resolve(cx, rf);
+                if (nc != c)
+                    cx.Replace(c, nc);
+            }
             cx.Add(rf);
             return rf.Refresh(cx); // but check anyway
         }
@@ -5922,6 +5928,7 @@ namespace Pyrrho.Level4
             if (ua != null)// && ua.mem[DBObject._Domain]==Domain.Content)
                 cx.Replace(ua, fm);
             fm = (From)cx.Add(fm);
+            cx.AddDefs(ic, fm.rowType);
             var cm = BTree<long, long>.Empty;
             var qn = q?.Needs(cx, BTree<long,bool>.Empty);
             // Resolution stage
@@ -6445,7 +6452,7 @@ namespace Pyrrho.Level4
             cx.obs += (tb.framing,true);
             var ti = cx.Inf(tb.defpos);
             cx.defs += (ic, tb.defpos);
-            cx.AddDefs(ic, ti.columns);
+            cx.AddDefs(ic, ti.columns, true);
             BList<Ident> cs = null;
             // Ambiguous syntax here: (Cols) or (Subquery) or other possibilities
             if (tok == Sqlx.LPAREN)

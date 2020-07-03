@@ -887,19 +887,26 @@ namespace Pyrrho.Level3
             return "TREAT(..)";
         }
     }
-    internal class SqlElement : SqlValue
+    internal class SqlField : SqlValue
     {
-        internal SqlElement(long defpos,Context cx,long op,Domain dt,CList<long> cols=null) 
-            : base(defpos,"",dt,cols,BTree<long,object>.Empty+(_From,op))
+        internal SqlField(Ident nm,Context cx,Ident pn,Domain dt,CList<long> cols=null) 
+            : base(nm.iix,nm.ident,dt,cols,_Mem(pn))
         { }
-        protected SqlElement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SqlElement operator +(SqlElement s, (long, object) x)
+        protected SqlField(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Ident pn)
         {
-            return (SqlElement)s.New(s.mem + x);
+            var m = BTree<long, object>.Empty;
+            if (pn != null)
+                m += (_From, pn.iix);
+            return m;
+        }
+        public static SqlField operator +(SqlField s, (long, object) x)
+        {
+            return (SqlField)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlElement(defpos,m);
+            return new SqlField(defpos,m);
         }
         internal override TypedValue Eval(Context cx)
         {
@@ -914,14 +921,9 @@ namespace Pyrrho.Level3
         {
             return qn;
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(left.ToString());
-            return sb.ToString();
-        }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlElement(dp,mem);
+            return new SqlField(dp,mem);
         }
     }
     /// <summary>
@@ -1567,7 +1569,7 @@ namespace Pyrrho.Level3
                             var or = rg.Eval(cx)?.NotNull();
                             if (lf == null || or == null)
                                 return null;
-                            var stl = lf.ToString();
+                            var stl = lv.ToString();
                             var str = or.ToString();
                             return new TChar(or.dataType, (lv.IsNull && or.IsNull) ? null 
                                 : stl + str);
@@ -3599,9 +3601,7 @@ namespace Pyrrho.Level3
                   + (_Domain,((ObInfo)cx.role.infos[c.procdefpos]).domain)
                   + (Call, c.defpos)+(Dependents,new BTree<long,bool>(c.defpos,true))
                   +(Depth,1+c.depth))
-        {
-            cx.Add((ObInfo)cx.role.infos[c.procdefpos]);
-        }
+        { }
         protected SqlCall(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCall operator+(SqlCall c,(long,object)x)
         {
@@ -3620,7 +3620,7 @@ namespace Pyrrho.Level3
             var r = (SqlCall)base._Relocate(wr);
             var c = (CallStatement)wr.Fixed(call);
             if (c.defpos != call)
-                r += (Call, c);
+                r += (Call, c.defpos);
             return r;
         }
         internal override Basis _Relocate(Context cx)
@@ -3628,7 +3628,7 @@ namespace Pyrrho.Level3
             var r = (SqlCall)base._Relocate(cx);
             var c = (CallStatement)cx.Fixed(call);
             if (c.defpos != call)
-                r += (Call, c);
+                r += (Call, c.defpos);
             return r;
         }
         internal override SqlValue AddFrom(Context cx, Query q)
@@ -3701,8 +3701,8 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("call ");
-            sb.Append(Uid(call));
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" "); sb.Append(Uid(call));
             return sb.ToString();
         }
     }
@@ -3758,7 +3758,62 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            return "Call "+Uid(call) + "(..)";
+            return "Call "+Uid(call);
+        }
+    }
+    /// <summary>
+    /// A procedure formal parameter has mode and result info
+    /// </summary>
+    internal class FormalParameter : SqlValue
+    {
+        internal const long
+            ParamMode = -98, // Sqlx
+            Result = -99; // Sqlx
+        /// <summary>
+        /// The mode of the parameter: IN, OUT or INOUT
+        /// </summary>
+		public Sqlx paramMode => (Sqlx)(mem[ParamMode] ?? Sqlx.IN);
+        /// <summary>
+        /// The result mode of the parameter: RESULT or NO
+        /// </summary>
+		public Sqlx result => (Sqlx)(mem[Result] ?? Sqlx.NO);
+        /// <summary>
+        /// Constructor: a procedure formal parameter from the parser
+        /// </summary>
+        /// <param name="m">The mode</param>
+		public FormalParameter(long vp, Sqlx m, string n, Domain dt)
+            : base(vp, new BTree<long, object>(ParamMode, m) + (Name, n) + (AssignmentStatement.Val, vp)
+                  + (_Domain, dt))
+        { }
+        protected FormalParameter(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static FormalParameter operator +(FormalParameter s, (long, object) x)
+        {
+            return new FormalParameter(s.defpos, s.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new FormalParameter(dp, mem);
+        }
+        internal override TypedValue Eval(Context cx)
+        {
+            return cx.values[defpos];
+        }
+        /// <summary>
+        /// A readable version of the FormalParameter
+        /// </summary>
+        /// <returns></returns>
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" "); sb.Append(domain);
+            if (mem.Contains(ParamMode)) { sb.Append(" "); sb.Append(paramMode); }
+            if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
+            return sb.ToString();
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new FormalParameter(defpos, m);
         }
     }
     /// <summary>
@@ -3798,7 +3853,7 @@ namespace Pyrrho.Level3
             {
                 var ut = v.domain;
                 var p = v.methods[c.name]?[(int)c.parms.Count]??-1L;
-                var nc = c + (CallStatement.Var, v) + (CallStatement.ProcDefPos, p);
+                var nc = c + (CallStatement.Var, v.defpos) + (CallStatement.ProcDefPos, p);
                 cx.Add(nc);
                 var pr = cx.db.objects[p] as Procedure;
                 mc = mc + (Call, nc.defpos) + (_Domain, pr.domain);
@@ -4202,7 +4257,8 @@ namespace Pyrrho.Level3
             (vl,fm) = ((SqlValue)cx.obs[val])?.Resolve(cx, fm, a)??(vl,fm);
             (o1,fm) = ((SqlValue)cx.obs[op1])?.Resolve(cx, fm, a)??(o1,fm);
             (o2,fm) = ((SqlValue)cx.obs[op2])?.Resolve(cx, fm, a)??(o2,fm);
-            if (vl.defpos != val || o1.defpos != op1 || o2.defpos != op2)
+            if ((vl?.defpos??-1L) != val || (o1?.defpos??-1L) != op1 
+                || (o2?.defpos??-1L) != op2)
                 return ((SqlValue)cx.Replace(this,
                     new SqlFunction(defpos, cx, kind, vl, o1, o2, mod, mem)),fm);
             return (this,fm);

@@ -72,7 +72,7 @@ namespace Pyrrho.Level3
             Representation = -87, // BTree<long,Domain> DBObjects,Domains
             Scale = -88, // int (D)
             Start = -89, // Sqlx (D)
-            Structure = -391, // BList<long> DBObjects
+            Structure = -391, // CList<long> DBObjects
             Under = -90, // long Domains
             UnionOf = -91; // BList<long> Domains
         internal static void StandardTypes()
@@ -159,7 +159,7 @@ namespace Pyrrho.Level3
         public string provenance => (string)mem[Provenance];
         public BTree<long,Domain> representation => 
             (BTree<long,Domain>)mem[Representation] ?? BTree<long,Domain>.Empty;
-        public BList<long> structure => (BList<long>)mem[Structure] ?? BList<long>.Empty;
+        public CList<long> structure => (CList<long>)mem[Structure] ?? CList<long>.Empty;
         public long orderFunc => (long)(mem[OrderFunc]??-1L);
         public OrderCategory orderflags => (OrderCategory)(mem[OrderCategory]??Common.OrderCategory.None);
         public BList<Domain> unionOf => (BList<Domain>)mem[UnionOf] ?? BList<Domain>.Empty;

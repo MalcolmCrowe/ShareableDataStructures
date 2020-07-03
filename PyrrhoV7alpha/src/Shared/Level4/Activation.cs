@@ -114,6 +114,8 @@ namespace Pyrrho.Level4
             : base(cx, p)
         { 
             proc = p; udt = ot;
+            for (var b = p.ins.First(); b != null; b = b.Next())
+                locals += (b.value(), true);
             if (p is Method mt)
             {
                 cmt = mt;
