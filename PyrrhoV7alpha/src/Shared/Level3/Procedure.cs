@@ -31,7 +31,8 @@ namespace Pyrrho.Level3
             Clause = -169,// string
             Inverse = -170, // long
             Monotonic = -171, // bool
-            Params = -172; // CList<long>  FormalParameter
+            Params = -172, // RowType  FormalParameter
+            RetType = -173; // long ObInfo
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -42,8 +43,9 @@ namespace Pyrrho.Level3
         /// These fields are filled in during Install.
         /// </summary>
         public long body => (long)(mem[Body]??-1L);
-		public CList<long> ins => 
-            (CList<long>)mem[Params]?? CList<long>.Empty;
+		public RowType ins => 
+            (RowType)mem[Params]?? RowType.Empty;
+        public ObInfo retType => (ObInfo)mem[RetType] ?? ObInfo.Any;
         public string clause => (string)mem[Clause];
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
@@ -71,12 +73,13 @@ namespace Pyrrho.Level3
         {
             return (Procedure)p.New(p.mem + v);
         }
+        internal override Sqlx kind => Sqlx.PROCEDURE;
         /// <summary>
         /// Execute a Procedure/function.
         /// </summary>
         /// <param name="actIns">The actual parameters</param>
         /// <returns>The possibily modified Transaction</returns>
-        public Context Exec(Context cx, BList<long> actIns)
+        public Context Exec(Context cx, RowType actIns)
         {
             var oi = (ObInfo)cx.db.role.infos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -85,13 +88,13 @@ namespace Pyrrho.Level3
             var acts = new TypedValue[n];
             var i = 0;
             for (var b=actIns.First();b!=null;b=b.Next(), i++)
-                acts[i] = cx.obs[b.value()].Eval(cx);
+                acts[i] = cx.obs[b.value().Item1].Eval(cx);
             var act = new CalledActivation(cx, this,Domain.Null);
             act.obs += (framing,true);
             var bd = (Executable)act.obs[body];
             i = 0;
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
-                act.values += (b.value(), acts[i]);
+                act.values += (b.value().Item1, acts[i]);
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is RowSet ts)
@@ -103,7 +106,7 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
             {
-                var p = (FormalParameter)act.obs[b.value()];
+                var p = (FormalParameter)act.obs[b.value().Item1];
                 var m = p.paramMode;
                 var v = act.values[p.defpos];
                 if (m == Sqlx.INOUT || m == Sqlx.OUT)
@@ -117,10 +120,10 @@ namespace Pyrrho.Level3
                 i = 0;
                 for (var b = ins.First(); b != null; b = b.Next(), i++)
                 {
-                    var p = (FormalParameter)act.obs[b.value()];
+                    var p = (FormalParameter)act.obs[b.value().Item1];
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                        cx.AddValue(cx.obs[actIns[i]], acts[i]);
+                        cx.AddValue(cx.obs[actIns[i].Item1], acts[i]);
                 }
             }
             return cx;
@@ -144,14 +147,14 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Writer wr)
         {
             var r = (Procedure)base._Relocate(wr);
-            var ps = CList<long>.Empty;
+            var ps = RowType.Empty;
             var ch = false;
             for (var b=ins.First();b!=null;b=b.Next())
             {
                 var p = b.value();
-                var np = wr.Fixed(p);
-                ps += np.defpos;
-                if (np.defpos != p)
+                var np = wr.Fix(p);
+                ps += np;
+                if (np != p)
                     ch = true;
             }
             if (ch)
@@ -163,14 +166,14 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (Procedure)base._Relocate(cx);
-            var ps = BList<long>.Empty;
+            var ps = RowType.Empty;
             var ch = false;
             for (var b = ins.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var np = cx.Fixed(p);
-                ps += np.defpos;
-                if (np.defpos != p)
+                var np = cx.Unheap(p);
+                ps += np;
+                if (np != p)
                     ch = true;
             }
             if (ch)
@@ -182,7 +185,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = base._Replace(cx, so, sv);
-            var ps = BList<long>.Empty;
+            var ps = RowType.Empty;
             var ch = false;
             for (var b = ins.First(); b != null; b = b.Next())
             {
@@ -222,13 +225,8 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Arity="); sb.Append(arity);
             sb.Append(" RetType:"); sb.Append(domain);
-            sb.Append(" Params");
-            var cm = '(';
-            for (var i = 0; i < (int)ins.Count; i++)
-            {
-                sb.Append(cm); cm = ','; sb.Append(Uid(ins[i]));
-            }
-            sb.Append(") Body:"); sb.Append(body);
+            sb.Append(ins);
+            sb.Append(" Body:"); sb.Append(Uid(body));
             sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');
             if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(inverse); }
             if (mem.Contains(Monotonic)) { sb.Append(" Monotonic"); }

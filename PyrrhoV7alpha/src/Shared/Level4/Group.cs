@@ -75,9 +75,9 @@ namespace Pyrrho.Level4
                 gs = _Info(cx, b.value(), gs);
             return gs;
         }
-        static CList<long> _Key(Context cx,Query q,long gr)
+        static RowType _Key(Context cx,Query q,long gr)
         {
-            var ns = CList<long>.Empty;
+            var ns = RowType.Empty;
             var ck = BTree<long, bool>.Empty;
             for (var b=((GroupSpecification)cx.obs[gr]).sets.First();b!=null;b=b.Next())
                 for (var c=((Grouping)cx.obs[b.value()]).members.First();c!=null;c=c.Next())
@@ -87,7 +87,7 @@ namespace Pyrrho.Level4
                     {
                         var se = (SqlValue)cx.obs[s]
                             ?? throw new PEException("PE855");
-                        ns += se.defpos;
+                        ns += (se.defpos,se.domain);
                         ck += (s, true);
                     }
                 }
@@ -138,9 +138,9 @@ namespace Pyrrho.Level4
                         var tk = tg[key] ?? BTree<long, Register>.Empty;
                         if (tk==BTree<long,Register>.Empty)
                             for (var b = rt.First(); b != null; b = b.Next())
-                                tk = cx.obs[b.value()].StartCounter(cx, this, tk);
+                                tk = cx.obs[b.value().Item1].StartCounter(cx, this, tk);
                         for (var b = rt.First(); b != null; b = b.Next())
-                            tk = cx.obs[b.value()].AddIn(cx, rb, tk);
+                            tk = cx.obs[b.value().Item1].AddIn(cx, rb, tk);
                         tg += (key, tk);
                         ts += (g.defpos, tg);
                         next:;
@@ -157,9 +157,9 @@ namespace Pyrrho.Level4
                         vs+=(c.key(), k._head);
                     cx.funcs = ts[g.defpos][b.key()];
                     for (var c = rt.First(); c != null; c = c.Next())
-                        if (!vs.Contains(c.value()))
+                        if (!vs.Contains(c.value().Item1))
                         {
-                            var sv = (SqlValue)cx.obs[c.value()];
+                            var sv = (SqlValue)cx.obs[c.value().Item1];
                             vs+=(sv.defpos,sv.Eval(cx));
                         }
                     rows+= new TRow(rt, dataType, vs);

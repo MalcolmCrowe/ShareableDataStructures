@@ -172,7 +172,8 @@ namespace Pyrrho.Level2
             wr.PutIdent(newRow);
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
-            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length);
+            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length,
+                Sqlx.TRIGGER);
             src = wr.PutIdent(src);
 			base.Serialise(wr);
 		}
@@ -199,7 +200,7 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var ob = ((DBObject)rdr.context.db.objects[target]);
-            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1), ob);
+            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1, Sqlx.TRIGGER), ob);
             psr.cx.srcFix = ppos+1;
             def = psr.ParseTriggerDefinition(this);
             Frame(psr.cx);

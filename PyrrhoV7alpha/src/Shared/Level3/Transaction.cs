@@ -387,10 +387,10 @@ namespace Pyrrho.Level3
                     {
                         var tbs = cp.Substring(6 + off);
                         tbs = WebUtility.UrlDecode(tbs);
-                        var tbn = new Ident(tbs, 0);
+                        var tbn = new Ident(tbs, 0,Sqlx.TABLE);
                         var tb = objects[cx.db.role.dbobjects[tbn.ident]] as Table
                             ?? throw new DBException("42107", tbn).Mix();
-                        f = new From(new Ident("",uid + 4 + off), cx, tb);
+                        f = new From(new Ident("",uid + 4 + off,Sqlx.TABLE), cx, tb);
                             
                         //       if (schemaKey != 0 && schemaKey != ro.defs[f.target.defpos].lastChange)
                         //           throw new DBException("2E307", tbn).Mix();
@@ -491,7 +491,7 @@ namespace Pyrrho.Level3
                             var ct = sc.domain;
                             var cv = lr[1];
                             wh[j] = ct.Parse(uid,cv);
-                            sq[j] = new Ident(cn, 0);
+                            sq[j] = new Ident(cn, 0,Sqlx.COLUMN);
                         }
                         //               Authentication(transaction.result.rowSet, wh, sq); // 5.3 this is a no-op if the targetName is not User
                         //             }
@@ -509,8 +509,8 @@ namespace Pyrrho.Level3
                         {
                             var cn = sk[j];
                             cn = WebUtility.UrlDecode(cn);
-                            var cd = new Ident(cn, j);
-                            qout += (Query.RowType,qout.rowType + j);
+                            var cd = new Ident(cn, j, Sqlx.COLUMN);
+                            qout += (DBObject._RowType,qout.rowType + ((long)j,Domain.Content));
                         }
                         break;
                     }
@@ -746,9 +746,9 @@ namespace Pyrrho.Level3
                 if (grant)
                 { 
                     p = gp;
-                    for (var cp = gd.columns.First(); cp != null; cp = cp.Next())
+                    for (var cp = gd.rowType?.First(); cp != null; cp = cp.Next())
                     {
-                        var c = cp.value();
+                        var c = cp.value().Item1;
                         var ci = (ObInfo)role.infos[c];
                         gp = ci.priv;
                         var pp = defp;
@@ -811,7 +811,7 @@ namespace Pyrrho.Level3
         /// <param name="afn">The adapter function if specified</param>
         /// <param name="cl">The set of Physicals being gathered by the parser</param>
         public Transaction AddReferentialConstraint(Context cx,Table tb, Ident name,
-            CList<long> key,Table rt, CList<long> refs, PIndex.ConstraintType ct, 
+            CList<long> key,Table rt, RowType refs, PIndex.ConstraintType ct, 
             string afn)
         {
             Index rx = null;

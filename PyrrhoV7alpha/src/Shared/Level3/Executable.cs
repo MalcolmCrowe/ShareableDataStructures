@@ -111,6 +111,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string label => (string)mem[Label];
         internal Type type => (Type)(mem[_Type]??Type.NoType);
+        internal override Sqlx kind => Sqlx.STATEMENT;
         /// <summary>
         /// Constructor: define an Executable of a given type.
         /// Procedure statements are subclasses of Executable
@@ -436,7 +437,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(label); sb.Append(' '); sb.Append(Uid(defpos));
-            sb.Append(' ');  sb.Append(domain.kind);
+            sb.Append(' ');  sb.Append(domain.prim);
             return sb.ToString();
         }
 	}
@@ -2219,7 +2220,7 @@ namespace Pyrrho.Level3
 	internal class CallStatement : Executable
 	{
         internal const long
-            Parms = -133, // BList<long> SqlValue
+            Parms = -133, // RowType SqlValue
             ProcDefPos = -134, // long
             Var = -135; // long SqlValue
         /// <summary>
@@ -2233,17 +2234,20 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of actual parameters
         /// </summary>
-		public BList<long> parms =>
-            (BList<long>)mem[Parms]?? BList<long>.Empty;
+		public RowType parms =>
+            (RowType)mem[Parms]?? RowType.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, BList<long> acts, SqlValue tg=null)
+        public CallStatement(long dp, Procedure pr, string pn, RowType acts, 
+            SqlValue tg=null)
          : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg.defpos))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
+        protected CallStatement(long dp, Procedure pr, string pn, RowType acts, 
+            BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
-               +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
+               +(_Domain,pr?.domain??Domain.Content) + (Procedure.RetType,pr?.retType??ObInfo.Any)
+               + (Name,pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
@@ -2264,13 +2268,13 @@ namespace Pyrrho.Level3
             var pp = wr.Fixed(procdefpos);
             if (pp.defpos != procdefpos)
                 r += (ProcDefPos, pp.defpos);
-            var ps = BList<long>.Empty;
+            var ps = RowType.Empty;
             var ch = false;
             for (var b = parms.First(); b != null; b = b.Next())
             {
-                var p = (SqlValue)wr.Fixed(b.value());
-                ch = ch || p.defpos != b.value();
-                ps += p.defpos;
+                var p = wr.Fix(b.value());
+                ch = ch || p != b.value();
+                ps += p;
             }
             if (ch)
                 r += (Parms, ps);
@@ -2285,13 +2289,13 @@ namespace Pyrrho.Level3
             var pp = cx.Fixed(procdefpos);
             if (pp.defpos != procdefpos)
                 r += (ProcDefPos, pp.defpos);
-            var ps = BList<long>.Empty;
+            var ps = RowType.Empty;
             var ch = false;
             for (var b = parms.First(); b != null; b = b.Next())
             {
-                var p = (SqlValue)cx.Fixed(b.value());
-                ch = ch || p.defpos != b.value();
-                ps += p.defpos;
+                var p = cx.Unheap(b.value());
+                ch = ch || p != b.value();
+                ps += p;
             }
             if (ch)
                 r += (Parms, ps);
@@ -2343,12 +2347,7 @@ namespace Pyrrho.Level3
             sb.Append(" ");
             if (var!=-1L) { sb.Append(Uid(var));sb.Append("."); }
             sb.Append(Uid(procdefpos));
-            var cm = "(";
-            for (var b=parms.First();b!=null;b=b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value()));
-            }
+            sb.Append(parms);
             sb.Append(")");
             return sb.ToString();
         }

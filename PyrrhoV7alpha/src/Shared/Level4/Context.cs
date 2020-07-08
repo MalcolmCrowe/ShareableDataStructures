@@ -173,12 +173,18 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal DBObject Get(Ident ic, long xp)
         {
-            DBObject v;
-            if (ic.Length > 0 && defs.Contains(ic.ToString())
-                    && obs[defs[ic.ToString()].Item1] is SqlValue s0)
-                v = s0;
-            else
-                v = obs[defs[ic]];
+            DBObject v = null;
+            if (ic.Length > 0 && defs.Contains(ic.ToString()))
+            {
+                var (p,c,u) = defs[ic.ToString()];
+                if (obs[p] is SqlValue s0)
+                    v = s0;
+            }
+            if (v == null)
+            {
+                var (p, c) = defs[ic];
+                v = obs[p];
+            }
             if (v != null && !Dom(xp).CanTakeValueOf(this,Dom(v.defpos)))
                 throw new DBException("42000", ic);
             return v;
@@ -222,14 +228,41 @@ namespace Pyrrho.Level4
             while (obs.Contains(srcFix))
                 srcFix++;
             uids += (p, srcFix);
-            return srcFix;
+            return srcFix++;
         }
-        internal int Depth(BList<long> os)
+        internal Domain Unheap(Domain d)
+        {
+            var rs = d.representation;
+            for (var b=rs.First();b!=null;b=b.Next())
+            {
+                var p = b.key();
+                var c = b.value();
+                if (p!=b.key() || c!=b.value())
+                    rs += (Unheap(p), Unheap(c));
+            }
+            if (rs != d.representation)
+                d += (Domain.Representation, rs);
+            return d;
+        }
+        internal (long,Domain) Unheap((long,Domain)x)
+        {
+            var (p, d) = x;
+            d = Unheap(d);
+            if (p < Transaction.Heap)
+                return (p,d);
+            if (uids.Contains(p))
+                return (uids[p],d);
+            while (obs.Contains(srcFix))
+                srcFix++;
+            uids += (p, srcFix);
+            return (srcFix++,d);
+        }
+        internal int Depth(RowType os)
         {
             var r = 1;
             for (var b=os.First();b!=null;b=b.Next())
             {
-                var ob = obs[b.value()];
+                var ob = obs[b.value().Item1];
                 if (ob.depth >= r)
                     r = ob.depth + 1;
             }
@@ -273,16 +306,16 @@ namespace Pyrrho.Level4
                 return (ObInfo)(role.infos[dp]);
             return null;
         }
-        internal CList<long> Cols(long dp)
+        internal RowType Signature(long dp)
         {
-            return obs[dp]._Cols(this);
+            return obs[dp].rowType??((ObInfo)db.role.infos[dp]).rowType;
         }
-        internal BTree<long, SqlValue> Map(BList<long> s)
+        internal BTree<long, SqlValue> Map(RowType s)
         {
             var r = BTree<long, SqlValue>.Empty;
             for (var b = s.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 r += (p, (SqlValue)obs[p]);
             }
             return r;
@@ -310,14 +343,6 @@ namespace Pyrrho.Level4
                 lp = db.loadpos;
             db.Add(this, ph, lp);
         }
-        internal void Inf(BTree<long,ObInfo> infos)
-        {
-            for (var b = infos?.First();b!=null;b=b.Next())
-            {
-                var oi = b.value();
-                defs += (oi.name, oi.defpos, Ident.Idents.Empty);
-            }
-        }
         internal Domain Add(Domain dm)
         {
             if (dm.defpos>=0)
@@ -344,16 +369,33 @@ namespace Pyrrho.Level4
             if (ob != null && ob.defpos != -1)
             {
                 _Add(ob);
+                if (ob is Table || ob is TableColumn)
+                    return ob;
                 var nm = ob.alias ?? (string)ob.mem[Basis.Name] ?? "";
                 if (nm != "")
                 {
-                    var ic = new Ident(nm, ob.defpos);
+                    var ic = new Ident(nm, ob.defpos, ob.kind);
                     // Careful: we don't want to overwrite an undefined Ident by an unreified one
                     // as it is about to be Resolved
-                    var od = defs[ic];
+                    var (od,_) = defs[ic];
                     if (od == -1L || !(ob.defpos >= Transaction.Heap && obs[od] is SqlValue ov
                         && ov.domain == Domain.Content))
-                        defs += (ic, ob.defpos);
+                        defs += (ic, ob);
+       /*             for (var b = ob.domain?.representation.First(); b != null; b = b.Next())
+                        if (Inf(b.key()) is ObInfo ci)
+                        {
+                            var co = obs[b.key()];
+                            var sc = new Ident(ci.name, ci.defpos, ci.kind);
+                            var id = new Ident(ic, sc);
+                            defs += (id, co);
+                            defs += (sc, co);
+                        } else if (obs[b.key()] is SqlValue co)
+                        {
+                            var sc = new Ident(co.name, co.defpos, co.kind);
+                            var id = new Ident(ic, sc);
+                            defs += (id, co);
+                            defs += (sc, co);
+                        } */
                 }
             }
             return ob;
@@ -366,6 +408,42 @@ namespace Pyrrho.Level4
         {
             db += (ob, p);
             obs += (ob.defpos, ob);
+        }
+        /// <summary>
+        /// Look for an ad-hoc structure with a given signature.
+        /// Create it if necessary
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="tb"></param>
+        /// <returns></returns>
+        internal Table BySignature(Ident ic,BList<string> ns,RowType sig)
+        {
+            var sigs = db.role.signatures;
+            if (sigs.Contains(sig))
+                return (Table)db.objects[sigs[sig]];
+            var pt = new PTable(ic.ident, db.nextPos, this);
+            Add(pt);
+            var j = 0;
+            for (var b = sig.First(); b != null; b = b.Next(), j++)
+            {
+                var (p,dm) = b.value();
+                var pc = new PColumn3(pt.defpos, ns[j], j, dm.defpos,
+                    "", dm.defaultValue, "", BList<UpdateAssignment>.Empty,
+                    false, GenerationRule.None, db.nextPos, this);
+                Add(pc);
+            }
+            return (Table)db.objects[pt.defpos];
+        }
+        internal RowType _Pick(RowType rt,BList<long> its)
+        {
+            if (its == null)
+                return null;
+            var r = RowType.Empty;
+            for (var b = its.First(); b != null; b = b.Next())
+                for (var cb = rt.First(); cb != null; cb = cb.Next())
+                    if (cb.value().Item1 == b.value())
+                        r += cb.value();
+            return r;
         }
         internal Context ForConstraintParse(BTree<long,ObInfo>ns)
         {
@@ -380,19 +458,20 @@ namespace Pyrrho.Level4
             for (var b = ns?.First(); b != null; b = b.Next())
             {
                 var oi = b.value();
-                var ic = new Ident(oi.name, b.key());
-                if (oi.domain.kind == Sqlx.TABLE)
+                var ic = new Ident(oi.name, b.key(), Sqlx.COLUMN);
+                var ob = cx.obs[b.key()];
+                if (oi.domain.prim == Sqlx.TABLE)
                 {
                     ti = ic;
                     tb = (Table)db.objects[b.key()];
                 }
                 else if (ti!=null)
                 {
-                    cx.defs += (ic, b.key());
+                    cx.defs += (ic, ob);
                     ic = new Ident(ti, ic);
                     rs += (b.key(), oi.domain);
                 }
-                cx.defs += (ic, b.key());
+                cx.defs += (ic, ob);
             }
             if (tb!=null)
              cx.Add(tb + (DBObject._Domain, tb.domain + (Domain.Representation, rs)));
@@ -407,13 +486,15 @@ namespace Pyrrho.Level4
         {
             var p = Unheap(pos);
             if (p == pos)
-                return obs[p];
+                return obs[p]??(DBObject)db.objects[p];
             if (obs[p] is DBObject x)
                 return x;
             var ob = obs[pos];
             if (pos > Transaction.TransPos)
             {
-                ob = ob.Relocate(p).Relocate(this);
+                ob = ob.Relocate(p);
+                obs += (p, ob); // so that ob.defpos is not reallocated by UnHeap
+                ob = ob.Relocate(this);
                 obs -= pos;
                 obs += (p, ob);
             }
@@ -515,6 +596,11 @@ namespace Pyrrho.Level4
                 return done[dp].defpos;
             return obs[dp]?._Replace(this,was, now)?.defpos??-1L;
         }
+        internal (long,Domain) Replace((long,Domain) x,DBObject was,DBObject now)
+        {
+            var (p, d) = x;
+            return (Replace(p, was, now), (Domain)d.Replace(this, was, now));
+        }
         internal DBObject _Replace(long dp, DBObject was, DBObject now)
         {
             if (done.Contains(dp))
@@ -579,36 +665,36 @@ namespace Pyrrho.Level4
             {
                 var p = b.key();
                 var iv = Inf(p);
-                defs += (iv.name, p, Ident.Idents.For(p,db,this));
+                defs += (iv.name, p, Sqlx.COLUMN, Ident.Idents.For(p,db,this));
             }
         }
-        internal void AddDefs(Ident id, BList<long> s, bool force = false)
+        internal void AddCols(Ident id, RowType s, bool force = false)
         {
-  //          if ((!force) && (!constraintDefs) && obs[id.iix] is Table)
-  //              return;
+            if ((!force) && (!constraintDefs) && obs[id.iix] is Table)
+                return;
             for (var b = s?.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 var ob = obs[p] ?? (DBObject)db.objects[p];
-   //             if ((!force) && (!constraintDefs) && (ob is Table || ob is TableColumn))
-   //                 continue;
+                if ((!force) && (!constraintDefs) && (ob is Table || ob is TableColumn))
+                    continue;
                 var n = (ob is SqlValue v) ? v.name : Inf(p)?.name;
                 if (n == null)
                     continue;
-                var ic = new Ident(n, p);
-                defs += (new Ident(id, ic), ob.defpos);
-                defs += (ic, ob.defpos);
+                var ic = new Ident(n, p, ob.kind);
+                defs += (new Ident(id, ic), ob);
+                defs += (ic, ob);
             }
         }
         internal void AddParams(Procedure pr)
         {
-            var pi = new Ident(pr.name, 0);
+            var pi = new Ident(pr.name, 0, Sqlx.PROCEDURE);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
-                var pd = (FormalParameter)obs[b.value()];
-                var pn = new Ident(pd.name, 0);
-                defs += (pn, pd.defpos);
-                defs += (new Ident(pi, pn), pd.defpos);
+                var pd = (FormalParameter)obs[b.value().Item1];
+                var pn = new Ident(pd.name, 0, Sqlx.PARAMETER);
+                defs += (pn, pd);
+                defs += (new Ident(pi, pn), pd);
                 Add(pd);
             }
         }
@@ -649,15 +735,15 @@ namespace Pyrrho.Level4
             }
             return Domain.Char;
         }
-        internal TypedValue Eval(long dp,CList<long> s)
+        internal TypedValue Eval(long dp,RowType s)
         {
             return new SqlRow(dp, this, -1, s).Eval(this);
         }
-        internal PRow MakeKey(BList<long>s)
+        internal PRow MakeKey(RowType s)
         {
             PRow k = null;
             for (var b = s.Last(); b != null; b = b.Previous())
-                k = new PRow(obs[b.value()].Eval(this), k);
+                k = new PRow(obs[b.value().Item1].Eval(this), k);
             return k;
         }
         internal Activation GetActivation()
@@ -682,34 +768,7 @@ namespace Pyrrho.Level4
             return next?.FindTriggerActivation(tabledefpos)
                 ?? throw new PEException("PE600");
         }
-        internal string Obs
-        {
-            get
-            {
-                var sb = new StringBuilder();
-                for (var b = obs.First(); b != null; b = b.Next())
-                {
-                    sb.Append(DBObject.Uid(b.key()));
-                    sb.Append(": "); sb.Append(b.value().ToString(this, 0));
-                    sb.Append(";");
-                }
-                return sb.ToString();
-            }
-        }
-        internal string Data
-        {
-            get
-            {
-                var sb = new StringBuilder();
-                for (var b = data.First(); b != null; b = b.Next())
-                {
-                    sb.Append(DBObject.Uid(b.key()));
-                    sb.Append(": "); sb.Append(b.value().ToString(this, 0));
-                    sb.Append(";");
-                }
-                return sb.ToString();
-            }
-        }
+
         internal string Cursors
         {
             get
@@ -801,7 +860,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// AS, BETWEEN, SYMMETRIC, FROM
         /// </summary>
-        public Sqlx kind = Sqlx.NO;  
+        public Sqlx op = Sqlx.NO;  
         /// <summary>
         /// The first point in time specified
         /// </summary>
@@ -816,7 +875,7 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class PeriodVersion : IComparable
     {
-        internal Sqlx kind; // NO, AS, BETWEEN, SYMMETRIC or FROM
+        internal Sqlx op; // NO, AS, BETWEEN, SYMMETRIC or FROM
         internal DateTime time1;
         internal DateTime time2;
         internal long indexdefpos;
@@ -828,7 +887,7 @@ namespace Pyrrho.Level4
         /// <param name="t2">The end time</param>
         /// <param name="ix">The index</param>
         internal PeriodVersion(Sqlx k,DateTime t1,DateTime t2,long ix)
-        { kind = k; time1 = t1; time2 = t2; indexdefpos = ix; }
+        { op = k; time1 = t1; time2 = t2; indexdefpos = ix; }
         /// <summary>
         /// Compare versions
         /// </summary>
@@ -837,7 +896,7 @@ namespace Pyrrho.Level4
         public int CompareTo(object obj)
         {
             var that = obj as PeriodVersion;
-            var c = kind.CompareTo(that.kind);
+            var c = op.CompareTo(that.op);
             if (c != 0)
                 return c;
             c = time1.CompareTo(that.time1);

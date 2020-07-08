@@ -25,13 +25,13 @@ namespace Pyrrho.Level4
         internal readonly long defpos;
         internal readonly Domain domain;
         internal readonly Context _cx;
-        internal readonly BList<long> keyType;
+        internal readonly RowType keyType;
         internal readonly MTree mt;
         internal readonly BList<TRow> rows;
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
-        internal RTree(long dp,Context cx,BList<long> ks,Domain dt,
+        internal RTree(long dp,Context cx,RowType ks,Domain dt,
             TreeBehaviour d=TreeBehaviour.Disallow,TreeBehaviour n=TreeBehaviour.Allow)
         {
             defpos = dp;
@@ -41,7 +41,8 @@ namespace Pyrrho.Level4
             mt = new MTree(new TreeInfo(ks,dt,d,n));
             rows = BList<TRow>.Empty;
         }
-        internal RTree(long dp,Context cx,BList<long>ks,Domain dt,BList<TRow> rs, TreeBehaviour d= TreeBehaviour.Disallow,
+        internal RTree(long dp,Context cx,RowType ks,Domain dt,
+            BList<TRow> rs, TreeBehaviour d= TreeBehaviour.Disallow,
             TreeBehaviour n = TreeBehaviour.Allow)
         {
             defpos = dp;
@@ -58,7 +59,7 @@ namespace Pyrrho.Level4
             mt = m;
             rows = rs;
         }
-        protected RTree(long dp,Context cx,BList<long> k,Domain d,MTree m,BList<TRow> rs)
+        protected RTree(long dp,Context cx,RowType k,Domain d,MTree m,BList<TRow> rs)
         {
             defpos = dp;
             keyType = k;

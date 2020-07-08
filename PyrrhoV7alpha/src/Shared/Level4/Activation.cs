@@ -115,14 +115,14 @@ namespace Pyrrho.Level4
         { 
             proc = p; udt = ot;
             for (var b = p.ins.First(); b != null; b = b.Next())
-                locals += (b.value(), true);
+                locals += (b.value().Item1, true);
             if (p is Method mt)
             {
                 cmt = mt;
                 udi = (ObInfo)tr.role.infos[cmt.udType.defpos];
-                for (var b = udi.columns.First(); b != null; b = b.Next())
+                for (var b = udi.rowType?.First(); b != null; b = b.Next())
                 {
-                    var iv = cx.Inf(b.value());
+                    var iv = cx.Inf(b.value().Item1);
                     locals += (iv.defpos, true);
                     cx.Add(iv);
                 }
@@ -182,9 +182,9 @@ namespace Pyrrho.Level4
         static (SqlRow,BTree<long,long>) _Map(Context cx,ObInfo oi,SqlValue sv)
         {
             var ma = BTree<long, long>.Empty;
-            var sb = sv.columns.First();
-            for (var b = oi.columns.First(); b != null && sb != null; b = b.Next(), sb = sb.Next())
-                ma += (b.value(), sb.value());
+            var sb = sv.rowType?.First();
+            for (var b = oi.rowType?.First(); b != null && sb != null; b = b.Next(), sb = sb.Next())
+                ma += (b.value().Item1, sb.value().Item1);
             return ((SqlRow)sv, ma);
         }
         /// <summary>
@@ -227,9 +227,9 @@ namespace Pyrrho.Level4
                 {
                     var v = (SqlNewRow)obs[_trig.newRow];
                     var vs = values[_trig.newRow];
-                    for (var b = v.columns.First(); b != null; b = b.Next())
+                    for (var b = v.rowType?.First(); b != null; b = b.Next())
                     {
-                        var c = obs[b.value()];
+                        var c = obs[b.value().Item1];
                         var p = (c is SqlCopy sc) ? sc.copyFrom : c.defpos;
                         row += (cx, p, vs[c.defpos]);
                     }
@@ -244,9 +244,9 @@ namespace Pyrrho.Level4
         TRow _Row(SqlRow sr,BTree<long,TypedValue>vals)
         {
             var vs = BTree<long, TypedValue>.Empty;
-            for (var b=sr.columns.First();b!=null;b=b.Next())
+            for (var b=sr.rowType?.First();b!=null;b=b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 vs += (p, vals[((SqlCopy)obs[p]).copyFrom]);                
             }
             return new TRow(sr, vs);

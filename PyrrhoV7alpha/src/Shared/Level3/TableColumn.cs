@@ -40,6 +40,7 @@ namespace Pyrrho.Level3
         public BList<UpdateAssignment> update =>
             (BList<UpdateAssignment>)mem[UpdateAssignments] ?? BList<UpdateAssignment>.Empty;
         public string updateString => (string)mem[UpdateString];
+        internal override Sqlx kind => Sqlx.COLUMN;
         public readonly static TableColumn Doc = new TableColumn(-1, BTree<long, object>.Empty);
         /// <summary>
         /// Constructor: a new TableColumn 
@@ -78,10 +79,6 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new TableColumn(dp,mem);
-        }
-        internal override CList<long> _Cols(Context cx)
-        {
-            return cx.Inf(defpos).columns;
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -187,7 +184,7 @@ namespace Pyrrho.Level3
             var tb = tr.objects[tabledefpos] as Table;
             if (tb == null)
                 return;
-            var fm = new From(new Ident("",tr.uid), new Context(tr),tb);
+            var fm = new From(new Ident("",tr.uid,Sqlx.COLUMN), new Context(tr),tb);
             for (var rb = fm.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx); 
                 rb != null; rb = rb.Next(cx))
             {
@@ -216,7 +213,8 @@ namespace Pyrrho.Level3
             var cx = new Context(tr);
             cx.obs += (c.framing,true);
             var sch = (SqlValue)cx.obs[c.search];
-            Query nf = new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
+            Query nf = new From(new Ident("", tr.uid,Sqlx.TABLE), cx, tb)
+                .AddCondition(cx, sch.Disjoin(cx));
             nf = sch.Conditions(cx, nf, false, out _);
             if (nf.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx) != null)
             {
@@ -235,7 +233,7 @@ namespace Pyrrho.Level3
             var tb = (Table)cx.db.objects[tabledefpos];
             for (var b = tb?.indexes.First(); b != null; b = b.Next())
                 for (var c = b.key().First(); c != null; c = c.Next())
-                    if (c.value() == defpos && cx.db.objects[b.value()] is Index x)
+                    if (c.value().Item1 == defpos && cx.db.objects[b.value()] is Index x)
                         x.Cascade(cx,a,u);      
         }
         internal override Database Drop(Database d, Database nd,long p)
@@ -478,7 +476,7 @@ namespace Pyrrho.Level3
                         if (rx == null || rx.reftabledefpos != tabledefpos)
                             continue;
                         var x = (Index)db.objects[rx.refindexdefpos];
-                        var pk = MakeKey(x.keys);
+                        var pk = MakeKey(x);
                         if (!rx.rows.Contains(pk))
                             continue;
                         var ca = rx.flags;
@@ -494,7 +492,7 @@ namespace Pyrrho.Level3
                         if (ca == PIndex.ConstraintType.SetDefaultDelete ||
                             ca == PIndex.ConstraintType.SetDefaultUpdate)
                             for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                                dk = new PRow(cx.obs[kb.value()].Eval(cx), dk);
+                                dk = new PRow(cx.obs[kb.value().Item1].Eval(cx), dk);
                         if (db is Transaction && ca==0 && a==0)
                             throw new DBException("23000", "RESTRICT - foreign key in use", pk);
                         cx.db += (Database.Cascade, true);
@@ -526,7 +524,7 @@ namespace Pyrrho.Level3
                                     for (var fb = rx.keys.First(); pb!=null && fb != null; 
                                         pb=pb.Next(),fb = fb.Next())
                                     {
-                                        var q = pb.value();
+                                        var q = pb.value().Item1;
                                         TypedValue v = TNull.Value;
                                         if (u?.Contains(q)!=false)
                                         {
@@ -541,7 +539,7 @@ namespace Pyrrho.Level3
                                                     // otherwise SetNull cases
                                             }
                                             var tc = fb.value();
-                                            rr += (tc, v);
+                                            rr += (tc.Item1, v);
                                         }
                                     }
                                     if (rr != rz)
@@ -565,7 +563,7 @@ namespace Pyrrho.Level3
         {
             PRow r = null;
             for (var i = (int)x.keys.Count - 1; i >= 0; i--)
-                r = new PRow(vals[x.keys[i]], r);
+                r = new PRow(vals[x.keys[i].Item1], r);
             return r;
         }
         public PRow MakeKey(long[] cols)

@@ -39,7 +39,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the formal parameters of the method
         /// </summary>
-        public CList<long> ins;
+        public RowType ins;
         public int arity => ins.Length;
         /// <summary>
         /// The return type
@@ -53,7 +53,7 @@ namespace Pyrrho.Level4
     internal class TablePeriodDefinition
     {
         public Sqlx pkind = Sqlx.SYSTEM_TIME;
-        public Ident periodname = new Ident("SYSTEM_TIME", 0);
+        public Ident periodname = new Ident("SYSTEM_TIME", 0,Sqlx.PERIOD);
         public Ident col1 = null;
         public Ident col2 = null;
     }

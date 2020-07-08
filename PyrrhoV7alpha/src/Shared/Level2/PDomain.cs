@@ -29,7 +29,7 @@ namespace Pyrrho.Level2
         /// The name of the Domain
         /// </summary>
         public string name;
-        public Sqlx kind;
+        public Sqlx prim;
         internal bool NotNull=false;
         /// <summary>
         /// Numeric types have prec and scale attributes
@@ -80,7 +80,7 @@ namespace Pyrrho.Level2
             : base(t, pp, cx)
         {
             prec = dl;
-            kind = dt;
+            prim = dt;
             scale = sc;
             charSet = ch;
             culture = CultureInfo.GetCultureInfo(co);
@@ -107,7 +107,7 @@ namespace Pyrrho.Level2
         : base(t, pp, cx)
         {
             prec = dt.prec;
-            kind = dt.kind;
+            prim = dt.prim;
             scale = dt.scale;
             charSet = dt.charSet;
             culture = dt.culture;
@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
         protected PDomain(PDomain x, Writer wr) : base(x, wr)
         {
             name = x.name;
-            kind = x.kind;
+            prim = x.prim;
             NotNull = x.NotNull;
             prec = x.prec;
             scale = x.scale;
@@ -159,10 +159,10 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) //LOCKED
 		{
-            if (kind == Sqlx.UNION)
+            if (prim == Sqlx.UNION)
                 throw new PEException("PE916");
             wr.PutString(name);
-            wr.PutInt((int)kind);
+            wr.PutInt((int)prim);
             wr.PutInt(prec);
             wr.PutInt(scale);
             wr.PutInt((int)charSet);
@@ -170,7 +170,7 @@ namespace Pyrrho.Level2
             wr.PutString(defaultString);
             eltypedefpos = wr.Fix(eltypedefpos);
             structdefpos = wr.Fix(structdefpos);
-            if (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET)
+            if (prim == Sqlx.ARRAY || prim == Sqlx.MULTISET)
                 wr.PutLong(eltypedefpos);
             else
                 wr.PutLong(structdefpos);
@@ -183,25 +183,25 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            kind = (Sqlx)rdr.GetInt();
+            prim = (Sqlx)rdr.GetInt();
             prec = rdr.GetInt();
             scale = (byte)rdr.GetInt();
             charSet = (CharSet)rdr.GetInt();
             culture = GetCulture(rdr.GetString());
             defaultString = rdr.GetString();
             if (defaultString.Length>0 
-                && kind == Sqlx.CHAR && defaultString[0] != '\'')
+                && prim == Sqlx.CHAR && defaultString[0] != '\'')
                 defaultString = "'" + defaultString + "'";
             if (defaultString != "")
                 try
                 {
-                    defaultValue = Domain.For(kind).Parse(rdr.context.db.uid, defaultString);
+                    defaultValue = Domain.For(prim).Parse(rdr.context.db.uid, defaultString);
                 }catch(Exception)
                 {
                     defaultValue = TNull.Value;
                 }
             var ep = rdr.GetLong();
-            if (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET)
+            if (prim == Sqlx.ARRAY || prim == Sqlx.MULTISET)
                 eltypedefpos = ep;
             else
                 structdefpos = ep;
@@ -252,7 +252,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder("PDomain ");
             if (name != "") { sb.Append(name); sb.Append(": ");  }
-            sb.Append(kind);
+            sb.Append(prim);
             if (NotNull) sb.Append(" not null");
             if (prec != 0) sb.Append(" p=" + prec);
             if (scale != 0) sb.Append(" s=" + scale);
@@ -271,7 +271,7 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var dt = new Domain(this,cx.db);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, name, dt)+(ObInfo.Privilege, priv);
+            var oi = new ObInfo(ppos, name, dt.prim, dt)+(ObInfo.Privilege, priv);
             if (structdefpos>=0)
                 oi += (DBObject._Domain,cx.db.objects[structdefpos]);
             ro += oi;

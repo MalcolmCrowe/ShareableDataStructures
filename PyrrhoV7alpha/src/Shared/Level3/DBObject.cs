@@ -38,6 +38,7 @@ namespace Pyrrho.Level3
             Framing = -167, // BTree<long,DBObject> compiled objects
             _From = -306, // long
             LastChange = -68, // long (formerly called Ppos)
+            _RowType = -187,  // RowType 
             Sensitive = -69; // bool
         /// <summary>
         /// During transaction execution, many DBObjects have aliases.
@@ -63,7 +64,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BTree<long, DBObject> framing =>
             (BTree<long, DBObject>)mem[Framing] ?? BTree<long, DBObject>.Empty;
-        internal Context compareContext => (Context)mem[CompareContext]; 
+        internal Context compareContext => (Context)mem[CompareContext];
+        internal RowType rowType => (RowType)mem[_RowType];
         /// <summary>
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
@@ -115,11 +117,11 @@ namespace Pyrrho.Level3
                     r = b.value().depth;
             return r;
         }
-        internal static BTree<long, bool> _Deps(BList<long> vs)
+        internal static BTree<long, bool> _Deps(RowType vs)
         {
             var r = BTree<long, bool>.Empty;
             for (var b = vs?.First(); b != null; b = b.Next())
-                r += (b.value(), true);
+                r += (b.value().Item1, true);
             return r;
         }
         internal static BTree<long, bool> _Deps(BList<SqlValue> vs)
@@ -129,10 +131,6 @@ namespace Pyrrho.Level3
                 r += (b.value().defpos, true);
             return r;
         }
-        internal virtual CList<long> _Cols(Context cx)
-        {
-            return CList<long>.Empty;
-        }
         internal static int _Depth(BList<SqlValue> vs)
         {
             var r = 0;
@@ -141,6 +139,7 @@ namespace Pyrrho.Level3
                     r = b.value().depth;
             return r;
         }
+        internal abstract Sqlx kind { get; }
         /// <summary>
         /// Check to see if the current role has the given privilege on this (except Admin)
         /// For ADMIN and classified objects we check the current user has this privilege
@@ -164,6 +163,17 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Writer wr)
         {
             var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            var cs = RowType.Empty;
+            var ch = false;
+            for (var b = rowType?.First(); b != null; b = b.Next())
+            {
+                var nk = wr.Fix(b.value());
+                ch = ch || nk.Item1 != b.value().Item1
+                    || nk.Item2 != b.value().Item2;
+                cs += nk;
+            }
+            if (ch)
+                r += (_RowType, cs);
             var df = wr.Fix(definer);
             if (df != definer)
                 r += (Definer, df);
@@ -193,6 +203,16 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = ((DBObject)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
+            var cs = RowType.Empty;
+            var ch = false;
+            for (var b = rowType?.First(); b != null; b = b.Next())
+            {
+                var nk = cx.Unheap(b.value());
+                ch = ch || nk != b.value();
+                cs += nk;
+            }
+            if (ch)
+                r += (_RowType, cs);
             var df = cx.Unheap(definer);
             if (df != definer)
                 r += (Definer, df);
@@ -228,6 +248,10 @@ namespace Pyrrho.Level3
         public virtual TypedValue Get(Reader rdr)
         {
             return TNull.Value;
+        }
+        internal virtual ObInfo Inf(Context cx)
+        {
+            return cx.Inf(defpos);
         }
         public virtual void Put(TypedValue tv,Writer wr)
         { }
@@ -280,10 +304,10 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-        internal static bool Calls(BList<DBObject> vs, long defpos, Context cx)
+        internal static bool Calls(RowType vs, long defpos, Context cx)
         {
             for (var b = vs?.First(); b != null; b = b.Next())
-                if (b.value().Calls(defpos, cx))
+                if (cx.obs[b.value().Item1].Calls(defpos, cx))
                     return true;
             return false;
         }
@@ -459,7 +483,7 @@ namespace Pyrrho.Level3
         /// <param name="dt">The Pyrrho datatype</param>
         protected static void FieldType(Database db,StringBuilder sb, Domain dt)
         {
-            switch (Domain.Equivalent(dt.kind))
+            switch (Domain.Equivalent(dt.prim))
             {
                 case Sqlx.ONLY: 
                     FieldType(db, sb, (Domain)db.objects[dt.super]); return;
@@ -495,7 +519,7 @@ namespace Pyrrho.Level3
         /// <param name="dt">The Pyrrho datatype</param>
         protected void FieldJava(Database db, StringBuilder sb, Domain dt)
         {
-            switch (Domain.Equivalent(dt.kind))
+            switch (Domain.Equivalent(dt.prim))
             {
                 case Sqlx.ONLY: FieldJava(db, sb, (Domain)db.objects[dt.super]); return;
                 case Sqlx.INTEGER:
@@ -567,7 +591,7 @@ namespace Pyrrho.Level3
             var cols = new long[m?.Length ?? 0];
             for (var i = 0; m != null; m = m._tail, i++)
             {
-                cols[i] = ix.keys[i];
+                cols[i] = ix.keys[i].Item1;
                 key[i] = m._head.ToString();
             }
             Audit(pp, cx, cols, key);
@@ -624,8 +648,9 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(Uid(defpos));
-            if (domain is Domain dm && (dm.kind == Sqlx.CONTENT || dm.kind == Sqlx.UNION))
-            { sb.Append(" "); sb.Append(dm.kind);  }
+            if (domain is Domain dm && (dm.prim == Sqlx.CONTENT || dm.prim == Sqlx.UNION))
+            { sb.Append(" "); sb.Append(dm.prim);  }
+            if (rowType!=null && rowType.Length!=0) { sb.Append(" RowType:"); sb.Append(rowType); }
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" Ppos="); sb.Append(Uid(lastChange)); }

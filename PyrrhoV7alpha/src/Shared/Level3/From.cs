@@ -70,19 +70,19 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(Ident ic, Context cx, Table tb, QuerySpecification q,
            Grant.Privilege pr = Grant.Privilege.Select, string a=null,BList<Ident> cr = null)
         {
-            var cs = CList<long>.Empty;
+            var cs = RowType.Empty;
             var vs = BList<SqlValue>.Empty;
             var de = 1; // we almost always have some columns
             var ti = tb.Inf(cx);
             cx._Add(tb);
-            cx.AddDefs(ic, ti.columns);
+            cx.AddCols(ic, ti.rowType);
             var mp = BTree<long, bool>.Empty;
             if (cr == null)
             {
                 var ma = BTree<string, TableColumn>.Empty;
-                for (var b = ti.columns.First(); b != null; b = b.Next())
+                for (var b = ti.rowType?.First(); b != null; b = b.Next())
                 {
-                    var p = b.value();
+                    var p = b.value().Item1;
                     var tc = (TableColumn)cx.db.objects[p];
                     var ci = (ObInfo)cx.role.infos[tc.defpos];
                     ma += (ci.name, tc);
@@ -104,7 +104,7 @@ namespace Pyrrho.Level3
                                 nv += (_Alias, uv.alias);
                             cx.Replace(uv, nv);
                             q = (QuerySpecification)cx.obs[q.defpos];
-                            cs += nv.defpos;
+                            cs += (nv.defpos,nv.domain);
                             vs += nv;
                             mp += (tc.defpos, true);
                         }
@@ -113,44 +113,44 @@ namespace Pyrrho.Level3
                 for (var sb = cx.stars.First(); sb != null; sb = sb.Next())
                 {
                     var (i, dp) = sb.value();
-                    var rt = q.rowType ?? CList<long>.Empty;
+                    var rt = q.rowType ?? RowType.Empty;
                     if (tb.defpos == dp || dp < 0)
-                        for (var b = ti.columns.First(); b != null; b = b.Next())
+                        for (var b = ti.rowType?.First(); b != null; b = b.Next())
                         {
-                            var p = b.value();
+                            var (p,d) = b.value();
                             var ci = cx.Inf(p);
                             var u = cx.GetUid();
-                            cs += u;
+                            cs += (u,d);
                             var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
                             cx.Add(sv);
                             q += (cx,sv);
-                            rt += sv.defpos;
+                            rt += (u,d);
                             vs += sv;
                             mp += (p, true);
                         }
-                    q = (QuerySpecification)cx.Add(q + (RowType, rt));
+                    q = (QuerySpecification)cx.Add(q + (_RowType, rt));
                 }
             }
             else
                 for (var b = cr.First(); b != null; b = b.Next())
                 {
                     var c = b.value();
-                    var tc = (TableColumn)cx.obs[cx.defs[c]]
+                    var tc = (TableColumn)cx.obs[cx.defs[c].Item1]
                         ?? throw new DBException("42112", c.ident);
-                    cs += c.iix;
+                    cs += (c.iix,tc.domain);
                     var sv = new SqlCopy(c.iix, cx, c.ident, ic.iix, tc.defpos);
                     cx.Add(sv);
                     vs += sv;
                     mp += (tc.defpos, true);
                 }
-            for (var b = ti.columns.First(); b != null; b = b.Next())
+            for (var b = ti.rowType?.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var (p,d) = b.value();
                 if (mp.Contains(p))
                     continue;
                 var ci = cx.Inf(p);
                 var u = cx.GetUid();
-                cs += u;
+                cs += (u,d);
                 var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
                 cx.Add(sv);
                 vs += sv;
@@ -160,23 +160,23 @@ namespace Pyrrho.Level3
                 cx.Add(q + (QuerySpecification.Scope, q.scope + dm.representation));
             return BTree<long, object>.Empty + (Name, ic.ident)
                    + (Target, tb.defpos) + (_Domain, dm) 
-                   + (RowType, cs) + (Depth, de + 1);
+                   + (_RowType, cs) + (Depth, de + 1);
         }
         static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,CList<long> cr=null)
         {
             var proc = (Procedure)cx.db.objects[pc.procdefpos];
-            var disp = cr?.Length ?? proc.domain.Length;
-            var s = BList<long>.Empty;
-            var oi = cx.Inf(proc.defpos);
-            for (var b = oi.domain.representation.First(); b != null; b = b.Next())
+            cx._Add(proc);
+            var disp = cr?.Length ?? proc.retType.Length;
+            var s = RowType.Empty;
+            for (var b = proc.retType.rowType?.First(); b != null; b = b.Next())
             {
-                var ci = cx.Inf(b.key());
-                cx.Add( new SqlRowSetCol(ci.defpos,ci, dp));
-                s += ci.defpos;
+                var p = b.value().Item1;
+                var ci = cx.Inf(p);
+                s += (cx.Add(new SqlCopy(p,cx,ci.name,dp,b.key())).defpos,ci.domain);
             }
             return BTree<long, object>.Empty
-                + (Target,pc.procdefpos) + (Display,disp) + (_Domain,oi.domain)
-                + (Name, proc.name) + (RowType,s);
+                + (Target,pc.procdefpos) + (Display,disp) + (_Domain,proc.domain)
+                + (Name, proc.name) + (_RowType,s);
         }
         internal override TypedValue Eval(Context cx)
         {
@@ -303,7 +303,7 @@ namespace Pyrrho.Level3
                  {
                      // a periodspecification has been supplied for this table.
                      var ps = periods[target.defpos];
-                     if (ps.kind == Sqlx.NO)
+                     if (ps.op == Sqlx.NO)
                      {
                          // simply use the appropriate time versioning index for this table
                          var tb = (Table)target;
@@ -337,9 +337,9 @@ namespace Pyrrho.Level3
                     var havematch = false;
                     int sb = 1;
                     var j = dt.Length - 1; 
-                    for (var b=dt.columns.Last();b!=null;b=b.Previous(), j--)
+                    for (var b=dt.rowType?.Last();b!=null;b=b.Previous(), j--)
                     {
-                        var c = b.value();
+                        var c = b.value().Item1;
                         for (var fd = filter.First(); fd != null; fd = fd.Next())
                         {
                             if (cx.obs[fd.key()] is SqlCopy co 
@@ -446,11 +446,11 @@ namespace Pyrrho.Level3
             if (tr.objects[target] is Table tb)
             for (var e = new WindowRowSet(cx,fm,ps).First(cx); e != null; e = e.Next(cx))
             {
-                var ts = (Period)e[new Ident(ps.periodname,0)].Val();
+                var ts = (Period)e[new Ident(ps.periodname,0,Sqlx.COLUMN)].Val();
                 var dt = ts.start.dataType;
                 var time1 = ps.time1.Eval(cx);
                 var time2 = ps.time2.Eval(cx);
-                switch (ps.kind)
+                switch (ps.op)
                 {
                     case Sqlx.AS:
                         if (!(dt.Compare(ts.start, time1) <= 0

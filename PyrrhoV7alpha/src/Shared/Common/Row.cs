@@ -43,11 +43,11 @@ namespace Pyrrho.Common
         internal abstract object Val();
         internal virtual TypedValue Next()
         {
-            throw new DBException("22009",dataType.kind.ToString());
+            throw new DBException("22009",dataType.prim.ToString());
         }
         internal virtual SqlValue Build(long dp,Context cx,Domain td)
         {
-            if (td.kind == Sqlx.CONTENT)
+            if (td.prim == Sqlx.CONTENT)
                 td = null;
             return new SqlLiteral(dp, cx, this, td);
         }
@@ -979,7 +979,7 @@ namespace Pyrrho.Common
         {
             if (typedValue == null)
                 return "<null>";
-            if (typedValue.dataType.kind == Sqlx.CHAR)
+            if (typedValue.dataType.prim == Sqlx.CHAR)
                 return "\"" + typedValue.ToString() + "\"";
             return typedValue.ToString();
         }
@@ -1097,7 +1097,7 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TRow : TypedValue
     {
-        internal readonly BList<long> columns = null; // role-dependent
+        internal readonly RowType columns = null; // role-dependent
         internal readonly BTree<long, TypedValue> values;
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => (columns!=null)?columns.Length:(int)values.Count;
@@ -1133,18 +1133,18 @@ namespace Pyrrho.Common
             for (var b = rs.rt.First(); b != null; b = b.Next())
             {
                 var f = b.value();
-                v += (b.value(), rw[b.key()] ?? TNull.Value);
+                v += (b.value().Item1, rw[b.key()] ?? TNull.Value);
             }
             values = v;
         }
         public TRow(ObInfo oi, TRow rw) : base(oi.domain)
         {
             var v = BTree<long, TypedValue>.Empty;
-            columns = oi.columns;
-            for (var b = oi.columns.First(); b != null; b = b.Next())
+            columns = oi.rowType;
+            for (var b = columns.First(); b != null; b = b.Next())
             {
                 var f = b.value();
-                v += (b.value(), rw[b.key()] ?? TNull.Value);
+                v += (b.value().Item1, rw[b.key()] ?? TNull.Value);
             }
             values = v;
         }
@@ -1152,7 +1152,7 @@ namespace Pyrrho.Common
     : base(oi.domain)
         {
             var v = BTree<long, TypedValue>.Empty;
-            columns = oi.columns;
+            columns = oi.rowType;
             for (var b = map.First(); b != null; b = b.Next())
             {
                 var f = b.value();
@@ -1160,44 +1160,44 @@ namespace Pyrrho.Common
             }
             values = v;
         }
-        public TRow(BList<long> cols,Domain dt,BTree<long, TypedValue> vs = null) : base(dt)
+        public TRow(RowType cols,Domain dt,BTree<long, TypedValue> vs = null) : base(dt)
         {
             var v = BTree<long, TypedValue>.Empty;
             vs = vs ?? BTree<long, TypedValue>.Empty;
             columns = cols;
             for (var b = columns.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 v += (p, vs[p] ?? TNull.Value);
             }
             values = v;
         }
-        public TRow(SqlValue sv, BTree<long, TypedValue> vs) : this(sv.columns, sv.domain, vs) { }
-        public TRow(ObInfo oi, BTree<long, TypedValue> vs) : this(oi.columns, oi.domain, vs) { }
+        public TRow(SqlValue sv, BTree<long, TypedValue> vs) : this(sv.rowType, sv.domain, vs) { }
+        public TRow(ObInfo oi, BTree<long, TypedValue> vs) : this(oi.rowType, oi.domain, vs) { }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
          /// <param name="v">The values</param>
-        public TRow(BList<long> cols, Domain dt, params TypedValue[] v) : base(dt)
+        public TRow(RowType cols, Domain dt, params TypedValue[] v) : base(dt)
         {
             var vals = BTree<long, TypedValue>.Empty;
             var i = 0;
             for (var b = cols.First(); i < v.Length && b != null; b = b.Next(), i++)
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 vals += (p, v[i] ?? dt.representation[p].defaultValue);
             }
             columns = cols;
             values = vals;
         }
         public TRow(RowSet rs, params TypedValue[] v) : this(rs.rt, rs.dataType, v) { }
-        public TRow(ObInfo oi, params TypedValue[] v) : this(oi.columns, oi.domain, v) { }
-        internal TRow(BList<long> cs, Domain dm, PRow v) : base(dm)
+        public TRow(ObInfo oi, params TypedValue[] v) : this(oi.rowType, oi.domain, v) { }
+        internal TRow(RowType cs, Domain dm, PRow v) : base(dm)
         {
             var vals = BTree<long, TypedValue>.Empty;
             for (var b = cs.First(); b != null; b = b.Next(), v=v._tail)
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 vals += (p, v._head);
             }
             columns = cs;
@@ -1217,7 +1217,7 @@ namespace Pyrrho.Common
         {
             get {
                 if (columns != null)
-                    return values[columns[i]];
+                    return values[columns[i].Item1];
                 var j = 1;
                 for (var b = dataType.representation.First(); i >= j && b != null; b = b.Next(), j++)
                     if (i == j)
@@ -1236,7 +1236,7 @@ namespace Pyrrho.Common
             for (var b=columns.First();b!=null;b=b.Next())
             {
                 str.Append(cm); cm = ',';
-                var p = b.value();
+                var p = b.value().Item1;
                 str.Append(DBObject.Uid(p)); str.Append('=');
                 str.Append(values[p]?? TNull.Value);
             }
@@ -1314,12 +1314,12 @@ namespace Pyrrho.Common
         /// <param name="et">The element type</param>
         internal TMultiset(Context cx,Domain et) : base (new Domain(cx.nextHeap++,Sqlx.MULTISET,et))
         {
-            tree = new CTree<TypedValue,long?>(et.kind); 
+            tree = new CTree<TypedValue,long?>(et.prim); 
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(TMultiset tm) : base(tm.dataType)
         {
-            tree = new CTree<TypedValue, long?>(tm.dataType.elType.kind);
+            tree = new CTree<TypedValue, long?>(tm.dataType.elType.prim);
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(Domain dt) : base(dt) { }
@@ -1574,7 +1574,7 @@ namespace Pyrrho.Common
         public override int _CompareTo(object obj)
         {
             var that = (TMultiset)obj;
-            if (dataType.kind != that.dataType.kind)
+            if (dataType.prim != that.dataType.prim)
                 throw new DBException("22000").ISO();
             var e = tree.First();
             var f = that.tree.First();

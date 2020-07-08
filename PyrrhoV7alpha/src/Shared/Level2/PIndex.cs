@@ -232,13 +232,13 @@ namespace Pyrrho.Level2
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 cx.Install(rx,p);
             }
-            var cs = CList<long>.Empty;
+            var cs = RowType.Empty;
             var kc = tb.tblCols;
             for (var b=x.keys.First();b!=null;b=b.Next())
             {
                 var tc = b.value();
                 cs += tc;
-                kc += (tc,true);
+                kc += (tc.Item1,true);
             }
             tb += (Table.TableCols, kc);
             var r = cx.db.role + new ObInfo(ppos, Domain.TableType, cs);

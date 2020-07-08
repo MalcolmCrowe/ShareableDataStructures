@@ -21,10 +21,10 @@ namespace Pyrrho.Common
     internal class CTree<K, V> : BTree<K, V>
     where K : ITypedValue
     {
-        internal readonly Sqlx kind;
+        internal readonly Sqlx prim;
         internal CTree(Sqlx k) :this(k,null) 
         {
-            kind = k;
+            prim = k;
         }
         /// <summary>
         /// Constructor
@@ -42,7 +42,7 @@ namespace Pyrrho.Common
         protected CTree(Sqlx k,Bucket<K, V> b)
             : base(b)
         {
-            kind = k;
+            prim = k;
         }
         /// <summary>
         /// Comparison of keys
@@ -67,7 +67,7 @@ namespace Pyrrho.Common
         protected override ATree<K, V> Add(K k, V v)
         {
             if (Contains(k))
-                return new CTree<K, V>(kind,root.Update(this, k, v));
+                return new CTree<K, V>(prim,root.Update(this, k, v));
             return Insert(k, v);
         }
         /// <summary>
@@ -80,10 +80,10 @@ namespace Pyrrho.Common
         protected override ATree<K, V> Insert(K k, V v) // this does not contain k
         {
             if (root==null || root.total == 0)  // empty BTree
-                return new CTree<K, V>(kind,new KeyValuePair<K, V>(k, v));
+                return new CTree<K, V>(prim,new KeyValuePair<K, V>(k, v));
             if (root.count == Size)
-                return new CTree<K, V>(kind,root.Split()).Add(k, v);
-            return new CTree<K, V>(kind,root.Add(this, k, v));
+                return new CTree<K, V>(prim,root.Split()).Add(k, v);
+            return new CTree<K, V>(prim,root.Add(this, k, v));
         }
         /// <summary>
         /// Creator: Create a new Tree that has a modified value
@@ -95,7 +95,7 @@ namespace Pyrrho.Common
         {
             if (!Contains(k))
                 throw new PEException("PE01");
-            return new CTree<K, V>(kind,root.Update(this, k, v));
+            return new CTree<K, V>(prim,root.Update(this, k, v));
         }
         /// <summary>
         /// Creator: Create a new Tree if necessary that does not have a given key
@@ -108,9 +108,9 @@ namespace Pyrrho.Common
             if (!Contains(k))
                 return this;
             if (root.total == 1) // empty index
-                return new CTree<K, V>(kind);
+                return new CTree<K, V>(prim);
             // note: we allow root to have 1 entry
-            return new CTree<K, V>(kind,root.Remove(this, k));
+            return new CTree<K, V>(prim,root.Remove(this, k));
         }
         public static CTree<K, V> operator +(CTree<K, V> tree, (K, V) v)
         {
@@ -148,7 +148,6 @@ namespace Pyrrho.Common
         /// Constructor: a tree at a given depth with a given initial entry.
         /// </summary>
         /// <param name="ti">The treeinfo for the SqlTree</param>
-        /// <param name="vType">the nominal value type</param>
         /// <param name="k">a key</param>
         /// <param name="v">a value</param>
         public SqlTree(TreeInfo ti, Sqlx kT,TypedValue k, TypedValue v)
@@ -171,7 +170,7 @@ namespace Pyrrho.Common
             if (t.Contains(k) && t.info.onDuplicate != TreeBehaviour.Allow)
                 return t.info.onDuplicate;
    /*         if (k != null && !t.info.headType.CanTakeValueOf(k.dataType))
-                throw new DBException("22005M", t.info.headType.kind, k.ToString()).ISO()
+                throw new DBException("22005M", t.info.headType.prim, k.ToString()).ISO()
                     .AddType(t.info.headType).AddValue(k); */
             ATree<TypedValue, TypedValue> a = t;
             AddNN(ref a, k, v);
@@ -187,7 +186,7 @@ namespace Pyrrho.Common
         protected override ATree<TypedValue, TypedValue> Add(TypedValue k, TypedValue v)
         {
             if (Contains(k))
-                return new SqlTree(info, kind, root.Update(this, k, v));
+                return new SqlTree(info, prim, root.Update(this, k, v));
             return Insert(k, v);
         }
         /// <summary>
@@ -199,10 +198,10 @@ namespace Pyrrho.Common
         protected override ATree<TypedValue, TypedValue> Insert(TypedValue k, TypedValue v)
         {
             if (root == null || root.total == 0)  // empty BTree
-                return new SqlTree(info, kind, k, v);
+                return new SqlTree(info, prim, k, v);
             if (root.count == Size)
-                return new SqlTree(info, kind, root.Split()).Add(k, v);
-            return new SqlTree(info, kind, root.Add(this, k, v));
+                return new SqlTree(info, prim, root.Split()).Add(k, v);
+            return new SqlTree(info, prim, root.Add(this, k, v));
         }
         /// <summary>
         /// The normal Remove operation: remove a key
@@ -239,7 +238,7 @@ namespace Pyrrho.Common
             if (root.total == 1) // empty index
                 return null;
             // note: we allow root to have 1 entry
-            return new SqlTree(info, kind, root.Remove(this, k));
+            return new SqlTree(info, prim, root.Remove(this, k));
         }
         /// <summary>
         /// The normal Update operation for a key
@@ -263,7 +262,7 @@ namespace Pyrrho.Common
         {
             if (!Contains(k))
                 throw new PEException("PE01");
-            return new SqlTree(info, kind, root.Update(this, k, v));
+            return new SqlTree(info, prim, root.Update(this, k, v));
         }
         public override ABookmark<TypedValue, TypedValue> PositionAt(TypedValue key)
         {

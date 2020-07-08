@@ -23,46 +23,46 @@ namespace Pyrrho.Level4
     {
         internal readonly Ident sub;
         internal readonly long iix;
+        readonly Sqlx _kind;
         internal readonly string ident;
-        internal Ident(Lexer lx, string s = null)
+        internal Ident(Lexer lx, Sqlx k, string s = null)
         {
             ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString());
             iix = lx.Position;
+            _kind = k;
             sub = null;
-        }
-        internal Ident(Lexer lx, int st, int pos, Ident sb = null)
-        {
-            iix = lx.Position;
-            ident = new string(lx.input, st, pos - st);
-            sub = sb;
         }
         internal Ident(Ident lf, Ident sb)
         {
             ident = lf.ident;
             iix = lf.iix;
+            _kind = lf.kind;
             sub = sb;
         }
-        internal Ident(Ident pr,string s)
+        internal Ident(Ident pr,string s,long p,Sqlx k)
         {
             if (pr == null)
+            {
                 ident = s;
+                iix = p;
+                _kind = k;
+            }
             else
             {
                 ident = pr.ident;
-                sub = new Ident(pr.sub, s);
+                iix = pr.iix;
+                _kind = pr.kind;
+                sub = new Ident(pr.sub, s, p, k);
             }
         }
-        internal Ident(string s, long dp)
+        internal Ident(string s, long dp,Sqlx k, Ident sb=null)
         {
             iix = dp;
             ident = s;
-        }
-        Ident(string s, long dp,Ident sb)
-        {
-            iix = dp;
-            ident = s;
+            _kind = k;
             sub = sb;
         }
+        internal Sqlx kind => (sub == null) ? _kind : sub.kind;
         internal int Length => 1 + (sub?.Length ?? 0);
         public override string ToString()
         {
@@ -73,16 +73,18 @@ namespace Pyrrho.Level4
                 sb.Append(ident);
             else
                 sb.Append("??");
+    //        sb.Append(' ');sb.Append(_kind.ToString().ToLower());
+    //        sb.Append(' ');
             if (sub != null)
             {
                 sb.Append(".");
-                sb.Append(sub.ToString());
+                sb.Append(sub);
             }
             return sb.ToString();
         }
         internal Ident Relocate(Level2.Writer wr)
         {
-            return new Ident(ident, wr.Fix(iix), sub?.Relocate(wr));
+            return new Ident(ident, wr.Fix(iix), kind, sub?.Relocate(wr));
         }
         internal void ToString1(StringBuilder sb, Context cx, string eflag)
         {
@@ -107,55 +109,56 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        internal class Idents : BTree<string, (long, Idents)>
+        internal class Idents : BTree<string, (long, Sqlx, Idents)>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, (long, Idents)> b) : base(b.root) { }
-            public static Idents operator +(Idents t, (string, long, Idents) x)
+            Idents(BTree<string, (long, Sqlx, Idents)> b) : base(b.root) { }
+            public static Idents operator +(Idents t, (string, long, Sqlx, Idents) x)
             {
-                return new Idents(t + (x.Item1,(x.Item2,x.Item3)));
+                var (n, p, c, ids) = x;
+                return new Idents(t + (n,(p,c,ids)));
             }
-            public static Idents operator +(Idents t, (Ident, long) x)
+            public static Idents operator +(Idents t, (Ident, DBObject) x)
             {
-                var (id, p) = x;
+                var (id, ob) = x;
                 if (t.Contains(id.ident))
                 {
-                    var (to, ts) = t[id.ident];
+                    var (to, d, ts) = t[id.ident];
                     if (id.sub != null)
-                        return new Idents(t + (id.ident, (to, ts + (id.sub, p))));
+                        return new Idents(t + (id.ident, (to, d, ts + (id.sub, ob))));
                     else
-                        return new Idents(t + (id.ident, (p, ts)));
+                        return new Idents(t + (id.ident, (ob.defpos, ob.kind, ts)));
                 }
                 else
                 {
                     var ts = Empty;
                     if (id.sub != null)
-                        ts += (id.sub, p);
-                    return new Idents(t + (id.ident, (p, ts)));
+                        ts += (id.sub, ob);
+                    return new Idents(t + (id.ident, (id.iix, id._kind, ts)));
                 }
             }
-            internal (long,Idents,Ident) this[(Ident,int) x]
+            internal (long,Sqlx,Idents,Ident) this[(Ident,int) x]
             {
                 get
                 {
                     var (ic, d) = x;
                     if (ic == null || !Contains(ic.ident) || d < 1)
-                        return (-1L, null, ic);
-                    var (ob, ids) = this[ic.ident];
+                        return (-1L, Sqlx.NONE, null, ic);
+                    var (ob, c, ids) = this[ic.ident];
                     if (ids!=null && ic.sub != null && d > 1)
                         return ids[(ic.sub, d - 1)];
-                    return (ob, ids, ic.sub);
+                    return (ob, c, ids, ic.sub);
                 }
             }
-            internal long this[Ident ic]
+            internal (long,Sqlx) this[Ident ic]
             {
                 get
                 {
-                    var (ob, ids, s) = this[(ic, 1)];
+                    var (ob, c, ids, s) = this[(ic, 1)];
                     if (s != null)
-                        return -1L;
-                    return ob;
+                        return (-1L,Sqlx.NONE);
+                    return (ob,c);
                 }
             }
             public IdBookmark First(int p,Ident pr=null)
@@ -165,19 +168,19 @@ namespace Pyrrho.Level4
             }
             internal Idents ApplyDone(Context cx)
             {
-                var r = BTree<string, (long, Idents)>.Empty;
+                var r = BTree<string, (long, Sqlx, Idents)>.Empty;
                 for (var b=First();b!=null;b=b.Next())
                 {
-                    var (p, st) = b.value();
+                    var (p, t, st) = b.value();
                     if (p!=-1L && cx.done[p] is DBObject nb)
                     {
                         p = nb.defpos;
-                        for (var c=(nb as Query)?.rowType.First();c!=null;c=c.Next())
-                        if (cx.done[c.value()] is SqlValue s)
-                            st = new Idents(st + (s.name, (s.defpos, st[s.name].Item2)));
+                        for (var c=(nb as Query)?.rowType?.First();c!=null;c=c.Next())
+                        if (cx.done[c.value().Item1] is SqlValue s)
+                            st = new Idents(st + (s.name, (s.defpos, t, st[s.name].Item3)));
                     }
                     st = st?.ApplyDone(cx);
-                    r += (b.key(), (p, st)); // do not change the string key part
+                    r += (b.key(), (p, t, st)); // do not change the string key part
                 }
                 return new Idents(r);
             }
@@ -188,9 +191,8 @@ namespace Pyrrho.Level4
                 for (var b=oi?.domain.representation.First();b!=null;b=b.Next())
                 {
                     var p = b.key();
-                    var d = b.value();
                     var sc = cx.Inf(p);
-                    r += (sc.name, sc.defpos, For(p,db,cx));
+                    r += (sc.name, sc.defpos, Sqlx.COLUMN, For(p,db,cx));
                     cx.Add(sc);
                 }
                 return r;
@@ -201,7 +203,9 @@ namespace Pyrrho.Level4
                 for (var b=First();b!=null;b=b.Next())
                 {
                     sb.Append(b.key()); sb.Append("=(");
-                    var (p, ids) = b.value();
+                    var (p, c, ids) = b.value();
+                    sb.Append(' ');sb.Append(c.ToString().ToLower());
+                    sb.Append(' ');
                     if (p >= 0)
                         sb.Append(DBObject.Uid(p));
                     sb.Append(",");
@@ -213,28 +217,30 @@ namespace Pyrrho.Level4
         }
         internal class IdBookmark
         {
-            internal readonly ABookmark<string, (long, Idents)> _bmk;
+            internal readonly ABookmark<string, (long, Sqlx, Idents)> _bmk;
             internal readonly Ident _parent,_key;
             internal readonly int _pos;
-            internal IdBookmark(ABookmark<string,(long,Idents)> bmk,
+            internal IdBookmark(ABookmark<string,(long,Sqlx,Idents)> bmk,
                 Ident parent, int pos)
             {
                 _bmk = bmk; _parent = parent;  _pos = pos;
-                _key = new Ident(_parent,_bmk.key());
+                var (p,c,_) = _bmk.value();
+                _key = new Ident(_parent,_bmk.key(),p, c);
             }
             public Ident key()
             {
                 return _key;
             }
-            public long value()
+            public (Sqlx,long) value()
             {
-                return _bmk.value().Item1;
+                var (p, c, _) = _bmk.value();
+                return (c,p);
             }
             public int Position => _pos;
             public IdBookmark Next()
             {
                 var bmk = _bmk;
-                var (p, id) = bmk.value(); // assert: ob!=null (it's value())
+                var (p, c,id) = bmk.value(); // assert: ob!=null (it's value())
                 for (; ; )
                 {
                     if (id?.First(_pos + 1) is IdBookmark ib)
@@ -242,7 +248,7 @@ namespace Pyrrho.Level4
                     bmk = bmk.Next();
                     if (bmk == null)
                         return null;
-                    (p, id) = bmk.value();
+                    (p, c, id) = bmk.value();
                     if (p != -1L)
                         return new IdBookmark(bmk, _parent, _pos + 1);
                     if (id == null) // shouldn't happen

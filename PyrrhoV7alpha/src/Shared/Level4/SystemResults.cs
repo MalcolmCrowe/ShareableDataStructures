@@ -44,13 +44,13 @@ namespace Pyrrho.Level4
         }
         public ObInfo Inf()
         {
-            var rs = CList<long>.Empty;
+            var rs = RowType.Empty;
             for (var b = tableCols.Last(); b != null; b = b.Previous())
             {
                 var tc = (SystemTableColumn)b.value();
-                rs += tc.defpos;
+                rs += (tc.defpos,tc.domain);
             }
-            return new ObInfo(defpos, name, domain, rs);
+            return new ObInfo(defpos, name, Sqlx.TABLE, domain, rs);
         }
         internal override ObInfo Inf(Context cx)
         {
@@ -106,7 +106,7 @@ namespace Pyrrho.Level4
             : base(--_uid, BTree<long, object>.Empty + (Name, n) + (Table, t.defpos) 
                   + (_Domain, dt) + (Key,k))
         {
-            var oc = new ObInfo(defpos, n, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
+            var oc = new ObInfo(defpos, n, Sqlx.COLUMN, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
             var ro = Database._system.role + oc;
             var td = t.domain + (defpos, dt);
             t += (_Domain, td);
@@ -152,7 +152,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx,SystemTable f,BTree<long,bool>w=null)
-            : base(f.defpos,cx,f.domain,Context._system.Inf(f.defpos).columns,null,null,w)
+            : base(f.defpos,cx,f.domain,Context._system.Inf(f.defpos).rowType, null,null,w)
         {
             from = f;
         }
@@ -1412,7 +1412,7 @@ namespace Pyrrho.Level4
                     return new TRow(res,
                         Pos(d.ppos),
                         new TChar(d.name),
-                        new TChar(d.kind.ToString()),
+                        new TChar(d.prim.ToString()),
                         new TChar(d.start.ToString()),
                         new TChar(d.end.ToString()),
                         Pos(d.trans));
@@ -1488,7 +1488,7 @@ namespace Pyrrho.Level4
                     Pos(d.ppos),
                     new TChar(d.type.ToString()),
                     new TChar(d.name),
-                    new TChar(d.kind.ToString()),
+                    new TChar(d.prim.ToString()),
                     new TInt(d.prec),
                     new TInt(d.scale),
                     new TChar(d.charSet.ToString()),
@@ -3843,9 +3843,9 @@ namespace Pyrrho.Level4
                 var pd = (PeriodDef)_cx.db.objects[sys ? t.systemPS : t.applicationPS];
                 var op = (ObInfo)_cx.db.role.infos[pd.defpos];
                 string sn="", en="";
-                for (var b=oi.columns.First();b!=null;b=b.Next())
+                for (var b=oi.rowType?.First();b!=null;b=b.Next())
                 {
-                    var p = b.value();
+                    var p = b.value().Item1;
                     if (p == pd.startCol)
                         sn = _cx.Inf(p).name;
                     if (p == pd.endCol)
@@ -4327,16 +4327,16 @@ namespace Pyrrho.Level4
                 long scale = 0;
                 var dm = (Domain)ob;
                 var oi = (ObInfo)_cx.db.role.infos[dm.defpos];
-                if (dm.kind == Sqlx.NUMERIC || dm.kind == Sqlx.REAL)
+                if (dm.prim == Sqlx.NUMERIC || dm.prim == Sqlx.REAL)
                 {
                     prec = dm.prec;
                     scale = dm.scale;
                 }
-                if (dm.kind == Sqlx.CHAR || dm.kind == Sqlx.NCHAR)
+                if (dm.prim == Sqlx.CHAR || dm.prim == Sqlx.NCHAR)
                     prec = dm.prec;
                 string start = "";
                 string end = "";
-                if (dm.kind == Sqlx.INTERVAL)
+                if (dm.prim == Sqlx.INTERVAL)
                 {
                     start = dm.start.ToString();
                     end = dm.end.ToString();
@@ -4347,7 +4347,7 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(dm.defpos),
                     new TChar(oi.name),
-                    new TChar(dm.kind.ToString()),
+                    new TChar(dm.prim.ToString()),
                     new TInt(prec),
                     new TInt(scale),
                     new TChar(start),
@@ -4397,13 +4397,13 @@ namespace Pyrrho.Level4
             /// enumerate the indexes
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<CList<long>, long> _inner;
+            readonly ABookmark<RowType, long> _inner;
             /// <summary>
             /// craete the Sys$Index enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,long>inner)
+                ABookmark<RowType,long>inner)
                 : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.value()))
             {
                 _outer = outer;
@@ -4488,16 +4488,16 @@ namespace Pyrrho.Level4
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<CList<long>, long> _middle;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<RowType, long> _middle;
+            readonly ABookmark<int, (long,Domain)> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,long> middle, ABookmark<int,long> inner)
-                : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.key(),
-                    (TableColumn)_cx.db.objects[inner.value()]))
+                ABookmark<RowType,long> middle, ABookmark<int,(long,Domain)> inner)
+                : base(_cx,res,pos,inner.value().Item1,_Value(_cx,res,inner.key(),
+                    (TableColumn)_cx.db.objects[inner.value().Item1]))
             {
                 _outer = outer; _middle = middle; _inner = inner;
             }
@@ -4774,15 +4774,15 @@ namespace Pyrrho.Level4
             /// enumerate the procedures tree
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<int, (long,Domain)> _inner;
             /// <summary>
             /// create the Rle$Parameter enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int,long> inner)
+                ABookmark<int,(long,Domain)> inner)
                 : base(_cx,res,pos,en.key(),_Value(_cx,res,en.key(),inner.key(),
-                    (FormalParameter)_cx.obs[inner.value()]))
+                    (FormalParameter)_cx.obs[inner.value().Item1]))
             {
                 _outer = en;
                 _inner = inner;
@@ -5366,7 +5366,7 @@ namespace Pyrrho.Level4
             internal static RoleMethodBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE 
+                    if (outer.value() is Domain ut && ut.prim==Sqlx.TYPE 
                         && _cx.db.role.infos[ut.defpos]is ObInfo ui)
                         for (var middle = ui.methods.First(); middle != null; middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
@@ -5417,7 +5417,7 @@ namespace Pyrrho.Level4
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE 
+                    if (outer.value() is Domain ut && ut.prim==Sqlx.TYPE 
                         && _cx.db.role.infos[ut.defpos] is ObInfo ui)
                         for (middle = ui.methods.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
@@ -5636,14 +5636,14 @@ namespace Pyrrho.Level4
         internal class RolePrimaryKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<int, (long,Domain)> _inner;
             /// <summary>
             /// create the Sys$PrimaryKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<int,long>inner)
-                : base(_cx,res,pos,inner.value(),
+                ABookmark<int,(long,Domain)>inner)
+                : base(_cx,res,pos,inner.value().Item1,
                       _Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
@@ -5668,11 +5668,12 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value(table,ordinal,ident)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
+            static TRow _Value(Context _cx, SystemRowSet rs, object ob, 
+                ABookmark<int,(long,Domain)> e)
             {
                 var tb = (Table)ob;
                 var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
-                var ci = (ObInfo)_cx.db.role.infos[e.value()];
+                var ci = (ObInfo)_cx.db.role.infos[e.value().Item1];
                 return new TRow(rs,
                     new TChar(oi.name),
                     new TInt(e.key()),

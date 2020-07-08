@@ -33,7 +33,7 @@ namespace Pyrrho.Level2
         /// <param name="dt">The (new) Sql data type</param>
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
-            : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
+            : base(Type.Edit, nm, dt.prim, dt.prec, (byte)dt.scale, dt.charSet,
                   dt.culture.Name,dt.defaultString,dt.super,pp,cx)
         {
             _defpos = old.defpos;

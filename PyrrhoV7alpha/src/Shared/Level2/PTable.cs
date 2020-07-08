@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
+using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -133,7 +134,8 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
             var tb = new Table(this);
-            var ti = new ObInfo(ppos, name, Domain.TableType)+(ObInfo.Privilege, priv);
+            var ti = new ObInfo(ppos, name, Common.Sqlx.TABLE, Domain.TableType)
+                +(ObInfo.Privilege, priv);
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

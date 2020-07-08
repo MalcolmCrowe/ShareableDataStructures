@@ -792,9 +792,9 @@ namespace Pyrrho
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is BList<long> co)
+            if (rb.columns is RowType co)
                 for (var b = co.First(); b != null; b = b.Next(), i++)
-                    domains += (i, rb.dataType.representation[b.value()]);
+                    domains += (i, rb.dataType.representation[b.value().Item1]);
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
                     domains += (i, b.value());
@@ -850,7 +850,7 @@ namespace Pyrrho
             if (tv == null)
                 return 1;
             object o = tv.Val();
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.BOOLEAN: return 5;
                 case Sqlx.INTEGER: break;
@@ -924,7 +924,7 @@ namespace Pyrrho
             for (var b=v.columns.First();b!=null;b=b.Next())
             {
                 var i = b.key();
-                var p = b.value();
+                var p = b.value().Item1;
                 len += StringLength(v.dataType.NameFor(cx, p, i)) 
                     + TypeLength(v.dataType.representation[p]) 
                     + DataLength(cx, v[i]);
@@ -1247,7 +1247,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (8 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (7 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

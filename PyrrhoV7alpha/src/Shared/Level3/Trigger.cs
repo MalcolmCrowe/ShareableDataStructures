@@ -53,6 +53,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long newTable => (long)(mem[NewTable]??-1L);
         public long action => (long)mem[Action];
+        internal override Sqlx kind => Sqlx.TRIGGER;
         /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
@@ -174,10 +175,9 @@ namespace Pyrrho.Level3
         internal bool old => (bool)mem[Old];
         internal long trig => (long)mem[Trig];
         internal long target => (long)mem[From.Target]; 
-        internal CList<long> columns => (CList<long>)mem[SqlValue._Columns] ?? CList<long>.Empty;
         internal TransitionTable(Ident ic, bool old, Context cx, From fm, Trigger tg)
             : base(ic.iix, BTree<long,object>.Empty + (Name, ic.ident) + (From.Target,fm.defpos)
-                 +(SqlValue._Columns,fm.rowType) + (_Domain,fm.domain) + (Old, old) + (Trig, tg.defpos))
+                 +(_RowType,fm.rowType) + (_Domain,fm.domain) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -186,21 +186,21 @@ namespace Pyrrho.Level3
         }
         static BTree<long,object> _Mem(Context cx,Ident ic,From fm)
         {
-            var cs = CList<long>.Empty;
+            var cs = RowType.Empty;
             var vs = BList<SqlValue>.Empty;
-            for (var b = fm.rowType.First(); b != null; b = b.Next())
+            for (var b = fm.rowType?.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 var c = (SqlValue)cx.obs[p];
                 var u = cx.GetUid();
                 var v = new SqlCopy(u, cx, c.name, ic.iix, p);
                 cx.Add(v);
                 vs += v;
-                cs += v.defpos;
+                cs += (v.defpos,v.domain);
             } 
             var ni = new ObInfo(ic.iix, cx, vs);
             return BTree<long, object>.Empty + (_Domain, ni.domain) + (Name, ic.ident)
-                  + (SqlValue._Columns, cs);
+                  + (_RowType, cs);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -210,32 +210,32 @@ namespace Pyrrho.Level3
         {
             var r =  base._Relocate(wr);
             r += (Trig, wr.Fix(trig));
-            var cs = CList<long>.Empty;
+            var cs = RowType.Empty;
             var ch = false;
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = rowType?.First(); b != null; b = b.Next())
             {
                 var nk = wr.Fix(b.value());
                 ch = ch || nk != b.value();
                 cs += nk;
             }
             if (ch)
-                r += (SqlValue._Columns, cs);
+                r += (_RowType, cs);
             return r;
         }
         internal override Basis _Relocate(Context cx)
         {
             var r = base._Relocate(cx);
             r += (Trig, cx.Unheap(trig));
-            var cs = CList<long>.Empty;
+            var cs = RowType.Empty;
             var ch = false;
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = rowType?.First(); b != null; b = b.Next())
             {
                 var nk = cx.Unheap(b.value());
                 ch = ch || nk != b.value();
                 cs += nk;
             }
             if (ch)
-                r += (SqlValue._Columns, cs);
+                r += (_RowType, cs);
             return r;
         }
         internal override void _Add(Context cx)

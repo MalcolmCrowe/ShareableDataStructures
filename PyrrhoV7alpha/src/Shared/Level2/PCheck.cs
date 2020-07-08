@@ -106,7 +106,7 @@ namespace Pyrrho.Level2
             if (check != "")
             {
                 var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
-                var psr = new Parser(rdr, new Ident(check, ppos+1), ob);
+                var psr = new Parser(rdr, new Ident(check, ppos+1,Sqlx.CHECK), ob);
                 var sv = psr.ParseSqlValue(ckobjdefpos,ob.domain.defpos).Reify(rdr.context);
                 test = sv.defpos;
                 Frame(psr.cx);

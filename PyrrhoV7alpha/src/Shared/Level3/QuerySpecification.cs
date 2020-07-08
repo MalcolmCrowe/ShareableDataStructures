@@ -47,7 +47,7 @@ namespace Pyrrho.Level3
             : base(u, m)
         { }
         internal QuerySpecification(long dp,Context cx,long xp) : this(dp, _Mem(cx,xp)
-            + (RowType, CList<long>.Empty) + (_Domain,Domain.TableType)
+            + (_RowType, RowType.Empty) + (_Domain,Domain.TableType)
             + (Display, 1))
         { }
         static BTree<long,object> _Mem(Context cx,long xp)
@@ -133,9 +133,9 @@ namespace Pyrrho.Level3
             var r =(QuerySpecification)base.Refresh(cx);
             var te = r.tableExp?.Refresh(cx);
             var rs = BTree<long, Domain>.Empty;
-            for (var b = r.rowType.First(); b != null; b = b.Next())
+            for (var b = r.rowType?.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 var s = cx.obs[p];
                 rs += (p,s.domain);
             }
@@ -150,6 +150,17 @@ namespace Pyrrho.Level3
             var te = r.tableExp?._Replace(cx, was, now);
             if (te != r.tableExp)
                 r += (TableExp, te);
+            var sc = BTree<long, Domain>.Empty;
+            var ch = false;
+            for (var b=scope.First();b!=null;b=b.Next())
+            {
+                var k = cx.Replace(b.key(),was,now);
+                var v = (Domain)b.value()._Replace(cx, was, now);
+                sc += (k, v);
+                ch = ch || k != b.key() || v != b.value();
+            }
+            if (ch)
+                r += (Scope, sc);
             cx.done += (defpos, r);
             return r;
         }
@@ -169,7 +180,7 @@ namespace Pyrrho.Level3
                 r = new SelectRowSet(cx, this, r);
             var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
-                if (cx.obs[cols[i]] is SqlFunction f && f.window != -1L)
+                if (cx.obs[cols[i].Item1] is SqlFunction f && f.window != -1L)
                     f.RowSets(cx,this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
@@ -186,7 +197,7 @@ namespace Pyrrho.Level3
             var r = this;
             var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
-                r = (QuerySpecification)((SqlValue)cx.obs[cols[i]]).Conditions(cx,r,false,out _);
+                r = (QuerySpecification)((SqlValue)cx.obs[cols[i].Item1]).Conditions(cx,r,false,out _);
             //      q.CheckKnown(where,tr);
             r = (QuerySpecification)r.MoveConditions(cx, tableExp);
             r += (TableExp,tableExp.Conditions(cx));
@@ -222,8 +233,8 @@ namespace Pyrrho.Level3
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            for (var b=rowType.First();b!=null;b=b.Next())
-                ((SqlValue)_cx.obs[b.value()]).Eqs(_cx,ref eqs);
+            for (var b=rowType?.First();b!=null;b=b.Next())
+                ((SqlValue)_cx.obs[b.value().Item1]).Eqs(_cx,ref eqs);
             return tableExp.Insert(_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>

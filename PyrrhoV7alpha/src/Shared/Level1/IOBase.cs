@@ -137,7 +137,7 @@ namespace Pyrrho.Level2
                 PutString("");
                 return null;
             }
-            var r = new Ident(id.ident,Length);
+            var r = new Ident(id.ident,Length,id.kind);
             PutString(id.ident);
             return r;
         }
@@ -159,6 +159,38 @@ namespace Pyrrho.Level2
             }
             return pos;
         }
+        internal Domain Fix(Domain d)
+        {
+            var rs = d.representation;
+            for (var b=rs.First();b!=null;b=b.Next())
+            {
+                var p = Fix(b.key());
+                var c = Fix(b.value());
+                if (p != b.key() || c != b.value())
+                    rs += (p, c);
+            }
+            return d + (Domain.Representation, rs);
+        }
+        internal (long,Domain) Fix((long,Domain) x)
+        {
+            var (pos, d) = x;
+            d = Fix(d);
+            if (uids.Contains(pos))
+                return (uids[pos],d);
+            if (cx.db.parse == ExecuteStatus.Prepare && pos > PyrrhoServer.Preparing)
+            {
+                var r = cx.db.nextStmt;
+                cx.db += (Database.NextStmt, r + 1);
+                uids += (pos, r);
+                return (r,d);
+            }
+            if (pos > Transaction.Analysing)
+            {
+                uids += (pos, ++srcPos);
+                return (srcPos,d);
+            }
+            return (pos,d);
+        }
         internal Ident Fix(Ident id)
         {
             if (id == null)
@@ -166,7 +198,7 @@ namespace Pyrrho.Level2
             var p = Fix(id.iix);
             if (p == id.iix)
                 return id;
-            return new Ident(id.ident, p);
+            return new Ident(id.ident, p, id.kind);
         }
         /// <summary>
         /// Not to be used for Domain or ObInfo
@@ -263,7 +295,7 @@ namespace Pyrrho.Level2
         {
             var p = Position;
             var s = GetString();
-            return (s == "") ? null : new Ident(s, p);
+            return (s == "") ? null : new Ident(s, p, Sqlx.CONTENT);
         }
         /// <summary>
         /// Get a Numeric from the buffer

@@ -123,7 +123,7 @@ namespace Pyrrho.Level2
                 var nk = x.MakeKey(now);
                 if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
                     && x.rows.Contains(nk))
-                    throw new DBException("2300", "duplicate key", nk);
+                    throw new DBException("23000", "duplicate key", nk);
                 if (x.reftabledefpos >= 0)
                 {
                     var rx = (Index)cx.db.objects[x.refindexdefpos];

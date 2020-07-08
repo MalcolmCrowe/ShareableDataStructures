@@ -27,7 +27,7 @@ namespace Pyrrho.Level3
     /// Almost all perties of database objects are handled this way. The exceptions are
     /// records,roles,loadpos (for Database)
     /// defpos (for DBObject)
-    /// kind (for Domain)
+    /// kind (for DBObject)
     /// </summary>
     internal abstract class Basis
     {

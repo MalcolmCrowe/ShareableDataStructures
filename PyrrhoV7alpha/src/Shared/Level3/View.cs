@@ -27,6 +27,7 @@ namespace Pyrrho.Level3
             ViewDef = -379, // string
             ViewQuery = -380; // QueryExpression
         public string viewDef => (string)mem[ViewDef];
+        internal override Sqlx kind => Sqlx.TABLE;
         /// <summary>
         /// The definition of the view
         /// </summary>
@@ -186,16 +187,16 @@ namespace Pyrrho.Level3
         static void DisplayJType(Transaction tr,ObInfo dt, StringBuilder sb)
         {
             var i = 0;
-            for (var b = dt.columns.First();b!=null;b=b.Next(),i++)
+            for (var b = dt.rowType?.First();b!=null;b=b.Next(),i++)
             {
                 var p = b.value();
-                var c = (ObInfo)tr.role.infos[b.value()];
+                var c = (ObInfo)tr.role.infos[b.value().Item1];
                 var cd = c.domain;
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
-                if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                if (cd.prim != Sqlx.TYPE && cd.prim != Sqlx.ARRAY && cd.prim != Sqlx.MULTISET)
                     tn = cd.SystemType.Name;
-                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET)
+                if (cd.prim == Sqlx.ARRAY || cd.prim == Sqlx.MULTISET)
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";
@@ -206,11 +207,11 @@ namespace Pyrrho.Level3
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
             i = 0;
-            for (var b=dt.columns.First();b!=null;b=b.Next(),i++)
+            for (var b=dt.rowType?.First();b!=null;b=b.Next(),i++)
             {
-                var c = (ObInfo)tr.role.infos[b.value()];
+                var c = (ObInfo)tr.role.infos[b.value().Item1];
                 var cd = c.domain;
-                if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                if (cd.prim != Sqlx.ARRAY && cd.prim != Sqlx.MULTISET)
                     continue;
                 cd = cd.elType;
                 var tn = c.name;
@@ -232,15 +233,15 @@ namespace Pyrrho.Level3
         static void DisplayPType(Transaction tr,ObInfo dt, StringBuilder sb)
         {
             var i = 0;
-            for (var b=dt.columns.First();b!=null;b=b.Next(),i++)
+            for (var b=dt.rowType?.First();b!=null;b=b.Next(),i++)
             {
-                var c = (ObInfo)tr.role.infos[b.value()];
+                var c = (ObInfo)tr.role.infos[b.value().Item1];
                 var cd = c.domain;
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
-                if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                if (cd.prim != Sqlx.TYPE && cd.prim != Sqlx.ARRAY && cd.prim != Sqlx.MULTISET)
                     tn = cd.SystemType.Name;
-                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET) // ??
+                if (cd.prim == Sqlx.ARRAY || cd.prim == Sqlx.MULTISET) // ??
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";

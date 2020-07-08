@@ -558,7 +558,7 @@ namespace Pyrrho.Level1
             var j = 0;
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 var d = r.dataType.representation[p];
                 PutString(r.dataType.NameFor(_cx,p,b.key()));
                 var c = r[p];
@@ -612,7 +612,7 @@ namespace Pyrrho.Level1
             PutInt(n);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
                 for (var b = r.rt.First(); b!=null; b=b.Next())
-                    PutCell(_cx,_cx.Inf(b.value()).domain, e[b.key()]);
+                    PutCell(_cx,_cx.Inf(b.value().Item1).domain, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -694,12 +694,12 @@ namespace Pyrrho.Level1
                 var j = 0;
                 for (var b=result.rt.First();b!=null;b=b.Next(),j++)
                 {
-                    var cp = b.value();
+                    var cp = b.value().Item1;
                     var i = b.key();
                     PutString(result.NameFor(cx,i));
                     var dn = result.dataType[cp];
-                    if (dn.kind!=Sqlx.TYPE)
-                        PutString(dn.kind.ToString());
+                    if (dn.prim!=Sqlx.TYPE)
+                        PutString(dn.prim.ToString());
                     else
                         PutString(DBObject.Uid(dn.defpos));
                     PutInt(flags[j]);
@@ -750,7 +750,7 @@ namespace Pyrrho.Level1
                 {
                     var n = cx.Inf(b.key()).name;
                     PutString(n);
-                    PutString((b.value().kind == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
+                    PutString((b.value().prim == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
                     PutInt(flags[j]);
                 }
             }
@@ -779,7 +779,7 @@ namespace Pyrrho.Level1
                 if (db.objects[dt[j]] is SqlCopy sc && db.objects[sc.copyFrom] is TableColumn dn)
                 {
                     PutString(sc.name);
-                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
+                    PutString((dn.domain.prim == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
                     var flags = dn.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
@@ -833,7 +833,7 @@ namespace Pyrrho.Level1
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv)
         {
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.Null: break;
                 case Sqlx.SENSITIVE:

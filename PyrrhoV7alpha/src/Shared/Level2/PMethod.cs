@@ -41,7 +41,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, CList<long> ps, Domain rt, 
+        public PMethod(string nm, RowType ps, Domain rt, 
             MethodType mt, long td, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ps,rt,mt,td,sce,pp,cx)
 		{}
@@ -57,7 +57,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, CList<long> ps, 
+        protected PMethod(Type tp, string nm, RowType ps, 
             Domain rt, MethodType mt, long td, Ident sce,
             long pp, Context cx)
             : base(tp,nm,ps,rt,sce,pp,cx)
@@ -139,7 +139,7 @@ namespace Pyrrho.Level2
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, mt.domain)+(ObInfo.Privilege, priv);
+            var mi = new ObInfo(defpos, name, Sqlx.PROCEDURE, mt.domain)+(ObInfo.Privilege, priv);
             ro = ro + mt + mi + (oi+(mt,name));
             cx.db += (ro, p);
             cx.Install(mt,p);

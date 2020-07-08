@@ -73,7 +73,7 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
-        public Context Exec(Context cx, long var, BList<long> actIns)
+        public Context Exec(Context cx, long var, RowType actIns)
         {
             var oi = (ObInfo)cx.db.role.infos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -86,7 +86,7 @@ namespace Pyrrho.Level3
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); b != null; b = b.Next(), i++)
-                acts[i] = cx.obs[b.value()].Eval(cx);
+                acts[i] = cx.obs[b.value().Item1].Eval(cx);
             var act = new CalledActivation(cx, this, ut);
             var bd = (Executable)act.obs[body];
             act.obs += (bd.framing,true);
@@ -96,7 +96,7 @@ namespace Pyrrho.Level3
             act.values += (defpos,targ);
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
-                act.values += (b.value(), acts[i]);
+                act.values += (b.value().Item1, acts[i]);
             if (methodType != PMethod.MethodType.Constructor)
                 for (var b=ut.representation.First();b!=null;b=b.Next())
                 {
@@ -114,9 +114,9 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
             {
-                var p = (FormalParameter)cx.obs[b.value()];
+                var p = (FormalParameter)cx.obs[b.value().Item1];
                 var m = p.paramMode;
-                var v = act.values[b.value()];
+                var v = act.values[b.value().Item1];
                 if (m == Sqlx.INOUT || m == Sqlx.OUT)
                     acts[i] = v;
                 if (m == Sqlx.RESULT)
@@ -130,7 +130,7 @@ namespace Pyrrho.Level3
                     var p = b.key();
                     ks+=(p,act.values[p]);
                 }
-                r = new TRow(cx.Cols(ut.defpos),ut, ks);
+                r = new TRow(cx.Signature(ut.defpos),ut, ks);
             }
             if (cx != null)
             {
@@ -138,10 +138,10 @@ namespace Pyrrho.Level3
                 i = 0;
                 for (var b = ins.First(); b != null; b = b.Next(), i++)
                 {
-                    var p = (FormalParameter)cx.obs[b.value()];
+                    var p = (FormalParameter)cx.obs[b.value().Item1];
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                        cx.AddValue(cx.obs[actIns[i]], acts[i]);
+                        cx.AddValue(cx.obs[actIns[i].Item1], acts[i]);
                 }
             }
             return cx;

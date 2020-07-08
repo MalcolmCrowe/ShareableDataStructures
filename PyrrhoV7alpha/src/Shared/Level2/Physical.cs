@@ -484,7 +484,7 @@ namespace Pyrrho.Level2
                 // Don't include the new Physical object(s) in framing
                 if (p >= Transaction.TransPos && p < Transaction.Analysing)
                     continue;
-                var oo = cx.obs[p];
+                var oo = cx.obs[p]??(DBObject)cx.db.objects[p];
                 var ob = oo.Relocate(cx);
                 if (ob != oo)
                     cx.db+=(ob, cx.db.loadpos); 

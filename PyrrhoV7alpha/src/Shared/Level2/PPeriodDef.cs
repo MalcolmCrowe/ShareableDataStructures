@@ -148,7 +148,8 @@ namespace Pyrrho.Level2
             var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
             var tb = (Table)cx.db.objects[tabledefpos];
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
-            var oc = new ObInfo(ppos, periodname, Domain.Period)+(ObInfo.Privilege, priv);
+            var oc = new ObInfo(ppos, periodname, Common.Sqlx.PERIOD, Domain.Period)
+                +(ObInfo.Privilege, priv);
             var oi = (ObInfo)ro.infos[tabledefpos];
             ro = ro + oc + (oi + (ppos,oc.domain));
             cx.db += (ro, p);

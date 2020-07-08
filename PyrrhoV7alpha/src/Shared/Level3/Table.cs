@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         internal const long
             ApplicationPS = -262, // long PeriodSpecification
             Enforcement = -263, // Grant.Privilege (T)
-            Indexes = -264, // BTree<CList<long>,long> Index
+            Indexes = -264, // BTree<RowType,long> Index
             TableCols = -332, // BTree<long,bool> TableColumn
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
@@ -37,8 +37,9 @@ namespace Pyrrho.Level3
         /// </summary>
 		public BTree<long, TableRow> tableRows => 
             (BTree<long,TableRow>)mem[TableRows]??BTree<long,TableRow>.Empty;
-        public BTree<CList<long>, long> indexes => 
-            (BTree<CList<long>,long>)mem[Indexes]??BTree<CList<long>,long>.Empty;
+        public BTree<RowType, long> indexes => 
+            (BTree<RowType,long>)mem[Indexes]
+            ??BTree<RowType,long>.Empty;
         internal BTree<long, bool> tblCols =>
             (BTree<long, bool>)mem[TableCols] ?? BTree<long, bool>.Empty;
         /// <summary>
@@ -47,6 +48,7 @@ namespace Pyrrho.Level3
         internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
+        internal override Sqlx kind => Sqlx.TABLE;
         internal BTree<long, bool> tableChecks => 
             (BTree<long, bool>)mem[TableChecks]??BTree<long,bool>.Empty;
         internal BTree<PTrigger.TrigType, BTree<long,bool>> triggers =>
@@ -57,7 +59,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Table(PTable pt) :base(pt.ppos, BTree<long,object>.Empty
             +(Name,pt.name)+(Definer,pt.database.role.defpos)
-            +(Indexes,BTree<CList<long>,long>.Empty)
+            +(Indexes,BTree<RowType,long>.Empty)
             +(_Domain,Domain.TableType)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
@@ -94,14 +96,6 @@ namespace Pyrrho.Level3
         public static Table operator+(Table tb,(long,object)v)
         {
             return (Table)tb.New(tb.mem + v);
-        }
-        internal virtual ObInfo Inf(Context cx)
-        {
-            return cx.Inf(defpos);
-        }
-        internal override CList<long> _Cols(Context cx)
-        {
-            return cx.Inf(defpos).columns;
         }
         internal override DBObject Add(Check ck, Database db)
         {
@@ -259,7 +253,7 @@ namespace Pyrrho.Level3
                     continue;
                 var c = ix.keys.First();
                 for (var d = key.First(); d != null && c != null; d = d.Next(), c = c.Next())
-                    if (d.value().defpos != c.value())
+                    if (d.value().defpos != c.value().Item1)
                         goto skip;
                 return ix;
                     skip:;
@@ -267,6 +261,20 @@ namespace Pyrrho.Level3
             return null;
         }
         internal Index FindIndex(Database db, CList<long> key)
+        {
+            for (var b = indexes.First(); b != null; b = b.Next())
+            {
+                var kb = key.First();
+                for (var c = b.key().First(); kb != null && c != null;
+                    c = c.Next(), kb = kb.Next())
+                    if (c.value().Item1 != kb.value())
+                        goto skip;
+                return (Index)db.objects[b.value()];
+            skip:;
+            }
+            return null;
+        }
+        internal Index FindIndex(Database db, RowType key)
         {
             return (Index)db.objects[indexes[key]];
         }
@@ -446,12 +454,12 @@ namespace Pyrrho.Level3
                 var p = b.key();
                 var dt = b.value();
                 var di = (ObInfo)tr.role.infos[dt.defpos];
-                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 if (ix != null)
                 {
                     int j = (int)ix.keys.Count;
                     for (j = 0; j < ix.keys.Count; j++)
-                        if (ix.keys[j] == p)
+                        if (ix.keys[j].Item1 == p)
                             break;
                     if (j < ix.keys.Count)
                         sb.Append("  [Key(" + j + ")]\r\n");
@@ -496,12 +504,12 @@ namespace Pyrrho.Level3
                 var cd = b.value();
                 var dt = cd;
                 var di = tr.role.infos[dt.defpos] as ObInfo;
-                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 if (ix != null)
                 {
                     int j = (int)ix.keys.Count;
                     for (j = 0; j < ix.keys.Count; j++)
-                        if (ix.keys[j] == cd.defpos)
+                        if (ix.keys[j].Item1 == cd.defpos)
                             break;
                     if (j < ix.keys.Count)
                         sb.Append("  @Key(" + j + ")\r\n");
@@ -544,7 +552,7 @@ namespace Pyrrho.Level3
                 var p = b.key();
                 var dt = b.value();
                 var di = (ObInfo)tr.role.infos[dt.defpos];
-                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 var ci = (ObInfo)tr.role.infos[p];
                 sb.Append("  self." + ci.name + " = " + dt.defaultValue);
                 sb.Append("\r\n");
@@ -583,7 +591,7 @@ namespace Pyrrho.Level3
                 var oi = (ObInfo)db.role.infos[ix.defpos];
                 for (var i = 0; i < (int)ix.keys.Count; i++)
                 {
-                    var se = ix.keys[i];
+                    var se = ix.keys[i].Item1;
                     var ci = (ObInfo)db.role.infos[se];
                     var cd = db.objects[se] as TableColumn;
                     if (cd != null)

@@ -133,7 +133,7 @@ namespace Pyrrho.Level4
             var dt = r.rt;
             for (var i=0;i<dt.Length;i++)
             {
-                var n = dt[i];
+                var n = dt[i].Item1;
                 var c = left[n].CompareTo(right[n]);
                 if (c != 0)
                     return c;

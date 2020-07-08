@@ -106,7 +106,7 @@ namespace Pyrrho.Level3
                 return mt.NextKey(key, off + 1, cur);
             }
             var v = impl?.Last().key() ?? new TInt(0);
-            if (v.dataType.kind==Sqlx.INTEGER)
+            if (v.dataType.prim==Sqlx.INTEGER)
                 return new TInt(v.ToInt()+1);
             return info.headType.defaultValue;
         }
@@ -122,7 +122,7 @@ namespace Pyrrho.Level3
             if (impl==null || !impl.Contains(k[0]))
                 return false;
             var tv = impl[k[0]];
-            if (tv.dataType.kind == Sqlx.M)
+            if (tv.dataType.prim == Sqlx.M)
             {
                 MTree mt = tv.Val() as MTree;
                 return mt.Contains(k._tail);
@@ -157,7 +157,7 @@ namespace Pyrrho.Level3
             if (st.Contains(k[0]))
             {
                 TypedValue tv = st[k[0]];
-                switch (tv.dataType.kind)
+                switch (tv.dataType.prim)
                 {
                     case Sqlx.M:
                         {
@@ -180,7 +180,7 @@ namespace Pyrrho.Level3
             }
             else
             {
-                switch (t.impl.kind)
+                switch (t.impl.prim)
                 {
                     case Sqlx.M:
                         {
@@ -241,7 +241,7 @@ namespace Pyrrho.Level3
             if (impl != null && impl.Contains(k[off]))
             {
                 TypedValue tv = impl[k[off]];
-                if (tv.dataType.kind != Sqlx.M)
+                if (tv.dataType.prim != Sqlx.M)
                     return null;
                 return tv.Val() as MTree;
             }
@@ -263,7 +263,7 @@ namespace Pyrrho.Level3
             SqlTree st = t.impl; // care: t is immutable
             var k0 = k[0];
             TypedValue nv,tv = t.impl[k0];
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.M:
                     {
@@ -293,7 +293,7 @@ namespace Pyrrho.Level3
             var k0 = k[0];
              TypedValue tv = t.impl[k0];
             long nc = t.count;
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.M:
                     {
@@ -342,7 +342,7 @@ namespace Pyrrho.Level3
             var k0 = k[0];
             long nc = t.count;
              TypedValue nv, tv = t.impl[k0];
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.M:
                     {
@@ -396,7 +396,7 @@ namespace Pyrrho.Level3
                 var tv = impl[k._head];
                 if (tv==null)
                     return null;
-                switch (tv.dataType.kind)
+                switch (tv.dataType.prim)
                 {
                     case Sqlx.M:
                         {
@@ -468,7 +468,7 @@ namespace Pyrrho.Level3
             for (var outer = mt.impl?.First(); outer != null; outer = outer.Next())
             {
                 var ov = outer.value();
-                switch (ov.dataType.kind)
+                switch (ov.dataType.prim)
                 {
                     case Sqlx.M:
                         var inner = (ov.Val() as MTree)?.First();
@@ -500,7 +500,7 @@ namespace Pyrrho.Level3
             if (outer == null)
                 return null;
             var tv = outer.value();
-            switch (tv.dataType.kind)
+            switch (tv.dataType.prim)
             {
                 case Sqlx.M:
                     var inner = (tv.Val() as MTree).PositionAt(key._tail);
@@ -576,7 +576,7 @@ namespace Pyrrho.Level3
                     return null;
                 changed = true;
                 var oval = outer.value();
-                switch (oval.dataType.kind)
+                switch (oval.dataType.prim)
                 {
                     case Sqlx.M:
                         inner = ((MTree)oval.Val()).PositionAt(_filter?._tail);
@@ -626,7 +626,7 @@ namespace Pyrrho.Level3
             if (depth > 1)
                 return _pmk?.Next()!=null || (_inner!=null && _inner.hasMore(depth - 1));
             var ov = _outer.value();
-            switch(ov.dataType.kind)
+            switch(ov.dataType.prim)
             {
                 case Sqlx.M:
                     {
@@ -691,22 +691,24 @@ namespace Pyrrho.Level3
             onNullKey = n;
             tail = (off+1 < cols.Length)?new TreeInfo(cols, d,n, off+1):null;
         }
-        internal TreeInfo(CList<long> cols, BTree<long,DBObject> ds, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        internal TreeInfo(RowType cols, BTree<long,DBObject> ds, 
+            TreeBehaviour d, TreeBehaviour n, int off = 0)
         {
             if (off < (int)cols.Count)
             {
-                head = cols[off];
+                head = cols[off].Item1;
                 headType = ds[head].domain;
             }
             onDuplicate = d;
             onNullKey = n;
             tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, ds, d, n, off + 1) : null;
         }
-        internal TreeInfo(BList<long> cols, Domain dt, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        internal TreeInfo(RowType cols, Domain dt, TreeBehaviour d, 
+            TreeBehaviour n, int off = 0)
         {
             if (off < (int)cols.Count)
             {
-                head = cols[off];
+                head = cols[off].Item1;
                 headType = dt.representation[head];
             }
             onDuplicate = d;

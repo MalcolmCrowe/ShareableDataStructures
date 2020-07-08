@@ -182,7 +182,7 @@ namespace Pyrrho.Level2
             var tc = new TableColumn(tb, this, dt);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, dt)+(ObInfo.Privilege,priv);
+            var oc = new ObInfo(ppos, name, Sqlx.COLUMN, dt)+(ObInfo.Privilege,priv);
             ti += (ti.Length, oc.defpos, oc.domain);
             ro = ro + oc + ti;
             if (cx.db.format < 51)
@@ -278,7 +278,7 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr) 
 		{
-            var dfsrc = new Ident(rdr.GetString(), ppos+1);
+            var dfsrc = new Ident(rdr.GetString(), ppos+1, Sqlx.COLUMN);
             dfs = dfsrc.ident;
             notNull = (rdr.GetInt() != 0);
 			var gn = (Generation)rdr.GetInt();
@@ -298,7 +298,7 @@ namespace Pyrrho.Level2
             if (generated.gen == Generation.Expression)
             {
                 var tb = (Table)rdr.context.db.objects[tabledefpos];
-                var psr = new Parser(rdr, new Ident(dfs, ppos + 1), tb);
+                var psr = new Parser(rdr, new Ident(dfs, ppos + 1, Sqlx.VALUE), tb);
                 var sv = psr.ParseSqlValue(tabledefpos, domdefpos).Reify(rdr.context);
                 generated += (GenerationRule.GenExp, sv.defpos);
                 Frame(psr.cx);

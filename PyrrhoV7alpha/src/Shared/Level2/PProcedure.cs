@@ -27,7 +27,7 @@ namespace Pyrrho.Level2
         /// The name of the procedure 
         /// </summary>
 		public string name,nameAndArity;
-        public CList<long> ins = CList<long>.Empty;
+        public RowType ins = RowType.Empty;
         public Domain retType = Domain.Null;
         public Ident source;
         public bool mth = false;
@@ -38,7 +38,7 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal int arity => ins.Length;
-        public PProcedure(string nm, CList<long>ps, Domain rt, Ident sce, 
+        public PProcedure(string nm, RowType ps, Domain rt, Ident sce, 
             long pp, Context cx) : this(Type.PProcedure2, nm, ps, rt, sce, pp, cx)
         { }
         /// <summary>
@@ -55,7 +55,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, 
+        protected PProcedure(Type tp, string nm, RowType ps, Domain rt, 
             Ident sce, long pp, Context cx) : base(tp,pp,cx,cx.obs)
 		{
             source = sce;
@@ -78,7 +78,10 @@ namespace Pyrrho.Level2
             nameAndArity = x.nameAndArity;
             name = x.name;
             body = wr.Fix(x.body);
-            ins = ((Procedure)wr.cx.obs[ppos]).ins;
+            var ps = RowType.Empty;
+            for (var b = x.ins.First(); b != null; b = b.Next())
+                ps += wr.Fix(b.value());
+            ins = ps;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -103,7 +106,7 @@ namespace Pyrrho.Level2
                 wr.PutLong(retType.defpos);
             var s = source;
             if (wr.cx.db.format < 51)
-                s = new Ident(DigestSql(wr,s.ident),s.iix);
+                s = new Ident(DigestSql(wr,s.ident),s.iix,Sqlx.PROCEDURE);
             wr.PutString(s.ident);
             body = wr.Fix(body);
 			base.Serialise(wr);
@@ -122,12 +125,12 @@ namespace Pyrrho.Level2
                 retType = (Domain)rdr.context.db.objects[rdr.GetLong()]??Domain.Null;
             if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
                 retType = (Domain)rdr.context.db.objects[mt.typedefpos];
-            source = new Ident(rdr.GetString(), ppos);
+            source = new Ident(rdr.GetString(), ppos, Sqlx.PROCEDURE);
 			base.Deserialise(rdr);
         }
         internal override void OnLoad(Reader rdr)
         {
-            var psr = new Parser(rdr.context, new Ident(source.ident, ppos + 1));
+            var psr = new Parser(rdr.context, new Ident(source.ident, ppos + 1,Sqlx.PROCEDURE));
             psr.cx.srcFix = ppos + 1;
             psr.ParseProcedureHeading(this);
             psr.ParseProcedure(this);

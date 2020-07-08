@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         internal const long
             Adapter = -157, // long Procedure 
             IndexConstraint = -158,// PIndex.ConstraintType
-            Keys = -159, // CList<long>
+            Keys = -159, // RowType
             References = -160, // BTree<long,BList<TypedValue>> computed by adapter
             RefIndex = -161, // long Index
             RefTable = -162, // long Table
@@ -49,7 +49,8 @@ namespace Pyrrho.Level3
         /// The indexed rows: note the strong types inside here will need to be updated if column names change
         /// </summary>
         public MTree rows => (MTree)mem[Tree];
-        public CList<long> keys => (CList<long>)mem[Keys]??CList<long>.Empty;
+        public RowType keys => 
+            (RowType)mem[Keys]??RowType.Empty;
         /// <summary>
         /// for Foreign key, the referenced index
         /// </summary>
@@ -67,6 +68,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public BTree<long, BList<TypedValue>> references =>
             (BTree<long, BList<TypedValue>>)mem[References];
+        internal override Sqlx kind => Sqlx.NONE;
         public Index(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// Constructor: a new Index 
@@ -96,7 +98,7 @@ namespace Pyrrho.Level3
                     r += (RefTable, rx.tabledefpos);
                 }
             }
-            var cols = CList<long>.Empty;
+            var cols = RowType.Empty;
             var ds = BTree<long, DBObject>.Empty;
             var tb = (Table)cx.obs[c.tabledefpos];
             for (var b=c.columns.First();b!=null;b=b.Next())
@@ -109,7 +111,7 @@ namespace Pyrrho.Level3
                 }
                 var ob = (DBObject)cx.db.objects[pos];
                 ds += (ob.defpos, ob);
-                cols += pos;
+                cols += (pos,ob.domain);
             }
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
@@ -138,7 +140,7 @@ namespace Pyrrho.Level3
         {
             PRow r = null;
             for (var b = keys.Last(); b != null; b = b.Previous())
-                r = new PRow(rw.vals[b.value()], r);
+                r = new PRow(rw.vals[b.value().Item1], r);
             return r;
         }
         /// <summary>
@@ -271,7 +273,7 @@ namespace Pyrrho.Level3
         {
             int r;
             for (r = 0; r < (int)keys.Count; r++)
-                if (keys[r] == c.defpos)
+                if (keys[r].Item1 == c.defpos)
                     return r;
             return -1;
         }
@@ -296,14 +298,14 @@ namespace Pyrrho.Level3
             var tb = (Table)nd.objects[tabledefpos];
             if (tb != null)
             {
-                var xs = BTree<CList<long>, long>.Empty;
+                var xs = BTree<RowType, long>.Empty;
                 var ks = BTree<long, bool>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                     {
                         var cs = b.key();
                         for (var c = cs.First(); c != null; c = c.Next())
-                            ks += (c.value(), true);
+                            ks += (c.value().Item1, true);
                         xs += (cs, b.value());
                     }
                 tb += (Table.Indexes, xs);
@@ -348,7 +350,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Context cx)
         {
-            throw new NotImplementedException();
+            return this;
         }
     }
 }

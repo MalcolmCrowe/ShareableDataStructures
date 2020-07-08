@@ -66,7 +66,7 @@ namespace Pyrrho.Level4
         {
             var j = join;
             sb.Append("Join ");
-            sb.Append((j.kind == Sqlx.NO) ? "FD" : j.kind.ToString());
+            sb.Append((j.joinKind == Sqlx.NO) ? "FD" : j.joinKind.ToString());
             Conds(sb, j.joinCond, " ON ");
             sb.Append(' ');
             var fr = j.FDInfo?.reverse;
@@ -87,7 +87,7 @@ namespace Pyrrho.Level4
         {
             JoinPart j = join;
             JoinBookmark r;
-            switch (j.kind)
+            switch (j.joinKind)
             {
                 case Sqlx.CROSS: r= CrossJoinBookmark.New(_cx,this); break;
                 case Sqlx.INNER: r= InnerJoinBookmark.New(_cx,this); break;
@@ -149,7 +149,7 @@ namespace Pyrrho.Level4
             var vs = BTree<long, TypedValue>.Empty;
             for (var b = jrs.rt.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var p = b.value().Item1;
                 vs += (p, (ul?left[p]:null) ?? (ur?right[p]:null)??TNull.Value);
             }
             return new TRow(jrs, vs);
@@ -299,15 +299,15 @@ namespace Pyrrho.Level4
             var vs = BTree<long, TypedValue>.Empty;
             var lf = (Query)cx.obs[rs.join.left];
             var rg = (Query)cx.obs[rs.join.right];
-            for (var b=lf.rowType.First();b!=null;b=b.Next())
+            for (var b=lf.rowType?.First();b!=null;b=b.Next())
             {
-                var s = cx.obs[b.value()];
+                var s = cx.obs[b.value().Item1];
                 var p = (s is SqlCopy sc) ? sc.copyFrom : -1L;
                 vs += (s.defpos, left[p]);
             }
-            for (var b = rg.rowType.First(); b != null; b = b.Next())
+            for (var b = rg.rowType?.First(); b != null; b = b.Next())
             {
-                var s = cx.obs[b.value()];
+                var s = cx.obs[b.value().Item1];
                 var p = (s is SqlCopy sc) ? sc.copyFrom : -1L;
                 vs += (s.defpos, right[p]);
             }

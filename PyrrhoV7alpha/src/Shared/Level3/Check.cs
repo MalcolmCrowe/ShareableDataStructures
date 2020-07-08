@@ -33,6 +33,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string source => (string)mem[Source];
         internal long search => (long)(mem[Condition]??-1L);
+        internal override Sqlx kind => Sqlx.CHECK;
         /// <summary>
         /// Constructor: from the level 2 information
         /// </summary>

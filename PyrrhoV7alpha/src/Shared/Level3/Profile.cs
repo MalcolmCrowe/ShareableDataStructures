@@ -259,8 +259,8 @@ namespace Pyrrho.Level3
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
                 var i = 0;
-                for (var b=ti.columns.First();b!=null;b=b.Next(),i++)
-                    if (b.value() == s.key())
+                for (var b=ti.rowType?.First();b!=null;b=b.Next(),i++)
+                    if (b.value().Item1 == s.key())
                         break;
                 var ci = (ObInfo)db.role.infos[tc.defpos];
                 w.WriteStartElement("Read");

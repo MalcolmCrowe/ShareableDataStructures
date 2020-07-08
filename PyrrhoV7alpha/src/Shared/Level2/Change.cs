@@ -166,7 +166,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var oi = ro.infos[affects] as ObInfo;
-            ro = ro + (new ObInfo(affects, name, oi.domain)+(ObInfo.Privilege, oi.priv));
+            ro = ro + (new ObInfo(affects, name, oi.kind, oi.domain)+(ObInfo.Privilege, oi.priv));
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
         }
