@@ -207,13 +207,13 @@ namespace Pyrrho.Level2
                 r += Fix(b.value());
             return r;
         }
-        internal BList<ParamInfo> Relocate(BList<ParamInfo> rp)
+        internal BList<FormalParameter> Relocate(BList<FormalParameter> rp)
         {
-            var r = BList<ParamInfo>.Empty;
+            var r = BList<FormalParameter>.Empty;
             for (var b = rp.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                r += (ParamInfo)p.Relocate(this);
+                r += (FormalParameter)p.Relocate(this);
             }
             return r;
         }
