@@ -5,6 +5,7 @@ using Pyrrho.Level4;
 using System.Text;
 using System;
 using System.Configuration;
+using System.Resources;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -73,16 +74,18 @@ namespace Pyrrho.Level3
             var cs = RowType.Empty;
             var vs = BList<SqlValue>.Empty;
             var de = 1; // we almost always have some columns
-            var ti = tb.Inf(cx);
+            var ti = tb.Struct(cx);
             cx._Add(tb);
-            cx.AddCols(ic, ti.rowType);
+            cx.AddCols(ic, ti);
             var mp = BTree<long, bool>.Empty;
             if (cr == null)
             {
                 var ma = BTree<string, TableColumn>.Empty;
-                for (var b = ti.rowType?.First(); b != null; b = b.Next())
+                for (var b = ti?.First(); b != null; b = b.Next())
                 {
                     var p = b.value().Item1;
+                    if (cx.obs[p] is SqlCopy sc)
+                        p = sc.copyFrom;
                     var tc = (TableColumn)cx.db.objects[p];
                     var ci = (ObInfo)cx.role.infos[tc.defpos];
                     ma += (ci.name, tc);
@@ -115,13 +118,13 @@ namespace Pyrrho.Level3
                     var (i, dp) = sb.value();
                     var rt = q.rowType ?? RowType.Empty;
                     if (tb.defpos == dp || dp < 0)
-                        for (var b = ti.rowType?.First(); b != null; b = b.Next())
+                        for (var b = ti?.First(); b != null; b = b.Next())
                         {
                             var (p,d) = b.value();
-                            var ci = cx.Inf(p);
+                            var ci = cx.NameFor(p);
                             var u = cx.GetUid();
                             cs += (u,d);
-                            var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
+                            var sv = new SqlCopy(u, cx, ci, ic.iix, p);
                             cx.Add(sv);
                             q += (cx,sv);
                             rt += (u,d);
@@ -143,15 +146,17 @@ namespace Pyrrho.Level3
                     vs += sv;
                     mp += (tc.defpos, true);
                 }
-            for (var b = ti.rowType?.First(); b != null; b = b.Next())
+            for (var b = ti?.First(); b != null; b = b.Next())
             {
                 var (p,d) = b.value();
+                if (cx.obs[p] is SqlCopy sc)
+                    p = sc.copyFrom;
                 if (mp.Contains(p))
                     continue;
-                var ci = cx.Inf(p);
+                var ci = cx.NameFor(p);
                 var u = cx.GetUid();
                 cs += (u,d);
-                var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
+                var sv = new SqlCopy(u, cx, ci, ic.iix, p);
                 cx.Add(sv);
                 vs += sv;
             }
@@ -168,11 +173,11 @@ namespace Pyrrho.Level3
             cx._Add(proc);
             var disp = cr?.Length ?? proc.retType.Length;
             var s = RowType.Empty;
-            for (var b = proc.retType.rowType?.First(); b != null; b = b.Next())
+            for (var b = proc.rowType?.First(); b != null; b = b.Next())
             {
-                var p = b.value().Item1;
-                var ci = cx.Inf(p);
-                s += (cx.Add(new SqlCopy(p,cx,ci.name,dp,b.key())).defpos,ci.domain);
+                var (p,dm) = b.value();
+                var ci = cx.NameFor(p);
+                s += (cx.Add(new SqlCopy(p,cx,ci,dp,b.key())).defpos,dm);
             }
             return BTree<long, object>.Empty
                 + (Target,pc.procdefpos) + (Display,disp) + (_Domain,proc.domain)

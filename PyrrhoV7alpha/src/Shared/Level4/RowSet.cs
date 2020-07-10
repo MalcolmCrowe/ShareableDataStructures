@@ -6,6 +6,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.CodeDom.Compiler;
 using System.IO;
+using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -169,7 +170,7 @@ namespace Pyrrho.Level4
             var p = rt[i].Item1;
             var sv = cx.obs[p];
             var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
-            return cx.Inf(p)?.name ?? n??("Col"+i);
+            return n ?? (cx.db.role.infos[p] as ObInfo)?.name ?? ("Col"+i);
         }
         /// <summary>
         /// Relocation is possible only for RowSets that are not Built.
@@ -452,8 +453,9 @@ namespace Pyrrho.Level4
         }
         internal TrivialRowSet(long dp,Context cx, Record rec) 
             : this(dp,cx, cx.Signature(rec.tabledefpos), 
-                  cx.Dom(rec.tabledefpos), new TRow(cx.Inf(rec.tabledefpos), rec.fields), rec.defpos,
-                  BTree<long,Finder>.Empty)
+                  cx.Dom(rec.tabledefpos), 
+                  new TRow(cx.db.role.infos[rec.tabledefpos] as ObInfo, rec.fields), 
+                  rec.defpos,BTree<long,Finder>.Empty)
         { }
         protected TrivialRowSet(TrivialRowSet rs, long a, long b) : base(rs, a, b)
         {
@@ -2076,21 +2078,21 @@ namespace Pyrrho.Level4
                 var tgc = new TargetCursor(cx, trc);
                 var trs = trc._trs;
                 var ti = trs.targetInfo;
-                for (int j = 0; j < ti.Length; j++)
-                    if (ti.For(cx, j) is ObInfo sc && cx.db.objects[sc.defpos] is TableColumn tc)
+                for (var b=ti.rowType.First(); b!=null;b=b.Next())
+                    if (cx.db.objects[b.value().Item1] is TableColumn tc)
                     {
                         switch (tc.generated.gen)
                         {
                             case Generation.Expression:
                                 if (cx.values[tc.defpos] != TNull.Value)
-                                    throw new DBException("0U000", sc.name);
+                                    throw new DBException("0U000", cx.NameFor(tc.defpos));
                                tgc += (cx, tc.defpos, cx.obs[tc.generated.exp].Eval(cx));
                                 break;
                         }
                         if (tc.defaultValue != TNull.Value && tgc[tc.defpos] == TNull.Value)
                             tgc += (cx, tc.defpos, tc.defaultValue);
                         if (tc.notNull && cx.values[tc.defpos] == TNull.Value)
-                            throw new DBException("22206", sc.name);
+                            throw new DBException("22206", cx.NameFor(tc.defpos));
                         for (var cb = tc.constraints?.First(); cb != null; cb = cb.Next())
                         {
                             var cp = cb.key();
@@ -2099,7 +2101,7 @@ namespace Pyrrho.Level4
                             cx.Frame(cp);
                             var se = (SqlValue)cx.obs[ck.search];
                             if (se.Eval(cx) != TBool.True)
-                                throw new DBException("22212", sc.name);
+                                throw new DBException("22212", cx.NameFor(tc.defpos));
                         }
                     }
                 if (trs.indexdefpos > 0)

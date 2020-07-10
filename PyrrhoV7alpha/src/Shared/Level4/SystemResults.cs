@@ -52,9 +52,9 @@ namespace Pyrrho.Level4
             }
             return new ObInfo(defpos, name, Sqlx.TABLE, domain, rs);
         }
-        internal override ObInfo Inf(Context cx)
+        internal override RowType Struct(Context cx)
         {
-            return (ObInfo)cx.role.infos[defpos];
+            return ((ObInfo)cx.role.infos[defpos]).rowType;
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -152,7 +152,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx,SystemTable f,BTree<long,bool>w=null)
-            : base(f.defpos,cx,f.domain,Context._system.Inf(f.defpos).rowType, null,null,w)
+            : base(f.defpos,cx,f.domain,Context._system._RowType(f.defpos), null,null,w)
         {
             from = f;
         }
@@ -3847,9 +3847,9 @@ namespace Pyrrho.Level4
                 {
                     var p = b.value().Item1;
                     if (p == pd.startCol)
-                        sn = _cx.Inf(p).name;
+                        sn = _cx.NameFor(p);
                     if (p == pd.endCol)
-                        en = _cx.Inf(p).name;
+                        en = _cx.NameFor(p);
                 }
                 return new TRow(rs, Pos(t.defpos),
                     new TChar(oi.name),

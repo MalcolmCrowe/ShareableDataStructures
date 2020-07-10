@@ -56,8 +56,7 @@ namespace Pyrrho.Level3
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         public BTree<RowType, long> signatures =>
-    (BTree<RowType, long>)mem[Signatures]
-    ?? BTree<RowType, long>.Empty;
+            (BTree<RowType, long>)mem[Signatures] ?? BTree<RowType, long>.Empty;
         /// <summary>
         /// An empty role for the Context (query analysis)
         /// </summary>
@@ -190,7 +189,6 @@ namespace Pyrrho.Level3
             Pie = "Pie", // bool
             X = "X", // long
             Y = "Y"; // long
-
         public string name => (string)mem[Name] ?? "";
         internal override Sqlx kind => (Sqlx)(mem[Domain.Prim] ?? Sqlx.NONE);
         public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
@@ -204,10 +202,6 @@ namespace Pyrrho.Level3
         public int Length => rowType.Length;
         internal readonly static ObInfo Any = new ObInfo();
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
-        /// <summary>
-        /// Allow construction of nameless ad-hoc Row types: see Transaction.GetDomain()
-        /// </summary>
-        /// <param name="cols"></param>
         public ObInfo(long lp, Domain dm, RowType cols,Sqlx k=Sqlx.ROW, BTree<long,object>m=null)
             : this(lp, (m??BTree<long, object>.Empty) + (_Domain,dm)+(_RowType, cols)
                   + (Domain.Prim,k)) { }
@@ -215,16 +209,11 @@ namespace Pyrrho.Level3
             RowType cols=null)
             : this(lp, BTree<long, object>.Empty + (Name, name) +(Domain.Prim,k)
                   + (_Domain, dt??Domain.Null) + (_RowType, cols??RowType.Empty)) { }
-        public ObInfo(long lp, string name, ObInfo oi)
-            : this(lp, BTree<long, object>.Empty + (Name, name)+(Domain.Prim,oi.kind)
-                  + (_Domain, oi.domain) + (_RowType, oi.rowType))
-        { }
         public ObInfo(long lp, Context cx, BList<SqlValue> vs)
             : this(lp, _Dom(-1, cx, Domain.Row, vs) + (Privilege, Grant.AllPrivileges)
                   +(Domain.Prim,Sqlx.ROW)) { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 
-        {
-        }
+        { }
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
             return new ObInfo(oi.defpos, oi.mem + x);
@@ -518,14 +507,13 @@ namespace Pyrrho.Level3
             if (ro != null)
                 sb.Append("<" + ro.name);
             var ss = new string[r.Length];
-            var oi = (ObInfo)tr.role.infos[dp];
             var i = 0;
-            for (var b=oi.domain.representation.First();b!=null; b=b.Next(),i++)
+            for (var b=cx.Dom(dp).representation.First();b!=null; b=b.Next(),i++)
             {
                 var c = b.key();
                 var d = b.value();
                 var tv = r[c];
-                var n = cx.Inf(c);
+                var n = cx.NameFor(c);
                 if (tv == null)
                     continue;
                 var p = tv.dataType;
@@ -591,24 +579,11 @@ namespace Pyrrho.Level3
             for (var b=domain.representation.First();b!=null;b=b.Next())
             {
                 var p = b.key();
-                var d = b.value();
-                var ci = cx.Inf(p) ?? (ObInfo)cx.db.role.infos[p];
-                if (ci.name == nm)
+                var ci = (ObInfo)cx.db.role.infos[p];
+                if (ci?.name == nm)
                     return ci;
             }
             return null;
-        }
-        internal ObInfo For(Context cx, int i)
-        {
-            return cx.Inf(this[i]);
-        }
-        internal string NameFor(Context cx, int i)
-        {
-            var p = rowType[i].Item1;
-            var n = cx.Inf(p).name;
-            if (n == null || n == "")
-                n = "Col" + i;
-            return n;
         }
         public override string ToString()
         {

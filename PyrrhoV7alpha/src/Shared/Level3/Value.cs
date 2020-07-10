@@ -100,12 +100,13 @@ namespace Pyrrho.Level3
         }
         internal virtual SqlValue Reify(Context cx)
         {
-            var cols = cx.Inf(defpos)?.rowType;
+            var cols = Struct(cx);
             for (var b = cols?.First(); b != null; b = b.Next())
             {
-                var ci = cx.Inf(b.key());
-                if (ci.name == name)
-                    return new SqlCopy(defpos, cx, name, defpos, ci.defpos);
+                var p = b.key();
+                var ci = cx.NameFor(p);
+                if (ci == name)
+                    return new SqlCopy(defpos, cx, name, defpos, p);
             }
             return this;
         }
@@ -180,7 +181,6 @@ namespace Pyrrho.Level3
                 var ob = cx.obs[cx.defs[name].Item1];
                 if (q.rowType== RowType.Empty)
                     return (this,q);
-                var fi = cx.Inf(q.defpos);
                 if (cx.Dom(ob.defpos).prim != Sqlx.CONTENT && ob.defpos != defpos 
                     && ob is SqlValue sb)
                 {
@@ -219,8 +219,8 @@ namespace Pyrrho.Level3
             for (var b = rowType?.First(); b != null; b = b.Next(), i++)
             {
                 var p = b.key();
-                var ci = cx.Inf(p);
-                if (ci.name == nm)
+                var ci = cx.NameFor(p);
+                if (ci == nm)
                     return i;
             }
             return -1;
@@ -2331,36 +2331,35 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="r">the row</param>
         public SqlRow(long dp, Context cx, long xp, BList<SqlValue> vs,BTree<long,object>m=null)
-            : base(dp, _Inf(dp,cx,m,xp,vs) + (Dependents, _Deps(vs)) 
+            : base(dp, _Inf(cx,m,xp,vs) + (Dependents, _Deps(vs)) 
                   + (Depth, 1 + _Depth(vs)))
         { }
         public SqlRow(long dp, Context cx, long xp, RowType vs, 
             BTree<long, object> m = null)
-            : base(dp, _Inf(dp, cx, m, xp, vs) + (Dependents, _Deps(vs))
+            : base(dp, _Inf(cx, m, xp, vs) + (Dependents, _Deps(vs))
                   + (Depth, cx.Depth(vs)))
         { }
-        protected static BTree<long,object> _Inf(long dp, Context cx, BTree<long, object> m, 
+        protected static BTree<long,object> _Inf(Context cx, BTree<long, object> m, 
             long xp,BList<SqlValue> vs)
         {
-            var cs = RowType.Empty;
-            var oi = cx.Inf(xp);
-            var dm = Domain.Row;
+            var oi = cx._RowType(xp);
+            var st = Structure.Empty;
             var ch = false;
-            var cb = oi?.rowType?.First();
+            var cb = oi?.First();
             for (var b = vs.First(); b != null; b = b.Next(),cb=cb?.Next())
             {
                 var sv = b.value();
-                var cd = oi?.domain.representation[cb?.value().Item1 ?? -1L];
-                cs += (sv.defpos,sv.domain);
+                var cd = cb?.value().Item2;
+                st += (sv.defpos,sv.domain);
                 ch = ch || cd == null || sv.domain.CompareTo(cd) != 0;
-                dm += (cb?.value().Item1??sv.defpos, sv.domain);
             }
-            return (m ?? BTree<long, object>.Empty)+(_RowType,cs) + (_Domain,ch?dm:oi.domain);
+            return (m ?? BTree<long, object>.Empty)+(_RowType,st.rowType) 
+                + (_Domain,ch?st:cx.Dom(xp));
         }
-        protected static BTree<long, object> _Inf(long dp, Context cx, BTree<long, object> m,
+        protected static BTree<long, object> _Inf(Context cx, BTree<long, object> m,
     long xp, RowType vs)
         {
-            var dm = Domain.Row;
+            var st = Structure.Empty;
             var xd = cx.Dom(xp);
             var ch = false;
             var cb = cx.Signature(xp).First();
@@ -2369,9 +2368,10 @@ namespace Pyrrho.Level3
                 var ob = cx.obs[b.value().Item1];
                 var cd = xd?.representation[cb?.value().Item1 ?? -1L];
                 ch = ch || cd == null || ob.domain.CompareTo(cd) != 0; 
-                dm += (cb?.value().Item1??ob.defpos, ob.domain);
+                st += (cb?.value().Item1??ob.defpos, ob.domain);
             }
-            return (m ?? BTree<long, object>.Empty) + (_RowType, vs) + (_Domain, ch?dm:xd);
+            return (m ?? BTree<long, object>.Empty) + (_RowType, vs) 
+                + (_Domain, ch?st:xd);
         }
         public static SqlRow operator+(SqlRow s,(long,object)m)
         {
@@ -2405,7 +2405,7 @@ namespace Pyrrho.Level3
                 ch = ch || s != p;
             }
             if (ch) // can't just do a new SqlRow here as we might need SqlOldRow or SqlNewRow
-                r = (SqlRow)r.New(_Inf(r.defpos, wr.cx, BTree<long,object>.Empty, domain.defpos, vs) 
+                r = (SqlRow)r.New(_Inf(wr.cx, BTree<long,object>.Empty, domain.defpos, vs) 
                     + (_RowType, cs) + (Dependents, _Deps(cs)) + (Depth, 1 + _Depth(vs)));
             return r;
         }
@@ -2424,7 +2424,7 @@ namespace Pyrrho.Level3
                 ch = ch || s != p;
             }
             if (ch) // can't just do a new SqlRow here as we might need SqlOldRow or SqlNewRow
-                r = (SqlRow)r.New(_Inf(r.defpos, cx, BTree<long, object>.Empty, domain.defpos, vs)
+                r = (SqlRow)r.New(_Inf(cx, BTree<long, object>.Empty, domain.defpos, vs)
                     + (_RowType, cs) + (Dependents, _Deps(cs)) + (Depth, 1 + _Depth(vs)));
             return r;
         }
@@ -2726,13 +2726,14 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder();
-            var cm = "";
+            var sb = new StringBuilder(base.ToString());
+            var cm = "(";
             for (var b=rows.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(DBObject.Uid(b.value()));
+                sb.Append(Uid(b.value()));
             }
+            sb.Append(')');
             return sb.ToString();
         }
     }
@@ -3101,7 +3102,7 @@ namespace Pyrrho.Level3
         /// <param name="a">the array</param>
         public SqlValueArray(long dp,Context cx,long xp,RowType v)
             : base(dp,BTree<long,object>.Empty+(_Domain,cx.Dom(xp))
-                  +(_RowType,cx.Inf(xp).rowType) +(Array,v))
+                  +(_RowType,cx._RowType(xp)) +(Array,v))
         { }
         protected SqlValueArray(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlValueArray operator+(SqlValueArray s,(long,object)x)
@@ -7536,7 +7537,7 @@ namespace Pyrrho.Level3
                             Grouped(cx, (Grouping)cx.obs[gs.value()], sql, ref cm, ids, globalFrom);
                     for (var b = globalFrom.rowType?.First(); b != null; b = b.Next())
                     {
-                        var nm = cx.Inf(b.value().Item1).name;
+                        var nm = cx.NameFor(b.value().Item1);
                         if (!ids.Contains(nm))
                         {
                             ids.Add(nm);

@@ -191,9 +191,8 @@ namespace Pyrrho.Level4
                 for (var b=oi?.domain.representation.First();b!=null;b=b.Next())
                 {
                     var p = b.key();
-                    var sc = cx.Inf(p);
-                    r += (sc.name, sc.defpos, Sqlx.COLUMN, For(p,db,cx));
-                    cx.Add(sc);
+                    var sc = cx.NameFor(p);
+                    r += (sc, p, Sqlx.COLUMN, For(p,db,cx));
                 }
                 return r;
             }

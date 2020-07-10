@@ -57,7 +57,7 @@ namespace Pyrrho.Level3
         internal bool sensitive => (bool)(mem[Sensitive] ?? false);
         internal Level classification => (Level)mem[Classification] ?? Level.D;
         internal string desc => (string)mem[Description];
-        internal Domain domain => (Domain)mem[_Domain];
+        internal virtual Domain domain => (Domain)mem[_Domain];
         internal long from => (long)(mem[_From] ?? -1L);
         /// <summary>
         /// For compiled code - triggers and Procedures
@@ -65,7 +65,7 @@ namespace Pyrrho.Level3
         internal BTree<long, DBObject> framing =>
             (BTree<long, DBObject>)mem[Framing] ?? BTree<long, DBObject>.Empty;
         internal Context compareContext => (Context)mem[CompareContext];
-        internal RowType rowType => (RowType)mem[_RowType];
+        internal virtual RowType rowType => (RowType)mem[_RowType];
         /// <summary>
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
@@ -249,10 +249,6 @@ namespace Pyrrho.Level3
         {
             return TNull.Value;
         }
-        internal virtual ObInfo Inf(Context cx)
-        {
-            return cx.Inf(defpos);
-        }
         public virtual void Put(TypedValue tv,Writer wr)
         { }
         /// <summary>
@@ -373,6 +369,10 @@ namespace Pyrrho.Level3
         internal virtual DBObject TypeOf(long lp,Context cx,TypedValue v)
         {
             throw new System.NotImplementedException();
+        }
+        internal virtual RowType Struct(Context cx)
+        {
+            return rowType;
         }
         internal virtual TypedValue Eval(Context cx)
         {

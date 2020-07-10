@@ -76,6 +76,10 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(defpos,m);
         }
+        internal override RowType Struct(Context cx)
+        {
+            return ((ObInfo)cx.db.role.infos[defpos]).rowType;
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableColumn(dp,mem);
@@ -218,12 +222,12 @@ namespace Pyrrho.Level3
             nf = sch.Conditions(cx, nf, false, out _);
             if (nf.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx) != null)
             {
-                var ti = cx.Inf(tabledefpos);
-                var ci = cx.Inf(defpos);
+                var ti = cx.NameFor(tabledefpos);
+                var ci = cx.NameFor(defpos);
                 throw new DBException(signal, c.name, this, tb).ISO()
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar(c.name.ToString()))
-                    .Add(Sqlx.COLUMN_NAME, new TChar(ci.name))
-                    .Add(Sqlx.TABLE_NAME, new TChar(ti.name));
+                    .Add(Sqlx.COLUMN_NAME, new TChar(ci))
+                    .Add(Sqlx.TABLE_NAME, new TChar(ti));
             }
         }
         internal override void Cascade(Context cx,

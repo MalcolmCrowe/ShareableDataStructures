@@ -553,14 +553,14 @@ namespace Pyrrho.Level1
         /// <param name="r">the row to send</param>
         internal void PutRow(Context _cx, TRow r)
         {
-            var n = (int)r.Length;
+            var n = r.Length;
             PutInt(n);
             var j = 0;
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
                 var p = b.value().Item1;
                 var d = r.dataType.representation[p];
-                PutString(r.dataType.NameFor(_cx,p,b.key()));
+                PutString(_cx.NameFor(p));
                 var c = r[p];
                 PutString(d.ToString());
                 PutInt(d.Typecode()); // other flags are 0
@@ -612,7 +612,7 @@ namespace Pyrrho.Level1
             PutInt(n);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
                 for (var b = r.rt.First(); b!=null; b=b.Next())
-                    PutCell(_cx,_cx.Inf(b.value().Item1).domain, e[b.key()]);
+                    PutCell(_cx,b.value().Item2, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -732,25 +732,24 @@ namespace Pyrrho.Level1
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var dt = result.dataType;
+            var rt = result.rt;
             int m = result.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
-            if (m > dt.Length)
-                Console.WriteLine("Unreasonable rowType length " + dt.Length + " < " + m);
+            if (m > rt.Length)
+                Console.WriteLine("Unreasonable rowType length " + rt.Length + " < " + m);
             if (m > 0)
             {
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
-                var oi = cx.Inf(dt.defpos);
                 var j = 0;
-                for (var b=oi.domain.representation.First();b!=null;b=b.Next(),j++)
+                for (var b=rt.First();b!=null;b=b.Next(),j++)
                 {
-                    var n = cx.Inf(b.key()).name;
+                    var n = result.NameFor(cx, j);
                     PutString(n);
-                    PutString((b.value().prim == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
+                    PutString((b.value().Item2.prim == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
                     PutInt(flags[j]);
                 }
             }

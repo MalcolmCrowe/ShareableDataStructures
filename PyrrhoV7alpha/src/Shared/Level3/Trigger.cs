@@ -246,10 +246,10 @@ namespace Pyrrho.Level3
             tb._Add(cx);
             cx.obs += (defpos, this);
         }
-        internal override ObInfo Inf(Context cx)
+        internal override RowType Struct(Context cx)
         {
             var fm = (From)cx.obs[target];
-            return cx.Inf(fm.target);
+            return fm.rowType;
         }
         public override string ToString()
         {

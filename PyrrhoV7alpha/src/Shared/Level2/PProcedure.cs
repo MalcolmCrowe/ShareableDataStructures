@@ -159,7 +159,14 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, tr, that);
         }
-
+        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        {
+            Physical ph;
+            (tr,ph) = base.Commit(wr, tr);
+            var r = (PProcedure)ph;
+            var ro = tr.role;
+            return (tr, r);
+        }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;

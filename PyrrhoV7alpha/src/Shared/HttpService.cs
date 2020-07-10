@@ -286,10 +286,8 @@ namespace Pyrrho
         {
             return (v!=null && !v.IsNull) ? v.ToString() : "";
         }
-        public override void PutRow(Context _cx, Cursor e)
+        public override void PutRow(Context cx, Cursor e)
         {
-            var dt = e.dataType;
-            var oi = _cx.Inf(e._rowsetpos);
             if (chartType.flags!=0UL)
             {
                 sbuild.Append(comma+"[");
@@ -311,8 +309,9 @@ namespace Pyrrho
             }
             else
             {
+                var oi = cx.data[e._rowsetpos].rt;
                 sbuild.Append("<tr>");
-                for (var b=oi.rowType?.First();b!=null;b=b.Next())
+                for (var b=oi?.First();b!=null;b=b.Next())
                 {
                     var s = GetVal(e[b.value().Item1]);
                     sbuild.Append("<td>" + s + "</td>");

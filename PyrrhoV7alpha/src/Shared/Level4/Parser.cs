@@ -235,13 +235,9 @@ namespace Pyrrho.Level4
             cx = pre.target.Obey(cx);
             return cx.db;
         }
-        Domain FromXp(long xp)
-        {
-            return (cx.Inf(xp) is ObInfo oi)? oi.domain : cx.Dom(xp);
-        }
         Domain ScalarXp(long xp)
         {
-            var r = FromXp(xp);
+            var r = cx.Dom(xp);
             switch (r.prim)
             {
                 case Sqlx.ROW:
@@ -1234,7 +1230,7 @@ namespace Pyrrho.Level4
             mn.ins = ParseParameters(mn.mname);
             mn.retType = ParseReturnsClause(mn.mname);
             mn.signature = new string(lxr.input, st, lxr.start - st);
-            Domain type = FromXp(xp);
+            var type = cx.Dom(xp);
             if (tok == Sqlx.FOR)
             {
                 Next();
@@ -1278,9 +1274,9 @@ namespace Pyrrho.Level4
             for (var b = ui.domain.representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var oi = cx.Inf(p);
-                var ob = cx._Ob(p);
-                cx.defs += (new Ident(oi.name, p, Sqlx.COLUMN), ob);
+                var oi = cx.NameFor(p);
+                var ob = cx.obs[p];
+                cx.defs += (new Ident(oi, p, Sqlx.COLUMN), ob);
             }
             meth +=(Procedure.Params, mn.ins);
             meth += (Procedure.Body, cx.Add(ParseProcedureStatement(mn.retType.defpos)).defpos);
@@ -1478,8 +1474,8 @@ namespace Pyrrho.Level4
                         {
                             var p = cd.value().Item1;
                             var tc = cx.db.objects[p] as TableColumn;
-                            var ci = cx.Inf(p);
-                            cx.Add(new PColumn2(t, ci.name, cd.key(), tc.domain.defpos, 
+                            var ci = cx.NameFor(p);
+                            cx.Add(new PColumn2(t, ci, cd.key(), tc.domain.defpos, 
                                 tc.generated.gfs??tc.domain.defaultValue?.ToString()??"", 
                                 tc.domain.defaultValue, tc.notNull, 
                                 tc.generated, tr.nextPos, cx));
@@ -1756,7 +1752,7 @@ namespace Pyrrho.Level4
             cx.Add(pc);
             tb = (Table)cx.obs[t];
             ns += (pc.ppos, new ObInfo(pc.ppos, colname.ident, Sqlx.COLUMN, dom));
-            ns += (tb.defpos, new ObInfo(t, tb.domain, cx.Inf(t).rowType + (pc.ppos,dom)));
+            ns += (tb.defpos, new ObInfo(t, tb.domain, cx._RowType(t) + (pc.ppos,dom)));
             while (Match(Sqlx.NOT, Sqlx.REFERENCES, Sqlx.CHECK, Sqlx.UNIQUE, Sqlx.PRIMARY, Sqlx.CONSTRAINT,
                 Sqlx.SECURITY))
                 ns = ParseColumnConstraintDefin(t, pc, ns);
@@ -1993,7 +1989,7 @@ namespace Pyrrho.Level4
                         var ct = ParseReferentialAction();
                         cx.db = cx.tr.AddReferentialConstraint(cx, 
                             (Table)cx.obs[t], new Ident("", 0, Sqlx.VALUE), key, rt, 
-                            cx._Pick(cx.Inf(rt.defpos).rowType, cols), ct, afn);
+                            cx._Pick(cx._RowType(rt.defpos), cols), ct, afn);
                         break;
                     }
                 case Sqlx.CONSTRAINT:
@@ -2145,7 +2141,7 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.ON)
                 ct |= ParseReferentialAction();
             cx.db = tr.AddReferentialConstraint(cx,tb, name, cols, rt, 
-                cx._Pick(cx.Inf(rt.defpos).rowType, refs), ct, afn);
+                cx._Pick(cx._RowType(rt.defpos), refs), ct, afn);
             return (Table)cx.Add(tr,tb.defpos);
         }
         /// <summary>
@@ -4762,8 +4758,9 @@ namespace Pyrrho.Level4
                     for (var b = ui.domain.representation.First(); b != null; b = b.Next())
                     {
                         var p = b.key();
-                        var sc = cx.Inf(p);
-                        cx.defs += (new Ident(o, new Ident(sc.name, p, Sqlx.COLUMN)),sc);
+                        var sc = cx.obs[p] as SqlValue;
+                        if (sc!=null)
+                            cx.defs += (new Ident(o, new Ident(sc.name, p, Sqlx.COLUMN)),sc);
                     }
                 }
             }
@@ -5273,7 +5270,7 @@ namespace Pyrrho.Level4
             CursorSpecification r = new CursorSpecification(lxr.Position);
             ParseXmlOption(false);
             var qe = ParseQueryExpression(qp,Domain.TableType.defpos);
-            if (!FromXp(xp).CanTakeValueOf(cx,qe.domain))
+            if (!cx.Dom(xp).CanTakeValueOf(cx,qe.domain))
                 throw new DBException("22000");
             r = r._Union(qe);
             r += (Query.Display, qe.display);
@@ -5911,7 +5908,7 @@ namespace Pyrrho.Level4
             DBObject ut = null, ua = null;
             if (tb!=null)
             {
-                if (tb.Inf(cx) is ObInfo oi && cx.defs.Contains(oi.name))
+                if (cx.db.role.infos[tb.defpos] is ObInfo oi && cx.defs.Contains(oi.name))
                     ut = cx.obs[cx.defs[oi.name].Item1];
                 if (a != null && cx.defs.Contains(a))
                     ua = cx.obs[cx.defs[a].Item1];
@@ -6020,7 +6017,7 @@ namespace Pyrrho.Level4
         /// <returns>The correlation info</returns>
 		ObInfo ParseCorrelation(long xp)
 		{
-            var oi = cx.Inf(xp);
+            var oi = cx.db.role.infos[xp] as ObInfo;
             if (tok == Sqlx.ID || tok == Sqlx.AS)
 			{
 				if (tok==Sqlx.AS)
@@ -6044,8 +6041,8 @@ namespace Pyrrho.Level4
                         var ic = ib.value();
                         var cp = ic.iix;
                         var cd = oi.domain.representation[oc];
-                        cs += (cp, dm);
-                        rs += (cp, dm);
+                        cs += (cp, cd);
+                        rs += (cp, cd);
                     }
                     dm = new Domain(lp, Domain.TableType, rs);
                     return new ObInfo(lp, tablealias.ident, Sqlx.TABLE, dm, cs);
@@ -6444,9 +6441,9 @@ namespace Pyrrho.Level4
             var tb = cx.db.GetObject(ic.ident) as Table ??
                 throw new DBException("42107", ic.ident);
             cx.obs += (tb.framing,true);
-            var ti = cx.Inf(tb.defpos);
+            var ti = cx._RowType(tb.defpos);
             cx.defs += (ic, tb);
-            cx.AddCols(ic, ti.rowType, true);
+            cx.AddCols(ic, ti, true);
             BList<Ident> cs = null;
             // Ambiguous syntax here: (Cols) or (Subquery) or other possibilities
             if (tok == Sqlx.LPAREN)
@@ -6484,21 +6481,6 @@ namespace Pyrrho.Level4
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                 cx = tr.Execute(s, cx);
             return (cx,(SqlInsert)cx.Add(s));
-        }
-        BList<long> For(long dp,Table tb)
-        {
-            var oi = cx.Inf(tb.defpos);
-            var qn = BList<long>.Empty;
-            var off = cx.db.nextStmt;
-            cx.db += (Database.NextStmt, cx.db.nextStmt+ oi.Length);
-            for (var b = oi.domain.representation.First(); b != null; b = b.Next(), off++)
-            {
-                var p = b.key();
-                var c = cx.Inf(p);
-                var sc = new SqlCopy(off, cx, c.name, oi.defpos, c.defpos);
-                qn += sc.defpos;
-            }
-            return qn;
         }
         /// <summary>
 		/// DeleteSearched = DELETE [XMLOption] FROM Table_id [ WhereClause] .
@@ -6868,7 +6850,7 @@ namespace Pyrrho.Level4
                 left = new SqlValueExpr(lp, cx, op, left, 
                     ParseSqlValueFactor(qp,left.defpos,wfok), m);
             }
-            if (!FromXp(xp).CanTakeValueOf(cx, left.domain))
+            if (!cx.Dom(xp).CanTakeValueOf(cx, left.domain))
                 throw new DBException("42000", lxr.pos);
             return (SqlValue)cx.Add(left);
         }
@@ -7440,7 +7422,7 @@ namespace Pyrrho.Level4
                                 new string(lxr.input,st,lxr.start-st)));
                         }
                         Domain et = null;
-                        var dm = FromXp(xp);
+                        var dm = cx.Dom(xp);
                         switch(dm.prim)
                         {
                             case Sqlx.ARRAY:
@@ -8609,7 +8591,7 @@ namespace Pyrrho.Level4
             var r = RowType.Empty;
             Domain ei = null;
             var dt = ScalarXp(xp);
-            var sel = cx.Inf(xp)?.rowType ?? RowType.Empty; 
+            var sel = cx._RowType(xp); 
             switch (dt.prim)
             {
                 case Sqlx.ARRAY:

@@ -925,7 +925,7 @@ namespace Pyrrho
             {
                 var i = b.key();
                 var p = b.value().Item1;
-                len += StringLength(v.dataType.NameFor(cx, p, i)) 
+                len += StringLength(cx.NameFor(p)) 
                     + TypeLength(v.dataType.representation[p]) 
                     + DataLength(cx, v[i]);
             }
@@ -1247,7 +1247,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (8 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (10 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

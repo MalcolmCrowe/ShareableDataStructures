@@ -122,9 +122,9 @@ namespace Pyrrho.Level4
                 udi = (ObInfo)tr.role.infos[cmt.udType.defpos];
                 for (var b = udi.rowType?.First(); b != null; b = b.Next())
                 {
-                    var iv = cx.Inf(b.value().Item1);
-                    locals += (iv.defpos, true);
-                    cx.Add(iv);
+                    var iv = b.value().Item1;
+                    locals += (iv, true);
+                    cx.Add((DBObject)tr.objects[iv]);
                 }
             }
         }
@@ -166,24 +166,24 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             obs += (tg.framing,true);
             var tb = (Table)cx.db.objects[trs.from.target];
-            var oi = cx.Inf(tb.defpos);
+            var oi = cx._RowType(tb.defpos);
             cx.obs += (tb.defpos, tb);
             _trig = tg;
             deferred = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
             if (cx.obs[tg.oldRow] is SqlRow so)
-                (oldRow,oldMap) = _Map(cx,oi,so);
+                (oldRow,oldMap) = _Map(oi,so);
             if (cx.obs[tg.newRow] is SqlRow sn)
-                (newRow,newMap) = _Map(cx,oi,sn);
+                (newRow,newMap) = _Map(oi,sn);
             if (cx.obs[tg.oldTable] is TransitionTable tt)
                 new TransitionTableRowSet(tt.defpos,cx,trs);
             if (deferred)
                 cx.db += (Transaction.Deferred, cx.tr.deferred + this);
         }
-        static (SqlRow,BTree<long,long>) _Map(Context cx,ObInfo oi,SqlValue sv)
+        static (SqlRow,BTree<long,long>) _Map(RowType oi,SqlValue sv)
         {
             var ma = BTree<long, long>.Empty;
             var sb = sv.rowType?.First();
-            for (var b = oi.rowType?.First(); b != null && sb != null; b = b.Next(), sb = sb.Next())
+            for (var b = oi?.First(); b != null && sb != null; b = b.Next(), sb = sb.Next())
                 ma += (b.value().Item1, sb.value().Item1);
             return ((SqlRow)sv, ma);
         }

@@ -367,7 +367,7 @@ namespace Pyrrho.Level3
                             var tv = cx.obs[ua.val].Eval(cx).NotNull();
                             if (tv == TNull.Value && cx.obs[ua.vbl] is TableColumn tc
                                 && tc.notNull)
-                                throw new DBException("0U000", cx.Inf(ua.vbl).name);
+                                throw new DBException("0U000", cx.NameFor(ua.vbl));
                             trb += (cx, ua.vbl, tv);
                         }
                         (trb,fi) = trb.UpdateRB(cx);
@@ -401,6 +401,10 @@ namespace Pyrrho.Level3
             trs.UpdateSA(cx);
             rs.Add(trs); // just for PUT
             return cx;
+        }
+        internal override RowType Struct(Context cx)
+        {
+            return ((ObInfo)cx.db.role.infos[defpos]).rowType;
         }
         /// <summary>
         /// See if we already have an audit covering an access in the current transaction

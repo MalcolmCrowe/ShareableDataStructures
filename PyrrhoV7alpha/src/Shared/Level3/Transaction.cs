@@ -486,7 +486,7 @@ namespace Pyrrho.Level3
                             if (lr.Length != 2)
                                 throw new DBException("42000", sk[j]).ISO();
                             var cn = lr[0];
-                            var sc = cx.Inf(f.defpos).ColFor(cx,cn) ??
+                            var sc = ((ObInfo)cx.db.role.infos[f.defpos]).ColFor(cx,cn) ??
                                 throw new DBException("42112", cn).Mix();
                             var ct = sc.domain;
                             var cv = lr[1];

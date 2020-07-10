@@ -66,7 +66,7 @@ namespace Pyrrho.Level4
             public BTree<int, BTree<long, DBObject>> depths;
         } 
         internal Framing frame = null;
-        protected BTree<long, Domain> domains = BTree<long, Domain>.Empty; 
+        protected BTree<long, Structure> structs = BTree<long, Structure>.Empty; 
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
         internal BTree<long, Register> funcs = BTree<long, Register>.Empty; // volatile
@@ -145,7 +145,7 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             defs = cx.defs;
             depths = cx.depths;
-            domains = cx.domains;
+            structs = cx.structs;
             copy = cx.copy;
             data = cx.data;
             from = cx.from;
@@ -281,7 +281,7 @@ namespace Pyrrho.Level4
             }
             if (obs[xp] is SqlValue sv)
                 return sv.domain;
-            if (domains[xp] is Domain dm)
+            if (structs[xp] is Domain dm)
                 return dm;
             if (obs[xp] is Query q)
                 return q.domain;
@@ -300,11 +300,18 @@ namespace Pyrrho.Level4
             return _Dom(xp) ??
             throw new PEException("PE200");
         }
-        internal ObInfo Inf(long dp)
+        internal RowType _RowType(long xp)
         {
-            if ((dp<-1 || (dp >= 0 && dp < Transaction.Analysing)) && role.infos.Contains(dp))
-                return (ObInfo)(role.infos[dp]);
-            return null;
+            return (obs[xp] as DBObject)?.rowType
+                ?? ((structs[xp] is Structure s) ? s.rowType
+                : (db.role.infos[xp] is ObInfo oi) ? oi.rowType
+                : RowType.Empty);
+        }
+        internal string NameFor(long dp)
+        {
+            var ob = obs[dp];
+            return (ob as SqlValue)?.alias ?? ((string)ob?.mem[Basis.Name]) ??
+                (db.role.infos[dp] as ObInfo)?.name ?? "??";
         }
         internal RowType Signature(long dp)
         {
@@ -343,10 +350,10 @@ namespace Pyrrho.Level4
                 lp = db.loadpos;
             db.Add(this, ph, lp);
         }
-        internal Domain Add(Domain dm)
+        internal Structure Add(Structure dm)
         {
             if (dm.defpos>=0)
-                domains += (dm.defpos, dm);
+                structs += (dm.defpos, dm);
             return dm;
         }
         internal DBObject Add(DBObject ob)
@@ -601,6 +608,18 @@ namespace Pyrrho.Level4
             var (p, d) = x;
             return (Replace(p, was, now), (Domain)d.Replace(this, was, now));
         }
+        internal RowType Replace(RowType r,DBObject was, DBObject now)
+        {
+            var rt = RowType.Empty;
+            var ch = false;
+            for (var b=r.First();b!=null;b=b.Next())
+            {
+                var x = Replace(b.value(), was, now);
+                ch = ch || x != b.value();
+                rt += x;
+            }
+            return ch ? rt : r;
+        }
         internal DBObject _Replace(long dp, DBObject was, DBObject now)
         {
             if (done.Contains(dp))
@@ -664,8 +683,8 @@ namespace Pyrrho.Level4
             for (var b = ut.representation.First();b != null; b = b.Next())
             {
                 var p = b.key();
-                var iv = Inf(p);
-                defs += (iv.name, p, Sqlx.COLUMN, Ident.Idents.For(p,db,this));
+                var iv = NameFor(p);
+                defs += (iv, p, Sqlx.COLUMN, Ident.Idents.For(p,db,this));
             }
         }
         internal void AddCols(Ident id, RowType s, bool force = false)
@@ -678,7 +697,7 @@ namespace Pyrrho.Level4
                 var ob = obs[p] ?? (DBObject)db.objects[p];
                 if ((!force) && (!constraintDefs) && (ob is Table || ob is TableColumn))
                     continue;
-                var n = (ob is SqlValue v) ? v.name : Inf(p)?.name;
+                var n = (ob is SqlValue v) ? v.name : NameFor(p);
                 if (n == null)
                     continue;
                 var ic = new Ident(n, p, ob.kind);

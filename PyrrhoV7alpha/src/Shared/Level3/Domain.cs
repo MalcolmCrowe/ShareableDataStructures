@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
+using System.Security.Policy;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -150,6 +152,8 @@ namespace Pyrrho.Level3
         public Sqlx nulls => (Sqlx)(mem[NullsFirst] ?? Sqlx.NULL);
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
+        internal override Domain domain => throw new NotSupportedException();
+        internal override RowType rowType => throw new NotSupportedException();
         public Domain elType => (Domain)mem[Element];
         public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
         public string defaultString => (string)mem[DefaultString]??"";
@@ -840,10 +844,10 @@ namespace Pyrrho.Level3
                         wr.PutInt(rw.columns.Length);
                         for (var b = rw.columns.First(); b != null; b = b.Next())
                         {
-                            var p = b.value().Item1;
-                            var n = st.NameFor(wr.cx,p,b.key());
+                            var (p,dm) = b.value();
+                            var n = wr.cx.NameFor(p);
                             wr.PutString(n);
-                            st.representation[p].Put(rw[p], wr);
+                            dm.Put(rw[p], wr);
                         }
                         break;
                     }
@@ -2349,6 +2353,17 @@ namespace Pyrrho.Level3
             }
         }
         /// <summary>
+        /// If this Domain is a UDT, then there will be a table (and so an ObInfo)
+        /// in the database at defpos
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal override RowType Struct(Context cx)
+        {
+            return (cx.db.role.infos[defpos] is ObInfo oi) ? oi.rowType 
+                : RowType.Empty;
+        }
+        /// <summary>
         /// Evaluate a binary operation 
         /// </summary>
         /// <param name="a">The first object</param>
@@ -2818,7 +2833,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
-            var r = (defpos<0)?this:((Domain)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            var r = (defpos<0)?this:Relocate(wr.Fix(defpos));
             var ch = false;
             var cs = BTree<long, bool>.Empty;
             for (var b=constraints?.First();b!=null;b=b.Next())
@@ -2859,7 +2874,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Context cx)
         {
-            var r = ((Domain)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
+            var r = (defpos<0)?this:Relocate(cx.Unheap(defpos));
             var ch = false;
             var cs = BTree<long, bool>.Empty;
             for (var b = constraints?.First(); b != null; b = b.Next())
@@ -2936,12 +2951,6 @@ namespace Pyrrho.Level3
                 r += (Under, und.defpos);
             // NB We can't use cx.done for Domains (or ObInfos)
             return r;
-        }
-        public string NameFor(Context cx, long p, int i)
-        {
-            var sv = cx.obs[p];
-            var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
-            return cx.Inf(p)?.name ?? n ?? ("Col"+i);
         }
         internal static TypedValue Now => new TDateTime(Timestamp, DateTime.Now);
         internal static TypedValue MaxDate => new TDateTime(Timestamp, DateTime.MaxValue);
@@ -3144,6 +3153,74 @@ namespace Pyrrho.Level3
                 sb.Append(d);
             }
             sb.Append(')');
+            return sb.ToString();
+        }
+    }
+    internal class Structure : Domain
+    {
+        internal override RowType rowType => (RowType)mem[_RowType] ?? RowType.Empty;
+        public static Structure Empty = new Structure();
+        Structure() : base(-1L,Row+(_RowType,RowType.Empty)) { }
+        internal Structure(long dp, Domain d) : base(dp, d.mem) { }
+        protected Structure(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static Structure operator+(Structure s, (long,object) x)
+        {
+            return (Structure)s.New(s.mem + x);
+        }
+        public static Structure operator +(Structure d, (long, Domain) x)
+        {
+            return (Structure)d.New(d.mem + (Representation, d.representation + x)
+                +(_RowType,d.rowType+x));
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new Structure(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            if (dp == defpos)
+                return this;
+            return new Structure(dp,mem);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (Structure)base._Relocate(cx);
+            var rt = RowType.Empty;
+            var ch = false;
+            for (var b=rowType.First();b!=null;b=b.Next())
+            {
+                var x = cx.Unheap(b.value());
+                ch = ch || x != b.value();
+                rt += x;
+            }
+            if (ch)
+                r += (_RowType, rt);
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (Structure)base._Relocate(wr);
+            var rt = RowType.Empty;
+            var ch = false;
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var x = wr.Fix(b.value());
+                ch = ch || x != b.value();
+                rt += x;
+            }
+            if (ch)
+                r += (_RowType, rt);
+            return r;
+        }
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        {
+            return (Structure)base._Replace(cx, was, now)+
+                (_RowType,cx.Replace(rowType,was,now));
+        }
+        public override string ToString()
+        {
+            var sb= new StringBuilder(base.ToString());
+            sb.Append(rowType);
             return sb.ToString();
         }
     }
