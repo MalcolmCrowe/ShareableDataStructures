@@ -149,7 +149,7 @@ namespace Pyrrho.Level4
         {
             return rs.New(x.Item1, x.Item2);
         }
-        internal virtual int? Count => null; // number of rows is usually unknown
+        internal virtual int Count => -1; // number of rows is usually unknown
         public override bool IsNull => false;
         internal override object Val()
         {
@@ -477,7 +477,7 @@ namespace Pyrrho.Level4
             sb.Append(row.ToString());
             base._Strategy(sb, indent);
         }
-        internal override int? Count => 1;
+        internal override int Count => 1;
 
         public override bool IsNull => throw new NotImplementedException();
 
@@ -955,7 +955,7 @@ namespace Pyrrho.Level4
             base._Strategy(sb, indent);
         }
         internal override bool TableColsOk => true;
-        internal override int? Count => count;
+        internal override int Count => (count??-1);
         public override Cursor First(Context _cx)
         {
             return TableCursor.New(_cx,this);
@@ -1079,7 +1079,7 @@ namespace Pyrrho.Level4
             sb.Append(table);
             base._Strategy(sb, indent);
         }
-        internal override int? Count => (int?)index.rows.Count;
+        internal override int Count => (int)index.rows.Count;
         internal override bool TableColsOk => true;
         public override Cursor First(Context _cx)
         {
@@ -1326,7 +1326,7 @@ namespace Pyrrho.Level4
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
-        internal override int? Count => (int)tree.rows.Count;
+        internal override int Count => (int)tree.rows.Count;
         protected override object Build(Context cx)
         {
             var _cx = new Context(cx);
@@ -1399,7 +1399,7 @@ namespace Pyrrho.Level4
             sb.Append("Empty");
             base._Strategy(sb, indent);
         }
-        internal override int? Count => 0;
+        internal override int Count => 0;
         public override Cursor First(Context _cx)
         {
             return null;
@@ -1614,7 +1614,7 @@ namespace Pyrrho.Level4
             else
                 sb.Append("" + Count + " rows");
         }
-        internal override int? Count => (int)rows.Count;
+        internal override int Count => (int)rows.Count;
         public override Cursor First(Context _cx)
         {
             return ExplicitCursor.New(_cx,this,0);
@@ -1622,7 +1622,7 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             var r = base.ToString();
-            if (rows.Count<10)
+            if (rows!=null && rows.Count<10)
             {
                 var sb = new StringBuilder(r);
                 var cm = "";
@@ -2260,7 +2260,7 @@ namespace Pyrrho.Level4
             base._Strategy(sb, indent);
             source.Strategy(indent);
         }
-        internal override int? Count => rows.Count;
+        internal override int Count => rows.Count;
         protected override object Build(Context cx)
         {
             var ox = cx.from;

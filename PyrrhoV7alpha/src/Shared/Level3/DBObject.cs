@@ -62,8 +62,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// For compiled code - triggers and Procedures
         /// </summary>
-        internal BTree<long, DBObject> framing =>
-            (BTree<long, DBObject>)mem[Framing] ?? BTree<long, DBObject>.Empty;
+        internal Objects framing => (Objects)mem[Framing] ?? Objects.Empty;
         internal Context compareContext => (Context)mem[CompareContext];
         internal virtual RowType rowType => (RowType)mem[_RowType];
         /// <summary>
@@ -159,6 +158,8 @@ namespace Pyrrho.Level3
             var oi = (ObInfo)tr.role.infos[defpos];
             return (oi != null) && (oi.priv & priv) == 0;
         }
+        internal virtual void AddCols(Context cx, Ident id, RowType s, bool force = false)
+        { }
         internal abstract DBObject Relocate(long dp);
         internal override Basis _Relocate(Writer wr)
         {
@@ -189,7 +190,7 @@ namespace Pyrrho.Level3
                 fs += (n.defpos, n);
             }
             r += (Framing, fs);
-            wr.cx.obs += (r.defpos, r);
+            wr.cx.Add(r.defpos, r);
             return r;
         }
         internal DBObject Relocate(Writer wr)
@@ -197,7 +198,7 @@ namespace Pyrrho.Level3
             if (wr.uids.Contains(defpos))
                 return wr.cx.obs[wr.uids[defpos]];
             var r = (DBObject)_Relocate(wr);
-            wr.cx.obs += (r.defpos, r);
+            wr.cx.Add(r.defpos, r);
             return r;
         }
         internal override Basis _Relocate(Context cx)
@@ -228,7 +229,7 @@ namespace Pyrrho.Level3
             if (cx.uids.Contains(defpos))
                 return cx.obs[cx.uids[defpos]];
             var r = (DBObject)_Relocate(cx);
-            cx.obs += (r.defpos, r);
+            cx.Add(r.defpos, r);
             return r;
         }
         internal virtual Database Add(Database d,PMetadata pm, long p)

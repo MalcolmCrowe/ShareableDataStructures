@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Security.Policy;
 using System.Text;
 using Pyrrho.Common;
@@ -152,7 +153,7 @@ namespace Pyrrho.Level3
         public Sqlx nulls => (Sqlx)(mem[NullsFirst] ?? Sqlx.NULL);
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
-        internal override Domain domain => throw new NotSupportedException();
+        internal override Domain domain => this;
         internal override RowType rowType => throw new NotSupportedException();
         public Domain elType => (Domain)mem[Element];
         public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
@@ -341,7 +342,7 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            var sb = new StringBuilder(" Domain: ");
+            var sb = new StringBuilder(" "+GetType().Name+" ");
             sb.Append(Uid(defpos));
             sb.Append(' ');sb.Append(prim);
             if (mem.Contains(Abbreviation)) { sb.Append(' '); sb.Append(abbrev); }
@@ -422,7 +423,18 @@ namespace Pyrrho.Level3
             }
             return tp;
         }
-
+        internal static Domain _Structure(long dp,Domain dm)
+        {
+            if ((dm is Structure && dm.defpos == dp)
+                ||(dm.prim != Sqlx.ROW && dm.prim!=Sqlx.TABLE))
+                return dm;
+            if (dm is Structure st)
+                return (Domain)st.Relocate(dp);
+            var rt = RowType.Empty;
+            for (var b = dm.representation.First(); b != null; b = b.Next())
+                rt += (b.key(), b.value());
+            return new Structure(dp,dm)+(_RowType,rt);
+        }
         internal static Sqlx Equivalent(Sqlx prim)
         {
             switch (prim)
@@ -2851,15 +2863,16 @@ namespace Pyrrho.Level3
                     r += (OrderFunc, orf.defpos);
             var rs = BTree<long, Domain>.Empty;
             ch = false;
-            for (var b = representation.First(); b != null; b = b.Next())
+            var j = 0;
+            for (var b = representation.First(); b != null; b = b.Next(),j++)
             {
                 var rk = b.key();
-                var nk = wr.Fixed(rk);
+                var nk = wr.Fixed(rk); // can be null for column of ad-hoc rowType
                 var od = b.value();
                 var rr = (Domain)od._Relocate(wr);
-                if (rr != b.value() || rk!=nk.defpos)
+                if (rr != b.value() || nk==null || rk!=nk.defpos)
                     ch = true;
-                rs += (nk.defpos, rr);
+                rs += (wr.Fix(rk), rr);  // works even if nk is null
             }
             if (ch)
                 r += (Representation, rs);
@@ -2869,7 +2882,7 @@ namespace Pyrrho.Level3
                 if (und.defpos != super)
                     r += (Under, und.defpos);
             }
-            wr.cx.obs += (r.defpos, r);
+            wr.cx.Add(r.defpos, r);
             return r;
         }
         internal override Basis _Relocate(Context cx)
@@ -2904,12 +2917,13 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Representation, rs);
-            if (cx.obs[super] is Domain os)
+            if (cx.domains[super] is Domain os)
             {
                 var und = (Domain)os._Relocate(cx);
                 if (und.defpos != super)
                     r += (Under, und.defpos);
             }
+            cx.Add(r.defpos, r);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -3158,11 +3172,25 @@ namespace Pyrrho.Level3
     }
     internal class Structure : Domain
     {
+        internal const long
+            Names = -52; // BList<string>
         internal override RowType rowType => (RowType)mem[_RowType] ?? RowType.Empty;
+        internal BList<string> names => (BList<string>)mem[Names]??BList<string>.Empty;
         public static Structure Empty = new Structure();
         Structure() : base(-1L,Row+(_RowType,RowType.Empty)) { }
+        internal Structure(long dp, string nm, Domain d, RowType rt, BList<string> ns)
+            : base(dp, _Mem(d,rt) + (_RowType, rt) + (Names, ns)) { }
         internal Structure(long dp, Domain d) : base(dp, d.mem) { }
         protected Structure(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Domain d,RowType rt)
+        {
+            var m = d.mem;
+            var rs = BTree<long, Domain>.Empty;
+            for (var b = rt.First(); b != null; b = b.Next())
+                rs += b.value();
+            m += (Representation, rs);
+            return m;
+        }
         public static Structure operator+(Structure s, (long,object) x)
         {
             return (Structure)s.New(s.mem + x);
@@ -3171,6 +3199,12 @@ namespace Pyrrho.Level3
         {
             return (Structure)d.New(d.mem + (Representation, d.representation + x)
                 +(_RowType,d.rowType+x));
+        }
+        public static Structure operator +(Structure d, (string, long, Domain) x)
+        {
+            var (nm, p, dm) = x;
+            return (Structure)d.New(d.mem + (Representation, d.representation + (p,dm))
+                + (_RowType, d.rowType + (p,dm)) + (Names,d.names+nm));
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -3199,6 +3233,8 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
+            if (wr.cx.domains[wr.Fix(defpos)] is Structure st)
+                return st;
             var r = (Structure)base._Relocate(wr);
             var rt = RowType.Empty;
             var ch = false;
@@ -3210,6 +3246,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (_RowType, rt);
+            wr.cx.domains += (r.defpos, r);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -3221,6 +3258,7 @@ namespace Pyrrho.Level3
         {
             var sb= new StringBuilder(base.ToString());
             sb.Append(rowType);
+            sb.Append(names);
             return sb.ToString();
         }
     }

@@ -437,19 +437,19 @@ namespace Pyrrho.Level2
     }
     internal abstract class Compiled : Physical
     {
-        internal BTree<long, DBObject> framing;
-        protected Compiled(Type tp, long pp, Context cx, BTree<long,DBObject> fr) 
+        internal Objects framing;
+        protected Compiled(Type tp, long pp, Context cx, Objects fr) 
             : base(tp, pp, cx) 
         {
             framing = fr;
         }
         protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
         {
-            framing = BTree<long, DBObject>.Empty; // fixed in OnLoad
+            framing = Objects.Empty; // fixed in OnLoad
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
         {
-            var fs = BTree<long, DBObject>.Empty;
+            var fs = Objects.Empty;
             for (var b = ph.framing.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -471,7 +471,7 @@ namespace Pyrrho.Level2
         {
             cx.Frame();
             cx.SrcFix(ppos + 1);
-            var fs = BTree<long, DBObject>.Empty;
+            var fs = Objects.Empty;
             for (var b = framing.First(); b != null; b = b.Next())
             {
                 var p = b.key();

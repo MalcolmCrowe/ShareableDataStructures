@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,b.value())) return b.value();
             if (reference >= 0)
             {
-                var xr = (Index)wr.cx.db.objects[reference];
+                var xr = (Index)wr.cx.db.objects[wr.Fix(reference)];
                 var reftable = xr.tabledefpos;
                 if (!Committed(wr, reftable)) return reftable;
                 if (!Committed(wr, reference)) return reference;

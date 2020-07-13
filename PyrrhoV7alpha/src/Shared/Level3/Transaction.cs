@@ -113,7 +113,7 @@ namespace Pyrrho.Level3
             for (var b = physicals.First(); b != null; b = b.Next())
             {
                 var p = b.value().ppos;
-                cx.obs += (p, (DBObject)objects[p]);
+                cx.Add(p, (DBObject)objects[p]);
             }
             for (var b = physicals.First(); b != null; b = b.Next())
                 b.value().Relocate(cx);

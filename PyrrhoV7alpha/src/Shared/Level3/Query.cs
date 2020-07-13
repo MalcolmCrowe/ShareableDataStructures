@@ -1389,8 +1389,8 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
         {
             if (target == From._static.defpos)
-                return new TrivialRowSet(defpos, cx,rowType,domain,null,-1L,fi);
-            var r = ((Query)cx.obs[target]).RowSets(cx,fi);
+                return new TrivialRowSet(defpos, cx, rowType, domain, null, -1L, fi);
+            var r = cx.data[target]??((Query)cx.obs[target]).RowSets(cx,fi);
             if (r == null)
                 return null;
             if (where.Count > 0)

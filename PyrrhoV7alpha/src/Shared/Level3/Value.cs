@@ -489,9 +489,12 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Writer wr)
         {
             var r = (SqlValue)base._Relocate(wr);
-            var f = wr.Fix(from); // _From is the exception
-            if (f != from)
-                r += (_From, f);
+            if (from!=-1L)
+            {
+                var f = wr.Fixed(from).defpos;
+                if (f != from)
+                    r += (_From, f);
+            }
             if (wr.Fixed(left) is DBObject lf && lf.defpos != left)
                     r += (Left, lf.defpos);
             if (wr.Fixed(right) is SqlValue rg && rg.defpos != right)
@@ -517,9 +520,12 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (SqlValue)base._Relocate(cx);
-            var f = cx.Unheap(from);
-            if (f != from)
-                r += (_From, f);
+            if (from != -1L)
+            {
+                var f = cx.Fixed(from).defpos;
+                if (f != from)
+                    r += (_From, f);
+            }
             if (cx.Fixed(left) is DBObject lf && lf.defpos != left)
                     r += (Left, lf.defpos);
             if (cx.Fixed(right) is SqlValue rg && rg.defpos != right)
@@ -2350,7 +2356,7 @@ namespace Pyrrho.Level3
             {
                 var sv = b.value();
                 var cd = cb?.value().Item2;
-                st += (sv.defpos,sv.domain);
+                st += (sv.name,sv.defpos,sv.domain);
                 ch = ch || cd == null || sv.domain.CompareTo(cd) != 0;
             }
             return (m ?? BTree<long, object>.Empty)+(_RowType,st.rowType) 
@@ -3335,8 +3341,8 @@ namespace Pyrrho.Level3
         internal override TypedValue Eval(Context cx)
         {
             var dm = domain;
-            var ers = ((Query)cx.obs[expr])
-                .RowSets(cx, cx.data[from]?.finder??BTree<long, RowSet.Finder>.Empty);
+            var q = (Query)cx.obs[expr];
+            var ers = q.RowSets(cx, cx.data[from]?.finder??BTree<long, RowSet.Finder>.Empty);
             if (dm.prim == Sqlx.TABLE)
                 return ers;
             var rb = ers.First(cx);

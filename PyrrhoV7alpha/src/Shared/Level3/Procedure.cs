@@ -18,8 +18,8 @@ namespace Pyrrho.Level3
 	/// <summary>
 	/// A level 3 Procedure/Function object.
     /// The domain for the Procedure/Function gives the return type.
-    /// The ObInfo is role-dependent and so is computed for the SqlCall.
-    /// Similarly for the parameters.
+    /// The order of columns in the return type (if any) is fixed
+    /// and matches the uid ordering. Similarly for the parameters.
     /// Execution always uses the definer's (PProcedure) versions, 
     /// fetched from the schema role.
     /// Immutable
@@ -31,8 +31,7 @@ namespace Pyrrho.Level3
             Clause = -169,// string
             Inverse = -170, // long
             Monotonic = -171, // bool
-            Params = -172, // RowType  FormalParameter
-            RetType = -173; // long ObInfo
+            Params = -172; // RowType  FormalParameter
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -45,30 +44,22 @@ namespace Pyrrho.Level3
         public long body => (long)(mem[Body]??-1L);
 		public RowType ins => 
             (RowType)mem[Params]?? RowType.Empty;
-        public ObInfo retType => (ObInfo)mem[RetType] ?? ObInfo.Any;
         public string clause => (string)mem[Clause];
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
+        internal override RowType rowType => (domain is Structure st)?st.rowType:RowType.Empty;
         /// <summary>
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Context cx, BTree<long, object> m= null)
             : base( p.ppos, p.defpos, cx.role.defpos, (m ?? BTree<long, object>.Empty)
-                  + (Params, p.ins) +(_Domain,p.retType)+(Framing,p.framing)+(Body,p.body)
+                  + (Params, p.ins) +(_Domain,Domain._Structure(p.defpos,p.retType))
+                  +(Framing,p.framing)+(Body,p.body)
                   + (Name,p.name) + (Clause, p.source.ident))
         { }
-        /// <summary>
-        /// Constructor: skeleton procedure for body parsing
-        /// </summary>
-        /// <param name="defpos"></param>
-        /// <param name="ps"></param>
-        /// <param name="rt"></param>
-        /// <param name="m"></param>
-        public Procedure(long defpos,CList<long> ps, Domain dt, 
-            BTree<long, object> m=null) : base(defpos, (m??BTree<long,object>.Empty)
-                +(Params,ps)+(_Domain,dt)) { }
-        protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected Procedure(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
         public static Procedure operator+(Procedure p,(long,object)v)
         {
             return (Procedure)p.New(p.mem + v);
@@ -102,6 +93,7 @@ namespace Pyrrho.Level3
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
+                cx.data += act.data; // wow
             }
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
@@ -223,8 +215,6 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Arity="); sb.Append(arity);
-            sb.Append(" RetType:"); sb.Append(domain);
             sb.Append(ins);
             sb.Append(" Body:"); sb.Append(Uid(body));
             sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');

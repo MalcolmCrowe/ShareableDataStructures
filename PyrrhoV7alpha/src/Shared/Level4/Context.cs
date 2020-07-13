@@ -15,6 +15,27 @@ using Pyrrho.Level3;
 
 namespace Pyrrho.Level4
 {
+    internal class Objects : BTree<long, DBObject>
+    {
+        public new static Objects Empty = new Objects(BTree<long, DBObject>.Empty);
+        public Objects(BTree<long, DBObject> os) : base(os.root) { }
+        public static Objects operator +(Objects os, (long, DBObject) x)
+        {
+            var (p, o) = x;
+            if (o is Domain)
+                throw new PEException("PE999");
+            return new Objects((BTree<long, DBObject>)os.Add(p, o));
+        }
+        public static Objects operator+(Objects os,(Objects,bool) x)
+        {
+            var (ns, f) = x;
+            return new Objects((BTree<long,DBObject>)os+(ns,f));
+        }
+        public static Objects operator -(Objects os, long p)
+        {
+            return new Objects((BTree<long, DBObject>)os.Remove(p));
+        }
+    }
     /// <summary>
     /// A Context contains the main data structures for analysing the meaning of SQL. 
     /// Each Context maintains an indexed set of its enclosed Contexts (named blocks, tables, routine instances etc).
@@ -58,15 +79,15 @@ namespace Pyrrho.Level4
         internal Database db = null;
         internal Transaction tr => db as Transaction;
         internal BTree<long, BTree<long, bool>> copy = BTree<long, BTree<long, bool>>.Empty;
-        internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty;
+        internal Objects obs = Objects.Empty; // no Domains or Structs
         internal class Framing // for compiled code
         {
-            public BTree<long, DBObject> obs;
+            public Objects obs;
             public Ident.Idents defs;
             public BTree<int, BTree<long, DBObject>> depths;
         } 
         internal Framing frame = null;
-        protected BTree<long, Structure> structs = BTree<long, Structure>.Empty; 
+        internal BTree<long, Domain> domains = BTree<long, Domain>.Empty; // defpos>=0
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
         internal BTree<long, Register> funcs = BTree<long, Register>.Empty; // volatile
@@ -145,7 +166,7 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             defs = cx.defs;
             depths = cx.depths;
-            structs = cx.structs;
+            domains = cx.domains;
             copy = cx.copy;
             data = cx.data;
             from = cx.from;
@@ -279,20 +300,10 @@ namespace Pyrrho.Level4
                     return sd;
                 return so.domain;
             }
-            if (obs[xp] is SqlValue sv)
-                return sv.domain;
-            if (structs[xp] is Domain dm)
-                return dm;
-            if (obs[xp] is Query q)
-                return q.domain;
-            if (obs[xp] is Procedure pr)
-                return pr.domain;
-            if (db.objects[xp] is DBObject ob)
-            {
-                if (ob is Domain od)
-                    return od;
+            if (domains[xp] is Structure st)
+                return st;
+            if ((obs[xp]??db.objects[xp]) is DBObject ob)
                 return ob.domain;
-            }
             return null;
         }
         internal Domain Dom(long xp)
@@ -303,7 +314,7 @@ namespace Pyrrho.Level4
         internal RowType _RowType(long xp)
         {
             return (obs[xp] as DBObject)?.rowType
-                ?? ((structs[xp] is Structure s) ? s.rowType
+                ?? ((domains[xp] is Structure s) ? s.rowType
                 : (db.role.infos[xp] is ObInfo oi) ? oi.rowType
                 : RowType.Empty);
         }
@@ -311,11 +322,11 @@ namespace Pyrrho.Level4
         {
             var ob = obs[dp];
             return (ob as SqlValue)?.alias ?? ((string)ob?.mem[Basis.Name]) ??
-                (db.role.infos[dp] as ObInfo)?.name ?? "??";
+                (db.role.infos[dp] as ObInfo)?.name ?? "";
         }
         internal RowType Signature(long dp)
         {
-            return obs[dp].rowType??((ObInfo)db.role.infos[dp]).rowType;
+            return obs[dp]?.rowType??((ObInfo)db.role.infos[dp])?.rowType??RowType.Empty;
         }
         internal BTree<long, SqlValue> Map(RowType s)
         {
@@ -344,6 +355,16 @@ namespace Pyrrho.Level4
             if (from.Contains(p) && cursors[f.rowSet] is Cursor cu)
                 cursors+=(f.rowSet,cu + (this, f.col, tv));
         }
+        internal void Add(long p,DBObject ob)
+        {
+            if (ob is Domain dm)
+            {
+                if (p >= 0)
+                    domains += (p, dm);
+            }
+            else
+                obs += (p, ob);
+        }
         internal void Add(Physical ph, long lp = 0)
         {
             if (lp == 0)
@@ -353,7 +374,7 @@ namespace Pyrrho.Level4
         internal Structure Add(Structure dm)
         {
             if (dm.defpos>=0)
-                structs += (dm.defpos, dm);
+                domains += (dm.defpos, dm);
             return dm;
         }
         internal DBObject Add(DBObject ob)
@@ -368,11 +389,9 @@ namespace Pyrrho.Level4
                     && fm.name != "" && rp < Transaction.TransPos)
                     digest += (fm.defpos, (fm.name, rp));
             }
-            if (obs[ob.defpos] is DBObject oo && oo.depth != ob.depth)
-            {
-                var de = depths[oo.depth];
+            if (obs[ob.defpos] is DBObject oo && oo.depth != ob.depth
+                && depths[oo.depth] is BTree<long,DBObject> de)
                 depths += (oo.depth, de - ob.defpos);
-            }
             if (ob != null && ob.defpos != -1)
             {
                 _Add(ob);
@@ -415,31 +434,6 @@ namespace Pyrrho.Level4
         {
             db += (ob, p);
             obs += (ob.defpos, ob);
-        }
-        /// <summary>
-        /// Look for an ad-hoc structure with a given signature.
-        /// Create it if necessary
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="tb"></param>
-        /// <returns></returns>
-        internal Table BySignature(Ident ic,BList<string> ns,RowType sig)
-        {
-            var sigs = db.role.signatures;
-            if (sigs.Contains(sig))
-                return (Table)db.objects[sigs[sig]];
-            var pt = new PTable(ic.ident, db.nextPos, this);
-            Add(pt);
-            var j = 0;
-            for (var b = sig.First(); b != null; b = b.Next(), j++)
-            {
-                var (p,dm) = b.value();
-                var pc = new PColumn3(pt.defpos, ns[j], j, dm.defpos,
-                    "", dm.defaultValue, "", BList<UpdateAssignment>.Empty,
-                    false, GenerationRule.None, db.nextPos, this);
-                Add(pc);
-            }
-            return (Table)db.objects[pt.defpos];
         }
         internal RowType _Pick(RowType rt,BList<long> its)
         {
@@ -687,24 +681,7 @@ namespace Pyrrho.Level4
                 defs += (iv, p, Sqlx.COLUMN, Ident.Idents.For(p,db,this));
             }
         }
-        internal void AddCols(Ident id, RowType s, bool force = false)
-        {
-            if ((!force) && (!constraintDefs) && obs[id.iix] is Table)
-                return;
-            for (var b = s?.First(); b != null; b = b.Next())
-            {
-                var p = b.value().Item1;
-                var ob = obs[p] ?? (DBObject)db.objects[p];
-                if ((!force) && (!constraintDefs) && (ob is Table || ob is TableColumn))
-                    continue;
-                var n = (ob is SqlValue v) ? v.name : NameFor(p);
-                if (n == null)
-                    continue;
-                var ic = new Ident(n, p, ob.kind);
-                defs += (new Ident(id, ic), ob);
-                defs += (ic, ob);
-            }
-        }
+
         internal void AddParams(Procedure pr)
         {
             var pi = new Ident(pr.name, 0, Sqlx.PROCEDURE);

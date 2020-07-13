@@ -215,6 +215,8 @@ namespace Pyrrho.Level2
             if (cx.obs[p] is DBObject x)
                 return x;
             var ob = cx.obs[pos];
+            if (ob == null)// can happen with columns of ad-hoc types
+                return null;
             if (pos>Transaction.TransPos)
             {
                 ob = ob.Relocate(p).Relocate(this);

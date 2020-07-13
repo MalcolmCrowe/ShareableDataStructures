@@ -113,6 +113,24 @@ namespace Pyrrho.Level3
             var ts = triggers[tg.tgType] ?? BTree<long, bool>.Empty;
             return tb + (Triggers, triggers+(tg.tgType, ts + (tg.defpos, true)));
         }
+        internal override void AddCols(Context cx, Ident id, RowType s, bool force = false)
+        {
+            if ((!force) && (!cx.constraintDefs) && cx.obs[id.iix] is Table)
+                return;
+            for (var b = s?.First(); b != null; b = b.Next())
+            {
+                var p = b.value().Item1;
+                var ob = cx.obs[p] ?? (DBObject)cx.db.objects[p];
+                if ((!force) && (!cx.constraintDefs) && (ob is Table || ob is TableColumn))
+                    continue;
+                var n = (ob is SqlValue v) ? v.name : cx.NameFor(p);
+                if (n == null)
+                    continue;
+                var ic = new Ident(n, p, ob.kind);
+                cx.defs += (new Ident(id, ic), ob);
+                cx.defs += (ic, ob);
+            }
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new Table(defpos,m);

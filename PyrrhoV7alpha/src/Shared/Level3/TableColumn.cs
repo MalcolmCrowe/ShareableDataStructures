@@ -49,7 +49,7 @@ namespace Pyrrho.Level3
         /// <param name="c">The PColumn def</param>
         /// <param name="dt">the data type</param>
         public TableColumn(Table tb, PColumn c, Domain dt)
-            : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos)) {}
+            : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos)+(Name,c.name)) {}
         protected TableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TableColumn operator+(TableColumn s,(long,object)x)
         {
@@ -311,8 +311,7 @@ namespace Pyrrho.Level3
         public Generation gen => (Generation)(mem[_Generation] ?? Generation.No); // or START or END for ROW START|END
         public long exp => (long)(mem[GenExp]??-1L);
         public string gfs => (string)mem[GenString];
-        public BTree<long, DBObject> framing =>
-            (BTree<long, DBObject>)mem[DBObject.Framing] ?? BTree<long, DBObject>.Empty;
+        public Objects framing => (Objects)mem[DBObject.Framing] ?? Objects.Empty;
         public GenerationRule(Generation g) : base(new BTree<long, object>(_Generation, g)) { }
         public GenerationRule(Generation g, string s, SqlValue e)
             : base(BTree<long, object>.Empty + (_Generation, g) + (GenExp, e.defpos) + (GenString, s)) { }

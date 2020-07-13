@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
         /// <param name="dm">The defining position of the domain</param>
         /// <param name="tb">The local database</param>
         public PColumn(Type t, long pr, string nm, int sq, long dm, long pp, 
-            Context cx,BTree<long,DBObject> fr) : base(t,pp,cx,fr)
+            Context cx,Objects fr) : base(t,pp,cx,fr)
 		{
 			tabledefpos = pr;
 			name = nm;

@@ -2246,8 +2246,7 @@ namespace Pyrrho.Level3
         protected CallStatement(long dp, Procedure pr, string pn, RowType acts, 
             BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
-               +(_Domain,pr?.domain??Domain.Content) + (Procedure.RetType,pr?.retType??ObInfo.Any)
-               + (Name,pn))
+               +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
@@ -2310,7 +2309,42 @@ namespace Pyrrho.Level3
                 return true;
             return procdefpos==defpos || Calls(parms,defpos, cx);
         }
-
+        internal override RowType Struct(Context cx)
+        {
+            var proc = (Procedure)(cx.obs[procdefpos]??cx.db.objects[procdefpos]);
+            return proc.domain.rowType;
+        }
+        internal override void AddCols(Context cx, Ident id, RowType s, bool force = false)
+        {
+            if ((!force) && (!cx.constraintDefs) && cx.obs[id.iix] is Table)
+                return;
+            var proc = (Procedure)(cx.obs[procdefpos]??cx.db.objects[procdefpos]);
+            var nb = ((Structure)proc.domain).names.First();
+            for (var b = s?.First(); b != null; b = b.Next(), nb = nb?.Next())
+            {
+                var (p, dm) = b.value();
+                var n = nb?.value();
+                if (n == null)
+                    continue;
+                var ic = new Ident(n, p, Sqlx.COLUMN);
+                var ob = new SqlValue(p, n, dm);
+                cx.Add(ob);
+                cx.defs += (new Ident(id, ic), ob);
+                cx.defs += (ic, ob);
+            }
+            for (var b = parms.First(); b != null; b = b.Next(), nb = nb?.Next())
+            {
+                var (p, dm) = b.value();
+                var n = nb?.value();
+                if (n == null)
+                    continue;
+                var ic = new Ident(n, p, Sqlx.PARAMETER);
+                var ob = new SqlValue(p, n, dm);
+                cx.Add(ob);
+                cx.defs += (new Ident(id, ic), ob);
+                cx.defs += (ic, ob);
+            }
+        }
         /// <summary>
         /// Execute a proc/method call
         /// </summary>

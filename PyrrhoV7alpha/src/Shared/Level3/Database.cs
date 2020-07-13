@@ -147,7 +147,7 @@ namespace Pyrrho.Level3
         internal long nextPrep => (long)(mem[NextPrep] ?? PyrrhoServer.Preparing);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
-        internal virtual long nextPos => Transaction.TransPos;
+        internal virtual long nextPos => loadpos;
         internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
@@ -245,15 +245,14 @@ namespace Pyrrho.Level3
             var (ro, p) = x;
             return d+(ro.defpos,ro)+(SchemaKey,p);
         }
-        public static Database operator +(Database d0, DBObject ob)
+        public static Database operator +(Database d, DBObject ob)
         {
-            var d = d0 as Transaction;
-            return d + ob;
+            return d+(ob,d.loadpos);
         }
-        public static Database operator +(Database d0, Procedure p)
+        public static Database operator +(Database d, Procedure p)
         {
-            var d = d0 as Transaction;
-            return d + p;
+            var ro = d.role + p;
+            return d + ro + (p, d.loadpos);
         }
         public static Database Get(string fn)
         {

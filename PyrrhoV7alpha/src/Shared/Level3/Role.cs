@@ -3,6 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System;
+using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -45,8 +46,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long> Domain/Table/View etc by name
-            Procedures = -249, // BTree<string,BTree<int,long>> Procedure/Function by name and arity
-            Signatures = -52; // BTree<RowType,long> TableColumn, Table
+            Procedures = -249; // BTree<string,BTree<int,long>> Procedure/Function by name and arity
         public string name => (string)(mem[Name] ?? "");
         internal BTree<string, long> dbobjects => 
             (BTree<string, long>)mem[DBObjects]??BTree<string,long>.Empty;
@@ -55,8 +55,6 @@ namespace Pyrrho.Level3
         public BTree<long, object> infos => mem;
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-        public BTree<RowType, long> signatures =>
-            (BTree<RowType, long>)mem[Signatures] ?? BTree<RowType, long>.Empty;
         /// <summary>
         /// An empty role for the Context (query analysis)
         /// </summary>
@@ -199,7 +197,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public BTree<string, BTree<int, long>> methods =>
             (BTree<string, BTree<int, long>>)mem[Methods] ?? BTree<string, BTree<int, long>>.Empty;
-        public int Length => rowType.Length;
+        public int Length => rowType?.Length??0;
         internal readonly static ObInfo Any = new ObInfo();
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
         public ObInfo(long lp, Domain dm, RowType cols,Sqlx k=Sqlx.ROW, BTree<long,object>m=null)

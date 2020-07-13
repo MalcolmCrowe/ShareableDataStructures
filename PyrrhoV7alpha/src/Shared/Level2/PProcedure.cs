@@ -60,6 +60,8 @@ namespace Pyrrho.Level2
 		{
             source = sce;
             ins = ps;
+            if (rt == null)
+                throw new PEException("PE888");
             retType = rt;
             name = nm;
             nameAndArity = nm + "$" + arity;
@@ -73,7 +75,6 @@ namespace Pyrrho.Level2
         protected PProcedure(PProcedure x, Writer wr) : base(x, wr)
         {
             source = x.source;
-            wr.srcPos = wr.Length + 1;
             retType = (Domain)x.retType._Relocate(wr);
             nameAndArity = x.nameAndArity;
             name = x.name;
@@ -122,9 +123,17 @@ namespace Pyrrho.Level2
             name = ss[0];
 			rdr.GetInt();
             if (type == Type.PMethod2 || type == Type.PProcedure2)
-                retType = (Domain)rdr.context.db.objects[rdr.GetLong()]??Domain.Null;
+            {
+                var dp = rdr.GetLong();
+                var dm = (Domain)rdr.context.db.objects[dp]??Domain.Content;
+                retType = Domain._Structure(dp,dm);
+            }
             if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
-                retType = (Domain)rdr.context.db.objects[mt.typedefpos];
+            {
+                var dp = mt.typedefpos;
+                var dm = (Domain)rdr.context.db.objects[dp];
+                retType = Domain._Structure(dp, dm);
+            }
             source = new Ident(rdr.GetString(), ppos, Sqlx.PROCEDURE);
 			base.Deserialise(rdr);
         }
@@ -164,8 +173,9 @@ namespace Pyrrho.Level2
             Physical ph;
             (tr,ph) = base.Commit(wr, tr);
             var r = (PProcedure)ph;
-            var ro = tr.role;
-            return (tr, r);
+            var pr = (Procedure)wr.cx.obs[r.defpos];
+            wr.cx.db += pr;
+            return (tr+pr, r);
         }
         internal override void Install(Context cx, long p)
         {

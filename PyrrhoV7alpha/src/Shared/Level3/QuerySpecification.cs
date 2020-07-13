@@ -98,6 +98,11 @@ namespace Pyrrho.Level3
             {
                 var d = b.value();
                 var k = b.key();
+                if (k==-1 || k==d.defpos)
+                {
+                    sc += (k, d);
+                    continue;
+                }
                 var nk = wr.Fixed(k).defpos;
                 var nd = (Domain)d.Relocate(wr);
                 sc += (nk,nd);
@@ -119,6 +124,11 @@ namespace Pyrrho.Level3
             {
                 var d = b.value();
                 var k = b.key();
+                if (k == -1L || k == d.defpos)
+                {
+                    sc += (k, d);
+                    continue;
+                }
                 var nk = cx.Fixed(k).defpos;
                 var nd = (Domain)d.Relocate(cx);
                 sc += (nk, nd);

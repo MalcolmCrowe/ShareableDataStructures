@@ -24,21 +24,16 @@ namespace Pyrrho.Level3
             Assigns = -150, // BList<UpdateAssignment>
             Source = -151, // long (a Query for Views)
             Static = -152, // From (defpos for STATIC)
-            Target = -153; // long (a table or view)
+            Target = -153; // long (a procedure, table or view)
         internal BList<UpdateAssignment> assigns =>
             (BList<UpdateAssignment>)mem[Assigns] ?? BList<UpdateAssignment>.Empty;
         internal long source => (long)(mem[Source]??-1L);
         internal long target => (long)(mem[Target]??-1L);
         internal readonly static From _static = new From();
         From() : base(Static) { }
-        public From(Ident ic, Context cx, Table tb, QuerySpecification q=null,
+        public From(Ident ic, Context cx, DBObject tb, QuerySpecification q=null,
             Grant.Privilege pr=Grant.Privilege.Select, string a= null, BList<Ident> cr = null) 
             : base(ic.iix, _Mem(ic,cx, tb,q,pr,a,cr))
-        { }
-        protected From(Ident ic, Context cx, Table tb, BTree<long, object> mem)
-            : base(ic.iix, mem + (_Mem(ic, cx, tb, null, Grant.Privilege.Select, null, null),false)) { }
-        public From(long dp,Context cx,CallStatement pc,CList<long> cr=null)
-            :base(dp,_Mem(dp,cx,pc,cr))
         { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
         { }
@@ -68,7 +63,7 @@ namespace Pyrrho.Level3
         /// <param name="pr"></param>
         /// <param name="cr">Aliases supplied if any</param>
         /// <returns></returns>
-        static BTree<long, object> _Mem(Ident ic, Context cx, Table tb, QuerySpecification q,
+        static BTree<long, object> _Mem(Ident ic, Context cx, DBObject tb, QuerySpecification q,
            Grant.Privilege pr = Grant.Privilege.Select, string a=null,BList<Ident> cr = null)
         {
             var cs = RowType.Empty;
@@ -76,19 +71,19 @@ namespace Pyrrho.Level3
             var de = 1; // we almost always have some columns
             var ti = tb.Struct(cx);
             cx._Add(tb);
-            cx.AddCols(ic, ti);
+            tb.AddCols(cx, ic, ti);
             var mp = BTree<long, bool>.Empty;
             if (cr == null)
             {
-                var ma = BTree<string, TableColumn>.Empty;
+                var ma = BTree<string, DBObject>.Empty;
                 for (var b = ti?.First(); b != null; b = b.Next())
                 {
                     var p = b.value().Item1;
                     if (cx.obs[p] is SqlCopy sc)
                         p = sc.copyFrom;
-                    var tc = (TableColumn)cx.db.objects[p];
-                    var ci = (ObInfo)cx.role.infos[tc.defpos];
-                    ma += (ci.name, tc);
+                    var tc = (DBObject)(cx.obs[p]??cx.db.objects[p]);
+                    var ci = cx.NameFor(p);
+                    ma += (ci, tc);
                 }
                 // we want to add everything from ti that matches cx.stars or q.Needs
                 if (q != null)
@@ -116,7 +111,7 @@ namespace Pyrrho.Level3
                 for (var sb = cx.stars.First(); sb != null; sb = sb.Next())
                 {
                     var (i, dp) = sb.value();
-                    var rt = q.rowType ?? RowType.Empty;
+                    var rt = q?.rowType ?? ti;
                     if (tb.defpos == dp || dp < 0)
                         for (var b = ti?.First(); b != null; b = b.Next())
                         {
@@ -166,22 +161,6 @@ namespace Pyrrho.Level3
             return BTree<long, object>.Empty + (Name, ic.ident)
                    + (Target, tb.defpos) + (_Domain, dm) 
                    + (_RowType, cs) + (Depth, de + 1);
-        }
-        static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,CList<long> cr=null)
-        {
-            var proc = (Procedure)cx.db.objects[pc.procdefpos];
-            cx._Add(proc);
-            var disp = cr?.Length ?? proc.retType.Length;
-            var s = RowType.Empty;
-            for (var b = proc.rowType?.First(); b != null; b = b.Next())
-            {
-                var (p,dm) = b.value();
-                var ci = cx.NameFor(p);
-                s += (cx.Add(new SqlCopy(p,cx,ci,dp,b.key())).defpos,dm);
-            }
-            return BTree<long, object>.Empty
-                + (Target,pc.procdefpos) + (Display,disp) + (_Domain,proc.domain)
-                + (Name, proc.name) + (_RowType,s);
         }
         internal override TypedValue Eval(Context cx)
         {
@@ -403,11 +382,13 @@ namespace Pyrrho.Level3
                     index = tb.FindPrimaryIndex(cx.db);
                     if (index != null && index.rows != null)
                         rowSet = new SelectedRowSet(cx, this,
-                            new IndexRowSet(cx, tb, index,null,fi),fi);
+                            new IndexRowSet(cx, tb, index, null, fi), fi);
                     else
                         rowSet = new SelectedRowSet(cx, this,
-                            new TableRowSet(cx, tb.defpos,fi),fi);
+                            new TableRowSet(cx, tb.defpos, fi), fi);
                 }
+                else if (cx.obs[target] is Procedure)
+                    return (RowSet)cx.val;
                 if (readC != null)
                     readC.Block();
             }

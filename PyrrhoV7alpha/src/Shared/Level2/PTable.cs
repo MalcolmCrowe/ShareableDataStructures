@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
             var tb = new Table(this);
-            var ti = new ObInfo(ppos, name, Common.Sqlx.TABLE, Domain.TableType)
+            var ti = new ObInfo(ppos, name, Sqlx.TABLE, Domain.TableType)
                 +(ObInfo.Privilege, priv);
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
