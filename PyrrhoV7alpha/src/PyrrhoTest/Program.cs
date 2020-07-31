@@ -163,7 +163,7 @@ namespace Test
             CheckResults(5, 1,"select * from f", "[{B:17,C:15},{B:23,C:6}]");
             CheckResults(5, 2,"select b-3 as h,22 as g from f", "[{H:14,G:22},{H:20,G:22}]");
             CheckResults(5, 3,"select (f.b) as h,(c) from f", "[{H:17,C:15},{H:23,C:6}]");
-            CheckResults(5, 4,"select b+3,d.c from f d", "[{Col0:20,D.C:15},{Col0:26,D.C:6}]");
+            CheckResults(5, 4,"select b+3,d.c from f d", "[{Col0:20,C:15},{Col0:26,C:6}]");
             CheckResults(5, 5,"select (b as d,c) from f", "[{Col0:(D=17,C=15)},{Col0:(D=23,C=6)}]");
             CheckResults(5, 6,"select * from f order by c", "[{B:23,C:6},{B:17,C:15}]");
             CheckResults(5, 7,"select * from f order by b desc", "[{B:23,C:6},{B:17,C:15}]");
@@ -237,6 +237,16 @@ namespace Test
             CheckResults(8, 8, "select * from JA full join JE on B=F",
     "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}," +
     "{B:8,\"JA.C\":3,D:82},{F: 11,\"JE.C\":4,G:10}]");
+            // Test for lateral join (the keyword LATERAL is not required and not supported)
+            conn.Act("create table SalesPerson(pid int primary key)");
+            conn.Act("insert into SalesPerson values(1),(2),(3)"); 
+            conn.Act("create table Sales(sid int primary key, spid int, cust int, amount int)"); 
+            conn.Act("insert into Sales values(4,3,10,22),(5,2,11,12),(6,2,10,37)"); 
+            conn.Act("insert into Sales values(7,1,12,7),(8,3,13,41),(9,1,12,17)");
+            CheckResults(8, 9, "select * from SalesPerson,"+
+                "(select cust, amount from Sales " +
+                "where spid = pid order by amount desc fetch first 1 rows only)",
+                "[{PID:1,CUST:12,AMOUNT:17},{PID:2,CUST:10,AMOUNT:37},{PID:3,CUST:13,AMOUNT:41}]");
             Rollback();
         }
         void Test9(int t)
@@ -521,8 +531,7 @@ namespace Test
             CheckResults(16,4,"table xb", "[{TOT:17}]");
             conn.Act("create table xc(totb int,totc int)");
             conn.Act("create trigger sdai instead of delete on xa referencing old table as ot " +
-            "for each statement " +
-            "begin atomic insert into xc (select sum(b) as totb,sum(c) as totc from ot) end");
+            "for each statement begin atomic insert into xc (select b,c from ot) end");
             conn.Act("delete from xa where d='changed'");
             CheckResults(16,5,"table xc", "[{TOTB:8,TOTC:10}]");
             CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]"); // INSTEAD OF!
