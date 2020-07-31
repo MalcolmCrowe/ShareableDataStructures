@@ -171,9 +171,9 @@ namespace Pyrrho
         {
             var dt = e.dataType;
             var cm = "(";
-            for (var b = cx.Signature(e._rowsetpos).First();b!=null;b=b.Next())
+            for (var b = cx.Cols(e._rowsetpos).First();b!=null;b=b.Next())
             {
-                var p = b.value().Item1;
+                var p = b.value();
                 sbuild.Append(cm);
                 sbuild.Append(e[p]);
             }
@@ -237,7 +237,7 @@ namespace Pyrrho
             {
                 for (var co = oi.First(); co != null; co = co.Next())
                 {
-                    var p = co.value().Item1;
+                    var p = co.value();
                     var ci = (ObInfo)cx.db.role.infos[p];
                     var m = ci.Meta();
                     if (m.Has(Sqlx.X))
@@ -276,7 +276,7 @@ namespace Pyrrho
                 sbuild.Append("<table border><tr>");
                 for (var b=rs.rt.First();b!=null;b=b.Next())
                 {
-                    var ci = (ObInfo)cx.db.role.infos[b.value().Item1];
+                    var ci = (ObInfo)cx.db.role.infos[b.value()];
                     sbuild.Append("<th>" + ci.name + "</th>");
                 }
                 sbuild.Append("</tr>");
@@ -286,8 +286,10 @@ namespace Pyrrho
         {
             return (v!=null && !v.IsNull) ? v.ToString() : "";
         }
-        public override void PutRow(Context cx, Cursor e)
+        public override void PutRow(Context _cx, Cursor e)
         {
+            var dt = e.dataType;
+            var oi = _cx.Inf(e._rowsetpos);
             if (chartType.flags!=0UL)
             {
                 sbuild.Append(comma+"[");
@@ -296,7 +298,7 @@ namespace Pyrrho
                 if (rc != null)
                 {
                     s+= GetVal(rc);
-                    if (rc.dataType.prim == Sqlx.CHAR)
+                    if (rc.dataType.kind == Sqlx.CHAR)
                         s = "\"" + s + "\"";
                 }
                 sbuild.Append(s + "," + GetVal(e[ycol]));
@@ -309,11 +311,10 @@ namespace Pyrrho
             }
             else
             {
-                var oi = cx.data[e._rowsetpos].rt;
                 sbuild.Append("<tr>");
-                for (var b=oi?.First();b!=null;b=b.Next())
+                for (var b=oi.domain.rowType.First();b!=null;b=b.Next())
                 {
-                    var s = GetVal(e[b.value().Item1]);
+                    var s = GetVal(e[b.value()]);
                     sbuild.Append("<td>" + s + "</td>");
                 }
                 sbuild.Append("</tr>");
@@ -541,7 +542,7 @@ namespace Pyrrho
             //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
             for (var b=rt.First();b!=null;b=b.Next())
             {
-                var ci = (ObInfo)_cx.db.role.infos[b.value().Item1];
+                var ci = (ObInfo)_cx.db.role.infos[b.value()];
                 if (e[ci.defpos].NotNull() is TypedValue tv)
                     doc.Add(ci.name, tv);
             }
@@ -621,7 +622,7 @@ namespace Pyrrho
                 }
                 if (path.Length <= 2)
                     return;
-                var dbn = new Ident(pathbits[1],0,Sqlx.VALUE);
+                var dbn = new Ident(pathbits[1],0);
                 if (dbn.ident.EndsWith(".htm"))
                 {
                     var rdr = new StreamReader(PyrrhoStart.path + path);

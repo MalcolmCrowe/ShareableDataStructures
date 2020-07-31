@@ -24,47 +24,43 @@ namespace Pyrrho.Level4
     {
         internal readonly long defpos;
         internal readonly Domain domain;
+        internal CList<long> keyType => domain.rowType;
         internal readonly Context _cx;
-        internal readonly RowType keyType;
         internal readonly MTree mt;
         internal readonly BList<TRow> rows;
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
-        internal RTree(long dp,Context cx,RowType ks,Domain dt,
+        internal RTree(long dp,Context cx,CList<long> ks,Domain dt,
             TreeBehaviour d=TreeBehaviour.Disallow,TreeBehaviour n=TreeBehaviour.Allow)
         {
             defpos = dp;
-            keyType = ks;
-            domain = dt;
+            domain = dt+(Domain.RowType,ks);
             _cx = cx;
             mt = new MTree(new TreeInfo(ks,dt,d,n));
             rows = BList<TRow>.Empty;
         }
-        internal RTree(long dp,Context cx,RowType ks,Domain dt,
-            BList<TRow> rs, TreeBehaviour d= TreeBehaviour.Disallow,
+        internal RTree(long dp,Context cx,CList<long>ks,Domain dt,BList<TRow> rs, TreeBehaviour d= TreeBehaviour.Disallow,
             TreeBehaviour n = TreeBehaviour.Allow)
         {
             defpos = dp;
-            keyType = ks;
-            domain = dt;
+            domain = dt + (Domain.RowType, ks);
             _cx = cx;
             var m = new MTree(new TreeInfo(ks, dt, d, n));
             var i = 0;
             for (var b=rs.First();b!=null;b=b.Next(),i++)
             {
                 var rw = b.value();
-                MTree.Add(ref m, new PRow(new TRow(ks, dt, rw.values)), i);
+                MTree.Add(ref m, new PRow(new TRow(dt+(Domain.RowType,ks), rw.values)), i);
             }
             mt = m;
             rows = rs;
         }
-        protected RTree(long dp,Context cx,RowType k,Domain d,MTree m,BList<TRow> rs)
+        protected RTree(long dp,Context cx,CList<long> k,Domain d,MTree m,BList<TRow> rs)
         {
             defpos = dp;
-            keyType = k;
             _cx = cx;
-            domain = d;
+            domain = d+(Domain.RowType,k);
             mt = m;
             rows = rs;
         }
@@ -107,7 +103,7 @@ namespace Pyrrho.Level4
         RTreeBookmark(Context cx,RTree rt, int pos, MTreeBookmark mb) 
             :base(cx,rt.defpos,pos,mb._pos,rt.rows[(int)(mb.Value()??-1L)])
         {
-            _rt = rt; _mb = mb; _key = new TRow(_rt.keyType,_rt.domain, mb.key());
+            _rt = rt; _mb = mb; _key = new TRow(new Domain(Sqlx.ROW,cx,_rt.keyType), mb.key());
         }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
@@ -139,7 +135,7 @@ namespace Pyrrho.Level4
                 }
             return null;
         }
-        public override Cursor Next(Context cx)
+        protected override Cursor _Next(Context cx)
         {
             var mb = _mb;
             for (;;)

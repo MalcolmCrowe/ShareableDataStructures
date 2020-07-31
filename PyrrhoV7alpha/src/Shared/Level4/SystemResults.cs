@@ -23,7 +23,8 @@ namespace Pyrrho.Level4
         public BTree<long, TableColumn> tableCols =>
             (BTree<long, TableColumn>)mem[Cols] ?? BTree<long, TableColumn>.Empty;
         internal SystemTable(string n)
-            : base(--_uid, new BTree<long, object>(Name, n) + (_Domain,Domain.TableType))
+            : base(--_uid, new BTree<long, object>(Name, n) 
+                  + (_Domain,Domain.TableType))
         { }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTable operator+(SystemTable s,(long,object)x)
@@ -42,19 +43,9 @@ namespace Pyrrho.Level4
             return s + (Cols, s.tableCols + (c.defpos, c)) 
                 + (_Domain,s.domain+(c.defpos,c.domain));
         }
-        public ObInfo Inf()
+        internal override ObInfo Inf(Context cx)
         {
-            var rs = RowType.Empty;
-            for (var b = tableCols.Last(); b != null; b = b.Previous())
-            {
-                var tc = (SystemTableColumn)b.value();
-                rs += (tc.defpos,tc.domain);
-            }
-            return new ObInfo(defpos, name, Sqlx.TABLE, domain, rs);
-        }
-        internal override RowType Struct(Context cx)
-        {
-            return ((ObInfo)cx.role.infos[defpos]).rowType;
+            return new ObInfo(defpos,name,domain);
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -77,9 +68,8 @@ namespace Pyrrho.Level4
         }
         public void Add()
         {
-            var dt = Inf();
             var d = Database._system;
-            var ro = d.role + dt + (Role.DBObjects, d.role.dbobjects + (name, defpos));
+            var ro = d.role + (Role.DBObjects, d.role.dbobjects + (name, defpos));
             d = d + (this, 0) + (ro,-1);
             Database._system = d;
         }
@@ -106,7 +96,7 @@ namespace Pyrrho.Level4
             : base(--_uid, BTree<long, object>.Empty + (Name, n) + (Table, t.defpos) 
                   + (_Domain, dt) + (Key,k))
         {
-            var oc = new ObInfo(defpos, n, Sqlx.COLUMN, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
+            var oc = new ObInfo(defpos, n, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
             var ro = Database._system.role + oc;
             var td = t.domain + (defpos, dt);
             t += (_Domain, td);
@@ -138,6 +128,10 @@ namespace Pyrrho.Level4
                 return false;
             return base.Denied(cx, priv);
         }
+        internal override CList<long> _Cols(Context cx)
+        {
+            return domain.rowType;
+        }
     }
 	/// <summary>
 	/// Perform selects from virtual 'system tables'
@@ -152,7 +146,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx,SystemTable f,BTree<long,bool>w=null)
-            : base(f.defpos,cx,f.domain,Context._system._RowType(f.defpos), null,null,w)
+            : base(f.defpos,cx,f.domain,-1,null,null,w)
         {
             from = f;
         }
@@ -160,13 +154,18 @@ namespace Pyrrho.Level4
         {
             from = rs.from;
         }
+        protected SystemRowSet(Context cx, SystemRowSet rs, BTree<long, Finder> nd, bool bt)
+            : base(cx, rs, nd, bt) 
+        {
+            from = rs.from;
+        }
         internal override RowSet New(long a, long b)
         {
             return new SystemRowSet(this, a, b);
         }
-        internal override RowSet New(long dp, Context cx)
+        internal override RowSet New(Context cx,BTree<long,Finder>nd,bool bt)
         {
-            throw new NotImplementedException();
+            return new SystemRowSet(cx, this, nd, bt);
         }
         internal override void _Strategy(StringBuilder sb, int indent)
         {
@@ -272,7 +271,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">the rowset to enumerate</param>
         /// <returns>the bookmark</returns>
-        public override Cursor First(Context _cx)
+        protected override Cursor _First(Context _cx)
         {
             var res = this;
             if (res.from == null) // for kludge
@@ -470,7 +469,7 @@ namespace Pyrrho.Level4
             /// Move to the next log entry
             /// </summary>
             /// <returns>whether there is a next entry</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x=_cx.db._NextPhysical(nextpos); x.Item1!=null; x=_cx.db._NextPhysical(x.Item2))
                 {
@@ -537,7 +536,7 @@ namespace Pyrrho.Level4
             /// move to the next Log$Alter entry
             /// </summary>
             /// <returns>whether there is a next entry</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -601,7 +600,7 @@ namespace Pyrrho.Level4
                     Pos(ch.Previous),
                     new TChar(ch.name));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -663,7 +662,7 @@ namespace Pyrrho.Level4
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -726,7 +725,7 @@ namespace Pyrrho.Level4
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -781,7 +780,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -851,7 +850,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -915,7 +914,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -978,7 +977,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1044,7 +1043,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1105,7 +1104,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1166,7 +1165,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1240,7 +1239,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1264,10 +1263,10 @@ namespace Pyrrho.Level4
                     PColumn c = (PColumn)ph;
                     return new TRow(res,
                         Pos(c.ppos),
-                        Pos(c.tabledefpos),
+                        Pos(c.table.defpos),
                         new TChar(c.name),
                         new TInt(c.seq),
-                        Pos(c.domdefpos),
+                        Pos(ph.database.types[c.domain]??-1L),
                         Display(c.dfs.ToString()),
                         TBool.For(c.notNull),
                         new TChar(c.generated.ToString()),
@@ -1318,7 +1317,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1389,7 +1388,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1408,14 +1407,14 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(SystemRowSet res, Physical ph)
             {
-                    PDateType d = (PDateType)ph;
+                    var d = ((PDateType)ph).domain;
                     return new TRow(res,
-                        Pos(d.ppos),
+                        Pos(ph.ppos),
                         new TChar(d.name),
-                        new TChar(d.prim.ToString()),
+                        new TChar(d.kind.ToString()),
                         new TChar(d.start.ToString()),
                         new TChar(d.end.ToString()),
-                        Pos(d.trans));
+                        Pos(ph.trans));
             }
          }
         /// <summary>
@@ -1464,7 +1463,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1483,19 +1482,19 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(SystemRowSet res, Physical ph)
             {
-                PDomain d = (PDomain)ph;
+                Domain d = ((PDomain)ph).domain;
                 return new TRow(res,
-                    Pos(d.ppos),
-                    new TChar(d.type.ToString()),
+                    Pos(ph.ppos),
+                    new TChar(d.kind.ToString()),
                     new TChar(d.name),
-                    new TChar(d.prim.ToString()),
+                    new TChar(d.kind.ToString()),
                     new TInt(d.prec),
                     new TInt(d.scale),
                     new TChar(d.charSet.ToString()),
                     new TChar(d.culture.Name),
                     Display(d.defaultString),
-                    new TInt(d.eltypedefpos),
-                    Pos(d.trans));
+                    new TInt(ph.database.types[d.elType].Value),
+                    Pos(ph.trans));
             }
          }
         /// <summary>
@@ -1536,7 +1535,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1558,7 +1557,7 @@ namespace Pyrrho.Level4
                 Edit d = (Edit)ph;
                 return new TRow(res,
                     Pos(d.ppos),
-                    Pos(d.prev),
+                    Pos(ph.database.types[d.prev]??-1L),
                     Pos(d.trans));
             }
          }
@@ -1601,7 +1600,7 @@ namespace Pyrrho.Level4
                 return new TRow(res, Pos(en.ppos), Pos(en.tabledefpos),
                     new TInt((long)en.enforcement),Pos(en.trans));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1656,7 +1655,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1728,7 +1727,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1807,7 +1806,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var ix = _ix + 1; ph is PIndex x && ix < x.columns.Count; ix = ix + 1)
                 {
@@ -1884,7 +1883,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1906,7 +1905,7 @@ namespace Pyrrho.Level4
                 Ordering o = (Ordering)ph;
                 return new TRow(res,
                     Pos(o.ppos),
-                    Pos(o.typedefpos),
+                    new TChar(o.domain.ToString()),
                     Pos(o.funcdefpos),
                     new TChar(o.flags.ToString()),
                     Pos(o.trans));
@@ -1953,7 +1952,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -1977,7 +1976,7 @@ namespace Pyrrho.Level4
                     Pos(p.ppos),
                     new TChar(p.nameAndArity),
                     new TInt(p.arity),
-                    Pos(p.retType.defpos),
+                    new TChar(p.retType.ToString()),
                     Display(p.source.ident),
                     Pos(p.trans));
             }
@@ -2022,7 +2021,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2089,7 +2088,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2161,7 +2160,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2248,7 +2247,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var ix = _ix + 1; ix < _sub.Length; ix = ix + 1)
                 {
@@ -2310,7 +2309,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2374,7 +2373,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2396,7 +2395,7 @@ namespace Pyrrho.Level4
                 PType t = (PType)ph;
                 return new TRow(res,
                     Pos(t.ppos),
-                    Pos(t.underdefpos),
+                    new TChar(t.under?.ToString()??""),
                     Pos(t.trans));
             }
          }
@@ -2439,7 +2438,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2461,7 +2460,7 @@ namespace Pyrrho.Level4
                     PMethod t = (PMethod)ph;
                     return new TRow(res,
                         Pos(t.ppos),
-                        Pos(t.typedefpos),
+                        new TChar(t.domain.ToString()),
                         new TChar(t.nameAndArity),
                         Pos(t.trans));
             }
@@ -2507,7 +2506,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2582,7 +2581,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2678,7 +2677,7 @@ namespace Pyrrho.Level4
             /// Move to next Field or Record
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var fld = _fld.Next(); fld != null; fld = fld.Next())
                 {
@@ -2687,7 +2686,7 @@ namespace Pyrrho.Level4
                         return rb;
                 }
                 for (var rec = (LogRecordBookmark)_rec.Next(_cx); rec != null; 
-                    rec = (LogRecordBookmark)Next(_cx))
+                    rec = (LogRecordBookmark)_Next(_cx))
                     for (var b = (rec.ph as Record).fields.PositionAt(0); b != null; b = b.Next())
                     {
                         var rb = new LogRecordFieldBookmark(_cx,rec, _pos + 1, b);
@@ -2738,7 +2737,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2810,7 +2809,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
                 {
@@ -2900,7 +2899,7 @@ namespace Pyrrho.Level4
             /// Move to the next Role
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
@@ -2983,7 +2982,7 @@ namespace Pyrrho.Level4
             /// Move to the next Role
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var e = en.Next(); e != null; e = e.Next())
                 {
@@ -3042,7 +3041,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var inner = _inner;
                 var rbmk = _rbmk;
@@ -3135,7 +3134,7 @@ namespace Pyrrho.Level4
                 throw new PEException("PE001");
             }
 
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(_cx) as LogBookmark; bmk != null; 
                     bmk = bmk.Next(_cx) as LogBookmark)
@@ -3192,7 +3191,7 @@ namespace Pyrrho.Level4
                     Pos(au.cols[_ix]),new TChar(au.key[_ix]));
             }
 
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var ix = _ix;
                 var bmk = _bmk;
@@ -3292,7 +3291,7 @@ namespace Pyrrho.Level4
                     new TChar(cln.ToString()),
                     Pos(Trans(_cx,res,ppos)));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var obm = _obm;
                 var tbm = _tbm;
@@ -3398,7 +3397,7 @@ namespace Pyrrho.Level4
                     new TChar(cln.ToString()),
                     Pos(Trans(_cx,ppos)));
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var cbm = _cbm;
                 var tbm = _tbm;
@@ -3467,7 +3466,7 @@ namespace Pyrrho.Level4
                     new TChar(sb.ToString()));
             }
 
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var b = _en.Next(); b != null; b = b.Next())
                     if (b.value() is Table t && (int)t.enforcement != 15)
@@ -3557,7 +3556,7 @@ namespace Pyrrho.Level4
             /// Move to the next View
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                     if (bmk.value() is View vw)
@@ -3628,9 +3627,8 @@ namespace Pyrrho.Level4
             {
                 var domain = dm as Domain;
                 var check = ck as Check;
-                var oi = (ObInfo)_cx.db.role.infos[domain.defpos];
                 return new TRow(rs, Pos(check.defpos),
-                    new TChar(oi.name),
+                    new TChar(domain.name),
                     new TChar(check.name),
                     new TChar(check.source));
             }
@@ -3638,7 +3636,7 @@ namespace Pyrrho.Level4
             /// Move to the next Sys$DomainCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context cx)
+            protected override Cursor _Next(Context cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -3742,7 +3740,7 @@ namespace Pyrrho.Level4
             /// Move to the next TableCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context cx)
+            protected override Cursor _Next(Context cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -3843,13 +3841,13 @@ namespace Pyrrho.Level4
                 var pd = (PeriodDef)_cx.db.objects[sys ? t.systemPS : t.applicationPS];
                 var op = (ObInfo)_cx.db.role.infos[pd.defpos];
                 string sn="", en="";
-                for (var b=oi.rowType?.First();b!=null;b=b.Next())
+                for (var b=oi.domain.rowType.First();b!=null;b=b.Next())
                 {
-                    var p = b.value().Item1;
+                    var p = b.value();
                     if (p == pd.startCol)
-                        sn = _cx.NameFor(p);
+                        sn = _cx.Inf(p).name;
                     if (p == pd.endCol)
-                        en = _cx.NameFor(p);
+                        en = _cx.Inf(p).name;
                 }
                 return new TRow(rs, Pos(t.defpos),
                     new TChar(oi.name),
@@ -3861,7 +3859,7 @@ namespace Pyrrho.Level4
             /// Move to the next PeriodDef
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var system = _system;
@@ -3950,18 +3948,18 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Table,Name,Seq,Unique,Domain,Default,NotNull,Generated)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ta, int i,long p,Domain d)
+            static TRow _Value(Context cx, SystemRowSet rs, object ta, int i,long p,Domain d)
             {
                 var tb = ta as Table;
-                var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
-                var tc = (TableColumn)_cx.db.objects[p];
-                var si = (ObInfo)_cx.db.role.infos[p];
+                var oi = (ObInfo)cx.db.role.infos[tb.defpos];
+                var tc = (TableColumn)cx.db.objects[p];
+                var si = (ObInfo)cx.db.role.infos[p];
                 return new TRow(rs,
                     Pos(p),
                     new TChar(oi.name),
                     new TChar(si.name),
                     new TInt(i),
-                    Pos(d.defpos),
+                    Pos(cx.db.types[d]??-1L),
                     new TChar(d.defaultString),
                     TBool.For(d.notNull),
                     new TChar(tc.generated.gfs),
@@ -3971,7 +3969,7 @@ namespace Pyrrho.Level4
             /// Move to the next Column def
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -4031,7 +4029,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var enu = _enu;
                 for (enu = enu.Next(); enu != null; enu = enu.Next())
@@ -4137,7 +4135,7 @@ namespace Pyrrho.Level4
             /// Move to the next ColumnCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
@@ -4244,7 +4242,7 @@ namespace Pyrrho.Level4
             /// Move to the next ColumnPrivilege data
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var middle = _middle;
                 var inner = _inner;
@@ -4326,41 +4324,40 @@ namespace Pyrrho.Level4
                 long prec = 0;
                 long scale = 0;
                 var dm = (Domain)ob;
-                var oi = (ObInfo)_cx.db.role.infos[dm.defpos];
-                if (dm.prim == Sqlx.NUMERIC || dm.prim == Sqlx.REAL)
+                if (dm.kind == Sqlx.NUMERIC || dm.kind == Sqlx.REAL)
                 {
                     prec = dm.prec;
                     scale = dm.scale;
                 }
-                if (dm.prim == Sqlx.CHAR || dm.prim == Sqlx.NCHAR)
+                if (dm.kind == Sqlx.CHAR || dm.kind == Sqlx.NCHAR)
                     prec = dm.prec;
                 string start = "";
                 string end = "";
-                if (dm.prim == Sqlx.INTERVAL)
+                if (dm.kind == Sqlx.INTERVAL)
                 {
                     start = dm.start.ToString();
                     end = dm.end.ToString();
                 }
                 string elname = "";
                 if (dm.elType is Domain et)
-                    elname = ((ObInfo)_cx.db.role.infos[et.defpos]).name;
+                    elname = et.name;
                 return new TRow(rs,
-                    Pos(dm.defpos),
-                    new TChar(oi.name),
-                    new TChar(dm.prim.ToString()),
+                    Pos(_cx.db.types[dm]??-1L),
+                    new TChar(dm.name),
+                    new TChar(dm.kind.ToString()),
                     new TInt(prec),
                     new TInt(scale),
                     new TChar(start),
                     new TChar(end),
                     new TChar(dm.defaultValue.ToString()),
                     new TChar(elname),
-                    new TChar(((Role)_cx.db.objects[dm.definer]).name));
+                    TNull.Value);
             }
             /// <summary>
             /// Move to next Domain
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _en;
                 for (outer = outer.Next();outer!= null;outer=outer.Next())
@@ -4397,13 +4394,13 @@ namespace Pyrrho.Level4
             /// enumerate the indexes
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<RowType, long> _inner;
+            readonly ABookmark<CList<long>, long> _inner;
             /// <summary>
             /// craete the Sys$Index enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<RowType,long>inner)
+                ABookmark<CList<long>,long>inner)
                 : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.value()))
             {
                 _outer = outer;
@@ -4450,7 +4447,7 @@ namespace Pyrrho.Level4
             /// Move to next index
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -4488,16 +4485,16 @@ namespace Pyrrho.Level4
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<RowType, long> _middle;
-            readonly ABookmark<int, (long,Domain)> _inner;
+            readonly ABookmark<CList<long>, long> _middle;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<RowType,long> middle, ABookmark<int,(long,Domain)> inner)
-                : base(_cx,res,pos,inner.value().Item1,_Value(_cx,res,inner.key(),
-                    (TableColumn)_cx.db.objects[inner.value().Item1]))
+                ABookmark<CList<long>,long> middle, ABookmark<int,long> inner)
+                : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.key(),
+                    (TableColumn)_cx.db.objects[inner.value()]))
             {
                 _outer = outer; _middle = middle; _inner = inner;
             }
@@ -4534,7 +4531,7 @@ namespace Pyrrho.Level4
             /// Move to next Indexkey data
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
@@ -4600,7 +4597,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var enu = _enu;
                 for (enu = enu.Next(); enu != null; enu = enu.Next())
@@ -4651,7 +4648,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var enu = _enu;
                 for (enu=enu.Next();enu!=null;enu=enu.Next())
@@ -4742,7 +4739,7 @@ namespace Pyrrho.Level4
             /// Move to the next procedure
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
@@ -4774,15 +4771,15 @@ namespace Pyrrho.Level4
             /// enumerate the procedures tree
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, (long,Domain)> _inner;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Rle$Parameter enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int,(long,Domain)> inner)
+                ABookmark<int,long> inner)
                 : base(_cx,res,pos,en.key(),_Value(_cx,res,en.key(),inner.key(),
-                    (FormalParameter)_cx.obs[inner.value().Item1]))
+                    (ParamInfo)_cx.obs[inner.value()]))
             {
                 _outer = en;
                 _inner = inner;
@@ -4806,7 +4803,7 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Name,Definition)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, long dp, int i, FormalParameter pp)
+            static TRow _Value(Context _cx, SystemRowSet rs, long dp, int i, ParamInfo pp)
             {
                 return new TRow(rs,
                     Pos(dp),
@@ -4819,7 +4816,7 @@ namespace Pyrrho.Level4
             /// Move to the next parameter
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -4897,21 +4894,20 @@ namespace Pyrrho.Level4
             {
                 var ob = (DBObject)oo;
                 var oi = (ObInfo)_cx.db.role.infos[ob.defpos];
-                var sb = (DBObject)_cx.db.objects[xp];
-                var si = (ObInfo)_cx.db.role.infos[sb.defpos];
+                var ox = (DBObject)_cx.db.objects[xp];
                 return new TRow(rs,
                     Pos(ob.defpos),
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
                     new TInt(sq),
-                    new TChar(si.name),
-                    Pos(xp));
+                    Pos(xp),
+                    new TChar(ox.ToString()));
             }
             /// <summary>
             /// Move to the next object
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -4996,7 +4992,7 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(t.defpos),
                     new TChar(rt.name),
-                    new TInt(rt.Length),
+                    new TInt(rt.domain.Length),
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
@@ -5007,7 +5003,7 @@ namespace Pyrrho.Level4
             /// Move to next Table
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var en = _en;
                 for (en=en.Next();en!=null;en=en.Next())
@@ -5092,7 +5088,7 @@ namespace Pyrrho.Level4
             /// Move to the next Trigger
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
@@ -5194,7 +5190,7 @@ namespace Pyrrho.Level4
             /// Move to next TriggerColumnUpdate
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
@@ -5292,23 +5288,22 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 var t = (Domain)ob;
-                var ti = (ObInfo)_cx.db.role.infos[t.defpos];
                 var fp = t.orderFunc;
-                var fn = (fp!=-1L)?((ObInfo)_cx.db.role.infos[fp]).name:"";
+                var fn = fp?.name;
                 return new TRow(rs,
-                    Pos(t.lastChange),
-                    new TChar(ti.name),
-                    new TChar(((ObInfo)_cx.db.role.infos[t.super])?.name),
+                    Pos(-1L),
+                    new TChar(t.name),
+                    new TChar(t.super?.name),
                     new TChar(fn),
                     new TChar((t.orderflags != OrderCategory.None) ? t.orderflags.ToString() : ""),
                     new TChar(""),
-                    new TChar(((Role)_cx.db.objects[t.definer]).name));
+                    TNull.Value);
             }
             /// <summary>
             /// Move to next Type
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
@@ -5366,9 +5361,8 @@ namespace Pyrrho.Level4
             internal static RoleMethodBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.prim==Sqlx.TYPE 
-                        && _cx.db.role.infos[ut.defpos]is ObInfo ui)
-                        for (var middle = ui.methods.First(); middle != null; middle = middle.Next())
+                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE)
+                        for (var middle = ut.methods.First(); middle != null; middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx,res, 0, outer, middle, inner);
@@ -5384,10 +5378,9 @@ namespace Pyrrho.Level4
             {
                 var t = (Domain)ob;
                 var p = (Method)_cx.db.objects[mp];
-                var ti = (ObInfo)_cx.db.role.infos[t.defpos];
                 var mi = (ObInfo)_cx.db.role.infos[p.defpos];
                 return new TRow(rs,
-                   new TChar(ti.name),
+                   new TChar(t.name),
                    new TChar(mi.name),
                    new TInt(p.arity),
                    new TChar(p.methodType.ToString()),
@@ -5398,7 +5391,7 @@ namespace Pyrrho.Level4
             /// Move to the next method
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
@@ -5417,9 +5410,8 @@ namespace Pyrrho.Level4
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.prim==Sqlx.TYPE 
-                        && _cx.db.role.infos[ut.defpos] is ObInfo ui)
-                        for (middle = ui.methods.First(); middle != null; middle = middle.Next())
+                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE)
+                        for (middle = ut.methods.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
@@ -5501,7 +5493,7 @@ namespace Pyrrho.Level4
             /// Move to the next Role$Privilege data
             /// </summary>
             /// <returns>whethere there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer= _outer;
                 var inner = _inner;
@@ -5592,16 +5584,16 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
-                    new TChar((ob as Domain)?.provenance ?? ""),
+                    new TChar((oo as Domain)?.provenance ?? ""),
                     new TChar(ou??""),
                     new TChar(ob.description),
-                    new TChar((ob as Domain)?.iri));
+                    new TChar((oo as Domain)?.iri));
             }
             /// <summary>
             /// Move to the next object
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var en = _en;
                 for (en=en.Next();en!=null ;en=en.Next())
@@ -5636,14 +5628,14 @@ namespace Pyrrho.Level4
         internal class RolePrimaryKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, (long,Domain)> _inner;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Sys$PrimaryKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<int,(long,Domain)>inner)
-                : base(_cx,res,pos,inner.value().Item1,
+                ABookmark<int,long>inner)
+                : base(_cx,res,pos,inner.value(),
                       _Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
@@ -5668,12 +5660,11 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value(table,ordinal,ident)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ob, 
-                ABookmark<int,(long,Domain)> e)
+            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
             {
                 var tb = (Table)ob;
                 var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
-                var ci = (ObInfo)_cx.db.role.infos[e.value().Item1];
+                var ci = (ObInfo)_cx.db.role.infos[e.value()];
                 return new TRow(rs,
                     new TChar(oi.name),
                     new TInt(e.key()),
@@ -5683,7 +5674,7 @@ namespace Pyrrho.Level4
             /// Move to next primary key data
             /// </summary>
             /// <returns>whether there is one</returns>
-            public override Cursor Next(Context _cx)
+            protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;

@@ -110,11 +110,11 @@ namespace Pyrrho.Level2
             var p = Encoding.UTF8.GetBytes(o.ToString()).Length;
             return p + IntLength(p);
         }
-        internal static int RepresentationLength(BTree<long,Domain> rep)
+        internal static int RepresentationLength(Context cx,BTree<long,Domain> rep)
         {
             var r = 1 + IntLength((int)rep.Count);
             for (var b=rep.First();b!=null;b=b.Next())
-                r += IntLength(b.key()) + IntLength(b.value()?.defpos??-1L);
+                r += IntLength(b.key()) + IntLength(cx.db.types[b.value()].Value);
             return r;
         }
         /// <summary>
@@ -124,9 +124,9 @@ namespace Pyrrho.Level2
         {
             get { return ppos; }
         }
-        public static bool Committed(Writer wr,long pos)
+        public virtual bool Committed(Writer wr,long pos)
         {
-            return pos>=-1 && (wr.Fix(pos) < Transaction.TransPos || pos>Transaction.Heap);
+            return pos < wr.Length || wr.uids.Contains(pos);
         }
         /// <summary>
         /// On commit, dependent Physicals must be committed first
@@ -211,7 +211,7 @@ namespace Pyrrho.Level2
         {
             return null;
         }
-        public virtual long Conflicts(Database db, Transaction tr, Physical that)
+        public virtual long Conflicts(Database db, Context cx, Physical that)
         {
             return -1;
         }
@@ -284,7 +284,7 @@ namespace Pyrrho.Level2
         {
             return new Versioning(this, wr);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -293,7 +293,7 @@ namespace Pyrrho.Level2
                 case Type.Versioning:
                     return (perioddefpos == ((Versioning)that).perioddefpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// Serialise the Versioning to the PhysBase
@@ -370,7 +370,7 @@ namespace Pyrrho.Level2
         {
             return "Namespace " + prefix + "=" + uri;
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             return (that.type == Type.Namespace) ? ppos : -1;
         }
@@ -437,19 +437,19 @@ namespace Pyrrho.Level2
     }
     internal abstract class Compiled : Physical
     {
-        internal Objects framing;
-        protected Compiled(Type tp, long pp, Context cx, Objects fr) 
+        internal BTree<long, DBObject> framing;
+        protected Compiled(Type tp, long pp, Context cx, BTree<long,DBObject> fr) 
             : base(tp, pp, cx) 
         {
             framing = fr;
         }
         protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
         {
-            framing = Objects.Empty; // fixed in OnLoad
+            framing = BTree<long, DBObject>.Empty; // fixed in OnLoad
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
         {
-            var fs = Objects.Empty;
+            var fs = BTree<long, DBObject>.Empty;
             for (var b = ph.framing.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -471,7 +471,7 @@ namespace Pyrrho.Level2
         {
             cx.Frame();
             cx.SrcFix(ppos + 1);
-            var fs = Objects.Empty;
+            var fs = BTree<long, DBObject>.Empty;
             for (var b = framing.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -484,10 +484,10 @@ namespace Pyrrho.Level2
                 // Don't include the new Physical object(s) in framing
                 if (p >= Transaction.TransPos && p < Transaction.Analysing)
                     continue;
-                var oo = cx.obs[p]??(DBObject)cx.db.objects[p];
-                var ob = oo.Relocate(cx);
-                if (ob != oo)
-                    cx.db+=(ob, cx.db.loadpos); 
+                var ob = cx.obs[p];
+          //      var ob = oo.Relocate(cx);
+          //      if (ob != oo)
+           //         cx.db+=(ob, cx.db.loadpos); 
                 fs += (ob.defpos, ob);
             }
             framing = fs;

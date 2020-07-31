@@ -109,7 +109,7 @@ namespace Pyrrho.Level2
         {
             return "Delete Record "+Pos(delpos);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch (that.type)
             {

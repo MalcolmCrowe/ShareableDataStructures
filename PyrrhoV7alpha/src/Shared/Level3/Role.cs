@@ -3,7 +3,6 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System;
-using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -88,13 +87,17 @@ namespace Pyrrho.Level3
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
             return new Role(r.defpos, m);
         }
+        public static Role operator+(Role r,PProcedure pp)
+        {
+            var ps = r.procedures;
+            var pa = ps[pp.name] ?? BTree<int, long>.Empty;
+            return new Role(r.defpos,r.mem+(Procedures,ps+(pp.name,pa+(pp.arity,pp.ppos))));
+        }
         public static Role operator +(Role r, Procedure p)
         {
-            r += new ObInfo(p.defpos, p.name, Sqlx.PROCEDURE, p.domain, p.domain.structure);
             var ps = r.procedures;
             var pa = ps[p.name] ?? BTree<int, long>.Empty;
-            return new Role(r.defpos, r.mem + 
-                (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
+            return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
         }
         public static Role operator +(Role r, PMethod p)
         {
@@ -106,7 +109,6 @@ namespace Pyrrho.Level3
         {
             return new Role(r.defpos, r.mem - ob.defpos + (DBObjects, r.dbobjects - ob.name));
         }
-        internal override Sqlx kind => Sqlx.ROLE;
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -165,7 +167,6 @@ namespace Pyrrho.Level3
     internal class ObInfo : DBObject
     {
         internal const long
-            Methods = -252, // BTree<string, BTree<int,long>> Method
             Privilege = -253, // Grant.Privilege
             Properties = -254; // BTree<string,long> value object added into vacant mem above 0
                                // (not for bool or long)
@@ -187,58 +188,34 @@ namespace Pyrrho.Level3
             Pie = "Pie", // bool
             X = "X", // long
             Y = "Y"; // long
+
         public string name => (string)mem[Name] ?? "";
-        internal override Sqlx kind => (Sqlx)(mem[Domain.Prim] ?? Sqlx.NONE);
+        internal CList<long> rowType => (CList<long>)mem[Domain.RowType];
         public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
         public BTree<string, long> properties =>
             (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;
-        /// <summary>
-        /// The set of Methods for this Type
-        /// </summary>
-        public BTree<string, BTree<int, long>> methods =>
-            (BTree<string, BTree<int, long>>)mem[Methods] ?? BTree<string, BTree<int, long>>.Empty;
-        public int Length => rowType?.Length??0;
         internal readonly static ObInfo Any = new ObInfo();
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
-        public ObInfo(long lp, Domain dm, RowType cols,Sqlx k=Sqlx.ROW, BTree<long,object>m=null)
-            : this(lp, (m??BTree<long, object>.Empty) + (_Domain,dm)+(_RowType, cols)
-                  + (Domain.Prim,k)) { }
-        public ObInfo(long lp, string name, Sqlx k=Sqlx.COLUMN, Domain dt=null, 
-            RowType cols=null)
-            : this(lp, BTree<long, object>.Empty + (Name, name) +(Domain.Prim,k)
-                  + (_Domain, dt??Domain.Null) + (_RowType, cols??RowType.Empty)) { }
-        public ObInfo(long lp, Context cx, BList<SqlValue> vs)
-            : this(lp, _Dom(-1, cx, Domain.Row, vs) + (Privilege, Grant.AllPrivileges)
-                  +(Domain.Prim,Sqlx.ROW)) { }
+        /// <summary>
+        /// ObInfo for Table, TableColumn, Procedure etc have role-specific RowType in domains
+        /// </summary>
+        /// <param name="lp"></param>
+        /// <param name="name"></param>
+        /// <param name="rt"></param>
+        /// <param name="m"></param>
+        public ObInfo(long lp, string name, Domain rt, BTree<long, object> m = null)
+            : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
+          +(_Domain,rt)) { }
+        public ObInfo(long lp, string name, Context cx, CList<long> rt,
+            BTree<long, object> m = null) 
+            : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
+                + (_Domain, ((DBObject)cx.db.objects[lp]).domain+(Domain.RowType,rt)))
+        { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 
         { }
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
             return new ObInfo(oi.defpos, oi.mem + x);
-        }
-        public static ObInfo operator +(ObInfo ut, (Method, string) m)
-        {
-            var ms = ut.methods[m.Item2] ?? BTree<int, long>.Empty;
-            ms += (m.Item1.arity, m.Item1.defpos);
-            return new ObInfo(ut.defpos, ut.mem + (Methods, ut.methods + (m.Item2, ms))
-                + (m.Item1.defpos, m.Item2));
-        }
-        public static ObInfo operator+(ObInfo oi,(int,long,Domain)x)
-        {
-            var (i, p, d) = x;
-            return new ObInfo(oi.defpos, oi.mem + (_RowType, oi.rowType + (i, (p,d)))
-                + (_Domain, oi.domain + (p, d)));
-        }
-        public static ObInfo operator -(ObInfo oi, long p)
-        {
-            var cs = RowType.Empty;
-            for (var b=oi.rowType?.First();b!=null;b=b.Next())
-            {
-                var bp = b.value();
-                if (p != bp.Item1)
-                    cs += bp;
-            }
-            return new ObInfo(oi.defpos, oi.mem + (_Domain, oi.domain - p) + (_RowType, cs));
         }
         public static ObInfo operator +(ObInfo d, Metadata md)
         {
@@ -259,43 +236,12 @@ namespace Pyrrho.Level3
             mm += (Properties, ps);
             return (ObInfo)d.New(mm);
         }
-        internal long this[int i] => rowType[i].Item1;
         static long _Gap(Basis a, long off)
         {
             long r = off;
             while (a.mem.Contains(r))
                 r++;
             return r;
-        }
-        static BTree<long,object> _Dom(long dp,Context cx,Domain dt, BList<SqlValue> vs)
-        {
-            var cs = RowType.Empty;
-            var rs = BTree<long, Domain>.Empty;
-            for (var b = vs.First(); b != null; b = b.Next())
-            {
-                var v = b.value();
-                cs += (v.defpos, v.domain);
-                rs += (v.defpos, v.domain);
-            }
-            var dm = new Domain(dp, dt, rs);
-            return BTree<long,object>.Empty + (_Domain, dm) + (_RowType, cs);
-        }
-        static Domain _Dom(long dp, Context cx, ObInfo oi, BList<long> cs)
-        {
-            var rs = BTree<long, Domain>.Empty;
-            var ob = oi.rowType?.First();
-            var b = cs.First();
-            for (; b != null & ob!=null; b = b.Next(),ob=ob.Next())
-            {
-                var cp = b.value();
-                var op = ob.value().Item1;
-                rs += (cp, oi.domain.representation[op]);
-            }
-            if (b != null || ob != null)
-                throw new PEException("PE945");
-            var dm = new Domain(dp, Domain.For(oi.domain.prim), rs);
-            cx.Add(dm);
-            return dm;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -304,13 +250,6 @@ namespace Pyrrho.Level3
         internal override TypedValue Eval(Context cx)
         {
             return domain.Coerce(cx,(cx.obs[defpos] as SqlValue)?.Eval(cx) ?? cx.values[defpos]);
-        }
-        internal PRow MakeKey(Context cx)
-        {
-            PRow k = null;
-            for (var b = rowType?.Last(); b != null; b = b.Previous())
-                k = new PRow(cx.obs[b.value().Item1].Eval(cx), k);
-            return k;
         }
         internal override BTree<long, Register> AddIn(Context _cx, Cursor rb, BTree<long, Register> tg)
         {
@@ -337,107 +276,9 @@ namespace Pyrrho.Level3
             }
             return tg;
         }
-        internal override TypedValue Coerce(Context cx,TypedValue v)
-        {
-            var vs = BTree<long, TypedValue>.Empty;
-            if (Length==0)
-                return domain.Coerce(cx,v);
-            if (v is TRow rw)
-            {
-                var rb = rw.columns.First();
-                for (var b = rowType?.First(); b != null; b = b.Next(), rb = rb.Next())
-                {
-                    if (rb == null)
-                        goto bad;
-                    var cp = b.value().Item1;
-                    var rp = rb.value().Item1;
-                    if (rw.values[rp] is TypedValue rv)
-                        vs += (cp, domain.representation[cp].Coerce(cx,rv));
-                    else
-                        break;
-                }
-                if (rb== null)
-                    return new TRow(rowType, domain, vs);
-            }
-            else if (Length == 1)
-                return domain.representation[rowType[0].Item1].Coerce(cx,v);
-            bad:;
-            throw new DBException("22005", this, v.ToString()).ISO();
-        }
-        internal int PosFor(Context cx,string nm)
-        {
-            var i = 0;
-            for (var b = rowType?.First(); b != null; b = b.Next(),i++)
-                if (((ObInfo)cx.role.infos[b.value().Item1]).name == nm)
-                    return i;
-            return -1;
-        }
         internal override DBObject Relocate(long dp)
         {
             return new ObInfo(dp, mem);
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            // NB we can't use cx.done for Domains or ObInfos
-            var r = this;
-            var dm = domain.Replace(cx, so, sv);
-            if (dm!=domain)
-                r += (_Domain,dm);
-            var cs = RowType.Empty;
-            var ch = false;
-            for (var b=r.rowType?.First();b!=null;b=b.Next())
-            {
-                var (p,d) = b.value();
-                var nd = (Domain)d.Replace(cx, so, sv);
-                var np = cx.Replace(p, so, sv);
-                ch = ch || p != np || d != nd;
-                cs += (np,nd);
-            }
-            if (ch)
-                r += (_RowType, cs);
-            // NB we can't use cx.done for Domains or ObInfos
-            return r;
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            var r = (ObInfo)base._Relocate(wr);
-            var cs = RowType.Empty;
-            var ch = false;
-            for (var b = rowType?.First(); b != null; b = b.Next())
-            {
-                var c = b.value();
-                var nc = wr.Fix(c);
-                cs += nc;
-                if (c != nc)
-                    ch = true;
-            }
-            if (ch)
-                r += (_RowType, cs);
-            var dm = domain._Relocate(wr);
-            if (dm != domain)
-                r += (_Domain, dm);
-            return r;
-        }
-        internal override Basis _Relocate(Context cx)
-        {
-            var r = (ObInfo)base._Relocate(cx);
-            var cs = RowType.Empty;
-            var ch = false;
-            for (var b = rowType?.First(); b != null; b = b.Next())
-            {
-                var (c,d) = b.value();
-                var nd = (Domain)d.Relocate(cx);
-                var nc = cx.Unheap(c);
-                cs += (nc,nd);
-                if (c != nc || d!=nd)
-                    ch = true;
-            }
-            if (ch)
-                r += (_RowType, cs);
-            var dm = domain._Relocate(cx);
-            if (dm != domain)
-                r += (_Domain, dm);
-            return r;
         }
         public string Props(Database db)
         {
@@ -497,35 +338,6 @@ namespace Pyrrho.Level3
             }
             return sb.ToString();
         }
-        internal string Xml(Transaction tr, Context cx, long dp, TRow r)
-        {
-            var sb = new StringBuilder();
-            var ro = tr.role;
-            var sc = sb;
-            if (ro != null)
-                sb.Append("<" + ro.name);
-            var ss = new string[r.Length];
-            var i = 0;
-            for (var b=cx.Dom(dp).representation.First();b!=null; b=b.Next(),i++)
-            {
-                var c = b.key();
-                var d = b.value();
-                var tv = r[c];
-                var n = cx.NameFor(c);
-                if (tv == null)
-                    continue;
-                var p = tv.dataType;
-                var m = (tr.objects[c] as DBObject).Meta();
-                if (tv != null && !tv.IsNull && m != null && m.Has(Sqlx.ATTRIBUTE))
-                    sb.Append(" " + n + "=\"" + tv.ToString() + "\"");
-                else if (tv != null && !tv.IsNull)
-                {
-                    ss[i] = "<" + n + " type=\"" + p.ToString() + "\">" +
-                        p.Xml(tr, cx, defpos, tv) + "</" + n + ">";
-                }
-            }
-            return sb.ToString();
-        }
         /// <summary>
         /// API development support: generate the C# type information for a field 
         /// </summary>
@@ -542,9 +354,9 @@ namespace Pyrrho.Level3
                 var ci = (ObInfo)db.role.infos[p];
                 var n = ci.name;
                 string tn = "";
-                if (cd.prim != Sqlx.TYPE && cd.prim != Sqlx.ARRAY && cd.prim != Sqlx.MULTISET)
+                if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     tn = cd.SystemType.Name;
-                if (cd.prim == Sqlx.ARRAY || cd.prim == Sqlx.MULTISET)
+                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET)
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";
@@ -558,10 +370,10 @@ namespace Pyrrho.Level3
             {
                 var p = b.key();
                 var cd = b.value();
-                if (cd.prim != Sqlx.ARRAY && cd.prim != Sqlx.MULTISET)
+                if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     continue;
                 cd = cd.elType;
-                var di = (ObInfo)db.role.infos[cd.defpos];
+                var di = (ObInfo)db.role.infos[b.key()];
                 var tn = di.name.ToString();
                 if (tn != null)
                     sb.Append("// Delete this declaration of class " + tn + " if your app declares it somewhere else\r\n");
@@ -572,20 +384,10 @@ namespace Pyrrho.Level3
                 sb.Append("  }\r\n");
             }
         }
-        internal ObInfo ColFor(Context cx,string nm)
-        {
-            for (var b=domain.representation.First();b!=null;b=b.Next())
-            {
-                var p = b.key();
-                var ci = (ObInfo)cx.db.role.infos[p];
-                if (ci?.name == nm)
-                    return ci;
-            }
-            return null;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" "); sb.Append(name); 
             sb.Append(" "); sb.Append(domain);
             if (mem.Contains(Privilege))
             {

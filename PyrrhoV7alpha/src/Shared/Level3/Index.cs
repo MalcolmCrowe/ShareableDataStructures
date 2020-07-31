@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         internal const long
             Adapter = -157, // long Procedure 
             IndexConstraint = -158,// PIndex.ConstraintType
-            Keys = -159, // RowType
+            Keys = -159, // CList<long>
             References = -160, // BTree<long,BList<TypedValue>> computed by adapter
             RefIndex = -161, // long Index
             RefTable = -162, // long Table
@@ -49,8 +49,7 @@ namespace Pyrrho.Level3
         /// The indexed rows: note the strong types inside here will need to be updated if column names change
         /// </summary>
         public MTree rows => (MTree)mem[Tree];
-        public RowType keys => 
-            (RowType)mem[Keys]??RowType.Empty;
+        public CList<long> keys => (CList<long>)mem[Keys]??CList<long>.Empty;
         /// <summary>
         /// for Foreign key, the referenced index
         /// </summary>
@@ -68,7 +67,6 @@ namespace Pyrrho.Level3
         /// </summary>
         public BTree<long, BList<TypedValue>> references =>
             (BTree<long, BList<TypedValue>>)mem[References];
-        internal override Sqlx kind => Sqlx.NONE;
         public Index(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// Constructor: a new Index 
@@ -98,7 +96,7 @@ namespace Pyrrho.Level3
                     r += (RefTable, rx.tabledefpos);
                 }
             }
-            var cols = RowType.Empty;
+            var cols = CList<long>.Empty;
             var ds = BTree<long, DBObject>.Empty;
             var tb = (Table)cx.obs[c.tabledefpos];
             for (var b=c.columns.First();b!=null;b=b.Next())
@@ -111,7 +109,7 @@ namespace Pyrrho.Level3
                 }
                 var ob = (DBObject)cx.db.objects[pos];
                 ds += (ob.defpos, ob);
-                cols += (pos,ob.domain);
+                cols += pos;
             }
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
@@ -140,7 +138,7 @@ namespace Pyrrho.Level3
         {
             PRow r = null;
             for (var b = keys.Last(); b != null; b = b.Previous())
-                r = new PRow(rw.vals[b.value().Item1], r);
+                r = new PRow(rw.vals[b.value()], r);
             return r;
         }
         /// <summary>
@@ -217,66 +215,6 @@ namespace Pyrrho.Level3
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
             }
         }
-        /// <summary>
-        /// Verify a given new foreign key
-        /// </summary>
-        /// <param name="db">The database</param>
-        /// <param name="xmess">An error message</param>
-        /// <param name="okay">A result boolean</param>
-        /// <param name="m">The key</param>
-        /// <param name="r">The record</param>
-        public void CheckForeign(Database d, ref string xmess, ref bool okay, PRow m, Record r)
-        {
-            if (!(d is Transaction))
-                return;
-            if (m == null)
-            {
-                xmess = "null value in foreign key " + m.ToString();
-                okay = false;
-                return;
-            }
-
-        }
-        /// <summary>
-        /// Verify a new Unique or Primary key
-        /// </summary>
-        /// <param name="tb">The database</param>
-        /// <param name="xmess">An error message</param>
-        /// <param name="okay">A boolean result</param>
-        /// <param name="m">The key</param>
-        /// <param name="r">The record</param>
-        public void CheckUnique(Database da, ref string xmess, ref bool okay, PRow m, Record r)
-        {
-            if (m != null && da is Transaction && rows.Contains(m))
-            {
-                Table tb = (Table)da.objects[tabledefpos];
-                var oi = (ObInfo)da.role.infos[tabledefpos];
-                xmess = "duplicate key " + oi.name + " " + m.ToString();
-                okay = false;
-            }
-        }
-        bool MatchCols(long[] a, long[] b)
-        {
-            if (a.Length != b.Length)
-                return false;
-            for (int i = 0; i < a.Length; i++)
-                if (a[i] != b[i])
-                    return false;
-            return true;
-        }
-        /// <summary>
-        /// Find the location in the key for a given tableColumn
-        /// </summary>
-        /// <param name="c"></param>
-        /// <returns></returns>
-        public int PosFor(TableColumn c)
-        {
-            int r;
-            for (r = 0; r < (int)keys.Count; r++)
-                if (keys[r].Item1 == c.defpos)
-                    return r;
-            return -1;
-        }
         internal override void Cascade(Context cx, 
             Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
         {
@@ -298,14 +236,14 @@ namespace Pyrrho.Level3
             var tb = (Table)nd.objects[tabledefpos];
             if (tb != null)
             {
-                var xs = BTree<RowType, long>.Empty;
+                var xs = BTree<CList<long>, long>.Empty;
                 var ks = BTree<long, bool>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                     {
                         var cs = b.key();
                         for (var c = cs.First(); c != null; c = c.Next())
-                            ks += (c.value().Item1, true);
+                            ks += (c.value(), true);
                         xs += (cs, b.value());
                     }
                 tb += (Table.Indexes, xs);
@@ -350,7 +288,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Context cx)
         {
-            return this;
+            throw new NotImplementedException();
         }
     }
 }

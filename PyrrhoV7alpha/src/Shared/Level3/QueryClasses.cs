@@ -17,77 +17,6 @@ using Pyrrho.Level4;
 
 namespace Pyrrho.Level3
 {
-    internal class OrderSpec : Basis
-    {
-        internal const long
-            Items = -217; // BList<long> SqlValue
-        internal BList<long> items => (BList<long>)mem[Items]?? BList<long>.Empty;
-        internal Domain domain => (Domain)mem[DBObject._Domain] ?? Domain.Null;
-        internal static readonly OrderSpec Empty = new OrderSpec();
-        OrderSpec() : base(BTree<long, object>.Empty) { }
-        public OrderSpec(Domain dt,BList<long> k)
-            :base(new BTree<long,object>(Items,k)+(DBObject._Domain,dt))
-        { }
-        public OrderSpec(BList<SqlValue> k)
-        : base(new BTree<long, object>(Items, k) + (DBObject._Domain, new Domain(-1,Domain.Row,k)))
-        { }
-        protected OrderSpec(BTree<long, object> m) : base(m) { }
-        public static OrderSpec operator+(OrderSpec o,(long,object)x)
-        {
-            return new OrderSpec(o.mem + x);
-        }
-        public static OrderSpec operator+(OrderSpec o,(SqlValue,Domain) x)
-        {
-            var (sv, dm) = x;
-            return new OrderSpec(o.domain + (sv.defpos,dm), o.items + sv.defpos);
-        }
-        public static OrderSpec operator +(OrderSpec o, SqlValue sv)
-        {
-            return new OrderSpec(o.domain + (sv.defpos, sv.domain), o.items + sv.defpos);
-        }
-        /// <summary>
-        /// Check that two OrderSpecs for the same dataType have the same ordering.
-        /// </summary>
-        /// <param name="that"></param>
-        /// <returns></returns>
-        internal bool SameAs(Context cx,Query q,OrderSpec that)
-        {
-            if (that == null)
-                return false;
-            var its = items;
-            var tis = that.items;
-            if (its.Length != tis.Length)
-                return false;
-            var tb = tis.First();
-            for (var b=its.First();b!=null;b=b.Next(),tb=tb.Next())
-                if (!((SqlValue)cx.obs[b.value()]).MatchExpr(cx,q,(SqlValue)cx.obs[tb.value()]))
-                    return false;
-            return true;
-        }
-        internal bool HasItem(SqlValue sv)
-        {
-            for (var b = items.First(); b != null; b = b.Next())
-                if (b.value() == sv.defpos)
-                    return true;
-            return false;
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            var cm = '(';
-            for (var b=items.First();b!=null;b=b.Next())
-            {
-                sb.Append(cm); cm = ',';
-                sb.Append(DBObject.Uid(b.value()));
-            }
-            sb.Append(')');
-            return sb.ToString();
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new OrderSpec(m);
-        }
-    }
     /// <summary>
     /// Implement bounds for a window in a windowed table
     /// </summary>
@@ -152,7 +81,7 @@ namespace Pyrrho.Level3
             Exclude = -222,// Sqlx
             High = -223, //WindowBound
             Low = -224,// WindowBound
-            Order = -225, // OrderSpec
+            Order = -225, // CList<long>
             OrderWindow = -226, // string
             Partition = -228, // int
             PartitionType = -229, // BList<long>
@@ -170,7 +99,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a specified ordering
         /// </summary>
-        internal OrderSpec order => (OrderSpec)mem[Order];
+        internal CList<long> order => (CList<long>)mem[Order];
         /// <summary>
         /// how many window partitioning order items have been specified
         /// </summary>
@@ -196,7 +125,6 @@ namespace Pyrrho.Level3
         /// exclude CURRENT, TIES or OTHERS (NO if not specified)
         /// </summary>
         internal Sqlx exclude => (Sqlx)(mem[Exclude]??Sqlx.Null);
-        internal override Sqlx kind => Sqlx.WINDOW;
         /// <summary>
         /// Constructor: a window specification from the parser
         /// </summary>
@@ -238,16 +166,13 @@ namespace Pyrrho.Level3
                 return true;
             if (order != null || w.order != null)
             {
-                var cols = order?.items;
-                var wcols = w.order?.items;
-                if (order == null || w.order == null || cols.Length!=wcols.Length)
+                if (order?.Length!=w.order?.Length)
                     return false;
-                for (var b = order.items.First(); b != null; b = b.Next())
-                {
-                    var ob = (SqlValue)cx.obs[b.value()];
-                    if (!ob.MatchExpr(cx, (Query)cx.obs[query],ob))
+                var wb = w.order.First();
+                for (var b=order?.First(); b!=null;b=b.Next(),wb=wb.Next())
+                    if (!((SqlValue)cx.obs[b.value()]).MatchExpr(cx,(Query)cx.obs[query], 
+                        (SqlValue)cx.obs[wb.value()]))
                         return false;
-                }
             }
             return partition == w.partition;
         }
@@ -258,11 +183,11 @@ namespace Pyrrho.Level3
         internal const long
             GroupKind = -232, //Sqlx
             Groups = -233, // BList<Grouping>
-            Members = -234; // BTree<long,int> SqlValue
+            Members = -234; // BList<long> SqlValue
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
-        public Sqlx groupKind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
+        public Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
         internal BList<Grouping> groups => 
             (BList<Grouping>)mem[Groups]?? BList<Grouping>.Empty;
         /// <summary>
@@ -271,7 +196,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BTree<long,int> members => 
             (BTree<long,int>)mem[Members]??BTree<long,int>.Empty;
-        internal override Sqlx kind => Sqlx.GROUP;
         internal Grouping(long dp,BTree<long,object>m=null)
             :base(dp,m??BTree<long,object>.Empty) { }
         public static Grouping operator+(Grouping g,(long,object) x)
@@ -291,7 +215,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(groupKind.ToString());
+            sb.Append(kind.ToString());
             sb.Append(" ");
             var cm = "(";
             for (var b=members.First();b!=null;b=b.Next())
@@ -381,7 +305,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DistinctGp = -235, // bool
-            Sets = -236; // BList<long> GroupSpecification
+            Sets = -236; // BList<long> Grouping
         /// <summary>
         /// whether DISTINCT has been specified
         /// </summary>
@@ -391,7 +315,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BList<long> sets =>
             (BList<long>)mem[Sets] ?? BList<long>.Empty;
-        internal override Sqlx kind => Sqlx.GROUP;
         public GroupSpecification(long dp) :base(dp,BTree<long,object>.Empty) { }
         internal GroupSpecification(long dp,BTree<long, object> m) : base(dp,m) { }
         public static GroupSpecification operator+(GroupSpecification a,GroupSpecification gs)
@@ -416,6 +339,10 @@ namespace Pyrrho.Level3
         {
             for (var b = svs.First(); b != null; b = b.Next())
                 ((SqlValue)cx.obs[b.key()]).Grouped(cx, this);
+        }
+        internal override BTree<long, bool> Needs(Context cx)
+        {
+            return cx.Needs(BTree<long, bool>.Empty, sets);
         }
         internal override Basis New(BTree<long, object> m)
         {

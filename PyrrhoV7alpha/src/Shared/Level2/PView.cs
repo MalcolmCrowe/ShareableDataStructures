@@ -79,7 +79,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            view = new Parser(rdr.context).ParseQueryExpression(-1,rdr.GetString(),Domain.Content.defpos);
+            view = new Parser(rdr.context).ParseQueryExpression(rdr.GetString(),Domain.Content);
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -90,7 +90,7 @@ namespace Pyrrho.Level2
         {
             return "View " + name + " as " + view.ToString();
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -106,12 +106,12 @@ namespace Pyrrho.Level2
                 case Type.Change:
                     return (name == ((Change)that).name) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var vi = new ObInfo(ppos, name);
+            var vi = new ObInfo(ppos, name, Domain.Content);
             ro = ro+vi+(ppos,vi);
             cx.db += (ro, p);
             cx.Install(new View(this), p);
@@ -221,11 +221,11 @@ namespace Pyrrho.Level2
             usingtbpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             if (that.type == Type.Drop && usingtbpos == ((Drop)that).delpos)
                 return ppos;
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         public override string ToString()
         {

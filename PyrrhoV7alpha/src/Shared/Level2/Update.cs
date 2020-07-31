@@ -73,7 +73,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -95,13 +95,13 @@ namespace Pyrrho.Level2
                 case Type.Alter3:
                 case Type.Alter2:
                 case Type.Alter:
-                    return (((Alter)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((Alter)that).table.defpos == tabledefpos) ? ppos : -1;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
-                    return (((PColumn)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((PColumn)that).table.defpos == tabledefpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override TableRow AddRow(Context cx)
         {
@@ -123,7 +123,7 @@ namespace Pyrrho.Level2
                 var nk = x.MakeKey(now);
                 if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
                     && x.rows.Contains(nk))
-                    throw new DBException("23000", "duplicate key", nk);
+                    throw new DBException("2300", "duplicate key", nk);
                 if (x.reftabledefpos >= 0)
                 {
                     var rx = (Index)cx.db.objects[x.refindexdefpos];

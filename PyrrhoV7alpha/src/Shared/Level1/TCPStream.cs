@@ -553,14 +553,14 @@ namespace Pyrrho.Level1
         /// <param name="r">the row to send</param>
         internal void PutRow(Context _cx, TRow r)
         {
-            var n = r.Length;
+            var n = (int)r.Length;
             PutInt(n);
             var j = 0;
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
-                var p = b.value().Item1;
+                var p = b.value();
                 var d = r.dataType.representation[p];
-                PutString(_cx.NameFor(p));
+                PutString(r.dataType.NameFor(_cx,p,b.key()));
                 var c = r[p];
                 PutString(d.ToString());
                 PutInt(d.Typecode()); // other flags are 0
@@ -612,7 +612,7 @@ namespace Pyrrho.Level1
             PutInt(n);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
                 for (var b = r.rt.First(); b!=null; b=b.Next())
-                    PutCell(_cx,b.value().Item2, e[b.key()]);
+                    PutCell(_cx,_cx.Inf(b.value()).domain, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -692,16 +692,16 @@ namespace Pyrrho.Level1
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=result.rt.First();b!=null;b=b.Next(),j++)
+                for (var b=result.rt.First();j<m && b!=null;b=b.Next(),j++)
                 {
-                    var cp = b.value().Item1;
+                    var cp = b.value();
                     var i = b.key();
                     PutString(result.NameFor(cx,i));
                     var dn = result.dataType[cp];
-                    if (dn.prim!=Sqlx.TYPE)
-                        PutString(dn.prim.ToString());
+                    if (dn.kind!=Sqlx.TYPE)
+                        PutString(dn.kind.ToString());
                     else
-                        PutString(DBObject.Uid(dn.defpos));
+                        PutString(dn.name);
                     PutInt(flags[j]);
                 }
             }
@@ -732,30 +732,30 @@ namespace Pyrrho.Level1
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var rt = result.rt;
+            var dt = result.dataType;
             int m = result.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
-            if (m > rt.Length)
-                Console.WriteLine("Unreasonable rowType length " + rt.Length + " < " + m);
+            if (m > dt.Length)
+                Console.WriteLine("Unreasonable rowType length " + dt.Length + " < " + m);
             if (m > 0)
             {
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=rt.First();b!=null;b=b.Next(),j++)
+                for (var b=dt.representation.First();b!=null;b=b.Next(),j++)
                 {
-                    var n = result.NameFor(cx, j);
+                    var n = cx.Inf(b.key()).name;
                     PutString(n);
-                    PutString((b.value().Item2.prim == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
+                    PutString((b.value().kind == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
                     PutInt(flags[j]);
                 }
             }
             Flush();
         }
-        internal void PutColumns(Database db,ObInfo dt)
+        internal void PutColumns(Database db,Domain dt)
         {
             if (dt == null || dt.Length == 0)
             {
@@ -778,7 +778,7 @@ namespace Pyrrho.Level1
                 if (db.objects[dt[j]] is SqlCopy sc && db.objects[sc.copyFrom] is TableColumn dn)
                 {
                     PutString(sc.name);
-                    PutString((dn.domain.prim == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
+                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
                     var flags = dn.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
@@ -832,7 +832,7 @@ namespace Pyrrho.Level1
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv)
         {
-            switch (tv.dataType.prim)
+            switch (tv.dataType.kind)
             {
                 case Sqlx.Null: break;
                 case Sqlx.SENSITIVE:

@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Context cx)
             : base(m, cx, BTree<long, object>.Empty
-                  + (TypeDef, m.typedefpos) + (MethodType, m.methodType))
+                  + (TypeDef, m.domain) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Method operator+(Method m,(long,object)x)
@@ -73,7 +73,7 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
-        public Context Exec(Context cx, long var, RowType actIns)
+        public Context Exec(Context cx, long var, BList<long> actIns)
         {
             var oi = (ObInfo)cx.db.role.infos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -86,7 +86,7 @@ namespace Pyrrho.Level3
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); b != null; b = b.Next(), i++)
-                acts[i] = cx.obs[b.value().Item1].Eval(cx);
+                acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this, ut);
             var bd = (Executable)act.obs[body];
             act.obs += (bd.framing,true);
@@ -96,7 +96,7 @@ namespace Pyrrho.Level3
             act.values += (defpos,targ);
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
-                act.values += (b.value().Item1, acts[i]);
+                act.values += (((ParamInfo)cx.obs[b.value()]).val, acts[i]);
             if (methodType != PMethod.MethodType.Constructor)
                 for (var b=ut.representation.First();b!=null;b=b.Next())
                 {
@@ -114,9 +114,9 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
             {
-                var p = (FormalParameter)cx.obs[b.value().Item1];
+                var p = (ParamInfo)cx.obs[b.value()];
                 var m = p.paramMode;
-                var v = act.values[b.value().Item1];
+                var v = act.values[p.val];
                 if (m == Sqlx.INOUT || m == Sqlx.OUT)
                     acts[i] = v;
                 if (m == Sqlx.RESULT)
@@ -130,7 +130,7 @@ namespace Pyrrho.Level3
                     var p = b.key();
                     ks+=(p,act.values[p]);
                 }
-                r = new TRow(cx.Signature(ut.defpos),ut, ks);
+                r = new TRow(ut, ks);
             }
             if (cx != null)
             {
@@ -138,19 +138,18 @@ namespace Pyrrho.Level3
                 i = 0;
                 for (var b = ins.First(); b != null; b = b.Next(), i++)
                 {
-                    var p = (FormalParameter)cx.obs[b.value().Item1];
+                    var p = (ParamInfo)cx.obs[b.value()];
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                        cx.AddValue(cx.obs[actIns[i].Item1], acts[i]);
+                        cx.AddValue(cx.obs[actIns[i]], acts[i]);
                 }
             }
             return cx;
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var ui = (ObInfo)d.role.infos[udType.defpos];
             var ms = BTree<string, BTree<int, long>>.Empty;
-            for (var b=ui.methods.First();b!=null;b=b.Next())
+            for (var b=udType.methods.First();b!=null;b=b.Next())
             {
                 var sm = BTree<int, long>.Empty;
                 var ch = false;
@@ -162,7 +161,7 @@ namespace Pyrrho.Level3
                 if (ch)
                     ms += (b.key(), sm);
             }
-            nd += (nd.role+(ui+(ObInfo.Methods,ms)),p);
+            nd += (nd.role+(d.types[udType].Value,udType+(Domain.Methods,ms)),p);
             return base.Drop(d, nd, p);
         }
     }

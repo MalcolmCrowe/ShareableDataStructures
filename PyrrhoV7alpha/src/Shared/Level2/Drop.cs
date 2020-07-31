@@ -103,7 +103,7 @@ namespace Pyrrho.Level2
 		{ 
 			return GetType().Name+" ["+Pos(delpos)+"]"; 
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -128,11 +128,11 @@ namespace Pyrrho.Level2
                         ((Record)db.GetD(((Delete)that).delpos)).tabledefpos) ? ppos : -1;
                 case Type.PColumn3:
                 case Type.PColumn2:
-                case Type.PColumn: return (delpos == ((PColumn)that).tabledefpos) ? ppos : -1;
+                case Type.PColumn: return (delpos == ((PColumn)that).table.defpos) ? ppos : -1;
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        return (delpos == a.tabledefpos || delpos == a.defpos) ? ppos : -1;
+                        return (delpos == a.table.defpos || delpos == a.defpos) ? ppos : -1;
                     }
                 case Type.PIndex2:
                 case Type.PIndex1:
@@ -149,11 +149,11 @@ namespace Pyrrho.Level2
                 case Type.Grant: return (delpos == ((Grant)that).obj) ? ppos : -1;
                 case Type.PCheck: return (delpos == ((PCheck)that).ckobjdefpos) ? ppos : -1;
                 case Type.PMethod2:
-                case Type.PMethod: return (delpos == ((PMethod)that).typedefpos) ? ppos : -1;
+                case Type.PMethod: return (delpos == db.types[((PMethod)that).domain]) ? ppos : -1;
                 case Type.Edit:
                 case Type.PDomain: return (delpos == ((PDomain)that).Affects) ? ppos : -1;
                 case Type.Modify: return (delpos == ((Modify)that).modifydefpos) ? ppos : -1;
-                case Type.Ordering: return (delpos == ((Ordering)that).typedefpos) ? ppos : -1;
+                case Type.Ordering: return (delpos == db.types[((Ordering)that).domain]) ? ppos : -1;
                 case Type.PeriodDef:
                     {
                         var p = (PPeriodDef)that;
@@ -162,7 +162,7 @@ namespace Pyrrho.Level2
                     }
                 case Type.Versioning: return (delpos == ((Versioning)that).perioddefpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// A ReadCheck will occur on the dropped object

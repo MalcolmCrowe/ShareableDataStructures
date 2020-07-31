@@ -106,13 +106,13 @@ namespace Pyrrho.Level2
             if (check != "")
             {
                 var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
-                var psr = new Parser(rdr, new Ident(check, ppos+1,Sqlx.CHECK), ob);
-                var sv = psr.ParseSqlValue(ckobjdefpos,ob.domain.defpos).Reify(rdr.context);
+                var psr = new Parser(rdr, new Ident(check, ppos+1), ob);
+                var sv = psr.ParseSqlValue(Domain.Bool).Reify(rdr.context);
                 test = sv.defpos;
                 Frame(psr.cx);
             }
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -126,7 +126,7 @@ namespace Pyrrho.Level2
                 case Type.Alter:
                     return (ckobjdefpos == ((Alter)that).defpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
             var ck = new Check(this, cx.db);
             if (name != null && name != "")
             {
-                ro += new ObInfo(defpos, name);
+                ro += new ObInfo(defpos, name,Domain.Bool);
                 cx.db += (ro, p);
             }
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
@@ -226,7 +226,7 @@ namespace Pyrrho.Level2
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             if (name != null && name != "")
             {
-                ro += new ObInfo(defpos, name);
+                ro += new ObInfo(defpos, name, Domain.Bool);
                 cx.db += (ro,p);
             }
             cx.Install(ck,p);

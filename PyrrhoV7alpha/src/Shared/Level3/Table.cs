@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         internal const long
             ApplicationPS = -262, // long PeriodSpecification
             Enforcement = -263, // Grant.Privilege (T)
-            Indexes = -264, // BTree<RowType,long> Index
+            Indexes = -264, // BTree<CList<long>,long> Index
             TableCols = -332, // BTree<long,bool> TableColumn
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
@@ -37,9 +37,8 @@ namespace Pyrrho.Level3
         /// </summary>
 		public BTree<long, TableRow> tableRows => 
             (BTree<long,TableRow>)mem[TableRows]??BTree<long,TableRow>.Empty;
-        public BTree<RowType, long> indexes => 
-            (BTree<RowType,long>)mem[Indexes]
-            ??BTree<RowType,long>.Empty;
+        public BTree<CList<long>, long> indexes => 
+            (BTree<CList<long>,long>)mem[Indexes]??BTree<CList<long>,long>.Empty;
         internal BTree<long, bool> tblCols =>
             (BTree<long, bool>)mem[TableCols] ?? BTree<long, bool>.Empty;
         /// <summary>
@@ -48,7 +47,6 @@ namespace Pyrrho.Level3
         internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
-        internal override Sqlx kind => Sqlx.TABLE;
         internal BTree<long, bool> tableChecks => 
             (BTree<long, bool>)mem[TableChecks]??BTree<long,bool>.Empty;
         internal BTree<PTrigger.TrigType, BTree<long,bool>> triggers =>
@@ -59,7 +57,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Table(PTable pt) :base(pt.ppos, BTree<long,object>.Empty
             +(Name,pt.name)+(Definer,pt.database.role.defpos)
-            +(Indexes,BTree<RowType,long>.Empty)
+            +(Indexes,BTree<CList<long>,long>.Empty)
             +(_Domain,Domain.TableType)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
@@ -69,7 +67,7 @@ namespace Pyrrho.Level3
         {
             var ds = tb.dependents + (tc.defpos,true);
             var dp = _Max(tb.depth, 1 + tc.depth);
-            return (Table)tb.New(tb.mem+(Dependents,ds)+(Depth,dp));
+            return (Table)tb.New(tb.mem + (Dependents, ds) + (Depth, dp));
         }
         public static Table operator+(Table tb,Metadata md)
         {
@@ -97,6 +95,14 @@ namespace Pyrrho.Level3
         {
             return (Table)tb.New(tb.mem + v);
         }
+        internal virtual ObInfo Inf(Context cx)
+        {
+            return cx.Inf(defpos);
+        }
+        internal override CList<long> _Cols(Context cx)
+        {
+            return cx.Inf(defpos).domain.rowType;
+        }
         internal override DBObject Add(Check ck, Database db)
         {
             return new Table(defpos,mem+(TableChecks,tableChecks+(ck.defpos,true)));
@@ -112,24 +118,6 @@ namespace Pyrrho.Level3
             var tb = this;
             var ts = triggers[tg.tgType] ?? BTree<long, bool>.Empty;
             return tb + (Triggers, triggers+(tg.tgType, ts + (tg.defpos, true)));
-        }
-        internal override void AddCols(Context cx, Ident id, RowType s, bool force = false)
-        {
-            if ((!force) && (!cx.constraintDefs) && cx.obs[id.iix] is Table)
-                return;
-            for (var b = s?.First(); b != null; b = b.Next())
-            {
-                var p = b.value().Item1;
-                var ob = cx.obs[p] ?? (DBObject)cx.db.objects[p];
-                if ((!force) && (!cx.constraintDefs) && (ob is Table || ob is TableColumn))
-                    continue;
-                var n = (ob is SqlValue v) ? v.name : cx.NameFor(p);
-                if (n == null)
-                    continue;
-                var ic = new Ident(n, p, ob.kind);
-                cx.defs += (new Ident(id, ic), ob);
-                cx.defs += (ic, ob);
-            }
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -197,7 +185,8 @@ namespace Pyrrho.Level3
             if (Denied(cx, Grant.Privilege.Insert))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             var dt = data.dataType;
-            var st = (dt != f.domain) ? dt.defpos : -1L; // subtype
+            var st = (dt != f.domain) ? dt : null; // subtype
+            var sp = cx.db.types[st] ?? -1L;
             // parameter cl is only supplied when d_User.defpos==d.owner
             // otherwise check if we should compute it
             if (cx.db.user!=null &&
@@ -230,7 +219,7 @@ namespace Pyrrho.Level3
                     Record r = null;
                     var np = cx.db.nextPos;
                     if (cl != Level.D)
-                        r = new Record3(this,trb.targetRow.values, st, cl, np, cx);
+                        r = new Record3(this,trb.targetRow.values, sp, cl, np, cx);
                     else if (prov != null)
                         r = new Record1(this,trb.targetRow.values, prov, np, cx);
                     else
@@ -271,7 +260,7 @@ namespace Pyrrho.Level3
                     continue;
                 var c = ix.keys.First();
                 for (var d = key.First(); d != null && c != null; d = d.Next(), c = c.Next())
-                    if (d.value().defpos != c.value().Item1)
+                    if (d.value().defpos != c.value())
                         goto skip;
                 return ix;
                     skip:;
@@ -279,20 +268,6 @@ namespace Pyrrho.Level3
             return null;
         }
         internal Index FindIndex(Database db, CList<long> key)
-        {
-            for (var b = indexes.First(); b != null; b = b.Next())
-            {
-                var kb = key.First();
-                for (var c = b.key().First(); kb != null && c != null;
-                    c = c.Next(), kb = kb.Next())
-                    if (c.value().Item1 != kb.value())
-                        goto skip;
-                return (Index)db.objects[b.value()];
-            skip:;
-            }
-            return null;
-        }
-        internal Index FindIndex(Database db, RowType key)
         {
             return (Index)db.objects[indexes[key]];
         }
@@ -385,7 +360,7 @@ namespace Pyrrho.Level3
                             var tv = cx.obs[ua.val].Eval(cx).NotNull();
                             if (tv == TNull.Value && cx.obs[ua.vbl] is TableColumn tc
                                 && tc.notNull)
-                                throw new DBException("0U000", cx.NameFor(ua.vbl));
+                                throw new DBException("0U000", cx.Inf(ua.vbl).name);
                             trb += (cx, ua.vbl, tv);
                         }
                         (trb,fi) = trb.UpdateRB(cx);
@@ -419,10 +394,6 @@ namespace Pyrrho.Level3
             trs.UpdateSA(cx);
             rs.Add(trs); // just for PUT
             return cx;
-        }
-        internal override RowType Struct(Context cx)
-        {
-            return ((ObInfo)cx.db.role.infos[defpos]).rowType;
         }
         /// <summary>
         /// See if we already have an audit covering an access in the current transaction
@@ -475,13 +446,12 @@ namespace Pyrrho.Level3
             {
                 var p = b.key();
                 var dt = b.value();
-                var di = (ObInfo)tr.role.infos[dt.defpos];
-                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
                 if (ix != null)
                 {
                     int j = (int)ix.keys.Count;
                     for (j = 0; j < ix.keys.Count; j++)
-                        if (ix.keys[j].Item1 == p)
+                        if (ix.keys[j] == p)
                             break;
                     if (j < ix.keys.Count)
                         sb.Append("  [Key(" + j + ")]\r\n");
@@ -506,7 +476,6 @@ namespace Pyrrho.Level3
         {
             var ob = (DBObject)_enu.value();
             var md = (ObInfo)tr.role.infos[ob.defpos];
-            var ro = tr.role;
             var versioned = true;
             var sb = new StringBuilder();
             sb.Append("/*\r\n * "); sb.Append(md.name); sb.Append(".java\r\n *\r\n * Created on ");
@@ -520,18 +489,17 @@ namespace Pyrrho.Level3
                 sb.Append("/* " + md.desc + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
             var rt = tr.role.infos[from.defpos] as ObInfo;
-            for(var b = rt.domain.representation.First();b!=null;b=b.Next())
+            for(var b = rt.domain.rowType.First();b!=null;b=b.Next())
             {
                 var p = b.key();
-                var cd = b.value();
+                var cd = rt.domain.representation[b.value()];
                 var dt = cd;
-                var di = tr.role.infos[dt.defpos] as ObInfo;
-                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
                 if (ix != null)
                 {
                     int j = (int)ix.keys.Count;
                     for (j = 0; j < ix.keys.Count; j++)
-                        if (ix.keys[j].Item1 == cd.defpos)
+                        if (ix.keys[j] == p)
                             break;
                     if (j < ix.keys.Count)
                         sb.Append("  @Key(" + j + ")\r\n");
@@ -573,8 +541,8 @@ namespace Pyrrho.Level3
             {
                 var p = b.key();
                 var dt = b.value();
-                var di = (ObInfo)tr.role.infos[dt.defpos];
-                var tn = (dt.prim == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
+                var di = (ObInfo)tr.role.infos[p];
+                var tn = (dt.kind == Sqlx.TYPE) ? di.name : dt.SystemType.Name;
                 var ci = (ObInfo)tr.role.infos[p];
                 sb.Append("  self." + ci.name + " = " + dt.defaultValue);
                 sb.Append("\r\n");
@@ -613,7 +581,7 @@ namespace Pyrrho.Level3
                 var oi = (ObInfo)db.role.infos[ix.defpos];
                 for (var i = 0; i < (int)ix.keys.Count; i++)
                 {
-                    var se = ix.keys[i].Item1;
+                    var se = ix.keys[i];
                     var ci = (ObInfo)db.role.infos[se];
                     var cd = db.objects[se] as TableColumn;
                     if (cd != null)

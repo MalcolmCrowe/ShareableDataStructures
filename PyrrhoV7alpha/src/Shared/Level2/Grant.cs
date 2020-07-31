@@ -109,7 +109,7 @@ namespace Pyrrho.Level2
 			grantee = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -132,7 +132,7 @@ namespace Pyrrho.Level2
                         return (obj == m.modifydefpos || grantee == m.modifydefpos) ? ppos : -1;
                     }
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -157,7 +157,7 @@ namespace Pyrrho.Level2
                 ro = r;
             var oi = ro.infos[obj] as ObInfo;
             var pr = oi.priv | priv;
-            ro += new ObInfo(obj, oi.name, oi.kind, oi.domain)+(ObInfo.Privilege,pr);
+            ro += new ObInfo(obj, oi.name, oi.domain)+(ObInfo.Privilege,pr);
             cx.db += (ro, p);
         }
     }

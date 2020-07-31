@@ -24,9 +24,9 @@ namespace Pyrrho.Level2
         /// </summary>
 		public enum MethodType { Instance,Overriding, Static,Constructor };
         /// <summary>
-        /// The defining position of the UDT
+        /// The UDT
         /// </summary>
-		public long typedefpos;
+		public Domain domain;
         /// <summary>
         /// The type of this method
         /// </summary>
@@ -37,13 +37,13 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name $ arity of the method</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
-        /// <param name="td">The defining position of the owning type</param>
+        /// <param name="td">The owning type</param>
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, RowType ps, Domain rt, 
-            MethodType mt, long td, Ident sce,long pp, Context cx)
-            : this(Type.PMethod2,nm,ps,rt,mt,td,sce,pp,cx)
+        public PMethod(string nm, BList<ParamInfo> ar, Domain rt, 
+            MethodType mt, Domain td, Method md, Ident sce,long pp, Context cx)
+            : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{}
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -57,15 +57,15 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, RowType ps, 
-            Domain rt, MethodType mt, long td, Ident sce,
+        protected PMethod(Type tp, string nm, BList<ParamInfo> ar, 
+            Domain rt, MethodType mt, Domain td, Method md, Ident sce,
             long pp, Context cx)
-            : base(tp,nm,ps,rt,sce,pp,cx)
+            : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
-			typedefpos = td;
+			domain = td;
 			methodType = mt;
             if (mt == MethodType.Constructor)
-                retType = (Domain)cx.db.objects[typedefpos];
+                retType = td;
 		}
         /// <summary>
         /// Constructor: a new Method definition from the ReadBuffer
@@ -75,7 +75,7 @@ namespace Pyrrho.Level2
 		public PMethod(Type tp, Reader rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
-            typedefpos = wr.Fix(x.typedefpos);
+            domain = (Domain)x.domain._Relocate(wr);
             methodType = x.methodType;
         }
         protected override Physical Relocate(Writer wr)
@@ -88,7 +88,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
-            wr.PutLong(typedefpos);
+            wr.PutLong(wr.cx.db.types[domain].Value);
             wr.PutInt((int)methodType);
 			base.Serialise(wr);
         }
@@ -98,11 +98,12 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
 		{
-			typedefpos = rdr.GetLong();
+			domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
 			methodType = (MethodType)rdr.GetInt();
  //           if (methodType == PMethod.MethodType.Constructor) will be done in base
  //               retdefpos = typedefpos; 
             base.Deserialise(rdr);
+            Compile(name, rdr.context, rdr.Position);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -110,37 +111,37 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Method " + methodType.ToString()+" " + Pos(typedefpos) 
-                + "." + nameAndArity + "[" + Pos(retType.defpos) + "] " + source.ident; 
+            return "Method " + methodType.ToString()+" " + domain 
+                + "." + nameAndArity + "[" + retType + "] " + source.ident; 
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
                 case Type.Drop:
-                    return (typedefpos == ((Drop)that).delpos) ? ppos : -1;
+                    return (db.types[domain] == ((Drop)that).delpos) ? ppos : -1;
                 case Type.Change:
-                    return (typedefpos == ((Change)that).affects) ? ppos : -1;
+                    return (db.types[domain] == ((Change)that).affects) ? ppos : -1;
                 case Type.PMethod2:
                 case Type.PMethod:
                     {
                         var t = (PMethod)that;
-                        return (typedefpos == t.typedefpos && nameAndArity == t.nameAndArity) ? ppos : -1;
+                        return (db.types[domain] == db.types[t.domain]
+                            && nameAndArity == t.nameAndArity) ? ppos : -1;
                     }
                 case Type.Modify:
                     return (nameAndArity == ((Modify)that).name) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var oi = (ObInfo)ro.infos[typedefpos];
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, Sqlx.PROCEDURE, mt.domain)+(ObInfo.Privilege, priv);
-            ro = ro + mt + mi + (oi+(mt,name));
+            var mi = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
+            ro = ro + mt + mi + (cx.db.types[domain].Value,domain+(mt,name));
             cx.db += (ro, p);
             cx.Install(mt,p);
         }

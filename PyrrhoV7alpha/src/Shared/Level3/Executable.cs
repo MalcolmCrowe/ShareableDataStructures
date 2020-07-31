@@ -111,7 +111,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string label => (string)mem[Label];
         internal Type type => (Type)(mem[_Type]??Type.NoType);
-        internal override Sqlx kind => Sqlx.STATEMENT;
         /// <summary>
         /// Constructor: define an Executable of a given type.
         /// Procedure statements are subclasses of Executable
@@ -437,11 +436,74 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(label); sb.Append(' '); sb.Append(Uid(defpos));
-            sb.Append(' ');  sb.Append(domain.prim);
+            sb.Append(' ');  sb.Append(domain.kind);
             return sb.ToString();
         }
 	}
+    /// <summary>
+    /// A procedure formal parameter has mode and result info
+    /// </summary>
+    internal class ParamInfo : DBObject
+    {
+        internal const long
+            ParamMode = -98, // Sqlx
+            Result = -99; // Sqlx
+        public long val => (long)(mem[AssignmentStatement.Val] ?? -1L);
+        public string name => (string)mem[Name] ?? "";
+        /// <summary>
+        /// The mode of the parameter: IN, OUT or INOUT
+        /// </summary>
+		public Sqlx paramMode => (Sqlx)(mem[ParamMode] ?? Sqlx.IN);
+        /// <summary>
+        /// The result mode of the parameter: RESULT or NO
+        /// </summary>
+		public Sqlx result => (Sqlx)(mem[Result] ?? Sqlx.NO);
+        /// <summary>
+        /// Constructor: a procedure formal parameter from the parser
+        /// </summary>
+        /// <param name="m">The mode</param>
+		public ParamInfo(long vp, Sqlx m, string n,Domain dt)
+            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
+                  +(DBObject._Domain,dt))
+        { }
+        protected ParamInfo(long dp,BTree<long, object> m) : base(dp,m) { }
+        public static ParamInfo operator +(ParamInfo s, (long, object) x)
+        {
+            return new ParamInfo(s.defpos,s.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new ParamInfo(dp,mem);
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (ParamInfo)base._Relocate(wr);
+            var v = (SqlValue)wr.Fixed(val);
+            return r+(AssignmentStatement.Val,v.defpos);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (ParamInfo)base._Relocate(cx);
+            var v = (SqlValue)cx.Fixed(val);
+            return r + (AssignmentStatement.Val, v.defpos);
+        }
+        /// <summary>
+        /// A readable version of the ProcParameter
+        /// </summary>
+        /// <returns></returns>
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (mem.Contains(ParamMode)) { sb.Append(" "); sb.Append(paramMode); }
+            if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
+            return sb.ToString();
+        }
 
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ParamInfo(defpos,m);
+        }
+    }
     /// <summary>
     /// A local cursor
     /// </summary>
@@ -895,7 +957,7 @@ namespace Pyrrho.Level3
 	internal class ReturnStatement : Executable
     {
         internal const long
-            Ret = -110; // long SqlValue
+            Ret = -110; // long
         /// <summary>
         /// The return value
         /// </summary>
@@ -921,7 +983,7 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Writer wr)
         {
             var r = (ReturnStatement)base._Relocate(wr);
-            var rt = (SqlValue)wr.Fixed(ret);
+            var rt = (ReturnStatement)wr.Fixed(ret);
             if (rt.defpos != ret)
                 r += (Ret, rt.defpos);
             return r;
@@ -929,7 +991,7 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (ReturnStatement)base._Relocate(cx);
-            var nr = (SqlValue)cx.Fixed(ret);
+            var nr = (ReturnStatement)cx.Fixed(ret);
             if (nr.defpos != ret)
                 r += (Ret, nr.defpos);
             return r;
@@ -950,13 +1012,7 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             return cx;
 		}
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(Uid(ret));
-            return sb.ToString();
-        }
-    }
+	}
     /// <summary>
     /// A Case statement for a stored procedure
     /// </summary>
@@ -1424,34 +1480,7 @@ namespace Pyrrho.Level3
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" (");
-            var cm = "";
-            for (var b=then.First();b!=null;b=b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value()));
-            }
-            sb.Append(")(");
-            cm = "";
-            for (var b = elsif.First(); b != null; b = b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value()));
-            }
-            sb.Append(")(");
-            cm = "";
-            for (var b = els.First(); b != null; b = b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value()));
-            }
-            sb.Append(")");
-            return sb.ToString();
-        }
-    }
+	}
     internal class XmlNameSpaces : Executable
     {
         internal const long
@@ -2220,7 +2249,7 @@ namespace Pyrrho.Level3
 	internal class CallStatement : Executable
 	{
         internal const long
-            Parms = -133, // RowType SqlValue
+            Parms = -133, // BList<long> SqlValue
             ProcDefPos = -134, // long
             Var = -135; // long SqlValue
         /// <summary>
@@ -2234,17 +2263,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of actual parameters
         /// </summary>
-		public RowType parms =>
-            (RowType)mem[Parms]?? RowType.Empty;
+		public BList<long> parms =>
+            (BList<long>)mem[Parms]?? BList<long>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, RowType acts, 
-            SqlValue tg=null)
-         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg.defpos))
+        public CallStatement(long dp, Procedure pr, string pn, BList<long> acts, SqlValue tg=null)
+         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, RowType acts, 
-            BTree<long,object> m=null)
+        protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
                +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
         { }
@@ -2267,18 +2294,18 @@ namespace Pyrrho.Level3
             var pp = wr.Fixed(procdefpos);
             if (pp.defpos != procdefpos)
                 r += (ProcDefPos, pp.defpos);
-            var ps = RowType.Empty;
+            var ps = BList<long>.Empty;
             var ch = false;
-            for (var b = parms.First(); b != null; b = b.Next())
+            for (var b=parms.First();b!=null;b=b.Next())
             {
-                var p = wr.Fix(b.value());
-                ch = ch || p != b.value();
-                ps += p;
+                var p = (SqlValue)wr.Fixed(b.value());
+                ch = ch||p.defpos != b.value();
+                ps += p.defpos;
             }
             if (ch)
                 r += (Parms, ps);
             var vr = (SqlValue)wr.Fixed(var);
-            if ((vr?.defpos??-1L) != var)
+            if (vr.defpos != var)
                 r += (Var, vr.defpos);
             return r;
         }
@@ -2288,18 +2315,18 @@ namespace Pyrrho.Level3
             var pp = cx.Fixed(procdefpos);
             if (pp.defpos != procdefpos)
                 r += (ProcDefPos, pp.defpos);
-            var ps = RowType.Empty;
+            var ps = BList<long>.Empty;
             var ch = false;
             for (var b = parms.First(); b != null; b = b.Next())
             {
-                var p = cx.Unheap(b.value());
-                ch = ch || p != b.value();
-                ps += p;
+                var p = (SqlValue)cx.Fixed(b.value());
+                ch = ch || p.defpos != b.value();
+                ps += p.defpos;
             }
             if (ch)
                 r += (Parms, ps);
             var vr = (SqlValue)cx.Fixed(var);
-            if ((vr?.defpos??-1L) != var)
+            if (vr.defpos != var)
                 r += (Var, vr.defpos);
             return r;
         }
@@ -2309,42 +2336,7 @@ namespace Pyrrho.Level3
                 return true;
             return procdefpos==defpos || Calls(parms,defpos, cx);
         }
-        internal override RowType Struct(Context cx)
-        {
-            var proc = (Procedure)(cx.obs[procdefpos]??cx.db.objects[procdefpos]);
-            return proc.domain.rowType;
-        }
-        internal override void AddCols(Context cx, Ident id, RowType s, bool force = false)
-        {
-            if ((!force) && (!cx.constraintDefs) && cx.obs[id.iix] is Table)
-                return;
-            var proc = (Procedure)(cx.obs[procdefpos]??cx.db.objects[procdefpos]);
-            var nb = ((Structure)proc.domain).names.First();
-            for (var b = s?.First(); b != null; b = b.Next(), nb = nb?.Next())
-            {
-                var (p, dm) = b.value();
-                var n = nb?.value();
-                if (n == null)
-                    continue;
-                var ic = new Ident(n, p, Sqlx.COLUMN);
-                var ob = new SqlValue(p, n, dm);
-                cx.Add(ob);
-                cx.defs += (new Ident(id, ic), ob);
-                cx.defs += (ic, ob);
-            }
-            for (var b = parms.First(); b != null; b = b.Next(), nb = nb?.Next())
-            {
-                var (p, dm) = b.value();
-                var n = nb?.value();
-                if (n == null)
-                    continue;
-                var ic = new Ident(n, p, Sqlx.PARAMETER);
-                var ob = new SqlValue(p, n, dm);
-                cx.Add(ob);
-                cx.defs += (new Ident(id, ic), ob);
-                cx.defs += (ic, ob);
-            }
-        }
+
         /// <summary>
         /// Execute a proc/method call
         /// </summary>
@@ -2375,17 +2367,7 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" ");
-            if (var!=-1L) { sb.Append(Uid(var));sb.Append("."); }
-            sb.Append(Uid(procdefpos));
-            sb.Append(parms);
-            sb.Append(")");
-            return sb.ToString();
-        }
-    }
+	}
     /// <summary>
     /// A signal statement for a stored proc/func
     /// </summary>

@@ -97,7 +97,6 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            rdr.names += (ppos, name);
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -108,7 +107,7 @@ namespace Pyrrho.Level2
 		{
 			return "PTable "+name;
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -121,7 +120,7 @@ namespace Pyrrho.Level2
                 case Type.Change:
                     return (name == ((Change)that).name) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
@@ -134,8 +133,8 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
             var tb = new Table(this);
-            var ti = new ObInfo(ppos, name, Sqlx.TABLE, Domain.TableType)
-                +(ObInfo.Privilege, priv);
+            var ti = new ObInfo(ppos, name, Domain.TableType,
+                new BTree<long,object>(ObInfo.Privilege, priv));
             ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

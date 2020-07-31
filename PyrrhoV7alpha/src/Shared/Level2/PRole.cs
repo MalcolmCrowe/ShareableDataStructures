@@ -79,7 +79,7 @@ namespace Pyrrho.Level2
                 details = rdr.GetString();
 			base.Deserialise(rdr);
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -88,7 +88,7 @@ namespace Pyrrho.Level2
                 case Type.Change:
                     return (name == ((Change)that).name) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -215,7 +215,7 @@ namespace Pyrrho.Level2
                 + ((description!="")?"(" + description +")":"")+
                 iri + Flags();
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -229,7 +229,7 @@ namespace Pyrrho.Level2
                 case Type.Drop:
                     return (((Drop)that).delpos == defpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal void Add(Sqlx k)
         {

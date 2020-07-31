@@ -16,6 +16,26 @@ using Pyrrho.Level3;
 namespace Pyrrho.Level4
 {
     /// <summary>
+    /// Used while parsing a QuerySpecification,
+    /// and removed at end of the parse (DoStars)
+    /// </summary>
+    internal class SqlStar : SqlValue
+    {
+        public readonly long prefix = -1L;
+        internal SqlStar(long dp, long pf) : base(dp,"*",Domain.Content)
+        { 
+            prefix = pf; 
+        }
+        protected SqlStar(long dp, long pf, BTree<long,object>m):base(dp,m)
+        {
+            prefix = pf;
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlStar(defpos,prefix,m);
+        }
+    }
+    /// <summary>
     /// A Method Name for the parser
     /// </summary>
     internal class MethodName
@@ -37,10 +57,10 @@ namespace Pyrrho.Level4
         /// </summary>
         public Domain type;
         /// <summary>
-        /// the formal parameters of the method
+        /// the number of parameters of the method
         /// </summary>
-        public RowType ins;
-        public int arity => ins.Length;
+        public int arity;
+        public BList<ParamInfo> ins; 
         /// <summary>
         /// The return type
         /// </summary>
@@ -53,7 +73,7 @@ namespace Pyrrho.Level4
     internal class TablePeriodDefinition
     {
         public Sqlx pkind = Sqlx.SYSTEM_TIME;
-        public Ident periodname = new Ident("SYSTEM_TIME", 0,Sqlx.PERIOD);
+        public Ident periodname = new Ident("SYSTEM_TIME", 0);
         public Ident col1 = null;
         public Ident col2 = null;
     }

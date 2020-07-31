@@ -22,7 +22,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The type being ordered
         /// </summary>
-        public long typedefpos;
+        public Domain domain;
         /// <summary>
         /// the ordering function
         /// </summary>
@@ -33,7 +33,8 @@ namespace Pyrrho.Level2
         public OrderCategory flags;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (!Committed(wr,typedefpos)) return typedefpos;
+            if (domain!=null && !wr.cx.db.types.Contains(domain)) 
+                return domain.Create(wr,tr);
             if (!Committed(wr,funcdefpos)) return funcdefpos;
             return -1;
         }
@@ -44,10 +45,10 @@ namespace Pyrrho.Level2
         /// <param name="fn">The ordering function</param>
         /// <param name="fl">The ordering flags</param>
         /// <param name="db">The local database</param>
-        public Ordering(long tp, long fn, OrderCategory fl, long pp, Context cx)
+        public Ordering(Domain tp, long fn, OrderCategory fl, long pp, Context cx)
             : base(Type.Ordering,pp,cx)
         {
-            typedefpos = tp;
+            domain = tp;
             funcdefpos = fn;
             flags = fl;
         }
@@ -61,7 +62,7 @@ namespace Pyrrho.Level2
         { }
         protected Ordering(Ordering x, Writer wr) : base(x, wr)
         {
-            typedefpos = wr.Fix(x.typedefpos);
+            domain = (Domain)x.domain._Relocate(wr);
             funcdefpos = wr.Fix(x.funcdefpos);
             flags = x.flags;
         }
@@ -75,8 +76,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            typedefpos = wr.Fix(typedefpos);
-            wr.PutLong(typedefpos);
+            wr.PutLong(wr.cx.db.types[domain].Value);
             funcdefpos = wr.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
             wr.PutInt((int)flags);
@@ -88,24 +88,24 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            typedefpos = rdr.GetLong();
+            domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
             funcdefpos = rdr.GetLong();
             flags = (OrderCategory)rdr.GetInt();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
                 case Type.Ordering:
-                    return (typedefpos == ((Ordering)that).typedefpos) ? ppos : -1;
+                    return (domain == ((Ordering)that).domain) ? ppos : -1;
                 case Type.Drop:
                     {
                         var t = (Drop)that;
-                        return (typedefpos == t.delpos || funcdefpos == t.delpos) ? ppos : -1;
+                        return (db.types[domain] == t.delpos || funcdefpos == t.delpos) ? ppos : -1;
                     }
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -113,16 +113,15 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
         {
-            return "Ordering for " + Pos(typedefpos) +
+            return "Ordering for " + domain.name +
                 flags + Pos(funcdefpos);
         }
 
         internal override void Install(Context cx, long p)
         {
-            var dm = (Domain)cx.db.objects[typedefpos];
-            dm = dm + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
+            var dm = domain + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
                 +(Domain.OrderCategory,flags);
-            cx.db += (dm, p);
+            cx.db += (cx.db.types[domain].Value,dm, p);
         }
     }
 }

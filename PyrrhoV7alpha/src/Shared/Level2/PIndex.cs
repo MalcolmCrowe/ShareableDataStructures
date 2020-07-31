@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
                 if (!Committed(wr,b.value())) return b.value();
             if (reference >= 0)
             {
-                var xr = (Index)wr.cx.db.objects[wr.Fix(reference)];
+                var xr = (Index)wr.cx.db.objects[reference];
                 var reftable = xr.tabledefpos;
                 if (!Committed(wr, reftable)) return reftable;
                 if (!Committed(wr, reference)) return reference;
@@ -178,16 +178,16 @@ namespace Pyrrho.Level2
             reference = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
                 case Type.Alter3:
-                    return (((Alter3)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((Alter3)that).table.defpos == tabledefpos) ? ppos : -1;
                 case Type.Alter2:
-                    return (((Alter2)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((Alter2)that).table.defpos == tabledefpos) ? ppos : -1;
                 case Type.Alter:
-                    return (((Alter)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((Alter)that).table.defpos == tabledefpos) ? ppos : -1;
                 case Type.PIndex2:
                 case Type.PIndex1:
                 case Type.PIndex:
@@ -203,7 +203,7 @@ namespace Pyrrho.Level2
                         break;
                     }
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -232,16 +232,17 @@ namespace Pyrrho.Level2
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 cx.Install(rx,p);
             }
-            var cs = RowType.Empty;
+            var cs = CList<long>.Empty;
             var kc = tb.tblCols;
             for (var b=x.keys.First();b!=null;b=b.Next())
             {
                 var tc = b.value();
                 cs += tc;
-                kc += (tc.Item1,true);
+                cx.obs += (tc,(TableColumn)cx.db.objects[tc]);
+                kc += (tc,true);
             }
             tb += (Table.TableCols, kc);
-            var r = cx.db.role + new ObInfo(ppos, Domain.TableType, cs);
+            var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs)));
             cx.db += (r, p);
             cx.Install(tb, p);
         }
@@ -404,7 +405,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,index)) return index;
             return -1;
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch (that.type)
             {
@@ -427,7 +428,7 @@ namespace Pyrrho.Level2
                         var up = (Update)that; return (up.tabledefpos == x.tabledefpos) ? ppos : -1;
                     }
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
 

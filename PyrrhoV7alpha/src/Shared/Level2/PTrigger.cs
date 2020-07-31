@@ -172,8 +172,7 @@ namespace Pyrrho.Level2
             wr.PutIdent(newRow);
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
-            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length,
-                Sqlx.TRIGGER);
+            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length);
             src = wr.PutIdent(src);
 			base.Serialise(wr);
 		}
@@ -200,7 +199,7 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var ob = ((DBObject)rdr.context.db.objects[target]);
-            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1, Sqlx.TRIGGER), ob);
+            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1), ob);
             psr.cx.srcFix = ppos+1;
             def = psr.ParseTriggerDefinition(this);
             Frame(psr.cx);
@@ -245,7 +244,7 @@ namespace Pyrrho.Level2
             sb.Append("=");
             sb.Append(c);
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -256,7 +255,7 @@ namespace Pyrrho.Level2
                 case Type.Change:
                     return (target == ((Change)that).affects) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
@@ -264,7 +263,7 @@ namespace Pyrrho.Level2
             var tb = (Table)cx.db.objects[target];
             var tg = new Trigger(this); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg, cx.db);
-            ro = ro + new ObInfo(defpos, name);
+            ro = ro + new ObInfo(defpos, name, Domain.Null);
             cx.db += (ro, p);
             cx.Install(tb, p);
             cx.Install(tg, p);

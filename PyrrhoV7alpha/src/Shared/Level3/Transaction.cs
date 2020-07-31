@@ -111,11 +111,6 @@ namespace Pyrrho.Level3
         Database Unheap(Context cx)
         {
             for (var b = physicals.First(); b != null; b = b.Next())
-            {
-                var p = b.value().ppos;
-                cx.Add(p, (DBObject)objects[p]);
-            }
-            for (var b = physicals.First(); b != null; b = b.Next())
                 b.value().Relocate(cx);
             return cx.db;
         }
@@ -213,7 +208,7 @@ namespace Pyrrho.Level3
                 }
                 for (var b = tb; b != null; b = b.Next())
                 {
-                    var ck = since[i].Conflicts(rdr.context.db, this, b.value());
+                    var ck = since[i].Conflicts(rdr.context.db, cx, b.value());
                     if (ck >= 0)
                     {
                         cx.wconflicts++;
@@ -240,7 +235,7 @@ namespace Pyrrho.Level3
                     }
                     for (var b = tb; b != null; b = b.Next())
                     {
-                        var ck = since[i].Conflicts(rdr.context.db, this, b.value());
+                        var ck = since[i].Conflicts(rdr.context.db, cx, b.value());
                         if (ck >= 0)
                         {
                             cx.wconflicts++;
@@ -355,7 +350,7 @@ namespace Pyrrho.Level3
         //                SetResults(f.rowSet);
          //               break;
                     case "POST":
-                        new Parser(tr).ParseProcedureStatement(sdata,Domain.Content.defpos);
+                        new Parser(tr).ParseProcedureStatement(sdata,Domain.Content);
                         break;
                 }
             }
@@ -387,10 +382,10 @@ namespace Pyrrho.Level3
                     {
                         var tbs = cp.Substring(6 + off);
                         tbs = WebUtility.UrlDecode(tbs);
-                        var tbn = new Ident(tbs, 0,Sqlx.TABLE);
+                        var tbn = new Ident(tbs, 0);
                         var tb = objects[cx.db.role.dbobjects[tbn.ident]] as Table
                             ?? throw new DBException("42107", tbn).Mix();
-                        f = new From(new Ident("",uid + 4 + off,Sqlx.TABLE), cx, tb);
+                        f = new From(new Ident("",uid + 4 + off), cx, tb);
                             
                         //       if (schemaKey != 0 && schemaKey != ro.defs[f.target.defpos].lastChange)
                         //           throw new DBException("2E307", tbn).Mix();
@@ -405,7 +400,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                             pn = WebUtility.UrlDecode(pn);
 #endif
-                            fc = new Parser(this).ParseProcedureCall(pn,Domain.Content.defpos);
+                            fc = new Parser(this).ParseProcedureCall(pn,Domain.Content);
                         }
                         var pr = GetProcedure(fc.name,(int)fc.parms.Count) ??
                             throw new DBException("42108", fc.name).Mix();
@@ -427,7 +422,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                                 sk = WebUtility.UrlDecode(sk);
 #endif
-                                var tc = (TableColumn)objects[kt.ColFor(cx,sk).defpos];
+                                var tc = (TableColumn)objects[kt.domain.ColFor(cx,sk)];
                                 TypedValue kv = null;
                                 var ft = tc.domain;
                                 try
@@ -456,8 +451,7 @@ namespace Pyrrho.Level3
                         var dt = cx.val.dataType;
                         if (dt == null)
                             throw new DBException("42111", cp).Mix();
-                        if (cx.db.role.infos[dt.defpos] is ObInfo oi)
-                            key = (TRow)oi.Parse(new Scanner(uid,ks.ToCharArray(),0));
+                        key = (TRow)dt.Parse(new Scanner(uid,ks.ToCharArray(),0));
                         break;
                     }
                 case "where":
@@ -475,7 +469,7 @@ namespace Pyrrho.Level3
                             sk = ks.Split(',');
                         var n = sk.Length;
                         f = (From)f.AddCondition(cx,Query.Where,
-                            new Parser(this).ParseSqlValue(sk[0],Domain.Bool.defpos).Disjoin(cx));
+                            new Parser(this).ParseSqlValue(sk[0],Domain.Bool).Disjoin(cx));
                         //           if (f.target.SafeName(this) == "User")
                         //           {
                         TypedValue[] wh = new TypedValue[n];
@@ -486,12 +480,12 @@ namespace Pyrrho.Level3
                             if (lr.Length != 2)
                                 throw new DBException("42000", sk[j]).ISO();
                             var cn = lr[0];
-                            var sc = ((ObInfo)cx.db.role.infos[f.defpos]).ColFor(cx,cn) ??
-                                throw new DBException("42112", cn).Mix();
+                            var sc = (DBObject)cx.db.objects[cx.Inf(f.defpos).domain.ColFor(cx,cn)]
+                                ?? throw new DBException("42112", cn).Mix();
                             var ct = sc.domain;
                             var cv = lr[1];
                             wh[j] = ct.Parse(uid,cv);
-                            sq[j] = new Ident(cn, 0,Sqlx.COLUMN);
+                            sq[j] = new Ident(cn, 0);
                         }
                         //               Authentication(transaction.result.rowSet, wh, sq); // 5.3 this is a no-op if the targetName is not User
                         //             }
@@ -509,8 +503,8 @@ namespace Pyrrho.Level3
                         {
                             var cn = sk[j];
                             cn = WebUtility.UrlDecode(cn);
-                            var cd = new Ident(cn, j, Sqlx.COLUMN);
-                            qout += (DBObject._RowType,qout.rowType + ((long)j,Domain.Content));
+                            var cd = new Ident(cn, j);
+                            qout += (Domain.RowType,qout.rowType + j);
                         }
                         break;
                     }
@@ -591,7 +585,7 @@ namespace Pyrrho.Level3
                             off = -6;
                             goto case "where";
                         }
-                        var sv = new Parser(this).ParseSqlValueItem(cn,Domain.Content.defpos);
+                        var sv = new Parser(this).ParseSqlValueItem(cn,Domain.Content);
                         if (sv is SqlProcedureCall pr)
                         {
                             fc = (CallStatement)cx.obs[pr.call];
@@ -746,9 +740,9 @@ namespace Pyrrho.Level3
                 if (grant)
                 { 
                     p = gp;
-                    for (var cp = gd.rowType?.First(); cp != null; cp = cp.Next())
+                    for (var cp = gd.domain.rowType.First(); cp != null; cp = cp.Next())
                     {
-                        var c = cp.value().Item1;
+                        var c = cp.value();
                         var ci = (ObInfo)role.infos[c];
                         gp = ci.priv;
                         var pp = defp;
@@ -811,7 +805,7 @@ namespace Pyrrho.Level3
         /// <param name="afn">The adapter function if specified</param>
         /// <param name="cl">The set of Physicals being gathered by the parser</param>
         public Transaction AddReferentialConstraint(Context cx,Table tb, Ident name,
-            CList<long> key,Table rt, RowType refs, PIndex.ConstraintType ct, 
+            CList<long> key,Table rt, CList<long> refs, PIndex.ConstraintType ct, 
             string afn)
         {
             Index rx = null;

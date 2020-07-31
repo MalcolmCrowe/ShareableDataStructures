@@ -158,13 +158,13 @@ namespace Pyrrho.Level2
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
             wr.PutLong(fields.Count);
-            var f = BTree<long, object>.Empty;
+            var dm = ((Table) wr.cx.db.objects[tabledefpos]).domain;
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
             {
                 long k = d.key();
                 var o = d.value();
                 wr.PutLong(k); // coldefpos
-                var ndt = wr.cx.Dom(k);
+                var ndt = dm[k];
                 var dt = o?.dataType??Domain.Null;
                 dt.PutDataType(ndt, wr);
                 dt.Put(o,wr);
@@ -198,7 +198,7 @@ namespace Pyrrho.Level2
                 r = new PRow(fields[cols[i].defpos], r);
             return r;
         }
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
@@ -214,9 +214,9 @@ namespace Pyrrho.Level2
                         return -1;
                     }
                 case Type.Alter:
-                    return (((Alter)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    return (((Alter)that).table.defpos == tabledefpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// Fix indexes for a new Record
@@ -281,10 +281,10 @@ namespace Pyrrho.Level2
             var cm = ": ";
             for (var b=fields.PositionAt(0);b!=null;b=b.Next())
             {
+                var k = b.key();
                 var v = b.value();
                 sb.Append(cm); cm = ",";
-                sb.Append(DBObject.Uid(b.key()));sb.Append('=');sb.Append(v.Val());
-                sb.Append('[');sb.Append(DBObject.Uid(v.dataType.defpos));sb.Append(']');
+                sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.Val());
             }
             return sb.ToString();
         }

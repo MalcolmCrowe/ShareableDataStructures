@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -46,19 +45,18 @@ namespace Pyrrho.Level3
         protected QuerySpecification(long u,BTree<long, object> m)
             : base(u, m)
         { }
-        internal QuerySpecification(long dp,Context cx,long xp) : this(dp, _Mem(cx,xp)
-            + (_RowType, RowType.Empty) + (_Domain,Domain.TableType)
-            + (Display, 1))
+        internal QuerySpecification(long dp,Context cx,Domain xp) : this(dp, _Mem(cx,xp)
+            + (_Domain,Domain.TableType) + (Display, 1))
         { }
-        static BTree<long,object> _Mem(Context cx,long xp)
+        static BTree<long,object> _Mem(Context cx,Domain xp)
         {
             var m = BTree<long, object>.Empty;
-            if (xp > 0)
-                m += (_From, xp);
+            if (cx.db.types[xp] is long p)
+                m += (_From, p);
             var sc = BTree<long, Domain>.Empty;
-            if (cx.Dom(xp) is Domain dm)
+            if (xp!=Domain.Content)
             {
-                for (var b = dm.representation.First(); b != null; b = b.Next())
+                for (var b = xp.representation.First(); b != null; b = b.Next())
                     sc += (b.key(), b.value());
                 m += (Scope, sc);
             }
@@ -82,6 +80,18 @@ namespace Pyrrho.Level3
             r += (Scope, scope + (v.defpos, v.domain));
             return r;
         }
+        internal bool HasStar(Context cx,Query f=null)
+        {
+            for (var b=rowType.First();b!=null;b=b.Next())
+            {
+                if (cx.obs[b.value()] is SqlStar st 
+                    && (f==null || (st.prefix < 0
+                    || (cx.obs[st.prefix] is SqlValue sv
+                        && cx.defs[sv.name].Item1 == f.defpos))))
+                    return true;
+            }
+            return false;
+        }
         internal override DBObject Relocate(long dp)
         {
             return new QuerySpecification(dp,mem);
@@ -92,24 +102,6 @@ namespace Pyrrho.Level3
             var te = tableExp.Relocate(wr);
             if (te != tableExp)
                 r += (TableExp, te);
-            var sc = BTree<long, Domain>.Empty;
-            var ch = false;
-            for (var b=scope.First();b!=null;b=b.Next())
-            {
-                var d = b.value();
-                var k = b.key();
-                if (k==-1 || k==d.defpos)
-                {
-                    sc += (k, d);
-                    continue;
-                }
-                var nk = wr.Fixed(k).defpos;
-                var nd = (Domain)d.Relocate(wr);
-                sc += (nk,nd);
-                ch = ch || k != nk || d != nd;
-            }
-            if (ch)
-                r += (Scope, sc);
             return r;
         }
         internal override Basis _Relocate(Context cx)
@@ -118,38 +110,12 @@ namespace Pyrrho.Level3
             var te = tableExp.Relocate(cx);
             if (te != tableExp)
                 r += (TableExp, te);
-            var sc = BTree<long, Domain>.Empty;
-            var ch = false;
-            for (var b = scope.First(); b != null; b = b.Next())
-            {
-                var d = b.value();
-                var k = b.key();
-                if (k == -1L || k == d.defpos)
-                {
-                    sc += (k, d);
-                    continue;
-                }
-                var nk = cx.Fixed(k).defpos;
-                var nd = (Domain)d.Relocate(cx);
-                sc += (nk, nd);
-                ch = ch || k != nk || d != nd;
-            }
-            if (ch)
-                r += (Scope, sc);
             return r;
         }
         internal override Query Refresh(Context cx)
         {
             var r =(QuerySpecification)base.Refresh(cx);
             var te = r.tableExp?.Refresh(cx);
-            var rs = BTree<long, Domain>.Empty;
-            for (var b = r.rowType?.First(); b != null; b = b.Next())
-            {
-                var p = b.value().Item1;
-                var s = cx.obs[p];
-                rs += (p,s.domain);
-            }
-            r += (_Domain, r.domain+(Domain.Representation,rs));
             return (te == r.tableExp) ? r : (QuerySpecification)cx.Add(r + (TableExp, te));
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -160,17 +126,6 @@ namespace Pyrrho.Level3
             var te = r.tableExp?._Replace(cx, was, now);
             if (te != r.tableExp)
                 r += (TableExp, te);
-            var sc = BTree<long, Domain>.Empty;
-            var ch = false;
-            for (var b=scope.First();b!=null;b=b.Next())
-            {
-                var k = cx.Replace(b.key(),was,now);
-                var v = (Domain)b.value()._Replace(cx, was, now);
-                sc += (k, v);
-                ch = ch || k != b.key() || v != b.value();
-            }
-            if (ch)
-                r += (Scope, sc);
             cx.done += (defpos, r);
             return r;
         }
@@ -178,7 +133,7 @@ namespace Pyrrho.Level3
         {
             var r = tableExp?.RowSets(cx,fi);
             if (r==null)
-                r = new TrivialRowSet(defpos,cx,rowType,domain,null,-1L,fi);
+                r = new TrivialRowSet(defpos,cx,domain,null,-1L,fi);
             if (aggregates(cx))
             {
                 if (tableExp?.group != -1L)
@@ -190,7 +145,7 @@ namespace Pyrrho.Level3
                 r = new SelectRowSet(cx, this, r);
             var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
-                if (cx.obs[cols[i].Item1] is SqlFunction f && f.window != -1L)
+                if (cx.obs[cols[i]] is SqlFunction f && f.window != -1L)
                     f.RowSets(cx,this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
@@ -207,17 +162,17 @@ namespace Pyrrho.Level3
             var r = this;
             var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
-                r = (QuerySpecification)((SqlValue)cx.obs[cols[i].Item1]).Conditions(cx,r,false,out _);
+                r = (QuerySpecification)((SqlValue)cx.obs[cols[i]]).Conditions(cx,r,false,out _);
             //      q.CheckKnown(where,tr);
             r = (QuerySpecification)r.MoveConditions(cx, tableExp);
             r += (TableExp,tableExp.Conditions(cx));
             r += (Depth, _Max(r.depth, 1 + r.tableExp.depth));
             return AddPairs(r.tableExp);
         }
-        internal override Query Orders(Context cx,OrderSpec ord)
+        internal override Query Orders(Context cx,CList<long> ord)
         {
             var d = 0;
-            for (var b = ord.items.First(); b != null; b = b.Next())
+            for (var b = ord.First(); b != null; b = b.Next())
                 d = _Max(d, cx.obs[b.value()].depth);
             return (QuerySpecification)base.Orders(cx,ord)
                 +(TableExp,tableExp.Orders(cx,ord) + (Depth, _Max(depth, 1 + d)));
@@ -243,8 +198,8 @@ namespace Pyrrho.Level3
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            for (var b=rowType?.First();b!=null;b=b.Next())
-                ((SqlValue)_cx.obs[b.value().Item1]).Eqs(_cx,ref eqs);
+            for (var b=rowType.First();b!=null;b=b.Next())
+                ((SqlValue)_cx.obs[b.value()]).Eqs(_cx,ref eqs);
             return tableExp.Insert(_cx,prov, data, eqs, rs, cl);
         }
         /// <summary>
@@ -520,7 +475,7 @@ namespace Pyrrho.Level3
         /// Check left and right.
         /// </summary>
         /// <param name="ord">the default orderitems</param>
-        internal override Query Orders(Context cx,OrderSpec ord)
+        internal override Query Orders(Context cx,CList<long> ord)
         {
             if (ordSpec != null)
                 ord = ordSpec;
@@ -560,7 +515,10 @@ namespace Pyrrho.Level3
                 var rr = ((Query)cx.obs[right]).RowSets(cx,lr.finder);
                 lr = new MergeRowSet(cx, this, lr, rr, distinct, op);
             }
-            return Ordering(cx, lr, false);
+            var r = Ordering(cx, lr, false);
+            if (fetchFirst != -1L)
+                r = new RowSetSection(cx, r, 0, fetchFirst);
+            return r;
         }
          public override string ToString()
         {
@@ -578,8 +536,18 @@ namespace Pyrrho.Level3
                 sb.Append("Right: ");
                 sb.Append(Uid(right)); 
             }
-            if (ordSpec != OrderSpec.Empty)
-                sb.Append(" order by "+ordSpec);
+            if (ordSpec != CList<long>.Empty)
+            {
+                sb.Append(" order by (");
+                var cm = "";
+                for (var b = ordSpec.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.key()); sb.Append("=");
+                    sb.Append(Uid(b.value()));
+                }
+                sb.Append(")");
+            }
             return sb.ToString();
         }
     }

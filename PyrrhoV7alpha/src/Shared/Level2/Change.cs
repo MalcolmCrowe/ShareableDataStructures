@@ -126,16 +126,16 @@ namespace Pyrrho.Level2
         /// The new name of the object
         /// </summary>
 		public override string Name { get { return name; }}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
                 case Type.PTable1:
                 case Type.PTable: return (name.CompareTo(((PTable)that).name) == 0) ? ppos : -1;
                 case Type.PDomain1:
-                case Type.PDomain: return (name.CompareTo(((PDomain)that).name) == 0) ? ppos : -1;
+                case Type.PDomain: return (name.CompareTo(((PDomain)that).domain.name) == 0) ? ppos : -1;
                 case Type.PType1:
-                case Type.PType: return (name.CompareTo(((PType)that).name) == 0) ? ppos : -1;
+                case Type.PType: return (name.CompareTo(((PType)that).domain.name) == 0) ? ppos : -1;
                 case Type.PRole: return (name.CompareTo(((PRole)that).name) == 0) ? ppos : -1;
                 case Type.PView1:
                 case Type.PView: return (name.CompareTo(((PView)that).name) == 0) ? ppos : -1;
@@ -150,7 +150,7 @@ namespace Pyrrho.Level2
                     ppos: -1;
                 case Type.PTrigger: return (name.CompareTo(((PTrigger)that).name) == 0) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         /// <summary>
         /// ReadCheck for change to the affected object
@@ -166,7 +166,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var oi = ro.infos[affects] as ObInfo;
-            ro = ro + (new ObInfo(affects, name, oi.kind, oi.domain)+(ObInfo.Privilege, oi.priv));
+            ro = ro + (new ObInfo(affects, name,oi.domain)+(ObInfo.Privilege, oi.priv));
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
         }

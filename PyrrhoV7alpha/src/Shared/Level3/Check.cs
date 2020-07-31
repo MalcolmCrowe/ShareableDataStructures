@@ -33,7 +33,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string source => (string)mem[Source];
         internal long search => (long)(mem[Condition]??-1L);
-        internal override Sqlx kind => Sqlx.CHECK;
         /// <summary>
         /// Constructor: from the level 2 information
         /// </summary>
@@ -57,7 +56,7 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool.defpos))) { }
+                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -79,6 +78,10 @@ namespace Pyrrho.Level3
             sb.Append(" From.Target="); sb.Append(Uid(checkobjpos));
             sb.Append(" Source="); sb.Append(source);
             return sb.ToString();
+        }
+        internal override BTree<long, bool> Needs(Context cx)
+        {
+            return cx.obs[search].Needs(cx);
         }
         internal override Basis New(BTree<long, object> m)
         {

@@ -54,17 +54,16 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.infos[tb.defpos];
-            var dt = (Domain)cx.db.objects[domdefpos];
-            var tc = new TableColumn(tb, this, dt);
+            table = (Table)cx.db.objects[table.defpos];
+            var ti = (ObInfo)ro.infos[table.defpos];
+            var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, Sqlx.COLUMN, dt)+(ObInfo.Privilege,priv);
-            ro = ro + (defpos,ci) + (ti + (tc.defpos,dt));
-            tb += tc;
+            var ci = new ObInfo(defpos, name, domain)+(ObInfo.Privilege,priv);
+            ro = ro + (defpos,ci) + (ti + (tc.defpos,ci));
+            table += tc;
             cx.db += (ro, p);
-            cx.Install(tb, p);
+            cx.Install(table, p);
             cx.Install(tc, p);
         }
         /// <summary>
@@ -115,17 +114,16 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.infos[tb.defpos];
-            var dt = (Domain)cx.db.objects[domdefpos];
-            var tc = new TableColumn(tb, this, dt);
+            table = (Table)cx.db.objects[table.defpos];
+            var ti = (ObInfo)ro.infos[table.defpos];
+            var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, Sqlx.COLUMN, dt) +(ObInfo.Privilege,priv);
-            ro = ro + (defpos, ci) + (ti + (tc.defpos, dt)+(ObInfo.Privilege,priv));
-            tb += tc;
+            var ci = new ObInfo(defpos, name, domain) +(ObInfo.Privilege,priv);
+            ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv));
+            table += tc;
             cx.db += (ro, p);
-            cx.Install(tb,p);
+            cx.Install(table,p);
             cx.Install(tc,p);
         }
     }
@@ -150,7 +148,7 @@ namespace Pyrrho.Level2
         /// <param name="nn">The (new) setting for NOT NULL</param>
         /// <param name="ge">The (new) setting for GENERATED ALWAYS</param>
         /// <param name="db">The local database</param>
-        public Alter3(long co, string nm, int sq, long tb, long dm, string ds,
+        public Alter3(long co, string nm, int sq, Table tb, Domain dm, string ds,
             TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
             GenerationRule ge, long pp, Context cx) :
             base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
@@ -193,17 +191,16 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)ro.infos[tb.defpos];
-            var dt = (Domain)cx.db.objects[domdefpos];
-            var tc = new TableColumn(tb, this, dt);
+            table = (Table)cx.db.objects[table.defpos];
+            var ti = (ObInfo)ro.infos[table.defpos];
+            var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(defpos, name, Sqlx.COLUMN, dt)+(ObInfo.Privilege, priv);
+            var oc = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
             ro = ro + (oc.defpos, oc) + (ti + (defpos, oc));
-            tb += tc;
+            table += tc;
             cx.db += (ro, p);
-            cx.Install(tb,p);
+            cx.Install(table,p);
             cx.Install(tc,p);
         }
         /// <summary>
@@ -223,7 +220,7 @@ namespace Pyrrho.Level2
 		{
 			return (pos==defpos)?new DBException("40078",pos).Mix() :null;
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch (that.type)
             {
@@ -231,21 +228,21 @@ namespace Pyrrho.Level2
                     {
                         var a = (Alter3)that;
                         return (defpos == a.defpos ||
-                            (tabledefpos == a.tabledefpos && name.CompareTo(a.name) == 0)) ?
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
                             ppos : -1;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
                         return (defpos == a.defpos ||
-                            (tabledefpos == a.tabledefpos && name.CompareTo(a.name) == 0)) ?
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
                             ppos : -1;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
                         return (defpos == a.defpos ||
-                            (tabledefpos == a.tabledefpos && name.CompareTo(a.name) == 0)) ?
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
                             ppos : -1;
                     }
                 case Type.PColumn3:
@@ -253,7 +250,7 @@ namespace Pyrrho.Level2
                 case Type.PColumn:
                     {
                         var a = (PColumn)that;
-                        return (tabledefpos == a.tabledefpos && name.CompareTo(a.name) == 0) ?
+                        return (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0) ?
                             ppos : -1;
                     }
                 case Type.Record3:
@@ -262,26 +259,26 @@ namespace Pyrrho.Level2
                 case Type.Record:
                     {
                         var r = (Record)that;
-                        return (tabledefpos == r.tabledefpos && r.fields.Contains(defpos)) ?
+                        return (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) ?
                             ppos : -1;
                     }
                 case Type.Update1:
                 case Type.Update:
                     {
                         var r = (Update)that;
-                        return (tabledefpos == r.tabledefpos && r.fields.Contains(defpos)) ?
+                        return (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) ?
                             ppos : -1;
                     }
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        return (tabledefpos == d.delpos || defpos == d.delpos) ?
+                        return (table.defpos == d.delpos || defpos == d.delpos) ?
                             ppos : -1;
                     }
                 case Type.PIndex:
                     {
                         var c = (PIndex)that;
-                        if (tabledefpos==c.tabledefpos)
+                        if (table.defpos==c.tabledefpos)
                             for (int j = 0; j < c.columns.Count; j++)
                                 if (c.columns[j] == defpos)
                                     return ppos;
@@ -290,16 +287,16 @@ namespace Pyrrho.Level2
                 case Type.Grant:
                     {
                         var g = (Grant)that;
-                        return (tabledefpos == g.obj || defpos == g.obj) ? ppos : -1;
+                        return (table.defpos == g.obj || defpos == g.obj) ? ppos : -1;
                     }
                 case Type.PCheck:
                     {
                         var c = (PCheck)that;
-                        return (tabledefpos == c.ckobjdefpos || defpos == c.ckobjdefpos) ?
+                        return (table.defpos == c.ckobjdefpos || defpos == c.ckobjdefpos) ?
                             ppos : -1;
                     }
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
 	}
 }

@@ -259,8 +259,8 @@ namespace Pyrrho.Level3
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
                 var i = 0;
-                for (var b=ti.rowType?.First();b!=null;b=b.Next(),i++)
-                    if (b.value().Item1 == s.key())
+                for (var b=ti.domain.rowType.First();b!=null;b=b.Next(),i++)
+                    if (b.value() == s.key())
                         break;
                 var ci = (ObInfo)db.role.infos[tc.defpos];
                 w.WriteStartElement("Read");
@@ -562,7 +562,7 @@ namespace Pyrrho.Level3
                         break;
                     case Physical.Type.EndOfFile: break;
                     case Physical.Type.Alter:
-                        tp.Get((p as Alter).tabledefpos).schema = true;
+                        tp.Get((p as Alter).table.defpos).schema = true;
                         break;
                     case Physical.Type.Change: goto case Physical.Type.Alter;
                     default:

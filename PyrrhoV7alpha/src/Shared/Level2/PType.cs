@@ -23,18 +23,7 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class PType : PDomain
 	{
-        internal long typedefpos;
-        internal long underdefpos;
-        /// <summary>
-        /// Constructor: A user-defined type definition from the Parser
-        /// </summary>
-        /// <param name="nm">The name of the new type</param>
-        /// <param name="sd">The representation datatype</param>
-        /// <param name="pb">The local database</param>
-        public PType(Ident nm, long sd, long ud, long pp, Context cx)
-            : this(Type.PType,nm, sd, ud, pp, cx)
-        {
-        }
+        internal Domain under;
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser
         /// </summary>
@@ -42,12 +31,13 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, Ident nm, long sd, long ud, long pp, Context cx)
-            : base(t, nm.ident, Sqlx.TYPE, 0,0, CharSet.UCS,"","",sd, pp, cx)
+        protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
+            : base(t, nm.ident, Sqlx.TYPE, dm.prec,(byte)dm.scale, 
+                  dm.charSet,"",dm.defaultString,dm.super, pp, cx)
 		{
-            typedefpos = pp;
-            underdefpos = ud;
 		}
+        public PType(Ident nm, Domain dm, long pp, Context cx)
+            : this(Type.PType, nm, dm, pp, cx) { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
         /// </summary>
@@ -62,21 +52,14 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
 		protected PType(Type t, Reader rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
-        {
-            structdefpos = x.structdefpos;
-        }
-        protected override Physical Relocate(Writer wr)
-        {
-            return new PType(this, wr);
-        }
-
+        { }
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(structdefpos);
+            wr.PutLong(wr.cx.db.types[under].Value);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -87,7 +70,7 @@ namespace Pyrrho.Level2
         {
             var sp = rdr.GetLong();
             if (sp!=-1)
-                structdefpos = sp;
+                under = (Domain)rdr.context.db.objects[sp];
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -96,37 +79,38 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{ 
-			string a = "PType "+name + " ";
+			string a = "PType "+domain.name + " ";
             a += base.ToString();
-            a += "[" + structdefpos + "]";
+            if (under!=null)
+                a += "[" + under.name + "]";
 			return a;
 		}
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch(that.type)
             {
                 case Type.Drop:
-                        if (structdefpos == ((Drop)that).delpos)
+                        if (db.types[under] == ((Drop)that).delpos)
                             return ppos;
                     break; // base class has other reasons for concern
                 case Type.Change:
-                    if (structdefpos == ((Change)that).affects)
+                    if (db.types[under] == ((Change)that).affects)
                         return ppos;
                     break; // base class has other reasons for concern
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
             var dt = new Domain(this, cx.db);
-            if (name != "")
-                ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            if (domain.name != "")
+                ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
-            cx.db = cx.db + (ro,p) + (dt, p);
-            if (!cx.db.types.Contains(dt))
-                cx.db += (Database.Types, cx.db.types + (dt, dt));
+            cx.db = cx.db + (ro,p) + (ppos, dt, p);
+            if (dt!=null && !cx.db.types.Contains(dt))
+                cx.db += (Database.Types, cx.db.types + (dt, ppos));
         }
     }
     internal class PType1 : PType // no longer used
@@ -139,8 +123,8 @@ namespace Pyrrho.Level2
         /// <param name="un">The supertype if specified</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        public PType1(Ident nm, long sd, long ud, long pp, Context cx)
-            : base(Type.PType1, nm, sd, ud, pp, cx)
+        public PType1(Ident nm, Domain ud, long pp, Context cx)
+            : base(Type.PType1, nm, ud, pp, cx)
         {  }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer

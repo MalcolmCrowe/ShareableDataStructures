@@ -170,14 +170,14 @@ namespace Pyrrho
                                 var tr = db;
                                 long t=0;
                                 cx = new Context(db);
-                                db = new Parser(cx).ParseSql(cmd,Domain.Content.defpos);
+                                db = new Parser(cx).ParseSql(cmd,Domain.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn>t)
                                     Console.WriteLine(""+(tn- t));
                                 if (db is Transaction td) // the SQL might or might not have been a Commit
                                 {
-                                    db = td + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains, cx.domains);
+                                    db = td + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains, cx.db.types);
                                     tcp.PutWarnings(td);
                                 }
                                 tr = db;
@@ -194,7 +194,7 @@ namespace Pyrrho
                                 long t = 0;
                                 cx = new Context(db);
                                 var ts = db.loadpos;
-                                db = new Parser(db).ParseSql(cmd,Domain.Content.defpos);
+                                db = new Parser(db).ParseSql(cmd,Domain.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn > t)
@@ -202,7 +202,7 @@ namespace Pyrrho
 
                                 if (db is Transaction td) // the SQL might or might not have been a Commit
                                 {
-                                    db = td + (Transaction.ReadConstraint, cx.rdC);// + (Transaction.Domains,cx.domains);
+                                    db = td + (Transaction.ReadConstraint, cx.rdC);// + (Transaction.Domains,cx.db.types);
                                     tcp.PutWarnings(td);
                                 }
                                 tr = db;
@@ -310,7 +310,7 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextPrep, sql);
                                 tr+=(Database._ExecuteStatus,ExecuteStatus.Prepare);
                                 var cx = new Context(tr);
-                                db = new Parser(cx).ParseSql(sql,Domain.Content.defpos);
+                                db = new Parser(cx).ParseSql(sql,Domain.Content);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
                                 prepared += (nm, new PreparedStatement(cx.exec,cx.qParams));
@@ -390,12 +390,12 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextId,cmd);
                                 cx = new Context(tr);
                      //           Console.WriteLine(cmd);
-                                db = new Parser(cx).ParseSql(cmd,Domain.Content.defpos);
+                                db = new Parser(cx).ParseSql(cmd,Domain.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
                                 //                if (PyrrhoStart.DebugMode && tn>t)
                                 //                    Console.WriteLine(""+(tn- t));
-                                tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.domains);
+                                tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.db.types);
                                 tcp.PutWarnings(tr);
                                 if (cx.val is RowSet rs)
                                 {
@@ -479,7 +479,7 @@ namespace Pyrrho
                                 else
                                 {
                                     var rt = tr.role.infos[tb.defpos] as ObInfo;
-                                    tcp.PutColumns(db,rt);
+                                    tcp.PutColumns(db,rt.domain);
                                 }
                                 break;
                             }
@@ -792,9 +792,9 @@ namespace Pyrrho
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is RowType co)
+            if (rb.columns is BList<long> co)
                 for (var b = co.First(); b != null; b = b.Next(), i++)
-                    domains += (i, rb.dataType.representation[b.value().Item1]);
+                    domains += (i, rb.dataType.representation[b.value()]);
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
                     domains += (i, b.value());
@@ -808,7 +808,7 @@ namespace Pyrrho
             for (; ; )
             {
                 var lc = 0;
-                if (nextCol == rb.Length)
+                if (nextCol == rb.display)
                 {
                     if (!lookAheadDone)
                         for (rb = rb.Next(cx); rb != null && rb.IsNull; rb = rb.Next(cx))
@@ -832,7 +832,7 @@ namespace Pyrrho
                 if (tcp.wcount + len + 1 >= TCPStream.bSize)
                     break;
                 tcp.PutCell(cx,dc,nextCell);
-                if (++nextCol == rb.Length)
+                if (++nextCol == rb.display)
                     lookAheadDone = false;
                 ncells++;
             }
@@ -850,7 +850,7 @@ namespace Pyrrho
             if (tv == null)
                 return 1;
             object o = tv.Val();
-            switch (tv.dataType.prim)
+            switch (tv.dataType.kind)
             {
                 case Sqlx.BOOLEAN: return 5;
                 case Sqlx.INTEGER: break;
@@ -888,8 +888,8 @@ namespace Pyrrho
                     return 10; // 1+ 1byte + (1long or 2xint)
                 case Sqlx.TYPE:
                     {
-                        var oi = (ObInfo)cx.db.role.infos[tv.dataType.defpos];
-                        return 1 + oi.name.Length + ((TRow)o).Length;
+                        var tn = tv.dataType.name;
+                        return 1 + tn.Length + ((TRow)o).Length;
                     }
                   case Sqlx.XML: break;
             }
@@ -924,8 +924,8 @@ namespace Pyrrho
             for (var b=v.columns.First();b!=null;b=b.Next())
             {
                 var i = b.key();
-                var p = b.value().Item1;
-                len += StringLength(cx.NameFor(p)) 
+                var p = b.value();
+                len += StringLength(v.dataType.NameFor(cx, p, i)) 
                     + TypeLength(v.dataType.representation[p]) 
                     + DataLength(cx, v[i]);
             }
@@ -1247,7 +1247,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (13 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (31 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

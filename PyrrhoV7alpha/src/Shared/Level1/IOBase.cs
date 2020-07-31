@@ -137,7 +137,7 @@ namespace Pyrrho.Level2
                 PutString("");
                 return null;
             }
-            var r = new Ident(id.ident,Length,id.kind);
+            var r = new Ident(id.ident,Length);
             PutString(id.ident);
             return r;
         }
@@ -159,37 +159,9 @@ namespace Pyrrho.Level2
             }
             return pos;
         }
-        internal Domain Fix(Domain d)
+        internal long Fix1(long pos)
         {
-            var rs = d.representation;
-            for (var b=rs.First();b!=null;b=b.Next())
-            {
-                var p = Fix(b.key());
-                var c = Fix(b.value());
-                if (p != b.key() || c != b.value())
-                    rs += (p, c);
-            }
-            return d + (Domain.Representation, rs);
-        }
-        internal (long,Domain) Fix((long,Domain) x)
-        {
-            var (pos, d) = x;
-            d = Fix(d);
-            if (uids.Contains(pos))
-                return (uids[pos],d);
-            if (cx.db.parse == ExecuteStatus.Prepare && pos > PyrrhoServer.Preparing)
-            {
-                var r = cx.db.nextStmt;
-                cx.db += (Database.NextStmt, r + 1);
-                uids += (pos, r);
-                return (r,d);
-            }
-            if (pos > Transaction.Analysing)
-            {
-                uids += (pos, ++srcPos);
-                return (srcPos,d);
-            }
-            return (pos,d);
+            return uids.Contains(pos)?uids[pos] : pos;
         }
         internal Ident Fix(Ident id)
         {
@@ -198,25 +170,23 @@ namespace Pyrrho.Level2
             var p = Fix(id.iix);
             if (p == id.iix)
                 return id;
-            return new Ident(id.ident, p, id.kind);
+            return new Ident(id.ident, p);
         }
         /// <summary>
-        /// Not to be used for Domain or ObInfo
+        /// Not to be used for ObInfo
         /// </summary>
         /// <param name="pos"></param>
         /// <returns></returns>
         internal DBObject Fixed(long pos)
         {
             var p = Fix(pos);
-            if (p < Length)
+            if (p <= Length)
                 return (DBObject)cx.db.objects[p];
             if (p == pos)
                 return cx.obs[p];
             if (cx.obs[p] is DBObject x)
                 return x;
             var ob = cx.obs[pos];
-            if (ob == null)// can happen with columns of ad-hoc types
-                return null;
             if (pos>Transaction.TransPos)
             {
                 ob = ob.Relocate(p).Relocate(this);
@@ -231,7 +201,7 @@ namespace Pyrrho.Level2
         {
             var r = BTree<long, Domain>.Empty;
             for (var b = rp.First(); b != null; b = b.Next())
-                r += (Fix(b.key()), (Domain)cx.db.objects[b.value().defpos]);
+                r += (Fix(b.key()), (Domain)cx.db.objects[b.key()]);
             return r;
         }
         internal BList<long> Relocate(BList<long> rp)
@@ -241,15 +211,30 @@ namespace Pyrrho.Level2
                 r += Fix(b.value());
             return r;
         }
-        internal BList<FormalParameter> Relocate(BList<FormalParameter> rp)
+        internal BList<ParamInfo> Relocate(BList<ParamInfo> rp)
         {
-            var r = BList<FormalParameter>.Empty;
+            var r = BList<ParamInfo>.Empty;
             for (var b = rp.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                r += (FormalParameter)p.Relocate(this);
+                r += (ParamInfo)p.Relocate(this);
             }
             return r;
+        }
+
+        internal CList<long> Fix(CList<long> ord)
+        {
+            var r = CList<long>.Empty;
+            var ch = false;
+            for (var b=ord?.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                var f = Fix(p);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch? r : ord;
         }
     }
 
@@ -297,7 +282,7 @@ namespace Pyrrho.Level2
         {
             var p = Position;
             var s = GetString();
-            return (s == "") ? null : new Ident(s, p, Sqlx.CONTENT);
+            return (s == "") ? null : new Ident(s, p);
         }
         /// <summary>
         /// Get a Numeric from the buffer
@@ -373,7 +358,6 @@ namespace Pyrrho.Level2
         public Stream file;
         internal Role role;
         internal User user;
-        internal BTree<long, string> names = BTree<long, string>.Empty;
         internal PTransaction trans = null;
         internal long time => trans?.pttime ?? 0;
         public long segment;

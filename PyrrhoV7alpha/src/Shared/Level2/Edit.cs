@@ -22,7 +22,7 @@ namespace Pyrrho.Level2
 	internal class Edit : PDomain
 	{
         internal long _defpos;
-        public long prev;
+        public Domain prev;
         public override long defpos => _defpos;
         /// <summary>
         /// Constructor: an Edit request from the Parser
@@ -33,11 +33,11 @@ namespace Pyrrho.Level2
         /// <param name="dt">The (new) Sql data type</param>
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
-            : base(Type.Edit, nm, dt.prim, dt.prec, (byte)dt.scale, dt.charSet,
+            : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
                   dt.culture.Name,dt.defaultString,dt.super,pp,cx)
         {
-            _defpos = old.defpos;
-            prev = old.lastChange;
+            _defpos = cx.db.types[old].Value;
+            prev = old;
         }
         /// <summary>
         /// Constructor: an Edit request from the buffer
@@ -48,7 +48,7 @@ namespace Pyrrho.Level2
         protected Edit(Edit x, Writer wr) : base(x, wr)
         {
             _defpos = wr.Fix(x._defpos);
-            prev = wr.Fix(x.prev);
+            prev = (Domain)x.prev._Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -60,7 +60,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation info for Positions</param>
         public override void Serialise(Writer wr)
 		{
-            wr.PutLong(prev);
+            wr.PutLong(_defpos);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -69,8 +69,8 @@ namespace Pyrrho.Level2
         /// <param name="buf">The buffer</param>
         public override void Deserialise(Reader rdr)
 		{
-			var prev = rdr.GetLong();
-            _defpos = (long)(rdr.context.db.mem[prev]??ppos);
+			_defpos = rdr.GetLong();
+            prev = (Domain)rdr.context.db.objects[_defpos];
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -91,7 +91,7 @@ namespace Pyrrho.Level2
 			return (pos==defpos)?new DBException("40009", pos).Mix() :null;
 		}
         public override long Affects => _defpos;
-        public override long Conflicts(Database db, Transaction tr, Physical that)
+        public override long Conflicts(Database db, Context cx, Physical that)
         {
             switch (that.type)
             {
@@ -106,7 +106,7 @@ namespace Pyrrho.Level2
                         for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
                         {
                             var c = (DBObject)db.objects[cp.key()];
-                            if (c.domain.defpos == defpos)
+                            if (cx.db.types[c.domain] == defpos)
                                 return ppos;
                         }
                         break;
@@ -114,7 +114,7 @@ namespace Pyrrho.Level2
                 case Type.Drop:
                     return (((Drop)that).delpos == defpos) ? ppos : -1;
             }
-            return base.Conflicts(db, tr, that);
+            return base.Conflicts(db, cx, that);
         }
 	}
 }

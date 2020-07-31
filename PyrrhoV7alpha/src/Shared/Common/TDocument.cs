@@ -38,10 +38,10 @@ namespace Pyrrho.Common
         {
             if (id != null)
                 Add(_id, id);
-            var oi = (ObInfo)cx.db.role.infos[r.dataType.defpos];
-            for (var b=oi.rowType?.First();b!=null;b=b.Next())
+            for (var b=r.dataType.rowType.First();b!=null;b=b.Next())
             {
-                Add(oi.name, r[b.value().Item1]);
+                var v = (SqlValue)cx.obs[b.value()];
+                Add(v.name, r[b.value()]);
             }
         }
         internal TDocument(TDocument d, params (string, TypedValue)[] vs) : base(Domain.Document)
@@ -119,7 +119,7 @@ namespace Pyrrho.Common
                     if (d.Contains("$regex"))
                     {
                         var re = d["$regex"];
-                        if (re.dataType.prim == Sqlx.CHAR)
+                        if (re.dataType.kind == Sqlx.CHAR)
                         {
                             var rv = "/" + re.ToString().Trim() + "/";
                             var ro = d["$options"];
@@ -529,7 +529,7 @@ namespace Pyrrho.Common
             if (v.Item2 == null)
                 sb.Append("<null>");
             else
-                switch (v.Item2.dataType.prim)
+                switch (v.Item2.dataType.kind)
                 {
                     case Sqlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
                     case Sqlx.DOCARRAY: sb.Append("[");
@@ -579,7 +579,7 @@ namespace Pyrrho.Common
         {
             if (v == null || v.IsNull)
                 return new byte[0];
-            switch (v.dataType.prim)
+            switch (v.dataType.kind)
             {
                 case Sqlx.REAL:
                     return BitConverter.GetBytes(((TReal)v).dvalue);
@@ -700,7 +700,7 @@ namespace Pyrrho.Common
         }
         bool IsZero((string,TypedValue) fv)
         {
-            switch (fv.Item2.dataType.prim)
+            switch (fv.Item2.dataType.kind)
             {
                 case Sqlx.INTEGER:
                 case Sqlx.INT:
@@ -746,7 +746,7 @@ namespace Pyrrho.Common
         }
         int Query(string nm,TypedValue a, TypedValue b)
         {
-            var ki = b.dataType.prim;
+            var ki = b.dataType.kind;
             if (ki != Sqlx.DOCARRAY && ki != Sqlx.DOCUMENT)
                 return -1;
             var vb = b[nm];
@@ -849,7 +849,7 @@ namespace Pyrrho.Common
                     {
                         if (n == "_id") // _id field mismatch
                             goto all;
-                        if (v.dataType.prim==Sqlx.DOCUMENT)
+                        if (v.dataType.kind==Sqlx.DOCUMENT)
                             details.Add(new Action(m, Verb.Delta, n,
                                 new Delta(v as TDocument,
                                     ne.value().Item2 as TDocument)));
