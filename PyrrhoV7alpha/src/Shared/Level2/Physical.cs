@@ -437,33 +437,33 @@ namespace Pyrrho.Level2
     }
     internal abstract class Compiled : Physical
     {
-        internal BTree<long, DBObject> framing;
-        protected Compiled(Type tp, long pp, Context cx, BTree<long,DBObject> fr) 
+        internal Framing framing;
+        protected Compiled(Type tp, long pp, Context cx,Framing frame) 
             : base(tp, pp, cx) 
         {
-            framing = fr;
+            framing = frame;
         }
         protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
         {
-            framing = BTree<long, DBObject>.Empty; // fixed in OnLoad
+            framing = Framing.Empty; // fixed in OnLoad
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
         {
-            var fs = BTree<long, DBObject>.Empty;
-            for (var b = ph.framing.First(); b != null; b = b.Next())
+            var fs = Framing.Empty;
+            for (var b = ph.framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 if (p > Transaction.TransPos)
                     wr.cx.obs += (p, b.value());
             }
-            for (var b = ph.framing.First(); b != null; b = b.Next())
+            for (var b = ph.framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 // Don't include the new Physical object(s) in framing
                 if (p >= Transaction.TransPos && p < Transaction.Analysing)
                     continue;
                 var ob = wr.Fixed(p);
-                fs += (ob.defpos, ob);
+                fs += ob;
             }
             framing = fs;
         }
@@ -471,24 +471,24 @@ namespace Pyrrho.Level2
         {
             cx.Frame();
             cx.SrcFix(ppos + 1);
-            var fs = BTree<long, DBObject>.Empty;
-            for (var b = framing.First(); b != null; b = b.Next())
+            var fs = Framing.Empty;
+            for (var b = framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 if (p > Transaction.TransPos)
                     cx.obs += (p, b.value());
             }
-            for (var b = framing.First(); b != null; b = b.Next())
+            for (var b = framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 // Don't include the new Physical object(s) in framing
                 if (p >= Transaction.TransPos && p < Transaction.Analysing)
                     continue;
-                var ob = cx.obs[p];
-          //      var ob = oo.Relocate(cx);
-          //      if (ob != oo)
-           //         cx.db+=(ob, cx.db.loadpos); 
-                fs += (ob.defpos, ob);
+                var oo = cx.obs[p]??(DBObject)cx.db.objects[p];
+                var ob = oo.Relocate(cx);
+                if (ob != oo)
+                    cx.db+=(ob, cx.db.loadpos); 
+                fs += ob;
             }
             framing = fs;
             var fr = cx.frame ?? throw new PEException("PE400");
@@ -507,9 +507,15 @@ namespace Pyrrho.Level2
             for (var b = cx.obs.First(); b != null; b = b.Next())
             {
                 var ob = b.value().Relocate(cx);
-                framing += (ob.defpos, ob);
+                framing += ob;
+            }
+            for (var b=cx.data.First();b!=null;b=b.Next())
+            {
+                var r = (RowSet)b.value().Relocate(cx);
+                framing += r;
             }
             var fr = cx.frame ?? throw new PEException("PE400");
+            cx.data = fr.data;
             cx.obs = fr.obs;
             cx.defs = fr.defs;
             cx.depths = fr.depths;

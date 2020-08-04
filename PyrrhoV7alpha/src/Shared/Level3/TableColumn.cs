@@ -57,7 +57,7 @@ namespace Pyrrho.Level3
         static BTree<long,object> _TableColumn(PColumn c,Domain dt)
         {
             var r = BTree<long, object>.Empty + (Definer, c.database.role.defpos) 
-                + (_Domain, dt) + (Framing,c.framing);
+                + (_Domain, dt) + (_Framing,c.framing);
             if (c.notNull)
                 r += (Domain.NotNull, true);
             if (c.generated != GenerationRule.None)
@@ -214,7 +214,7 @@ namespace Pyrrho.Level3
             if (tb == null)
                 return;
             var cx = new Context(tr);
-            cx.obs += (c.framing,true);
+            cx.Install(c.framing);
             var sch = (SqlValue)cx.obs[c.search];
             Query nf = new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
             nf = sch.Conditions(cx, nf, false, out _);
@@ -309,8 +309,8 @@ namespace Pyrrho.Level3
         public Generation gen => (Generation)(mem[_Generation] ?? Generation.No); // or START or END for ROW START|END
         public long exp => (long)(mem[GenExp]??-1L);
         public string gfs => (string)mem[GenString];
-        public BTree<long, DBObject> framing =>
-            (BTree<long, DBObject>)mem[DBObject.Framing] ?? BTree<long, DBObject>.Empty;
+        public Framing framing =>
+            (Framing)mem[DBObject._Framing] ?? Framing.Empty;
         public GenerationRule(Generation g) : base(new BTree<long, object>(_Generation, g)) { }
         public GenerationRule(Generation g, string s, SqlValue e)
             : base(BTree<long, object>.Empty + (_Generation, g) + (GenExp, e.defpos) + (GenString, s)) { }

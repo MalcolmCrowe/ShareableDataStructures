@@ -266,7 +266,7 @@ namespace Pyrrho.Level3
             //        if (cx.data.Contains(defpos))
             //            return cx.data[defpos];
             if (defpos == Static)
-                return new TrivialRowSet(defpos,cx,rowType, new TRow(domain, cx.values),-1,fi);
+                return new TrivialRowSet(defpos,cx,new TRow(domain, cx.values),-1,fi);
             RowSet rowSet = null;
             //           if (target == null)
             //               return new TrivialRowSet(tr, cx, this, Eval(tr, cx) as TRow ?? TRow.Empty);
@@ -395,7 +395,7 @@ namespace Pyrrho.Level3
             }
             if (readC!=null)
                 cx.rdC += (target, readC);
-            return rowSet;
+            return rowSet.ComputeNeeds(cx);
         }
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs, Level cl)
         {

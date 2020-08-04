@@ -1,4 +1,5 @@
 using Pyrrho.Common;
+using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System;
 using System.Configuration;
@@ -22,31 +23,30 @@ namespace Pyrrho.Level4
     /// </summary>
 	internal class JoinRowSet : RowSet
 	{
-        internal readonly JoinPart join;
+        internal const long
+            JFirst = -447, // long
+            _Join = -446, // JoinPart
+            JSecond = -448; // long
+
+        internal JoinPart join => (JoinPart)mem[_Join];
         /// <summary>
         /// The two row sets being joined
         /// </summary>
-		internal readonly long first,second;
+		internal long first => (long)mem[JFirst];
+        internal long second => (long)mem[JSecond];
         /// <summary>
         /// Constructor: build the rowset for the Join
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : 
-            base(j.defpos,_cx,j.domain,j.display,_Finder(lr,rr),null,j.where,j.ordSpec,j.matches,
-                j.matching)
-		{
-            join = j;
-            first = lr.defpos;
-            second = rr.defpos;
-        }
+            base(j.defpos,_cx,j.domain,j.display,_Fin(lr,rr),null,j.where,j.ordSpec,j.matches,
+                j.matching, null, BTree<long,object>.Empty +(_Join,j)
+                +(JFirst,lr.defpos)+(JSecond,rr.defpos))
+		{ }
         JoinRowSet(Context cx,JoinRowSet jrs, BTree<long,Finder> nd,bool bt)
             :base(cx,jrs,nd,bt)
-        {
-            join = jrs.join;
-            first = jrs.first;
-            second = jrs.second;
-        }
-        static BTree<long,Finder> _Finder(RowSet lr,RowSet rr)
+        { }
+        static BTree<long,Finder> _Fin(RowSet lr,RowSet rr)
         {
             var r = lr.finder;
             for (var b=rr.finder.First();b!=null;b=b.Next())
@@ -57,29 +57,45 @@ namespace Pyrrho.Level4
         {
             return rp==first || rp==second || base.Knows(cx, rp);
         }
-        protected JoinRowSet(JoinRowSet rs, long a, long b) : base(rs, a, b)
+        JoinRowSet(Context cx,JoinRowSet rs,Sqlx k) 
+            :base(cx,rs+(_Join,rs.join+(JoinPart.JoinKind,k)),rs.needed,rs.built)
+        { }
+        protected JoinRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
         {
-            join = rs.join;
-            first = rs.first;
-            second=rs.second;
-        }
-        JoinRowSet(Context cx,JoinRowSet rs,Sqlx k) :base(cx,rs,rs.needed,rs.built)
-        {
-            join = rs.join + (JoinPart.JoinKind, k);
-            first = rs.first;
-            second = rs.second;
+            return new JoinRowSet(defpos, m);
         }
         internal RowSet New(Context cx,Sqlx k)
         {
             return new JoinRowSet(cx, this, k);
         }
-        internal override RowSet New(long a, long b)
-        {
-            return new JoinRowSet(this, a, b);
-        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
         {
             return new JoinRowSet(cx, this, nd, bt);
+        }
+        public static JoinRowSet operator+(JoinRowSet rs,(long,object)x)
+        {
+            return (JoinRowSet)rs.New(rs.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new JoinRowSet(dp, mem);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (JoinRowSet)base._Relocate(cx);
+            r += (_Join, join.Relocate(cx));
+            r += (JFirst, cx.Unheap(first));
+            r += (JSecond, cx.Unheap(second));
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (JoinRowSet)base._Relocate(wr);
+            r += (_Join, join.Relocate(wr));
+            r += (JFirst, wr.Fix(first));
+            r += (JSecond, wr.Fix(second));
+            return r;
         }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder> nd)
         {
@@ -94,18 +110,6 @@ namespace Pyrrho.Level4
             nd = cx.Needs(nd,this,cx.data[first].AllMatches(cx,nd));
             nd = cx.Needs(nd,this,cx.data[second].AllMatches(cx,nd));
             return nd;
-        }
-        internal override void _Strategy(StringBuilder sb, int indent)
-        {
-            var j = join;
-            sb.Append("Join ");
-            sb.Append((j.kind == Sqlx.NO) ? "FD" : j.kind.ToString());
-            Conds(sb, j.joinCond, " ON ");
-            sb.Append(' ');
-            var fr = j.FDInfo?.reverse;
-            var rx = j.FDInfo?.rindex;
-            var ft = (rx!=null)? " foreign " : " primary ";
-            base._Strategy(sb, indent);
         }
         /// <summary>
         /// Set up a bookmark for the rows of this join

@@ -1,5 +1,7 @@
 using System;
+using System.Configuration;
 using Pyrrho.Common;
+using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -56,6 +58,16 @@ namespace Pyrrho.Level4
             mt = m;
             rows = rs;
         }
+        internal RTree(long dp, Context cx, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
+             TreeBehaviour n = TreeBehaviour.Allow)
+        {
+            defpos = dp;
+            domain = dt;
+            _cx = cx;
+            var m = new MTree(new TreeInfo(dt.rowType, dt, d, n));
+            mt = m;
+            rows = BList<TRow>.Empty;
+        }
         protected RTree(long dp,Context cx,CList<long> k,Domain d,MTree m,BList<TRow> rs)
         {
             defpos = dp;
@@ -93,6 +105,16 @@ namespace Pyrrho.Level4
         public TRow Get(Context cx,TRow key)
         {
             return rows[(int)mt.Get(cx.MakeKey(keyType)).Value];
+        }
+        internal RTree Relocate(Context cx)
+        {
+            return new RTree(cx.Unheap(defpos), _cx, (Domain)domain._Relocate(cx),
+                mt.info.onDuplicate,mt.info.onNullKey);
+        }
+        internal RTree Relocate(Writer wr)
+        {
+            return new RTree(wr.Fix(defpos), _cx, (Domain)domain._Relocate(wr),
+                mt.info.onDuplicate, mt.info.onNullKey);
         }
     }
     internal class RTreeBookmark : Cursor

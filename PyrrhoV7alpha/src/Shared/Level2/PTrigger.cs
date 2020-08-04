@@ -107,7 +107,7 @@ namespace Pyrrho.Level2
         /// <param name="pp">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, BList<long> cs, 
             Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
-            : base(tp,pp,cx,cx.obs)
+            : base(tp,pp,cx,new Framing(cx))
 		{
             name = tc;
             target = tb;
@@ -272,8 +272,8 @@ namespace Pyrrho.Level2
         {
             var (tr,ph) = base.Commit(wr, t);
             var pt = (PTrigger)ph;
-            var tg = (DBObject)tr.objects[defpos] + (Check.Condition, pt.framing[pt.def])
-                + (DBObject.Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix??-1L)
+            var tg = (DBObject)tr.objects[defpos] + (Check.Condition, pt.framing.obs[pt.def])
+                + (DBObject._Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix??-1L)
                 +(Trigger.NewRow,pt.newRow?.iix??-1) + (Trigger.OldTable,pt.oldTable?.iix??-1)
                 +(Trigger.NewTable,pt.newTable?.iix??-1L);
             var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg, tr);

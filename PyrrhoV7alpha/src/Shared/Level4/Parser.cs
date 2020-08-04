@@ -1719,7 +1719,7 @@ namespace Pyrrho.Level4
                 // The table domain and cx.defs should contain the columns so far defined
                 var oc = cx;
                 cx = cx.ForConstraintParse(ns);
-                gr = ParseGenerationRule(dom)+(DBObject.Framing,cx.obs);
+                gr = ParseGenerationRule(dom)+(DBObject._Framing,new Framing(cx));
                 cx = oc;
             }
             if (dom == null)
@@ -2206,7 +2206,7 @@ namespace Pyrrho.Level4
             var tc = (TableColumn)cx.db.objects[c];
             cx.obs += (tb.defpos,tb);
             cx.obs += (tc.defpos, tc);
-            cx.obs += (tb.framing,true);
+            cx.Install(tb.framing);
             var oi = ns[tb.defpos];
             // Set up the information for parsing the column check constraint
             cx.defs += (new Ident(oi.name, tb.defpos), tb.defpos);
@@ -4281,7 +4281,7 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     var oc = cx;
                     cx = cx.ForConstraintParse(ns);
-                    var gr = ParseGenerationRule(tc.domain) + (DBObject.Framing, cx.obs);
+                    var gr = ParseGenerationRule(tc.domain) + (DBObject._Framing, new Framing(cx));
                     cx = oc;
                     if (cx.db.parse == ExecuteStatus.Obey)
                     {
@@ -5306,8 +5306,7 @@ namespace Pyrrho.Level4
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
             r = (CursorSpecification)cx.Add(r);
             var s = new SelectStatement(lp - 1, r);
-            if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction)
-                cx.val = r.RowSets(cx, cx.data[r.from]?.finder??BTree<long, RowSet.Finder>.Empty);
+            var rs = r.RowSets(cx, cx.data[r.from]?.finder??BTree<long, RowSet.Finder>.Empty);
             cx.defs = od; // restore parsing context
             return (SelectStatement)cx.Add(s);
         }
@@ -5443,7 +5442,7 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.ID);
                     var tb = cx.db.GetObject(ic.ident) as Table ??
                         throw new DBException("42107", ic.ident);
-                    cx.obs += (tb.framing,true);
+                    cx.Install(tb.framing);
                     var fm = _From(ic, tb, null,new QuerySpecification(lp-1,cx,xp));
                     qe = qe + (QueryExpression._Left, fm.defpos) + (DBObject._Domain,fm.domain);
              //       if (cx.data.Contains(lp))
@@ -5770,7 +5769,7 @@ namespace Pyrrho.Level4
         /// <returns>the table expression</returns>
 		Query ParseTableReferenceItem(QuerySpecification q)
 		{
-            Query rf = null;
+            Query rf;
             cx.Add(q);
             if (tok == Sqlx.ROWS) // Pyrrho specific
             {
@@ -5847,11 +5846,11 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.RPAREN); // another: see above
                 var proc = cx.db.GetProcedure(n.ident, (int)r.Count)
                     ?? throw new DBException("42108", n.ident + "$" + r.Count).Mix();
-                cx.obs += (proc.framing,true);
+                cx.Install(proc.framing);
                 var cr = ParseCorrelation(proc.domain);
                 if (cx.db.parse==ExecuteStatus.Obey)
                     proc.Exec(cx, r);
-                var rs = new ExplicitRowSet(n.iix,cx,(RowSet)cx.val);
+                var rs = new ExplicitRowSet(n.iix,cx,cx.val);
                 cx.data += (n.iix, rs);
                 rf = new From(n.iix,cx,new CallStatement(n.iix,proc,proc.name,r));
             }
@@ -5893,25 +5892,29 @@ namespace Pyrrho.Level4
                     a = lxr.val.ToString();
                     Next();
                 }
-                var ob = cx.db.GetObject(ic.ident) ?? cx.obs[cx.defs[ic]];
-                if (ob is Table tb)
+                var ob = (cx.db.GetObject(ic.ident) ?? (DBObject)cx.obs[cx.defs[ic]]);
+                Table tb;
+                if (ob is From f)
                 {
+                    rf = f;
+                    tb = cx.obs[f.target] as Table;
+                } else if (ob is Table t)
+                {
+                    tb = t;
                     rf = _From(ic, tb, a, q);
-                    q = (QuerySpecification)cx.obs[q.defpos];
-                    if (Match(Sqlx.FOR))
-                    {
-                        var ps = ParsePeriodSpec();
-                        rf += (Query.Periods, rf.periods + (tb.defpos, ps));
-                        long pp = (ps.periodname == "SYSTEM_TIME") ? tb.systemPS : tb.applicationPS;
-                        if (pp < 0)
-                            throw new DBException("42162", ps.periodname).Mix();
-                        rf += (Query.Periods, rf.periods + (tb.defpos, ps));
-                    }
                 }
-                if (ob is TransitionTable tt)
-                    rf = tt;
-                if (rf==null)
+                else
                     throw new DBException("42107", ic.ident); // View TBD
+                q = (QuerySpecification)cx.obs[q.defpos];
+                if (Match(Sqlx.FOR))
+                {
+                    var ps = ParsePeriodSpec();
+                    rf += (Query.Periods, rf.periods + (tb.defpos, ps));
+                    long pp = (ps.periodname == "SYSTEM_TIME") ? tb.systemPS : tb.applicationPS;
+                    if (pp<0)
+                        throw new DBException("42162", ps.periodname).Mix();
+                    rf += (Query.Periods, rf.periods + (tb.defpos, ps));
+                }
                 if (cx.dbformat < 51)
                     cx.defs += (new Ident(rf.defpos.ToString(), rf.defpos), rf.defpos);
                 if (a != null)
@@ -6466,7 +6469,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.ID);
             var tb = cx.db.GetObject(ic.ident) as Table ??
                 throw new DBException("42107", ic.ident);
-            cx.obs += (tb.framing,true);
+            cx.Install(tb.framing);
             var ti = cx.Inf(tb.defpos);
             cx.defs += (ic, tb.defpos);
             cx.AddDefs(ic, ti.rowType);

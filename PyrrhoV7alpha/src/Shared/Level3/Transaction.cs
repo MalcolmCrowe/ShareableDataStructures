@@ -325,11 +325,11 @@ namespace Pyrrho.Level3
                         break;
                     case "DELETE":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Delete(cx.val as RowSet);
+                        db.Delete(cx.result as RowSet);
                         break;
                     case "PUT":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Put(cx.val as RowSet, sdata);
+                        db.Put(cx.result as RowSet, sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
@@ -367,7 +367,7 @@ namespace Pyrrho.Level3
             if (p >= path.Length || path[p] == "")
             {
                 //               f.Validate(etag);
-                cx.val = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                 return;
             }
             string cp = path[p];
@@ -440,7 +440,7 @@ namespace Pyrrho.Level3
                                     new SqlLiteral(3,cx,kv,ft),Sqlx.NO);
                                 f = (From)f.AddCondition(cx,Query.Where,cond);
                             }
-                            cx.val = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                            cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                             break;
                         }
                         string ks = cp.Substring(4 + off);
@@ -498,7 +498,7 @@ namespace Pyrrho.Level3
                         int n = sk.Length;
                         var qout = new CursorSpecification(uid+4+off)._Union(f); // ???
                         var qin = f;
-                        cx.val = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                        cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                         for (int j = 0; j < n; j++)
                         {
                             var cn = sk[j];
@@ -512,7 +512,7 @@ namespace Pyrrho.Level3
                     {
                         if (cp.Length < 10)
                         {
-                            cx.val = new DistinctRowSet(cx,cx.val as RowSet).First(cx);
+                            cx.val = new DistinctRowSet(cx,cx.result as RowSet).First(cx);
                             break;
                         }
                         string[] ss = cp.Substring(9).Split(',');

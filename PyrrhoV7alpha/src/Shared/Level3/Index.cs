@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         internal const long
             Adapter = -157, // long Procedure 
             IndexConstraint = -158,// PIndex.ConstraintType
-            Keys = -159, // CList<long>
+            Keys = -159, // CList<long> SqlValue
             References = -160, // BTree<long,BList<TypedValue>> computed by adapter
             RefIndex = -161, // long Index
             RefTable = -162, // long Table

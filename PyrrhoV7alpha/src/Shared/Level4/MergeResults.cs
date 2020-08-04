@@ -1,4 +1,5 @@
 using Pyrrho.Common;
+using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -18,26 +19,29 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class MergeRowSet : RowSet
     {
+        internal const long
+            UseLeft = -443, // bool
+            UseRight = -444; // bool
         /// <summary>
         /// The first operand of the merge operation
         /// </summary>
-        internal long left;
+        internal long left => (long)(mem[QueryExpression._Left]??-1L);
         /// <summary>
         /// The second operand of the merge operation
         /// </summary>
-        internal long right;
+        internal long right => (long)(mem[QueryExpression._Right]??-1L);
         /// <summary>
         /// whether the enumeration is of the left operand (if false we are in the right operand)
         /// </summary>
-        internal bool useLeft = true;
+        internal bool useLeft => (bool)(mem[UseLeft]??true);
         /// <summary>
         /// UNION/INTERSECT/EXCEPT
         /// </summary>
-        internal Sqlx oper;
+        internal Sqlx oper => (Sqlx)(mem[Domain.Kind]??Sqlx.NONE);
         /// <summary>
         /// whether DISTINCT has been specified
         /// </summary>
-        internal bool distinct = true;
+        internal bool distinct => (bool)(mem[QuerySpecification.Distinct]??false);
         /// <summary>
         /// Constructor: a merge rowset from two queries, whose rowsets have been constructed
         /// </summary>
@@ -45,33 +49,48 @@ namespace Pyrrho.Level4
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
         internal MergeRowSet(Context cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
-            : base(q.defpos,cx,a.dataType,q.display,a.finder,null,q.where,q.ordSpec,q.matches,
-                  q.matching)
+            : base(q.defpos,cx,a.domain,q.display,a.finder,null,q.where,q.ordSpec,q.matches,
+                  q.matching,null,BTree<long,object>.Empty
+                  +(QuerySpecification.Distinct,d)+(Domain.Kind,op)
+                  +(QueryExpression._Left,a.defpos)+(QueryExpression._Right,b.defpos))
         {
-            distinct = d;
-            oper = op;
-            left = a.defpos;
-            right = b.defpos; 
-            if (q.where.Count==0 && oper!=Sqlx.UNION)
-                Build(q.defpos,cx,a.dataType);
-        }
-        protected MergeRowSet(MergeRowSet rs, long a, long b) : base(rs, a, b)
-        {
-            distinct = rs.distinct;
-            oper = rs.oper;
-            left = rs.left;
-            right = rs.right;
+            if (q.where.Count==0 && oper!=Sqlx.UNION && a.needed==BTree<long,Finder>.Empty
+                && b.needed==BTree<long,Finder>.Empty)
+                Build(cx);
         }
         protected MergeRowSet(Context cx, MergeRowSet rs, BTree<long, Finder> nd, bool bt) 
         :base(cx,rs,nd,bt)
         { }
-        internal override RowSet New(long a, long b)
+        protected MergeRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
         {
-            return new MergeRowSet(this, a, b);
+            return new MergeRowSet(defpos, m);
         }
         internal override RowSet New(Context cx,BTree<long,Finder> nd,bool bt)
         {
             return new MergeRowSet(cx, this, nd, bt);
+        }
+        public static MergeRowSet operator+(MergeRowSet rs,(long,object)x)
+        {
+            return (MergeRowSet)rs.New(rs.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new MergeRowSet(dp, mem);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (MergeRowSet)base._Relocate(cx);
+            r += (QueryExpression._Left, cx.Unheap(left));
+            r += (QueryExpression._Right, cx.Unheap(right));
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (MergeRowSet)base._Relocate(wr);
+            r += (QueryExpression._Left, wr.Fix(left));
+            r += (QueryExpression._Right, wr.Fix(right));
+            return r;
         }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder>nd)
         {
@@ -90,11 +109,6 @@ namespace Pyrrho.Level4
         internal override bool Knows(Context cx, long rp)
         {
             return rp==left || rp==right || base.Knows(cx,rp);
-        }
-        internal override void _Strategy(StringBuilder sb, int indent)
-        {
-            sb.Append("Merge ");
-            base._Strategy(sb, indent);
         }
         protected override Cursor _First(Context cx)
         {

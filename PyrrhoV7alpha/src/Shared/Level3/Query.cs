@@ -41,7 +41,7 @@ namespace Pyrrho.Level3
             Display = -177, // int
             FetchFirst = -179, // int
             Filter = -180, // BTree<long,TypedValue>
-            Matches = -182, // BTree<long,TypedValue>
+            _Matches = -182, // BTree<long,TypedValue>
             Matching = -183, // BTree<long,BTree<long,bool>>
             OrdSpec = -184, // CList<long>
             Periods = -185, // BTree<long,PeriodSpec>
@@ -50,7 +50,7 @@ namespace Pyrrho.Level3
         public bool _aggregates => (bool)(mem[_Aggregates] ?? false);
         public string name => (string)mem[Name] ?? "";
         internal BTree<long, TypedValue> matches =>
-             (BTree<long, TypedValue>)mem[Matches] ?? BTree<long, TypedValue>.Empty; // guaranteed constants
+             (BTree<long, TypedValue>)mem[_Matches] ?? BTree<long, TypedValue>.Empty; // guaranteed constants
         internal BTree<long, BTree<long, bool>> matching =>
             (BTree<long, BTree<long, bool>>)mem[Matching] ?? BTree<long, BTree<long, bool>>.Empty;
         internal BTree<string, string> replace =>
@@ -146,7 +146,7 @@ namespace Pyrrho.Level3
                 ma += (mk.defpos, b.value());
             }
             if (ch)
-                r += (Matches,ma);
+                r += (_Matches,ma);
             var mg = BTree<long, BTree<long, bool>>.Empty;
             ch = false;
             for (var b=matching?.First();b!=null;b=b.Next())
@@ -233,7 +233,7 @@ namespace Pyrrho.Level3
                 ma += (mk.defpos, b.value());
             }
             if (ch)
-                r += (Matches, ma);
+                r += (_Matches, ma);
             var mg = BTree<long, BTree<long, bool>>.Empty;
             ch = false;
             for (var b = matching?.First(); b != null; b = b.Next())
@@ -331,7 +331,7 @@ namespace Pyrrho.Level3
                 de = Math.Max(de, bk.depth);
             }
             if (ms!=r.matches)
-                r += (Matches, ms);
+                r += (_Matches, ms);
             var mg = r.matching;
             for (var b = mg.First(); b != null; b = b.Next())
             {
@@ -413,7 +413,7 @@ namespace Pyrrho.Level3
                     ms = ms - b.key() + (bk.defpos, b.value());
             }
             if (ms != r.matches)
-                r += (Matches, ms);
+                r += (_Matches, ms);
             var mg = matching;
             for (var b = mg.First(); b != null; b = b.Next())
             {
@@ -597,11 +597,11 @@ namespace Pyrrho.Level3
             var m = matches;
             for (var b = q.matches.First(); b != null; b = b.Next())
                 m += (b.key(), b.value());
-            return (Query)cx.Replace(this,this + (Matches, m));
+            return (Query)cx.Replace(this,this + (_Matches, m));
         }
         internal Query AddMatch(Context cx,SqlValue sv, TypedValue tv)
         {
-            return (Query)cx.Replace(this,this + (Matches, matches + (sv.defpos, tv)));
+            return (Query)cx.Replace(this,this + (_Matches, matches + (sv.defpos, tv)));
         }
         /// <summary>
         /// Add a condition and/or update to the QueryWhere. 
@@ -925,7 +925,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(FetchFirst)) { sb.Append(" FetchFirst="); sb.Append(fetchFirst); }
             if (mem.Contains(Filter)) { sb.Append(" Filter:"); sb.Append(filter); }
  //           if (mem.Contains(_Import)) { sb.Append(" Import:"); sb.Append(import); }
-            if (mem.Contains(Matches)) { sb.Append(" Matches:"); sb.Append(matches); }
+            if (mem.Contains(_Matches)) { sb.Append(" Matches:"); sb.Append(matches); }
             if (mem.Contains(Matching)) { sb.Append(" Matching:"); sb.Append(matching); }
             if (ordSpec!=CList<long>.Empty) 
             { 
@@ -1201,7 +1201,7 @@ namespace Pyrrho.Level3
         {
             var r = ((Query)cx.obs[union]).RowSets(cx, fi);
             r = Ordering(cx,r,false);
-            return r;
+            return r.ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -1394,7 +1394,7 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
         {
             if (target == From._static.defpos)
-                return new TrivialRowSet(defpos, cx,domain,null,-1L,fi);
+                return new TrivialRowSet(defpos, cx,new TRow(domain),-1L,fi);
             var fr = (Query)cx.obs[target];
             var r = fr.RowSets(cx,fi);
             if (r == null)
@@ -1418,7 +1418,7 @@ namespace Pyrrho.Level3
             var kt = CList<long>.Empty;
             for (var b = r.keys.First(); b != null; b = b.Next())
                 kt += ma[b.value()];
-            return new TableExpRowSet(defpos, cx, rowType, kt, r, where, matches, fi);
+            return new TableExpRowSet(defpos, cx, rowType, kt, r, where, matches, fi).ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -2143,7 +2143,7 @@ namespace Pyrrho.Level3
             var ro = rg.ordSpec;
             if (ro?.Length>0)
                 rr = new OrderedRowSet(cx, rr, ro, false);
-            return new JoinRowSet(cx,this,lr,rr);
+            return new JoinRowSet(cx,this,lr,rr).ComputeNeeds(cx);
         }
         internal int Compare(Context cx)
         {

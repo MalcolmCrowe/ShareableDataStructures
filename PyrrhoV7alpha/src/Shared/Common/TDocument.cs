@@ -50,6 +50,10 @@ namespace Pyrrho.Common
             foreach (var v in vs)
                 Add(v.Item1, v.Item2);
         }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
         internal override object Val()
         {
             return ToString();
@@ -892,6 +896,10 @@ namespace Pyrrho.Common
         all: details = new List<Action>();
             details.Add(new Action(0, Verb.All, null, now));
         }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
         internal override object Val()
         {
             return details;
@@ -983,6 +991,10 @@ namespace Pyrrho.Common
                 content+=TDocument.GetValue(e);
         }
 #endif
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
         /// <summary>
         /// Parser from BSON to DocArray
         /// </summary>

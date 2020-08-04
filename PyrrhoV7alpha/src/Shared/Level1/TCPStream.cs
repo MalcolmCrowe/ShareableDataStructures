@@ -574,7 +574,7 @@ namespace Pyrrho.Level1
         internal void PutArray(Context _cx, TArray a)
         {
             PutString("ARRAY");
-            int n = a.list.Count;
+            int n = a.Length;
             var et = a.dataType.elType ?? ((a.Length > 0) ? a[0].dataType : Domain.Content);
             PutString(et.ToString());
             PutInt(et.Typecode());
@@ -604,7 +604,7 @@ namespace Pyrrho.Level1
         internal void PutTable(Context _cx, RowSet r)
         {
             PutString("TABLE");
-            _cx.val = r;
+            _cx.result = r;
             PutSchema(_cx);
             int n = 0;
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
@@ -657,7 +657,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.val as RowSet;
+            var result = cx.result as RowSet;
             if (result == null)
             {
 #if EMBEDDED
@@ -697,7 +697,7 @@ namespace Pyrrho.Level1
                     var cp = b.value();
                     var i = b.key();
                     PutString(result.NameFor(cx,i));
-                    var dn = result.dataType[cp];
+                    var dn = result.domain[cp];
                     if (dn.kind!=Sqlx.TYPE)
                         PutString(dn.kind.ToString());
                     else
@@ -732,7 +732,7 @@ namespace Pyrrho.Level1
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var dt = result.dataType;
+            var dt = result.domain;
             int m = result.display;
             PutInt(m);
             if (m == 0)

@@ -890,8 +890,8 @@ namespace Pyrrho.Level3
                         wr.PutLong(wr.cx.db.types[a.dataType.elType].Value);
                         wr.PutInt(a.Length);
                         var et = a.dataType.elType;
-                        foreach (var e in a.list)
-                            et.Put(e, wr);
+                        for(var b=a.list.First();b!=null;b=b.Next())
+                            et.Put(b.value(), wr);
                         break;
                     }
                 case Sqlx.MULTISET:
@@ -1210,11 +1210,10 @@ namespace Pyrrho.Level3
             if (ae != et || ae != be)
                 throw new DBException("22102").Mix()
                     .AddType(ae).AddValue(be);
-            int j = 0;
-            foreach (var e in a.list)
-                r[j++] = e;
-            foreach (var e in b.list)
-                r[j++] = e;
+            for(var ab=a.list.First();ab!=null;ab=ab.Next())
+                r += ab.value();
+            for(var bb = b.list.First();bb!=null;bb=bb.Next())
+                r += bb.value();
             return r;
         }
         /// <summary>

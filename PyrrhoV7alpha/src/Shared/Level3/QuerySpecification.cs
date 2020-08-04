@@ -133,7 +133,7 @@ namespace Pyrrho.Level3
         {
             var r = tableExp?.RowSets(cx,fi);
             if (r==null)
-                r = new TrivialRowSet(defpos,cx,domain,null,-1L,fi);
+                r = new TrivialRowSet(defpos,cx,new TRow(domain),-1L,fi);
             if (aggregates(cx))
             {
                 if (tableExp?.group != -1L)
@@ -149,7 +149,7 @@ namespace Pyrrho.Level3
                     f.RowSets(cx,this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
-            return r;
+            return r.ComputeNeeds(cx);
         }
         /// <summary>
         /// Analysis stage Conditions().
@@ -518,7 +518,7 @@ namespace Pyrrho.Level3
             var r = Ordering(cx, lr, false);
             if (fetchFirst != -1L)
                 r = new RowSetSection(cx, r, 0, fetchFirst);
-            return r;
+            return r.ComputeNeeds(cx);
         }
          public override string ToString()
         {

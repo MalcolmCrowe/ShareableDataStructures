@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
         public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
             : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
         protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx,cx.obs)
+            long pp, Context cx) : base(tp,pp,cx,new Framing(cx))
 		{
 			ckobjdefpos = dm;
             defpos = ppos;
@@ -144,8 +144,8 @@ namespace Pyrrho.Level2
         {
             var (tr,ph) = base.Commit(wr, t);
             var pc = (PCheck)ph;
-            var ck = (DBObject)tr.objects[defpos] + (Check.Condition, pc.framing[pc.test])
-                + (DBObject.Framing, pc.framing);
+            var ck = (DBObject)tr.objects[defpos] + (Check.Condition, pc.framing.obs[pc.test])
+                + (DBObject._Framing, pc.framing);
             var co = ((DBObject)tr.objects[ckobjdefpos]).Add((Check)ck, tr);
             return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
         }

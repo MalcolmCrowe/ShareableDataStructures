@@ -97,13 +97,13 @@ namespace Pyrrho.Level3
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this,Domain.Null);
             var bd = (Executable)act.obs[body];
-            act.obs += (bd.framing,true);
+            act.Install(bd.framing);
             i = 0;
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
                 act.values += (((ParamInfo)cx.obs[b.value()]).val, acts[i]);
             cx = bd.Obey(act);
             var r = act.Ret();
-            if (r is RowSet ts)
+            if (r is TArray ts)
             {
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))

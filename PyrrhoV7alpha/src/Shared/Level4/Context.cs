@@ -59,12 +59,6 @@ namespace Pyrrho.Level4
         internal Transaction tr => db as Transaction;
         internal BTree<long, BTree<long, bool>> copy = BTree<long, BTree<long, bool>>.Empty;
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty;
-        internal class Framing // for compiled code
-        {
-            public BTree<long, DBObject> obs;
-            public Ident.Idents defs;
-            public BTree<int, BTree<long, DBObject>> depths;
-        } 
         internal Framing frame = null;
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
         internal BTree<long, TypedValue> values = BTree<long, TypedValue>.Empty;
@@ -80,6 +74,7 @@ namespace Pyrrho.Level4
         public BTree<long, (string, long)> digest = BTree<long, (string, long)>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long> uids = BTree<long, long>.Empty;
+        internal RowSet result;
         internal BTree<long, RowSet.Finder> Needs(BTree<long, RowSet.Finder> nd, 
             RowSet rs,BList<long> rt)
         {
@@ -148,6 +143,25 @@ namespace Pyrrho.Level4
             rdC = (db as Transaction)?.rdC;
             //            domains = (db as Transaction)?.domains;
         }
+        protected Context(Context cx,long trs)
+        {
+            db = cx.db;
+            nextHeap = cx.nextHeap;
+            nextStmt = cx.nextStmt;
+            parseStart = cx.parseStart;
+            values = cx.values;
+            obs = cx.obs;
+            defs = cx.defs;
+            depths = cx.depths;
+            copy = cx.copy;
+            data = cx.data;
+            from = cx.from;
+            cursors = cx.cursors;
+            etag = cx.etag;
+            val = cx.val;
+            parent = cx.parent; // for triggers
+            dbformat = cx.dbformat;
+        }
         internal Context(Context cx)
         {
             next = cx;
@@ -209,6 +223,11 @@ namespace Pyrrho.Level4
                 nextStmt += n;
             }
             return r;
+        }
+        internal void Install(Framing fr)
+        {
+            obs += (fr.obs,true);
+            data += (fr.data,true);
         }
         // Sabotaged in order to do GetUid for Trigger, Procedure and Check bodies.
         // At the end of parsing, heap uids are changed to nextStmt uids:
@@ -299,7 +318,7 @@ namespace Pyrrho.Level4
         }
         internal virtual void AddValue(DBObject s, TypedValue tv)
         {
-            if (tv is Cursor || tv is RowSet)
+            if (tv is Cursor)
                 Console.WriteLine("AddValue??");
             s.Set(this, tv);
             var p = s.defpos;
@@ -408,7 +427,7 @@ namespace Pyrrho.Level4
         {
             var p = Unheap(pos);
             if (p == pos)
-                return obs[p];
+                return obs[p]??(DBObject)db.objects[p];
             if (obs[p] is DBObject x)
                 return x;
             var ob = obs[pos];
@@ -425,7 +444,7 @@ namespace Pyrrho.Level4
         {
             if (frame != null)
                 throw new PEException("PE401");
-            frame = new Framing { obs = obs, defs = defs, depths = depths };
+            frame = new Framing(this);
         }
         internal void Frame(long p,long q=-1L)
         {
@@ -437,7 +456,7 @@ namespace Pyrrho.Level4
             if (ob is From fm)
                 Console.WriteLine(fm.ToString());
             obs += (ob.defpos, ob);
-            obs += (ob.framing,true);
+            Install(ob.framing);
         }
         internal DBObject _Add(DBObject ob,string alias=null)
         {
@@ -695,6 +714,126 @@ namespace Pyrrho.Level4
             }
             return ch ? r : ord;
         }
+        internal CList<TypedValue> Fix(CList<TypedValue> ord)
+        {
+            var r = CList<TypedValue>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = p.Relocate(this);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
+        internal BList<long> Fix(BList<long> ord)
+        {
+            var r = BList<long>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = Unheap(p);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
+        internal PRow Fix(PRow rw)
+        {
+            if (rw == null)
+                return null;
+            return new PRow(rw._head?.Relocate(this), Fix(rw._tail));
+        }
+        internal BTree<long,RowSet.Finder> Fix(BTree<long,RowSet.Finder> fi)
+        {
+            var r = BTree<long,RowSet.Finder>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Unheap(p);
+                var f = b.value().Relocate(this);
+                if (p != np || (object)f!=(object)b.value())
+                    ch = true;
+                r += (np,f);
+            }
+            return ch ? r : fi;
+        }
+        internal BTree<long, bool> Fix(BTree<long, bool> fi)
+        {
+            var r = BTree<long, bool>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Unheap(p);
+                if (p != np)
+                    ch = true;
+                r += (np, true);
+            }
+            return ch ? r : fi;
+        }
+        internal BTree<long, TypedValue> Fix(BTree<long, TypedValue> fi)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Unheap(p);
+                if (p != np)
+                    ch = true;
+                r += (np, b.value());
+            }
+            return ch ? r : fi;
+        }
+        internal BTree<string, TypedValue> Fix(BTree<string, TypedValue> a)
+        {
+            var r = BTree<string, TypedValue>.Empty;
+            for (var b = a?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                r += (p, b.value().Relocate(this));
+            }
+            return a;
+        }
+        internal BList<TXml> Fix(BList<TXml> ch)
+        {
+            var r = BList<TXml>.Empty;
+            for (var b = ch.First(); b != null; b = b.Next())
+                r += (TXml)b.value().Relocate(this);
+            return r;
+        }
+        internal CTree<TypedValue,long?> Fix(CTree<TypedValue,long?> mu)
+        {
+            var r = CTree<TypedValue,long?>.Empty;
+            for (var b = mu?.First(); b != null; b = b.Next())
+            {
+                var p = b.key().Relocate(this);
+                var np = b.value();
+                if (np!=null)
+                r = (r+(p, np.Value));
+            }
+            return r;
+        }
+        internal BTree<long, BTree<long,bool>> Fix(BTree<long, BTree<long,bool>> fi)
+        {
+            var r = BTree<long, BTree<long,bool>>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Unheap(p);
+                if (p != np)
+                    ch = true;
+                r += (np, Fix(b.value()));
+            }
+            return ch ? r : fi;
+        }
         internal int PosFor(TableColumn tc)
         {
             var oi = (ObInfo)db.role.infos[tc.tabledefpos];
@@ -702,6 +841,68 @@ namespace Pyrrho.Level4
                 if (b.value() == tc.defpos)
                     return b.key();
             return -1;
+        }
+    }
+    internal class Framing : Basis // for compiled code
+    {
+        internal const long
+            Data = -450,    // BTree<long,RowSet>
+            Defs = -451,    // Ident.Idents
+            Depths = -452,  // BTree<int,BTree<long,DBObject>>
+            Obs = -449;     // BTree<long,DBObject>
+        public BTree<long, DBObject> obs => 
+            (BTree<long,DBObject>)mem[Obs]??BTree<long,DBObject>.Empty;
+        public BTree<long, RowSet> data =>
+            (BTree<long,RowSet>)mem[Data]??BTree<long,RowSet>.Empty;
+        public Ident.Idents defs =>
+            (Ident.Idents)mem[Defs]??Ident.Idents.Empty;
+        public BTree<int, BTree<long, DBObject>> depths =>
+            (BTree<int,BTree<long,DBObject>>)mem[Depths]
+            ??BTree<int,BTree<long,DBObject>>.Empty;
+        public readonly static Framing Empty = new Framing();
+        Framing() { }
+        Framing(BTree<long,object> m) :base(m) { }
+        public Framing(Context cx) 
+            : base(BTree<long,object>.Empty+(Obs,cx.obs)+(Data,cx.data)
+                  +(Defs,cx.defs)+(Depths,cx.depths))
+        { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new Framing(m);
+        }
+        public static Framing operator+(Framing f,(long,object)x)
+        {
+            return new Framing(f.mem + x);
+        }
+        public static Framing operator+(Framing f,DBObject ob)
+        {
+            var p = ob.defpos;
+            var d = f.depths[ob.depth]??BTree<long,DBObject>.Empty;
+            return f + (Obs, f.obs + (p,ob)) + (Depths, f.depths + (ob.depth, d + (p, ob)));
+        }
+        public static Framing operator+(Framing f,RowSet r)
+        {
+            return f + (Data, f.data + (r.defpos, r));
+        }
+        public Framing Relocate(Context cx)
+        {
+            var r = Empty;
+            for (var b = data.First(); b != null; b = b.Next())
+                r += b.value().Relocate(cx);
+            for (var b = obs.First(); b != null; b = b.Next())
+                r += b.value().Relocate(cx);
+            r += (Defs,defs.Relocate(cx));
+            return r;
+        }
+        public Framing Relocate(Writer wr)
+        {
+            var r = Empty;
+            for (var b = data.First(); b != null; b = b.Next())
+                r += b.value().Relocate(wr);
+            for (var b = obs.First(); b != null; b = b.Next())
+                r += b.value().Relocate(wr);
+            r += (Defs, defs.Relocate(wr));
+            return r;
         }
     }
     internal class Register

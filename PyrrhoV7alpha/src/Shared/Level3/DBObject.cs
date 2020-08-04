@@ -35,7 +35,7 @@ namespace Pyrrho.Level3
             Depth = -66, // int  (max depth of dependents)
             Description = -67, // string
             _Domain = -176, // Domain 
-            Framing = -167, // BTree<long,DBObject> compiled objects
+            _Framing = -167, // BTree<long,DBObject> compiled objects
             _From = -306, // long
             LastChange = -68, // long (formerly called Ppos)
             Sensitive = -69; // bool
@@ -62,8 +62,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// For compiled code - triggers and Procedures
         /// </summary>
-        internal BTree<long, DBObject> framing =>
-            (BTree<long, DBObject>)mem[Framing] ?? BTree<long, DBObject>.Empty;
+        internal Framing framing =>
+            (Framing)mem[_Framing] ?? Framing.Empty;
         /// <summary>
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
@@ -180,13 +180,7 @@ namespace Pyrrho.Level3
                 ds += (wr.Fix(b.key()), true);
             if (ds != dependents)
                 r += (Dependents, ds);
-            var fs = BTree<long, DBObject>.Empty;
-            for (var b=framing?.First();b!=null;b=b.Next())
-            {
-                var n = b.value().Relocate(wr);
-                fs += (n.defpos, n);
-            }
-            r += (Framing, fs);
+            r += (_Framing, framing.Relocate(wr));
             wr.cx.obs += (r.defpos, r);
             return r;
         }

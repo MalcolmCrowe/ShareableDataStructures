@@ -60,7 +60,7 @@ namespace Pyrrho.Level3
             : base(p.ppos, 
                   _Mem(p) + (Action,p.def) + (Name,p.name)
                   + (Definer, p.database.role.defpos)
-                  + (Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
+                  + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
                   + (UpdateCols, p.cols))
 		{ }
         public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) 
@@ -175,7 +175,7 @@ namespace Pyrrho.Level3
         internal long trig => (long)mem[Trig];
         internal CList<long> columns => (CList<long>)mem[SqlValue._Columns] ?? CList<long>.Empty;
         internal TransitionTable(Ident ic, bool old, Context cx, From fm, Trigger tg)
-                        : base(ic.iix, _Mem(cx,ic,fm) + (Old, old) + (Trig, tg.defpos))
+                : base(ic.iix, _Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -200,8 +200,8 @@ namespace Pyrrho.Level3
             } 
             var nd = new Domain(Sqlx.ROW,vs);
             return BTree<long, object>.Empty + (_Domain, nd) + (Name, ic.ident)
-                  + (SqlValue._Columns, cs) + (Dependents,ds)+(Depth,2)
-                  + (Target,fm.target);
+                  + (SqlValue._Columns, cs) + (Dependents, ds) + (Depth, 2)
+                  + (Target, fm.target);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -221,9 +221,8 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (SqlValue._Columns, cs);
-            var dm = (Domain)domain._Relocate(wr);
-            if (dm != domain)
-                r += (_Domain, dm);
+            var dm = domain._Relocate(wr);
+            r += (_Domain, dm);
             return r;
         }
         internal override Basis _Relocate(Context cx)
@@ -241,8 +240,7 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (SqlValue._Columns, cs);
             var dm = domain._Relocate(cx);
-            if (dm != domain)
-                r += (_Domain, dm);
+            r += (_Domain, dm);
             return r;
         }
         internal override void _Add(Context cx)

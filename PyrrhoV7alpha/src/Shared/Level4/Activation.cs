@@ -132,6 +132,57 @@ namespace Pyrrho.Level4
             return base.Ret();
         }
     }
+    internal class TriggerContext : Context
+    {
+        internal long trspos;
+        internal BTree<long, bool> tgs;
+        internal BTree<long, TriggerActivation> acts = null;
+        internal TriggerContext(Context _cx,long trs,BTree<long,bool> ts): base(_cx,trs)
+        {
+            trspos = trs;
+            tgs = ts;
+        }
+        internal void CreateActs(TransitionRowSet trs)
+        {
+            acts = BTree<long, TriggerActivation>.Empty;
+            for (var tg = tgs?.First(); tg != null; tg = tg.Next())
+            {
+                var t = tg.key();
+                Frame(t);
+                // NB at the cx.obs[t] version of the trigger has the wrong action field
+                acts += (t, new TriggerActivation(this, trs, (Trigger)db.objects[t]));
+            }
+        }
+        /// <summary>
+        /// Perform the triggers in a set. 
+        /// </summary>
+        /// <param name="acts"></param>
+        internal bool Exec(Context _cx, TransitionRowSet trs)
+        {
+            var r = false;
+            if (acts == null)
+                CreateActs(trs);
+            trs.targetAc.db = _cx.db;
+            var c = _cx.cursors[trs.defpos];
+            var row = (c as TransitionRowSet.TargetCursor)
+                ?? ((c is TransitionRowSet.TransitionCursor tc) ? 
+                new TransitionRowSet.TargetCursor(trs.targetAc, tc) : null);
+            bool skip;
+            for (var a = acts?.First(); a != null; a = a.Next())
+            {
+                var ta = a.value();
+                ta.db = _cx.db;
+                (row, skip) = ta.Exec(trs.targetAc, row);
+                r = r || skip;
+                trs.targetAc.db = ta.db;
+            }
+            _cx = trs.targetAc.SlideDown();
+            _cx.val = TBool.For(r);
+            var cu = row?._trsCu;
+            _cx.cursors += (trs.defpos, cu); // restore the TransitionCursor
+            return r;
+        }
+    }
     /// <summary>
     /// This Activation context is for executing a single trigger on a row of a TransitionRowSet. 
     /// Triggers run with definer's privileges. 
@@ -161,7 +212,7 @@ namespace Pyrrho.Level4
             parent = cx.next;
             nextHeap = cx.nextHeap;
             obs = cx.obs;
-            obs += (tg.framing,true);
+            Install(tg.framing);
             var tb = (Table)cx.db.objects[trs.from.target];
             var oi = cx.Inf(tb.defpos);
             cx.obs += (tb.defpos, tb);
@@ -210,7 +261,8 @@ namespace Pyrrho.Level4
             if (_trig.oldTable!= -1L)
                 data += (_trig.oldTable, new TransitionTableRowSet(_trig.oldTable,cx,_trs));
             if (_trig.newTable!= -1L)
-                data += (_trig.newTable, new TransitionTableRowSet(_trig.newTable, cx, _trs.defpos));
+                data += (_trig.newTable, 
+                    new TransitionTableRowSet(_trig.newTable, cx,_trs.defpos));
             var ta = (WhenPart)obs[_trig.action];
             var tc = cx.obs[ta.cond]?.Eval(cx);
             if (tc != TBool.False)
@@ -271,7 +323,7 @@ namespace Pyrrho.Level4
         }
         internal override TriggerActivation FindTriggerActivation(long tabledefpos)
         {
-            var fm = _trs.from;
+            var fm = (From)obs[data[_trs.defpos].from];
             var t = tr.objects[fm.target] as Table;
             return (t.defpos == tabledefpos) ? this : base.FindTriggerActivation(tabledefpos);
         }

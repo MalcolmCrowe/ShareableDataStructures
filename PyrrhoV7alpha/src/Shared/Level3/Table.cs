@@ -184,7 +184,7 @@ namespace Pyrrho.Level3
             int count = 0;
             if (Denied(cx, Grant.Privilege.Insert))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var dt = data.dataType;
+            var dt = data.domain;
             var st = (dt != f.domain) ? dt : null; // subtype
             var sp = cx.db.types[st] ?? -1L;
             // parameter cl is only supplied when d_User.defpos==d.owner
@@ -205,18 +205,18 @@ namespace Pyrrho.Level3
             var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Insert, eqs);
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
-            bool fi;
-            (_,fi) = trs.InsertSB(cx);
-            if (!fi) // no insteadof has fired
+            bool? fi = trs.InsertSB(cx);
+            if (fi!=true) // no insteadof has fired
             {
                 for (var trb = trs.First(cx) as TransitionRowSet.TransitionCursor; 
                     trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionCursor) // trb constructor checks for autokey
                 {
                     // Do row-level triggers
-                    (trb,fi) = trb.InsertRB(cx);
-                    if (fi) // an insteadof trigger has fired
+                    fi = trb.InsertRB(cx);
+                    if (fi==true) // an insteadof trigger has fired
                         continue;
-                    Record r = null;
+                    trb = (TransitionRowSet.TransitionCursor) cx.cursors[trs.defpos];
+                    Record r;
                     var np = cx.db.nextPos;
                     if (cl != Level.D)
                         r = new Record3(this,trb.targetRow.values, sp, cl, np, cx);
@@ -233,7 +233,8 @@ namespace Pyrrho.Level3
                     cx.tr.FixTriggeredActions(triggers,trs._tgt,r.ppos);
           //          _cx.affected+=new Rvv(defpos, trb._defpos, r.ppos);
                    // Row-level after triggers
-                    (trb,fi) = trb.InsertRA(cx);
+                    fi = trb.InsertRA(cx);
+                    trb = (TransitionRowSet.TransitionCursor)cx.cursors[trs.defpos];
                 }
             }
             // Statement-level after triggers
@@ -286,17 +287,17 @@ namespace Pyrrho.Level3
             var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Delete, eqs);
             var cl = cx.db.user.clearance;
             cx.from += trs.finder;
-            var fi = false;
-            (_,fi) = trs.DeleteSB(cx);
-            if (!fi)
+            bool? fi = trs.DeleteSB(cx);
+            if (fi!=true)
                 for (var trb = trs.First(cx) as TransitionRowSet.TransitionCursor; trb != null;
                     trb = trb.Next(cx) as TransitionRowSet.TransitionCursor)
                 {
                     //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
                     //            continue;
-                    (trb,fi) = trb.DeleteRB(cx);
-                    if (fi)
+                    fi = trb.DeleteRB(cx);
+                    if (fi==true)
                         continue;
+                    trb = (TransitionRowSet.TransitionCursor)cx.cursors[trs.defpos];
                     var rec = trb.Rec();
                     if (cx.db.user.defpos != cx.db.owner && enforcement.HasFlag(Grant.Privilege.Delete) ?
                         // If Delete is enforced by the table and the user has delete privilege for the table, 
@@ -349,8 +350,8 @@ namespace Pyrrho.Level3
             cx.from += trs.finder;
             if ((level != null || updates.Count > 0))
             {
-                var (_,fi) = trs.UpdateSB(cx);
-                if (!fi)
+                var fi = trs.UpdateSB(cx);
+                if (fi!=true)
                     for (var trb = trs.First(cx) as TransitionRowSet.TransitionCursor;
                         trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionCursor)
                     {
@@ -363,9 +364,10 @@ namespace Pyrrho.Level3
                                 throw new DBException("0U000", cx.Inf(ua.vbl).name);
                             trb += (cx, ua.vbl, tv);
                         }
-                        (trb,fi) = trb.UpdateRB(cx);
-                        if (fi) // an insteadof trigger has fired
+                        fi = trb.UpdateRB(cx);
+                        if (fi==true) // an insteadof trigger has fired
                             continue;
+                        trb = (TransitionRowSet.TransitionCursor)cx.cursors[trs.defpos];
                         TableRow rc = trb.Rec();
                         // If Update is enforced by the table, and a record selected for update 
                         // is not one to which the user has clearance 
@@ -387,8 +389,9 @@ namespace Pyrrho.Level3
                         var ns = cx.newTables[trs.defpos] ?? BTree<long, TableRow>.Empty;
                         cx.newTables += (trs.defpos,  ns + (nr.defpos, nr));
                         cx.tr.FixTriggeredActions(triggers, trs._tgt, u.ppos);
-                        (trb,_) = trb.UpdateRA(cx);
-              //          cx.affected += new Rvv(defpos, u.defpos, tr.loadpos);
+                        trb.UpdateRA(cx);
+                        trb = (TransitionRowSet.TransitionCursor)cx.cursors[trs.defpos];
+                        //          cx.affected += new Rvv(defpos, u.defpos, tr.loadpos);
                     }
             }
             trs.UpdateSA(cx);

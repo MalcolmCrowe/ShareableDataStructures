@@ -38,6 +38,7 @@ namespace Pyrrho.Common
                 throw new PEException("PE666");
             dataType = t;
         }
+        internal abstract TypedValue New(Domain t);
         internal abstract object Val();
         internal virtual TypedValue Next()
         {
@@ -93,6 +94,14 @@ namespace Pyrrho.Common
         {
             get;
         }
+        internal virtual TypedValue Relocate(Context cx)
+        {
+            return New((Domain)dataType._Relocate(cx));
+        }
+        internal virtual TypedValue Relocate(Writer wr)
+        {
+            return New((Domain)dataType._Relocate(wr));
+        }
         public override string ToString()
         {
             return "TypedValue";
@@ -111,6 +120,10 @@ namespace Pyrrho.Common
         static TNull _Value;
         TNull() : base(Domain.Null) { _Value = this; }
         internal static TNull Value => _Value??new TNull();
+        internal override TypedValue New(Domain t)
+        {
+            return _Value;
+        }
         internal override object Val()
         {
             return null;
@@ -137,6 +150,10 @@ namespace Pyrrho.Common
         internal readonly long? value;
         internal TInt(Domain dt, long? v) : base(dt) { value = v; }
         internal TInt(long? v) : this(Domain.Int, v) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TInt(t, value);
+        }
         internal override object Val()
         {
             return value;
@@ -237,7 +254,7 @@ namespace Pyrrho.Common
         {
             if (ivalue == null)
                 return null;
-            return (long)ivalue;
+            return ivalue;
         }
         internal override Integer ToInteger()
         {
@@ -265,6 +282,10 @@ namespace Pyrrho.Common
         internal static TBool Null = new TBool(null);
         private TBool(Domain dt, bool? b) : base(dt) { value = b; }
         private TBool(bool? b) : this(Domain.Bool, b) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TBool(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             var that = (TBool)obj;
@@ -309,6 +330,10 @@ namespace Pyrrho.Common
         internal TChar(DBObject n,Database d) : this((n == null) ? "" : 
             ((ObInfo)d.role.infos[n.defpos]).name) { }
         internal TChar(Ident n) : this((n == null) ? "" : n.ident) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TChar(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             var that = obj as TChar;
@@ -343,6 +368,10 @@ namespace Pyrrho.Common
         internal readonly Numeric value;
         internal TNumeric(Domain dt, Numeric n) : base(dt) { value = n; }
         internal TNumeric(Numeric n) : this(Domain.Numeric, n) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TNumeric(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             var that = (TNumeric)obj;
@@ -409,6 +438,14 @@ namespace Pyrrho.Common
         internal TReal(Domain dt, Numeric n) : base(dt) { nvalue = n; }
         internal TReal(double d) : this(Domain.Real, d) { }
         internal TReal(Numeric n) : this(Domain.Real, n) { }
+        TReal(Domain dt, double d, Numeric n) : base(dt)
+        {
+            dvalue = d; nvalue = n;
+        }
+        internal override TypedValue New(Domain t)
+        {
+            return new TReal(t, dvalue, nvalue);
+        }
         public override int _CompareTo(object obj)
         {
             var that = (TReal)obj;
@@ -464,6 +501,10 @@ namespace Pyrrho.Common
         {
             value = (v is TSensitive st) ? st.value : v;
         }
+        internal override TypedValue New(Domain t)
+        {
+            return new TSensitive(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             object that = (obj is TSensitive st) ? st.value : obj;
@@ -484,6 +525,20 @@ namespace Pyrrho.Common
     {
         internal TypedValue value = null;
         internal TUnion(Domain dt, TypedValue v) : base(dt) { value = v;  }
+        internal override TypedValue New(Domain t)
+        {
+            return new TUnion(t,value); // approximate: use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TUnion((Domain)dataType._Relocate(cx), 
+                value.Relocate(cx));
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TUnion((Domain)dataType._Relocate(wr),
+                value.Relocate(wr));
+        }
         public override int _CompareTo(object obj)
         {
             throw new NotImplementedException();
@@ -528,6 +583,16 @@ namespace Pyrrho.Common
         internal readonly DateTime? value;
         internal TDateTime(Domain dt, DateTime? d) : base(dt) { value = d; }
         internal TDateTime(DateTime d) : this(Domain.Timestamp, d) { }
+        /// <summary>
+        /// Don't use this yourself: use Relocate.
+        /// (It should be protected but Domain is internal)
+        /// </summary>
+        /// <param name="t"></param>
+        /// <returns></returns>
+        internal override TypedValue New(Domain t)
+        {
+            return new TDateTime(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             var that = (TDateTime)obj;
@@ -564,6 +629,10 @@ namespace Pyrrho.Common
         internal readonly Interval value;
         internal TInterval(Domain dt, Interval i) : base(dt) { value = i; }
         internal TInterval(Interval i) : this(Domain.Interval, i) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TInterval(t, value);
+        }
         /// <summary>
         /// Fake: Intervals are strictly speaking not comparable
         /// </summary>
@@ -601,6 +670,10 @@ namespace Pyrrho.Common
         internal readonly TimeSpan? value;
         internal TTimeSpan(Domain dt, TimeSpan? t) : base(dt) { value = t; }
         internal TTimeSpan(TimeSpan t) : this(Domain.Timespan, t) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TTimeSpan(t, value);
+        }
         public override int _CompareTo(object obj)
         {
             var that = (TTimeSpan)obj;
@@ -635,6 +708,14 @@ namespace Pyrrho.Common
     {
         internal MTree value;
         internal TMTree(MTree m) : base(Domain.MTree) { value = m; }
+        internal override TypedValue New(Domain t)
+        {
+            return this; // approximate: use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TMTree((MTree)value.Relocate(cx));
+        }
         internal override object Val()
         {
             return value;
@@ -676,6 +757,18 @@ namespace Pyrrho.Common
     {
         internal BTree<long, bool> value;
         internal TPartial(BTree<long, bool> t) : base(Domain.Partial) { value = t; }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TPartial(cx.Fix(value));
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TPartial(wr.Fix(value));
+        }
         internal override object Val()
         {
             return value;
@@ -694,29 +787,35 @@ namespace Pyrrho.Common
     }
     internal class TArray : TypedValue
     {
-        internal List<TypedValue> list; 
-        internal TArray(Domain dt, params TypedValue[] a) : base(dt) { list = new List<TypedValue>(a); }
-        internal TArray(Domain dt, List<TypedValue> a) : base(dt) { list = a; }
-        internal TArray(Domain dt,int n) : base(dt) 
+        internal readonly CList<TypedValue> list; 
+        internal TArray(Domain dt, params TypedValue[] a) : base(dt) 
         { 
-            list = new List<TypedValue>(n);
-            for (int i = 0; i < n; i++)
-                list.Add(null);
+            var ts = CList<TypedValue>.Empty;
+            foreach (var x in a)
+                ts += x;
+            list = ts;
+        }
+        internal TArray(Domain dt, CList<TypedValue> a) : base(dt) { list = a; }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TArray((Domain)dataType._Relocate(cx),
+                cx.Fix(list));
         }
         internal override object Val()
         {
             return list;
         }
-        internal int Length { get { return list.Count; } }
-        internal TypedValue this[int i] { get { return list[i]; }
-            set
-            {
-                if (i == list.Count) 
-                    list.Add(value);
-                else
-                    list[i] = value;
-            }
+        public static TArray operator+(TArray ar,TypedValue v)
+        {
+            if (!ar.dataType.elType.CanTakeValueOf(v.dataType))
+                throw new DBException("22005", ar.dataType.elType, v.dataType);
+            return new TArray(ar.dataType, ar.list + v);
         }
+        internal int Length { get { return (int)list.Count; } }
         internal override TypedValue this[string n]
         {
             get
@@ -770,10 +869,10 @@ namespace Pyrrho.Common
             var sb = new StringBuilder("[");
             var cm = "";
             if (list != null)
-                foreach (var e in list)
+                for(var b=list.First();b!=null;b=b.Next())
                 {
                     sb.Append(cm); cm = ",";
-                    sb.Append(e.ToString());
+                    sb.Append(b.value().ToString());
                 }
             sb.Append("]");
             return sb.ToString();
@@ -792,6 +891,18 @@ namespace Pyrrho.Common
         internal TTypeSpec(Domain t) : base(Domain.TypeSpec)
         {
             _dataType = t;
+        }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TTypeSpec((Domain)_dataType._Relocate(cx));
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TTypeSpec((Domain)_dataType._Relocate(wr));
         }
         internal override object Val()
         {
@@ -824,6 +935,10 @@ namespace Pyrrho.Common
         public override bool IsNull => false;
 
         TLevel(Level v) : base(Domain._Level) { val = v; }
+        internal override TypedValue New(Domain t)
+        {
+            return this;
+        }
         public static TLevel New(Level lv)
         {
             if (lv.Equals(Level.D))
@@ -857,6 +972,10 @@ namespace Pyrrho.Common
         internal byte[] value;
         internal TBlob(Domain dt, byte[] b) : base(dt) { value = b; }
         internal TBlob(byte[] b) : this(Domain.Blob, b) { }
+        internal override TypedValue New(Domain t)
+        {
+            return new TBlob(t,value);
+        }
         internal override object Val()
         {
             return value;
@@ -916,6 +1035,10 @@ namespace Pyrrho.Common
     {
         internal Period value;
         internal TPeriod(Domain dt, Period p) : base(dt) { value = p; }
+        internal override TypedValue New(Domain t)
+        {
+            return new TPeriod(t, value);
+        }
         internal override object Val()
         {
             return value;
@@ -940,6 +1063,10 @@ namespace Pyrrho.Common
         internal Rvv value;
         internal TRvv(Rvv ck) : base (Domain.Char)
         { value = ck; }
+        internal override TypedValue New(Domain t)
+        {
+            return this;
+        }
         internal override object Val()
         {
             return value;
@@ -1163,6 +1290,20 @@ namespace Pyrrho.Common
             }
             values = vals;
         }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TRow((Domain)dataType._Relocate(cx),
+                cx.Fix(values));
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TRow((Domain)dataType._Relocate(wr),
+                wr.Fix(values));
+        }
         public static TRow operator+(TRow rw,(long,TypedValue)x)
         {
             return new TRow(rw.dataType, rw.values + x);
@@ -1256,10 +1397,6 @@ namespace Pyrrho.Common
         /// </summary>
         internal CTree<TypedValue,long?> tree; 
         /// <summary>
-        /// The total cardinality of the set (including the counts of duplicates)
-        /// </summary>
-        long count = 0;
-        /// <summary>
         /// Accessor
         /// </summary>
         internal long Count { get { return count; } }
@@ -1267,6 +1404,7 @@ namespace Pyrrho.Common
         /// Whether duplicates are distinguished
         /// </summary>
         internal bool distinct = false;
+        internal long count = 0;
         /// <summary>
         /// Constructor: a new Multiset
         /// </summary>
@@ -1274,18 +1412,34 @@ namespace Pyrrho.Common
         /// <param name="et">The element type</param>
         internal TMultiset(Context cx,Domain et) : base (new Domain(Sqlx.MULTISET,et))
         {
-            tree = new CTree<TypedValue,long?>(et.kind); 
+            tree = CTree<TypedValue,long?>.Empty;
+            count = 0;
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(TMultiset tm) : base(tm.dataType)
         {
-            tree = new CTree<TypedValue, long?>(tm.dataType.elType.kind);
+            tree = CTree<TypedValue, long?>.Empty;
+            count = tm.count;
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(Domain dt) : base(dt) { }
-        internal TMultiset(Domain dt,CTree<TypedValue,long?>t) :base(dt)
+        internal TMultiset(Domain dt,CTree<TypedValue,long?>t,long ct) :base(dt)
         {
-            tree = t; count = t.Count;
+            tree = t; count = ct;
+        }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TMultiset((Domain)dataType._Relocate(cx),
+                cx.Fix(tree),count);
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TMultiset((Domain)dataType._Relocate(wr),
+                wr.Fix(tree),count);
         }
         /// <summary>
         /// Mutator: Add n copies of object a
@@ -1561,24 +1715,44 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TXml : TypedValue
     {
-        internal string name;
-        internal BTree<string, TypedValue> attributes = BTree<string, TypedValue>.Empty;
-        internal string content = "";
-        internal BList<TXml> children = BList<TXml>.Empty;
+        internal readonly string name;
+        internal readonly BTree<string, TypedValue> attributes = BTree<string, TypedValue>.Empty;
+        internal readonly string content = "";
+        internal readonly BList<TXml> children = BList<TXml>.Empty;
         internal static TXml Null = new TXml(null);
         internal TXml(string n) : base(Domain.XML) { name = n; }
-        internal override TypedValue this[string n]
+        TXml(string n,BTree<string,TypedValue>a,string c,BList<TXml> ch)
+            : base(Domain.XML)
         {
-            get { return attributes[n]; }
-            set { attributes+=(n, value);  }
+            name = n; attributes = a; content = c; children = ch;
+        }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Relocate(Context cx)
+        {
+            return new TXml(name,cx.Fix(attributes),content,cx.Fix(children));
+        }
+        internal override TypedValue Relocate(Writer wr)
+        {
+            return new TXml(name, wr.Fix(attributes), content, wr.Fix(children));
         }
         internal override object Val()
         {
             return ToString();
         }
-        internal void Add(TXml c)
+        public static TXml operator+(TXml t,(string,TypedValue)a)
         {
-            children += c;
+            return new TXml(t.name, t.attributes + a, t.content, t.children);
+        }
+        public static TXml operator+(TXml t,TXml c)
+        {
+            return new TXml(t.name,t.attributes,t.content,t.children + c);
+        }
+        public static TXml operator +(TXml t, string c)
+        {
+            return new TXml(t.name, t.attributes, c, t.children);
         }
         public override int _CompareTo(object obj)
         {

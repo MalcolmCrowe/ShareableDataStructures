@@ -427,7 +427,7 @@ namespace Pyrrho.Level3
         internal virtual RowSet RowSet(long dp,Context cx, Domain xp)
         {
             if (cx.Eval(dp,xp.rowType) is TRow r)
-                return new TrivialRowSet(dp,cx, xp.rowType, r, -1L,
+                return new TrivialRowSet(dp,cx, r, -1L,
                     cx.data[from]?.finder?? BTree<long,RowSet.Finder>.Empty);
             cx.data += (dp, EmptyRowSet.Value);
             return EmptyRowSet.Value;
@@ -2288,6 +2288,18 @@ namespace Pyrrho.Level3
         {
             return new SqlLiteral(dp,mem);
         }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (SqlLiteral)base._Relocate(cx);
+            r += (_Val, val.Relocate(cx));
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (SqlLiteral)base._Relocate(wr);
+            r += (_Val, val.Relocate(wr));
+            return r;
+        }
         internal override Query Conditions(Context cx, Query q, bool disj,out bool move)
         {
             move = true;
@@ -2479,7 +2491,7 @@ namespace Pyrrho.Level3
                 ch = ch || (s.defpos != b.value());
             }
             if (ch) // can't just do a new SqlRow here as we might need SqlOldRow or SqlNewRow
-                r = (SqlRow)r.New(_Inf(BTree<long,object>.Empty, domain, vs) 
+                r = (SqlRow)r.New(_Inf(BTree<long,object>.Empty, r.domain, vs) 
                     + (_Columns, cs) + (Dependents, _Deps(cs)) + (Depth, 1 + _Depth(vs)));
             return r;
         }
@@ -2497,7 +2509,7 @@ namespace Pyrrho.Level3
                 ch = ch || (s.defpos != b.value());
             }
             if (ch) // can't just do a new SqlRow here as we might need SqlOldRow or SqlNewRow
-                r = (SqlRow)r.New(_Inf(BTree<long, object>.Empty, domain, vs)
+                r = (SqlRow)r.New(_Inf(BTree<long, object>.Empty, r.domain, vs)
                     + (_Columns, cs) + (Dependents, _Deps(cs)) + (Depth, 1 + _Depth(vs)));
             return r;
         }
@@ -2743,7 +2755,7 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue Eval(Context cx)
         {
-            var r = new TArray(domain, (int)rows.Count);
+            var r = new TArray(domain);
             var i = 0;
             for (var b=rows.First(); b!=null; b=b.Next(),i++)
                 r[i] = cx.obs[b.value()].Eval(cx);
@@ -2968,13 +2980,13 @@ namespace Pyrrho.Level3
             {
                 var (n, a) = b.value();
                 if (cx.obs[a].Eval(cx)?.NotNull() is TypedValue ta)
-                    r.attributes += (n.ToString(), ta);
+                    r += (n.ToString(), ta);
             }
             for(var b=children?.First();b!=null;b=b.Next())
                 if (cx.obs[b.value()].Eval(cx) is TypedValue tc)
-                    r.children+=(TXml)tc;
+                    r +=(TXml)tc;
             if (cx.obs[content]?.Eval(cx)?.NotNull() is TypedValue tv)
-                r.content= (tv as TChar)?.value;
+                r += (tv as TChar)?.value;
             return r;
         }
         /// <summary>
@@ -3263,13 +3275,13 @@ namespace Pyrrho.Level3
             var dm = domain;
             if (svs != -1L)
             {
-                var ar = new List<TypedValue>();
-                var ers = cx.obs[svs]?.Eval(cx) as RowSet;
-                for (var b = ers.First(cx); b != null; b = b.Next(cx))
-                    ar.Add(b[0]);
+                var ar = CList<TypedValue>.Empty;
+                var ers = cx.obs[svs]?.Eval(cx) as TArray;
+                for (var b = ers.list?.First(); b != null; b = b.Next())
+                    ar+=b.value()[0];
                 return new TArray(dm, ar);
             }
-            var a = new TArray(dm,(int)array.Count);
+            var a = new TArray(dm);
             var i = 0;
             for (var b=array?.First();b!=null;b=b.Next(),i++)
                 a[i] = cx.obs[b.value()]?.Eval(cx)?.NotNull() ?? dm.defaultValue;
@@ -3393,7 +3405,7 @@ namespace Pyrrho.Level3
             var ers = ((Query)cx.obs[expr])
                 .RowSets(cx, cx.data[from]?.finder??BTree<long, RowSet.Finder>.Empty);
             if (dm.kind == Sqlx.TABLE)
-                return ers;
+                return ers.Eval(cx);
             var rb = ers.First(cx);
             if (rb == null)
                 return dm.defaultValue;
@@ -4445,7 +4457,7 @@ namespace Pyrrho.Level3
                         fc.acc = new TArray(new Domain(Sqlx.ARRAY, fc.mset.tree?.First()?.key().dataType));
                         var ar = fc.acc as TArray;
                         for (var d = fc.mset.tree.First();d!= null;d=d.Next())
-                            ar.list.Add(d.key());
+                            ar+=d.key();
                         return fc.acc;
                     }
                 case Sqlx.AVG:
@@ -5078,7 +5090,7 @@ namespace Pyrrho.Level3
                         var v = vl.Eval(cx)?.NotNull();
                         if (v != null)
                         {
-                            ar.list.Add(v);
+                            ar+=v;
                 //            etag = ETag.Add(v.etag, etag);
                         }
                //         else
@@ -7175,7 +7187,7 @@ namespace Pyrrho.Level3
         {
             RowSet rs = ((Query)cx.obs[expr])
                 .RowSets(cx,cx.data[from]?.finder?? BTree<long, RowSet.Finder>.Empty);
-            RTree a = new RTree(rs.defpos,cx,rs.rt,rs.dataType,TreeBehaviour.Disallow, TreeBehaviour.Disallow);
+            RTree a = new RTree(rs.defpos,cx,rs.rt,rs.domain,TreeBehaviour.Disallow, TreeBehaviour.Disallow);
             for (var rb=rs.First(cx);rb!= null;rb=rb.Next(cx))
                 if (RTree.Add(ref a, rb, rb) == TreeBehaviour.Disallow)
                     return TBool.False;
@@ -7441,11 +7453,6 @@ namespace Pyrrho.Level3
         {
             return (wh!=null)? this+(HttpWhere,where+(wh.defpos, wh)):this;
         }
-        internal abstract TypedValue Eval(Context cx, bool asArray);
-        internal override TypedValue Eval(Context cx)
-        {
-            return Eval(cx,false);
-        }
         internal virtual void Delete(Transaction tr,RestView rv, Query f,BTree<string,bool>dr,Adapters eqs)
         {
         }
@@ -7557,21 +7564,10 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal override TypedValue Eval(Context cx,bool asArray)
+        internal override TypedValue Eval(Context cx)
         {
-            var r = (expr?.Eval(cx) is TypedValue ev)?
-                    OnEval(cx,ev):null;
-            if ((!asArray) && r is TArray ta)
-            {
-                var rs = BList<(long,TRow)>.Empty;
-                var u = cx.GetUid(ta.list.Count);
-                for (var i = 0; i < ta.list.Count; i++)
-                    rs += (u+i, (TRow)ta.list[i]);
-                return new ExplicitRowSet(defpos,cx, globalFrom.domain, rs);
-            }
-            if (r != null)
-                return r;
-            return TNull.Value;
+            return (expr?.Eval(cx) is TypedValue ev)?
+                    OnEval(cx,ev):TNull.Value;
         }
         TypedValue OnEval(Context cx, TypedValue ev)
         {
@@ -7975,7 +7971,7 @@ namespace Pyrrho.Level3
             var cs = (Query)cx.obs[globalFrom.source];
             return base.AddCondition(cx,wh?.PartsIn(cs.rowType));
         }
-        internal override TypedValue Eval(Context cx, bool asArray)
+        internal override TypedValue Eval(Context cx)
         {
             var tr = cx.db;
             long qp = globalFrom.QuerySpec(cx); // can be a From if we are in a join
@@ -7990,7 +7986,7 @@ namespace Pyrrho.Level3
             var usingTableColumns = ut.domain.representation;
             var urs = new IndexRowSet(cx, usingTable, usingIndex,null,
                 cx.data[from]?.finder??BTree<long,RowSet.Finder>.Empty);
-            var rs = BList<(long,TRow)>.Empty;
+            var r = new TArray(domain);
             for (var b = urs.First(cx); b != null; b = b.Next(cx))
             {
                 var ur = b;
@@ -7999,17 +7995,10 @@ namespace Pyrrho.Level3
                     (SqlValue)cx.Add(new SqlLiteral(cx.nextHeap++,cx,url)), "application/json", 
                     globalFrom.where, cs.ToString(), ur, globalFrom.matches);
                 cx.Add(sv);
-                if (sv.Eval(cx, true) is TArray rv)
-                {
-                    var u = cx.GetUid(rv.Length);
-                    for (var i = 0; i < rv.Length; i++)
-                        rs += (u+i, rv[i] as TRow);
-                }
-                else
-                    return null;
+                if (sv.Eval(cx) is TArray rv)
+                    r += rv;
             }
-            var ers = new ExplicitRowSet(defpos,cx, cs.domain, rs);
-            return ers;
+            return r;
         }
 /*        internal override void Delete(Transaction tr,RestView rv, Query f, BTree<string, bool> dr, Adapters eqs)
         {

@@ -138,7 +138,9 @@ namespace Pyrrho.Level4
 	/// </summary>
     internal class SystemRowSet : RowSet
     {
-        protected SystemTable from;
+        internal const long
+            SysTable = -445; // SystemTable
+        protected SystemTable sysFrom => (SystemTable)mem[SysTable];
         /// <summary>
         /// Construct results for a system table.
         /// Independent of database, role, and user.
@@ -146,31 +148,28 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx,SystemTable f,BTree<long,bool>w=null)
-            : base(f.defpos,cx,f.domain,-1,null,null,w)
-        {
-            from = f;
-        }
-        protected SystemRowSet(SystemRowSet rs, long a, long b) : base(rs, a, b)
-        {
-            from = rs.from;
-        }
+            : base(f.defpos,cx,f.domain,-1,null,null,w,null,
+                  null,null,null,new BTree<long,object>(SysTable,f))
+        { }
         protected SystemRowSet(Context cx, SystemRowSet rs, BTree<long, Finder> nd, bool bt)
             : base(cx, rs, nd, bt) 
+        { }
+        protected SystemRowSet(long dp,BTree<long,object>m) :base(dp,m) {}
+        internal override Basis New(BTree<long, object> m)
         {
-            from = rs.from;
-        }
-        internal override RowSet New(long a, long b)
-        {
-            return new SystemRowSet(this, a, b);
+            return new SystemRowSet(defpos,m);
         }
         internal override RowSet New(Context cx,BTree<long,Finder>nd,bool bt)
         {
             return new SystemRowSet(cx, this, nd, bt);
         }
-        internal override void _Strategy(StringBuilder sb, int indent)
+        public static SystemRowSet operator+(SystemRowSet rs,(long,object)x)
         {
-            sb.Append(from.name);
-            base._Strategy(sb, indent);
+            return (SystemRowSet)rs.New(rs.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new SystemRowSet(dp,mem);
         }
         internal override bool TableColsOk => true;
         /// <summary>
@@ -274,9 +273,9 @@ namespace Pyrrho.Level4
         protected override Cursor _First(Context _cx)
         {
             var res = this;
-            if (res.from == null) // for kludge
+            if (res.sysFrom == null) // for kludge
                 return null;
-            SystemTable st = res.from;
+            SystemTable st = res.sysFrom;
             switch (st.name)
             {
                 // level 2 stuff
@@ -4046,7 +4045,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx,SystemRowSet res,ABookmark<long,object>e)
             {
-                return ((Table)e.value()).RoleClassValue(_cx.tr,res.from, e);
+                return ((Table)e.value()).RoleClassValue(_cx.tr,res.sysFrom, e);
             }
         }
 
@@ -4611,7 +4610,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long,object>e)
             {
-                return ((DBObject)e.value()).RoleJavaValue(_cx.tr,rs.from, e);
+                return ((DBObject)e.value()).RoleJavaValue(_cx.tr,rs.sysFrom, e);
             }
         }
         /// <summary>
@@ -4662,7 +4661,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long, object> e)
             {
-                return ((DBObject)e.value()).RolePythonValue(_cx.tr,rs.from, e);
+                return ((DBObject)e.value()).RolePythonValue(_cx.tr,rs.sysFrom, e);
             }
         }
         /// <summary>

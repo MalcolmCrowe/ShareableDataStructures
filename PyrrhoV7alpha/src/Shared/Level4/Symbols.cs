@@ -82,14 +82,9 @@ namespace Pyrrho.Level4
         {
             return new Ident(ident, wr.Fix(iix), sub?.Relocate(wr));
         }
-        internal void ToString1(StringBuilder sb, Context cx, string eflag)
+        internal Ident Relocate(Context cx)
         {
-            sb.Append(ident);
-            if (sub != null)
-            {
-                sb.Append('.');
-                sub.ToString1(sb, cx, eflag);
-            }
+            return new Ident(ident, cx.Unheap(iix), sub?.Relocate(cx));
         }
         public int CompareTo(object obj)
         {
@@ -196,6 +191,28 @@ namespace Pyrrho.Level4
                 }
                 return r;
             }
+            internal Idents Relocate(Context cx)
+            {
+                var r = Empty;
+                for (var b=First();b!=null;b=b.Next())
+                {
+                    var n = b.key();
+                    var (p, ids) = b.value();
+                    r += (n, cx.Unheap(p), ids.Relocate(cx));
+                }
+                return r;
+            }
+            internal Idents Relocate(Level2.Writer wr)
+            {
+                var r = Empty;
+                for (var b = First(); b != null; b = b.Next())
+                {
+                    var n = b.key();
+                    var (p, ids) = b.value();
+                    r += (n, wr.Fix(p), ids.Relocate(wr));
+                }
+                return r;
+            }
             public override string ToString()
             {
                 var sb = new StringBuilder();
@@ -206,7 +223,8 @@ namespace Pyrrho.Level4
                     if (p >= 0)
                         sb.Append(DBObject.Uid(p));
                     sb.Append(",");
-                    sb.Append(ids.ToString());
+                    if (ids!=null)
+                        sb.Append(ids.ToString());
                     sb.Append(");");
                 }
                 return sb.ToString();

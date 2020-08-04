@@ -197,20 +197,6 @@ namespace Pyrrho.Level2
             }
             return ob;
         }
-        internal BTree<long, Domain> Relocate(BTree<long, Domain> rp)
-        {
-            var r = BTree<long, Domain>.Empty;
-            for (var b = rp.First(); b != null; b = b.Next())
-                r += (Fix(b.key()), (Domain)cx.db.objects[b.key()]);
-            return r;
-        }
-        internal BList<long> Relocate(BList<long> rp)
-        {
-            var r = BList<long>.Empty;
-            for (var b = rp.First(); b != null; b = b.Next())
-                r += Fix(b.value());
-            return r;
-        }
         internal BList<ParamInfo> Relocate(BList<ParamInfo> rp)
         {
             var r = BList<ParamInfo>.Empty;
@@ -235,6 +221,118 @@ namespace Pyrrho.Level2
                 r += f;
             }
             return ch? r : ord;
+        }
+        internal CList<TypedValue> Fix(CList<TypedValue> ord)
+        {
+            var r = CList<TypedValue>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = p.Relocate(this);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
+        internal CTree<TypedValue, long?> Fix(CTree<TypedValue, long?> mu)
+        {
+            var r = CTree<TypedValue, long?>.Empty;
+            for (var b = mu?.First(); b != null; b = b.Next())
+            {
+                var p = b.key().Relocate(this);
+                var np = b.value();
+                if (np != null)
+                    r += (p, np.Value);
+            }
+            return r;
+        }
+        internal BList<long> Fix(BList<long> ord)
+        {
+            var r = BList<long>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = Fix(p);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
+        internal BTree<string, TypedValue> Fix(BTree<string, TypedValue> a)
+        {
+            var r = BTree<string, TypedValue>.Empty;
+            for (var b = a?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                r += (p, b.value().Relocate(this));
+            }
+            return a;
+        }
+        internal BList<TXml> Fix(BList<TXml> ch)
+        {
+            var r = BList<TXml>.Empty;
+            for (var b = ch.First(); b != null; b = b.Next())
+                r += (TXml)b.value().Relocate(this);
+            return r;
+        }
+        internal BTree<long, bool> Fix(BTree<long, bool> fi)
+        {
+            var r = BTree<long, bool>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Fix(p);
+                if (p != np)
+                    ch = true;
+                r += (np, true);
+            }
+            return ch ? r : fi;
+        }
+        internal BTree<long, BTree<long, bool>> Fix(BTree<long, BTree<long, bool>> fi)
+        {
+            var r = BTree<long, BTree<long, bool>>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Fix(p);
+                if (p != np)
+                    ch = true;
+                r += (np, Fix(b.value()));
+            }
+            return ch ? r : fi;
+        }
+        internal BTree<long, TypedValue> Fix(BTree<long, TypedValue> fi)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            var ch = false;
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = Fix(p);
+                if (p != np)
+                    ch = true;
+                r += (np, b.value());
+            }
+            return ch ? r : fi;
+        }
+        internal PRow Fix(PRow rw)
+        {
+            if (rw == null)
+                return null;
+            return new PRow(rw._head?.Relocate(this), Fix(rw._tail));
+        }
+        internal BTree<long, RowSet.Finder> Fix(BTree<long, RowSet.Finder> fi)
+        {
+            var r = BTree<long, RowSet.Finder>.Empty;
+            for (var b = fi.First(); b != null; b = b.Next())
+                r += (Fix(b.key()), b.value().Relocate(this));
+            return r;
         }
     }
 

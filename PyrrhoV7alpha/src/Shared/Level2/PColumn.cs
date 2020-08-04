@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
         /// <param name="dm">The domain</param>
         /// <param name="tb">The local database</param>
         public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
-            Context cx,BTree<long,DBObject> fr) : base(t,pp,cx,fr)
+            Context cx,Framing fr) : base(t,pp,cx,fr)
 		{
 			table = pr;
 			name = nm;
