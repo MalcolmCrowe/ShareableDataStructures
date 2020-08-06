@@ -114,7 +114,7 @@ namespace Pyrrho
             string rdc)
         {
             Header(rs, tr, cx, rdc);
-            if (cx.val is RowSet r)
+            if (cx.result is RowSet r)
             {
                 BeforeResults();
                 for (var e = r.First(cx);e!=null;e=e.Next(cx))
@@ -184,7 +184,7 @@ namespace Pyrrho
         {
             var cm = "";
             Header(rs, tr,cx, rdc);
-            if (cx.val is RowSet r)
+            if (cx.result is RowSet r)
             {
                 BeforeResults();
                 for (var e=r.First(cx); e != null; e = e.Next(cx))
@@ -223,7 +223,7 @@ namespace Pyrrho
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
-            var rs = cx.val as RowSet;
+            var rs = cx.result as RowSet;
             var fm = (From)cx.obs[rs.defpos];
             var om = tr.objects[fm.target] as DBObject;
             if (om!=null && om.defpos > 0)

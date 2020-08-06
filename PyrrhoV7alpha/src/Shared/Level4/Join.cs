@@ -138,6 +138,8 @@ namespace Pyrrho.Level4
         public override Cursor First(Context cx)
         {
             var r = ((JoinBookmark)base.First(cx))?.MoveToMatch(cx);
+            if (r == null)
+                return null;
             if (cx.data[second].needed != BTree<long, Finder>.Empty)
             {
                 var jrs = (JoinRowSet)cx.data[defpos];

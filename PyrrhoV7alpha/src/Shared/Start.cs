@@ -283,7 +283,7 @@ namespace Pyrrho
                             }                        // set the current reader
                         case Protocol.ResetReader:
                             if (rb != null)
-                                rb = (cx.val as RowSet).First(cx);
+                                rb = (cx.result as RowSet).First(cx);
                             tcp.Write(Responses.Done);
                             tcp.Flush(); break;
                         case Protocol.ReaderData:
@@ -338,7 +338,7 @@ namespace Pyrrho
                                 cx.db = (Transaction)db;
                                 tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.val as RowSet == null)
+                                if (cx.result as RowSet == null)
                                 {
                                     db = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
@@ -367,7 +367,7 @@ namespace Pyrrho
                                 db = new Parser(cx).ParseSql(prepared[nm], cmp);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.val as RowSet == null)
+                                if (cx.result == null)
                                 {
                                     tr = (Transaction)db;
                                     db = db.RdrClose(cx);
@@ -397,7 +397,7 @@ namespace Pyrrho
                                 //                    Console.WriteLine(""+(tn- t));
                                 tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.db.types);
                                 tcp.PutWarnings(tr);
-                                if (cx.val is RowSet rs)
+                                if (cx.result is RowSet rs)
                                 {
                                     tcp.PutSchema(cx);
                                     rb = rs.First(cx);
@@ -432,7 +432,7 @@ namespace Pyrrho
                                 db.Execute(db.role, "G",path, 1, "");
                                 var tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.val is RowSet rs)
+                                if (cx.result is RowSet rs)
                                 {
                                     tcp.PutSchema(cx);
                                     rb = rs.First(cx);
@@ -452,7 +452,7 @@ namespace Pyrrho
                                 cx = new Context(tr);
                                 db.Execute(tr.role, "G", path, 1, "");
                                 tcp.PutWarnings(tr);
-                                if (cx.val is RowSet rs)
+                                if (cx.result is RowSet rs)
                                 {
                                     tcp.PutSchema1(cx,rs);
                                     rb = rs.First(cx);
@@ -495,7 +495,7 @@ namespace Pyrrho
                                     Console.WriteLine("POST "+s);
                                 cx = new Parser(tr).ParseSqlInsert(cx, s);
                                 tr = cx.tr;
-                                var trs = cx.val as TransitionRowSet;
+                                var trs = cx.result as TransitionRowSet;
                                 tcp.PutWarnings(tr);
                                 tr = cx.tr;
                                 tcp.PutSchema(cx);
@@ -519,7 +519,7 @@ namespace Pyrrho
                                     Console.WriteLine("PUT "+s);
                                 cx = new Parser(tr).ParseSqlUpdate(cx, s);
                                 tr = cx.tr;
-                                var rs = cx.val as RowSet;
+                                var rs = cx.result as RowSet;
                                 if (rs != null)
                                     rb = rs.First(cx);
                                 tcp.PutWarnings(tr);
@@ -935,9 +935,8 @@ namespace Pyrrho
         int ArrayLength(Context cx,TArray a)
         {
             int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType);
-            int n = a.Length;
-            foreach(var e in a.list)
-                len += 1+DataLength(cx,e);
+            for(var b=a.list.First();b!=null;b=b.Next())
+                len += 1+DataLength(cx,b.value());
             return len;
         }
         int MultisetLength(Context cx, TMultiset m)
@@ -964,7 +963,7 @@ namespace Pyrrho
                 int[] flags = new int[m];
                 r.Schema(cx, flags);
                 var j = 0;
-                for (var b = r.dataType.representation.First(); b != null; b = b.Next(),j++)
+                for (var b = r.domain.representation.First(); b != null; b = b.Next(),j++)
                 {
                     var d = b.value();
                     len += StringLength(((SqlValue)cx.obs[b.key()]).name)
@@ -1225,9 +1224,9 @@ namespace Pyrrho
             Console.WriteLine("   -d  Use the given folder for database storage");
             Console.WriteLine("   -h  Use the given host address. Default is 127.0.0.1.");
 			Console.WriteLine("   -p  Listen on the given port. Default is 5433");
-            Console.WriteLine("   +s[:port]  Start HTTP REST service on the given port (default 8080). Default is 8180.");
+            Console.WriteLine("   +s[:port]  Start HTTP REST service on the given port (default 8080).");
             Console.WriteLine("   -t  Limit the number of connections to nnn");
-            Console.WriteLine("   +S[:port]  Start HTTPS REST service on the given port (default 8133). Default is 8133.");
+            Console.WriteLine("   +S[:port]  Start HTTPS REST service on the given port (default 8133).");
             Console.WriteLine("Flags:");
 #if !APPEND
             Console.WriteLine("   -C  Check mode for checksum verification");
@@ -1239,7 +1238,7 @@ namespace Pyrrho
             Console.WriteLine("   -R  Repair mode, disables automatic features of the configuration database");
             Console.WriteLine("   -T  Tutorial mode, showing server-server messages, pauses in execution");
 #endif
-            Console.WriteLine("   -V  Show progress of compiling SQL. Final compiled versions in Log$");
+            Console.WriteLine("   -V  Show progress of compiling SQL");
 		}
         /// <summary>
         /// Version information
@@ -1247,7 +1246,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (31 July 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (6 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

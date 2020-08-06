@@ -5045,7 +5045,7 @@ namespace Pyrrho.Level3
                 if (v != null)
                 {
                     if (fc.mset == null)
-                        fc.mset = new TMultiset(v.dataType);
+                        fc.mset = new TMultiset(new Domain(Sqlx.MULTISET,v.dataType));
                     else if (fc.mset.Contains(v))
                         return tg;
                     fc.mset.Add(v);

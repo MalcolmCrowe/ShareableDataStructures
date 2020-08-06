@@ -48,7 +48,7 @@ namespace Pyrrho
         Thread execution = null;
         static int _cid = 0, _tid = 0, _req = 0;
         int cid = ++_cid;
-        static StreamWriter reqs = null;
+        public static StreamWriter reqs = null;
         static DateTime start = DateTime.Now;
         public void RecordRequest(string sql)
         {

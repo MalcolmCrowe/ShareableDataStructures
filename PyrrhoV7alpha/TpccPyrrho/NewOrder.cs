@@ -75,6 +75,7 @@ namespace Tpcc
                 {
                     var s = ex.Message;
                         Form1.wconflicts++;
+                    PyrrhoConnect.reqs.WriteLine("Commit exception "+ex.Message);
                 }
             }
         }
@@ -92,6 +93,7 @@ namespace Tpcc
             {
                 var s = ex.Message;
                     Form1.wconflicts++;
+                PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message);
             }
             return true;
         }
@@ -143,9 +145,9 @@ namespace Tpcc
                 Set(6, o_id);
                 Set(132, DateTime.Now.ToString());
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-     //           Console.WriteLine("New Order exception");
+                PyrrhoConnect.reqs.WriteLine("New Order Exception 1 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -166,9 +168,9 @@ namespace Tpcc
                 Set(8, w_tax.ToString("F4").Substring(1));
                 Set(9, d_tax.ToString("F4").Substring(1));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-    //            Console.WriteLine("New Order exception");
+                PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -225,8 +227,9 @@ namespace Tpcc
                 Set(k, a.ol_supply_w_id);
                 Set(k + 1, String.Format("{0,6}", a.oliid));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -263,8 +266,9 @@ namespace Tpcc
                 a.s_quantity = s_quantity;
                 sdata = (string)rdr[2];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -347,7 +351,7 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                     Form1.wconflicts++;
-    //            Console.WriteLine("Commit exception");
+                PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message);
                 form.Rollback();
             }
             return done;

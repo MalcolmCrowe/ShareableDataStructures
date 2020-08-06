@@ -1160,13 +1160,13 @@ namespace Pyrrho.Level3
         {
             var u = (Query)cx.obs[union];
             var r = (CursorSpecification)MoveConditions(cx, u);
-            u = (QueryExpression)Refresh(cx).Conditions(cx);
+            u = (QueryExpression)u.Refresh(cx).Conditions(cx);
             return r._Union(u.Refresh(cx));
         }
         internal override Query Orders(Context cx, CList<long> ord)
         {
             var r = (CursorSpecification)base.Orders(cx, ord);
-            return r._Union((Query)cx.obs[union]).Orders(cx, ord);
+            return r._Union(((Query)cx.obs[union]).Orders(cx, ord));
         }
         internal override Query AddRestViews(Context cx,CursorSpecification q)
         {

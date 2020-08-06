@@ -60,7 +60,8 @@ namespace Tpcc
             }
             catch (Exception)
             {
-                form.Rollback();
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1");
+				form.Rollback();
             }
             finally
             {
@@ -79,9 +80,10 @@ namespace Tpcc
                     cids.Add((long)rdr[0]);
                 cid = (int)(long)cids[(cids.Count + 1) / 2];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                form.Rollback();
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message);
+				form.Rollback();
             }
             finally
             {
@@ -118,9 +120,10 @@ namespace Tpcc
                     return true;
                 oid = (int)(long)rdr[0];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                form.Rollback();
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message);
+				form.Rollback();
             }
             finally
             {

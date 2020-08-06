@@ -6720,11 +6720,6 @@ namespace Pyrrho.Level4
         /// <returns>the SqlValue</returns>
         internal SqlValue ParseSqlValue(Domain xp,bool wfok=false)
         {
-            if (tok == Sqlx.NULL)
-            {
-                Next();
-                return SqlNull.Value;
-            }
             if (tok == Sqlx.PERIOD)
             {
                 Next();
@@ -7338,7 +7333,7 @@ namespace Pyrrho.Level4
                     return (SqlValue)cx.Add(new UniquePredicate(lxr.Position, g));
             }
             if (Match(Sqlx.RDFLITERAL, Sqlx.DOCUMENTLITERAL, Sqlx.CHARLITERAL, 
-                Sqlx.INTEGERLITERAL, Sqlx.NUMERICLITERAL,
+                Sqlx.INTEGERLITERAL, Sqlx.NUMERICLITERAL, Sqlx.NULL,
             Sqlx.REALLITERAL, Sqlx.BLOBLITERAL, Sqlx.BOOLEANLITERAL))
             {
                 r = lxr.val.Build(lxr.Position,cx,xp);

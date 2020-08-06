@@ -28,14 +28,19 @@ namespace Tpcc
             var cmd = form.conn.CreateCommand();
             cmd.CommandText = "select d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
             nextoid = (int)(long)cmd.ExecuteScalar();
-            cmd.CommandText = "select count(s_i_id) from stock where s_w_id=" + wid + " and s_i_id in (select distinct ol_i_id from order_line where ol_w_id=" + wid + " and ol_d_id=" + did + " and ol_o_id>=" + (nextoid - 20) + ") and s_quantity<" + thresh;
-            int n = 0;
+            cmd.CommandText = "select count(*) from stock inner join "+
+				"(select distinct ol_i_id from order_line where ol_w_id="+wid+
+				" and ol_d_id="+did+" and ol_o_id>=" + (nextoid - 20) + 
+				") on s_i_id=ol_i_id where s_w_id=" + wid + " and s_quantity<" + thresh;
+			int n = 0;
             try
             {
                 n = (int)(long)(cmd.ExecuteScalar() ?? 0L);
             }
-            catch (Exception) { }
-            Set(4, n);
+            catch (Exception ex) {
+				PyrrhoConnect.reqs.WriteLine("StockLevel exception " + ex.Message);
+			}
+			Set(4, n);
             form.Commit();
             return false;
         }

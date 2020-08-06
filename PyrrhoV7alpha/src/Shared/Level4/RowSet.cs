@@ -1321,7 +1321,7 @@ namespace Pyrrho.Level4
                   r.where,null,null,null,null,new BTree<long,object>(From.Source,r.defpos))
         { }
         protected DistinctRowSet(Context cx,DistinctRowSet rs,BTree<long,Finder> nd,MTree mt) 
-            :base(cx,rs,nd,true)
+            :base(cx,rs+(Index.Tree,mt),nd,true)
         { }
         DistinctRowSet(Context cx, DistinctRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
@@ -1370,11 +1370,11 @@ namespace Pyrrho.Level4
                 var sv = (SqlValue)cx.obs[b.value()];
                 ds += (sv.defpos,sv);
             }
-            var mt = new MTree(new TreeInfo(sce.keys, ds, TreeBehaviour.Allow, TreeBehaviour.Allow));
-            var vs = BList<TypedValue>.Empty;
+            var mt = new MTree(new TreeInfo(sce.keys, ds, TreeBehaviour.Ignore, TreeBehaviour.Ignore));
             var rs = BTree<int, TRow>.Empty;
             for (var a = sce.First(cx); a != null; a = a.Next(cx))
             {
+                var vs = BList<TypedValue>.Empty;
                 for (var ti = mt.info; ti != null; ti = ti.tail)
                     vs+= a[ti.head];
                 MTree.Add(ref mt, new PRow(vs), 0);
@@ -1398,7 +1398,7 @@ namespace Pyrrho.Level4
             readonly DistinctRowSet _drs;
             readonly MTreeBookmark _bmk;
             DistinctCursor(Context cx,DistinctRowSet drs,int pos,MTreeBookmark bmk) 
-                :base(cx,drs,pos,0,drs.rows[(int)bmk.Value().Value])
+                :base(cx,drs,pos,0,new TRow(drs.domain,bmk.key()))
             {
                 _bmk = bmk;
                 _drs = drs;
@@ -1407,6 +1407,8 @@ namespace Pyrrho.Level4
             {
                 var ox = cx.from;
                 cx.from += cx.data[drs.source].finder;
+                if (drs.mtree == null)
+                    throw new DBException("20000", "Distinct RowSet not built?");
                 for (var bmk = drs.mtree.First(); bmk != null; bmk = bmk.Next() as MTreeBookmark)
                 {
                     var rb = new DistinctCursor(cx,drs,0, bmk);
@@ -2810,7 +2812,7 @@ namespace Pyrrho.Level4
             var kd = new Domain(Sqlx.ROW, w.domain.representation, w.order);
             var tree = new RTree(source,cx, w.order, w.domain, 
                 TreeBehaviour.Allow, TreeBehaviour.Disallow);
-            var values = new TMultiset(cx,wf.domain);
+            var values = new TMultiset(new Domain(Sqlx.MULTISET,wf.domain));
             for (var rw = cx.data[source].First(cx); rw != null; 
                 rw = rw.Next(cx))
             {

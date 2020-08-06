@@ -494,6 +494,7 @@ namespace Pyrrho.Level4
 					{
 						case Sqlx.TRUE: val = TBool.True; return Sqlx.BOOLEANLITERAL;
 						case Sqlx.FALSE: val = TBool.False; return Sqlx.BOOLEANLITERAL;
+                        case Sqlx.NULL: val = TNull.Value; return Sqlx.NULL;
 						case Sqlx.UNKNOWN: val = null; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
                         case Sqlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;

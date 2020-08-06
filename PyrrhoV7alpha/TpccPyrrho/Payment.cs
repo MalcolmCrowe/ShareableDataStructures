@@ -49,9 +49,9 @@ namespace Tpcc
                 Set(5, (string)rdr[5]);
                 ytd = (decimal)rdr[6];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-    //            Console.WriteLine("Payment transaction exception");
+                PyrrhoConnect.reqs.WriteLine("Payment exception 1 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -76,9 +76,9 @@ namespace Tpcc
      //           Console.WriteLine("Payment done");
                 form.Commit();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-    //            Console.WriteLine("Payment exception");
+                PyrrhoConnect.reqs.WriteLine("Payment exception 2 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -98,8 +98,9 @@ namespace Tpcc
                 while (rdr.Read())
                     custs.Add((long)rdr[0]);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                PyrrhoConnect.reqs.WriteLine("Payment exception 3 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -169,8 +170,9 @@ namespace Tpcc
                 c_ytd_payment = (decimal)rdr[14];
                 c_payment_cnt = (int)(decimal)rdr[15];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                PyrrhoConnect.reqs.WriteLine("Payment exception 4 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -410,8 +412,9 @@ namespace Tpcc
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
+                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
             }
-			status.Text = s;
+            status.Text = s;
 			SetCurField(curField);
 			Invalidate(true);
 		}

@@ -1409,8 +1409,7 @@ namespace Pyrrho.Common
         /// Constructor: a new Multiset
         /// </summary>
         /// <param name="tr">The transaction</param>
-        /// <param name="et">The element type</param>
-        internal TMultiset(Context cx,Domain et) : base (new Domain(Sqlx.MULTISET,et))
+        internal TMultiset(Domain dt) : base (dt)
         {
             tree = CTree<TypedValue,long?>.Empty;
             count = 0;
@@ -1422,7 +1421,6 @@ namespace Pyrrho.Common
             count = tm.count;
             // Disallow not Allow for duplicates (see below)
         }
-        internal TMultiset(Domain dt) : base(dt) { }
         internal TMultiset(Domain dt,CTree<TypedValue,long?>t,long ct) :base(dt)
         {
             tree = t; count = ct;
