@@ -42,7 +42,7 @@ namespace Pyrrho.Level4
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
         public GroupingRowSet(Context cx, Query q, RowSet rs, long gr, BTree<long, bool> h)
-            : base(q.defpos, cx, q.domain, q.display, rs.finder, _Key(cx, q, gr), q.where,
+            : base(q.defpos, cx, q.domain, rs.finder, _Key(cx, q, gr), q.where,
                   q.ordSpec, q.matches, q.matching, null, _Mem(cx, rs, gr, h))
         { }
         static BTree<long,object> _Mem(Context cx,RowSet rs,long gr,BTree<long,bool>h)

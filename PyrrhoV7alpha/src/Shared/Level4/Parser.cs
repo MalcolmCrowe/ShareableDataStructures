@@ -3008,7 +3008,6 @@ namespace Pyrrho.Level4
                 + (QueryExpression._Distinct, ParseDistinctClause());
             cs = cs._Union(qe);
             s = ParseSelectList(s,xp);
-            s += (Query.Display,s.Size(cx));
             qe+=(QueryExpression._Left,cx.Add(s).defpos);
             Mustbe(Sqlx.INTO);
             ss += (SelectSingle.Outs,ParseTargetList());
@@ -5300,7 +5299,6 @@ namespace Pyrrho.Level4
             if (!xp.CanTakeValueOf(qe.domain))
                 throw new DBException("22000");
             r = r._Union(qe);
-            r += (Query.Display, qe.display);
             r += (Query.OrdSpec, qe.ordSpec);
             r += (Domain.RowType, qe.rowType);
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
@@ -5453,7 +5451,6 @@ namespace Pyrrho.Level4
             }
             var lf = (Query)cx.obs[qe.left];
             qe += (Domain.RowType, lf.rowType);
-            qe += (Query.Display, lf.display);
             qe += (DBObject.Depth, 1 + lf.depth);
             return (QueryExpression)cx.Add(qe);
 		}
@@ -5555,8 +5552,7 @@ namespace Pyrrho.Level4
             }
             if (ch)
             {
-                r = r + (DBObject._Domain, new Domain(Sqlx.ROW, vs))
-                    + (Query.Display, vs.Length - d);
+                r = r + (DBObject._Domain, new Domain(Sqlx.ROW, vs, vs.Length - d));
                 cx.Add(r);
                 r = (QuerySpecification)r.Refresh(cx);
             }
@@ -5592,8 +5588,8 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected data type</param>
 		QuerySpecification ParseSelectList(QuerySpecification q,Domain xp)
         {
-            int j = 0;
             SqlValue v;
+            var j = 0;
             var vs = BList<SqlValue>.Empty; 
             (q,v) = ParseSelectItem(q, xp, j++);
             if (v!=null) // star items do not have a value to add at this stage
@@ -5605,7 +5601,8 @@ namespace Pyrrho.Level4
                 if (v!=null)
                     vs += v;
             }
-            return (QuerySpecification)cx.Add(q+(Query.Display,j));
+            var dm = new Domain(Sqlx.TABLE, vs);
+            return (QuerySpecification)cx.Add(q+(DBObject._Domain,dm));
         }
         (QuerySpecification,SqlValue) ParseSelectItem(QuerySpecification q,Domain xp,int pos)
         {
@@ -5666,7 +5663,6 @@ namespace Pyrrho.Level4
             if (v.domain.kind == Sqlx.TABLE)
                 throw new DBException("42171");
             q += (cx,v);
-            q += (Query.Display, q.rowType.Length);
             return ((QuerySpecification)cx.Add(q),v);
         }
         /// <summary>
@@ -5687,7 +5683,7 @@ namespace Pyrrho.Level4
             fm = fm.Refresh(cx);
             q = (QuerySpecification)cx.obs[q.defpos];
             var r = new TableExpression(lp, BTree<long, object>.Empty
-                + (DBObject._Domain, fm.domain) + (Query.Display, fm.display)
+                + (DBObject._Domain, fm.domain)
                 + (TableExpression.Target, fm.defpos)
                 + (TableExpression.Having, ha)
                 + (TableExpression.Windows, wi) // we don't seem to worry about wi.depth
@@ -5700,7 +5696,6 @@ namespace Pyrrho.Level4
             r = (TableExpression)r.AddCondition(cx,TableExpression.Having, ha);
             fm = (Query)cx.obs[r.target];
             var ds = (fm is QuerySpecification sq) ? sq.display : fm.rowType?.Length??0;
-            r+=(Query.Display,ds);
             r = (TableExpression)cx.Add(r);
             q = (QuerySpecification)q.Refresh(cx); // may have changed!
             q += (QuerySpecification.TableExp, r);

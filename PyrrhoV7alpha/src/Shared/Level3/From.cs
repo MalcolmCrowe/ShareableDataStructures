@@ -133,6 +133,7 @@ namespace Pyrrho.Level3
                     mp += (tc.defpos, true);
                 }
             }
+            var d = vs.Length;
             for (var b = ti.domain.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
@@ -144,9 +145,9 @@ namespace Pyrrho.Level3
                 cx.Add(sv);
                 vs += sv;
             }
-            var dm = new Domain(Sqlx.TABLE,vs);
+            var dm = new Domain(Sqlx.TABLE,vs,d);
             return BTree<long, object>.Empty + (Name, ic.ident)
-                   + (Target, tb.defpos) + (_Domain, dm) +(Display,vs.Length)
+                   + (Target, tb.defpos) + (_Domain, dm)
                    + (Depth, de + 1);
         }
         static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,CList<long> cr=null)
@@ -162,8 +163,8 @@ namespace Pyrrho.Level3
                 s += ci.defpos;
             }
             return BTree<long, object>.Empty
-                + (Target,pc.procdefpos) + (Display,disp) 
-                + (_Domain,new Domain(Sqlx.ROW,cx,s)) + (Name, proc.name);
+                + (Target,pc.procdefpos) 
+                + (_Domain,new Domain(Sqlx.ROW,cx,s,disp)) + (Name, proc.name);
         }
         internal override TypedValue Eval(Context cx)
         {

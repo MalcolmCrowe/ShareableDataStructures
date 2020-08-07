@@ -45,8 +45,7 @@ namespace Pyrrho.Level3
         protected QuerySpecification(long u,BTree<long, object> m)
             : base(u, m)
         { }
-        internal QuerySpecification(long dp,Context cx,Domain xp) : this(dp, _Mem(cx,xp)
-            + (_Domain,Domain.TableType) + (Display, 1))
+        internal QuerySpecification(long dp,Context cx,Domain xp) : this(dp, _Mem(cx,xp))
         { }
         static BTree<long,object> _Mem(Context cx,Domain xp)
         {
@@ -60,6 +59,7 @@ namespace Pyrrho.Level3
                     sc += (b.key(), b.value());
                 m += (Scope, sc);
             }
+            m += (_Domain, Domain.TableType+(Domain.Display,1));
             return m;
         }
         public static QuerySpecification operator +(QuerySpecification q, (long, object) x)
@@ -287,7 +287,7 @@ namespace Pyrrho.Level3
         { }
         internal QueryExpression(long u, Context cx, Query a, Sqlx o, QueryExpression b)
             : base(u,BTree<long,object>.Empty+(_Left,a.defpos)+(Op,o)+(_Right,b.defpos)
-                  +(Display,a.display)+(_Domain,a.domain)
+                  +(_Domain,a.domain)
                   +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth)))
         { }

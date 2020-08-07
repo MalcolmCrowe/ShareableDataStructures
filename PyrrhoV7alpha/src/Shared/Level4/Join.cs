@@ -39,7 +39,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : 
-            base(j.defpos,_cx,j.domain,j.display,_Fin(lr,rr),null,j.where,j.ordSpec,j.matches,
+            base(j.defpos,_cx,j.domain,_Fin(lr,rr),null,j.where,j.ordSpec,j.matches,
                 j.matching, null, BTree<long,object>.Empty +(_Join,j)
                 +(JFirst,lr.defpos)+(JSecond,rr.defpos))
 		{ }

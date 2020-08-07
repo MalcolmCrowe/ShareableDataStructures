@@ -61,6 +61,7 @@ namespace Pyrrho.Level3
             Default = -74, // TypedValue (D C)
             DefaultString = -75, // string
             Descending = -76, // Sqlx
+            Display = -177, // int
             Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Iri = -79, // string
@@ -157,6 +158,7 @@ namespace Pyrrho.Level3
         public Domain elType => (Domain)mem[Element];
         public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
         public string defaultString => (string)mem[DefaultString]??"";
+        public int display => (int)(mem[Display] ?? rowType.Length);
         public string abbrev => (string)mem[Abbreviation]??"";
         public BTree<long, bool> constraints => (BTree<long, bool>)mem[Constraints]??BTree<long,bool>.Empty;
         public string iri => (string)mem[Iri];
@@ -182,8 +184,8 @@ namespace Pyrrho.Level3
         internal Domain(Sqlx t,BTree<long, object> u) 
             : this(u+(Kind,t))
         { }
-        internal Domain(Sqlx t, BTree<long, Domain> rs, CList<long> rt)
-            : this(BTree<long, object>.Empty + (Kind, t) 
+        internal Domain(Sqlx t, BTree<long, Domain> rs, CList<long> rt, int ds=0)
+            : this(_Mem(rs,rt,ds) + (Kind, t) 
                   + (Representation, rs) + (RowType, rt)) 
         { }
         protected Domain(Domain t,string iri,string search)
@@ -193,11 +195,11 @@ namespace Pyrrho.Level3
         protected Domain(Domain t, string iri)
             : this(t.mem+(Iri,iri))
         { }
-        public Domain(Sqlx t, BList<SqlValue> vs)
-            : this(_Mem(vs)+(Kind,t)) 
+        public Domain(Sqlx t, BList<SqlValue> vs, int ds=0)
+            : this(_Mem(vs,ds)+(Kind,t)) 
         { }
-        public Domain(Sqlx t,Context cx, CList<long> cs)
-            : this(_Mem(cx,cs)+(Kind,t)) { }
+        public Domain(Sqlx t,Context cx, CList<long> cs, int ds=0)
+            : this(_Mem(cx,cs,ds)+(Kind,t)) { }
         // Give a standard type a non-predefined defpos because of potential modifications from parser
         public Domain(long lp, Context cx, Domain d) : base(d.mem) 
         {
@@ -232,7 +234,7 @@ namespace Pyrrho.Level3
         public Domain(PDomain p,Database db) 
             : base(p.domain.mem)
         { }
-        static BTree<long,object> _Mem(BList<SqlValue> vs)
+        static BTree<long,object> _Mem(BList<SqlValue> vs,int ds=0)
         {
             var rs = BTree<long, Domain>.Empty;
             var cs = CList<long>.Empty;
@@ -242,9 +244,22 @@ namespace Pyrrho.Level3
                 rs += (v.defpos, v.domain);
                 cs += v.defpos;
             }
-            return BTree<long,object>.Empty+(Representation,rs)+(RowType,cs);
+            var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs);
+            if (ds != 0)
+                m += (Display, ds);
+            return m;
         }
-        static BTree<long, object> _Mem(Context cx,CList<long> cs)
+        static BTree<long, object> _Mem(BTree<long,Domain> rs, CList<long> cs, int ds = 0)
+        {
+            for (var b = cs.First(); b != null; b = b.Next())
+                if (!rs.Contains(b.value()))
+                    throw new PEException("PE283");
+            var m = new BTree<long, object>(RowType, cs);
+            if (ds != 0)
+                m += (Display, ds);
+            return m;
+        }
+        static BTree<long, object> _Mem(Context cx,CList<long> cs,int ds=0)
         {
             var rs = BTree<long, Domain>.Empty;
             for (var b = cs.First(); b != null; b = b.Next())
@@ -252,7 +267,10 @@ namespace Pyrrho.Level3
                 var p = b.value();
                 rs += (p, cx.obs[p].domain);
             }
-            return BTree<long, object>.Empty + (Representation, rs) + (RowType, cs);
+            var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs);
+            if (ds != 0)
+                m += (Display, ds);
+            return m;
         }
         public static Domain operator+(Domain d,(long,object)x)
         {
@@ -371,6 +389,7 @@ namespace Pyrrho.Level3
                 if (rowType != CList<long>.Empty)
                     sb.Append(")");
             }
+            if (mem.Contains(Display)) { sb.Append(" Display="); sb.Append(display); }
             if (mem.Contains(Abbreviation)) { sb.Append(' '); sb.Append(abbrev); }
             if (mem.Contains(Charset) && charSet != CharSet.UCS)
             { sb.Append(" CharSet="); sb.Append(charSet); }
@@ -1239,13 +1258,15 @@ namespace Pyrrho.Level3
                 return kind != Sqlx.REAL && kind != Sqlx.INTEGER && kind != Sqlx.NUMERIC;
             if (kind == Sqlx.ANY)
                 return true;
-            if (Length != 0 && Length==dt.Length)
+            if (display==dt.display)
             {
                 var e = rowType.First();
                 var c = true;
                 for (var te = dt.rowType.First(); c && e != null && te != null;
                     e = e.Next(), te = te.Next())
                 {
+                    if (e.key() >= display)
+                        break;
                     var d = representation[e.value()];
                     var td = dt.representation[te.value()];
                     c = d.CanTakeValueOf(td);

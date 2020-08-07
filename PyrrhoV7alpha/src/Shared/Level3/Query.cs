@@ -38,7 +38,6 @@ namespace Pyrrho.Level3
         internal const long
             _Aggregates = -191, // bool
             Assig = -174, // BTree<UpdateAssignment,bool> 
-            Display = -177, // int
             FetchFirst = -179, // int
             Filter = -180, // BTree<long,TypedValue>
             _Matches = -182, // BTree<long,TypedValue>
@@ -55,7 +54,7 @@ namespace Pyrrho.Level3
             (BTree<long, BTree<long, bool>>)mem[Matching] ?? BTree<long, BTree<long, bool>>.Empty;
         internal BTree<string, string> replace =>
             (BTree<string,string>)mem[_Repl]??BTree<string, string>.Empty; // for RestViews
-        internal int display => (int)(mem[Display]??0);
+        internal int display => domain.display;
   //      internal BTree<SqlValue, SqlValue> import =>
   //          (BTree<SqlValue,SqlValue>)mem[_Import]??BTree<SqlValue, SqlValue>.Empty; // cache Imported SqlValues
         internal CList<long> ordSpec => (CList<long>)mem[OrdSpec]??CList<long>.Empty;
@@ -513,7 +512,6 @@ namespace Pyrrho.Level3
                 }
             return ch ?
                 this + (_Domain, new Domain(Sqlx.ROW, cx, rt)) + (Dependents, dependents - v.defpos)
-                    + (Display, rt.Length)
                 : this;
         }
         static bool _Aggs(Context cx, BList<long>ss)
@@ -854,7 +852,7 @@ namespace Pyrrho.Level3
                 var c = b.value();
                 sl += c;
             }
-            return r+(Display, sl.Length)+(_Domain,new Domain(Sqlx.ROW,cx,sl));
+            return r+(_Domain,new Domain(Sqlx.ROW,cx,sl));
         }
         internal RowSet Ordering(Context cx, RowSet r,bool distinct)
         {
@@ -921,7 +919,6 @@ namespace Pyrrho.Level3
             }
             sb.Append(")");
             if (mem.Contains(Assig)) { sb.Append(" Assigs:"); sb.Append(assig); }
-            if (mem.Contains(Display)) { sb.Append(" Display="); sb.Append(display); }
             if (mem.Contains(FetchFirst)) { sb.Append(" FetchFirst="); sb.Append(fetchFirst); }
             if (mem.Contains(Filter)) { sb.Append(" Filter:"); sb.Append(filter); }
  //           if (mem.Contains(_Import)) { sb.Append(" Import:"); sb.Append(import); }
@@ -1050,7 +1047,7 @@ namespace Pyrrho.Level3
         internal CursorSpecification(long u) : base(u) { }
         internal CursorSpecification(CursorSpecification cs,Query q)
             : this(cs.defpos, cs.mem + (Union,q.defpos)
-                  + (_Domain,q.domain) + (Display,q.display)
+                  + (_Domain,q.domain)
                   + (Dependents, new BTree<long, bool>(q.defpos, true))
                   + (Depth, 1 + q.depth))
         { }
@@ -1724,7 +1721,7 @@ namespace Pyrrho.Level3
                 var c = (SqlValue)cx.obs[p];
                 dm += (p, c.domain);
             }
-            var r = this + (_Domain,dm) + (Display, lf.display + rg.display);
+            var r = this + (_Domain,dm);
             var lo = CList<long>.Empty; // left ordering
             var ro = CList<long>.Empty; // right
             if (naturaljoin != Sqlx.NO)

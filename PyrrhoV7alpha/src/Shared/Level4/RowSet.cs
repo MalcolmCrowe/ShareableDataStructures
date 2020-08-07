@@ -110,7 +110,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal BTree<long, Finder> finder =>
             (BTree<long, Finder>)mem[_Finder] ?? BTree<long, Finder>.Empty;
-        internal int display =>(int)(mem[Query.Display]??0);
+        internal int display => domain.display;
         /// <summary>
         /// Constructor
         /// </summary>
@@ -120,7 +120,7 @@ namespace Pyrrho.Level4
         /// <param name="or">The ordering of rows in this rowset</param>
         /// <param name="wh">A set of boolean conditions on row values</param>
         /// <param name="ma">A filter for row column values</param>
-        protected RowSet(long dp, Context cx, Domain dt,int ds = -1,
+        protected RowSet(long dp, Context cx, Domain dt,
             BTree<long, Finder> fin = null, CList<long> kt = null,
             BTree<long, bool> wh = null, CList<long> or = null,
             BTree<long, TypedValue> ma = null,
@@ -129,7 +129,6 @@ namespace Pyrrho.Level4
             : base(dp,_Fin(dp,cx,fin,dt.rowType,m)
                 +(_Domain,dt)+(Index.Keys,kt??dt.rowType)
                 +(RowOrder,or??CList<long>.Empty)
-                +(Query.Display, (ds > 0) ? ds : dt.rowType.Length)
                 +(Query.Where, wh??BTree<long,bool>.Empty)
                 +(Query._Matches,ma??BTree<long, TypedValue>.Empty)
                 + (Query.Matching,mg ?? BTree<long, BTree<long, bool>>.Empty)
@@ -555,7 +554,7 @@ namespace Pyrrho.Level4
             Singleton = -405; //TRow
         internal TRow row => (TRow)mem[Singleton];
         internal TrivialRowSet(long dp, Context cx, TRow r, long rc=-1L, BTree<long,Finder> fi=null)
-            : base(dp, cx, r.dataType,r.dataType.rowType.Length,fi,
+            : base(dp, cx, r.dataType,fi,
                   null,null,null,null,null,null,new BTree<long,object>(Singleton,r))
         { }
         internal TrivialRowSet(long dp,Context cx, Record rec) 
@@ -639,7 +638,7 @@ namespace Pyrrho.Level4
         /// Suggestion here is to use the source keyType. Maybe the source ordering too?
         /// </summary>
         internal SelectedRowSet(Context cx,Query q,RowSet r,BTree<long,Finder> fi)
-            :base(q.defpos,cx,q.domain,q.display,fi,null,q.where,
+            :base(q.defpos,cx,q.domain,fi,null,q.where,
                  q.ordSpec,q.matches,null,null,_Fin(cx,q,fi,q.mem+(From.Source,r.defpos)))
         { }
         SelectedRowSet(Context cx, SelectedRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -783,7 +782,7 @@ namespace Pyrrho.Level4
         /// Suggestion here is to use the source keyType. Maybe the source ordering too?
         /// </summary>
         internal SelectRowSet(Context cx, QuerySpecification q, RowSet r)
-            : base(q.defpos, cx, q.domain, q.display, r.finder, null, q.where, q.ordSpec, 
+            : base(q.defpos, cx, q.domain, r.finder, null, q.where, q.ordSpec, 
                   q.matches,q.matching,null,new BTree<long,object>(From.Source,r.defpos))
         { }
         SelectRowSet(Context cx, SelectRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -927,7 +926,7 @@ namespace Pyrrho.Level4
         /// <param name="rs">The source data</param>
         /// <param name="h">The having condition</param>
 		public EvalRowSet(Context cx, QuerySpecification q, RowSet rs)
-            : base(q.defpos, cx, q.domain, q.display, rs.finder, null, null,
+            : base(q.defpos, cx, q.domain, rs.finder, null, null,
                   q.ordSpec, q.matches, q.matching,null,
                   BTree<long,object>.Empty+(From.Source,rs.defpos)
                   +(TableExpression.Having,q.where))
@@ -1049,7 +1048,7 @@ namespace Pyrrho.Level4
         /// Context must have a suitable tr field
         /// </summary>
         internal TableRowSet(Context cx, long t,BTree<long,Finder>fi)
-            : base(t, cx, cx.Inf(t).domain,-1,fi,null,null,null,null,null,
+            : base(t, cx, cx.Inf(t).domain,fi,null,null,null,null,null,
                   null,new BTree<long,object>(SqlInsert._Table,t))
         { }
         TableRowSet(Context cx, TableRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -1180,7 +1179,7 @@ namespace Pyrrho.Level4
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
         internal IndexRowSet(Context cx, Table tb, Index x, PRow filt, BTree<long,Finder>fi) 
-            : base(x.defpos,cx,cx.Inf(tb.defpos).domain,-1,fi,null,null,null,null,
+            : base(x.defpos,cx,cx.Inf(tb.defpos).domain,fi,null,null,null,null,
                   null,null,
                   BTree<long,object>.Empty+(IxTable,tb)+(_Index,x)+(IxFilter,filt))
         { }
@@ -1317,7 +1316,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">a source rowset</param>
         internal DistinctRowSet(Context _cx,RowSet r) 
-            : base(_cx.GetUid(),_cx,r.domain,r.display,r.finder,r.keys,
+            : base(_cx.GetUid(),_cx,r.domain,r.finder,r.keys,
                   r.where,null,null,null,null,new BTree<long,object>(From.Source,r.defpos))
         { }
         protected DistinctRowSet(Context cx,DistinctRowSet rs,BTree<long,Finder> nd,MTree mt) 
@@ -1459,7 +1458,7 @@ namespace Pyrrho.Level4
             return cx.data[source];
         }
         public OrderedRowSet(Context _cx,RowSet r,CList<long> os,bool dct)
-            :base(_cx.nextHeap++, _cx, r.domain,r.display,r.finder,os,r.where,
+            :base(_cx.nextHeap++, _cx, r.domain,r.finder,os,r.where,
                  os,r.matches,null,null,new BTree<long,object>(From.Source,r.defpos)
                  +(QuerySpecification.Distinct,dct))
         { }
@@ -1602,7 +1601,7 @@ namespace Pyrrho.Level4
         internal BList<long> sqlRows =>
             (BList<long>)mem[SqlRows]??BList<long>.Empty;
         internal SqlRowSet(long dp,Context cx,Domain xp, BList<long> rs) 
-            : base(dp, cx, xp, -1, null, null,null,null,null,null,null,
+            : base(dp, cx, xp,null, null,null,null,null,null,null,
                   new BTree<long,object>(SqlRows,rs))
         { }
         SqlRowSet(Context cx, SqlRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -1694,7 +1693,7 @@ namespace Pyrrho.Level4
         }
         internal TableExpRowSet(long dp, Context cx, CList<long> cs, CList<long> ks, 
             RowSet sc,BTree<long, bool> wh, BTree<long, TypedValue> ma,BTree<long,Finder> fi)
-            : base(dp, cx, new Domain(Sqlx.ROW,cx,cs), cs.Length, _Fin(fi,sc), ks, 
+            : base(dp, cx, new Domain(Sqlx.ROW,cx,cs), _Fin(fi,sc), ks, 
                   wh, sc.rowOrder, ma,null,null,
                   new BTree<long,object>(From.Source,sc.defpos)) 
         { }
@@ -1820,11 +1819,11 @@ namespace Pyrrho.Level4
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
         internal ExplicitRowSet(long dp,Context cx,Domain dt,BList<(long,TRow)>r)
-            : base(dp,cx,dt,-1,null,null,null,null,null,null,null,
+            : base(dp,cx,dt,null,null,null,null,null,null,null,
                   new BTree<long,object>(ExplRows,r))
         { }
         internal ExplicitRowSet(long dp, Context cx, TypedValue val)
-    : base(dp, cx, val.dataType, -1, null, null, null, null, null, null, null,
+    : base(dp, cx, val.dataType, null, null, null, null, null, null, null,
           _Vals(val))
         { }
         ExplicitRowSet(Context cx, ExplicitRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -1989,7 +1988,7 @@ namespace Pyrrho.Level4
         internal TriggerContext td => (TriggerContext)mem[Td];
         internal Adapters _eqs => (Adapters)mem[_Adapters];
         internal TransitionRowSet(Context cx, From q, PTrigger.TrigType tg, Adapters eqs)
-            : base(cx.nextHeap++, cx, q.domain, q.display,
+            : base(cx.nextHeap++, cx, q.domain,
                   cx.data[q.defpos]?.finder ?? BTree<long, Finder>.Empty, 
                   null, q.where, null, null, null, null, 
                   _Mem(cx.nextHeap-1,cx, q, tg, eqs))
@@ -2455,7 +2454,7 @@ namespace Pyrrho.Level4
         /// <param name="cx"></param>
         /// <param name="trs"></param>
         internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs)
-            : base(dp, cx, trs.domain,-1,trs.finder,null,null,null,
+            : base(dp, cx, trs.domain,trs.finder,null,null,null,
                   null,null,null, _Mem(cx,trs))
         { }
         /// <summary>
@@ -2465,7 +2464,7 @@ namespace Pyrrho.Level4
         /// <param name="cx"></param>
         /// <param name="trs"></param>
         internal TransitionTableRowSet(long dp, Context cx, long trs)
-            : base(dp, cx, cx.data[trs].domain,-1,null,null,null,null,
+            : base(dp, cx, cx.data[trs].domain,null,null,null,null,
                   null,null,null, _Mem(cx, trs))
         { }
         static BTree<long,object> _Mem(Context cx,TransitionRowSet trs)
@@ -2562,7 +2561,7 @@ namespace Pyrrho.Level4
         internal BList<long> actuals => (BList<long>)mem[Actuals];
         internal RowSet result => (RowSet)mem[Result];
         internal RoutineCallRowSet(Context cx,From f,Procedure p, BList<long> r) 
-            :base(cx.GetUid(),cx,f.domain,-1,null,null,f.where,null,null,null,null,
+            :base(cx.GetUid(),cx,f.domain,null,null,f.where,null,null,null,null,
                  BTree<long,object>.Empty+(Proc,p)+(Actuals,r))
         { }
         protected RoutineCallRowSet(Context cx,RoutineCallRowSet rs,
@@ -2688,7 +2687,7 @@ namespace Pyrrho.Level4
             Docs = -440; // BList<SqlValue>
         internal BList<SqlValue> vals => (BList<SqlValue>)mem[Docs];
         internal DocArrayRowSet(Context cx, Query q, SqlRowArray d)
-            : base(cx.GetUid(), cx, q.domain, q.display, null, null, q.where,
+            : base(cx.GetUid(), cx, q.domain, null, null, q.where,
                   null, null, null, null, _Mem(cx, d))
         { }
         static BTree<long,object> _Mem(Context cx,SqlRowArray d)
@@ -2777,7 +2776,7 @@ namespace Pyrrho.Level4
         internal long source => (long)(mem[From.Source]??-1L);
         internal SqlFunction wf=> (SqlFunction)mem[Window];
         internal WindowRowSet(Context cx,RowSet sc, SqlFunction f)
-            :base(cx.nextHeap++,cx,sc.domain,sc.display,null,null,sc.where,null,
+            :base(cx.nextHeap++,cx,sc.domain,null,null,sc.where,null,
                  null,null,null,BTree<long,object>.Empty+(From.Source,sc.defpos)
                  +(Window,f))
         { }

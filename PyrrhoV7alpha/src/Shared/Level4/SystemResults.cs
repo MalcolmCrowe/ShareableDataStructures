@@ -148,7 +148,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx,SystemTable f,BTree<long,bool>w=null)
-            : base(f.defpos,cx,f.domain,-1,null,null,w,null,
+            : base(f.defpos,cx,f.domain,null,null,w,null,
                   null,null,null,new BTree<long,object>(SysTable,f))
         { }
         protected SystemRowSet(Context cx, SystemRowSet rs, BTree<long, Finder> nd, bool bt)

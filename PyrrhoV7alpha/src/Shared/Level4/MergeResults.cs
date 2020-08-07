@@ -49,7 +49,7 @@ namespace Pyrrho.Level4
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
         internal MergeRowSet(Context cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
-            : base(q.defpos,cx,a.domain,q.display,a.finder,null,q.where,q.ordSpec,q.matches,
+            : base(q.defpos,cx,a.domain,a.finder,null,q.where,q.ordSpec,q.matches,
                   q.matching,null,BTree<long,object>.Empty
                   +(QuerySpecification.Distinct,d)+(Domain.Kind,op)
                   +(QueryExpression._Left,a.defpos)+(QueryExpression._Right,b.defpos))
