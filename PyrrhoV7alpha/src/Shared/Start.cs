@@ -59,6 +59,7 @@ namespace Pyrrho
         private BTree<string, PreparedStatement> prepared = BTree<string, PreparedStatement>.Empty;
         static int _cid = 0;
         int cid = _cid++;
+        static long CheckProtocol = 0;
         /// <summary>
         /// Constructor: called on Accept
         /// </summary>
@@ -282,8 +283,7 @@ namespace Pyrrho
                                 break;
                             }                        // set the current reader
                         case Protocol.ResetReader:
-                            if (rb != null)
-                                rb = (cx.result as RowSet).First(cx);
+                            rb = cx.result.First(cx);
                             tcp.Write(Responses.Done);
                             tcp.Flush(); break;
                         case Protocol.ReaderData:
@@ -307,14 +307,16 @@ namespace Pyrrho
                             {
                                 var nm = tcp.GetString();
                                 var sql = tcp.GetString();
-                                var tr = db.Transact(db.nextPrep, sql);
+                                var tr = db.Transact(db.nextId, sql);
                                 tr+=(Database._ExecuteStatus,ExecuteStatus.Prepare);
                                 var cx = new Context(tr);
                                 db = new Parser(cx).ParseSql(sql,Domain.Content);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                prepared += (nm, new PreparedStatement(cx.exec,cx.qParams));
+                                cx.unLex = true;
+                                prepared += (nm, new PreparedStatement(cx));
                                 db += (Database.NextPrep, cx.nextHeap);
+                                cx.result = null;
                                 db = db.RdrClose(cx);
                                 tcp.Write(Responses.Done);
                                 break;
@@ -338,14 +340,19 @@ namespace Pyrrho
                                 cx.db = (Transaction)db;
                                 tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.result as RowSet == null)
+                                if (cx.result == null)
                                 {
                                     db = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
                                     tcp.PutInt(db.AffCount(tr.Affected()));
                                 }
                                 else
+                                {
                                     tcp.PutSchema(cx);
+                                    rb = cx.result.First(cx);
+                                    while (rb != null && rb.IsNull)
+                                        rb = rb.Next(cx);
+                                }
                                 break;
                             }
                         case Protocol.ExecuteTrace: // v7 Prepared statement API
@@ -440,6 +447,7 @@ namespace Pyrrho
                                 else
                                 {
                                     rb = null;
+                                    tcp.Write(Responses.NoData);
                                     db = db.RdrClose(cx);
                                 }
                                 break;
@@ -460,6 +468,7 @@ namespace Pyrrho
                                 else
                                 {
                                     rb = null;
+                                    tcp.Write(Responses.NoData);
                                     db = db.RdrClose(cx);
                                 }
                                 break;
@@ -474,6 +483,7 @@ namespace Pyrrho
                                 if (tb == null)
                                 {
                                     rb = null;
+                                    tcp.Write(Responses.NoData);
                                     db = db.RdrClose(cx);
                                 }
                                 else
@@ -519,7 +529,7 @@ namespace Pyrrho
                                     Console.WriteLine("PUT "+s);
                                 cx = new Parser(tr).ParseSqlUpdate(cx, s);
                                 tr = cx.tr;
-                                var rs = cx.result as RowSet;
+                                var rs = cx.result;
                                 if (rs != null)
                                     rb = rs.First(cx);
                                 tcp.PutWarnings(tr);
@@ -640,6 +650,7 @@ namespace Pyrrho
                                 tcp.PutInt(db.AffCount(tr.Affected()));
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
+                                CheckProtocol = db.loadpos;
                                 PutReport(tr);
                                 break;
                             }
@@ -1246,7 +1257,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (7 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (11 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

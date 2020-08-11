@@ -169,22 +169,22 @@ namespace Pyrrho.Level3
                 r += (Body, bd.defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (Procedure)base._Relocate(cx);
+            var r = (Procedure)base._Relocate(cx,nc);
             var ps = BList<long>.Empty;
             var ch = false;
             for (var b = ins.First(); b != null; b = b.Next())
             {
                 var o = ((ParamInfo)cx.obs[b.value()]).val;
-                var p = (ParamInfo)cx.obs[o].Relocate(cx);
+                var p = (ParamInfo)cx.obs[o].Relocate(cx,nc);
                 ps += p.val;
                 if (p.val != o)
                     ch = true;
             }
             if (ch)
                 r += (Params, ps);
-            if (cx.Fixed(body) is Executable bd && bd.defpos != body)
+            if (cx.Fixed(body,nc) is Executable bd && bd.defpos != body)
                 r += (Body, bd.defpos);
             return r;
         }

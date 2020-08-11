@@ -4,6 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using System;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -180,37 +181,58 @@ namespace Pyrrho.Level3
                 ds += (wr.Fix(b.key()), true);
             if (ds != dependents)
                 r += (Dependents, ds);
-            r += (_Framing, framing.Relocate(wr));
             wr.cx.obs += (r.defpos, r);
             return r;
         }
         internal DBObject Relocate(Writer wr)
         {
-            if (wr.uids.Contains(defpos))
-                return wr.cx.obs[wr.uids[defpos]];
+            if (this is RowSet)
+            {
+                if (wr.cx.rsuids.Contains(defpos))
+                    return wr.cx.data[wr.cx.rsuids[defpos]];
+            }
+            else if (wr.cx.obuids.Contains(defpos))
+                return wr.cx.obs[wr.cx.obuids[defpos]];
             var r = (DBObject)_Relocate(wr);
-            wr.cx.obs += (r.defpos, r);
+            if (r is RowSet rs)
+                wr.cx.data += (r.defpos, rs);
+            else
+                wr.cx.obs += (r.defpos, r);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = ((DBObject)base._Relocate(cx)).Relocate(cx.Unheap(defpos));
-            var df = cx.Unheap(definer);
+            var r = ((DBObject)base._Relocate(cx,nc)).Relocate(cx.ObUnheap(defpos));
+            var df = cx.ObUnheap(definer);
             if (df != definer)
                 r += (Definer, df);
             var ds = BTree<long, bool>.Empty;
             for (var b = dependents.First(); b != null; b = b.Next())
-                ds += (cx.Unheap(b.key()), true);
+                ds += (cx.ObUnheap(b.key()), true);
             if (ds != dependents)
                 r += (Dependents, ds);
             return r;
         }
-        internal DBObject Relocate(Context cx)
+        internal DBObject Relocate(Context cx,Context nc)
         {
-            if (cx.uids.Contains(defpos))
-                return cx.obs[cx.uids[defpos]];
-            var r = (DBObject)_Relocate(cx);
-            cx.obs += (r.defpos, r);
+            var p = defpos;
+            if (this is RowSet)
+            {
+                p = cx.RsUnheap(defpos);
+                if (nc.data.Contains(p))
+                     return nc.data[p];
+            }
+            else 
+            {
+                p = cx.ObUnheap(defpos);
+                if (nc.obs.Contains(p))
+                    return nc.obs[p];
+            }
+            var r = (DBObject)_Relocate(cx, nc);
+            if (r is RowSet rs)
+                nc.data += (r.defpos, rs);
+            else
+                nc.obs += (r.defpos, r);
             return r;
         }
         internal virtual Database Add(Database d,PMetadata pm, long p)

@@ -204,7 +204,7 @@ namespace Pyrrho.Level4
         public Database ParseSql(PreparedStatement pre,string s)
         {
             cx.Add(pre);
-            cx.nextHeap = pre.defpos;
+            cx.Install(pre.framing);
             lxr = new Lexer(s, cx.db.lexeroffset);
             tok = lxr.tok;
             var b = pre.qMarks.First();
@@ -226,12 +226,13 @@ namespace Pyrrho.Level4
                 else
                     Mustbe(Sqlx.BLOBLITERAL, Sqlx.NUMERICLITERAL, Sqlx.REALLITERAL,
                         Sqlx.CHARLITERAL, Sqlx.INTEGERLITERAL, Sqlx.DOCUMENTLITERAL);
-                cx.values += (b.value().defpos, v);
+                cx.values += (b.value(), v);
                 Mustbe(Sqlx.SEMICOLON);
             }
             if (!(b == null && tok == Sqlx.EOF))
                 throw new DBException("33001");
             cx = pre.target.Obey(cx);
+            cx.result = cx.data[pre.framing.result];
             return cx.db;
         }
         /// <summary>
@@ -6467,7 +6468,7 @@ namespace Pyrrho.Level4
             cx.Install(tb.framing);
             var ti = cx.Inf(tb.defpos);
             cx.defs += (ic, tb.defpos);
-            cx.AddDefs(ic, ti.rowType);
+            cx.AddDefs(ic, ti.domain.rowType);
             BList<Ident> cs = null;
             // Ambiguous syntax here: (Cols) or (Subquery) or other possibilities
             if (tok == Sqlx.LPAREN)
@@ -7251,7 +7252,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 var qm = new SqlValueExpr(lxr.Position, cx, Sqlx.QMARK, null, null, Sqlx.NO);
-                cx.qParams += qm;
+                cx.qParams += qm.defpos;
                 return qm;
             }
             if (Match(Sqlx.LEVEL))

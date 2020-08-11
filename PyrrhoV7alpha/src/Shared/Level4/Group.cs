@@ -78,10 +78,10 @@ namespace Pyrrho.Level4
         {
             return new GroupingRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (GroupingRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
+            var r = (GroupingRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.RsUnheap(source));
             r += (Groupings, cx.Fix(groupings));
             return r;
         }

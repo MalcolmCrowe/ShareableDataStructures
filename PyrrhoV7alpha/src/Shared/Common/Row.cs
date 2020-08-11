@@ -94,9 +94,9 @@ namespace Pyrrho.Common
         {
             get;
         }
-        internal virtual TypedValue Relocate(Context cx)
+        internal virtual TypedValue Relocate(Context cx,Context nc)
         {
-            return New((Domain)dataType._Relocate(cx));
+            return New((Domain)dataType._Relocate(cx,nc));
         }
         internal virtual TypedValue Relocate(Writer wr)
         {
@@ -529,10 +529,10 @@ namespace Pyrrho.Common
         {
             return new TUnion(t,value); // approximate: use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TUnion((Domain)dataType._Relocate(cx), 
-                value.Relocate(cx));
+            return new TUnion((Domain)dataType._Relocate(cx,nc), 
+                value.Relocate(cx,nc));
         }
         internal override TypedValue Relocate(Writer wr)
         {
@@ -712,9 +712,9 @@ namespace Pyrrho.Common
         {
             return this; // approximate: use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TMTree((MTree)value.Relocate(cx));
+            return new TMTree(value.Relocate(cx,nc));
         }
         internal override object Val()
         {
@@ -761,7 +761,7 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
             return new TPartial(cx.Fix(value));
         }
@@ -800,10 +800,10 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TArray((Domain)dataType._Relocate(cx),
-                cx.Fix(list));
+            return new TArray((Domain)dataType._Relocate(cx,nc),
+                cx.Fix(list,nc));
         }
         internal override object Val()
         {
@@ -896,9 +896,9 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TTypeSpec((Domain)_dataType._Relocate(cx));
+            return new TTypeSpec((Domain)_dataType._Relocate(cx,nc));
         }
         internal override TypedValue Relocate(Writer wr)
         {
@@ -1294,9 +1294,9 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TRow((Domain)dataType._Relocate(cx),
+            return new TRow((Domain)dataType._Relocate(cx,nc),
                 cx.Fix(values));
         }
         internal override TypedValue Relocate(Writer wr)
@@ -1429,10 +1429,10 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TMultiset((Domain)dataType._Relocate(cx),
-                cx.Fix(tree),count);
+            return new TMultiset((Domain)dataType._Relocate(cx,nc),
+                cx.Fix(tree,nc),count);
         }
         internal override TypedValue Relocate(Writer wr)
         {
@@ -1728,9 +1728,9 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
-        internal override TypedValue Relocate(Context cx)
+        internal override TypedValue Relocate(Context cx,Context nc)
         {
-            return new TXml(name,cx.Fix(attributes),content,cx.Fix(children));
+            return new TXml(name,cx.Fix(attributes,nc),content,cx.Fix(children,nc));
         }
         internal override TypedValue Relocate(Writer wr)
         {

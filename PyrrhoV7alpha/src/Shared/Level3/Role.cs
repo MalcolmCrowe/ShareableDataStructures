@@ -155,7 +155,7 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
             throw new NotImplementedException();
         }
@@ -190,7 +190,6 @@ namespace Pyrrho.Level3
             Y = "Y"; // long
 
         public string name => (string)mem[Name] ?? "";
-        internal CList<long> rowType => (CList<long>)mem[Domain.RowType];
         public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
         public BTree<string, long> properties =>
             (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;

@@ -277,11 +277,11 @@ namespace Pyrrho.Common
         {
             return (SqlTree)tree.Remove(k);
         }
-        internal SqlTree Relocate(Context cx)
+        internal SqlTree Relocate(Context cx,Context nc)
         {
-            var r = new SqlTree(info.Relocate(cx), kind, null);
+            var r = new SqlTree(info.Relocate(cx,nc), kind, null);
             for (var b = First(); b != null; b = b.Next())
-                r += (b.key().Relocate(cx), b.value().Relocate(cx));
+                r += (b.key().Relocate(cx,nc), b.value().Relocate(cx,nc));
             return r;
         }
         internal SqlTree Relocate(Writer wr)

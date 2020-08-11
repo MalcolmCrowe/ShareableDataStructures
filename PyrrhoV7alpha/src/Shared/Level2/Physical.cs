@@ -469,14 +469,19 @@ namespace Pyrrho.Level2
         }
         internal override void Relocate(Context cx)
         {
-            cx.Frame();
+  //          cx.Frame();
+            var nc = new Context(cx);
+            nc.obs = BTree<long, DBObject>.Empty;
+            nc.data = BTree<long, RowSet>.Empty;
+            nc.defs = Ident.Idents.Empty;
             cx.SrcFix(ppos + 1);
             var fs = Framing.Empty;
+            framing.Install(cx);
             for (var b = framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 if (p > Transaction.TransPos)
-                    cx.obs += (p, b.value());
+                    nc.obs += (p, b.value());
             }
             for (var b = framing.obs.First(); b != null; b = b.Next())
             {
@@ -485,17 +490,14 @@ namespace Pyrrho.Level2
                 if (p >= Transaction.TransPos && p < Transaction.Analysing)
                     continue;
                 var oo = cx.obs[p]??(DBObject)cx.db.objects[p];
-                var ob = oo.Relocate(cx);
+                var ob = oo.Relocate(cx,nc);
                 if (ob != oo)
-                    cx.db+=(ob, cx.db.loadpos); 
+                    nc.db+=(ob, cx.db.loadpos); 
                 fs += ob;
             }
             framing = fs;
-            var fr = cx.frame ?? throw new PEException("PE400");
-            cx.obs = fr.obs;
-            cx.defs = fr.defs;
-            cx.depths = fr.depths;
-            cx.frame = null;
+            cx = nc;
+            fs.Install(cx);
         }
         /// <summary>
         /// Fix heap uids and install compiled DBObjects from the context
@@ -504,21 +506,23 @@ namespace Pyrrho.Level2
         public void Frame(Context cx)
         {
             cx.SrcFix(ppos+1);
+            var nc = new Context(cx);
+            nc.obs = BTree<long, DBObject>.Empty;
+            nc.data = BTree<long, RowSet>.Empty;
+            nc.defs = Ident.Idents.Empty;
             for (var b = cx.obs.First(); b != null; b = b.Next())
             {
-                var ob = b.value().Relocate(cx);
+                var ob = b.value().Relocate(cx,nc);
                 framing += ob;
             }
             for (var b=cx.data.First();b!=null;b=b.Next())
             {
-                var r = (RowSet)b.value().Relocate(cx);
+                var r = (RowSet)b.value().Relocate(cx,nc);
                 framing += r;
             }
             var fr = cx.frame ?? throw new PEException("PE400");
-            cx.data = fr.data;
-            cx.obs = fr.obs;
-            cx.defs = fr.defs;
-            cx.depths = fr.depths;
+            fr.Install(nc);
+            cx = nc;
             cx.frame = null;
         }
     }

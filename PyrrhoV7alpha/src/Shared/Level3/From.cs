@@ -209,30 +209,30 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Assigns, ua);
-            if (wr.cx.Fixed(source) is Query sc && sc.defpos != source)
+            if (wr.cx.Fixed(source,wr.cx) is Query sc && sc.defpos != source)
                 r += (Source, sc);
             var tg = wr.Fix(target);
             if (tg != target)
                 r += (Target, tg);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (From)base._Relocate(cx);
+            var r = (From)base._Relocate(cx,nc);
             var ua = BList<UpdateAssignment>.Empty;
             var ch = false;
             for (var b = assigns.First(); b != null; b = b.Next())
             {
-                var a = (UpdateAssignment)b.value()._Relocate(cx);
+                var a = (UpdateAssignment)b.value()._Relocate(cx,nc);
                 ua += a;
                 if (a != b.value())
                     ch = true;
             }
             if (ch)
                 r += (Assigns, ua);
-            if (cx.Fixed(source) is Query sc && sc.defpos != source)
+            if (cx.Fixed(source,nc) is Query sc && sc.defpos != source)
                 r += (Source, sc);
-            var tg = cx.Unheap(target);
+            var tg = cx.ObUnheap(target);
             if (tg != target)
                 r += (Target, tg);
             return r;
@@ -498,13 +498,13 @@ namespace Pyrrho.Level3
                 r += (Value, vl);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (SqlInsert)base._Relocate(cx);
-            var tb = cx.Fixed(target).defpos;
+            var r = (SqlInsert)base._Relocate(cx,nc);
+            var tb = cx.Fixed(target,nc).defpos;
             if (tb != target)
                 r += (_Table, tb);
-            var vl = cx.Fixed(value).defpos;
+            var vl = cx.Fixed(value,nc).defpos;
             if (vl != value)
                 r += (Value, vl);
             return r;
@@ -519,6 +519,7 @@ namespace Pyrrho.Level3
                 && ta.enforcement.HasFlag(Grant.Privilege.Insert)
                 && !cl.ClearanceAllows(fm.classification))
                 throw new DBException("42105");
+            cx.result = null;
             return fm.Insert(cx,provenance, r, new Common.Adapters(),
                 new List<RowSet>(), classification);
         }
@@ -592,10 +593,10 @@ namespace Pyrrho.Level3
                 r += (SqlInsert._Table, tb);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (QuerySearch)base._Relocate(cx);
-            var tb = cx.Fixed(table).defpos;
+            var r = (QuerySearch)base._Relocate(cx,nc);
+            var tb = cx.Fixed(table,nc).defpos;
             if (tb != table)
                 r += (SqlInsert._Table, tb);
             return r;
@@ -613,6 +614,7 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
+            cx.result = null;
             return ((From)cx.obs[table]).Delete(cx, BTree<string, bool>.Empty, new Adapters());
         }
     }
@@ -650,6 +652,7 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
+            cx.result = null;
             return ((From)cx.obs[table]).Update(cx, BTree<string, bool>.Empty, new Adapters(),
                 new List<RowSet>());
         }

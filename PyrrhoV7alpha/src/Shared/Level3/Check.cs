@@ -99,10 +99,10 @@ namespace Pyrrho.Level3
                 r += (Condition, s);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (Check)base._Relocate(cx);
-            var s = (SqlValue)cx.Fixed(search);
+            var r = (Check)base._Relocate(cx,nc);
+            var s = (SqlValue)cx.Fixed(search,nc);
             if (s.defpos != search)
                 r += (Condition, s);
             return r;

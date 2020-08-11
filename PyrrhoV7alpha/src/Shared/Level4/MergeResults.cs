@@ -78,11 +78,11 @@ namespace Pyrrho.Level4
         {
             return new MergeRowSet(dp, mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (MergeRowSet)base._Relocate(cx);
-            r += (QueryExpression._Left, cx.Unheap(left));
-            r += (QueryExpression._Right, cx.Unheap(right));
+            var r = (MergeRowSet)base._Relocate(cx,nc);
+            r += (QueryExpression._Left, cx.RsUnheap(left));
+            r += (QueryExpression._Right, cx.RsUnheap(right));
             return r;
         }
         internal override Basis _Relocate(Writer wr)

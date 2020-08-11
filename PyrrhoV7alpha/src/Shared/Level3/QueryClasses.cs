@@ -148,9 +148,9 @@ namespace Pyrrho.Level3
             var r = (WindowSpecification)base._Relocate(wr);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (WindowSpecification)base._Relocate(cx);
+            var r = (WindowSpecification)base._Relocate(cx,nc);
             return r;
         }
         /// <summary>
@@ -272,14 +272,14 @@ namespace Pyrrho.Level3
                 r += (Members, ms);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (Grouping)base._Relocate(cx);
+            var r = (Grouping)base._Relocate(cx,nc);
             var gs = BList<Grouping>.Empty;
             var ch = false;
             for (var b = groups.First(); b != null; b = b.Next())
             {
-                var g = (Grouping)b.value().Relocate(cx);
+                var g = (Grouping)b.value().Relocate(cx,nc);
                 ch = ch || g != b.value();
                 gs += g;
             }
@@ -289,7 +289,7 @@ namespace Pyrrho.Level3
             var ms = BTree<long, int>.Empty;
             for (var b = members.First(); b != null; b = b.Next())
             {
-                var m = cx.Unheap(b.key());
+                var m = cx.ObUnheap(b.key());
                 ch = ch || m != b.key();
                 ms += (m, b.value());
             }
@@ -368,15 +368,15 @@ namespace Pyrrho.Level3
                 r += (Sets, gs);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (GroupSpecification)base._Relocate(cx);
+            var r = (GroupSpecification)base._Relocate(cx,nc);
             var gs = BList<long>.Empty;
             var ch = false;
             for (var b = sets.First(); b != null; b = b.Next())
             {
                 var o = (Grouping)cx.obs[b.value()];
-                var g = (Grouping)o.Relocate(cx);
+                var g = (Grouping)o.Relocate(cx,nc);
                 ch = ch || (g != o);
                 gs += g.defpos;
             }
@@ -430,13 +430,13 @@ namespace Pyrrho.Level3
                 r += (Vbl, vb.defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = base._Relocate(cx);
-            var va = (SqlValue)cx.Fixed(val);
+            var r = base._Relocate(cx,nc);
+            var va = (SqlValue)cx.Fixed(val,nc);
             if (va.defpos != val)
                 r += (Val, va.defpos);
-            var vb = (SqlValue)cx.Fixed(vbl);
+            var vb = (SqlValue)cx.Fixed(vbl,nc);
             if (vb.defpos != vbl)
                 r += (Vbl, vb.defpos);
             return r;

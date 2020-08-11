@@ -273,13 +273,13 @@ namespace Pyrrho.Level3
                 r += (ViewQuery, vq);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (View)base._Relocate(cx);
-            var rg = (GroupSpecification)remoteGroups.Relocate(cx);
+            var r = (View)base._Relocate(cx,nc);
+            var rg = (GroupSpecification)remoteGroups.Relocate(cx,nc);
             if (rg != remoteGroups)
                 r += (RemoteGroups, rg);
-            var vq = (Query)viewQry.Relocate(cx);
+            var vq = (Query)viewQry.Relocate(cx,nc);
             if (vq != viewQry)
                 r += (ViewQuery, vq);
             return r;
@@ -358,16 +358,16 @@ namespace Pyrrho.Level3
                 r += (usingTable, ut);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = base._Relocate(cx);
-            var d = cx.Unheap(defpos);
+            var r = base._Relocate(cx,nc);
+            var d = cx.ObUnheap(defpos);
             if (d != defpos)
                 r = (RestView)Relocate(d);
-            var vs = cx.Unheap(viewStruct);
+            var vs = cx.ObUnheap(viewStruct);
             if (vs != viewStruct)
                 r += (viewStruct, vs);
-            var ut = cx.Unheap(usingTable);
+            var ut = cx.ObUnheap(usingTable);
             if (ut != usingTable)
                 r += (usingTable, ut);
             return r;

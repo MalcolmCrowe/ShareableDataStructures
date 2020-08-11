@@ -106,9 +106,9 @@ namespace Pyrrho.Level4
         {
             return rows[(int)mt.Get(cx.MakeKey(keyType)).Value];
         }
-        internal RTree Relocate(Context cx)
+        internal RTree Relocate(Context cx,Context nc)
         {
-            return new RTree(cx.Unheap(defpos), _cx, (Domain)domain._Relocate(cx),
+            return new RTree(cx.ObUnheap(defpos), _cx, (Domain)domain._Relocate(cx,nc),
                 mt.info.onDuplicate,mt.info.onNullKey);
         }
         internal RTree Relocate(Writer wr)

@@ -69,7 +69,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual Basis _Relocate(Context cx)
+        internal virtual Basis _Relocate(Context cx,Context nc)
         {
             return this;
         }
@@ -435,9 +435,9 @@ namespace Pyrrho.Level3
             return this - NextId;
         }
 
-        internal Database Install()
+        internal Database Install(long pos)
         {
-            var db = new Database(df.Length, mem);
+            var db = new Database(pos, mem);
             databases += (name, db);
             return db;
         }

@@ -135,10 +135,10 @@ namespace Pyrrho.Level3
                 r += (_Domain, dt);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = base._Relocate(cx);
-            var dt = (Domain)domain._Relocate(cx);
+            var r = base._Relocate(cx,nc);
+            var dt = (Domain)domain._Relocate(cx,nc);
             if (dt != domain)
                 r += (_Domain, dt);
             return r;
@@ -239,6 +239,7 @@ namespace Pyrrho.Level3
             }
             // Statement-level after triggers
             trs.InsertSA(cx);
+            cx.result = null;
             return cx;
         }
 
@@ -313,6 +314,7 @@ namespace Pyrrho.Level3
           //          cx.affected += new Rvv(defpos, rec.defpos, tr.loadpos);
                 }
             trs.DeleteSA(cx);
+            cx.result = null;
             return cx;
         }
         /// <summary>
@@ -396,6 +398,7 @@ namespace Pyrrho.Level3
             }
             trs.UpdateSA(cx);
             rs.Add(trs); // just for PUT
+            cx.result = null; //??
             return cx;
         }
         /// <summary>

@@ -83,8 +83,8 @@ namespace Pyrrho.Level4
             public Finder(long c, long r) { col = c; rowSet = r; }
             internal Finder Relocate(Context cx)
             {
-                var c = cx.Unheap(col);
-                var r = cx.Unheap(rowSet);
+                var c = cx.ObUnheap(col);
+                var r = cx.RsUnheap(rowSet);
                 return (c != col || r != rowSet) ? new Finder(c, r) : this;
             }
             internal Finder Relocate(Writer wr)
@@ -237,10 +237,10 @@ namespace Pyrrho.Level4
             // Otherwise we don't need to
             return this;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (RowSet)base._Relocate(cx);
-            var dm = (Domain)domain._Relocate(cx);
+            var r = (RowSet)Relocate(cx.RsUnheap(defpos));
+            var dm = (Domain)domain._Relocate(cx,nc);
             r += (_Domain,dm);
             r += (_Finder, cx.Fix(finder));
             r += (Index.Keys, cx.Fix(keys));
@@ -248,12 +248,12 @@ namespace Pyrrho.Level4
             r += (Query.Where, cx.Fix(where));
             r += (Query._Matches, cx.Fix(matches));
             r += (Query.Matching, cx.Fix(matching));
-            r += (TableExpression.Group, cx.Unheap(groupSpec));
+            r += (TableExpression.Group, cx.ObUnheap(groupSpec));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
-            var r = (RowSet)base._Relocate(wr);
+            var r = (RowSet)Relocate(wr.Fix(defpos));
             var dm = (Domain)domain._Relocate(wr);
             r += (_Domain, dm);
             r += (_Finder, wr.Fix(finder));
@@ -693,10 +693,10 @@ namespace Pyrrho.Level4
                 return new SelectedCursor(cx, this, IndexRowSet.IndexCursor.New(cx, irs, key),0);
             return base.PositionAt(cx, key);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (SelectedRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
+            var r = (SelectedRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.ObUnheap(source));
             r += (SQMap, cx.Fix(sQMap));
             return r;
         }
@@ -801,10 +801,10 @@ namespace Pyrrho.Level4
         {
             return new SelectRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (SelectRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
+            var r = (SelectRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.ObUnheap(source));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -956,10 +956,10 @@ namespace Pyrrho.Level4
         {
             return new EvalRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (EvalRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
+            var r = (EvalRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.ObUnheap(source));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1072,10 +1072,10 @@ namespace Pyrrho.Level4
         {
             return new TableRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (TableRowSet)base._Relocate(cx);
-            r += (SqlInsert._Table, cx.Unheap(tabledefpos));
+            var r = (TableRowSet)base._Relocate(cx,nc);
+            r += (SqlInsert._Table, cx.RsUnheap(tabledefpos));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1204,11 +1204,11 @@ namespace Pyrrho.Level4
         {
             return new IndexRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (IndexRowSet)base._Relocate(cx);
-            r += (_Index, index.Relocate(cx));
-            r += (IxTable, table.Relocate(cx));
+            var r = (IndexRowSet)base._Relocate(cx,nc);
+            r += (_Index, index.Relocate(cx,nc));
+            r += (IxTable, table.Relocate(cx,nc));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1346,11 +1346,11 @@ namespace Pyrrho.Level4
         {
             return new DistinctRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (DistinctRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
-            r += (Index.Tree, new MTree(mtree.info.Relocate(cx)));
+            var r = (DistinctRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.RsUnheap(source));
+            r += (Index.Tree, new MTree(mtree.info.Relocate(cx,nc)));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1485,11 +1485,11 @@ namespace Pyrrho.Level4
         {
             return new OrderedRowSet(dp, mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (OrderedRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
-            r += (_RTree, tree.Relocate(cx));
+            var r = (OrderedRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.RsUnheap(source));
+            r += (_RTree, tree.Relocate(cx,nc));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1624,9 +1624,9 @@ namespace Pyrrho.Level4
         {
             return new SqlRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (SqlRowSet)base._Relocate(cx);
+            var r = (SqlRowSet)base._Relocate(cx,nc);
             r += (SqlRows, cx.Fix(sqlRows));
             return r;
         }
@@ -1724,10 +1724,10 @@ namespace Pyrrho.Level4
         {
             return new TableExpRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (TableExpRowSet)base._Relocate(cx);
-            r += (From.Source, cx.Unheap(source));
+            var r = (TableExpRowSet)base._Relocate(cx,nc);
+            r += (From.Source, cx.RsUnheap(source));
             return r;
         }
         internal override Basis _Relocate(Writer wr)

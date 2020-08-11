@@ -104,10 +104,10 @@ namespace Pyrrho.Level3
                 r += (TableExp, te);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (QuerySpecification)base._Relocate(cx);
-            var te = tableExp.Relocate(cx);
+            var r = (QuerySpecification)base._Relocate(cx,nc);
+            var te = tableExp.Relocate(cx,nc);
             if (te != tableExp)
                 r += (TableExp, te);
             return r;
@@ -315,13 +315,13 @@ namespace Pyrrho.Level3
                     r += (_Right, rq.defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (QueryExpression)base._Relocate(cx);
-            var q = (Query)cx.Fixed(left);
+            var r = (QueryExpression)base._Relocate(cx,nc);
+            var q = (Query)cx.Fixed(left,nc);
             if (q.defpos != left)
                 r += (_Left, q.defpos);
-            if (cx.Fixed(right) is QueryExpression rq && rq.defpos != right)
+            if (cx.Fixed(right,nc) is QueryExpression rq && rq.defpos != right)
                     r += (_Right, rq.defpos);
             return r;
         }

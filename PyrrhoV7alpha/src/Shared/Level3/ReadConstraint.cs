@@ -237,7 +237,7 @@ namespace Pyrrho.Level3
             if (m != null)
                 foreach (var rr in recs)
                     if (m._CompareTo(rr) == 0)
-                        return new DBException("40009", r.defpos).Mix();
+                        return new DBException("40009", r.defpos, m.ToString()).Mix();
             return null;
         }
         /// <summary>

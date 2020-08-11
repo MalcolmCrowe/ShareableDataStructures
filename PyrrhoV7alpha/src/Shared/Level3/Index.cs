@@ -286,7 +286,7 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
             throw new NotImplementedException();
         }

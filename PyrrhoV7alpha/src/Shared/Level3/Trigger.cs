@@ -225,21 +225,21 @@ namespace Pyrrho.Level3
             r += (_Domain, dm);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = base._Relocate(cx);
-            r += (Trig, cx.Unheap(trig));
+            var r = base._Relocate(cx,nc);
+            r += (Trig, cx.ObUnheap(trig));
             var cs = CList<long>.Empty;
             var ch = false;
             for (var b = columns.First(); b != null; b = b.Next())
             {
-                var nk = cx.Unheap(b.value());
+                var nk = cx.ObUnheap(b.value());
                 ch = ch || nk != b.value();
                 cs += nk;
             }
             if (ch)
                 r += (SqlValue._Columns, cs);
-            var dm = domain._Relocate(cx);
+            var dm = domain._Relocate(cx,nc);
             r += (_Domain, dm);
             return r;
         }

@@ -1,6 +1,7 @@
 ﻿using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
+using System;
 using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -254,7 +255,7 @@ namespace Pyrrho.Level3
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
-                return wr.cx.db.Install();
+                return wr.cx.db.Install(wr.Length);
             }
         }
         /// <summary>
@@ -294,6 +295,7 @@ namespace Pyrrho.Level3
                     ex.Add(s.key(), cx.obs[s.value()].Eval(null));
                 throw ex;
             }
+            cx.result = null;
             return cx;
         }
         /// <summary>

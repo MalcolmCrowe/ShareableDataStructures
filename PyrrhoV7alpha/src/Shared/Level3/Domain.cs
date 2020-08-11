@@ -2961,23 +2961,23 @@ namespace Pyrrho.Level3
             }
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
             var r = this;
             var ch = false;
             var cs = BTree<long, bool>.Empty;
             for (var b = constraints?.First(); b != null; b = b.Next())
             {
-                var ck = (Check)cx.Fixed(b.key());
+                var ck = (Check)cx.Fixed(b.key(),nc);
                 ch = ch || b.key() != ck.defpos;
                 cs += (ck.defpos,true);
             }
             if (ch)
                 r += (Constraints, cs);
-            var e = (Domain)elType?._Relocate(cx);
+            var e = (Domain)elType?._Relocate(cx,nc);
             if (e != elType)
                 r += (Element, e);
-            var orf = orderFunc?._Relocate(cx);
+            var orf = orderFunc?._Relocate(cx,nc);
             if (orf != orderFunc)
                 r += (OrderFunc, orf);
             var rs = BTree<long, Domain>.Empty;
@@ -2986,8 +2986,8 @@ namespace Pyrrho.Level3
             {
                 var od = b.value();
                 var rk = b.key();
-                var nk = cx.Fixed(rk);
-                var rr = (Domain)od._Relocate(cx);
+                var nk = cx.Fixed(rk,nc);
+                var rr = (Domain)od._Relocate(cx,nc);
                 if (rr != od || rk != nk.defpos)
                     ch = true;
                 rs += (nk.defpos, rr);
@@ -2998,7 +2998,7 @@ namespace Pyrrho.Level3
             ch = false;
             for (var b=rowType.First();b!=null;b=b.Next())
             {
-                var p = cx.Unheap(b.value());
+                var p = cx.ObUnheap(b.value());
                 if (p != b.value())
                     ch = true;
                 rt += p;
@@ -3007,7 +3007,7 @@ namespace Pyrrho.Level3
                 r += (RowType, rt);
             if (super is Domain os)
             {
-                var und = (Domain)os._Relocate(cx);
+                var und = (Domain)os._Relocate(cx,nc);
                 if (und != super)
                     r += (Under, und);
             }

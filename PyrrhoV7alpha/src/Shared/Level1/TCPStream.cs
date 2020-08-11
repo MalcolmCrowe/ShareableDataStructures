@@ -648,7 +648,7 @@ namespace Pyrrho.Level1
             WriteByte((byte)Responses.Files);
             PutInt(ar.Count);
             for (int j = 0; j < ar.Count; j++)
-                PutString((string)ar[j]);
+                PutString(ar[j]);
         }
 
         /// <summary>
@@ -657,7 +657,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.result as RowSet;
+            var result = cx.result;
             if (result == null)
             {
 #if EMBEDDED

@@ -117,23 +117,23 @@ namespace Pyrrho.Level3
                 r += (UpdateAssignments, ua);
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = (TableColumn)base._Relocate(cx);
-            var dm = (Domain)domain._Relocate(cx);
+            var r = (TableColumn)base._Relocate(cx,nc);
+            var dm = (Domain)domain._Relocate(cx,nc);
             if (dm != domain)
                 r += (_Domain, dm);
-            var tb = (Table)cx.Fixed(tabledefpos);
+            var tb = (Table)cx.Fixed(tabledefpos,nc);
             if (tb.defpos != tabledefpos)
                 r += (Table, tb.defpos);
-            var ge = generated._Relocate(cx);
+            var ge = generated._Relocate(cx,nc);
             if (ge != generated)
                 r += (Generated, ge);
             var cs = BTree<long, bool>.Empty;
             var ch = false;
             for (var b = constraints?.First(); b != null; b = b.Next())
             {
-                var c = (Check)cx.Fixed(b.key());
+                var c = (Check)cx.Fixed(b.key(),nc);
                 ch = ch || c.defpos != b.key();
                 cs += (c.defpos, true);
             }
@@ -143,7 +143,7 @@ namespace Pyrrho.Level3
             ch = false;
             for (var b = update.First(); b != null; b = b.Next())
             {
-                var u = (UpdateAssignment)b.value()._Relocate(cx);
+                var u = (UpdateAssignment)b.value()._Relocate(cx,nc);
                 ch = ch || (u != b.value());
                 ua += u;
             }
@@ -330,9 +330,9 @@ namespace Pyrrho.Level3
             var n = (SqlValue)wr.Fixed(exp);
             return this + (GenExp, n.defpos);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            var e = cx.Unheap(exp);
+            var e = cx.ObUnheap(exp);
             return (e == exp) ? this : this + (GenExp, e);
         }
         internal TypedValue Eval(Context cx)
@@ -622,10 +622,10 @@ namespace Pyrrho.Level3
             return new PeriodDef(wr.Fix(defpos), wr.Fix(tabledefpos),
                 wr.Fix(startCol), wr.Fix(endCol),wr.cx.db);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Basis _Relocate(Context cx,Context nc)
         {
-            return new PeriodDef(cx.Unheap(defpos), cx.Unheap(tabledefpos),
-                cx.Unheap(startCol), cx.Unheap(endCol), cx.db);
+            return new PeriodDef(cx.ObUnheap(defpos), cx.ObUnheap(tabledefpos),
+                cx.ObUnheap(startCol), cx.ObUnheap(endCol), cx.db);
         }
     }
 }

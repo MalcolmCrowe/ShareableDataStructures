@@ -84,7 +84,7 @@ namespace Pyrrho.Level4
         }
         internal Ident Relocate(Context cx)
         {
-            return new Ident(ident, cx.Unheap(iix), sub?.Relocate(cx));
+            return new Ident(ident, cx.ObUnheap(iix), sub?.Relocate(cx));
         }
         public int CompareTo(object obj)
         {
@@ -198,7 +198,7 @@ namespace Pyrrho.Level4
                 {
                     var n = b.key();
                     var (p, ids) = b.value();
-                    r += (n, cx.Unheap(p), ids.Relocate(cx));
+                    r += (n, cx.ObUnheap(p), ids.Relocate(cx));
                 }
                 return r;
             }
@@ -212,6 +212,10 @@ namespace Pyrrho.Level4
                     r += (n, wr.Fix(p), ids.Relocate(wr));
                 }
                 return r;
+            }
+            public override ATree<string, (long, Idents)> Add(ATree<string, (long, Idents)> a)
+            {
+                return new Idents((BTree<string,(long,Idents)>)base.Add(a));
             }
             public override string ToString()
             {
