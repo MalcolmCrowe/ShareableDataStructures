@@ -216,6 +216,7 @@ namespace Pyrrho.Level4
                 {
                     Sqlx tk = tok;
                     Next();
+                    v = lxr.val;
                     if (tok == Sqlx.CHARLITERAL)
                     {
                         Next();

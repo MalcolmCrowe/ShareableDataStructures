@@ -63,7 +63,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public const long TransPos = 0x4000000000000000;
         public const long Analysing = 0x5000000000000000;
-        public const long Heap = 0x6000000000000000;
+        public const long Executables = 0x6000000000000000;
         readonly Database parent;
         internal Transaction(Database db,long t,string sce,bool auto) :base(db.loadpos,db.mem
             +(Role,db.role.defpos)+(User,db.user.defpos)+(StartTime,System.DateTime.Now.Ticks)
@@ -101,7 +101,7 @@ namespace Pyrrho.Level3
             cx.cursors = BTree<long, Cursor>.Empty;
             if (!autoCommit)
                 return Unheap(cx);
-            return cx.db.Commit(cx);
+            return cx.db.Commit(cx)+(NextPrep,nextPrep);
         }
         /// <summary>
         /// Fix all heap uids in framing fields of compiled objects

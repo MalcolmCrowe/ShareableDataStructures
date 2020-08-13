@@ -666,7 +666,7 @@ namespace Pyrrho.Level3
         }
         internal override SqlValue Reify(Context cx, Ident ic)
         {
-            if (defpos >= Transaction.Heap && ic.iix < Transaction.Heap)
+            if (defpos >= Transaction.Executables && ic.iix < Transaction.Executables)
                 return (SqlCopy)cx.Add(new SqlCopy(ic.iix, cx, ic.ident, from, this));
             else
                 return this;

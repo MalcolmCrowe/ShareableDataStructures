@@ -252,7 +252,7 @@ namespace Pyrrho.Level4
         {
             if (unLex)
                 return ObUnLex(p);
-            if (p < Transaction.Heap)
+            if (p < Transaction.Executables)
                 return p;
             if (obuids.Contains(p))
                 return obuids[p];
@@ -265,7 +265,7 @@ namespace Pyrrho.Level4
         {
             if (unLex)
                 return RsUnLex(p);
-            if (p < Transaction.Heap)
+            if (p < Transaction.Executables)
                 return p;
             if (rsuids.Contains(p))
                 return rsuids[p];
@@ -281,7 +281,7 @@ namespace Pyrrho.Level4
         }
         internal long ObUnLex(long p)
         {
-            if (p<Transaction.TransPos || p >= Transaction.Heap)
+            if (p<Transaction.TransPos || p >= Transaction.Executables)
                 return p;
             if (obuids.Contains(p))
                 return obuids[p];
@@ -290,7 +290,7 @@ namespace Pyrrho.Level4
         }
         internal long RsUnLex(long p)
         {
-            if (p < Transaction.TransPos || p >= Transaction.Heap)
+            if (p < Transaction.TransPos || p >= Transaction.Executables)
                 return p;
             if (rsuids.Contains(p))
                 return rsuids[p];
@@ -417,7 +417,7 @@ namespace Pyrrho.Level4
                     // Careful: we don't want to overwrite an undefined Ident by an unreified one
                     // as it is about to be Resolved
                     var od = defs[ic];
-                    if (od == -1L || !(ob.defpos >= Transaction.Heap && obs[od] is SqlValue ov
+                    if (od == -1L || !(ob.defpos >= Transaction.Executables && obs[od] is SqlValue ov
                         && ov.domain.kind == Sqlx.CONTENT))
                         defs += (ic, ob.defpos);
                 }
@@ -498,8 +498,6 @@ namespace Pyrrho.Level4
             if (q < 0)
                 q = p;
             var ob = (DBObject)db.objects[q];
-            if (ob is From fm)
-                Console.WriteLine(fm.ToString());
             obs += (ob.defpos, ob);
             Install(ob.framing);
         }
@@ -773,6 +771,20 @@ namespace Pyrrho.Level4
             }
             return ch ? r : ord;
         }
+        internal BList<TypedValue> Fix(BList<TypedValue> ord, Context nc)
+        {
+            var r = BList<TypedValue>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = p.Relocate(this, nc);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
         internal BList<long> Fix(BList<long> ord)
         {
             var r = BList<long>.Empty;
@@ -786,6 +798,17 @@ namespace Pyrrho.Level4
                 r += f;
             }
             return ch ? r : ord;
+        }
+        internal BTree<long,BList<TypedValue>> Fix(BTree<long,BList<TypedValue>> refs,Context nc)
+        {
+            var r = BTree<long, BList<TypedValue>>.Empty;
+            for (var b=refs?.First();b!=null;b=b.Next())
+            {
+                var p = b.key();
+                var vs = Fix(b.value(),nc);
+                r += (p, vs);
+            }
+            return r;
         }
         internal PRow Fix(PRow rw,Context nc)
         {

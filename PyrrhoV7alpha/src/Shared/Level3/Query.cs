@@ -1621,7 +1621,7 @@ namespace Pyrrho.Level3
                 r += (RightOrder, os);
             var cs = BList<long>.Empty;
             ch = false;
-            for (var b=namedCols.First();b!=null;b=b.Next())
+            for (var b=namedCols?.First();b!=null;b=b.Next())
             {
                 var n = wr.Fix(b.value());
                 cs += n;
@@ -1659,7 +1659,7 @@ namespace Pyrrho.Level3
                 r += (RightOrder, os);
             var cs = BList<long>.Empty;
             ch = false;
-            for (var b = namedCols.First(); b != null; b = b.Next())
+            for (var b = namedCols?.First(); b != null; b = b.Next())
             {
                 var n = cx.ObUnheap(b.value());
                 cs += n;

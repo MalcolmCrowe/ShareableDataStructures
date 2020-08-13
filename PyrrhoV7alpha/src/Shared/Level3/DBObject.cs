@@ -632,8 +632,8 @@ namespace Pyrrho.Level3
         {
             if (u >= PyrrhoServer.Preparing)
                 return "%" + (u - PyrrhoServer.Preparing);
-            if (u >= Transaction.Heap)
-                return "@" + (u - Transaction.Heap);
+            if (u >= Transaction.Executables)
+                return "@" + (u - Transaction.Executables);
             if (u >= Transaction.Analysing)
                 return "#" + (u - Transaction.Analysing);
             if (u >= Transaction.TransPos)

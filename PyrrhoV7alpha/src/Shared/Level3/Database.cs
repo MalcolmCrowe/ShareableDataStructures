@@ -186,7 +186,7 @@ namespace Pyrrho.Level3
                   (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
                   (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
                   (Types,BTree<Domain,long?>.Empty),
-                  (NextStmt,Transaction.Heap))
+                  (NextStmt,Transaction.Executables))
         {
             loadpos = 0;
         }
@@ -300,7 +300,7 @@ namespace Pyrrho.Level3
             var r = databases[name];
             if (r == null || r.loadpos < loadpos)
                 r = this; // this is more recent!
-            return new Transaction(r,t,sce,auto??autoCommit);
+            return new Transaction(r,t,sce,auto??autoCommit)+(NextPrep,nextPrep);
         }
         public DBObject GetObject(string n)
         {

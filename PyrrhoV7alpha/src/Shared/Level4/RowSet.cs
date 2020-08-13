@@ -1350,14 +1350,16 @@ namespace Pyrrho.Level4
         {
             var r = (DistinctRowSet)base._Relocate(cx,nc);
             r += (From.Source, cx.RsUnheap(source));
-            r += (Index.Tree, new MTree(mtree.info.Relocate(cx,nc)));
+            if (mtree!=null)
+               r += (Index.Tree, new MTree(mtree.info.Relocate(cx,nc)));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (DistinctRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            r += (Index.Tree, new MTree(mtree.info.Relocate(wr)));
+            if (mtree != null)
+                r += (Index.Tree, new MTree(mtree.info.Relocate(wr)));
             return r;
         }
         internal override RowSet Build(Context cx)
@@ -1489,14 +1491,14 @@ namespace Pyrrho.Level4
         {
             var r = (OrderedRowSet)base._Relocate(cx,nc);
             r += (From.Source, cx.RsUnheap(source));
-            r += (_RTree, tree.Relocate(cx,nc));
+            r += (_RTree, tree?.Relocate(cx,nc));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (OrderedRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            r += (_RTree, tree.Relocate(wr));
+            r += (_RTree, tree?.Relocate(wr));
             return r;
         }
         internal override RowSet Build(Context cx)

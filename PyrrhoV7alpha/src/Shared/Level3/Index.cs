@@ -284,11 +284,23 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
-            throw new NotImplementedException();
+            var r = (Index)base._Relocate(wr);
+            r += (Adapter, wr.Fix(adapter));
+            r += (Keys, wr.cx.Fix(keys));
+            r += (References, wr.cx.Fix(references,wr.cx));
+            r += (RefIndex, wr.Fix(refindexdefpos));
+            r += (RefTable, wr.Fix(reftabledefpos));
+            return r;
         }
         internal override Basis _Relocate(Context cx,Context nc)
         {
-            throw new NotImplementedException();
+            var r = (Index)base._Relocate(cx,nc);
+            r += (Adapter, cx.ObUnheap(adapter));
+            r += (Keys, cx.Fix(keys));
+            r += (References, cx.Fix(references, nc));
+            r += (RefIndex, cx.ObUnheap(refindexdefpos));
+            r += (RefTable, cx.ObUnheap(reftabledefpos));
+            return r;
         }
     }
 }

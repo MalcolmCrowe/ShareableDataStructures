@@ -309,7 +309,7 @@ namespace Pyrrho
                                 var sql = tcp.GetString();
                                 var tr = db.Transact(db.nextId, sql);
                                 tr+=(Database._ExecuteStatus,ExecuteStatus.Prepare);
-                                var cx = new Context(tr);
+                                cx = new Context(tr);
                                 db = new Parser(cx).ParseSql(sql,Domain.Content);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
@@ -352,6 +352,7 @@ namespace Pyrrho
                                     rb = cx.result.First(cx);
                                     while (rb != null && rb.IsNull)
                                         rb = rb.Next(cx);
+                                    nextCol = 0;
                                 }
                                 break;
                             }
@@ -1257,7 +1258,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (11 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (13 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

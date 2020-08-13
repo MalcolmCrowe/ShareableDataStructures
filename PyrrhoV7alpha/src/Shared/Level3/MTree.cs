@@ -523,25 +523,46 @@ namespace Pyrrho.Level3
             var outer = mt.impl?.PositionAt(key._head);
             if (outer == null)
                 return null;
-            var tv = outer.value();
-            switch (tv.dataType.kind)
+            MTreeBookmark inner = null;
+            ABookmark<long, bool> pmk = null;
+            for (; ; )
             {
-                case Sqlx.M:
-                    var inner = (tv.Val() as MTree).PositionAt(key._tail);
-                    if (inner == null)
+                if (inner!=null)
+                {
+                    inner = inner.Next();
+                    if (inner != null)
+                        goto done;
+                }
+                if (pmk!=null)
+                {
+                    pmk = pmk.Next();
+                    if (pmk != null)
+                        goto done;
+                }
+                var tv = outer.value();
+                switch (tv.dataType.kind)
+                {
+                    case Sqlx.M:
+                        inner = (tv.Val() as MTree).PositionAt(key._tail);
+                        if (inner != null)
+                            goto done;
+                        outer = outer.Next();
+                        if (outer == null)
+                            return null;
+                        continue;
+                    case Sqlx.T:
+                        pmk = (tv.Val() as BTree<long, bool>).First();
+                        if (pmk != null && key._tail == null)
+                            goto done;
+                        continue;
+                    default:
+                        if (key._tail == null)
+                            goto done;
                         return null;
-                    return new MTreeBookmark(outer, mt.info, true, inner, null,0,key);
-                case Sqlx.T:
-                    var pmk = (tv.Val() as BTree<long, bool>).First();
-                    if (pmk != null && key._tail == null)
-                        return new MTreeBookmark(outer, mt.info, true, null, pmk,0,key);
-                    break;
-                default:
-                    if (key._tail == null)
-                        return new MTreeBookmark(outer, mt.info, true, null, null,0,key);
-                    break;
+                }
             }
-            return null;
+            done:
+            return new MTreeBookmark(outer, mt.info, true, inner, pmk, 0, key);
         }
         /// <summary>
         /// The key at this bookmark

@@ -1041,8 +1041,20 @@ namespace Pyrrho.Level3
             {
                 case Sqlx.BOOLEAN: return (a.ToBool().Value).CompareTo(b.ToBool().Value);
                 case Sqlx.CHAR:
-                    c = string.Compare(a.ToString(), b.ToString(), false, culture);
-                    break;
+                    {
+                        if (a is TInt ai)
+                        {
+                            if (b is TInt bi)
+                                c = ai.ToInteger().CompareTo(bi.ToInteger());
+                            else
+                                c = ai.ToInteger().CompareTo(Integer.Parse(b.ToString()));
+                        }
+                        else if (b is TInt bj)
+                            c = Integer.Parse(a.ToString()).CompareTo(bj.ToInteger());
+                        else
+                            c = string.Compare(a.ToString(), b.ToString(), false, culture);
+                        break;
+                    }
                 case Sqlx.XML: goto case Sqlx.CHAR;
                 case Sqlx.INTEGER:
                     if (a.Val() is long)
