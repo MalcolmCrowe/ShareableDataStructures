@@ -12,6 +12,7 @@ using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
 using System.Security.Principal;
 using System.Security.AccessControl;
+using System.Diagnostics;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -324,6 +325,8 @@ namespace Pyrrho
                         case Protocol.Execute: // v7 Prepared statement API
                             {
                                 var nm = tcp.GetString();
+                                if (nm == "UpdateStock")
+                                    Console.WriteLine("Here");
                                 var n = tcp.GetInt();
                                 var sb = new StringBuilder();
                                 for (var i=0;i<n;i++)
@@ -386,7 +389,6 @@ namespace Pyrrho
                                 }
                                 else
                                     tcp.PutSchema(cx);
-                                Console.WriteLine("" + db.loadpos);
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -1258,7 +1260,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (13 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (14 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

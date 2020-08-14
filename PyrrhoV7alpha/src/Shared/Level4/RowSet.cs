@@ -59,7 +59,7 @@ namespace Pyrrho.Level4
             _Finder = -403, // BTree<long,Finder> SqlValue
             _Needed = -401, //BTree<long,Finder>  SqlValue
             RowOrder = -404, //CList<long> SqlValue 
-            _Rows = -407; //BList<TRow> 
+            _Rows = -407; // BList<TRow> 
         internal CList<long> rt => domain.rowType;
         internal CList<long> keys => (CList<long>)mem[Index.Keys] ?? CList<long>.Empty;
         internal CList<long> rowOrder => (CList<long>)mem[RowOrder] ?? CList<long>.Empty;
@@ -1161,14 +1161,14 @@ namespace Pyrrho.Level4
     internal class IndexRowSet : RowSet
     {
         internal const long
-            _Index = -410, //Index
+            _Index = -410, // long Index
             IxFilter = -411, // PRow
-            IxTable = -409; // Table
-        internal Table table =>(Table)mem[IxTable];
+            IxTable = -409; // long Table
+        internal long table =>(long)(mem[IxTable]??-1L);
         /// <summary>
         /// The Index to use
         /// </summary>
-        internal Index index => (Index)mem[_Index];
+        internal long index => (long)(mem[_Index]??-1L);
         internal PRow filter => (PRow)mem[IxFilter];
         /// <summary>
         /// Constructor: A rowset for a table using a given index. 
@@ -1181,7 +1181,7 @@ namespace Pyrrho.Level4
         internal IndexRowSet(Context cx, Table tb, Index x, PRow filt, BTree<long,Finder>fi) 
             : base(x.defpos,cx,cx.Inf(tb.defpos).domain,fi,null,null,null,null,
                   null,null,
-                  BTree<long,object>.Empty+(IxTable,tb)+(_Index,x)+(IxFilter,filt))
+                  BTree<long,object>.Empty+(IxTable,tb.defpos)+(_Index,x.defpos)+(IxFilter,filt))
         { }
         IndexRowSet(Context cx, IndexRowSet irs, BTree<long, Finder> nd, bool bt)
             : base(cx, irs, nd, bt)
@@ -1207,15 +1207,15 @@ namespace Pyrrho.Level4
         internal override Basis _Relocate(Context cx,Context nc)
         {
             var r = (IndexRowSet)base._Relocate(cx,nc);
-            r += (_Index, index.Relocate(cx,nc));
-            r += (IxTable, table.Relocate(cx,nc));
+            r += (_Index, cx.ObUnheap(index));
+            r += (IxTable, cx.ObUnheap(table));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (IndexRowSet)base._Relocate(wr);
-            r += (_Index, index.Relocate(wr));
-            r += (IxTable, table.Relocate(wr));
+            r += (_Index, wr.Fix(index));
+            r += (IxTable, wr.Fix(table));
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -1261,13 +1261,15 @@ namespace Pyrrho.Level4
             }
             public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
             {
-                return new IndexCursor(_cx,_irs, _pos + 1, mb, _irs.table.tableRows[mb.Value().Value]);
+                var tb = (Table)_cx.db.objects[_irs.table];
+                return new IndexCursor(_cx,_irs, _pos + 1, mb, tb.tableRows[mb.Value().Value]);
             }
             internal static IndexCursor New(Context _cx,IndexRowSet irs, PRow key = null)
             {
                 var _irs = irs;
-                var table = _irs.table;
-                for (var bmk = irs.index.rows.PositionAt(key ?? irs.filter); bmk != null;
+                var table = (Table)_cx.db.objects[_irs.table];
+                var index = (Index)_cx.db.objects[_irs.index];
+                for (var bmk = index.rows.PositionAt(key ?? irs.filter); bmk != null;
                     bmk = bmk.Next())
                 {
                     var iq = bmk.Value();
@@ -1285,7 +1287,7 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 var bmk = _bmk;
-                var _table = _irs.table;
+                var _table = (Table)_cx.db.objects[_irs.table];
                 for (; ; )
                 {
                     bmk = bmk.Next();
