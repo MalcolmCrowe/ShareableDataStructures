@@ -59,7 +59,7 @@ namespace Tpcc
                         done++;
                     else
                         skipped++;
-                tr.Commit();
+                tr.Commit("Deferred");
             }
 
             void Run()

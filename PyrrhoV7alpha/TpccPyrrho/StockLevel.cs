@@ -25,23 +25,17 @@ namespace Tpcc
         {
             int nextoid = 0;
             form.BeginTransaction();
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
-            nextoid = (int)(long)cmd.ExecuteScalar();
-            cmd.CommandText = "select count(*) from stock inner join "+
-				"(select distinct ol_i_id from order_line where ol_w_id="+wid+
-				" and ol_d_id="+did+" and ol_o_id>=" + (nextoid - 20) + 
-				") on s_i_id=ol_i_id where s_w_id=" + wid + " and s_quantity<" + thresh;
+            nextoid = (int)(long)form.conn.ExecuteScalar("FetchDistrict1",""+wid,""+did);
 			int n = 0;
             try
             {
-                n = (int)(long)(cmd.ExecuteScalar() ?? 0L);
+                n = (int)(long)(form.conn.ExecuteScalar("StockEnquiry",""+wid,""+did,""+(nextoid-20),""+wid,""+thresh) ?? 0L);
             }
             catch (Exception ex) {
 				PyrrhoConnect.reqs.WriteLine("StockLevel exception " + ex.Message);
 			}
 			Set(4, n);
-            form.Commit();
+            form.Commit("Stocklevel");
             return false;
         }
 
@@ -70,6 +64,8 @@ namespace Tpcc
 			Put(1,6,"low stock:");
 			AddField(12,6,3);
 			AddField(18,6,1,true);
+			form.conn.Prepare("FetchDistrict1", "select d_next_o_id from district where d_w_id=? and d_id=?");
+			form.conn.Prepare("StockEnquiry", "select count(*) from stock inner join (select distinct ol_i_id from order_line where ol_w_id=? and ol_d_id=? and ol_o_id>=?) on s_i_id=ol_i_id where s_w_id=? and s_quantity<?");
 		}
 
 		/// <summary>

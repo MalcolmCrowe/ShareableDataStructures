@@ -24,7 +24,7 @@ namespace Tpcc
 		public string clast;
 		decimal ytd,dytd,c_balance,camount,c_ytd_payment;
         string cdata, c_credit,c_amount;
-		int count = 0,c_payment_cnt;
+		int c_payment_cnt;
         Encoding enc = Encoding.ASCII;
 		public Label status;
         bool FetchDistrict()
@@ -32,13 +32,11 @@ namespace Tpcc
             form.BeginTransaction();
      //       Console.WriteLine("Payment transaction start");
             Set(42, DateTime.Now.ToString());
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select w_name,w_street_1,w_street_2,w_city,w_state,w_zip,w_ytd from warehouse where w_id=" + wid;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchWarehouse2",""+wid);
             try {
                 if (!rdr.Read())
                 {
-                    form.Commit();
+                    form.Commit("No payment");
     //                Console.WriteLine("Payment transaction empty");
                     return true;
                 }
@@ -58,13 +56,12 @@ namespace Tpcc
             {
                 rdr.Close();
             }
-            cmd.CommandText = "select d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_ytd from district where d_w_id=" + wid + " and d_id=" + did;
-            rdr = cmd.ExecuteReader();
+            rdr = form.conn.ExecuteReader("FetchDistrict2",""+wid,""+did);
             try {
                 if (!rdr.Read())
                 {
      //               Console.WriteLine("Payment done empty");
-                    form.Commit();
+                    form.Commit("Empty payment");
                     return true;
                 }
                 Set(8, (string)rdr[0]);
@@ -73,8 +70,6 @@ namespace Tpcc
                 Set(11, (string)rdr[4]);
                 Set(12, (string)rdr[5]);
                 dytd = (decimal)rdr[6];
-     //           Console.WriteLine("Payment done");
-                form.Commit();
             }
             catch (Exception ex)
             {
@@ -91,9 +86,7 @@ namespace Tpcc
         {
             ArrayList custs = new ArrayList();
             //				cmd.CommandText="select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment from customer where c_wid="+cwid+" and c_d_id="+cdid+" and c_last='"+c_last+"' order by c_first";
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText= "select c_id from customer where c_w_id = " + cwid + " and c_d_id = " + cdid + " and c_last = '" + clast+"' order by c_first";
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchCustomer2",""+cwid,""+cdid,"'"+clast+"'");
             try { 
                 while (rdr.Read())
                     custs.Add((long)rdr[0]);
@@ -113,8 +106,7 @@ namespace Tpcc
             Set(14, cid);
             Set(15, wid);
             Set(16, cdid);
-            cmd.CommandText = "select c_id,c_first,c_middle,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and  c_last='" + clast + "' order by c_first";
-            rdr = cmd.ExecuteReader();
+            rdr = form.conn.ExecuteReader("FetchCustomer3",""+cwid,""+cdid,"'"+clast+"'");
             try { 
                 rdr.Read();
                 Set(17, (string)rdr[1]);
@@ -142,13 +134,11 @@ namespace Tpcc
         }
         bool FetchCustFromId(ref string mess)
         {
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
             Set(14, cid);
             Set(15, cwid);
             Set(16, cdid);
             SetCurField(35);
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchCustomer4",""+cwid,""+cdid,""+cid);
             try { 
                 if (!rdr.Read())
                     return true;
@@ -186,16 +176,13 @@ namespace Tpcc
             var db = form.conn;
             Set(35, c_amount);
             camount = decimal.Parse(c_amount);
-            db.ActTrace("update district set d_ytd = "+(dytd+camount)+" where d_w_id = "+wid+" and d_id = "+did);
+            db.ExecuteTrace("UpdateDistrict2",""+(dytd+camount),""+wid,""+did);
             Set(36, (c_balance + camount).ToString("F2"));
-            var s = "update customer set c_balance=" + (camount + c_balance) + ",c_ytd_payment=" + (camount + c_ytd_payment) + ",c_payment_cnt=" + (c_payment_cnt + 1) + " where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
-            db.ActTrace(s);
-            db.ActTrace("update warehouse set w_ytd = "+(ytd+camount)+" where w_id = "+wid);
+            db.ExecuteTrace("UpdateCustomer2",""+(camount + c_balance),""+(camount + c_ytd_payment),""+(c_payment_cnt + 1),""+cwid,""+cdid,""+cid);
+            db.ExecuteTrace("UpdateWarehouse2",""+(ytd+camount),""+wid);
             if (c_credit == "BC")
             {
-                var cmd = db.CreateCommand();
-                cmd.CommandText = "select c_data from customer where c_w_id=" + cwid + " and c_d_id=" + cdid + " and c_id=" + cid;
-                var rdr = cmd.ExecuteReader();
+                var rdr = db.ExecuteReader("FetchCustomer5",""+cwid,""+cdid,""+cid);
                 try { 
                     if (!rdr.Read())
                         return true;
@@ -208,8 +195,7 @@ namespace Tpcc
                 cdata = "" + cid + "," + cdid + "," + wid + "," + did + "," + wid + "," + c_amount + ";" + cdata;
                 if (cdata.Length > 500)
                     cdata = cdata.Substring(0, 500);
-                db.ActTrace("update customer set c_data = '"+cdata+"' where c_w_id = "+cwid+" and c_d_id = "+cdid+" and c_id = "+cid);
-
+                db.ExecuteTrace("UpdateCustomer3",cdata,""+cwid,""+cdid,""+cid);
                 Set(38, cdata.Substring(0, 50));
                 if (cdata.Length > 50)
                     Set(39, cdata.Substring(50, 50));
@@ -218,6 +204,8 @@ namespace Tpcc
                 if (cdata.Length > 150)
                     Set(41, cdata.Substring(150, 50));
             }
+            //           Console.WriteLine("Payment done");
+            form.Commit("Payment");
             return false;
         }
 		public void Single()
@@ -244,7 +232,6 @@ namespace Tpcc
 			else
 				cid = util.NURandCID();
 			c_amount = enc.GetString(util.NextNString(1, 500000, 2));
-            count = 0;
 			string mess="";
 			try
 			{
@@ -254,11 +241,12 @@ namespace Tpcc
 					FetchCustFromId(ref mess);
 				DoPayment(ref mess);
 				Invalidate(true);
-				form?.Commit();
+				form?.Commit("Single Payment");
 			} 
 			catch(Exception ex)
 			{
                 var s = ex.Message;
+                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
                 form.Rollback();
                 if (s.Contains("with read"))
                     Form1.rconflicts++;
@@ -357,7 +345,17 @@ namespace Tpcc
 			vt1.AddField(7,2,20);
 			vt1.AddField(75,21,1,true);
 			vt1.PutBlanks();
-		}
+            form.conn.Prepare("FetchWarehouse2", "select w_name,w_street_1,w_street_2,w_city,w_state,w_zip,w_ytd from warehouse where w_id=?");
+            form.conn.Prepare("FetchDistrict2", "select d_name,d_street_1,d_street_2,d_city,d_state,d_zip,d_ytd from district where d_w_id=? and d_id=?");
+            form.conn.Prepare("FetchCustomer2", "select c_id from customer where c_w_id = ? and c_d_id =? and c_last = ? order by c_first");
+            form.conn.Prepare("FetchCustomer3", "select c_id,c_first,c_middle,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=? and c_d_id=? and  c_last=? order by c_first");
+            form.conn.Prepare("FetchCustomer4", "select c_first,c_middle,c_last,c_street_1,c_street_2,c_city,c_state,c_zip,c_phone,c_since,c_credit,c_credit_lim,c_discount,c_balance,c_ytd_payment,c_payment_cnt from customer where c_w_id=? and c_d_id=? and c_id=?");
+            form.conn.Prepare("UpdateDistrict2", "update district set d_ytd = ? where d_w_id = ? and d_id = ?");
+            form.conn.Prepare("UpdateCustomer2", "update customer set c_balance=?,c_ytd_payment=?,c_payment_cnt=? where c_w_id=? and c_d_id=? and c_id=?");
+            form.conn.Prepare("UpdateWarehouse2", "update warehouse set w_ytd = ? where w_id = ?");
+            form.conn.Prepare("FetchCustomer5", "select c_data from customer where c_w_id=? and c_d_id=? and c_id=?");
+            form.conn.Prepare("UpdateCustomer3", "update customer set c_data = ? where c_w_id = ? and c_d_id = ? and c_id = ?");
+        }
 
 		/// <summary>
 		/// Clean up any resources being used.

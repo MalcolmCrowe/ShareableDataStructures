@@ -506,9 +506,9 @@ namespace Tpcc
                 tr.Rollback();
             tr = null;
         }
-        public void Commit()
+        public void Commit(string mess)
         {
-            tr?.Commit();
+            tr?.Commit(mess);
             tr = null;
         }
         private void Form1_Load(object sender, System.EventArgs e)
@@ -654,6 +654,7 @@ namespace Tpcc
         void timer2_Tick(object sender, EventArgs e)
         {
             PyrrhoConnect.reqs.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+            Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
             PyrrhoConnect.reqs.WriteLine("Last fid=" + maxloaded);
             PyrrhoConnect.reqs.Close();
             Application.Exit();

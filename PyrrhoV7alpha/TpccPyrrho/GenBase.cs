@@ -76,7 +76,7 @@ namespace Tpcc
                 var qs = new string[q.Length];
                 for (var i = 0; i < q.Length; i++)
                     qs[i] = q[i].ToString();
-                db.ExecuteNonQueryTrace(s, qs);
+                db.ExecuteTrace(s, qs);
             }
         }
         string NextData()

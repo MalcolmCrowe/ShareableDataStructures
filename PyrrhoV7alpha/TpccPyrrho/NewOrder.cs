@@ -8,6 +8,7 @@ using System.Threading;
 using System.Data;
 using Pyrrho;
 using System.Net.Sockets;
+using System.Runtime.Remoting;
 
 namespace Tpcc
 {
@@ -53,10 +54,6 @@ namespace Tpcc
             public int ol_quantity;
             public decimal ol_amount;
         }
-        bool Check(PyrrhoCommand c)
-        {
-            return false;
-        }
         public void Multiple()
         {
             int Tcount = 0;
@@ -79,13 +76,13 @@ namespace Tpcc
                 }
             }
         }
-        bool ExecNQ(PyrrhoCommand cmd)
+        bool ExecNQ(string name,params string[] args)
         {
             try
             {
                 var t = DateTime.Now.Ticks;
       //          Console.WriteLine("ExecNQ started "+cmd.CommandText);
-                form.conn.ActTrace(cmd.CommandText);
+                form.conn.ExecuteTrace(name,args);
       //          Console.WriteLine("ExecNQ done " + (DateTime.Now.Ticks-t));
                 return false;
             }
@@ -99,12 +96,8 @@ namespace Tpcc
         }
         bool FetchCustomer(ref string mess)
         {
-            var cmd = form.conn.CreateCommand();
-                cmd.CommandText = "select c_discount,c_last,c_credit from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
-            //			mess=cmd.CommandText;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchCustomer",""+wid,""+did,""+cid);
             try { 
-                Check(cmd);
                 if (!rdr.Read())
                 {
                     mess = "No customer " + cid;
@@ -128,11 +121,7 @@ namespace Tpcc
         bool FetchDistrict(ref string mess)
         {
             form.BeginTransaction();
-       //     Console.WriteLine("Tx FetchDistrict");
-            var cmd = form.conn.CreateCommand();
-                cmd.CommandText = "select d_tax,d_next_o_id from district where d_w_id=" + wid + " and d_id=" + did;
-            //		mess=cmd.CommandText;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchDistrict",""+wid,""+did);
             try { 
                 if (!rdr.Read())
                 {
@@ -154,9 +143,8 @@ namespace Tpcc
             {
                 rdr.Close();
             }
-            cmd.CommandText = "select w_tax from warehouse where w_id=" + wid;
             //		mess=cmd.CommandText;
-            rdr = cmd.ExecuteReader();
+            rdr = form.conn.ExecuteReader("FetchWarehouse",""+wid);
             try
             {
                 if (!rdr.Read())
@@ -177,9 +165,8 @@ namespace Tpcc
             {
                 rdr.Close();
             }
-            cmd.CommandText = "update district set d_next_o_id=" + (o_id + 1) + " where d_w_id=" + wid + " and d_id=" + did;
             //		mess=cmd.CommandText;
-            if (ExecNQ(cmd))
+            if (ExecNQ("UpdateOrderNo", "" + (o_id + 1), "" + wid, "" + did))
                 return true;
             allhome = true;
             return false;
@@ -187,16 +174,10 @@ namespace Tpcc
 		bool DoOLCount(ref string mess)
 		{
             Set(7, ol_cnt);
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "insert into \"ORDER\"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local)" +
-                "values(" + o_id + "," + did + "," + wid + "," + cid + ",date'" + DateTime.Now.ToString("yyyy-MM-dd") + "'," + ol_cnt + "," + (allhome ? 1 : 0) + ")";
-            //		mess=cmd.CommandText;
-            if (ExecNQ(cmd))
+            if (ExecNQ("CreateOrder",""+o_id,""+did,""+wid,""+cid, "date'" + DateTime.Now.ToString("yyyy-MM-dd")+"'",""+ol_cnt,""+ (allhome ? 1 : 0)))
                 return true;
-            cmd.CommandText = "insert into new_order(no_o_id,no_d_id,no_w_id)values(" +
-                o_id + "," + did + "," + wid + ")";
             //		mess=cmd.CommandText;
-            if (ExecNQ(cmd))
+            if (ExecNQ("CreateNewOrder",""+o_id,""+did,""+wid))
                 return true;
             return false;
 		}
@@ -210,10 +191,7 @@ namespace Tpcc
         {
             OrderLine a = ols[j];
             int k = 10 + j * 8;
-            var cmd = form.conn.CreateCommand();
-                cmd.CommandText = "select i_price,i_name,i_data from item where i_id=" + a.oliid;
-            //		mess=cmd.CommandText;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchItemData",""+a.oliid);
             try { 
                 if (!rdr.Read())
                 {
@@ -225,7 +203,7 @@ namespace Tpcc
                 i_name = (string)rdr[1];
                 i_data = (string)rdr[2];
                 Set(k, a.ol_supply_w_id);
-                Set(k + 1, String.Format("{0,6}", a.oliid));
+                Set(k + 1, string.Format("{0,6}", a.oliid));
             }
             catch (Exception ex)
             {
@@ -242,13 +220,8 @@ namespace Tpcc
         {
             OrderLine a = ols[j];
             int k = 10 + j * 8;
-            var cmd = form.conn.CreateCommand();
-                string ds = "0" + did;
-                if (ds.Length > 2)
-                    ds = ds.Substring(1);
-                cmd.CommandText = "select s_quantity,s_dist_" + ds + ",s_data from stock where s_i_id=" + a.oliid + " and s_w_id=" + a.ol_supply_w_id;
             //		mess=cmd.CommandText;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchItemData2"+(did-1),""+a.oliid,""+a.ol_supply_w_id);
             try { 
                 if (!rdr.Read())
                 {
@@ -279,7 +252,7 @@ namespace Tpcc
             if (sdata.IndexOf("ORIGINAL") >= 0 && i_data.IndexOf("ORIGINAL") >= 0)
                 bg = "B";
             Set(k + 5, bg);
-            Set(k + 6, String.Format("${0,6:F2}", i_price)); return false;
+            Set(k + 6, string.Format("${0,6:F2}", i_price)); return false;
         }
 		bool DoOLQuantity(int j,ref string mess)
 		{
@@ -291,7 +264,7 @@ namespace Tpcc
 			Set(k+4,s_quantity);
 			Set(k+3,a.ol_quantity);
 			a.ol_amount = a.ol_quantity*i_price;
-			Set(k+7,String.Format("${0,7:F2}",a.ol_amount));
+			Set(k+7,string.Format("${0,7:F2}",a.ol_amount));
 			return false;
 		}
 		bool DoTotal()
@@ -303,7 +276,7 @@ namespace Tpcc
 				total += a.ol_amount;
 			}
 			total = total*(1-c_discount)*(1+w_tax+d_tax);
-			Set(131,String.Format("${0,8:F2}",total));
+			Set(131,string.Format("${0,8:F2}",total));
 			return false;
 		}
         public bool DoCommit(ref string mess)
@@ -317,15 +290,9 @@ namespace Tpcc
                     s_quantity = a.s_quantity - a.ol_quantity;
                     if (s_quantity < 10)
                         s_quantity += 91;
-                    var cmd = form.conn.CreateCommand();
-                    cmd.CommandText = "update stock set s_quantity=" + s_quantity + " where s_i_id=" + a.oliid + " and s_w_id=" + a.ol_supply_w_id;
-                    //				mess=cmd.CommandText;
-                    if (ExecNQ(cmd))
+                    if (ExecNQ("UpdateStock",""+s_quantity,""+a.oliid,""+a.ol_supply_w_id))
                         return false;
-                    cmd.CommandText = "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(" +
-                        o_id + "," + did + "," + wid + "," + (j + 1) + "," + a.oliid + "," + a.ol_supply_w_id + "," + a.ol_quantity + "," + a.ol_amount + ")";
-                    //				mess = cmd.CommandText;
-                    if (ExecNQ(cmd))
+                    if (ExecNQ("AddOrderLine",""+o_id,""+did,""+wid,""+(j+1),""+a.oliid,""+a.ol_supply_w_id,""+a.ol_quantity,""+a.ol_amount))
                         return false;
                 }
                 mess = "OKAY";
@@ -339,7 +306,7 @@ namespace Tpcc
                 else
                 {
      //               Console.WriteLine("New Order Commit");
-                   form.Commit();
+                   form.Commit("NewOrder");
                     Form1.commits++;
                 }
                 // Phase 3 display the results
@@ -523,7 +490,7 @@ namespace Tpcc
 			if (btn!=null)
 				btn.Enabled = true;
         //    Console.WriteLine("Committed Order");
-            form.Commit();
+            form.Commit("Single Order");
 			return;
         bad:
        //     Console.WriteLine("Rollback new order");
@@ -582,7 +549,18 @@ namespace Tpcc
 			vt1.AddField(70,22,9);
 			vt1.AddField(61,2,19);
 			vt1.PutBlanks();
-		}
+            form.conn.Prepare("FetchCustomer", "select c_discount,c_last,c_credit from customer where c_w_id=? and c_d_id=? and c_id=?");
+            form.conn.Prepare("FetchDistrict", "select d_tax,d_next_o_id from district where d_w_id=? and d_id=?");
+            form.conn.Prepare("FetchWarehouse", "select w_tax from warehouse where w_id=?");
+            form.conn.Prepare("UpdateOrderNo", "update district set d_next_o_id=? where d_w_id=? and d_id=?");
+            form.conn.Prepare("CreateOrder", "insert into \"ORDER\"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local) values(?,?,?,?,?,?,?)");
+            form.conn.Prepare("CreateNewOrder", "insert into new_order(no_o_id,no_d_id,no_w_id)values(?,?,?)");
+            form.conn.Prepare("FetchItemData", "select i_price,i_name,i_data from item where i_id=?");
+            for (var i=1;i<=10;i++)
+                form.conn.Prepare("FetchItemData2"+(i-1), "select s_quantity,s_dist_"+i.ToString("D2")+",s_data from stock where s_i_id=? and s_w_id=?");
+            form.conn.Prepare("UpdateStock", "update stock set s_quantity=? where s_i_id=? and s_w_id=?");
+            form.conn.Prepare("AddOrderLine", "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(?,?,?,?,?,?,?,?)");
+        }
 
 		/// <summary>
 		/// Clean up any resources being used.

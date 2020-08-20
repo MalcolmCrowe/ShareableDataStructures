@@ -1582,7 +1582,7 @@ namespace Pyrrho.Level4
         {
             base.Scan(cx);
             cx.RsScanned(source);
-            mtree.Scan(cx);
+            mtree?.Scan(cx);
         }
         internal override Basis Fix(Context cx)
         {

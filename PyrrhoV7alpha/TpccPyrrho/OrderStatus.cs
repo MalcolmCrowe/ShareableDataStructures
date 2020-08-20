@@ -47,10 +47,8 @@ namespace Tpcc
 		}
         bool FetchCustFromId(ref string mess)
         {
-            var cmd = form.conn.CreateCommand();
-                cmd.CommandText = "select c_balance,c_first,c_middle,c_last from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
-            var rdr = cmd.ExecuteReader();
-            try { 
+            var rdr = form.conn.ExecuteReader("FetchCustomer6","" + wid,"" + did, "" + cid);
+			try { 
                 if (!rdr.Read())
                     return true;
                 clast = (string)rdr[3];
@@ -72,10 +70,9 @@ namespace Tpcc
         bool FetchCustFromLast(ref string mess)
         {
             ArrayList cids = new ArrayList();
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select c_id from customer where c_w_id=" + wid + " and c_d_id=" + did + " and c_last='" + clast + "' order by c_first";
-            var rdr = cmd.ExecuteReader();
-            try { 
+            var rdr = form.conn.ExecuteReader("FetchCustomer7", "" + wid,"" + did,"'"+clast+"'");
+
+			try { 
                 while (rdr.Read())
                     cids.Add((long)rdr[0]);
                 cid = (int)(long)cids[(cids.Count + 1) / 2];
@@ -89,8 +86,7 @@ namespace Tpcc
             {
                 rdr.Close();
             }
-            cmd.CommandText = "select c_balance,c_first,c_middle from customer  where c_w_id=" + wid + " and c_d_id=" + did + " and c_id=" + cid;
-            rdr = cmd.ExecuteReader();
+            rdr = form.conn.ExecuteReader("FetchCustomer8",""+wid,""+did,""+cid);
             try { 
                 if (!rdr.Read())
                     return true;
@@ -112,9 +108,7 @@ namespace Tpcc
             Set(5, clast);
             Set(6, "$" + c_balance.ToString("F2"));
             int oid = -1;
-            var cmd = form.conn.CreateCommand();
-            cmd.CommandText = "select max(o_id) from \"ORDER\" where o_w_id=" + wid + " and o_d_id=" + did + " and o_c_id=" + cid;
-            var rdr = cmd.ExecuteReader();
+            var rdr = form.conn.ExecuteReader("FetchLastOrder", "" + wid, "" + did, "" + cid);
             try { 
                 if (!rdr.Read())
                     return true;
@@ -129,8 +123,7 @@ namespace Tpcc
             {
                 rdr.Close();
             }
-            cmd.CommandText = "select o_entry_d,o_carrier_id from \"ORDER\" where o_w_id=" + wid + " and o_d_id=" + did + " and o_id=" + oid;
-            rdr = cmd.ExecuteReader();
+            rdr = form.conn.ExecuteReader("FetchOrder2",""+wid,""+did,""+oid);
             try { 
                 if (!rdr.Read())
                     return true;
@@ -144,9 +137,8 @@ namespace Tpcc
                 rdr.Close();
             }
             int k = 10;
-            cmd.CommandText = "select ol_i_id,ol_supply_w_id,ol_quantity,ol_amount,ol_delivery_d from order_line where ol_w_id=" + wid + " and ol_d_id=" + did + " and ol_o_id=" + oid;
-            rdr = cmd.ExecuteReader();
-            try { 
+            rdr = form.conn.ExecuteReader("FetchOrder3", "" + wid, "" + did, "" + oid);
+			try { 
                 while (rdr.Read())
                 {
                     Set(k++, (int)(long)rdr[1]);
@@ -235,6 +227,12 @@ namespace Tpcc
 			}
 			vt1.AddField(79,22,1,true);
 			vt1.PutBlanks();
+			form.conn.Prepare("FetchCustomer6", "select c_balance,c_first,c_middle,c_last from customer where c_w_id=? and c_d_id=? and c_id=?");
+			form.conn.Prepare("FetchCustomer7", "select c_id from customer where c_w_id=? and c_d_id=? and c_last=? order by c_first");
+			form.conn.Prepare("FetchCustomer8", "select c_balance,c_first,c_middle from customer  where c_w_id=? and c_d_id=? and c_id=?");
+			form.conn.Prepare("FetchLastOrder", "select max(o_id) from \"ORDER\" where o_w_id=? and o_d_id=? and o_c_id=?");
+			form.conn.Prepare("FetchOrder2", "select o_entry_d,o_carrier_id from \"ORDER\" where o_w_id=? and o_d_id=? and o_id=?");
+			form.conn.Prepare("FetchOrder3", "select ol_i_id,ol_supply_w_id,ol_quantity,ol_amount,ol_delivery_d from order_line where ol_w_id=? and ol_d_id=? and ol_o_id=?");
 		}
 
 		/// <summary>
