@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Management.Instrumentation;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -22,13 +23,13 @@ namespace Pyrrho.Level3
 	internal class Trigger : DBObject
 	{
         internal const long
-            Action = -290, // long
-            NewRow = -293, // long
-            NewTable = -294, // long
-            OldRow = -295, // long
-            OldTable = -296, // long
+            Action = -290, // long Executable
+            NewRow = -293, // long Cursor
+            NewTable = -294, // long Query
+            OldRow = -295, // long Cursor
+            OldTable = -296, // long Query
             TrigType = -297, // PTrigger.TrigType
-            UpdateCols = -298; // BList<long>
+            UpdateCols = -298; // BList<long> SqlValue
         public string name => (string)mem[Name];
         public long table => (long)mem[From.Target];
         /// <summary>
@@ -52,7 +53,7 @@ namespace Pyrrho.Level3
         /// the name of the new table
         /// </summary>
 		public long newTable => (long)(mem[NewTable]??-1L);
-        public long action => (long)mem[Action];
+        public long action => (long)(mem[Action]??-1L);
         /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
@@ -77,6 +78,10 @@ namespace Pyrrho.Level3
             if (p.newRow != null)
                 r += (NewRow, p.newRow.iix);
             return r;
+        }
+        public static Trigger operator+(Trigger t,(long,object)x)
+        {
+            return (Trigger)t.New(t.mem + x);
         }
         /// <summary>
         /// a string representation of the trigger
@@ -162,6 +167,44 @@ namespace Pyrrho.Level3
             nd += (tb, p);
             return base.Drop(d, nd, p);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.ObScanned(action);
+            cx.ObScanned(newRow);
+            cx.ObScanned(newTable);
+            cx.ObScanned(oldRow);
+            cx.ObScanned(oldTable);
+            cx.Scan(cols);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (Trigger)base.Fix(cx);
+            r += (Action, cx.obuids[action]);
+            if (newRow>=0)
+                r += (NewRow, cx.obuids[newRow]);
+            if (newTable >= 0)
+                r += (NewTable, cx.obuids[newTable]);
+            if (oldRow >= 0)
+                r += (OldRow, cx.obuids[oldRow]);
+            if (oldTable >= 0)
+                r += (OldTable, cx.obuids[oldTable]);
+            r += (UpdateCols, cx.Fix(cols));
+            return r; 
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            if (defpos < wr.Length)
+                return this;
+            var r= (Trigger)base._Relocate(wr);
+            r += (Action, wr.Fixed(action)?.defpos??-1L);
+            r += (NewRow, wr.Fixed(newRow)?.defpos ?? -1L);
+            r += (NewTable, wr.Fixed(newTable)?.defpos ?? -1L);
+            r += (OldRow, wr.Fixed(oldRow)?.defpos ?? -1L);
+            r += (OldTable, wr.Fixed(oldTable)?.defpos ?? -1L);
+            r += (UpdateCols, wr.Fix(cols));
+            return r;
+        }
     }
     /// <summary>
     /// Transition tables are not listed in roles but referred to in triggers
@@ -178,6 +221,10 @@ namespace Pyrrho.Level3
                 : base(ic.iix, _Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static TransitionTable operator+(TransitionTable t,(long,object)x)
+        {
+            return (TransitionTable)t.New(t.mem + x);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new TransitionTable(defpos,m);
@@ -207,40 +254,26 @@ namespace Pyrrho.Level3
         {
             return new TransitionTable(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(trig);
+            cx.Scan(columns);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r =  base._Relocate(wr);
             r += (Trig, wr.Fix(trig));
-            var cs = CList<long>.Empty;
-            var ch = false;
-            for (var b = columns.First(); b != null; b = b.Next())
-            {
-                var nk = wr.Fix(b.value());
-                ch = ch || nk != b.value();
-                cs += nk;
-            }
-            if (ch)
-                r += (SqlValue._Columns, cs);
-            var dm = domain._Relocate(wr);
-            r += (_Domain, dm);
+            r += (SqlValue._Columns, wr.Fix(columns));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = base._Relocate(cx,nc);
-            r += (Trig, cx.ObUnheap(trig));
-            var cs = CList<long>.Empty;
-            var ch = false;
-            for (var b = columns.First(); b != null; b = b.Next())
-            {
-                var nk = cx.ObUnheap(b.value());
-                ch = ch || nk != b.value();
-                cs += nk;
-            }
-            if (ch)
-                r += (SqlValue._Columns, cs);
-            var dm = domain._Relocate(cx,nc);
-            r += (_Domain, dm);
+            var r = (TransitionTable)base.Fix(cx);
+            r += (Trig, cx.obuids[trig]);
+            r += (SqlValue._Columns, cx.Fix(columns));
             return r;
         }
         internal override void _Add(Context cx)

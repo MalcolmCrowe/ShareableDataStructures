@@ -60,7 +60,7 @@ namespace Pyrrho.Level4
         /// the number of parameters of the method
         /// </summary>
         public int arity;
-        public BList<ParamInfo> ins; 
+        public BList<long> ins; 
         /// <summary>
         /// The return type
         /// </summary>

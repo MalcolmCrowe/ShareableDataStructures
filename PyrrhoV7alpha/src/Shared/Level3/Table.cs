@@ -127,20 +127,39 @@ namespace Pyrrho.Level3
         {
             return new Table(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            domain.Scan(cx);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = base._Relocate(wr);
-            var dt = (Domain)domain._Relocate(wr);
-            if (dt != domain)
-                r += (_Domain, dt);
+            r += (_Domain, domain._Relocate(wr));
+            if (applicationPS>=0)
+                r += (ApplicationPS, wr.Fix(applicationPS));
+            r += (Indexes, wr.Fix(indexes));
+            r += (TableCols, wr.Fix(tblCols));
+            if (systemPS >= 0)
+                r += (SystemPS, wr.Fix(systemPS));
+            r += (TableChecks, wr.Fix(tableChecks));
+            r += (Triggers, wr.Fix(triggers));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = base._Relocate(cx,nc);
-            var dt = (Domain)domain._Relocate(cx,nc);
-            if (dt != domain)
-                r += (_Domain, dt);
+            var r =(Table) base.Fix(cx);
+            r += (_Domain, domain.Fix(cx));
+            if (applicationPS >= 0)
+                r += (ApplicationPS, cx.obuids[applicationPS]);
+            r += (Indexes, cx.Fix(indexes));
+            r += (TableCols, cx.Fix(tblCols));
+            if (systemPS >= 0)
+                r += (SystemPS, cx.obuids[systemPS]);
+            r += (TableChecks, cx.Fix(tableChecks));
+            r += (Triggers, cx.Fix(triggers));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -329,6 +348,7 @@ namespace Pyrrho.Level3
         {
             if (f.assigns.Count==0)
                 return cx;
+            PyrrhoServer.Debug(1, "Update starts");
             if (Denied(cx, Grant.Privilege.Insert))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Update, eqs);
@@ -348,15 +368,16 @@ namespace Pyrrho.Level3
             }
       //      bool nodata = true;
             var cl = cx.db.user?.clearance??Level.D;
-            trs.from.RowSets(cx, trs.finder);
             cx.from += trs.finder;
             if ((level != null || updates.Count > 0))
             {
                 var fi = trs.UpdateSB(cx);
+                PyrrhoServer.Debug(1, "About to start traverse");
                 if (fi!=true)
                     for (var trb = trs.First(cx) as TransitionRowSet.TransitionCursor;
                         trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionCursor)
                     {
+                        PyrrhoServer.Debug(1, "Trb available");
                         for (var b=updates.First();b!=null;b=b.Next())
                         {
                             var ua = b.value();

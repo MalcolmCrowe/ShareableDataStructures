@@ -96,18 +96,25 @@ namespace Pyrrho.Level3
         {
             return new QuerySpecification(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(tableExp.defpos);
+        }
         internal override Basis _Relocate(Level2.Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (QuerySpecification)base._Relocate(wr);
             var te = tableExp.Relocate(wr);
             if (te != tableExp)
                 r += (TableExp, te);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (QuerySpecification)base._Relocate(cx,nc);
-            var te = tableExp.Relocate(cx,nc);
+            var r = (QuerySpecification)base.Fix(cx);
+            var te = tableExp.Fix(cx);
             if (te != tableExp)
                 r += (TableExp, te);
             return r;
@@ -149,6 +156,7 @@ namespace Pyrrho.Level3
                     f.RowSets(cx,this);
             if (distinct)
                 r = new DistinctRowSet(cx,r);
+            cx.results += (defpos, r.defpos);
             return r.ComputeNeeds(cx);
         }
         /// <summary>
@@ -305,24 +313,27 @@ namespace Pyrrho.Level3
         {
             return new QueryExpression(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(left);
+            cx.ObScanned(right);
+        }
         internal override Basis _Relocate(Level2.Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (QueryExpression)base._Relocate(wr);
-            var q = (Query)wr.Fixed(left);
-            if (q.defpos != left)
-                r += (_Left, q.defpos);
-            if (wr.Fixed(right) is QueryExpression rq && rq.defpos != right)
-                    r += (_Right, rq.defpos);
+            r += (_Left, wr.Fixed(left).defpos);
+            r += (_Right, wr.Fixed(right)?.defpos??-1L);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (QueryExpression)base._Relocate(cx,nc);
-            var q = (Query)cx.Fixed(left,nc);
-            if (q.defpos != left)
-                r += (_Left, q.defpos);
-            if (cx.Fixed(right,nc) is QueryExpression rq && rq.defpos != right)
-                    r += (_Right, rq.defpos);
+            var r = (QueryExpression)base.Fix(cx);
+            r += (_Left, cx.obuids[left]);
+            if (right>=0)
+            r += (_Right, cx.obuids[right]);
             return r;
         }
         internal override bool aggregates(Context cx)
@@ -518,6 +529,7 @@ namespace Pyrrho.Level3
             var r = Ordering(cx, lr, false);
             if (fetchFirst != -1L)
                 r = new RowSetSection(cx, r, 0, fetchFirst);
+            cx.results += (defpos, r.defpos);
             return r.ComputeNeeds(cx);
         }
          public override string ToString()

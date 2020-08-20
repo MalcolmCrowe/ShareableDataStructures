@@ -78,15 +78,23 @@ namespace Pyrrho.Level4
         {
             return new GroupingRowSet(dp,mem);
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override void Scan(Context cx)
         {
-            var r = (GroupingRowSet)base._Relocate(cx,nc);
-            r += (From.Source, cx.RsUnheap(source));
+            base.Scan(cx);
+            cx.RsScanned(source);
+            cx.Scan(groupings);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (GroupingRowSet)base.Fix(cx);
+            r += (From.Source, cx.rsuids[source]);
             r += (Groupings, cx.Fix(groupings));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (GroupingRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
             r += (Groupings, wr.Fix(groupings));

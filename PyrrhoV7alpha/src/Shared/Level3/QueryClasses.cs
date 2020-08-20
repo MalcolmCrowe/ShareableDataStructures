@@ -71,6 +71,19 @@ namespace Pyrrho.Level3
                 sb.Append(" following");
             return sb.ToString();
         }
+
+        internal override void Scan(Context cx)
+        {
+            distance?.Scan(cx);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            return this + (Distance, distance?.Fix(cx));
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            return this+(Distance, distance?.Relocate(wr));
+        }
     }
     /// <summary>
     /// A Window Specification from the parser
@@ -143,14 +156,35 @@ namespace Pyrrho.Level3
         {
             return new WindowSpecification(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            high?.Scan(cx);
+            low?.Scan(cx);
+            cx.Scan(order);
+            cx.Scan(partitionType);
+            cx.ObScanned(query);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (WindowSpecification)base._Relocate(wr);
+            r += (High, high?._Relocate(wr));
+            r += (Low, low?._Relocate(wr));
+            r += (Order, wr.Fix(order));
+            r += (PartitionType, wr.Fix(partitionType));
+            r += (WQuery, wr.Fixed(query));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (WindowSpecification)base._Relocate(cx,nc);
+            var r = (WindowSpecification)base.Fix(cx);
+            r += (High, high?.Fix(cx));
+            r += (Low, low?.Fix(cx));
+            r += (Order, cx.Fix(order));
+            r += (PartitionType, cx.Fix(partitionType));
+            r += (WQuery, cx.obuids[query]);
             return r;
         }
         /// <summary>
@@ -247,54 +281,26 @@ namespace Pyrrho.Level3
         {
             return new Grouping(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.Scan(groups);
+            cx.Scan(members);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (Grouping)base._Relocate(wr);
-            var gs = BList<Grouping>.Empty;
-            var ch = false;
-            for (var b=groups.First();b!=null;b=b.Next())
-            {
-                var g = (Grouping)b.value().Relocate(wr);
-                ch = ch || g != b.value();
-                gs += g;
-            }
-            if (ch)
-                r += (Groups, gs);
-            ch = false;
-            var ms = BTree<long,int>.Empty;
-            for (var b = members.First(); b != null; b = b.Next())
-            {
-                var m = wr.Fix(b.key());
-                ch = ch || m != b.key();
-                ms += (m,b.value());
-            }
-            if (ch)
-                r += (Members, ms);
+            r += (Groups, wr.Fix(groups));
+            r += (Members, wr.Fix(members));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (Grouping)base._Relocate(cx,nc);
-            var gs = BList<Grouping>.Empty;
-            var ch = false;
-            for (var b = groups.First(); b != null; b = b.Next())
-            {
-                var g = (Grouping)b.value().Relocate(cx,nc);
-                ch = ch || g != b.value();
-                gs += g;
-            }
-            if (ch)
-                r += (Groups, gs);
-            ch = false;
-            var ms = BTree<long, int>.Empty;
-            for (var b = members.First(); b != null; b = b.Next())
-            {
-                var m = cx.ObUnheap(b.key());
-                ch = ch || m != b.key();
-                ms += (m, b.value());
-            }
-            if (ch)
-                r += (Members, ms);
+            var r = (Grouping)base.Fix(cx);
+            r += (Groups, cx.Fix(groups));
+            r += (Members, cx.Fix(members));
             return r;
         }
     }
@@ -354,35 +360,22 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (GroupSpecification)base._Relocate(wr);
-            var gs = BList<long>.Empty;
-            var ch = false;
-            for (var b=sets.First();b!=null;b=b.Next())
-            {
-                var o = (Grouping)wr.cx.obs[b.value()];
-                var g = (Grouping)o.Relocate(wr);
-                ch = ch || (g != o);
-                gs += g.defpos;
-            }
-            if (ch)
-                r += (Sets, gs);
+            r += (Sets, wr.Fix(sets));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (GroupSpecification)base._Relocate(cx,nc);
-            var gs = BList<long>.Empty;
-            var ch = false;
-            for (var b = sets.First(); b != null; b = b.Next())
-            {
-                var o = (Grouping)cx.obs[b.value()];
-                var g = (Grouping)o.Relocate(cx,nc);
-                ch = ch || (g != o);
-                gs += g.defpos;
-            }
-            if (ch)
-                r += (Sets, gs);
+            var r = (GroupSpecification)base.Fix(cx);
+            r += (Sets, cx.Fix(sets));
             return r;
+        }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.Scan(sets);
         }
         public override string ToString()
         {
@@ -419,6 +412,11 @@ namespace Pyrrho.Level3
         {
             return new UpdateAssignment(m);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObScanned(vbl);
+            cx.ObScanned(val);
+        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = base._Relocate(wr);
@@ -430,15 +428,11 @@ namespace Pyrrho.Level3
                 r += (Vbl, vb.defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = base._Relocate(cx,nc);
-            var va = (SqlValue)cx.Fixed(val,nc);
-            if (va.defpos != val)
-                r += (Val, va.defpos);
-            var vb = (SqlValue)cx.Fixed(vbl,nc);
-            if (vb.defpos != vbl)
-                r += (Vbl, vb.defpos);
+            var r = base.Fix(cx);
+            r += (Val, cx.obuids[val]);
+            r += (Vbl, cx.obuids[vbl]);
             return r;
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)

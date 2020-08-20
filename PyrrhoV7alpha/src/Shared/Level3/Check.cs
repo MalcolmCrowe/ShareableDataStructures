@@ -91,20 +91,23 @@ namespace Pyrrho.Level3
         {
             return new Check(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.ObScanned(search);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (Check)base._Relocate(wr);
-            var s = (SqlValue)wr.Fixed(search);
-            if (s.defpos != search)
-                r += (Condition, s);
+            r += (Condition, wr.Fixed(search).defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (Check)base._Relocate(cx,nc);
-            var s = (SqlValue)cx.Fixed(search,nc);
-            if (s.defpos != search)
-                r += (Condition, s);
+            var r = (Check)base.Fix(cx);
+            r += (Condition, cx.obuids[search]);
             return r;
         }
         internal override Database Drop(Database d, Database nd, long p)

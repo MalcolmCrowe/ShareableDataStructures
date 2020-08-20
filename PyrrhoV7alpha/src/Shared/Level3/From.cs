@@ -195,46 +195,31 @@ namespace Pyrrho.Level3
         {
             return new From(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.Scan(assigns);
+            cx.ObUnheap(source);
+            cx.ObUnheap(target);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (From)base._Relocate(wr);
-            var ua = BList<UpdateAssignment>.Empty;
-            var ch = false;
-            for (var b=assigns.First();b!=null;b=b.Next())
-            {
-                var a = (UpdateAssignment)b.value()._Relocate(wr);
-                ua += a;
-                if (a != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (Assigns, ua);
-            if (wr.cx.Fixed(source,wr.cx) is Query sc && sc.defpos != source)
-                r += (Source, sc);
+            r += (Assigns, wr.Fix(assigns));
+            r += (Source, wr.Fix(source));
             var tg = wr.Fix(target);
             if (tg != target)
                 r += (Target, tg);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (From)base._Relocate(cx,nc);
-            var ua = BList<UpdateAssignment>.Empty;
-            var ch = false;
-            for (var b = assigns.First(); b != null; b = b.Next())
-            {
-                var a = (UpdateAssignment)b.value()._Relocate(cx,nc);
-                ua += a;
-                if (a != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (Assigns, ua);
-            if (cx.Fixed(source,nc) is Query sc && sc.defpos != source)
-                r += (Source, sc);
-            var tg = cx.ObUnheap(target);
-            if (tg != target)
-                r += (Target, tg);
+            var r = (From)base.Fix(cx);
+            if (assigns.Count>0)
+                r += (Assigns, cx.Fix(assigns));
+            r += (Target, cx.obuids[target]);
             return r;
         }
         internal override SqlValue ToSql(Ident id,Database db)
@@ -366,7 +351,9 @@ namespace Pyrrho.Level3
             }
             if (index != null && index.rows != null)
             {
-                rowSet = new SelectedRowSet(cx,this,new IndexRowSet(cx, ta, index, match,fi),fi);
+                var sce = (match == null) ? new IndexRowSet(cx, ta, index, fi) 
+                            : new FilterRowSet(cx, ta, index, match, fi);
+                rowSet = new SelectedRowSet(cx,this,sce,fi);
                 if (readC != null)
                 {
                     if (matches == index.keys.Length &&
@@ -386,7 +373,7 @@ namespace Pyrrho.Level3
                     index = tb.FindPrimaryIndex(cx.db);
                     if (index != null && index.rows != null)
                         rowSet = new SelectedRowSet(cx, this,
-                            new IndexRowSet(cx, tb, index,null,fi),fi);
+                            new IndexRowSet(cx, tb, index,fi),fi);
                     else
                         rowSet = new SelectedRowSet(cx, this,
                             new TableRowSet(cx, tb.defpos,fi),fi);
@@ -396,6 +383,7 @@ namespace Pyrrho.Level3
             }
             if (readC!=null)
                 cx.rdC += (target, readC);
+            cx.results += (defpos, rowSet.defpos);
             return rowSet.ComputeNeeds(cx);
         }
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs, Level cl)
@@ -487,26 +475,26 @@ namespace Pyrrho.Level3
         {
             return new SqlInsert(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(target);
+            cx.ObScanned(value);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r =  (SqlInsert)base._Relocate(wr);
-            var tb = wr.Fixed(target).defpos;
-            if (tb != target)
-                r += (_Table, tb);
-            var vl = wr.Fixed(value).defpos;
-            if (vl != value)
-                r += (Value, vl);
+            r += (_Table, wr.Fixed(target).defpos);
+            r += (Value, wr.Fixed(value).defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (SqlInsert)base._Relocate(cx,nc);
-            var tb = cx.Fixed(target,nc).defpos;
-            if (tb != target)
-                r += (_Table, tb);
-            var vl = cx.Fixed(value,nc).defpos;
-            if (vl != value)
-                r += (Value, vl);
+            var r = (SqlInsert)base.Fix(cx);
+            r += (_Table, cx.obuids[target]);
+            r += (Value, cx.obuids[value]);
             return r;
         }
         public override Context Obey(Context cx)
@@ -585,20 +573,23 @@ namespace Pyrrho.Level3
         {
             return new QuerySearch(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(table);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (QuerySearch)base._Relocate(wr);
-            var tb = wr.Fixed(table).defpos;
-            if (tb != table)
-                r += (SqlInsert._Table, tb);
+            r += (SqlInsert._Table, wr.Fixed(table).defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (QuerySearch)base._Relocate(cx,nc);
-            var tb = cx.Fixed(table,nc).defpos;
-            if (tb != table)
-                r += (SqlInsert._Table, tb);
+            var r = (QuerySearch)base.Fix(cx);
+            r += (SqlInsert._Table, cx.obuids[table]);
             return r;
         }
         /// <summary>

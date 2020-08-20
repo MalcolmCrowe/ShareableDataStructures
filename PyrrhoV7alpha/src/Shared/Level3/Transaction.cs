@@ -111,7 +111,7 @@ namespace Pyrrho.Level3
         /// <returns>This Transaction with the compiled objects updated</returns>
         Database Unheap(Context cx)
         {
-            for (var b = physicals.First(); b != null; b = b.Next())
+            for (var b = physicals.PositionAt(step); b != null; b = b.Next())
                 b.value().Relocate(cx);
             return cx.db;
         }

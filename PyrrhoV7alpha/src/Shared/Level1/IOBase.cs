@@ -262,6 +262,20 @@ namespace Pyrrho.Level2
             }
             return ch ? r : ord;
         }
+        internal BTree<K,long> Fix<K>(BTree<K,long> us) where K:IComparable
+        {
+            var r = BTree<K,long>.Empty;
+            var ch = false;
+            for (var b = us?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = Fixed(p);
+                if (p != f.defpos)
+                    ch = true;
+                r += (b.key(),f.defpos);
+            }
+            return ch ? r : us;
+        }
         internal BTree<string, TypedValue> Fix(BTree<string, TypedValue> a)
         {
             var r = BTree<string, TypedValue>.Empty;
@@ -270,7 +284,57 @@ namespace Pyrrho.Level2
                 var p = b.key();
                 r += (p, b.value().Relocate(this));
             }
-            return a;
+            return r;
+        }
+        internal BTree<PTrigger.TrigType,BTree<long,bool>> Fix(BTree<PTrigger.TrigType,BTree<long,bool>> t)
+        {
+            var r = BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
+            for (var b = t.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                r += (p, Fix(b.value()));
+            }
+            return r;
+        }
+        internal BTree<long, BList<TypedValue>> Fix(BTree<long, BList<TypedValue>> refs, Context nc)
+        {
+            var r = BTree<long, BList<TypedValue>>.Empty;
+            var ch = false;
+            for (var b = refs?.First(); b != null; b = b.Next())
+            {
+                var p = Fixed(b.key()).defpos;
+                var vs = Fix(b.value());
+                ch = ch || (p != b.key()) || vs != b.value();
+                r += (p, vs);
+            }
+            return ch ? r : refs;
+        }
+        internal BList<TypedValue> Fix(BList<TypedValue> key)
+        {
+            var r = BList<TypedValue>.Empty;
+            var ch = false;
+            for (var b = key?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = p.Relocate(this);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : key;
+        }
+        internal BTree<long, SqlValue> Fix(BTree<long, SqlValue> rs)
+        {
+            var r = BTree<long, SqlValue>.Empty;
+            var ch = false;
+            for (var b = rs.First(); b != null; b = b.Next())
+            {
+                var p = Fix(b.key());
+                var d = (SqlValue)b.value()._Relocate(this);
+                ch = ch || p != b.key() || d != b.value();
+                r += (p, d);
+            }
+            return ch ? r : rs;
         }
         internal BList<TXml> Fix(BList<TXml> ch)
         {
@@ -279,9 +343,46 @@ namespace Pyrrho.Level2
                 r += (TXml)b.value().Relocate(this);
             return r;
         }
-        internal BTree<long, bool> Fix(BTree<long, bool> fi)
+        internal BList<Grouping> Fix(BList<Grouping> gs)
         {
-            var r = BTree<long, bool>.Empty;
+            var r = BList<Grouping>.Empty;
+            var ch = false;
+            for (var b = gs.First(); b != null; b = b.Next())
+            {
+                var g = (Grouping)b.value()._Relocate(this);
+                ch = ch || g != b.value();
+                r += g;
+            }
+            return ch ? r : gs;
+        }
+        internal BList<Domain> Fix(BList<Domain> ds)
+        {
+            var r = BList<Domain>.Empty;
+            var ch = false;
+            for (var b = ds?.First(); b != null; b = b.Next())
+            {
+                var d = b.value();
+                var nd = (Domain)d._Relocate(this);
+                if (d != nd)
+                    ch = true;
+                r += nd;
+            }
+            return ch ? r : ds;
+        }
+        internal BList<(SqlXmlValue.XmlName,long)> Fix(BList<(SqlXmlValue.XmlName, long)> cs)
+        {
+            var r = BList<(SqlXmlValue.XmlName, long)>.Empty;
+            for (var b = cs.First(); b != null; b = b.Next())
+            {
+                var (n, p) = b.value();
+                var np = Fixed(p).defpos;
+                r += (n,np);
+            }
+            return r;
+        }
+        internal BTree<long, V> Fix<V>(BTree<long, V> fi)
+        {
+            var r = BTree<long, V>.Empty;
             var ch = false;
             for (var b = fi?.First(); b != null; b = b.Next())
             {
@@ -289,7 +390,7 @@ namespace Pyrrho.Level2
                 var np = Fix(p);
                 if (p != np)
                     ch = true;
-                r += (np, true);
+                r += (np, b.value());
             }
             return ch ? r : fi;
         }
@@ -306,6 +407,46 @@ namespace Pyrrho.Level2
                 r += (np, Fix(b.value()));
             }
             return ch ? r : fi;
+        }
+        internal BTree<long,Domain> Fix(BTree<long,Domain> rs)
+        {
+            var r = BTree<long, Domain>.Empty;
+            var ch = false;
+            for (var b = rs.First(); b != null; b = b.Next())
+            {
+                var rk = b.key();
+                var nk = Fix1(rk);
+                var od = b.value();
+                var rr = (Domain)od._Relocate(this);
+                if (rr != b.value() || rk != nk)
+                    ch = true;
+                r += (nk, rr);
+            }
+            return ch ? r : rs;
+        }
+        internal BList<UpdateAssignment> Fix(BList<UpdateAssignment> us)
+        {
+            var r = BList<UpdateAssignment>.Empty;
+            var ch = false;
+            for (var b = us?.First(); b != null; b = b.Next())
+            {
+                var u = (UpdateAssignment)b.value()._Relocate(this);
+                ch = ch || u != b.value();
+                r += u;
+            }
+            return ch ? r : us;
+        }
+        internal BTree<UpdateAssignment,bool> Fix(BTree<UpdateAssignment,bool> us)
+        {
+            var r = BTree<UpdateAssignment,bool>.Empty;
+            var ch = false;
+            for (var b = us?.First(); b != null; b = b.Next())
+            {
+                var u = (UpdateAssignment)b.key()._Relocate(this);
+                ch = ch || u != b.key();
+                r += (u,b.value());
+            }
+            return ch ? r : us;
         }
         internal BTree<long, TypedValue> Fix(BTree<long, TypedValue> fi)
         {
@@ -333,6 +474,20 @@ namespace Pyrrho.Level2
             for (var b = fi.First(); b != null; b = b.Next())
                 r += (Fix(b.key()), b.value().Relocate(this));
             return r;
+        }
+        internal BTree<SqlValue, TypedValue> Fix(BTree<SqlValue, TypedValue> vt)
+        {
+            var r = BTree<SqlValue, TypedValue>.Empty;
+            var ch = false;
+            for (var b = vt?.First(); b != null; b = b.Next())
+            {
+                var p = (SqlValue)b.key()._Relocate(this);
+                var v = b.value().Relocate(this);
+                if (p != b.key() || v != b.value())
+                    ch = true;
+                r += (p, b.value());
+            }
+            return ch ? r : vt;
         }
     }
 

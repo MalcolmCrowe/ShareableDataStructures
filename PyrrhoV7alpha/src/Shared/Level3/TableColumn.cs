@@ -83,72 +83,35 @@ namespace Pyrrho.Level3
         {
             return cx.Inf(defpos).domain.rowType;
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            domain.Scan(cx);
+            cx.ObScanned(tabledefpos);
+            generated.Scan(cx);
+            cx.Scan(constraints);
+            cx.Scan(update);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (TableColumn)base._Relocate(wr);
-            var dm = (Domain)domain._Relocate(wr);
-            if (dm != domain)
-                r += (_Domain, dm);
-            var tb = (Table)wr.Fixed(tabledefpos);
-            if (tb.defpos != tabledefpos)
-                r += (Table, tb.defpos);
-            var ge = generated._Relocate(wr);
-            if (ge != generated)
-                r += (Generated, ge);
-            var cs = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b=constraints?.First();b!=null;b=b.Next())
-            {
-                var c = (Check)wr.Fixed(b.key());
-                ch = ch || c.defpos != b.key();
-                cs += (c.defpos,true);
-            }
-            if (ch)
-                r += (Checks, cs);
-            var ua = BList<UpdateAssignment>.Empty;
-            ch = false;
-            for (var b=update.First();b!=null;b=b.Next())
-            {
-                var u = (UpdateAssignment)b.value()._Relocate(wr);
-                ch = ch || (u != b.value());
-                ua += u;
-            }
-            if (ch)
-                r += (UpdateAssignments, ua);
+            r += (_Domain, domain._Relocate(wr));
+            r += (Table, wr.Fixed(tabledefpos).defpos);
+            r += (Generated, generated._Relocate(wr));
+            r += (Checks, wr.Fix(constraints));
+            r += (UpdateAssignments, wr.Fix(update));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (TableColumn)base._Relocate(cx,nc);
-            var dm = (Domain)domain._Relocate(cx,nc);
-            if (dm != domain)
-                r += (_Domain, dm);
-            var tb = (Table)cx.Fixed(tabledefpos,nc);
-            if (tb.defpos != tabledefpos)
-                r += (Table, tb.defpos);
-            var ge = generated._Relocate(cx,nc);
-            if (ge != generated)
-                r += (Generated, ge);
-            var cs = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b = constraints?.First(); b != null; b = b.Next())
-            {
-                var c = (Check)cx.Fixed(b.key(),nc);
-                ch = ch || c.defpos != b.key();
-                cs += (c.defpos, true);
-            }
-            if (ch)
-                r += (Checks, cs);
-            var ua = BList<UpdateAssignment>.Empty;
-            ch = false;
-            for (var b = update.First(); b != null; b = b.Next())
-            {
-                var u = (UpdateAssignment)b.value()._Relocate(cx,nc);
-                ch = ch || (u != b.value());
-                ua += u;
-            }
-            if (ch)
-                r += (UpdateAssignments, ua);
+            var r = (TableColumn)base.Fix(cx);
+            r += (_Domain, domain.Fix(cx));
+            r += (Table, cx.obuids[tabledefpos]);
+            r += (Generated, generated.Fix(cx));
+            r += (Checks, cx.Fix(constraints));
+            r += (UpdateAssignments, cx.Fix(update));
             return r;
         }
         internal override DBObject Add(Check ck, Database db)
@@ -214,7 +177,8 @@ namespace Pyrrho.Level3
             if (tb == null)
                 return;
             var cx = new Context(tr);
-            cx.Install(c.framing);
+            cx.Install1(c.framing);
+            cx.Install2(c.framing);
             var sch = (SqlValue)cx.obs[c.search];
             Query nf = new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
             nf = sch.Conditions(cx, nf, false, out _);
@@ -323,17 +287,22 @@ namespace Pyrrho.Level3
         {
             return new GenerationRule(m);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObScanned(exp);
+        }
         internal override Basis _Relocate(Writer wr)
         {
             if (exp < 0)
                 return this;
-            var n = (SqlValue)wr.Fixed(exp);
-            return this + (GenExp, n.defpos);
+            return this + (GenExp, wr.Fixed(exp).defpos);
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var e = cx.ObUnheap(exp);
-            return (e == exp) ? this : this + (GenExp, e);
+            var r = this;
+            if (exp >= 0)
+                r += (GenExp, cx.obuids[exp]);
+            return r;
         }
         internal TypedValue Eval(Context cx)
         {
@@ -617,15 +586,25 @@ namespace Pyrrho.Level3
         {
             return new PeriodDef(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(endCol);
+            cx.ObScanned(startCol);
+            cx.ObScanned(tabledefpos);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             return new PeriodDef(wr.Fix(defpos), wr.Fix(tabledefpos),
                 wr.Fix(startCol), wr.Fix(endCol),wr.cx.db);
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            return new PeriodDef(cx.ObUnheap(defpos), cx.ObUnheap(tabledefpos),
-                cx.ObUnheap(startCol), cx.ObUnheap(endCol), cx.db);
+            var r = new PeriodDef(cx.obuids[defpos], cx.obuids[tabledefpos],
+                cx.obuids[startCol], cx.obuids[endCol], cx.db);
+            return r;
         }
     }
 }

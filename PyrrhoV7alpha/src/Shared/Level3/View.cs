@@ -262,26 +262,26 @@ namespace Pyrrho.Level3
         {
             return new View(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            viewQry.Scan(cx);
+            remoteGroups.Scan(cx);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (View)base._Relocate(wr);
-            var rg = (GroupSpecification)remoteGroups.Relocate(wr);
-            if (rg != remoteGroups)
-                r += (RemoteGroups, rg);
-            var vq = (Query)viewQry.Relocate(wr);
-            if (vq != viewQry)
-                r += (ViewQuery, vq);
+            r += (RemoteGroups,remoteGroups.Relocate(wr));
+            r += (ViewQuery, viewQry.Relocate(wr));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (View)base._Relocate(cx,nc);
-            var rg = (GroupSpecification)remoteGroups.Relocate(cx,nc);
-            if (rg != remoteGroups)
-                r += (RemoteGroups, rg);
-            var vq = (Query)viewQry.Relocate(cx,nc);
-            if (vq != viewQry)
-                r += (ViewQuery, vq);
+            var r = (View)base.Fix(cx);
+            r += (RemoteGroups, remoteGroups?.Fix(cx));
+            r += (ViewQuery, viewQry?.Fix(cx));
             return r;
         }
     }
@@ -344,32 +344,26 @@ namespace Pyrrho.Level3
         {
             return new RestView(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(viewStruct);
+            cx.ObScanned(usingTable);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = base._Relocate(wr);
-            var d = wr.Fix(defpos);
-            if (d != defpos)
-                r = (RestView)Relocate(d);
-            var vs = wr.Fix(viewStruct);
-            if (vs != viewStruct)
-                r += (viewStruct, vs);
-            var ut = wr.Fix(usingTable);
-            if (ut != usingTable)
-                r += (usingTable, ut);
+            r += (ViewStructPos, wr.Fix(viewStruct));
+            r += (UsingTablePos, wr.Fix(usingTable));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = base._Relocate(cx,nc);
-            var d = cx.ObUnheap(defpos);
-            if (d != defpos)
-                r = (RestView)Relocate(d);
-            var vs = cx.ObUnheap(viewStruct);
-            if (vs != viewStruct)
-                r += (viewStruct, vs);
-            var ut = cx.ObUnheap(usingTable);
-            if (ut != usingTable)
-                r += (usingTable, ut);
+            var r = (RestView)base.Fix(cx);
+            r += (ViewStructPos, cx.obuids[viewStruct]);
+            r += (UsingTablePos, cx.obuids[usingTable]);
             return r;
         }
     }

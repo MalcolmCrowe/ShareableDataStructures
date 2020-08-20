@@ -24,7 +24,7 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class RTree
     {
-        internal readonly long defpos;
+        internal readonly long defpos; // RowSet
         internal readonly Domain domain;
         internal CList<long> keyType => domain.rowType;
         internal readonly Context _cx;
@@ -106,10 +106,17 @@ namespace Pyrrho.Level4
         {
             return rows[(int)mt.Get(cx.MakeKey(keyType)).Value];
         }
-        internal RTree Relocate(Context cx,Context nc)
+        internal void Scan(Context cx)
         {
-            return new RTree(cx.ObUnheap(defpos), _cx, (Domain)domain._Relocate(cx,nc),
-                mt.info.onDuplicate,mt.info.onNullKey);
+            cx.RsUnheap(defpos);
+            domain.Scan(cx);
+            mt.Scan(cx);
+            cx.Scan(rows);
+        }
+        internal RTree Fix(Context cx)
+        {
+            return new RTree(cx.rsuids[defpos], _cx, cx.Fix(keyType), (Domain)domain.Fix(cx),
+                mt.Fix(cx),cx.Fix(rows));
         }
         internal RTree Relocate(Writer wr)
         {

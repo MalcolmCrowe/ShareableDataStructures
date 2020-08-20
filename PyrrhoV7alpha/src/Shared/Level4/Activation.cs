@@ -212,7 +212,8 @@ namespace Pyrrho.Level4
             parent = cx.next;
             nextHeap = cx.nextHeap;
             obs = cx.obs;
-            Install(tg.framing);
+            Install1(tg.framing);
+            Install2(tg.framing);
             var tb = (Table)cx.db.objects[trs.from.target];
             var oi = cx.Inf(tb.defpos);
             cx.obs += (tb.defpos, tb);

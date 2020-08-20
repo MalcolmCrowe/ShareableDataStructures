@@ -282,24 +282,37 @@ namespace Pyrrho.Level3
         {
             return new Index(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.ObScanned(adapter);
+            cx.Scan(keys);
+            cx.Scan(references);
+            cx.ObScanned(refindexdefpos);
+            cx.ObScanned(reftabledefpos);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (Index)base._Relocate(wr);
             r += (Adapter, wr.Fix(adapter));
-            r += (Keys, wr.cx.Fix(keys));
-            r += (References, wr.cx.Fix(references,wr.cx));
+            r += (Keys, wr.Fix(keys));
+            r += (References, wr.Fix(references,wr.cx));
             r += (RefIndex, wr.Fix(refindexdefpos));
             r += (RefTable, wr.Fix(reftabledefpos));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (Index)base._Relocate(cx,nc);
-            r += (Adapter, cx.ObUnheap(adapter));
+            var r = (Index)base.Fix(cx);
+            r += (Adapter, cx.obuids[adapter]);
             r += (Keys, cx.Fix(keys));
-            r += (References, cx.Fix(references, nc));
-            r += (RefIndex, cx.ObUnheap(refindexdefpos));
-            r += (RefTable, cx.ObUnheap(reftabledefpos));
+            r += (References, cx.Fix(references));
+            if (refindexdefpos>=0)
+                r += (RefIndex, cx.obuids[refindexdefpos]);
+            if (reftabledefpos>=0)
+                r += (RefTable, cx.obuids[reftabledefpos]);
             return r;
         }
     }

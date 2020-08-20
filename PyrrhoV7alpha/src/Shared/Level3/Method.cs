@@ -89,7 +89,8 @@ namespace Pyrrho.Level3
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this, ut);
             var bd = (Executable)act.obs[body];
-            act.Install(bd.framing);
+            act.Install1(bd.framing);
+            act.Install2(bd.framing);
             if (targ is TRow rw)
                 for (var b = rw.values.First(); b != null; b = b.Next())
                     act.values += (b.key(), b.value());

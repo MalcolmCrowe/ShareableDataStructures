@@ -82,9 +82,9 @@ namespace Pyrrho.Level4
         {
             return new Ident(ident, wr.Fix(iix), sub?.Relocate(wr));
         }
-        internal Ident Relocate(Context cx)
+        internal Ident Fix(Context cx)
         {
-            return new Ident(ident, cx.ObUnheap(iix), sub?.Relocate(cx));
+            return new Ident(ident, cx.obuids[iix], sub?.Fix(cx));
         }
         public int CompareTo(object obj)
         {
@@ -191,6 +191,15 @@ namespace Pyrrho.Level4
                 }
                 return r;
             }
+            internal void Scan(Context cx)
+            {
+                for (var b=First();b!=null;b=b.Next())
+                {
+                    var (p, ids) = b.value();
+                    cx.ObUnheap(p);
+                    ids?.Scan(cx);
+                }
+            }
             internal Idents Relocate(Context cx)
             {
                 var r = Empty;
@@ -198,7 +207,7 @@ namespace Pyrrho.Level4
                 {
                     var n = b.key();
                     var (p, ids) = b.value();
-                    r += (n, cx.ObUnheap(p), ids.Relocate(cx));
+                    r += (n, cx.obuids[p], ids?.Relocate(cx));
                 }
                 return r;
             }
@@ -209,7 +218,7 @@ namespace Pyrrho.Level4
                 {
                     var n = b.key();
                     var (p, ids) = b.value();
-                    r += (n, wr.Fix(p), ids.Relocate(wr));
+                    r += (n, wr.Fix(p), ids?.Relocate(wr));
                 }
                 return r;
             }

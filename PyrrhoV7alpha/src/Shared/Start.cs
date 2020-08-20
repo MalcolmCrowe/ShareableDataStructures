@@ -325,8 +325,6 @@ namespace Pyrrho
                         case Protocol.Execute: // v7 Prepared statement API
                             {
                                 var nm = tcp.GetString();
-                                if (nm == "UpdateStock")
-                                    Console.WriteLine("Here");
                                 var n = tcp.GetInt();
                                 var sb = new StringBuilder();
                                 for (var i=0;i<n;i++)
@@ -362,6 +360,7 @@ namespace Pyrrho
                         case Protocol.ExecuteTrace: // v7 Prepared statement API
                             {
                                 var nm = tcp.GetString();
+                     //           Debug(0, "Execute");
                                 var n = tcp.GetInt();
                                 var sb = new StringBuilder();
                                 for (var i = 0; i < n; i++)
@@ -389,6 +388,8 @@ namespace Pyrrho
                                 }
                                 else
                                     tcp.PutSchema(cx);
+                                if (tracing)
+                                    Debug(2, "Done");
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -725,6 +726,31 @@ namespace Pyrrho
         _return: if (PyrrhoStart.TutorialMode)
                 Console.WriteLine("(" + cid + ") Ends with " + p);
             tcp?.Close();
+        }
+        static DateTime startTrace;
+        internal static bool tracing = false;
+        internal static void Debug(int a,string m) // a=0 start, 1-continue, 2=stop
+        {
+            TimeSpan t; 
+            switch(a)
+            {
+                case 0:
+                    tracing = true;
+                    startTrace = DateTime.Now;
+                    Console.WriteLine("Start " + m);
+                    break;
+                case 1:
+                    if (!tracing)
+                        return;
+                    t = DateTime.Now - startTrace;
+                    Console.WriteLine(m + " " + t.TotalMilliseconds);
+                    break;
+                case 2:
+                    tracing = false;
+                    t = DateTime.Now - startTrace;
+                    Console.WriteLine(m + " " + t.TotalMilliseconds+" Stop " + m);
+                    break;
+            }
         }
         BTree<string,string> GetConnectionString(TCPStream tcp)
         {
@@ -1260,7 +1286,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (14 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (20 August 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

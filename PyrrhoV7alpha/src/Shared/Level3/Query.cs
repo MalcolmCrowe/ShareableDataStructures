@@ -101,178 +101,46 @@ namespace Pyrrho.Level3
         {
             return new Query(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            domain.Scan(cx);
+            cx.Scan(assig);
+            cx.Scan(filter);
+            cx.Scan(matching);
+            cx.Scan(matches);
+            cx.Scan(where);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (Query)base._Relocate(wr);
-            var dt = (Domain)domain._Relocate(wr);
-            if (dt != domain)
-                r += (_Domain, dt);
-            var cs = CList<long>.Empty;
-            var ch = false;
-            for (var b=rowType.First();b!=null;b=b.Next())
-            {
-                var nk = wr.Fixed(b.value());
-                ch = ch || nk.defpos != b.value();
-                cs += nk.defpos;
-            }
-            if (ch)
-                r += (_Domain,new Domain(Sqlx.ROW,wr.cx,cs));
-            var ua = BTree<UpdateAssignment, bool>.Empty;
-            for (var b=assig?.First();b!=null;b=b.Next())
-            {
-                var u = (UpdateAssignment)b.key()._Relocate(wr);
-                ch = ch || (u != b.key());
-                ua += (u, true);
-            }
-            if (ch)
-                r += (Assig, ua);
-            var fi = BTree<long, TypedValue>.Empty;
-            ch = false;
-            for (var b=filter?.First();b!=null;b=b.Next())
-            {
-                var k = wr.Fixed(b.key());
-                ch = ch || (k.defpos != b.key());
-                fi += (k.defpos, b.value());
-            }
-            if (ch)
-                r += (Filter, fi);
-            var ma = BTree<long, TypedValue>.Empty;
-            ch = false;
-            for (var b = matches?.First(); b != null; b = b.Next())
-            {
-                var mk = (SqlValue)wr.Fixed(b.key());
-                ch = ch || (mk.defpos != b.key());
-                ma += (mk.defpos, b.value());
-            }
-            if (ch)
-                r += (_Matches,ma);
-            var mg = BTree<long, BTree<long, bool>>.Empty;
-            ch = false;
-            for (var b=matching?.First();b!=null;b=b.Next())
-            {
-                var k = (SqlValue)wr.Fixed(b.key());
-                ch = ch || k.defpos != b.key();
-                var mm = BTree<long, bool>.Empty;
-                for (var mb=b.value()?.First();mb!=null;mb=mb.Next())
-                {
-                    var mk = (SqlValue)wr.Fixed(mb.key());
-                    ch = ch || mk.defpos != mb.key();
-                    mm += (mk.defpos, mb.value());
-                }
-                mg += (k.defpos, mm);
-            }
-            if (ch)
-                r += (Matching, mg);
-            var ord = wr.Fix(ordSpec);
-            if (ord != ordSpec)
-                r += (OrdSpec, ord);
-            var wh = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b=where.First();b!=null;b=b.Next())
-            {
-                var v = (SqlValue)wr.Fixed(b.key());
-                ch = ch || v.defpos != b.key();
-                wh += (v.defpos, true);
-            }
-            if (ch)
-                r += (Where, wh);
-            var us = BTree<UpdateAssignment,bool>.Empty;
-            ch = false;
-            for (var b=assig.First();b!=null;b=b.Next())
-            {
-                var u = (UpdateAssignment)b.key()._Relocate(wr);
-                ch = ch || u != b.key();
-                us += (u, true);
-            }
-            if (ch)
-                r += (Assig, us);
+            r += (_Domain, domain._Relocate(wr));
+            r += (Filter, wr.Fix(filter));
+            r += (_Matches,wr.Fix(matches));
+            r += (Matching, wr.Fix(matching));
+            r += (OrdSpec, wr.Fix(ordSpec));
+            r += (Where, wr.Fix(where));
+            r += (Assig, wr.Fix(assig));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (Query)base._Relocate(cx,nc);
-            var ua = BTree<UpdateAssignment, bool>.Empty;
-            var ch = false;
-            for (var b = assig?.First(); b != null; b = b.Next())
-            {
-                var u = (UpdateAssignment)b.key()._Relocate(cx,nc);
-                ch = ch || (u != b.key());
-                ua += (u, b.value());
-            }
-            if (ch)
-                r += (Assig, ua);
-            var dt = (Domain)domain._Relocate(cx,nc);
-            if (dt != domain)
-                r += (_Domain, dt);
-            var cs = CList<long>.Empty;
-            for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var nk = cx.Fixed(b.value(),nc);
-                ch = ch || nk.defpos != b.value();
-                cs += nk.defpos;
-            }
-            if (ch)
-                r += (_Domain,new Domain(Sqlx.ROW,cx,cs));
-            var fi = BTree<long, TypedValue>.Empty;
-            ch = false;
-            for (var b = filter?.First(); b != null; b = b.Next())
-            {
-                var k = cx.Fixed(b.key(),nc);
-                ch = ch || (k.defpos != b.key());
-                fi += (k.defpos, b.value());
-            }
-            if (ch)
-                r += (Filter, fi);
-            var ma = BTree<long, TypedValue>.Empty;
-            ch = false;
-            for (var b = matches?.First(); b != null; b = b.Next())
-            {
-                var mk = (SqlValue)cx.Fixed(b.key(),nc);
-                ch = ch || (mk.defpos != b.key());
-                ma += (mk.defpos, b.value());
-            }
-            if (ch)
-                r += (_Matches, ma);
-            var mg = BTree<long, BTree<long, bool>>.Empty;
-            ch = false;
-            for (var b = matching?.First(); b != null; b = b.Next())
-            {
-                var k = (SqlValue)cx.Fixed(b.key(),nc);
-                ch = ch || k.defpos != b.key();
-                var mm = BTree<long, bool>.Empty;
-                for (var mb = b.value()?.First(); mb != null; mb = mb.Next())
-                {
-                    var mk = (SqlValue)cx.Fixed(mb.key(),nc);
-                    ch = ch || mk.defpos != mb.key();
-                    mm += (mk.defpos, true);
-                }
-                mg += (k.defpos, mm);
-            }
-            if (ch)
-                r += (Matching, mg);
-            var ord = cx.Fix(ordSpec);
-            if (ord != ordSpec)
-                r += (OrdSpec, ord);
-            var wh = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b = where.First(); b != null; b = b.Next())
-            {
-                var v = (SqlValue)cx.Fixed(b.key(),nc);
-                ch = ch || b.key() != v.defpos;
-                wh += (v.defpos,true);
-            }
-            if (ch)
-                r += (Where, wh);
-            var us = BTree<UpdateAssignment, bool>.Empty;
-            ch = false;
-            for (var b = assig.First(); b != null; b = b.Next())
-            {
-                var u = (UpdateAssignment)b.key()._Relocate(cx,nc);
-                ch = ch || u != b.key();
-                us += (u, true);
-            }
-            if (ch)
-                r += (Assig, us);
+            var r = (Query)base.Fix(cx);
+            r += (_Domain, domain.Fix(cx));
+            if (filter!=null)
+                r += (Filter, cx.Fix(filter));
+            if (matches.Count>0)
+                r += (_Matches, cx.Fix(matches));
+            if (matching.Count>0)
+                r += (Matching, cx.Fix(matching));
+            if (ordSpec.Count>0)
+                r += (OrdSpec, cx.Fix(ordSpec));
+            if (where.Count>0)
+                r += (Where, cx.Fix(where));
+            if (assig.Count>0)
+                r += (Assig, cx.Fix(assig)); 
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -643,9 +511,9 @@ namespace Pyrrho.Level3
                 var lv = cx.obs[se.left] as SqlValue;
                 var rg = (SqlValue)cx.obs[se.right];
                 if (lv.target>=0 && rg is SqlLiteral ll)
-                    filt += (lv.target, ll.val);
+                    filt += (lv.target, ll.Eval(cx));
                 else if (rg.target>=0 && lv is SqlLiteral lr)
-                    filt += (rg.target, lr.val);
+                    filt += (rg.target, lr.Eval(cx));
             }
             if (filt != filter)
                 q += (Filter, filt);
@@ -865,6 +733,7 @@ namespace Pyrrho.Level3
         }
         internal virtual RowSet RowSets(Context cx,BTree<long,RowSet.Finder> fi)
         {
+            cx.results += (defpos, defpos);
             return cx.data[defpos];
         }
         internal void CondString(StringBuilder sb, BTree<long, bool> cond, string cm)
@@ -1063,68 +932,33 @@ namespace Pyrrho.Level3
         {
             return new CursorSpecification(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.Scan(rVqSpecs);
+            cx.Scan(restViews);
+            cx.ObScanned(union);
+            cx.ObScanned(usingFrom);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (CursorSpecification)base._Relocate(wr);
-            var qs = BList<long>.Empty;
-            var ch = false;
-            for (var b = rVqSpecs.First(); b != null; b = b.Next())
-            {
-                var n = (QuerySpecification)wr.Fixed(b.value());
-                qs += n.defpos;
-                if (n.defpos != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (RVQSpecs, qs);
-            var vs = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b = restViews.First(); b != null; b = b.Next())
-            {
-                var v = (RestView)wr.Fixed(b.key());
-                vs += (v.defpos, true);
-                if (v.defpos != b.key())
-                    ch = true;
-            }
-            if (ch)
-                r += (RestViews, vs);
-            var un = (Query)wr.Fixed(union);
-            if (un.defpos != union)
-                r = r._Union(un);
-            if (wr.Fixed(usingFrom) is From uf && uf.defpos != usingFrom)
-                    r += (UsingFrom, uf.defpos);
+            r += (RVQSpecs, wr.Fix(rVqSpecs));
+            r += (RestViews, wr.Fix(restViews));
+            r += (Union, wr.Fixed(union)?.defpos??-1L);
+            r += (UsingFrom, wr.Fixed(usingFrom)?.defpos??-1L);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (CursorSpecification)base._Relocate(cx,nc);
-            var qs = BList<long>.Empty;
-            var ch = false;
-            for (var b=rVqSpecs.First();b!=null;b=b.Next())
-            {
-                var n = (QuerySpecification)cx.Fixed(b.value(),nc);
-                qs += n.defpos;
-                if (n.defpos != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (RVQSpecs, qs);
-            var vs = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b=restViews.First();b!=null;b=b.Next())
-            {
-                var v = (RestView)cx.Fixed(b.key(),nc);
-                vs += (v.defpos,true);
-                if (v.defpos != b.key())
-                    ch = true;
-            }
-            if (ch)
-                r += (RestViews, vs);
-            var un = (Query)cx.Fixed(union,nc);
-            if (un.defpos != union)
-                r = r._Union(un);
-            if (cx.Fixed(usingFrom,nc) is From uf && uf.defpos != usingFrom)
-                    r += (UsingFrom, uf.defpos);
+            var r = (CursorSpecification)base.Fix(cx);
+            r += (RVQSpecs, cx.Fix(rVqSpecs));
+            r += (RestViews, cx.Fix(restViews));
+            r += (Union,cx.obuids[union]);
+            if (usingFrom>=0)
+                r += (UsingFrom, cx.obuids[usingFrom]); 
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1133,7 +967,7 @@ namespace Pyrrho.Level3
                 return cx.done[defpos];
             var r = (CursorSpecification)base._Replace(cx, so, sv);
             if (cx._Replace(r.union, so, sv) is Query un && un.defpos != r.union)
-                r = r._Union(un);
+                r += (Union,un.defpos);
             cx.done += (defpos, r);
             return r;
         }
@@ -1141,10 +975,6 @@ namespace Pyrrho.Level3
         {
             ((Query)cx.obs[union]).Refresh(cx);
             return base.Refresh(cx);
-        }
-        internal CursorSpecification _Union(Query u)
-        {
-            return new CursorSpecification(this, u)+(_From,u.from);
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -1199,6 +1029,7 @@ namespace Pyrrho.Level3
             var r = ((Query)cx.obs[union]).RowSets(cx, fi);
             r = Ordering(cx,r,false);
             cx.result = r;
+            cx.results += (defpos, r.defpos);
             return r.ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
@@ -1217,6 +1048,10 @@ namespace Pyrrho.Level3
         internal override Query SetDistinct(Context cx)
         {
             return _Union((Query)cx.obs[union]).SetDistinct(cx);
+        }
+        internal CursorSpecification _Union(Query u)
+        {
+            return new CursorSpecification(this, u) + (_From, u.from);
         }
         /// <summary>
         /// propagate the Insert operation
@@ -1309,60 +1144,29 @@ namespace Pyrrho.Level3
         {
             return new TableExpression(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.ObScanned(target);
+            cx.Scan(having);
+            cx.Scan(window);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (TableExpression)base._Relocate(wr);
-            var f = (Query)wr.Fixed(target);
-            if (f.defpos != target)
-                r += (Target, f.defpos);
-            var hv = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b = having?.First(); b != null; b = b.Next())
-            {
-                var h = (SqlValue)wr.Fixed(b.key());
-                ch = ch || h.defpos != b.key();
-                hv += (h.defpos, true);
-            }
-            if (ch)
-                r += (Having, hv);
-            var ws = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b = window?.First(); b != null; b = b.Next())
-            {
-                var w = (WindowSpecification)wr.Fixed(b.key());
-                ws += (w.defpos, true);
-                ch = ch || w.defpos != b.key();
-            }
-            if (ch)
-                r += (Windows, ws);
+            r += (Target, wr.Fixed(target).defpos);
+            r += (Having, wr.Fix(having));
+            r += (Windows, wr.Fix(window));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (TableExpression)base._Relocate(cx,nc);
-            var f = (Query)cx.Fixed(target,nc);
-            if (f.defpos != target)
-                r += (Target, f.defpos);
-            var hv = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b = having?.First(); b != null; b = b.Next())
-            {
-                var h = (SqlValue)cx.Fixed(b.key(),nc);
-                ch = ch || h.defpos != b.key();
-                hv += (h.defpos, true);
-            }
-            if (ch)
-                r += (Having, hv);
-            var ws = BTree<long, bool>.Empty;
-            ch = false;
-            for (var b = window?.First(); b != null; b = b.Next())
-            {
-                var w = (WindowSpecification)cx.Fixed(b.key(),nc);
-                ws += (w.defpos, true);
-                ch = ch || w.defpos != b.key();
-            }
-            if (ch)
-                r += (Windows, ws);
+            var r = (TableExpression)base.Fix(cx);
+            r += (Target, cx.obuids[target]);
+            r += (Having, cx.Fix(having));
+            r += (Windows, cx.Fix(window));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -1416,7 +1220,9 @@ namespace Pyrrho.Level3
             var kt = CList<long>.Empty;
             for (var b = r.keys.First(); b != null; b = b.Next())
                 kt += ma[b.value()];
-            return new TableExpRowSet(defpos, cx, rowType, kt, r, where, matches, fi).ComputeNeeds(cx);
+            var rs = new TableExpRowSet(defpos, cx, rowType, kt, r, where, matches, fi);
+            cx.results += (defpos, rs.defpos);
+            return rs.ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -1600,80 +1406,38 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(dp,mem);
         }
+        internal override void Scan(Context cx)
+        {
+            base.Scan(cx);
+            cx.Scan(joinCond);
+            cx.Scan(leftOrder);
+            cx.Scan(rightOrder);
+            cx.Scan(namedCols);
+            cx.ObScanned(left);
+            cx.ObScanned(right);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (JoinPart)base._Relocate(wr);
-            var co = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b=joinCond.First();b!=null;b=b.Next())
-            {
-                var c = (SqlValue)wr.Fixed(b.key());
-                co += (c.defpos,true);
-                ch = ch || c.defpos != b.key();
-            }
-            if (ch)
-                r += (JoinCond, co);
-            var os = wr.Fix(leftOrder);
-            if (os != leftOrder)
-                r += (LeftOrder,os);
-            os = wr.Fix(rightOrder);
-            if (os != rightOrder)
-                r += (RightOrder, os);
-            var cs = BList<long>.Empty;
-            ch = false;
-            for (var b=namedCols?.First();b!=null;b=b.Next())
-            {
-                var n = wr.Fix(b.value());
-                cs += n;
-                if (n != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (NamedCols, cs);
-            var q = (Query)wr.Fixed(left);
-            if (q.defpos != left)
-                r += (LeftOperand, q.defpos);
-            q = (Query)wr.Fixed(right);
-            if (q.defpos != right)
-                r += (RightOperand, q.defpos);
+            r += (JoinCond, wr.Fix(joinCond));
+            r += (LeftOrder,wr.Fix(leftOrder));
+            r += (RightOrder, wr.Fix(rightOrder));
+            r += (NamedCols, wr.Fix(namedCols));
+            r += (LeftOperand, wr.Fixed(left).defpos);
+            r += (RightOperand, wr.Fixed(right).defpos);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (JoinPart)base._Relocate(cx,nc);
-            var co = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b = joinCond.First(); b != null; b = b.Next())
-            {
-                var c = (SqlValue)cx.Fixed(b.key(),nc);
-                co += (c.defpos, true);
-                ch = ch || c.defpos != b.key();
-            }
-            if (ch)
-                r += (JoinCond, co);
-            var os = cx.Fix(leftOrder);
-            if (os != leftOrder)
-                r += (LeftOrder, os);
-            os = cx.Fix(rightOrder);
-            if (os != rightOrder)
-                r += (RightOrder, os);
-            var cs = BList<long>.Empty;
-            ch = false;
-            for (var b = namedCols?.First(); b != null; b = b.Next())
-            {
-                var n = cx.ObUnheap(b.value());
-                cs += n;
-                if (n != b.value())
-                    ch = true;
-            }
-            if (ch)
-                r += (NamedCols, cs);
-            var q = (Query)cx.Fixed(left,nc);
-            if (q.defpos != left)
-                r += (LeftOperand, q.defpos);
-            q = (Query)cx.Fixed(right,nc);
-            if (q.defpos != right)
-                r += (RightOperand, q.defpos);
+            var r = (JoinPart)base.Fix(cx);
+            r += (JoinCond, cx.Fix(joinCond));
+            r += (LeftOrder, cx.Fix(leftOrder));
+            r += (RightOrder, cx.Fix(rightOrder));
+            r += (NamedCols, cx.Fix(namedCols));
+            r += (LeftOperand, cx.obuids[left]);
+            r += (RightOperand, cx.obuids[right]);
             return r;
         }
         internal override bool Knows(Context cx,SqlValue c)
@@ -2124,8 +1888,8 @@ namespace Pyrrho.Level3
             }
             if (FDInfo is FDJoinPart fd)
             {
-                var ds = new IndexRowSet(cx, fd.table, fd.index,null,fi);
-                var rs = new IndexRowSet(cx, fd.rtable, fd.rindex,null,fi);
+                var ds = new IndexRowSet(cx, fd.table, fd.index,fi);
+                var rs = new IndexRowSet(cx, fd.rtable, fd.rindex,fi);
                 if (fd.reverse)
                     return new JoinRowSet(cx, this, new SelectedRowSet(cx,lf,ds,fi), 
                         new SelectedRowSet(cx,rg,rs,fi));
@@ -2141,7 +1905,9 @@ namespace Pyrrho.Level3
             var ro = rg.ordSpec;
             if (ro?.Length>0)
                 rr = new OrderedRowSet(cx, rr, ro, false);
-            return new JoinRowSet(cx,this,lr,rr).ComputeNeeds(cx);
+            var res = new JoinRowSet(cx, this, lr, rr);
+            cx.results += (defpos, res.defpos);
+            return res.ComputeNeeds(cx);
         }
         internal int Compare(Context cx)
         {
@@ -2235,6 +2001,34 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new FDJoinPart(m);
-        } 
+        }
+        internal override void Scan(Context cx)
+        {
+            cx.Scan(conds);
+            index.Scan(cx);
+            table.Scan(cx);
+            rindex?.Scan(cx);
+            rtable?.Scan(cx);
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = this;
+            r += (FDConds, wr.Fix(conds));
+            r += (FDIndex, index._Relocate(wr));
+            r += (FDTable, table._Relocate(wr));
+            r += (FDRefIndex, rindex?._Relocate(wr));
+            r += (FDRefTable, rtable?._Relocate(wr));
+            return r;
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = this;
+            r += (FDConds, cx.Fix(conds));
+            r += (FDIndex, index.Fix(cx));
+            r += (FDTable, table.Fix(cx));
+            r += (FDRefIndex, rindex?.Fix(cx));
+            r += (FDRefTable, rtable?.Fix(cx));
+            return r;
+        }
     }
 }

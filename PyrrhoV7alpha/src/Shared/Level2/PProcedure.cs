@@ -33,15 +33,16 @@ namespace Pyrrho.Level2
         public Domain retType;
         public Ident source;
         public bool mth = false;
-        public BList<ParamInfo> parameters;
+        public BList<long> parameters;
         public long proc; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
+            retType.Create(wr, tr);
             return -1;
         }
         internal int arity => parameters.Length;
-        public PProcedure(string nm, BList<ParamInfo> ar, Domain rt, Procedure pr,Ident sce, 
+        public PProcedure(string nm, BList<long> ar, Domain rt, Procedure pr,Ident sce, 
             long pp, Context cx) : this(Type.PProcedure2, nm, ar, rt, pr, sce, pp, cx)
         { }
         /// <summary>
@@ -58,7 +59,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, BList<ParamInfo> ps, Domain rt, Procedure pr,
+        protected PProcedure(Type tp, string nm, BList<long> ps, Domain rt, Procedure pr,
             Ident sce, long pp, Context cx) : base(tp,pp,cx,new Framing(cx))
 		{
             source = sce;
@@ -67,7 +68,7 @@ namespace Pyrrho.Level2
             name = nm;
             nameAndArity = nm + "$" + arity;
             Frame(cx);
-            proc = pr.defpos;
+            proc = pr?.defpos??-1L;
         }
         /// <summary>
         /// Constructor: a procedure or function definition from the buffer
@@ -80,7 +81,7 @@ namespace Pyrrho.Level2
             source = x.source;
             wr.srcPos = wr.Length + 1;
             retType = (Domain)x.retType._Relocate(wr);
-            parameters = wr.Relocate(x.parameters);
+            parameters = wr.Fix(x.parameters);
             nameAndArity = x.nameAndArity;
             name = x.name;
             proc = wr.Fix(x.defpos);

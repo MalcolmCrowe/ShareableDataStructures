@@ -65,17 +65,10 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,BList<ParamInfo> ps, Domain dt, 
+        public Procedure(long defpos,BList<long> ps, Domain dt, 
             BTree<long, object> m=null) : base(defpos, (m??BTree<long,object>.Empty)
-                +(Params,_Ins(ps))+(_Domain,dt)) { }
+                +(Params,ps)+(_Domain,dt)) { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BList<long> _Ins(BList<ParamInfo> ps)
-        {
-            var r = BList<long>.Empty;
-            for (var b=ps.First();b!=null;b=b.Next())
-                r += b.value().val;
-            return r;
-        }
         public static Procedure operator+(Procedure p,(long,object)v)
         {
             return (Procedure)p.New(p.mem + v);
@@ -97,7 +90,8 @@ namespace Pyrrho.Level3
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this,Domain.Null);
             var bd = (Executable)act.obs[body];
-            act.Install(bd.framing);
+            act.Install1(bd.framing);
+            act.Install2(bd.framing);
             i = 0;
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
                 act.values += (((ParamInfo)cx.obs[b.value()]).val, acts[i]);
@@ -150,42 +144,27 @@ namespace Pyrrho.Level3
         {
             return new Procedure(dp, mem);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.ObUnheap(defpos);
+            cx.Scan(ins);
+            cx.ObScanned(body);
+        }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (Procedure)base._Relocate(wr);
-            var ps = BList<long>.Empty;
-            var ch = false;
-            for (var b=ins.First();b!=null;b=b.Next())
-            {
-                var op = ((ParamInfo)wr.cx.obs[b.value()]).val;
-                var pp = (ParamInfo)wr.cx.obs[op].Relocate(wr);
-                ps += pp.val;
-                if (pp.val != op)
-                    ch = true;
-            }
-            if (ch)
-                r += (Params, ps);
-            if (wr.Fixed(body) is Executable bd  && bd.defpos != body)
-                r += (Body, bd.defpos);
+            r += (Params, wr.Fix(ins));
+            r += (Body, wr.Fixed(body)?.defpos??-1L);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var r = (Procedure)base._Relocate(cx,nc);
-            var ps = BList<long>.Empty;
-            var ch = false;
-            for (var b = ins.First(); b != null; b = b.Next())
-            {
-                var o = ((ParamInfo)cx.obs[b.value()]).val;
-                var p = (ParamInfo)cx.obs[o].Relocate(cx,nc);
-                ps += p.val;
-                if (p.val != o)
-                    ch = true;
-            }
-            if (ch)
-                r += (Params, ps);
-            if (cx.Fixed(body,nc) is Executable bd && bd.defpos != body)
-                r += (Body, bd.defpos);
+            var r = (Procedure)base.Fix(cx);
+            r += (Params, cx.Fix(ins));
+            if (body>=0)
+                r += (Body, cx.obuids[body]);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)

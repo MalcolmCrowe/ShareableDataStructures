@@ -81,16 +81,25 @@ namespace Pyrrho.Level4
         {
             return new JoinRowSet(dp, mem);
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override void Scan(Context cx)
         {
-            var r = (JoinRowSet)base._Relocate(cx,nc);
-            r += (_Join, join.Relocate(cx,nc));
-            r += (JFirst, cx.RsUnheap(first));
-            r += (JSecond, cx.RsUnheap(second));
+            base.Scan(cx);
+            join.Scan(cx);
+            cx.RsScanned(first);
+            cx.RsScanned(second);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (JoinRowSet)base.Fix(cx);
+            r += (_Join, join.Fix(cx));
+            r += (JFirst, cx.rsuids[first]);
+            r += (JSecond, cx.rsuids[second]);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = (JoinRowSet)base._Relocate(wr);
             r += (_Join, join.Relocate(wr));
             r += (JFirst, wr.Fix(first));

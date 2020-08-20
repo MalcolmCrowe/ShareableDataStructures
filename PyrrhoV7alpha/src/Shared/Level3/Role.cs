@@ -109,6 +109,10 @@ namespace Pyrrho.Level3
         {
             return new Role(r.defpos, r.mem - ob.defpos + (DBObjects, r.dbobjects - ob.name));
         }
+        internal override void Scan(Context cx)
+        {
+            throw new NotImplementedException();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -152,10 +156,6 @@ namespace Pyrrho.Level3
             throw new NotImplementedException();
         }
         internal override Basis _Relocate(Writer wr)
-        {
-            throw new NotImplementedException();
-        }
-        internal override Basis _Relocate(Context cx,Context nc)
         {
             throw new NotImplementedException();
         }
@@ -403,6 +403,22 @@ namespace Pyrrho.Level3
                 }
             }
             return sb.ToString();
+        }
+        internal override void Scan(Context cx)
+        {
+            cx.Scan(properties);
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = base._Relocate(wr);
+            r += (Properties, wr.Fix(properties));
+            return r;
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = base.Fix(cx);
+            r += (Properties, cx.Fix(properties));
+            return r;
         }
     }
 }

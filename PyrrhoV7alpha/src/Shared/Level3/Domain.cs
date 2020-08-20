@@ -2919,110 +2919,43 @@ namespace Pyrrho.Level3
         {
             return new Domain(m);
         }
+        internal override void Scan(Context cx)
+        {
+            cx.Scan(constraints);
+            elType?.Scan(cx);
+            orderFunc?.Scan(cx);
+            cx.Scan(representation);
+            cx.Scan(rowType);
+            super?.Scan(cx);
+        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = this;
-            var ch = false;
-            var cs = BTree<long, bool>.Empty;
-            for (var b=constraints?.First();b!=null;b=b.Next())
-            {
-                var ck = (Check)wr.Fixed(b.key());
-                ch = ch || b.key() != ck.defpos;
-                cs += (ck.defpos,true);
-            }
-            if (ch)
-                r += (Constraints, cs);
-            var e = (Domain)elType?._Relocate(wr);
-            if (e != elType)
-                r += (Element, e);
-            var orf = orderFunc?._Relocate(wr);
-            if (orf != orderFunc)
-                r += (OrderFunc, orf);
-            var rs = BTree<long, Domain>.Empty;
-            ch = false;
-            for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var rk = b.key();
-                var nk = wr.Fix1(rk);
-                var od = b.value();
-                var rr = (Domain)od._Relocate(wr);
-                if (rr != b.value() || rk != nk)
-                    ch = true;
-                rs += (nk, rr);
-            }
-            if (ch)
-                r += (Representation, rs);
-            ch = false;
-            var rt = CList<long>.Empty;
-            for (var b = rowType?.First(); b != null; b=b.Next())
-            {
-                var i = b.key();
-                var rk = b.value();
-                var nk = wr.Fix1(rk);
-                if (rk != nk)
-                    ch = true;
-                rt += (i, nk);
-            }
-            if (ch)
-                r += (RowType, rt);
-            if (super is Domain os)
-            {
-                var und = os._Relocate(wr);
-                if (und != super)
-                    r += (Under, und);
-            }
+            if (constraints.Count>0)
+                r += (Constraints, wr.Fix(constraints));
+            if (orderFunc!=null)
+                r += (OrderFunc, orderFunc.Relocate(wr));
+            if (representation.Count>0)
+                r += (Representation, wr.Fix(representation));
+            if (rowType.Count>0)
+                r += (RowType, wr.Fix(rowType));
+            if (super!=null)
+                r += (Under, super._Relocate(wr));
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
             var r = this;
-            var ch = false;
-            var cs = BTree<long, bool>.Empty;
-            for (var b = constraints?.First(); b != null; b = b.Next())
-            {
-                var ck = (Check)cx.Fixed(b.key(),nc);
-                ch = ch || b.key() != ck.defpos;
-                cs += (ck.defpos,true);
-            }
-            if (ch)
-                r += (Constraints, cs);
-            var e = (Domain)elType?._Relocate(cx,nc);
-            if (e != elType)
-                r += (Element, e);
-            var orf = orderFunc?._Relocate(cx,nc);
-            if (orf != orderFunc)
-                r += (OrderFunc, orf);
-            var rs = BTree<long, Domain>.Empty;
-            ch = false;
-            for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var od = b.value();
-                var rk = b.key();
-                var nk = cx.Fixed(rk,nc);
-                var rr = (Domain)od._Relocate(cx,nc);
-                if (rr != od || rk != nk.defpos)
-                    ch = true;
-                rs += (nk.defpos, rr);
-            }
-            if (ch)
-                r += (Representation, rs);
-            var rt = CList<long>.Empty;
-            ch = false;
-            for (var b=rowType.First();b!=null;b=b.Next())
-            {
-                var p = cx.ObUnheap(b.value());
-                if (p != b.value())
-                    ch = true;
-                rt += p;
-            }
-            if (ch)
-                r += (RowType, rt);
-            if (super is Domain os)
-            {
-                var und = (Domain)os._Relocate(cx,nc);
-                if (und != super)
-                    r += (Under, und);
-            }
+            if (constraints.Count > 0)
+                r += (Constraints, cx.Fix(constraints));
+            if (orderFunc != null)
+                r += (OrderFunc, orderFunc.Fix(cx));
+            if (representation.Count > 0)
+                r += (Representation, cx.Fix(representation));
+            if (rowType.Count > 0)
+                r += (RowType, cx.Fix(rowType));
+            if (super != null)
+                r += (Under, super.Fix(cx));
             return r;
         }
         internal Domain _Replace(Context cx, DBObject was, DBObject now)

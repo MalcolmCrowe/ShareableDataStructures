@@ -124,7 +124,7 @@ namespace Pyrrho.Common
         public virtual ATree<K,V> Add(ATree<K,V>a)
         {
             var tree = this;
-            for (var b = a.First(); b != null; b = b.Next())
+            for (var b = a?.First(); b != null; b = b.Next())
                 tree = tree.Add(b.key(), b.value());
             return tree;
         }

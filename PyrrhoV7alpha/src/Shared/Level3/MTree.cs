@@ -413,14 +413,18 @@ namespace Pyrrho.Level3
                 }
                 return tv.Val() as long?;
         }
-        internal MTree Relocate(Context cx,Context nc)
+        internal void Scan(Context cx)
         {
-            var r = new MTree(info.Relocate(cx,nc));
+            info.Scan(cx);
+        }
+        internal MTree Fix(Context cx)
+        {
+            var r = new MTree(info.Fix(cx));
             for (var b = First(); b != null; b = b.Next())
             {
                 var iq = b.Value();
                 if (iq!=null)
-                    r += (cx.Fix(b.key(),nc), b.Value().Value);
+                    r += (b.key().Fix(cx), b.Value().Value);
             }
             return r;
         }
@@ -762,10 +766,16 @@ namespace Pyrrho.Level3
             onNullKey = n;
             tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, dt, d, n, off + 1) : null;
         }
-        internal TreeInfo Relocate(Context cx,Context nc)
+        internal void Scan(Context cx)
         {
-            return new TreeInfo(cx.ObUnheap(head), (Domain)headType._Relocate(cx,nc), 
-                onDuplicate, onNullKey, tail.Relocate(cx,nc));
+            cx.ObScanned(head);
+            headType.Scan(cx);
+            tail?.Scan(cx);
+        }
+        internal TreeInfo Fix(Context cx)
+        {
+            return new TreeInfo(cx.obuids[head], (Domain)headType.Fix(cx), 
+                onDuplicate, onNullKey, tail.Fix(cx));
         }
         internal TreeInfo Relocate(Level2.Writer wr)
         {

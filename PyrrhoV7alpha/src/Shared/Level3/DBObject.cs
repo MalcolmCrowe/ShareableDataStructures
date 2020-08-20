@@ -78,6 +78,8 @@ namespace Pyrrho.Level3
         protected DBObject(long dp, BTree<long, object> m) : base(m)
         {
             defpos = dp;
+            if (dp == 0x4fffffffffffffff)
+                Console.WriteLine("!!");
         }
         protected DBObject(long pp, long dp, long dr, BTree<long, object> m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Definer, dr))
@@ -172,6 +174,8 @@ namespace Pyrrho.Level3
         internal abstract DBObject Relocate(long dp);
         internal override Basis _Relocate(Writer wr)
         {
+            if (defpos < wr.Length)
+                return this;
             var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
             var df = wr.Fix(definer);
             if (df != definer)
@@ -202,37 +206,21 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Context cx,Context nc)
         {
-            var r = ((DBObject)base._Relocate(cx,nc)).Relocate(cx.ObUnheap(defpos));
-            var df = cx.ObUnheap(definer);
-            if (df != definer)
-                r += (Definer, df);
-            var ds = BTree<long, bool>.Empty;
-            for (var b = dependents.First(); b != null; b = b.Next())
-                ds += (cx.ObUnheap(b.key()), true);
-            if (ds != dependents)
-                r += (Dependents, ds);
+            if (nc.obs.Contains(cx.obuids[defpos]))
+                return this;
+            var r = (DBObject)Fix(cx);
+            nc.obs += (r.defpos, r);
             return r;
         }
-        internal DBObject Relocate(Context cx,Context nc)
+        internal override Basis Fix(Context cx)
         {
-            var p = defpos;
-            if (this is RowSet)
-            {
-                p = cx.RsUnheap(defpos);
-                if (nc.data.Contains(p))
-                     return nc.data[p];
-            }
-            else 
-            {
-                p = cx.ObUnheap(defpos);
-                if (nc.obs.Contains(p))
-                    return nc.obs[p];
-            }
-            var r = (DBObject)_Relocate(cx, nc);
-            if (r is RowSet rs)
-                nc.data += (r.defpos, rs);
-            else
-                nc.obs += (r.defpos, r);
+            var r = Relocate(cx.obuids[defpos]);
+            var df = cx.obuids[definer];
+            if (df != definer)
+                r += (Definer, df);
+            var ds = cx.Fix(dependents);
+            if (ds != dependents)
+                r += (Dependents, ds);
             return r;
         }
         internal virtual Database Add(Database d,PMetadata pm, long p)

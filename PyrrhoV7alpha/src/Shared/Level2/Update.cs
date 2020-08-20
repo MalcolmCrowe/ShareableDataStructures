@@ -1,6 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -91,7 +92,15 @@ namespace Pyrrho.Level2
                     return (((Delete)that).delpos == defpos) ? ppos : -1;
                 case Type.Update1:
                 case Type.Update:
-                    return (((Update)that).defpos == defpos) ? ppos : -1;
+                    {
+                        var u = (Update)that;
+                        var ub = u.fields.PositionAt(0);
+                        var b = fields.PositionAt(0);
+                        for (; b != null && ub != null; b = b.Next(), ub = ub.Next())
+                            if (ub.key() != b.key() || b.value().CompareTo(ub.value()) != 0)
+                                return ppos;
+                        return (ub != null || b != null) ? ppos : -1;
+                    }
                 case Type.Alter3:
                 case Type.Alter2:
                 case Type.Alter:

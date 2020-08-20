@@ -56,20 +56,21 @@ namespace Pyrrho.Level3
         {
             return b.New(b.mem + x);
         }
+        /// <summary>
+        /// Relocation of Basis objects changes many uids but not the structure.
+        /// In preparation for Relocation, deep Scan the object for uids.
+        /// </summary>
+        /// <param name="cx"></param>
+        internal abstract void Scan(Context cx);
         internal virtual Basis _Relocate(Writer wr)
         {
             return this;
         }
-        /// <summary>
-        /// Alas we need two Relocate mechanisms for Procedures, Triggers etc.
-        /// The one for Writer is called on Commit, so that compiled objects
-        /// no longer use lexical Transaction.Analysing uids.
-        /// The one for Context is called at the end of parsing,
-        /// so that compiled objects no longer use Heap uids.
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <returns></returns>
         internal virtual Basis _Relocate(Context cx,Context nc)
+        {
+            return this;
+        }
+        internal virtual Basis Fix(Context cx)
         {
             return this;
         }
@@ -448,6 +449,10 @@ namespace Pyrrho.Level3
         public virtual DBException Exception(string sig, params object[] obs)
         {
             return new DBException(sig, obs);
+        }
+        internal override void Scan(Context cx)
+        {
+            throw new NotImplementedException();
         }
     }
  }

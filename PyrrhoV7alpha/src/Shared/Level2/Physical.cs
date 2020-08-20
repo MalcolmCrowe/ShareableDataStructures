@@ -5,6 +5,8 @@ using Pyrrho.Common;
 using System.Text;
 using System.Diagnostics.Eventing.Reader;
 using System.Configuration;
+using System.CodeDom.Compiler;
+using System.Net.NetworkInformation;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -449,55 +451,19 @@ namespace Pyrrho.Level2
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
         {
-            var fs = Framing.Empty;
-            for (var b = ph.framing.obs.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                if (p > Transaction.TransPos)
-                    wr.cx.obs += (p, b.value());
-            }
-            for (var b = ph.framing.obs.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                // Don't include the new Physical object(s) in framing
-                if (p >= Transaction.TransPos && p < Transaction.Analysing)
-                    continue;
-                var ob = wr.Fixed(p);
-                fs += ob;
-            }
-            framing = fs;
+            framing = (Framing)ph.framing._Relocate(wr);
         }
         internal override void Relocate(Context cx)
         {
-  //          cx.Frame();
+            framing.Install(cx);
+            framing.Scan(cx);
             var nc = new Context(cx);
             nc.obs = BTree<long, DBObject>.Empty;
             nc.data = BTree<long, RowSet>.Empty;
             nc.defs = Ident.Idents.Empty;
             cx.SrcFix(ppos + 1);
-            var fs = Framing.Empty;
+            framing = (Framing)framing._Relocate(cx, nc);
             framing.Install(cx);
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                if (p > Transaction.TransPos)
-                    nc.obs += (p, b.value());
-            }
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                // Don't include the new Physical object(s) in framing
-                if (p >= Transaction.TransPos && p < Transaction.Analysing)
-                    continue;
-                var oo = cx.obs[p]??(DBObject)cx.db.objects[p];
-                var ob = oo.Relocate(cx,nc);
-                if (ob != oo)
-                    nc.db+=(ob, cx.db.loadpos); 
-                fs += ob;
-            }
-            framing = fs;
-            cx = nc;
-            fs.Install(cx);
         }
         /// <summary>
         /// Fix heap uids and install compiled DBObjects from the context
@@ -506,23 +472,8 @@ namespace Pyrrho.Level2
         public void Frame(Context cx)
         {
             cx.SrcFix(ppos+1);
-            var nc = new Context(cx);
-            nc.obs = BTree<long, DBObject>.Empty;
-            nc.data = BTree<long, RowSet>.Empty;
-            nc.defs = Ident.Idents.Empty;
-            for (var b = cx.obs.First(); b != null; b = b.Next())
-            {
-                var ob = b.value().Relocate(cx,nc);
-                framing += ob;
-            }
-            for (var b=cx.data.First();b!=null;b=b.Next())
-            {
-                var r = (RowSet)b.value().Relocate(cx,nc);
-                framing += r;
-            }
-            var fr = cx.frame ?? throw new PEException("PE400");
-            fr.Install(nc);
-            cx = nc;
+            framing = new Framing(cx);
+            Relocate(cx);
             cx.frame = null;
         }
     }
