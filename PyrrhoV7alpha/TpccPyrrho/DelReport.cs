@@ -1,9 +1,4 @@
 using System;
-using System.Collections;
-using System.ComponentModel;
-using System.Drawing;
-using System.Data;
-using Pyrrho;
 using System.Windows.Forms;
 
 namespace Tpcc

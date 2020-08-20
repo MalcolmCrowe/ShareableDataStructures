@@ -1,10 +1,8 @@
-using System;
 using System.Collections;
-using System.ComponentModel;
-using System.Drawing;
-using System.Data;
 using System.Windows.Forms;
 using System.Text;
+using System.Drawing;
+using Pyrrho;
 
 namespace Tpcc
 {
@@ -14,7 +12,7 @@ namespace Tpcc
 	public class VTerm : System.Windows.Forms.UserControl
 	{
 		public int hpos,vpos;
-		private System.Windows.Forms.PictureBox pictureBox1;
+		private PictureBox pictureBox1;
 		public static Font ft;
 		public float lht,em;
 		public Line[] lines;
@@ -310,12 +308,11 @@ namespace Tpcc
    //             Invalidate(true);
 			}
 		}
-		public object Get(IDbConnection db,string s)
+		public object Get(PyrrhoConnect db,string s)
 		{
 			var cmd = db.CreateCommand();
 			cmd.CommandText = s;
 			object r = cmd.ExecuteScalar();
-			cmd.Dispose();
 			return r;
 		}
         public class Buffer

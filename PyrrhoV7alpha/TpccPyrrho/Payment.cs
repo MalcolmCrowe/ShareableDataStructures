@@ -1,10 +1,7 @@
 using System;
-using System.Drawing;
 using System.Collections;
 using System.Text;
-using System.ComponentModel;
 using System.Windows.Forms;
-using System.Data;
 using Pyrrho;
 
 namespace Tpcc

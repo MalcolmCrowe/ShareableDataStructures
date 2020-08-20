@@ -1,14 +1,7 @@
 using System;
-using System.IO;
-using System.Drawing;
-using System.Collections;
-using System.ComponentModel;
 using System.Windows.Forms;
-using System.Threading;
-using System.Data;
 using Pyrrho;
 using System.Net.Sockets;
-using System.Runtime.Remoting;
 
 namespace Tpcc
 {

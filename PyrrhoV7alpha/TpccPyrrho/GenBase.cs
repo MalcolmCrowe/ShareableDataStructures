@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections;
 using System.Text;
 using System.IO;
-using System.Data;
 using Pyrrho;
 
 namespace Tpcc
