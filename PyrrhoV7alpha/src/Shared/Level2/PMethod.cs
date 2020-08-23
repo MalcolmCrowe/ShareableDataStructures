@@ -1,6 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Data.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -114,25 +115,33 @@ namespace Pyrrho.Level2
             return "Method " + methodType.ToString()+" " + domain 
                 + "." + nameAndArity + "[" + retType + "] " + source.ident; 
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            switch(that.type)
+            switch (that.type)
             {
                 case Type.Drop:
-                    return (db.types[domain] == ((Drop)that).delpos) ? ppos : -1;
+                    if (db.types[domain] == ((Drop)that).delpos)
+                        return new DBException("40016", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (db.types[domain] == ((Change)that).affects) ? ppos : -1;
+                    if (db.types[domain] == ((Change)that).affects)
+                        return new DBException("40021", ppos, that, ct);
+                    break;
                 case Type.PMethod2:
                 case Type.PMethod:
                     {
                         var t = (PMethod)that;
-                        return (db.types[domain] == db.types[t.domain]
-                            && nameAndArity == t.nameAndArity) ? ppos : -1;
+                        if (db.types[domain] == db.types[t.domain]
+                            && nameAndArity == t.nameAndArity)
+                            return new DBException("40039", ppos, that, ct);
+                        break;
                     }
                 case Type.Modify:
-                    return (nameAndArity == ((Modify)that).name) ? ppos : -1;
+                    if (nameAndArity == ((Modify)that).name)
+                        return new DBException("4003p", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -144,6 +153,7 @@ namespace Pyrrho.Level2
             ro = ro + mt + mi + (cx.db.types[domain].Value,domain+(mt,name));
             cx.db += (ro, p);
             cx.Install(mt,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

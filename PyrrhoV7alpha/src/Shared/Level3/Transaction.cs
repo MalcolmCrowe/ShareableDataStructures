@@ -196,11 +196,15 @@ namespace Pyrrho.Level3
             var rdr = new Reader(new Context(databases[name]), loadpos);
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll(wr.Length, rdr.limit);
-            for (var i = 0; i < since.Count; i++)
+            for (var pb=since.First(); pb!=null; pb=pb.Next())
             {
+                var ph = pb.value();
+                PTransaction pt = null;
+                if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
+                    pt = (PTransaction)ph;
                 for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                 {
-                    var ce = cb.value()?.Check(since[i]);
+                    var ce = cb.value()?.Check(ph,pt);
                     if (ce != null)
                     {
                         cx.rconflicts++;
@@ -209,12 +213,11 @@ namespace Pyrrho.Level3
                 }
                 for (var b = tb; b != null; b = b.Next())
                 {
-                    var ck = since[i].Conflicts(rdr.context.db, cx, b.value());
-                    if (ck >= 0)
+                    var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
+                    if (ce!=null)
                     {
                         cx.wconflicts++;
-                        throw new DBException("40001", ck, b.key(), "Transaction conflict " + ck 
-                            + " on " + b.value());
+                        throw ce;
                     }
                 }
             }
@@ -222,12 +225,15 @@ namespace Pyrrho.Level3
                 return parent.Commit(cx);
             lock (wr.file)
             {
-                since = rdr.GetAll(wr.Length, rdr.limit);
-                for (var i = 0; i < since.Count; i++)
+                for (var pb = since.First(); pb != null; pb = pb.Next())
                 {
+                    var ph = pb.value();
+                    PTransaction pu = null;
+                    if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
+                        pu = (PTransaction)ph;
                     for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                     {
-                        var ce = cb.value().Check(since[i]);
+                        var ce = cb.value()?.Check(ph, pu);
                         if (ce != null)
                         {
                             cx.rconflicts++;
@@ -236,12 +242,11 @@ namespace Pyrrho.Level3
                     }
                     for (var b = tb; b != null; b = b.Next())
                     {
-                        var ck = since[i].Conflicts(rdr.context.db, cx, b.value());
-                        if (ck >= 0)
+                        var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pu);
+                        if (ce != null)
                         {
                             cx.wconflicts++;
-                            throw new DBException("40001", ck, b.key(), "Transaction conflict " + ck
-                                + " on " + b.value());
+                            throw ce;
                         }
                     }
                 }

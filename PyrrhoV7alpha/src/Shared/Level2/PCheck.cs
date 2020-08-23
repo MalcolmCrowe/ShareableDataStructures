@@ -112,21 +112,29 @@ namespace Pyrrho.Level2
                 Frame(psr.cx);
             }
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PCheck2:
                 case Type.PCheck:
-                    return (name == ((PCheck)that).name) ? ppos : -1;
+                    if (name == ((PCheck)that).name)
+                        return new DBException("40046", ppos, that, ct);
+                    break;
                 case Type.Drop:
-                    return (ckobjdefpos == ((Drop)that).delpos) ? ppos : -1;
+                    if (ckobjdefpos == ((Drop)that).delpos)
+                        return new DBException("40010", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (ckobjdefpos == ((Change)that).affects) ? ppos : -1;
+                    if (ckobjdefpos == ((Change)that).affects)
+                        return new DBException("40025", ppos, that, ct);
+                    break;
                 case Type.Alter:
-                    return (ckobjdefpos == ((Alter)that).defpos) ? ppos : -1;
+                    if (ckobjdefpos == ((Alter)that).defpos)
+                        return new DBException("40025", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -139,6 +147,7 @@ namespace Pyrrho.Level2
             }
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             cx.Install(ck,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override (Transaction,Physical) Commit(Writer wr, Transaction t)
         {
@@ -230,6 +239,7 @@ namespace Pyrrho.Level2
                 cx.db += (ro,p);
             }
             cx.Install(ck,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

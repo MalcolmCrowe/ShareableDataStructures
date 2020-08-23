@@ -144,6 +144,7 @@ namespace Pyrrho.Level2
             var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schemaRole;
             if (ro!=cx.db.role)
                 cx.db += (ro,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>
@@ -226,6 +227,7 @@ namespace Pyrrho.Level2
         {
             var tg = (Trigger)cx.db.objects[trigger];
             cx.db+=((Role)cx.db.objects[tg.definer],p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>

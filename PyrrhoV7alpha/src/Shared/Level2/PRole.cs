@@ -79,16 +79,20 @@ namespace Pyrrho.Level2
                 details = rdr.GetString();
 			base.Deserialise(rdr);
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PRole:
-                    return (name==((PRole)that).name) ? ppos : -1;
+                    if (name==((PRole)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (name == ((Change)that).name) ? ppos : -1;
+                    if (name == ((Change)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -107,6 +111,7 @@ namespace Pyrrho.Level2
             cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,ppos));
             if (first)
                 cx.db += (DBObject.Definer, nr.defpos);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
      internal class PMetadata : Physical
@@ -215,7 +220,7 @@ namespace Pyrrho.Level2
                 + ((description!="")?"(" + description +")":"")+
                 iri + Flags();
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
             switch(that.type)
             {
@@ -224,12 +229,16 @@ namespace Pyrrho.Level2
                 case Type.Metadata:
                     {
                         var t = (PMetadata)that;
-                        return (defpos == t.defpos || name == t.name) ? ppos : -1;
+                        if (defpos == t.defpos || name == t.name)
+                            return new DBException("40041", ppos, that, ct);
+                        break;
                     }
                 case Type.Drop:
-                    return (((Drop)that).delpos == defpos) ? ppos : -1;
+                    if (((Drop)that).delpos == defpos)
+                        return new DBException("40010", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that,ct);
         }
         internal void Add(Sqlx k)
         {

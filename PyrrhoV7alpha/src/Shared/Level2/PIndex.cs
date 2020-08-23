@@ -178,32 +178,40 @@ namespace Pyrrho.Level2
             reference = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Alter3:
-                    return (((Alter3)that).table.defpos == tabledefpos) ? ppos : -1;
+                    if (((Alter3)that).table.defpos == tabledefpos)
+                        return new DBException("40077", tabledefpos, that, ct);
+                    break;
                 case Type.Alter2:
-                    return (((Alter2)that).table.defpos == tabledefpos) ? ppos : -1;
+                    if (((Alter2)that).table.defpos == tabledefpos)
+                        return new DBException("40077", ppos, that, ct);
+                    break;
                 case Type.Alter:
-                    return (((Alter)that).table.defpos == tabledefpos) ? ppos : -1;
+                    if (((Alter)that).table.defpos == tabledefpos)
+                        return new DBException("40077", ppos, that, ct);
+                    break;
                 case Type.PIndex2:
                 case Type.PIndex1:
                 case Type.PIndex:
-                    return (((PIndex)that).tabledefpos == tabledefpos) ? ppos : -1;
+                    if (((PIndex)that).tabledefpos == tabledefpos)
+                        return new DBException("40042", ppos, that, ct);
+                    break;
                 case Type.Drop:
                     {
                         var d = (Drop)that;
                         if (d.delpos == tabledefpos || d.delpos == reference)
-                            return ppos;
+                            return new DBException("40012",d.delpos,that,ct);
                         for (int j = 0; j < columns.Count; j++)
                             if (d.delpos == columns[j] || d.delpos == -columns[j])
-                                return ppos;
+                                return new DBException("40013",d.delpos,that,ct);
                         break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -245,6 +253,7 @@ namespace Pyrrho.Level2
             var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs)));
             cx.db += (r, p);
             cx.Install(tb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>
@@ -405,30 +414,40 @@ namespace Pyrrho.Level2
             if (!Committed(wr,index)) return index;
             return -1;
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
                 case Type.RefAction:
-                    var ra = (RefAction)that; return (ra.index == index) ? ppos : -1;
+                    var ra = (RefAction)that; if (ra.index == index)
+                        return new DBException("40077", ppos, that, ct);
+                    break;
                 case Type.PIndex:
                 case Type.PIndex1:
                 case Type.PIndex2:
-                    var pi = (PIndex)that; return (pi.defpos == index) ? ppos : -1;
+                    var pi = (PIndex)that; if (pi.defpos == index)
+                        return new DBException("40077", ppos, that, ct);
+                    break;
                 case Type.Drop:
-                    var dp = (Drop)that; return (dp.delpos == index) ? ppos : -1;
+                    var dp = (Drop)that; if(dp.delpos == index)
+                        return new DBException("40025", ppos, that, ct);
+                    break;
                 case Type.Delete:
                     {
                         var x = (Index)db.objects[index];
-                        var dl = (Delete)that; return (dl.tabledefpos == x.tabledefpos) ? ppos : -1;
+                        var dl = (Delete)that; if (dl.tabledefpos == x.tabledefpos)
+                            return new DBException("40077", ppos, that, ct);
+                        break;
                     }
                 case Type.Update:
                     {
                         var x = (Index)db.objects[index];
-                        var up = (Update)that; return (up.tabledefpos == x.tabledefpos) ? ppos : -1;
+                        var up = (Update)that; if (up.tabledefpos == x.tabledefpos)
+                            return new DBException("40077", ppos, that, ct);
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
 
@@ -436,6 +455,7 @@ namespace Pyrrho.Level2
             var x = (Index)cx.db.objects[index];
             x += (Index.IndexConstraint, ctype);
             cx.db += (x, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override string ToString()
         {

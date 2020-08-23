@@ -109,16 +109,20 @@ namespace Pyrrho.Level2
         {
             return "Delete Record "+Pos(delpos);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
                 case Type.Delete:
-                    return (((Delete)that).delpos == delpos) ? ppos : -1;
+                    if (((Delete)that).delpos == delpos)
+                        return new DBException("40014", ppos, that, ct);
+                    break;
                 case Type.Update:
-                    return (((Update)that)._defpos == delpos) ? ppos : -1;
+                    if (((Update)that)._defpos == delpos)
+                        return new DBException("40029", ppos, that, ct);
+                    break;
             }
-            return -1;
+            return null;
         }
         /// <summary>
         /// Provided for legacy database files.
@@ -149,6 +153,7 @@ namespace Pyrrho.Level2
                     tb -= delpos;
                     cx.Install(tb,p);
                 }
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Delete1 : Delete
@@ -215,6 +220,7 @@ namespace Pyrrho.Level2
             }
             tb -= delpos;
             cx.Install(tb,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override string ToString()
         {

@@ -244,18 +244,24 @@ namespace Pyrrho.Level2
             sb.Append("=");
             sb.Append(c);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PTrigger:
-                    return (target == ((PTrigger)that).target) ? ppos : -1;
+                    if (target == ((PTrigger)that).target) 
+                        return new DBException("40032",target,that,ct);
+                    break;
                 case Type.Drop:
-                    return (target == ((Drop)that).delpos) ? ppos : -1;
+                    if (target == ((Drop)that).delpos)
+                        return new DBException("40012", target, that, ct);
+                    break;
                 case Type.Change:
-                    return (target == ((Change)that).affects) ? ppos : -1;
+                    if (target == ((Change)that).affects)
+                        return new DBException("40043", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -267,6 +273,7 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             cx.Install(tb, p);
             cx.Install(tg, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override (Transaction,Physical) Commit(Writer wr, Transaction t)
         {

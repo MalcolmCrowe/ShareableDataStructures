@@ -121,36 +121,48 @@ namespace Pyrrho.Level2
             domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
-                    return (table.defpos == ((PColumn)that).table.defpos) ? ppos : -1;
+                    if (table.defpos == ((PColumn)that).table.defpos)
+                        return new DBException("40025", ppos, that, ct);
+                    break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        return (table.defpos == a.table.defpos && name == a.name) ? ppos : -1;
+                        if (table.defpos == a.table.defpos && name == a.name)
+                            return new DBException("40025", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        return (table.defpos == a.table.defpos && name == a.name) ? ppos : -1;
+                        if (table.defpos == a.table.defpos && name == a.name)
+                            return new DBException("40025", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        return (table.defpos == a.table.defpos && name == a.name) ? ppos : -1;
+                        if (table.defpos == a.table.defpos && name == a.name)
+                            return new DBException("40025", ppos, that, ct);
+                        break;
                     }
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        return (table.defpos == d.delpos || cx.db.types[domain] == d.delpos) ? ppos : -1;
+                        if (table.defpos == d.delpos)
+                            return new DBException("40012", ppos, that, ct);
+                        if (cx.db.types[domain] == d.delpos)
+                            return new DBException("40016", ppos, that, ct);  
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal int flags
         {
@@ -190,6 +202,7 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             cx.Install(table,p);
             cx.Install(tc,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>

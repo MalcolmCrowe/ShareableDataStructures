@@ -103,13 +103,17 @@ namespace Pyrrho.Level2
 		{ 
 			return GetType().Name+" ["+Pos(delpos)+"]"; 
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Drop1:
-                case Type.Drop: return (delpos==((Drop)that).delpos)? ppos:-1;
-                case Type.Change: return (delpos == ((Change)that).Affects) ? ppos : -1;
+                case Type.Drop: if (delpos==((Drop)that).delpos)
+                        return new DBException("40010", ppos, that, ct);
+                    break;
+                case Type.Change: if (delpos == ((Change)that).Affects)
+                        return new DBException("40047", ppos, that, ct);
+                    break;
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record1:
@@ -118,21 +122,27 @@ namespace Pyrrho.Level2
                     {
                         var r = (Record)that;
                         if (delpos == r.tabledefpos)
-                            return ppos;
+                            return new DBException("40055", ppos, that, ct);
                         for (var b = r.fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == delpos)
-                                return ppos;
+                                return new DBException("40055", ppos, that, ct);
                         break;
                     }
-                case Type.Delete: return (delpos == 
-                        ((Record)db.GetD(((Delete)that).delpos)).tabledefpos) ? ppos : -1;
+                case Type.Delete: if (delpos == 
+                        ((Record)db.GetD(((Delete)that).delpos)).tabledefpos)
+                        return new DBException("40057", ppos, that, ct);
+                    break;
                 case Type.PColumn3:
                 case Type.PColumn2:
-                case Type.PColumn: return (delpos == ((PColumn)that).table.defpos) ? ppos : -1;
+                case Type.PColumn: if (delpos == ((PColumn)that).table.defpos)
+                        return new DBException("40043", ppos, that, ct);
+                    break;
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        return (delpos == a.table.defpos || delpos == a.defpos) ? ppos : -1;
+                        if (delpos == a.table.defpos || delpos == a.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
                     }
                 case Type.PIndex2:
                 case Type.PIndex1:
@@ -140,44 +150,60 @@ namespace Pyrrho.Level2
                     {
                         var c = (PIndex)that;
                         if (delpos == c.tabledefpos || delpos == c.defpos || delpos == c.reference)
-                            return ppos;
+                            return new DBException("40058", ppos, that, ct);
                         for (var i = 0; i < c.columns.Count; i++)
                             if (delpos == c.columns[i])
-                                return ppos;
+                                return new DBException("40058", ppos, that, ct);
                         break;
                     }
-                case Type.Grant: return (delpos == ((Grant)that).obj) ? ppos : -1;
-                case Type.PCheck: return (delpos == ((PCheck)that).ckobjdefpos) ? ppos : -1;
+                case Type.Grant: if (delpos == ((Grant)that).obj)
+                        return new DBException("40051", ppos, that, ct);
+                    break;
+                case Type.PCheck: if (delpos == ((PCheck)that).ckobjdefpos)
+                        return new DBException("40059", ppos, that, ct);
+                    break;
                 case Type.PMethod2:
-                case Type.PMethod: return (delpos == db.types[((PMethod)that).domain]) ? ppos : -1;
+                case Type.PMethod: if (delpos == db.types[((PMethod)that).domain])
+                        return new DBException("40060", ppos, that, ct);
+                    break;
                 case Type.Edit:
-                case Type.PDomain: return (delpos == ((PDomain)that).Affects) ? ppos : -1;
-                case Type.Modify: return (delpos == ((Modify)that).modifydefpos) ? ppos : -1;
-                case Type.Ordering: return (delpos == db.types[((Ordering)that).domain]) ? ppos : -1;
+                case Type.PDomain: if (delpos == ((PDomain)that).Affects)
+                        return new DBException("40068", ppos, that, ct);
+                    break;
+                case Type.Modify: if (delpos == ((Modify)that).modifydefpos)
+                        return new DBException("40069", ppos, that, ct);
+                    break;
+                case Type.Ordering: if (delpos == db.types[((Ordering)that).domain])
+                        return new DBException("40049", ppos, that, ct);
+                    break;
                 case Type.PeriodDef:
                     {
                         var p = (PPeriodDef)that;
-                        return (delpos == p.defpos || delpos == p.tabledefpos || delpos == p.startcol || delpos == p.endcol) ?
-                            ppos : -1;
+                        if (delpos == p.defpos || delpos == p.tabledefpos || delpos == p.startcol || delpos == p.endcol) 
+                            return new DBException("40077", ppos, that, ct);
+                        break;
                     }
-                case Type.Versioning: return (delpos == ((Versioning)that).perioddefpos) ? ppos : -1;
+                case Type.Versioning: if (delpos == ((Versioning)that).perioddefpos)
+                        return new DBException("40072", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A ReadCheck will occur on the dropped object
         /// </summary>
         /// <param name="pos">the defining position to check</param>
         /// <returns>whether a conflict has occurred</returns>
-		public override DBException ReadCheck(long pos)
+		public override DBException ReadCheck(long pos,Physical ph,PTransaction ct)
 		{
-			return (pos==delpos)?new DBException("40073",delpos).Mix():null;
+			return (pos==delpos)?new DBException("40073",delpos,ph,ct).Mix():null;
 		}
 
         internal override void Install(Context cx, long p)
         {
             cx.db = ((DBObject)cx.db.objects[delpos]).Drop(cx.db, cx.db, p);
             cx.obs -= delpos;
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Drop1 : Drop

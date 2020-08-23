@@ -107,20 +107,26 @@ namespace Pyrrho.Level2
 		{
 			return "PTable "+name;
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PTable1:
                 case Type.PTable:
-                    return (name == ((PTable)that).name) ? ppos : -1;
+                    if (name == ((PTable)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PView1:
                 case Type.PView:
-                    return (name == ((PView)that).name) ? ppos : -1;
+                    if (name == ((PView)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (name == ((Change)that).name) ? ppos : -1;
+                    if (name == ((Change)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -140,6 +146,7 @@ namespace Pyrrho.Level2
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
             cx.Install(tb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class PTable1 : PTable

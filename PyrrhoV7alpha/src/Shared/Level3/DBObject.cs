@@ -232,17 +232,10 @@ namespace Pyrrho.Level3
         {
             return null;
         }
-        // Overridden in Domain and ObInfo
-        public virtual TypedValue Parse(Scanner lx,bool union=false)
+        internal virtual BTree<long,SystemFilter> SysFilter(Context cx,BTree<long,SystemFilter> sf)
         {
-            return TNull.Value;
+            return sf;
         }
-        public virtual TypedValue Get(Reader rdr)
-        {
-            return TNull.Value;
-        }
-        public virtual void Put(TypedValue tv,Writer wr)
-        { }
         /// <summary>
         /// Drop anything that needs this, directly or indirectly,
         /// and then drop this.

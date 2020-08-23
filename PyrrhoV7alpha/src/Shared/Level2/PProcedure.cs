@@ -149,18 +149,24 @@ namespace Pyrrho.Level2
 			return "PProcedure "+name+"("+arity+")"
                 +((retType!=Domain.Null)?("["+retType+"] "):" ") + source.ident;
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PProcedure:
-                    return (nameAndArity == ((PProcedure)that).nameAndArity) ? ppos : -1;
+                    if (nameAndArity == ((PProcedure)that).nameAndArity)
+                        return new DBException("40039", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (nameAndArity == ((Change)that).name) ? ppos : -1;
+                    if (nameAndArity == ((Change)that).name)
+                        return new DBException("40039", ppos, that, ct);
+                    break;
                 case Type.Ordering:
-                    return (defpos == ((Ordering)that).funcdefpos) ? ppos : -1;
+                    if (defpos == ((Ordering)that).funcdefpos)
+                        return new DBException("40039", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
 
         internal override void Install(Context cx, long p)
@@ -172,6 +178,7 @@ namespace Pyrrho.Level2
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
             cx.Install(pr, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

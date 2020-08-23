@@ -65,6 +65,7 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             cx.Install(table, p);
             cx.Install(tc, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -125,6 +126,7 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             cx.Install(table,p);
             cx.Install(tc,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 	/// <summary>
@@ -202,6 +204,7 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             cx.Install(table,p);
             cx.Install(tc,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -216,42 +219,46 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">A Position to check</param>
         /// <returns>Whether read conflict has occurred</returns>
-		public override DBException ReadCheck(long pos)
+		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
 		{
-			return (pos==defpos)?new DBException("40078",pos).Mix() :null;
+			return (pos==defpos)?new DBException("40078",pos,r,ct).Mix() :null;
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        return (defpos == a.defpos ||
-                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
-                            ppos : -1;
+                        if (defpos == a.defpos ||
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) 
+                            return new DBException("40032", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        return (defpos == a.defpos ||
-                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
-                            ppos : -1;
+                        if (defpos == a.defpos ||
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
+                            return new DBException("40032", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        return (defpos == a.defpos ||
-                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) ?
-                            ppos : -1;
+                        if (defpos == a.defpos ||
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
+                            return new DBException("40032", ppos, that, ct);
+                        break;
                     }
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
                     {
                         var a = (PColumn)that;
-                        return (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0) ?
-                            ppos : -1;
+                        if (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)
+                            return new DBException("40032", ppos, that, ct);
+                        break;
                     }
                 case Type.Record3:
                 case Type.Record2:
@@ -259,21 +266,24 @@ namespace Pyrrho.Level2
                 case Type.Record:
                     {
                         var r = (Record)that;
-                        return (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) ?
-                            ppos : -1;
+                        if (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) 
+                            return new DBException("40079", ppos, that, ct);
+                        break;
                     }
                 case Type.Update1:
                 case Type.Update:
                     {
                         var r = (Update)that;
-                        return (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) ?
-                            ppos : -1;
+                        if (table.defpos == r.tabledefpos && r.fields.Contains(defpos))
+                            return new DBException("40080", ppos, that, ct);
+                        break;
                     }
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        return (table.defpos == d.delpos || defpos == d.delpos) ?
-                            ppos : -1;
+                        if (table.defpos == d.delpos || defpos == d.delpos) 
+                            return new DBException("40010", ppos, that, ct);
+                        break;
                     }
                 case Type.PIndex:
                     {
@@ -281,22 +291,25 @@ namespace Pyrrho.Level2
                         if (table.defpos==c.tabledefpos)
                             for (int j = 0; j < c.columns.Count; j++)
                                 if (c.columns[j] == defpos)
-                                    return ppos;
-                        return -1;
+                                    return new DBException("40043", ppos, that, ct);
+                        break;
                     }
                 case Type.Grant:
                     {
                         var g = (Grant)that;
-                        return (table.defpos == g.obj || defpos == g.obj) ? ppos : -1;
+                        if (table.defpos == g.obj || defpos == g.obj)
+                            return new DBException("40051", ppos, that, ct);
+                        break;
                     }
                 case Type.PCheck:
                     {
                         var c = (PCheck)that;
-                        return (table.defpos == c.ckobjdefpos || defpos == c.ckobjdefpos) ?
-                            ppos : -1;
+                        if (table.defpos == c.ckobjdefpos || defpos == c.ckobjdefpos) 
+                            return new DBException("40077", ppos, that, ct);
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
 	}
 }

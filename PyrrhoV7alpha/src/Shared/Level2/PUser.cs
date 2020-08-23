@@ -101,6 +101,7 @@ namespace Pyrrho.Level2
             cx.db = cx.db + (nu,cx.db.schemaKey) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
                 cx.db += (Database.Owner, nu.defpos);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Clearance : Physical

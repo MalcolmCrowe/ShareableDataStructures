@@ -42,6 +42,8 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal override void Install(Level4.Context cx, long p)
-        { }
+        {
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
+        }
     }
 }

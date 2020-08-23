@@ -85,20 +85,20 @@ namespace Pyrrho.Level2
                 a += "[" + under.name + "]";
 			return a;
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Drop:
                         if (db.types[under] == ((Drop)that).delpos)
-                            return ppos;
-                    break; // base class has other reasons for concern
+                        return new DBException("40011", ppos, that, ct);
+                    break;// base class has other reasons for concern
                 case Type.Change:
                     if (db.types[under] == ((Change)that).affects)
-                        return ppos;
-                    break; // base class has other reasons for concern
+                        return new DBException("40021", ppos, that, ct);
+                    break;// base class has other reasons for concern
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -111,6 +111,7 @@ namespace Pyrrho.Level2
             cx.db = cx.db + (ro,p) + (ppos, dt, p);
             if (dt!=null && !cx.db.types.Contains(dt))
                 cx.db += (Database.Types, cx.db.types + (dt, ppos));
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class PType1 : PType // no longer used

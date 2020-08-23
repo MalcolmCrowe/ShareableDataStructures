@@ -131,6 +131,32 @@ namespace Pyrrho.Level3
         {
             return this;
         }
+        internal static string For(Sqlx op)
+        {
+            switch (op)
+            {
+                case Sqlx.ASSIGNMENT: return ":=";
+                case Sqlx.COLON: return ":";
+                case Sqlx.EQL: return "=";
+                case Sqlx.COMMA: return ",";
+                case Sqlx.CONCATENATE: return "||";
+                case Sqlx.DIVIDE: return "/";
+                case Sqlx.DOT: return ".";
+                case Sqlx.DOUBLECOLON: return "::";
+                case Sqlx.GEQ: return ">=";
+                case Sqlx.GTR: return ">";
+                case Sqlx.LBRACK: return "[";
+                case Sqlx.LEQ: return "<=";
+                case Sqlx.LPAREN: return "(";
+                case Sqlx.LSS: return "<";
+                case Sqlx.MINUS: return "-";
+                case Sqlx.NEQ: return "<>";
+                case Sqlx.PLUS: return "+";
+                case Sqlx.TIMES: return "*";
+                case Sqlx.AND: return " and ";
+                default: return op.ToString();
+            }
+        }
         /// <summary>
         /// See SqlValue::ColsForRestView.
         /// This stage is RESTView.Selects.
@@ -683,8 +709,8 @@ namespace Pyrrho.Level3
         }
         internal override BTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
         {
-            if (copyFrom>=Transaction.Analysing
-                && cx.obs[copyFrom].Needs(cx, rs) == BTree<long, RowSet.Finder>.Empty)
+            if (copyFrom<0 || (copyFrom>=Transaction.Analysing
+                && cx.obs[copyFrom].Needs(cx, rs) == BTree<long, RowSet.Finder>.Empty))
                 return BTree<long, RowSet.Finder>.Empty;
             return base.Needs(cx, rs);
         }
@@ -1177,6 +1203,42 @@ namespace Pyrrho.Level3
         {
             return (cx.obs[left] as SqlValue)?.isConstant(cx)==true 
                 && (cx.obs[right] as SqlValue)?.isConstant(cx) == true;
+        }
+        internal override BTree<long,SystemFilter> SysFilter(Context cx, BTree<long,SystemFilter> sf)
+        {
+            switch(kind)
+            {
+                case Sqlx.AND:
+                    return cx.obs[left].SysFilter(cx, cx.obs[right].SysFilter(cx, sf));
+                case Sqlx.EQL:
+                case Sqlx.GTR:
+                case Sqlx.LSS:
+                case Sqlx.LEQ:
+                case Sqlx.GEQ:
+                    {
+                        var lf = (SqlValue)cx.obs[left];
+                        var rg = (SqlValue)cx.obs[right];
+                        if (lf.isConstant(cx) && rg is SqlCopy sc)
+                            return SystemFilter.Add(sf,sc.copyFrom, Neg(kind), lf.Eval(cx));
+                        if (rg.isConstant(cx) && lf is SqlCopy sl)
+                            return SystemFilter.Add(sf,sl.copyFrom, kind, rg.Eval(cx));
+                        break;
+                    }
+                default:
+                    return sf;
+            }
+            return base.SysFilter(cx, sf);
+        }
+        Sqlx Neg(Sqlx o)
+        {
+            switch (o)
+            {
+                case Sqlx.GTR: return Sqlx.LSS;
+                case Sqlx.GEQ: return Sqlx.LEQ;
+                case Sqlx.LEQ: return Sqlx.GEQ;
+                case Sqlx.LSS: return Sqlx.GTR;
+            }
+            return o;
         }
         internal override bool aggregates(Context cx)
         {
@@ -2148,28 +2210,7 @@ namespace Pyrrho.Level3
             sb.Append(" "); sb.Append(Uid(defpos)); sb.Append("(");
             if (left!=-1L)
                 sb.Append(Uid(left));
-            switch (kind)
-            {
-                case Sqlx.ASSIGNMENT: sb.Append(":="); break;
-                case Sqlx.COLON: sb.Append(":"); break;
-                case Sqlx.EQL: sb.Append("="); break;
-                case Sqlx.COMMA: sb.Append(","); break;
-                case Sqlx.CONCATENATE: sb.Append("||"); break;
-                case Sqlx.DIVIDE: sb.Append("/"); break;
-                case Sqlx.DOT: sb.Append("."); break;
-                case Sqlx.DOUBLECOLON: sb.Append("::"); break;
-                case Sqlx.GEQ: sb.Append(">="); break;
-                case Sqlx.GTR: sb.Append(">"); break;
-                case Sqlx.LBRACK: sb.Append("["); break;
-                case Sqlx.LEQ: sb.Append("<="); break;
-                case Sqlx.LPAREN: sb.Append("("); break;
-                case Sqlx.LSS: sb.Append("<"); break;
-                case Sqlx.MINUS: sb.Append("-"); break;
-                case Sqlx.NEQ: sb.Append("<>"); break;
-                case Sqlx.PLUS: sb.Append("+"); break;
-                case Sqlx.TIMES: sb.Append("*"); break;
-                case Sqlx.AND: sb.Append(" and "); break;
-            }
+            sb.Append(For(kind));
             if (right != -1L)
                 sb.Append(Uid(right));
             if (kind == Sqlx.LBRACK)

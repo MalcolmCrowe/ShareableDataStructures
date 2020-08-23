@@ -138,7 +138,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract void Install(Context db, long p);
+        internal abstract void Install(Context cx, long p);
         internal virtual void OnLoad(Reader rdr)
         { }
         /// <summary>
@@ -209,13 +209,13 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">a defining position</param>
         /// <returns>true if we conflict with this</returns>
-        public virtual DBException ReadCheck(long pos)
+        public virtual DBException ReadCheck(long pos,Physical r,PTransaction ct)
         {
             return null;
         }
-        public virtual long Conflicts(Database db, Context cx, Physical that)
+        public virtual DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            return -1;
+            return null;
         }
         protected string DigestSql(Writer wr,string s)
         {
@@ -261,6 +261,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             cx.db += (Database.Curated, ppos);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
 
     }
@@ -286,16 +287,20 @@ namespace Pyrrho.Level2
         {
             return new Versioning(this, wr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PeriodDef:
-                    return (perioddefpos == ((PPeriodDef)that).defpos) ? ppos : -1;
+                    if (perioddefpos == ((PPeriodDef)that).defpos)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Versioning:
-                    return (perioddefpos == ((Versioning)that).perioddefpos) ? ppos : -1;
+                    if (perioddefpos == ((Versioning)that).perioddefpos)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// Serialise the Versioning to the PhysBase
@@ -326,6 +331,7 @@ namespace Pyrrho.Level2
             var pd = (PeriodDef)cx.db.mem[perioddefpos];
             var tb = (Table)cx.db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
             cx.db += (tb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
  
@@ -372,9 +378,11 @@ namespace Pyrrho.Level2
         {
             return "Namespace " + prefix + "=" + uri;
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            return (that.type == Type.Namespace) ? ppos : -1;
+            if (that.type == Type.Namespace)
+                return new DBException("40050", ppos, that, ct);
+            return null;
         }
 
         internal override void Install(Context cx, long p)
@@ -435,6 +443,7 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             var nb = ob+ (DBObject.Classification,classification);
             cx.db += (nb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal abstract class Compiled : Physical

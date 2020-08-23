@@ -57,6 +57,7 @@ namespace Pyrrho.Level2
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             ro += oi;
             cx.db += (ro, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         /// <summary>
         /// a readable version of this Physical

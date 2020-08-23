@@ -1,3 +1,4 @@
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -90,23 +91,29 @@ namespace Pyrrho.Level2
         {
             return "View " + name + " as " + view.ToString();
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PTable1:
                 case Type.PTable:
-                    return (name == ((PTable)that).name) ? ppos : -1;
+                    if (name == ((PTable)that).name)
+                        return new DBException("40030", ppos, that, ct);
+                    break;
                 case Type.PView1:
                 case Type.PView:
                 case Type.RestView1:
                 case Type.RestView2:
                 case Type.RestView:
-                    return (name == ((PView)that).name) ? ppos : -1;
+                    if (name == ((PView)that).name)
+                        return new DBException("40012", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (name == ((Change)that).name) ? ppos : -1;
+                    if (name == ((Change)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -115,6 +122,7 @@ namespace Pyrrho.Level2
             ro = ro+vi+(ppos,vi);
             cx.db += (ro, p);
             cx.Install(new View(this), p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class PRestView : PView
@@ -221,11 +229,11 @@ namespace Pyrrho.Level2
             usingtbpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (that.type == Type.Drop && usingtbpos == ((Drop)that).delpos)
-                return ppos;
-            return base.Conflicts(db, cx, that);
+                return new DBException("40012",usingtbpos, that, ct);
+            return base.Conflicts(db, cx, that, ct);
         }
         public override string ToString()
         {

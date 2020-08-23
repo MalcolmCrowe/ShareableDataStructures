@@ -93,19 +93,23 @@ namespace Pyrrho.Level2
             flags = (OrderCategory)rdr.GetInt();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Ordering:
-                    return (domain == ((Ordering)that).domain) ? ppos : -1;
+                    if (domain == ((Ordering)that).domain)
+                        return new DBException("40048", ppos, that, ct);
+                    break;
                 case Type.Drop:
                     {
                         var t = (Drop)that;
-                        return (db.types[domain] == t.delpos || funcdefpos == t.delpos) ? ppos : -1;
+                        if (db.types[domain] == t.delpos || funcdefpos == t.delpos)
+                            return new DBException("40010", t.delpos, that, ct);
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -122,6 +126,7 @@ namespace Pyrrho.Level2
             var dm = domain + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
                 +(Domain.OrderCategory,flags);
             cx.db += (cx.db.types[domain].Value,dm, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

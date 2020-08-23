@@ -118,24 +118,30 @@ namespace Pyrrho.Level2
                     break;
             }
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Grant:
                     {
                         var g = (Grant)that;
-                        return (modifydefpos == g.obj || modifydefpos == g.grantee) ? ppos : -1;
+                        if (modifydefpos == g.obj || modifydefpos == g.grantee)
+                            return new DBException("40051", modifydefpos, that, ct);
+                        break; 
                     }
                 case Type.Drop:
-                    return (modifydefpos == ((Drop)that).delpos) ? ppos : -1;
+                    if (modifydefpos == ((Drop)that).delpos)
+                        return new DBException("40010", modifydefpos, that, ct);
+                    break;
                 case Type.Modify:
                     {
                         var m = (Modify)that;
-                        return (name == m.name || modifydefpos == m.modifydefpos) ? ppos : -1;
+                        if (name == m.name || modifydefpos == m.modifydefpos)
+                            return new DBException("40052", ppos, that, ct);
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -150,6 +156,7 @@ namespace Pyrrho.Level2
         {
             ((DBObject)cx.db.objects[modifydefpos]).Modify(cx,now,p);
             cx.obs += (modifydefpos, (DBObject)cx.db.objects[modifydefpos]);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

@@ -255,7 +255,7 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QueryExpression : Query
     {
-        internal new static readonly QueryExpression Get =
+        internal static readonly QueryExpression Get =
                 new QueryExpression(-1, BTree<long, object>.Empty
                     +(_Domain,Domain.Null));
         internal const long

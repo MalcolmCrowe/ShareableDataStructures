@@ -198,7 +198,7 @@ namespace Pyrrho.Level2
                 r = new PRow(fields[cols[i].defpos], r);
             return r;
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -207,16 +207,18 @@ namespace Pyrrho.Level2
                         var d = (Drop)that;
                         var table = (Table)db.objects[tabledefpos];
                         if (d.delpos == table.defpos)
-                            return ppos;
+                            return new DBException("40012",ppos,that,ct);
                         for (var s = fields.PositionAt(0); s != null; s = s.Next())
                             if (s.key() == d.delpos)
-                                return ppos;
-                        return -1;
+                                return new DBException("40013",d.delpos,that,ct);
+                        return null;
                     }
                 case Type.Alter:
-                    return (((Alter)that).table.defpos == tabledefpos) ? ppos : -1;
+                    if (((Alter)that).table.defpos == tabledefpos)
+                        return new DBException("40079", tabledefpos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// Fix indexes for a new Record
@@ -263,6 +265,7 @@ namespace Pyrrho.Level2
                 throw e;
             }
             cx.Install(tb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {

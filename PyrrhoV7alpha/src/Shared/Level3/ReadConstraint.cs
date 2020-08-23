@@ -77,13 +77,12 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="p">the change</param>
         /// <returns>whether we have a transaction conflict</returns>
-		public DBException Check(Physical p)
+		public DBException Check(Physical p,PTransaction ct)
         {
             if (check == null)
-                return p.ReadCheck(defpos);
+                return p.ReadCheck(defpos,p,ct);
             if (p is Record r)
-                return check.Check((p.database.objects[r.tabledefpos] as Table).tableRows[r.defpos]
-                    as TableRow);
+                return check.Check(r, ct);
             return null;
         }
         /// <summary>
@@ -144,16 +143,16 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="r">the TableRow</param>
         /// <returns>conflict if any of the read TableColumns are changed</returns>
-		public virtual DBException Check(TableRow r)
+		public virtual DBException Check(Record r,PTransaction ct)
         {
             for (var c = rdcols.First(); c != null; c = c.Next())
-                if (r.vals[c.key()] != null)
-                    return new DBException("40006", c.key()).Mix();
+                if (r.fields[c.key()] != null)
+                    return new DBException("40006", c.key(),r,ct).Mix();
             return null;
         }
-        public DBException Check(Delete r)
+        public DBException Check(Delete r,PTransaction ct)
         {
-            return (tabledefpos == r.tabledefpos) ? new DBException("40006", tabledefpos).Mix() : null;
+            return (tabledefpos == r.tabledefpos) ? new DBException("40006", tabledefpos,r,ct).Mix() : null;
         }
         /// <summary>
         /// Add this readConstraint to the transaction profile
@@ -230,14 +229,14 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="r">the insert/update</param>
         /// <returns>whether conflict has occurred</returns>
-		public override DBException Check(TableRow r)
+		public override DBException Check(Record r, PTransaction ct)
         {
             // check for insertion (or key update) conflicting with an empty query
-            var m = r?.MakeKey(index);
+            var m = r?.MakeKey(index.keys);
             if (m != null)
                 foreach (var rr in recs)
                     if (m._CompareTo(rr) == 0)
-                        return new DBException("40009", r.defpos, m.ToString()).Mix();
+                        return new DBException("40009", r.defpos, r, ct).Mix();
             return null;
         }
         /// <summary>
@@ -298,11 +297,11 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="r">A Record to check</param>
         /// <returns>An exception (null means no problem)</returns>
-        public override DBException Check(TableRow r)
+        public override DBException Check(Record r,PTransaction ct)
         {
             if (rdcols != null)
-                return base.Check(r);
-            return (tabledefpos==r.tabledefpos)? new DBException("40008", tabledefpos).Mix():null;
+                return base.Check(r,ct);
+            return (tabledefpos==r.tabledefpos)? new DBException("40008", tabledefpos,r,ct).Mix():null;
         }
         /// <summary>
         /// Add this readConstraint to the transaction profile

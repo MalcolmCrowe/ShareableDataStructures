@@ -1,4 +1,5 @@
 using System;
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -109,30 +110,40 @@ namespace Pyrrho.Level2
 			grantee = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Grant:
                     {
                         var g = (Grant)that;
-                        return (obj == g.obj && grantee == g.grantee) ? ppos : -1;
+                        if (obj == g.obj && grantee == g.grantee)
+                            return new DBException("40051", ppos, that, ct);
+                        break;
                     }
                 case Type.Drop:
-                    return (obj == ((Drop)that).delpos) ? ppos : -1;
+                    if (obj == ((Drop)that).delpos)
+                        return new DBException("40010", ppos, that, ct);
+                    break;
                 case Type.Alter3:
                 case Type.Alter2:
                 case Type.Alter:
-                    return (obj == ((Alter)that).defpos) ? ppos : -1;
+                    if (obj == ((Alter)that).defpos)
+                        return new DBException("40051", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (obj == ((Change)that).affects) ? ppos : -1;
+                    if (obj == ((Change)that).affects)
+                        return new DBException("40051", ppos, that, ct);
+                    break;
                 case Type.Modify:
                     {
                         var m = (Modify)that;
-                        return (obj == m.modifydefpos || grantee == m.modifydefpos) ? ppos : -1;
+                        if (obj == m.modifydefpos || grantee == m.modifydefpos)
+                            return new DBException("40051", ppos, that, ct);
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -159,6 +170,7 @@ namespace Pyrrho.Level2
             var pr = oi.priv | priv;
             ro += new ObInfo(obj, oi.name, oi.domain)+(ObInfo.Privilege,pr);
             cx.db += (ro, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Authenticate : Physical

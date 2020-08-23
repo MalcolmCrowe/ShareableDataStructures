@@ -710,32 +710,32 @@ namespace Pyrrho.Common
     /// The file format is not machine specific: the engine uses long for Integer where possible, etc
     /// </summary>
     public enum DataType
-	{
-		Null,
-		TimeStamp,	// Integer(UTC ticks)
-		Interval,	// Integer[3] (years,months,ticks)
-		Integer,	// 1024-bit Integer
-		Numeric,	// 1024-bit Integer, precision, scale
-		String,		// string: Integer length, length x byte
-		Date,		// Integer (UTC ticks)
-		TimeSpan,	// Integer (UTC ticks)
-		Boolean,	// byte 3 values: T=1,F=0,U=255
-		DomainRef,  // typedefpos, Integer els, els x data 
-		Blob,		// Integer length, length x byte: Opaque binary type (Clob is String)
-		Row,		// spec, Integer cols, cols x data
-		Multiset,	// Integer els, els x data
-		Array,		// Integer els, els x data
+    {
+        Null,
+        TimeStamp,  // Integer(UTC ticks)
+        Interval,   // Integer[3] (years,months,ticks)
+        Integer,    // 1024-bit Integer
+        Numeric,    // 1024-bit Integer, precision, scale
+        String,     // string: Integer length, length x byte
+        Date,       // Integer (UTC ticks)
+        TimeSpan,   // Integer (UTC ticks)
+        Boolean,    // byte 3 values: T=1,F=0,U=255
+        DomainRef,  // typedefpos, Integer els, els x data 
+        Blob,       // Integer length, length x byte: Opaque binary type (Clob is String)
+        Row,        // spec, Integer cols, cols x data
+        Multiset,   // Integer els, els x data
+        Array,		// Integer els, els x data
         Password   // A more secure type of string (write-only)
-	}
+    }
     /// <summary>
     /// These are the supported character repertoires in SQL2011
     /// </summary>
-	public enum CharSet 
-	{
-		UCS, SQL_IDENTIFIER, SQL_CHARACTER, GRAPHIC_IRV, // GRAPHIC_IRV is also known as ASCII_GRAPHIC
-		LATIN1, ISO8BIT, // ISO8BIT is also known as ASCII_FULL
-		SQL_TEXT
-	};
+	public enum CharSet
+    {
+        UCS, SQL_IDENTIFIER, SQL_CHARACTER, GRAPHIC_IRV, // GRAPHIC_IRV is also known as ASCII_GRAPHIC
+        LATIN1, ISO8BIT, // ISO8BIT is also known as ASCII_FULL
+        SQL_TEXT
+    };
     /// <summary>
     /// An Exception class for reporting client errors
     /// </summary>
@@ -773,7 +773,7 @@ namespace Pyrrho.Common
         /// <returns>this (so we can chain diagnostics)</returns>
         internal DBException Add(Sqlx k, TypedValue v)
         {
-            ATree<Sqlx, TypedValue>.Add(ref info, k, v??TNull.Value);
+            ATree<Sqlx, TypedValue>.Add(ref info, k, v ?? TNull.Value);
             return this;
         }
         internal DBException AddType(ObInfo t)

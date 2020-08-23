@@ -130,6 +130,7 @@ namespace Pyrrho.Level3
             Guest = -55, // Role
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
+            Log = -188,     // BTree<long,Physical.Type>
             NextStmt = -393, // long: uncommitted compiled statements
             NextPrep = -394, // long: highwatermark of prepared statements for this connection
             NextPos = -395, // long: next proposed Physical record
@@ -168,6 +169,8 @@ namespace Pyrrho.Level3
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
         public ExecuteStatus parse => (ExecuteStatus)(mem[_ExecuteStatus]??ExecuteStatus.Obey);
+        public BTree<long, Physical.Type> log =>
+            (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
         static Database()
         {
@@ -369,12 +372,18 @@ namespace Pyrrho.Level3
         }
         internal (Physical, long) _NextPhysical(long pp)
         {
-            var rdr = new Reader(new Context(this), pp);
-            var ph = rdr.Create();
-            pp = (int)rdr.Position;
-            if (ph == null)
-                return (null, -1);
-            return (ph, pp);
+            try
+            {
+                var rdr = new Reader(new Context(this), pp);
+                var ph = rdr.Create();
+                pp = (int)rdr.Position;
+                if (ph == null)
+                    return (null, -1);
+                return (ph, pp);
+            } catch(Exception)
+            {
+                throw new DBException("22003");
+            }
         }
         /// <summary>
         /// Accessor: determine if there is anything to commit

@@ -1,5 +1,6 @@
 ﻿using Pyrrho.Level4;
 using Pyrrho.Level3;
+using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -109,38 +110,53 @@ namespace Pyrrho.Level2
             endcol = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PeriodDef:
-                    return (tabledefpos == ((PPeriodDef)that).tabledefpos) ? ppos : -1;
+                    if (tabledefpos == ((PPeriodDef)that).tabledefpos)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PTable1:
                 case Type.PTable:
-                    return (tabledefpos == ((PTable)that).defpos) ? ppos : -1;
+                    if (tabledefpos == ((PTable)that).defpos)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        return (startcol == a.defpos || endcol == a.defpos) ? ppos : -1;
+                        if (startcol == a.defpos || endcol == a.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        return (startcol == a.defpos || endcol == a.defpos) ? ppos : -1;
+                        if (startcol == a.defpos || endcol == a.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        return (startcol == a.defpos || endcol == a.defpos) ? ppos : -1;
+                        if (startcol == a.defpos || endcol == a.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
                     }
                 case Type.Drop:
                     {
                         var t = (Drop)that;
-                        return (t.delpos == tabledefpos || t.delpos == startcol || t.delpos == endcol) ?
-                            ppos : -1;
+                        if (t.delpos == tabledefpos)
+                            return new DBException("40012", tabledefpos, that, ct);
+                        if (t.delpos == startcol)
+                            return new DBException("40013", startcol, that, ct);                        
+                        if (t.delpos == endcol)
+                            return new DBException("40013", endcol, that, ct);  
+                        break;
                     }
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
         {
@@ -153,6 +169,7 @@ namespace Pyrrho.Level2
             ro = ro + oc + (oi + (ppos,oc.domain));
             cx.db += (ro, p);
             cx.Install(pd, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

@@ -126,40 +126,58 @@ namespace Pyrrho.Level2
         /// The new name of the object
         /// </summary>
 		public override string Name { get { return name; }}
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.PTable1:
-                case Type.PTable: return (name.CompareTo(((PTable)that).name) == 0) ? ppos : -1;
+                case Type.PTable: if (name.CompareTo(((PTable)that).name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PDomain1:
-                case Type.PDomain: return (name.CompareTo(((PDomain)that).domain.name) == 0) ? ppos : -1;
+                case Type.PDomain: if (name.CompareTo(((PDomain)that).domain.name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PType1:
-                case Type.PType: return (name.CompareTo(((PType)that).domain.name) == 0) ? ppos : -1;
-                case Type.PRole: return (name.CompareTo(((PRole)that).name) == 0) ? ppos : -1;
+                case Type.PType: if (name.CompareTo(((PType)that).domain.name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
+                case Type.PRole: if (name.CompareTo(((PRole)that).name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PView1:
-                case Type.PView: return (name.CompareTo(((PView)that).name) == 0) ? ppos : -1;
-                case Type.Drop: return (prev == ((Drop)that).delpos) ? ppos : -1;
+                case Type.PView: if (name.CompareTo(((PView)that).name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
+                case Type.Drop: if (prev == ((Drop)that).delpos)
+                        return new DBException("40010", ppos, that, ct);
+                    break;
                 case Type.Change: 
                     {
                         var ch = (Change)that;
-                        return (ch.Affects == Affects || ch.name.CompareTo(name) == 0)?ppos: -1;
+                        if (ch.Affects == Affects || ch.name.CompareTo(name) == 0)
+                            return new DBException("40032", ppos, that, ct);
+                        break;
                     }
-                case Type.Grant: return prev == ((Grant)that).obj ? ppos : -1;
-                case Type.PProcedure: return (name.CompareTo(((PProcedure)that).nameAndArity)==0)?
-                    ppos: -1;
-                case Type.PTrigger: return (name.CompareTo(((PTrigger)that).name) == 0) ? ppos : -1;
+                case Type.Grant:
+                    return new DBException("40051", ppos, that, ct);
+                case Type.PProcedure: if (name.CompareTo(((PProcedure)that).nameAndArity)==0) 
+                        return new DBException("40032", ppos, that, ct);
+                    break;
+                case Type.PTrigger: if (name.CompareTo(((PTrigger)that).name) == 0)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// ReadCheck for change to the affected object
         /// </summary>
         /// <param name="pos">The object read</param>
         /// <returns>Whether a read conflict has occurred</returns>
-		public override DBException ReadCheck(long pos)
+		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
 		{
-			return (pos==Affects)?new DBException("40005",pos).Mix():null;
+			return (pos==Affects)?new DBException("40005",pos,r,ct).Mix():null;
 		}
 
         internal override void Install(Context cx, long p)
@@ -169,6 +187,7 @@ namespace Pyrrho.Level2
             ro = ro + (new ObInfo(affects, name,oi.domain)+(ObInfo.Privilege, oi.priv));
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

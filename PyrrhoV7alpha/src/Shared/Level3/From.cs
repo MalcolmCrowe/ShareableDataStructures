@@ -367,7 +367,8 @@ namespace Pyrrho.Level3
             else
             {
                 if (tr.objects[target] is SystemTable st)
-                    rowSet = new SystemRowSet(cx, st);
+                    rowSet = new SelectedRowSet(cx,this,
+                        new SystemRowSet(cx, st, where),fi);
                 else if (cx.obs[target] is Table tb)
                 {
                     index = tb.FindPrimaryIndex(cx.db);

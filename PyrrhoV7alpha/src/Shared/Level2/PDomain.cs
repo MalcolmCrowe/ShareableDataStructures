@@ -172,33 +172,49 @@ namespace Pyrrho.Level2
             return CultureInfo.GetCultureInfo(s);
 #endif
         }
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             var nm = domain.name;
             switch(that.type)
             {
                 case Type.PDomain1:
                 case Type.PDomain:
-                    return (nm == ((PDomain)that).domain.name) ? ppos : -1;
+                    if (nm == ((PDomain)that).domain.name)
+                        return new DBException("40022", ppos, that, ct);
+                    break;
                 case Type.PTable:
                 case Type.PTable1:
-                    return (nm == ((PTable)that).name) ? ppos : -1;
+                    if (nm == ((PTable)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PView1:
                 case Type.PView:
-                    return (nm == ((PView)that).name) ? ppos : -1;
+                    if (nm == ((PView)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PRole:
-                    return (nm == ((PRole)that).name) ? ppos : -1;
+                    if (nm == ((PRole)that).name)
+                        return new DBException("40035", ppos, that, ct);
+                    break;
                 case Type.RestView1:
                 case Type.RestView:
-                    return (nm == ((PRestView)that).name) ? ppos : -1;
+                    if (nm == ((PRestView)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.PType:
-                    return (nm == ((PType)that).domain.name) ? ppos : -1;
+                    if (nm == ((PType)that).domain.name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Change:
-                    return (nm == ((Change)that).name) ? ppos : -1;
+                    if (nm == ((Change)that).name)
+                        return new DBException("40032", ppos, that, ct);
+                    break;
                 case Type.Drop:
-                    return (defpos==((Drop)that).delpos) ? ppos:-1;
+                    if (defpos==((Drop)that).delpos)
+                        return new DBException("40016", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
         /// <summary>
         /// A readable version of the Physical

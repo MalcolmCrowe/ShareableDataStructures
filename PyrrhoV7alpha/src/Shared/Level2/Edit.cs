@@ -86,12 +86,12 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">the position</param>
         /// <returns>whether a conflict has occurred</returns>
-		public override DBException ReadCheck(long pos)
+		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
 		{
-			return (pos==defpos)?new DBException("40009", pos).Mix() :null;
+			return (pos==defpos)?new DBException("40009", pos,r,ct).Mix() :null;
 		}
         public override long Affects => _defpos;
-        public override long Conflicts(Database db, Context cx, Physical that)
+        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
@@ -107,14 +107,16 @@ namespace Pyrrho.Level2
                         {
                             var c = (DBObject)db.objects[cp.key()];
                             if (cx.db.types[c.domain] == defpos)
-                                return ppos;
+                                return new DBException("40079", ppos, that, ct);
                         }
                         break;
                     }
                 case Type.Drop:
-                    return (((Drop)that).delpos == defpos) ? ppos : -1;
+                    if (((Drop)that).delpos == defpos)
+                        return new DBException("40016", ppos, that, ct);
+                    break;
             }
-            return base.Conflicts(db, cx, that);
+            return base.Conflicts(db, cx, that, ct);
         }
 	}
 }
