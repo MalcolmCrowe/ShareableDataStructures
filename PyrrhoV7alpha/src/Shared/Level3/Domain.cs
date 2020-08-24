@@ -62,6 +62,7 @@ namespace Pyrrho.Level3
             DefaultString = -75, // string
             Descending = -76, // Sqlx
             Display = -177, // int
+            DomDefPos = -189, // long
             Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Iri = -79, // string
@@ -980,6 +981,8 @@ namespace Pyrrho.Level3
                     var tv = tb.value();
                     if (v is IComparable vc && tv is IComparable tc)
                         c = vc.CompareTo(tc);
+                    if (c != 0)
+                        return c;
                 }
             }
             if (b != null && b.key() == Descending)
