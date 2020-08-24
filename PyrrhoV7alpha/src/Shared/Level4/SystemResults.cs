@@ -467,7 +467,8 @@ namespace Pyrrho.Level4
         }
         internal TypedValue Start(Context cx, string s, int i = 0, bool desc = false)
         {
-            return sysFilt?[i].Start(cx, this, s, i, desc);
+            return (sysFilt is BList<SystemFilter> sf && sf.Length>i)?
+                sf[i].Start(cx, this, s, i, desc):null;
         }
         /// <summary>
         /// A bookmark for a system table

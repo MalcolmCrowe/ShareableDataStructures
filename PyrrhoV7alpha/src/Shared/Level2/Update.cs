@@ -98,14 +98,14 @@ namespace Pyrrho.Level2
                         var u = (Update)that;
                         if (defpos != u.defpos)
                             break;
-                        var ub = u.fields.PositionAt(0);
+/*  Correction Aug 24 2020                     var ub = u.fields.PositionAt(0);
                         var b = fields.PositionAt(0);
                         for (; b != null && ub != null; b = b.Next(), ub = ub.Next())
                             if (ub.key() != b.key() || b.value().CompareTo(ub.value()) != 0)
                                 return new DBException("40029", ppos, that, ct);
-                        if (ub != null || b != null)
+                        if (ub != null || b != null) */
                             return new DBException("40029", ppos, that, ct);
-                        break;
+/*                        break; */
                     }
                 case Type.Alter3:
                 case Type.Alter2:
