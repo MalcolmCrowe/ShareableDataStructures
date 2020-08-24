@@ -53,7 +53,13 @@ namespace Tpcc
                 c_first = (string)rdr[1];
                 c_middle = (string)rdr[2];
             }
-            catch (Exception)
+			catch (TransactionConflict ex)
+			{
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1 " + ex.Message
+					+ " " + ex.info["WITH"]);
+				form.Rollback();
+			}
+			catch (Exception)
             {
 				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1");
 				form.Rollback();
@@ -74,7 +80,13 @@ namespace Tpcc
                     cids.Add((long)rdr[0]);
                 cid = (int)(long)cids[(cids.Count + 1) / 2];
             }
-            catch (Exception ex)
+			catch (TransactionConflict ex)
+			{
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message
+					+ " " + ex.info["WITH"]);
+				form.Rollback();
+			}
+			catch (Exception ex)
             {
 				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message);
 				form.Rollback();
@@ -111,7 +123,13 @@ namespace Tpcc
                     return true;
                 oid = (int)(long)rdr[0];
             }
-            catch (Exception ex)
+			catch (TransactionConflict ex)
+			{
+				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message
+					+ " " + ex.info["WITH"]);
+				form.Rollback();
+			}
+			catch (Exception ex)
             {
 				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message);
 				form.Rollback();
@@ -188,42 +206,45 @@ namespace Tpcc
 		}
 
 		public OrderStatus(Form1 f, int w)
-        {
-            form = f;
-            wid = w;
-            //
-            // Required for Windows Form Designer support
-            //
-            InitializeComponent();
+		{
+			form = f;
+			wid = w;
+			//
+			// Required for Windows Form Designer support
+			//
+			InitializeComponent();
 			VTerm vt1 = this;
 			Width = vt1.Width;
-			Height = vt1.Height+50;
-			vt1.Put(36,1,"Order-Status");
-			vt1.Put(1,2,"Warehouse: 9999   District: 99");
-			vt1.AddField(12,2,4);
-			vt1.AddField(29,2,2,true);
-			vt1.Put(1,3,"Customer: 9999   Name: ");
-			vt1.AddField(11,3,4,true);
-			vt1.AddField(24,3,16);
-			vt1.AddField(41,3,2);
-			vt1.AddField(44,3,16,true);
-			vt1.Put(1,4,"Cust-Balance: ");
-			vt1.AddField(16,4,9);
-			vt1.Put(1,6,"Order-Number: 99999999   Entry-Date: DD-HH-YYY hh:mm:ss   Carrier-Number: 99");
-			vt1.AddField(15,6,8);
-			vt1.AddField(38,6,18);
-			vt1.AddField(75,6,2);
-			vt1.Put(1,7,"Supply-W     Item-Id    Qty       Amount      Delivery-Date");
-			for (int j=8;j<=22;j++)
+			Height = vt1.Height + 50;
+			vt1.Put(36, 1, "Order-Status");
+			vt1.Put(1, 2, "Warehouse: 9999   District: 99");
+			vt1.AddField(12, 2, 4);
+			vt1.AddField(29, 2, 2, true);
+			vt1.Put(1, 3, "Customer: 9999   Name: ");
+			vt1.AddField(11, 3, 4, true);
+			vt1.AddField(24, 3, 16);
+			vt1.AddField(41, 3, 2);
+			vt1.AddField(44, 3, 16, true);
+			vt1.Put(1, 4, "Cust-Balance: ");
+			vt1.AddField(16, 4, 9);
+			vt1.Put(1, 6, "Order-Number: 99999999   Entry-Date: DD-HH-YYY hh:mm:ss   Carrier-Number: 99");
+			vt1.AddField(15, 6, 8);
+			vt1.AddField(38, 6, 18);
+			vt1.AddField(75, 6, 2);
+			vt1.Put(1, 7, "Supply-W     Item-Id    Qty       Amount      Delivery-Date");
+			for (int j = 8; j <= 22; j++)
 			{
-				vt1.AddField(3,j,4);
-				vt1.AddField(14,j,6);
-				vt1.AddField(25,j,2);
-				vt1.AddField(33,j,9);
-				vt1.AddField(48,j,10);
+				vt1.AddField(3, j, 4);
+				vt1.AddField(14, j, 6);
+				vt1.AddField(25, j, 2);
+				vt1.AddField(33, j, 9);
+				vt1.AddField(48, j, 10);
 			}
-			vt1.AddField(79,22,1,true);
+			vt1.AddField(79, 22, 1, true);
 			vt1.PutBlanks();
+		}
+		internal void PrepareStatements()
+		{ 
 			form.conn.Prepare("FetchCustomer6", "select c_balance,c_first,c_middle,c_last from customer where c_w_id=? and c_d_id=? and c_id=?");
 			form.conn.Prepare("FetchCustomer7", "select c_id from customer where c_w_id=? and c_d_id=? and c_last=? order by c_first");
 			form.conn.Prepare("FetchCustomer8", "select c_balance,c_first,c_middle from customer  where c_w_id=? and c_d_id=? and c_id=?");

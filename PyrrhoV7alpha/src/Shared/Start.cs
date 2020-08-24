@@ -713,7 +713,8 @@ namespace Pyrrho
                         cx.data = BTree<long,RowSet>.Empty;
                         tcp.StartException();
                         tcp.Write(Responses.FatalError);
-                        Console.WriteLine("Internal Error " + e.Message);
+                        Console.WriteLine("Internal Error "+e.Message);
+                        Console.WriteLine(e.StackTrace.Substring(0,80));
                         tcp.PutString(e.Message);
                     }
                     catch (Exception)

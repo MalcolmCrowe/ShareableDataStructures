@@ -519,9 +519,18 @@ namespace Pyrrho.Level4
 				return tok=Sqlx.ID;
 			}
 			string str;
-			if (char.IsDigit(ch))
+            char minusch = ' '; // allow negative number
+			if (char.IsDigit(ch)||ch=='-')
 			{
 				start = pos;
+                if (ch == '-')
+                    Advance();
+                if (!char.IsDigit(ch))
+                {
+                    minusch = ch;
+                    ch = '-';
+                    goto uminus;
+                }
 				while (char.IsDigit(Advance()))
 					;
 				if (ch!='.')
@@ -554,6 +563,7 @@ namespace Pyrrho.Level4
 				tok=Sqlx.REALLITERAL;
 				return tok;
 			}
+            uminus:
 			switch (ch)
 			{
 				case '[':	Advance(); return tok=Sqlx.LBRACK;
@@ -600,17 +610,21 @@ namespace Pyrrho.Level4
                         }
                         throw new DBException("42150",new string(input,st,pos-st));
                     } */
-				case ':':	Advance(); 
+				case ':':
 					if (ch==':')
 					{
 						Advance();
 						return tok=Sqlx.DOUBLECOLON;
 					}
 					return tok=Sqlx.COLON;
-				case '-':	
-					if (Advance()=='-')
+				case '-':
+                    if (minusch == ' ')
+                        Advance();
+                    else
+                        ch = minusch;
+					if (ch=='-')
 					{
-						Advance();    // -- comment
+   					    Advance();    // -- comment
 						while (pos<input.Length) 
 							Advance();
 						return Next();

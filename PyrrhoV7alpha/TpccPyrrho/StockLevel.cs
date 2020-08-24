@@ -31,7 +31,13 @@ namespace Tpcc
             {
                 n = (int)(long)(form.conn.ExecuteScalar("StockEnquiry",""+wid,""+did,""+(nextoid-20),""+wid,""+thresh) ?? 0L);
             }
-            catch (Exception ex) {
+			catch (TransactionConflict ex)
+			{
+				PyrrhoConnect.reqs.WriteLine("Stocklevel exception " + ex.Message
+					+ " " + ex.info["WITH"]);
+				form.Rollback();
+			}
+			catch (Exception ex) {
 				PyrrhoConnect.reqs.WriteLine("StockLevel exception " + ex.Message);
 			}
 			Set(4, n);
@@ -48,22 +54,25 @@ namespace Tpcc
 		}
 
 		public StockLevel(Form1 f, int w)
-        {
-            form = f;
-            wid = w;
-            //
-            // Required for Windows Form Designer support
-            //
-            InitializeComponent();
-			Put(36,1,"Stock-Level");
-			Put(1,2,"Warehouse:        District:");
-			AddField(12,2,4);
-			AddField(29,2,2);
-			Put(1,4,"Stock Level Threshold:");
-			AddField(24,4,2,true);
-			Put(1,6,"low stock:");
-			AddField(12,6,3);
-			AddField(18,6,1,true);
+		{
+			form = f;
+			wid = w;
+			//
+			// Required for Windows Form Designer support
+			//
+			InitializeComponent();
+			Put(36, 1, "Stock-Level");
+			Put(1, 2, "Warehouse:        District:");
+			AddField(12, 2, 4);
+			AddField(29, 2, 2);
+			Put(1, 4, "Stock Level Threshold:");
+			AddField(24, 4, 2, true);
+			Put(1, 6, "low stock:");
+			AddField(12, 6, 3);
+			AddField(18, 6, 1, true);
+		}
+		internal void PrepareStatements()
+		{ 
 			form.conn.Prepare("FetchDistrict1", "select d_next_o_id from district where d_w_id=? and d_id=?");
 			form.conn.Prepare("StockEnquiry", "select count(*) from stock inner join (select distinct ol_i_id from order_line where ol_w_id=? and ol_d_id=? and ol_o_id>=?) on s_i_id=ol_i_id where s_w_id=? and s_quantity<?");
 		}

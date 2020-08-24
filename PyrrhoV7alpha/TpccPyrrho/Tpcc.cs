@@ -528,6 +528,7 @@ namespace Tpcc
                     try { 
                         if (rdr.Read())
                             activewh = (int)rdr.GetInt64(0);
+                        PrepareStatements();
                     }
                     finally
                     {
@@ -553,8 +554,15 @@ namespace Tpcc
 		{
             var g = new GenBase(conn);
     	    g.BuildTpcc();
+            PrepareStatements();
 		}
-
+        void PrepareStatements()
+        {
+            newOrder1.PrepareStatements();
+            orderStatus1.PrepareStatements();
+            payment1.PrepareStatements();
+            stockLevel1.PrepareStatements();
+        }
 		private void tabControl1_SelectedIndexChanged(object sender, System.EventArgs e)
 		{
 			VTerm vt = null;

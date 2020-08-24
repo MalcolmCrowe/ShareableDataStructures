@@ -61,6 +61,17 @@ namespace Tpcc
                 {
                     throw e;
                 }
+                catch (TransactionConflict ex)
+                {
+                    var s = ex.Message;
+                    if (s.Contains("with read"))
+                        Form1.rconflicts++;
+                    else
+                        Form1.wconflicts++;
+                    PyrrhoConnect.reqs.WriteLine("Commit exception " + ex.Message
+                        + " " + ex.info["WITH"]);
+                    form.Rollback();
+                }
                 catch (Exception ex)
                 {
                     var s = ex.Message;
@@ -78,6 +89,14 @@ namespace Tpcc
                 form.conn.ExecuteTrace(name,args);
       //          Console.WriteLine("ExecNQ done " + (DateTime.Now.Ticks-t));
                 return false;
+            }
+            catch (TransactionConflict ex)
+            {
+                var s = ex.Message;
+                Form1.wconflicts++;
+                PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
             }
             catch (Exception ex)
             {
@@ -127,6 +146,13 @@ namespace Tpcc
                 Set(6, o_id);
                 Set(132, DateTime.Now.ToString());
             }
+            catch (TransactionConflict ex)
+            {
+                var s = ex.Message;
+                PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
+            }
             catch (Exception ex)
             {
                 PyrrhoConnect.reqs.WriteLine("New Order Exception 1 " + ex.Message);
@@ -148,6 +174,13 @@ namespace Tpcc
                 w_tax = (decimal)rdr[0];
                 Set(8, w_tax.ToString("F4").Substring(1));
                 Set(9, d_tax.ToString("F4").Substring(1));
+            }
+            catch (TransactionConflict ex)
+            {
+                var s = ex.Message;
+                PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
             }
             catch (Exception ex)
             {
@@ -198,6 +231,12 @@ namespace Tpcc
                 Set(k, a.ol_supply_w_id);
                 Set(k + 1, string.Format("{0,6}", a.oliid));
             }
+            catch (TransactionConflict ex)
+            {
+                PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
+            }
             catch (Exception ex)
             {
                 PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
@@ -231,6 +270,12 @@ namespace Tpcc
                 Set(k + 4, s_quantity);
                 a.s_quantity = s_quantity;
                 sdata = (string)rdr[2];
+            }
+            catch (TransactionConflict ex)
+            {
+                PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
             }
             catch (Exception ex)
             {
@@ -305,6 +350,15 @@ namespace Tpcc
                 // Phase 3 display the results
                 Set(130, "OKAY");
                 done = true;
+            }
+            catch (TransactionConflict ex)
+            {
+                var s = ex.Message;
+                Set(130, s);
+                Form1.wconflicts++;
+                PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message 
+                    + " " + ex.info["WITH"]);
+                form.Rollback();
             }
             catch (Exception ex)
             {
@@ -542,6 +596,10 @@ namespace Tpcc
 			vt1.AddField(70,22,9);
 			vt1.AddField(61,2,19);
 			vt1.PutBlanks();
+        }
+
+        internal void PrepareStatements()
+        {
             form.conn.Prepare("FetchCustomer", "select c_discount,c_last,c_credit from customer where c_w_id=? and c_d_id=? and c_id=?");
             form.conn.Prepare("FetchDistrict", "select d_tax,d_next_o_id from district where d_w_id=? and d_id=?");
             form.conn.Prepare("FetchWarehouse", "select w_tax from warehouse where w_id=?");
@@ -549,16 +607,17 @@ namespace Tpcc
             form.conn.Prepare("CreateOrder", "insert into \"ORDER\"(o_id,o_d_id,o_w_id,o_c_id,o_entry_d,o_ol_cnt,o_all_local) values(?,?,?,?,?,?,?)");
             form.conn.Prepare("CreateNewOrder", "insert into new_order(no_o_id,no_d_id,no_w_id)values(?,?,?)");
             form.conn.Prepare("FetchItemData", "select i_price,i_name,i_data from item where i_id=?");
-            for (var i=1;i<=10;i++)
-                form.conn.Prepare("FetchItemData2"+(i-1), "select s_quantity,s_dist_"+i.ToString("D2")+",s_data from stock where s_i_id=? and s_w_id=?");
+            for (var i = 1; i <= 10; i++)
+                form.conn.Prepare("FetchItemData2" + (i - 1), "select s_quantity,s_dist_" + i.ToString("D2") + ",s_data from stock where s_i_id=? and s_w_id=?");
             form.conn.Prepare("UpdateStock", "update stock set s_quantity=? where s_i_id=? and s_w_id=?");
             form.conn.Prepare("AddOrderLine", "insert into order_line(ol_o_id,ol_d_id,ol_w_id,ol_number,ol_i_id,ol_supply_w_id,ol_quantity,ol_amount)values(?,?,?,?,?,?,?,?)");
+
         }
 
-		/// <summary>
-		/// Clean up any resources being used.
-		/// </summary>
-		protected override void Dispose( bool disposing )
+        /// <summary>
+        /// Clean up any resources being used.
+        /// </summary>
+        protected override void Dispose( bool disposing )
 		{
 			if( disposing )
 			{

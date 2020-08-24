@@ -126,11 +126,11 @@ namespace Tpcc
         {
             Console.WriteLine("filling stock " + DateTime.Now);
             string s = "insert into stock(s_i_id,s_w_id,s_quantity," +
-            "s_dist_0,s_dist_1,s_dist_2,s_dist_3,s_dist_4,s_dist_5,s_dist_6,s_dist_7,s_dist_8,s_dist_9" +
-            ",s_dist_10,s_ytd,s_order_cnt,s_remote_cnt,s_data) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            "s_dist_01,s_dist_02,s_dist_03,s_dist_04,s_dist_05,s_dist_06,s_dist_07,s_dist_08,s_dist_09,s_dist_10" +
+            ",s_ytd,s_order_cnt,s_remote_cnt,s_data) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
             db.Prepare("Stock", s);
             util u = new util(26, 50);
-            var v = new object[18];
+            var v = new object[17];
 #if TRY
             for (int siid=1;siid<=10;siid++)
 #else
@@ -140,13 +140,12 @@ namespace Tpcc
                 v[0] = siid;
                 v[1] = wid;
                 v[2] = enc.GetString(util.NextNString(10, 100, 0));
-                for (int j = 1; j <= 9; j++)
+                for (int j = 0; j < 10; j++)
                     v[j+3] = "'"+enc.GetString(util.randchar(24)) + "'";
-                v[13] = "'" + enc.GetString(util.randchar(24)) + "'";
+                v[13] = 0;
                 v[14] = 0;
                 v[15] = 0;
-                v[16] = 0;
-                v[17] = "'"+enc.GetString(util.fixStockData(u.NextAString())) + "'";
+                v[16] = "'"+enc.GetString(util.fixStockData(u.NextAString())) + "'";
                 Exec("Stock",v);
             }
             Console.WriteLine("Done filling stock " + DateTime.Now);

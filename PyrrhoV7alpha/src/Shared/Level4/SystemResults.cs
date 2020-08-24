@@ -167,16 +167,33 @@ namespace Pyrrho.Level4
         internal TypedValue Start(Context cx,SystemRowSet rs,string s,int i,bool desc)
         {
             var sf = rs.sysFilt;
-            if (sf!=null && ((SystemTableColumn)cx.obs[rs.sysIx.keys[i]])?.name == s)
+            if (sf != null && ((SystemTableColumn)cx.obs[rs.sysIx.keys[i]])?.name == s)
+            {
                 switch (op1)
                 {
                     case Sqlx.EQL:
                         return sf[i]?.val1;
+                    case Sqlx.GTR:
                     case Sqlx.GEQ:
-                        return desc ? null : sf[i].val1;
+                        if (!desc)return sf[i].val1;
+                        break;
+                    case Sqlx.LSS:
                     case Sqlx.LEQ:
-                        return desc ? sf[i].val1 : null;
+                        if (desc) return sf[i].val1;
+                        break;
                 }
+                switch (op2)
+                {
+                    case Sqlx.EQL:
+                        return sf[i]?.val2;
+                    case Sqlx.GTR:
+                    case Sqlx.GEQ:
+                        return desc ? null : sf[i].val2;
+                    case Sqlx.LSS:
+                    case Sqlx.LEQ:
+                        return desc ? sf[i].val2 : null;
+                }
+            }
             return null;
         }
         internal static BTree<long,SystemFilter> Add(BTree<long,SystemFilter> sf,
@@ -594,19 +611,15 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-            internal static LogBookmark New(Context _cx,SystemRowSet res)
+            internal static LogBookmark New(Context _cx, SystemRowSet res)
             {
-                var start = res.Start(_cx,"Pos")?.ToLong()??5;
-                var lb = _cx.db.log.PositionAt(start);
-                if (lb == null)
-                    return null;
-                for (var x = _cx.db._NextPhysical(lb.key()); x.Item1 != null; 
-                    x = _cx.db._NextPhysical(x.Item2))
+                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
+                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                 {
-                    var rb = new LogBookmark(_cx,res, 0, x);
+                    var rb = new LogBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
                     if (!rb.Match(res))
                         return null;
-                    if (Query.Eval(res.where,_cx))
+                    if (Query.Eval(res.where, _cx))
                         return rb;
                 }
                 return null;
