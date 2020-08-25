@@ -205,7 +205,7 @@ namespace Pyrrho.Level4
         {
             cx.Add(pre);
             cx.Install1(pre.framing);
-            lxr = new Lexer(s, cx.db.lexeroffset);
+            lxr = new Lexer(s, cx.db.lexeroffset,true);
             tok = lxr.tok;
             var b = pre.qMarks.First();
             for (;b!=null && tok!=Sqlx.EOF;b=b.Next())

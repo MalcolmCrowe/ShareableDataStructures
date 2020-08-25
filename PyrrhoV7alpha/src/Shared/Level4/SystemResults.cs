@@ -4152,12 +4152,13 @@ namespace Pyrrho.Level4
                 var oi = (ObInfo)cx.db.role.infos[tb.defpos];
                 var tc = (TableColumn)cx.db.objects[p];
                 var si = (ObInfo)cx.db.role.infos[p];
+                var dp = cx.db.types[d] ?? -1L;
                 return new TRow(rs,
                     Pos(p),
                     new TChar(oi.name),
                     new TChar(si.name),
                     new TInt(i),
-                    Pos(cx.db.types[d]??-1L),
+                    Pos(dp),
                     new TChar(d.defaultString),
                     TBool.For(d.notNull),
                     new TChar(tc.generated.gfs),

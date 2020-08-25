@@ -372,13 +372,13 @@ namespace Pyrrho.Level4
         /// Constructor: Start a new lexer
         /// </summary>
         /// <param name="s">the input string</param>
-        internal Lexer(string s,long off = 0)
+        internal Lexer(string s,long off = 0,bool allowminus=false)
         {
    		    input = s.ToCharArray();
 			pos = -1;
             offset = off;
 			Advance();
-			tok = Next();
+			tok = Next(allowminus);
         }
         internal Lexer(Ident id) : this(id.ident, id.iix) { }
         /// <summary>
@@ -450,7 +450,7 @@ namespace Pyrrho.Level4
         /// tok and val are set for the new token
         /// </summary>
         /// <returns>The new value of tok</returns>
-		public Sqlx Next()
+		public Sqlx Next(bool allowminus=false)
 		{
             if (pushBack != Sqlx.Null)
             {
@@ -519,8 +519,8 @@ namespace Pyrrho.Level4
 				return tok=Sqlx.ID;
 			}
 			string str;
-            char minusch = ' '; // allow negative number
-			if (char.IsDigit(ch)||ch=='-')
+            char minusch = ' '; // allow negative number?
+			if (char.IsDigit(ch)||(allowminus && ch=='-'))
 			{
 				start = pos;
                 if (ch == '-')
