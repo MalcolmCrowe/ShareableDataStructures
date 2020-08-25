@@ -304,7 +304,10 @@ namespace Tpcc
 		{
 			lock(this)
 			{
-				this[f].Put(s);
+				var x = this[f];
+				if (s.Length > x.len)
+					s = s.Substring(0, x.len);
+				x.Put(s);
    //             Invalidate(true);
 			}
 		}
