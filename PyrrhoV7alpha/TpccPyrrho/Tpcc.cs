@@ -517,15 +517,19 @@ namespace Tpcc
                 Console.WriteLine("fid " + fid + " loaded at " + DateTime.Now);
             if (fid > maxloaded)
                 maxloaded = fid;
-            if (fid!=1)
+            if (fid != 1)
+            {
+                PrepareStatements();
                 UserChoice();
+            }
             else
                 try
                 {
                     var cmd = conn.CreateCommand();
                     cmd.CommandText = "select count(W_ID) from WAREHOUSE";
                     var rdr = cmd.ExecuteReader();
-                    try { 
+                    try
+                    {
                         if (rdr.Read())
                             activewh = (int)rdr.GetInt64(0);
                         PrepareStatements();
