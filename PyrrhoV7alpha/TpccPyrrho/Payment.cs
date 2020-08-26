@@ -216,10 +216,9 @@ namespace Tpcc
                 {
                     rdr.Close();
                 }
-                cdata = "" + cid + "," + cdid + "," + wid + "," + did + "," + wid + "," + c_amount + ";" + cdata;
                 if (cdata.Length > 500)
                     cdata = cdata.Substring(0, 500);
-                db.ExecuteTrace("UpdateCustomer3",cdata,""+cwid,""+cdid,""+cid);
+                db.ExecuteTrace("UpdateCustomer3","'"+cdata+"'",""+cwid,""+cdid,""+cid);
                 Set(38, cdata.Substring(0, 50));
                 if (cdata.Length > 50)
                     Set(39, cdata.Substring(50, 50));
