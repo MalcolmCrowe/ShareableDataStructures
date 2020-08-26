@@ -43,6 +43,7 @@ namespace Pyrrho.Level2
         /// The defining position of the domain
         /// </summary>
 		public Domain domain;
+        public long domdefpos = -1L;
 		public TypedValue dv = null; // see PColumn2
         public string dfs,ups;
         public BList<UpdateAssignment> upd = BList<UpdateAssignment>.Empty; // see PColumn3
@@ -118,7 +119,8 @@ namespace Pyrrho.Level2
             table = (Table)rdr.context.db.objects[rdr.GetLong()];
             name = rdr.GetString();
             seq = rdr.GetInt();
-            domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
+            domdefpos = rdr.GetLong();
+            domain = (Domain)rdr.context.db.objects[domdefpos];
             base.Deserialise(rdr);
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -181,7 +183,11 @@ namespace Pyrrho.Level2
             sb.Append(" "); sb.Append(name); sb.Append(" for ");
             sb.Append(Pos(table.defpos));
             sb.Append("("); sb.Append(seq); sb.Append(")[");
-            sb.Append(domain); sb.Append("]");
+            if (domdefpos >= 0)
+                sb.Append(DBObject.Uid(domdefpos));
+            else
+                sb.Append(domain); 
+            sb.Append("]");
             return sb.ToString();
         }
         internal override void Install(Context cx, long p)

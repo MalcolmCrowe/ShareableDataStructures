@@ -109,7 +109,7 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
             cx.db = cx.db + (ro,p) + (ppos, dt, p);
-            if (dt!=null && !cx.db.types.Contains(dt))
+            if (dt!=null && cx.db.types[dt]==null)
                 cx.db += (Database.Types, cx.db.types + (dt, ppos));
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

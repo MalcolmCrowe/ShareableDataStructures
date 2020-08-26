@@ -808,6 +808,7 @@ namespace Pyrrho.Level1
         /// <param name="tv"></param>
         internal void PutCell(Context _cx, Domain dt, TypedValue p)
         {
+            p = dt.Coerce(_cx, p);
             if (p == null || p.IsNull)
             {
                 WriteByte(0);

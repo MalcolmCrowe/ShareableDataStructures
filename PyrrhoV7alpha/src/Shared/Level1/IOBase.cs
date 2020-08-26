@@ -5,6 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using System.Data;
+using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -40,7 +41,7 @@ namespace Pyrrho.Level2
             }
         }
         public Buffer buf = new Buffer();
-        public virtual bool GetBuf(long s)
+        public virtual int GetBuf(long s)
         {
             throw new NotImplementedException();
         }
@@ -503,25 +504,13 @@ namespace Pyrrho.Level2
                 cs[j] = (byte)ReadByte();
             return new Integer(cs);
         }
-        /// <summary>
-        /// Get an Integer from the buffer
-        /// </summary>
-        /// <returns>an Integer</returns>
-        internal Integer GetInteger0()
-        {
-            int n = ReadByte();
-            byte[] b = new byte[n];
-            for (int j = 0; j < n; j++)
-                b[j] = (byte)ReadByte();
-            return new Integer(b);
-        }
         public int GetInt()
         {
-            return (int)GetInteger();
+            return GetInteger();
         }
         public long GetLong()
         {
-            return (long)GetInteger();
+            return GetInteger();
         }
         public string GetString()
         {
@@ -543,7 +532,7 @@ namespace Pyrrho.Level2
         /// <returns>a new Numeric</returns>
         internal Common.Numeric GetDecimal()
         {
-            Integer m = GetInteger0();
+            Integer m = GetInteger();
             return new Common.Numeric(m, GetInt());
         }
         /// <summary>
@@ -615,17 +604,28 @@ namespace Pyrrho.Level2
         internal long time => trans?.pttime ?? 0;
         public long segment;
         public readonly long limit;
-        public override bool GetBuf(long s)
+        public bool locked = false;
+        public override int GetBuf(long s)
         {
             int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
-            lock (file)
-            {
+            bool taken = false;
+            try {
+                if (!locked)
+                    Monitor.Enter(file, ref taken);
                 file.Seek(s, SeekOrigin.Begin);
                 buf.len = file.Read(buf.buf, 0, m);
                 buf.pos = 0;
             }
+            finally
+            {
+                if (taken)
+                {
+                    Monitor.Exit(file);
+                    locked = false;
+                }
+            }
             buf.start = s;
-            return buf.len > 0;
+            return buf.len;
         }
         public override int ReadByte()
         {
@@ -633,7 +633,8 @@ namespace Pyrrho.Level2
                 return -1;
             if (buf.pos == buf.len)
             {
-                if (!GetBuf(buf.start + buf.len))
+                int n = GetBuf(buf.start + buf.len);
+                if (n < 0)
                     return -1;
                 buf.pos = 0;
             }
@@ -766,8 +767,14 @@ namespace Pyrrho.Level2
         internal BList<Physical> GetAll(long max, long limit)
         {
             var r = BList<Physical>.Empty;
-            for (var p = Position; p < max && p < limit; p = Position) // will have moved on
-                r += Create();
+            try { 
+                for (long p = Position; p < max && p < limit; p = Position) // will have moved on
+                    r += Create();
+            } catch(Exception)
+            {
+                if (locked)
+                    throw new Exception("GetAll "+Position);
+            }
             return r;
         }
     }

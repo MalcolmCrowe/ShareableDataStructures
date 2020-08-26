@@ -192,10 +192,11 @@ namespace Pyrrho.Level3
                 ta.Exec(cx, null);
             }
             // Both rdr and wr access the database - not the transaction information
-            var wr = new Writer(new Context(databases[name]), dbfiles[name]);
-            var rdr = new Reader(new Context(databases[name]), loadpos);
+            var db = databases[name];
+            var wr = new Writer(new Context(db), dbfiles[name]);
+            var rdr = new Reader(new Context(db), loadpos);
             var tb = physicals.First(); // start of the work we want to commit
-            var since = rdr.GetAll(wr.Length, rdr.limit);
+            var since = rdr.GetAll(db.loadpos, rdr.limit);
             for (var pb=since.First(); pb!=null; pb=pb.Next())
             {
                 var ph = pb.value();
@@ -225,6 +226,8 @@ namespace Pyrrho.Level3
                 return parent.Commit(cx);
             lock (wr.file)
             {
+                rdr.locked = true;
+                since = rdr.GetAll(wr.file.Length, loadpos);
                 for (var pb = since.First(); pb != null; pb = pb.Next())
                 {
                     var ph = pb.value();
