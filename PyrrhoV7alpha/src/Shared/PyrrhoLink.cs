@@ -3157,6 +3157,10 @@ CallingConventions.HasThis, new Type[0], null);
 		public TransactionConflict(string reason) : base("40001") {}
         public TransactionConflict(string mess,string reason) : base("40001",mess)
         { info.Add("WITH", reason); }
+        public TransactionConflict(string sig,string[] obs) :base(sig,obs)
+        {
+            info.Add("WITH", obs[1]+" "+obs[2]);
+        }
     }
 #if (EMBEDDED)
     public class PyrrhoStart
@@ -3345,7 +3349,11 @@ CallingConventions.HasThis, new Type[0], null);
             switch (proto)
             {
                 case Responses.OobException: sig = "2E205"; e = new DatabaseError(sig); break;
-                case Responses.Exception: sig = connect.GetString(); e = new DatabaseError(sig, connect.GetStrings()); break;
+                case Responses.Exception: sig = connect.GetString();
+                    if (sig.StartsWith("40"))
+                        e = new TransactionConflict(sig, connect.GetStrings());
+                    else
+                        e = new DatabaseError(sig, connect.GetStrings()); break;
                 case Responses.FatalError: sig = "2E206"; e = new DatabaseError(sig, connect.GetString()); break;
                 case Responses.TransactionConflict: sig = "40001"; e = new TransactionConflict(connect.GetString()); break;
                 case Responses.TransactionReason:
@@ -3357,7 +3365,7 @@ CallingConventions.HasThis, new Type[0], null);
                     }
                 default: return proto;
             }
-            if (e is DatabaseError)
+            if (e is DatabaseError && !(e is TransactionConflict))
             {
                 var dbe = e as DatabaseError;
                 while (rpos < rcount)

@@ -299,7 +299,8 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The start of tok in the input string
         /// </summary>
-		public int start = 0, pushStart; 
+		public int start = 0, pushStart;
+        public bool allowminus = false;
         /// <summary>
         /// the current character in the input string
         /// </summary>
@@ -372,13 +373,14 @@ namespace Pyrrho.Level4
         /// Constructor: Start a new lexer
         /// </summary>
         /// <param name="s">the input string</param>
-        internal Lexer(string s,long off = 0,bool allowminus=false)
+        internal Lexer(string s,long off = 0,bool am=false)
         {
    		    input = s.ToCharArray();
 			pos = -1;
             offset = off;
+            allowminus = am;
 			Advance();
-			tok = Next(allowminus);
+			tok = Next();
         }
         internal Lexer(Ident id) : this(id.ident, id.iix) { }
         /// <summary>
@@ -450,7 +452,7 @@ namespace Pyrrho.Level4
         /// tok and val are set for the new token
         /// </summary>
         /// <returns>The new value of tok</returns>
-		public Sqlx Next(bool allowminus=false)
+		public Sqlx Next()
 		{
             if (pushBack != Sqlx.Null)
             {

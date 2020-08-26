@@ -131,13 +131,13 @@ namespace Pyrrho
             dict.Add("3D008", "Database is append storage"); // must match server version
             dict.Add("3D010", "Invalid Password");
             dict.Add("40000", "Transaction rollback");
-            dict.Add("40001", "Transaction conflict");
+            dict.Add("40001", "Transaction conflict {0} {1}");
             dict.Add("40003", "Transaction rollback – statement completion unknown");
             dict.Add("40005", "Transaction rollback - new key conflict with empty query");
             dict.Add("40006", "Transaction conflict: Read constraint for {0}");
             dict.Add("40007", "Transaction conflict: Read conflict for {0}");
             dict.Add("40008", "Transaction conflict: Read conflict for table {0}");
-            dict.Add("40009", "Transaction conflict: Read conflict for record {0}");
+            dict.Add("40009", "Transaction conflict: Read conflict for record {0} {1}");
             dict.Add("40010", "Transaction conflict: Object {0} has just been dropped");
             dict.Add("40011", "Transaction conflict: Supertype {0} has just been dropped");
             dict.Add("40012", "Table {0} has just been dropped");
@@ -146,7 +146,7 @@ namespace Pyrrho
             dict.Add("40015", "Type {0} has just been dropped");
             dict.Add("40016", "Domain {0} has just been dropped");
             dict.Add("40017", "Index {0} has just been dropped");
-            dict.Add("40021", "Supertype {0} has just been changed");
+            dict.Add("40021", "Domain {0} has just been changed");
             dict.Add("40022", "Another domain {0} has just been defined");
             dict.Add("40023", "Period {0} has just been changed");
             dict.Add("40024", "Versioning has just been defined");
