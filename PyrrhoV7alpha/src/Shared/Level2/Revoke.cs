@@ -55,7 +55,7 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var oi = (ObInfo)ro.infos[obj];
             oi += (ObInfo.Privilege, oi.priv & ~priv);
-            ro += oi;
+            ro += (oi,false);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

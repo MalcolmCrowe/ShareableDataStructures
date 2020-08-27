@@ -603,7 +603,7 @@ namespace Pyrrho.Level2
         internal PTransaction trans = null;
         internal long time => trans?.pttime ?? 0;
         public long segment;
-        public readonly long limit;
+        public long limit;
         public bool locked = false;
         public override int GetBuf(long s)
         {
@@ -764,11 +764,22 @@ namespace Pyrrho.Level2
             ph.OnLoad(this);
             context.db.Add(context, ph, Position);
         }
-        internal BList<Physical> GetAll(long max, long limit)
+        /// <summary>
+        /// This important routine is part of the Commit sequence. It looks for
+        /// physicals committed by concurrent transactions. Because transactions can be
+        /// very long, we call this routine twice. The first time, the we do not lock
+        /// the file, so we must accept that we may need to give up partway through the
+        /// the last complete Physical (this is not a problem).
+        /// The second time GetAll is called, the file will already be locked and we want to 
+        /// restart from the last Physical boundary.This time if the record is incomplete
+        /// we throw an exception.
+        /// </summary>
+        /// <returns>The list of concurrent physicals</returns>
+        internal BList<Physical> GetAll()
         {
             var r = BList<Physical>.Empty;
             try { 
-                for (long p = Position; p < max && p < limit; p = Position) // will have moved on
+                for (long p = Position; p < limit; p = Position) // will have moved on
                     r += Create();
             } catch(Exception)
             {

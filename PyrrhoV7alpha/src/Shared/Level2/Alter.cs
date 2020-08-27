@@ -60,7 +60,7 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(defpos, name, domain)+(ObInfo.Privilege,priv);
-            ro = ro + (defpos,ci) + (ti + (tc.defpos,ci));
+            ro = ro + (defpos,ci) + (ti + (tc.defpos,ci),false);
             table += tc;
             cx.db += (ro, p);
             cx.Install(table, p);
@@ -121,7 +121,7 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(defpos, name, domain) +(ObInfo.Privilege,priv);
-            ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv));
+            ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv),false);
             table += tc;
             cx.db += (ro, p);
             cx.Install(table,p);
@@ -199,7 +199,7 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
-            ro = ro + (oc.defpos, oc) + (ti + (defpos, oc));
+            ro = ro + (oc.defpos, oc) + (ti + (defpos, oc),true);
             table += tc;
             cx.db += (ro, p);
             cx.Install(table,p);

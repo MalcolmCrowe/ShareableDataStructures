@@ -172,7 +172,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            ro = ro + new ObInfo(ppos,name,retType) + this;
+            ro = ro + (new ObInfo(ppos,name,retType),true) + this;
             var pr = new Procedure(this, cx);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

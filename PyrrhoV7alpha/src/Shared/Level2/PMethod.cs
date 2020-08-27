@@ -150,7 +150,7 @@ namespace Pyrrho.Level2
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
             var mi = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
-            ro = ro + mt + mi + (cx.db.types[domain].Value,domain+(mt,name));
+            ro = ro + mt + (mi,true) + (cx.db.types[domain].Value,domain+(mt,name));
             cx.db += (ro, p);
             cx.Install(mt,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

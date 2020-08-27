@@ -232,12 +232,6 @@ namespace Pyrrho.Level3
             var (ob,curpos) = x;
             return d.New(curpos,d.mem+(ob.defpos,ob));
         }
-        public static Database operator +(Database d, (ObInfo, long) x)
-        {
-            var (ob, curpos) = x;
-            var ro = d.role;
-            return d.New(curpos, d.mem + (ro.defpos,ro+ob));
-        }
         public static Database operator +(Database d, (Level, long) x)
         {
             return d.New(d.loadpos, 

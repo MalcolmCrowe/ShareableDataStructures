@@ -213,7 +213,7 @@ namespace Pyrrho.Level3
                     if (ro.infos[defpos] is ObInfo ci && ro.infos[tabledefpos] is ObInfo ti)
                     {
                         ti += (_Domain, ti.domain - ci.defpos);
-                        ro += ti;
+                        ro += (ti,false);
                         nd += (ro, p);
                     }
                 }

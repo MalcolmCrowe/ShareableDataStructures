@@ -168,7 +168,7 @@ namespace Pyrrho.Level2
                 ro = r;
             var oi = ro.infos[obj] as ObInfo;
             var pr = oi.priv | priv;
-            ro += new ObInfo(obj, oi.name, oi.domain)+(ObInfo.Privilege,pr);
+            ro += (new ObInfo(obj, oi.name, oi.domain)+(ObInfo.Privilege,pr),false);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

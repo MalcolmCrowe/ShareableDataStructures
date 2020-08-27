@@ -166,7 +166,7 @@ namespace Pyrrho.Level2
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
             var oc = new ObInfo(ppos, periodname, Domain.Period)+(ObInfo.Privilege, priv);
             var oi = (ObInfo)ro.infos[tabledefpos];
-            ro = ro + oc + (oi + (ppos,oc.domain));
+            ro = ro + (oc,false) + (oi + (ppos,oc.domain),false);
             cx.db += (ro, p);
             cx.Install(pd, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

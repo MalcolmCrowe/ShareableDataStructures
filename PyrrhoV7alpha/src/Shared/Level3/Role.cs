@@ -80,10 +80,11 @@ namespace Pyrrho.Level3
         {
             return (Role)r.New(r.mem + x);
         }
-        public static Role operator +(Role r, ObInfo ob)
+        public static Role operator +(Role r, (ObInfo,bool) x)
         {
+            var (ob, nm) = x;
             var m = r.mem + (ob.defpos, ob);
-            if (ob.name != "")
+            if (ob.name != "" && nm)
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
             return new Role(r.defpos, m);
         }

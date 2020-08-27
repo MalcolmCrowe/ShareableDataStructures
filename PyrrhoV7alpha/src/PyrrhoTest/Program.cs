@@ -33,9 +33,9 @@ namespace Test
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Ensure testdb not present in database folder for any of");
-                    Console.WriteLine("Test");
-                    Console.WriteLine("Test 10 0");
-                    Console.WriteLine("Test 0 0 commit");
+                    Console.WriteLine("PyrrhoTest");
+                    Console.WriteLine("PyrrhoTest 10 0");
+                    Console.WriteLine("PyrrhoTest 0 0 commit");
                     Console.WriteLine("The next message should be 'Testing complete'");
                 }
                 new Program(args).Tests();

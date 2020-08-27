@@ -230,7 +230,7 @@ namespace Pyrrho.Level2
             var dt = new Domain(this,cx.db);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(ppos, domain.name, domain) + (ObInfo.Privilege, priv);
-            ro += oi;
+            ro += (oi,true);
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
             if (cx.db.format<51 && domain.structure > 0)

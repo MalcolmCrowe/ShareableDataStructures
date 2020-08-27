@@ -269,7 +269,7 @@ namespace Pyrrho.Level2
             var tb = (Table)cx.db.objects[target];
             var tg = new Trigger(this); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg, cx.db);
-            ro = ro + new ObInfo(defpos, name, Domain.Null);
+            ro = ro + (new ObInfo(defpos, name, Domain.Null),true);
             cx.db += (ro, p);
             cx.Install(tb, p);
             cx.Install(tg, p);

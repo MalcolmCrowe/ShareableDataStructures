@@ -119,7 +119,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var vi = new ObInfo(ppos, name, Domain.Content);
-            ro = ro+vi+(ppos,vi);
+            ro = ro+(vi,true)+(ppos,vi);
             cx.db += (ro, p);
             cx.Install(new View(this), p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

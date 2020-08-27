@@ -97,7 +97,7 @@ namespace Pyrrho.Level2
             for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
                 if ((cx.db.objects[b.value()] is User))
                     first = false;
-            ro += new ObInfo(nu.defpos, nu.name, Domain.Null);
+            ro += (new ObInfo(nu.defpos, nu.name, Domain.Null),false);
             cx.db = cx.db + (nu,cx.db.schemaKey) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
                 cx.db += (Database.Owner, nu.defpos);

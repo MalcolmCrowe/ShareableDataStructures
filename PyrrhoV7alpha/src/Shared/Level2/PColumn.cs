@@ -200,7 +200,7 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(ppos, name, domain)+(ObInfo.Privilege,priv);
-            ro = ro + oc + ti;
+            ro = ro + (oc,false) + (ti,false); // table name will already be known
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             table += tc; // just the dependency for now

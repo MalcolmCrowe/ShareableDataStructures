@@ -141,7 +141,7 @@ namespace Pyrrho.Level2
             var tb = new Table(this);
             var ti = new ObInfo(ppos, name, Domain.TableType,
                 new BTree<long,object>(ObInfo.Privilege, priv));
-            ro = ro + ti + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);

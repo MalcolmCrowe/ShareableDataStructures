@@ -1950,7 +1950,7 @@ namespace Pyrrho.Level4
                 ci += (DBObject._Domain,tc.domain);
                 ti += (tc.defpos, tc.domain);
                 tb += tc;
-                ro = ro + ti + ci;
+                ro = ro + (ti,false) + (ci,false); // table name already known
                 cx.db = cx.db + ro + (tb,cx.db.loadpos) + (tc,cx.db.loadpos);
                 cx.Add(tb);
                 cx.Add(tc);

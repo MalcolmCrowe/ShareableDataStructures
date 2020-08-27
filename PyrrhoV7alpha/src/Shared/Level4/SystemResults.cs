@@ -114,7 +114,7 @@ namespace Pyrrho.Level4
                   + (_Domain, dt) + (Key,k))
         {
             var oc = new ObInfo(defpos, n, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
-            var ro = Database._system.role + oc;
+            var ro = Database._system.role + (oc,false);
             var td = t.domain + (defpos, dt);
             t += (_Domain, td);
             Database._system = Database._system + (this, 0)+(t,0)+(ro,0);
