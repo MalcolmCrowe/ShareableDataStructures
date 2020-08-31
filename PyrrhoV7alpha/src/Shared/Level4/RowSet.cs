@@ -2372,9 +2372,10 @@ namespace Pyrrho.Level4
         /// <param name="fl"></param>
         /// <param name="ix"></param>
         /// <returns></returns>
-        TargetCursor CheckPrimaryKey(Context cx,TargetCursor tgc)
+        TargetCursor CheckPrimaryKey(Context cx,TargetCursor tgc,TransitionCursor trc)
         {
-            var ix = (Index)cx.db.objects[indexdefpos];
+            // cx is an Activation
+            var ix = (Index)cx.next.db.objects[indexdefpos];
             if (ix == null)
                 return tgc;
             var k = BList<TypedValue>.Empty;
@@ -2391,6 +2392,10 @@ namespace Pyrrho.Level4
                         v = new TInt(0);
                     tgc += (cx, tc.defpos, v);
                     cx.values += (tc.defpos, v);
+                    var c = targetTrans[tc.defpos].col;
+                    trc += (cx.next,c,v);
+                    cx.next.cursors += (from.defpos, trc);
+                    cx.next.values += (c, v);
                 }
                 k += v;
             }
@@ -2659,7 +2664,7 @@ namespace Pyrrho.Level4
                 cx.from = oc;
                 cx.cursors = od;
                 if (trs.indexdefpos > 0)
-                    tgc = trs.CheckPrimaryKey(cx, tgc);
+                    tgc = trs.CheckPrimaryKey(cx, tgc, trc);
                 return tgc;
             }
             TargetCursor(TargetCursor cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
