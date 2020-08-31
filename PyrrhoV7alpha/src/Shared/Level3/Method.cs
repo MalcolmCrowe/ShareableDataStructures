@@ -97,7 +97,7 @@ namespace Pyrrho.Level3
             act.values += (defpos,targ);
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
-                act.values += (((ParamInfo)cx.obs[b.value()]).val, acts[i]);
+                act.values += (((FormalParameter)cx.obs[b.value()]).val, acts[i]);
             if (methodType != PMethod.MethodType.Constructor)
                 for (var b=ut.representation.First();b!=null;b=b.Next())
                 {
@@ -115,7 +115,7 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
             {
-                var p = (ParamInfo)cx.obs[b.value()];
+                var p = (FormalParameter)cx.obs[b.value()];
                 var m = p.paramMode;
                 var v = act.values[p.val];
                 if (m == Sqlx.INOUT || m == Sqlx.OUT)
@@ -139,7 +139,7 @@ namespace Pyrrho.Level3
                 i = 0;
                 for (var b = ins.First(); b != null; b = b.Next(), i++)
                 {
-                    var p = (ParamInfo)cx.obs[b.value()];
+                    var p = (FormalParameter)cx.obs[b.value()];
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
                         cx.AddValue(cx.obs[actIns[i]], acts[i]);

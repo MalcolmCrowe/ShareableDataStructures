@@ -683,7 +683,7 @@ namespace Pyrrho.Level4
             var pi = new Ident(pr.name, 0);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
-                var pp = (ParamInfo)obs[b.value()];
+                var pp = (FormalParameter)obs[b.value()];
                 var pn = new Ident(pp.name, 0);
                 defs += (pn, pp.defpos);
                 defs += (new Ident(pi, pn), pp.defpos);
@@ -1271,6 +1271,10 @@ namespace Pyrrho.Level4
         {
             return f + (Data, f.data + (r.defpos, r));
         }
+        public static Framing operator-(Framing f,long p)
+        {
+            return f + (Obs, f.obs - p);
+        }
         internal override void Scan(Context cx)
         {
             cx.Scan(obs);
@@ -1284,14 +1288,20 @@ namespace Pyrrho.Level4
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                if (p > Transaction.TransPos)
+                if (p >= Transaction.TransPos)
                     wr.cx.obs += (p, b.value());
             }
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                if (p < Transaction.TransPos || p >= Transaction.Analysing)
+ //               if (p < Transaction.TransPos || p >= Transaction.Analysing)
                     r += wr.Fixed(p);
+            }
+            for (var b = r.obs.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                if (p >= Transaction.TransPos)
+                    r -= p;
             }
             for (var b = r.data.First(); b != null; b = b.Next())
                 r += (RowSet)b.value()._Relocate(wr);

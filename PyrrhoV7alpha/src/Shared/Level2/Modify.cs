@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.Versioning;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level3;
@@ -20,7 +21,7 @@ namespace Pyrrho.Level2
 	/// Modify is used for changes to procs, methods, functions, and views.
     /// Extend this if the syntax ever allows ALTER for triggers, views, checks, or indexes (!)
 	/// </summary>
-	internal class Modify : Physical
+	internal class Modify : Compiled
 	{
         /// <summary>
         /// The object being modified
@@ -90,7 +91,7 @@ namespace Pyrrho.Level2
             wr.cx.Install(pp,wr.cx.db.loadpos);
         }
         /// <summary>
-        /// Desrialise this p[hysical from the buffer
+        /// Desrialise this physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
@@ -101,12 +102,6 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
             switch (name)
             {
-                default:
-                    var pp = rdr.context.db.objects[modifydefpos] as Procedure;
-                    pp += (Procedure.Clause, body);
-                    pp = new Parser(rdr.context).ParseProcedureBody(pp.name, pp, new Ident(pp.clause,modifydefpos));
-                    now = pp;
-                    break;
                 case "Source":
                     var ps = rdr.context.db.objects[modifydefpos] as Procedure;
                     now = new Parser(rdr.context).ParseQueryExpression(body,ps.domain);

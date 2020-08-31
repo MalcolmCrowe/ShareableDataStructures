@@ -194,7 +194,11 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            return Uid(defpos)+" "+GetType().Name;
+            var sb = new StringBuilder(GetType().Name);
+            if (mem.Contains(Label)) { sb.Append(" "); sb.Append(label); }
+            sb.Append(" ");sb.Append(Uid(defpos));
+            if (mem.Contains(Stmt)) { sb.Append(" Stmt:"); sb.Append(stmt); }
+            return sb.ToString();
         }
     }
     internal class CommitStatement : Executable
@@ -265,7 +269,12 @@ namespace Pyrrho.Level3
             cx.result = cx.data[cx.results[cs]];
             return cx;
         }
-
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" CS="); sb.Append(Uid(cs));
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A Compound Statement for the SQL procedure language
@@ -399,6 +408,12 @@ namespace Pyrrho.Level3
             cx.Install2(framing);
             return target.Obey(cx);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Target: ");sb.Append(target);
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A local variable declaration.
@@ -480,7 +495,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// A procedure formal parameter has mode and result info
     /// </summary>
-    internal class ParamInfo : DBObject
+    internal class FormalParameter : SqlValue
     {
         internal const long
             ParamMode = -98, // Sqlx
@@ -499,18 +514,18 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public ParamInfo(long vp, Sqlx m, string n,Domain dt)
+		public FormalParameter(long vp, Sqlx m, string n,Domain dt)
             : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
                   +(_Domain,dt))
         { }
-        protected ParamInfo(long dp,BTree<long, object> m) : base(dp,m) { }
-        public static ParamInfo operator +(ParamInfo s, (long, object) x)
+        protected FormalParameter(long dp,BTree<long, object> m) : base(dp,m) { }
+        public static FormalParameter operator +(FormalParameter s, (long, object) x)
         {
-            return new ParamInfo(s.defpos,s.mem + x);
+            return new FormalParameter(s.defpos,s.mem + x);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new ParamInfo(dp,mem);
+            return new FormalParameter(dp,mem);
         }
         internal override void Scan(Context cx)
         {
@@ -521,12 +536,12 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = (ParamInfo)base._Relocate(wr);
+            var r = (FormalParameter)base._Relocate(wr);
             return r+(AssignmentStatement.Val,wr.Fixed(val).defpos);
         }
         internal override Basis Fix(Context cx)
         {
-            var r = (ParamInfo)base.Fix(cx);
+            var r = (FormalParameter)base.Fix(cx);
             r += (AssignmentStatement.Val, cx.obuids[val]);
             return r;
         }
@@ -537,6 +552,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" "); sb.Append(domain);
             if (mem.Contains(ParamMode)) { sb.Append(" "); sb.Append(paramMode); }
             if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
             return sb.ToString();
@@ -544,7 +560,7 @@ namespace Pyrrho.Level3
 
         internal override Basis New(BTree<long, object> m)
         {
-            return new ParamInfo(defpos,m);
+            return new FormalParameter(defpos,m);
         }
     }
     /// <summary>
@@ -613,6 +629,13 @@ namespace Pyrrho.Level3
             cx.AddValue(cu, cu.Eval(cx));
             return cx;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" cs=");sb.Append(Uid(cs));
+            return sb.ToString();
+        }
+
     }
     /// <summary>
     /// An Exception handler for a stored procedure
@@ -691,6 +714,18 @@ namespace Pyrrho.Level3
         {
             return cx.obs[action].Calls(defpos, cx);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" ");sb.Append(htype.ToString());
+            for (var b=conds.First();b!=null;b=b.Next())
+            {
+                sb.Append(" "); sb.Append(b.value());
+            }
+            sb.Append(" Action=");sb.Append(Uid(action));
+            return sb.ToString();
+        }
+
     }
     /// <summary>
     /// A Handler helps implementation of exception handling
@@ -781,7 +816,15 @@ namespace Pyrrho.Level3
             catch (Exception e) { throw e; }
             return cx;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Hdef=");sb.Append(Uid(hdefiner.cxid));
+            sb.Append(" Hdlr=");sb.Append(Uid(hdlr.defpos));
+            return sb.ToString();
+        }
+
+    }
     /// <summary>
     /// A Break statement for a stored procedure
     /// </summary>
@@ -898,9 +941,13 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            if (vbl!=-1L && val!=-1L)
-                return Uid(vbl) + "=" + Uid(val);
-            return base.ToString();
+            var sb = new StringBuilder(base.ToString());
+            if (vbl != -1L && val != -1L)
+            {
+                sb.Append(" "); sb.Append(Uid(vbl)); 
+                sb.Append("="); sb.Append(Uid(val)); 
+            } 
+            return sb.ToString();
         }
 	}
     /// <summary>
@@ -986,6 +1033,19 @@ namespace Pyrrho.Level3
                 cx.values+=(list[j],r[j]);
             return cx;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" LhsType: "); sb.Append(Uid(lhsType));
+            var cm = " Lhs: ";
+            for (var b=list.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(" Rhs="); sb.Append(Uid(rhs));
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A return statement for a stored procedure or function
@@ -1051,7 +1111,13 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             return cx;
 		}
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" -> ");sb.Append(Uid(ret));
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A Case statement for a stored procedure
     /// </summary>
@@ -1136,6 +1202,24 @@ namespace Pyrrho.Level3
                     return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Operand: "); sb.Append(Uid(operand));
+            var cm =" Whens: ";
+            for (var b=whens.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            cm = " Else: ";
+            for (var b = els.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A searched case statement
@@ -1214,7 +1298,24 @@ namespace Pyrrho.Level3
             }
 			return ObeyList(els,cx);
 		}
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " Whens: ";
+            for (var b = whens.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            cm = " Else: ";
+            for (var b = els.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A when part for a searched case statement or trigger action
     /// </summary>
@@ -1398,7 +1499,31 @@ namespace Pyrrho.Level3
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Operand="); sb.Append(Uid(search));
+            var cm = " Then: ";
+            for (var b = then.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            cm = " ElsIf: ";
+            for (var b = elsif.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            cm = " Else: ";
+            for (var b = els.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
+    }
     internal class XmlNameSpaces : Executable
     {
         internal const long
@@ -1433,6 +1558,18 @@ namespace Pyrrho.Level3
             for(var b=nsps.First();b!= null;b=b.Next())
                 cx.nsps+=(b.key(),b.value());
             return cx;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " ";
+            for (var b = nsps.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.key()); sb.Append("=");
+                sb.Append(b.value());
+            }
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -1523,6 +1660,20 @@ namespace Pyrrho.Level3
         {
             return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Operand="); sb.Append(Uid(search));
+            var cm = " What: ";
+            for (var b = what.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            if (loop != -1L)
+            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A repeat statement for a stored proc/func
@@ -1602,7 +1753,21 @@ namespace Pyrrho.Level3
             cx = act.SlideDown(); 
             return cx;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " What: ";
+            for (var b = what.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(" Operand="); sb.Append(Uid(search));
+            if (loop != -1L)
+            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// An Iterate (like C continue;) statement for a stored proc/func 
     /// </summary>
@@ -1715,7 +1880,20 @@ namespace Pyrrho.Level3
             }
             return act.SlideDown();
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " Stms: ";
+            for (var b = stms.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            if (loop != -1L)
+            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A for statement for a stored proc/func
     /// </summary>
@@ -1821,7 +1999,25 @@ namespace Pyrrho.Level3
             }
             return ac.SlideDown();
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (forvn != null)
+            { sb.Append(" Var="); sb.Append(forvn); }
+            if (cursor != null)
+            { sb.Append(" Cursor="); sb.Append(cursor); }
+            sb.Append(" Sel="); sb.Append(Uid(sel));
+            var cm = " Stms: ";
+            for (var b = stms.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(Uid(b.value()));
+            }
+            if (loop != -1L)
+            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// An Open statement for a cursor
     /// </summary>
@@ -1880,6 +2076,13 @@ namespace Pyrrho.Level3
             ((Query)cx.obs[cursor.spec]).RowSets(cx,BTree<long, RowSet.Finder>.Empty);
             return cx;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Cursor: "); sb.Append(cursor);
+            return sb.ToString();
+        }
+
     }
     /// <summary>
     /// A Close statement for a cursor
@@ -1938,7 +2141,13 @@ namespace Pyrrho.Level3
             cx.data += (defpos,EmptyRowSet.Value);
             return cx;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Cursor: "); sb.Append(cursor);
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A fetch statement for a stored proc/func
     /// </summary>
@@ -2072,7 +2281,24 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
- 	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (how != Sqlx.ALL)
+            { sb.Append(" "); sb.Append(how); }
+            if (cursor != -1)
+            { sb.Append(" Cursor: "); sb.Append(Uid(cursor)); }
+            var cm = " Into: ";
+            for (var b = outs.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            if (where!=-1L)
+            { sb.Append(" Where= "); sb.Append(Uid(where)); }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A call statement for a stored proc/func
     /// </summary>
@@ -2130,9 +2356,9 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r = (CallStatement)base._Relocate(wr);
-            r += (ProcDefPos, wr.Fixed(procdefpos).defpos);
+            r += (ProcDefPos, wr.Fix(procdefpos));
             r += (Parms, wr.Fix(parms));
-            r += (Var, wr.Fixed(var)?.defpos??-1L);
+            r += (Var, wr.Fix(var));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2181,7 +2407,25 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (var!=-1L)
+            {
+                sb.Append(" Var="); sb.Append(Uid(var));
+            }
+            sb.Append(" Proc="); sb.Append(Uid(procdefpos));
+            var cm = " (";
+            for (var b = parms.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(")");
+            return sb.ToString();
+        }
+
+}
     /// <summary>
     /// A signal statement for a stored proc/func
     /// </summary>
@@ -2212,15 +2456,15 @@ namespace Pyrrho.Level3
         public Signal(long dp, DBException e) : base(dp, _Mem(e.objects)
             + (_Signal, e.signal) + (Exception, e))
         { }
-        protected Signal(long dp, BTree<long, object> m) :base(dp, m) {}
-        static BTree<long,object> _Mem(object[] obs)
+        protected Signal(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long, object> _Mem(object[] obs)
         {
             var r = BList<object>.Empty;
             foreach (var o in obs)
                 r += o;
-            return new BTree<long,object>(Objects,r);
+            return new BTree<long, object>(Objects, r);
         }
-        public static Signal operator+(Signal s,(long,object)x)
+        public static Signal operator +(Signal s, (long, object) x)
         {
             return new Signal(s.defpos, s.mem + x);
         }
@@ -2266,19 +2510,19 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            if (stype==Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
-                    throw new DBException("0K000").ISO();
+            if (stype == Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
+                throw new DBException("0K000").ISO();
             string sclass = signal.Substring(0, 2);
             var dia = cx.tr.diagnostics;
-            dia +=(Sqlx.RETURNED_SQLSTATE, new TChar(signal));
+            dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
             if (exception is DBException dbex)
             {
                 for (var b = dbex.info.First(); b != null; b = b.Next())
-                    dia+=(b.key(), b.value());
-                dia+=(Sqlx.MESSAGE_TEXT, new TChar(Resx.Format(dbex.signal, dbex.objects)));
+                    dia += (b.key(), b.value());
+                dia += (Sqlx.MESSAGE_TEXT, new TChar(Resx.Format(dbex.signal, dbex.objects)));
             }
-            for (var s = setlist.First();s!= null;s=s.Next())
-                dia+=(s.key(), cx.obs[s.value()].Eval(cx));
+            for (var s = setlist.First(); s != null; s = s.Next())
+                dia += (s.key(), cx.obs[s.value()].Eval(cx));
             cx.db += (Transaction.Diagnostics, dia);
             Handler h = null;
             Activation cs = null;
@@ -2292,7 +2536,7 @@ namespace Pyrrho.Level3
                 if (h == null)
                 {
                     var c = cs.next;
-                    while (c != null && !(c is Activation)) 
+                    while (c != null && !(c is Activation))
                         c = c.next;
                     cs = c as Activation;
                 }
@@ -2309,7 +2553,7 @@ namespace Pyrrho.Level3
                 cx = h.Obey(cx);
             }
             return cx;
-		}
+        }
         /// <summary>
         /// Throw this signal
         /// </summary>
@@ -2320,12 +2564,37 @@ namespace Pyrrho.Level3
             if (e == null)
             {
                 e = new DBException(signal, objects);
-                for (var x = setlist.First();x!= null;x=x.Next())
-                    e.info +=(x.key(), cx.obs[x.value()].Eval(cx));
+                for (var x = setlist.First(); x != null; x = x.Next())
+                    e.info += (x.key(), cx.obs[x.value()].Eval(cx));
             }
             throw e;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (stype!=Sqlx.NO)
+            { sb.Append(" "); sb.Append(stype); }
+            sb.Append(" "); sb.Append(signal);
+            if (mem.Contains(Exception))
+            {
+                sb.Append(" Exception: "); sb.Append(exception);
+                var cm = " ";
+                for (var b = objects.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = " ";
+                    sb.Append(b.value());
+                } 
+            }
+            var cs = " Set: ";
+            for (var b=setlist.First();b!=null;b=b.Next())
+            {
+                sb.Append(cs); cs = ";";
+                sb.Append(b.key());sb.Append("=");
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// A GetDiagnostics statement for a routine
     /// </summary>
@@ -2333,11 +2602,11 @@ namespace Pyrrho.Level3
     {
         internal const long
             List = -141; // BTree<long,Sqlx>
-        internal BTree<long,Sqlx> list => 
-            (BTree<long,Sqlx>)mem[List]??BTree<long, Sqlx>.Empty;
-        internal GetDiagnostics(long dp) : base(dp,BTree<long,object>.Empty) { }
+        internal BTree<long, Sqlx> list =>
+            (BTree<long, Sqlx>)mem[List] ?? BTree<long, Sqlx>.Empty;
+        internal GetDiagnostics(long dp) : base(dp, BTree<long, object>.Empty) { }
         protected GetDiagnostics(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static GetDiagnostics operator+(GetDiagnostics s,(long,object)x)
+        public static GetDiagnostics operator +(GetDiagnostics s, (long, object) x)
         {
             return new GetDiagnostics(s.defpos, s.mem + x);
         }
@@ -2386,18 +2655,31 @@ namespace Pyrrho.Level3
                 cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
             return cx;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " ";
+            for (var b = list.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ";";
+                sb.Append(" "); sb.Append(b.value());
+                sb.Append("->");
+                sb.Append(Uid(b.key())); 
+            }
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A Select statement: single row
     /// </summary>
 	internal class SelectSingle : Executable
-	{
+    {
         internal const long
             Outs = -142; // BList<long> SqlValue
         /// <summary>
         /// The query
         /// </summary>
-		public long sel => (long)(mem[ForSelectStatement.Sel]??-1L);
+		public long sel => (long)(mem[ForSelectStatement.Sel] ?? -1L);
         /// <summary>
         /// The output list
         /// </summary>
@@ -2407,10 +2689,10 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="s">The select statement</param>
         /// <param name="sv">The list of variables to receive the values</param>
-		public SelectSingle(long dp) : base(dp,BTree<long,object>.Empty)
-		{ }
+		public SelectSingle(long dp) : base(dp, BTree<long, object>.Empty)
+        { }
         protected SelectSingle(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SelectSingle operator+(SelectSingle s,(long,object)x)
+        public static SelectSingle operator +(SelectSingle s, (long, object) x)
         {
             return new SelectSingle(s.defpos, s.mem + x);
         }
@@ -2446,7 +2728,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(outs,defpos, cx);
+            return Calls(outs, defpos, cx);
         }
         /// <summary>
         /// Execute a select statement: single row
@@ -2458,7 +2740,7 @@ namespace Pyrrho.Level3
             a.exec = this;
             var sr = ((Query)cx.obs[sel]).RowSets(cx, BTree<long, RowSet.Finder>.Empty);
             var rb = sr.First(cx);
-            a.AddValue(this,rb);
+            a.AddValue(this, rb);
             if (rb != null)
                 for (var b = outs.First(); b != null; b = b.Next())
                     a.AddValue((SqlValue)cx.obs[b.value()], rb[b.key()]);
@@ -2466,7 +2748,20 @@ namespace Pyrrho.Level3
                 a.NoData();
             return cx;
         }
-	}
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Sel=");sb.Append(Uid(sel));
+            var cm = " Outs: ";
+            for (var b = outs.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
+
+    }
     /// <summary>
     /// An executable for an HTTP REST request from the parser
     /// </summary>
@@ -2582,6 +2877,25 @@ namespace Pyrrho.Level3
             var rr = new System.IO.StreamReader(rq.GetResponse().GetResponseStream());
             cx.val = new TChar(rr.ReadToEnd());
             return cx;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (mem.Contains(Verb))
+            { sb.Append(" Verb="); sb.Append(verb); }
+            if (mem.Contains(Url))
+            { sb.Append(" Url="); sb.Append(Uid(url)); }
+            if (mem.Contains(Where))
+            { sb.Append(" Where="); sb.Append(Uid(wh)); }
+            if (mem.Contains(Posted))
+            { sb.Append(" Post="); sb.Append(data); }
+            if (mem.Contains(Mime))
+            { sb.Append(" Mime="); sb.Append(mime); }
+            if (mem.Contains(CredUs))
+            { sb.Append(" User="); sb.Append(Uid(us)); }
+            if (mem.Contains(CredPw))
+            { sb.Append(" Pwd="); sb.Append(Uid(pw)); }
+            return sb.ToString();
         }
     }
 }

@@ -181,14 +181,14 @@ namespace Pyrrho.Level2
         internal DBObject Fixed(long pos)
         {
             var p = Fix(pos);
-            if (p <= Length)
-                return (DBObject)cx.db.objects[p];
+            if (p <= Length && cx.db.objects[p] is DBObject nb)
+                return nb;
             if (p == pos)
                 return cx.obs[p];
             if (cx.obs[p] is DBObject x)
                 return x;
             var ob = cx.obs[pos];
-            if (pos>Transaction.TransPos)
+            if (pos>=Transaction.TransPos)
             {
                 ob = ob.Relocate(p).Relocate(this);
                 p = ob.defpos;
@@ -198,13 +198,13 @@ namespace Pyrrho.Level2
             }
             return ob;
         }
-        internal BList<ParamInfo> Relocate(BList<ParamInfo> rp)
+        internal BList<FormalParameter> Relocate(BList<FormalParameter> rp)
         {
-            var r = BList<ParamInfo>.Empty;
+            var r = BList<FormalParameter>.Empty;
             for (var b = rp.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                r += (ParamInfo)p.Relocate(this);
+                r += (FormalParameter)p.Relocate(this);
             }
             return r;
         }

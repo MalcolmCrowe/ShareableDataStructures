@@ -101,10 +101,7 @@ namespace Pyrrho.Level2
 		{
 			domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
 			methodType = (MethodType)rdr.GetInt();
- //           if (methodType == PMethod.MethodType.Constructor) will be done in base
- //               retdefpos = typedefpos; 
             base.Deserialise(rdr);
-            Compile(name, rdr.context, rdr.Position);
         }
         /// <summary>
         /// A readable version of this Physical

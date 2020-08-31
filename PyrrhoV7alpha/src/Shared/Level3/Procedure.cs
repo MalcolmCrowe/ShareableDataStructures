@@ -53,9 +53,7 @@ namespace Pyrrho.Level3
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Context cx,BTree<long,object> m=null)
             : base( p.ppos, p.defpos, cx.role.defpos, (m??BTree<long,object>.Empty)
-                  + (Params, new Parser(cx, p.source)
-                  .ParseProcedureHeading(new Ident(p.name, p.source.iix)).Item1) 
-                  +(_Domain,p.retType)
+                  + (Params, p.parameters) +(_Domain,p.retType) + (Body, p.proc)
                   + (Name,p.name) + (Clause, p.source.ident))
         { }
         /// <summary>
@@ -89,12 +87,12 @@ namespace Pyrrho.Level3
             for (var b=actIns.First();b!=null;b=b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this,Domain.Null);
+            act.Install1(framing);
+            act.Install2(framing);
             var bd = (Executable)act.obs[body];
-            act.Install1(bd.framing);
-            act.Install2(bd.framing);
             i = 0;
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
-                act.values += (((ParamInfo)cx.obs[b.value()]).val, acts[i]);
+                act.values += (((FormalParameter)act.obs[b.value()]).val, acts[i]);
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is TArray ts)
@@ -106,7 +104,7 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
             {
-                var p = (ParamInfo)cx.obs[b.value()];
+                var p = (FormalParameter)act.obs[b.value()];
                 var m = p.paramMode;
                 var v = act.values[p.val];
                 if (m == Sqlx.INOUT || m == Sqlx.OUT)
@@ -120,7 +118,7 @@ namespace Pyrrho.Level3
                 i = 0;
                 for (var b = ins.First(); b != null; b = b.Next(), i++)
                 {
-                    var p = (ParamInfo)cx.obs[b.value()];
+                    var p = (FormalParameter)act.obs[b.value()];
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
                         cx.AddValue(cx.obs[actIns[i]], acts[i]);
@@ -134,7 +132,7 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, DBObject now, long p)
         {
-            cx.db = cx.db + (this+(Body,now),p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this+(Body,now.defpos),p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -195,11 +193,11 @@ namespace Pyrrho.Level3
             var cm = '(';
             for (var i = 0; i < (int)ins.Count; i++)
             {
-                sb.Append(cm); cm = ','; sb.Append(ins[i]);
+                sb.Append(cm); cm = ','; sb.Append(Uid(ins[i]));
             }
-            sb.Append(") Body:"); sb.Append(body);
+            sb.Append(") Body:"); sb.Append(Uid(body));
             sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');
-            if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(inverse); }
+            if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(Uid(inverse)); }
             if (mem.Contains(Monotonic)) { sb.Append(" Monotonic"); }
             return sb.ToString();
         }

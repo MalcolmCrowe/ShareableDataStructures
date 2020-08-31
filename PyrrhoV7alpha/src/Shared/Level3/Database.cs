@@ -248,16 +248,6 @@ namespace Pyrrho.Level3
             var (dp, dm, curpos) = x;
             return d.New(curpos, d.mem + (dp, dm));
         }
-        public static Database operator +(Database d0, DBObject ob)
-        {
-            var d = d0 as Transaction;
-            return d + ob;
-        }
-        public static Database operator +(Database d0, Procedure p)
-        {
-            var d = d0 as Transaction;
-            return d + p;
-        }
         public static Database Get(string fn)
         {
             var f = dbfiles[fn];

@@ -215,9 +215,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = Relocate(cx.obuids[defpos]);
-            var df = cx.obuids[definer];
-            if (df != definer)
-                r += (Definer, df);
+            if (definer > 0)
+            {
+                var df = cx.obuids[definer];
+                if (df != definer)
+                    r += (Definer, df);
+            }
             var ds = cx.Fix(dependents);
             if (ds != dependents)
                 r += (Dependents, ds);

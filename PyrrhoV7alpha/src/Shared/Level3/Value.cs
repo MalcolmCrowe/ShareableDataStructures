@@ -268,6 +268,8 @@ namespace Pyrrho.Level3
             var t = cx.copy[defpos];
             if (t == null)
             {
+                if (from == -1L)
+                    return cx.values[defpos];
                 var f = cx.from[defpos];
                 var r = cx.data[f.rowSet]
                     ?? throw new PEException("PE192");
@@ -1627,7 +1629,7 @@ namespace Pyrrho.Level3
                             var or = rg.Eval(cx)?.NotNull();
                             if (lf == null || or == null)
                                 return null;
-                            var stl = lf.ToString();
+                            var stl = lv.ToString();
                             var str = or.ToString();
                             return new TChar(or.dataType, (lv.IsNull && or.IsNull) ? null 
                                 : stl + str);
@@ -3578,9 +3580,7 @@ namespace Pyrrho.Level3
                   + (_Domain,((ObInfo)cx.role.infos[c.procdefpos]).domain)
                   + (Call, c.defpos)+(Dependents,new BTree<long,bool>(c.defpos,true))
                   +(Depth,1+c.depth))
-        {
-            cx.Add((ObInfo)cx.role.infos[c.procdefpos]);
-        }
+        {  }
         protected SqlCall(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCall operator+(SqlCall c,(long,object)x)
         {
@@ -4107,7 +4107,7 @@ namespace Pyrrho.Level3
             var (cx, a, v) = x;
             var m = s.mem + (a, v);
             if (a == Op1)
-                m += (_Domain, _Type(cx,s.kind, (SqlValue)cx.obs[s.val], (SqlValue)v));
+                m += (_Domain, _Type(cx,s.kind, (SqlValue)cx.obs[s.val], (SqlValue)cx.obs[(long)v]));
             if (a == _Val)
                 m += (_Domain, _Type(cx,s.kind, (SqlValue)cx.obs[(long)v], (SqlValue)cx.obs[s.op1]));
             return new SqlFunction(s.defpos, m);

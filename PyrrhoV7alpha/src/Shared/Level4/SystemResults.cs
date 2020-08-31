@@ -4989,7 +4989,7 @@ namespace Pyrrho.Level4
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
                 ABookmark<int,long> inner)
                 : base(_cx,res,pos,en.key(),_Value(_cx,res,en.key(),inner.key(),
-                    (ParamInfo)_cx.obs[inner.value()]))
+                    (FormalParameter)_cx.obs[inner.value()]))
             {
                 _outer = en;
                 _inner = inner;
@@ -5013,7 +5013,7 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Name,Definition)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, long dp, int i, ParamInfo pp)
+            static TRow _Value(Context _cx, SystemRowSet rs, long dp, int i, FormalParameter pp)
             {
                 return new TRow(rs,
                     Pos(dp),

@@ -454,6 +454,11 @@ namespace Pyrrho.Level2
         {
             framing = frame;
         }
+        protected Compiled(Type tp, long pp, Context cx)
+            : base(tp, pp, cx)
+        {
+            Frame(cx);
+        }
         protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
         {
             framing = Framing.Empty; // fixed in OnLoad
