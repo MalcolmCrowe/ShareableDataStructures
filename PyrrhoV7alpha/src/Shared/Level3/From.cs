@@ -33,7 +33,16 @@ namespace Pyrrho.Level3
         public From(Ident ic, Context cx, Table tb, QuerySpecification q=null,
             Grant.Privilege pr=Grant.Privilege.Select, string a= null, BList<Ident> cr = null) 
             : base(ic.iix, _Mem(ic,cx, tb,q,pr,a,cr))
-        { }
+        {
+            var (_, ids) = cx.defs[ic.ident];
+            for (var b=rowType.First();b!=null;b=b.Next())
+            {
+                var c = (SqlCopy)cx.obs[b.value()];
+                if (ids[c.name].Item1<Transaction.TransPos)
+                    ids += (c.name, c.defpos, Ident.Idents.Empty); 
+            }
+            cx.defs += (ic.ident, ic.iix, ids);
+        }
         protected From(Ident ic, Context cx, Table tb, BTree<long, object> mem)
             : base(ic.iix, mem + (_Mem(ic, cx, tb, null, Grant.Privilege.Select, null, null),false)) { }
         public From(long dp,Context cx,CallStatement pc,CList<long> cr=null)

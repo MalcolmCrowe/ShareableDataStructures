@@ -464,7 +464,7 @@ namespace Pyrrho.Level4
             _defpos = defpos;
             display = rs.display;
             var nd = BTree<long, TypedValue>.Empty;
-            for (var b=rs.needed.First();b!=null;b=b.Next())
+            for (var b=rs.needed?.First();b!=null;b=b.Next())
             {
                 var fi = b.value();
                 nd += (b.key(), _cx.cursors[fi.rowSet][fi.col]);

@@ -64,6 +64,20 @@ namespace Pyrrho.Level4
             sub = sb;
         }
         internal int Length => 1 + (sub?.Length ?? 0);
+        internal Ident this[int i]
+        {
+            get
+            {
+                if (i == 0)
+                {
+                    if (sub==null)
+                        return this;
+                    return new Ident(ident, iix);
+                }
+                return sub?[i - 1];
+            }
+
+        }
         public override string ToString()
         {
             var sb = new StringBuilder();

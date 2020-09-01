@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -3122,7 +3123,7 @@ namespace Pyrrho.Level4
                             cx.defs += (ic, r.defpos);
                             return r;
                         }
-                        if (cx.obs[ob] is TableColumn tc) // I doubt this should happen
+                        if (cx.obs[ob] is TableColumn tc) // I doubt if this should happen
                             return new SqlCopy(ic.iix, cx, ic.ident, tc.tabledefpos, tc.defpos);
                     }
                     if (r?.from >= 0 && r.from < Transaction.Analysing && r.defpos > Transaction.Analysing)
