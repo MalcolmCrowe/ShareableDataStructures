@@ -52,7 +52,7 @@ namespace Pyrrho.Level2
         /// <param name="sd">The base structure definition if any</param>
         /// <param name="pb">The local database</param>
         public PDomain(Type t, string nm, Sqlx dt, int dl, int sc, CharSet ch,
-            string co, string dv, Domain sd, long pp, Context cx)
+            string co, string dv, long sd, long pp, Context cx)
             : base(t, pp, cx)
         {
             var k = (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET) ? Domain.Element :
@@ -73,11 +73,38 @@ namespace Pyrrho.Level2
         {        
             domain = dt + (Basis.Name, nm);
         }
+        /// <summary>
+        /// This routine is called from Domain.Create().
+        /// If dt has representation, the context will have a suitable structure
+        /// </summary>
+        /// <param name="dt">To be committed: may have representation</param>
+        /// <param name="pp">The defpos to use</param>
+        /// <param name="cx">The context</param>
         public PDomain(Domain dt, long pp, Context cx)
             : this(Type.PDomain, dt, pp, cx) { }
         protected PDomain(Type t, Domain dt, long pp, Context cx)
         : base(t, pp, cx)
         {
+            if (dt.representation.Count > 0 && dt.structure<0)
+            {
+                var cs = CList<Domain>.Empty;
+                for (var b = dt.rowType.First();b!=null;b=b.Next())
+                    cs+= cx.obs[b.value()].domain;
+                for (var b = cx.obs.First(); b != null; b = b.Next())
+                {
+                    var ob = b.value();
+                    if (ob is Domain dc && _Match(cx, cs, dc))
+                    {
+                        dt+=(Domain.Structure,dc.defpos);
+                        break;
+                    }
+                    else if (ob.mem[DBObject._Domain] is Domain db && _Match(cx, cs, db))
+                    {
+                        dt += (Domain.Structure, db.defpos);
+                        break;
+                    }
+                }
+            }
             domain = dt;
         }
         /// <summary>
@@ -100,6 +127,19 @@ namespace Pyrrho.Level2
         {
             domain = (Domain)x.domain._Relocate(wr);
         }
+        static bool _Match(Context cx,CList<Domain> cs,Domain dc)
+        {
+            if (dc.defpos == -1L)
+                return false;
+            if (dc.structure >= 0 && dc.rowType.Count == cs.Count)
+            {
+                var cb = cs.First();
+                for (var c = dc.rowType.First(); c != null; c = c.Next(), cb = cb.Next())
+                    if (cx.obs[c.value()].domain.CompareTo(cb.value()) != 0)
+                        return false;
+            }
+            return true;
+        }
         protected override Physical Relocate(Writer wr)
         {
             return new PDomain(this, wr);
@@ -110,7 +150,6 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) //LOCKED
 		{
-            wr.cx.db+=(Database.Types,wr.cx.db.types+(domain, wr.Length)); 
             if (domain.kind == Sqlx.UNION)
                 throw new PEException("PE916");
             wr.PutString(domain.name);
@@ -121,7 +160,7 @@ namespace Pyrrho.Level2
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
             if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
-                wr.PutLong(wr.cx.db.types[domain.elType].Value);
+                wr.PutLong(wr.cx.db.types[domain.elType]);
             else
                 wr.PutLong(domain.structure);
  			base.Serialise(wr);
@@ -157,8 +196,18 @@ namespace Pyrrho.Level2
                 if (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET)
                     domain += (Domain.Element, ep);
                 else
+                {
+                    var tb = (Table)rdr.context.db.objects[ep];
+                    var rs = CTree<long, Domain>.Empty;
+                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    {
+                        var tc = (TableColumn)rdr.context.db.objects[b.value()];
+                        rs += (b.value(), tc.domain);
+                    }
                     domain = domain + (Domain.Structure, ep)
-                        + (Domain.RowType, ((Table)rdr.context.db.objects[ep]).domain.rowType);
+                        + (Domain.RowType, tb.domain.rowType)
+                        + (Domain.Representation, rs);
+                }
             }
             base.Deserialise(rdr);
         }
@@ -227,7 +276,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var dt = new Domain(this,cx.db);
+            var dt = new Domain(this);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(ppos, domain.name, domain) + (ObInfo.Privilege, priv);
             ro += (oi,true);
@@ -237,7 +286,7 @@ namespace Pyrrho.Level2
                 ro += (Role.DBObjects, ro.dbobjects 
                     + ("" + domain.structure, domain.structure));
             cx.db = cx.db + (ro,p) + (ppos,dt,p);
-            cx.db += (Database.Types, cx.db.types + (dt, ppos));
+            cx.db += (Database.Types, cx.db.types + (dt-Domain.Representation, ppos));
         }
     }
 
@@ -260,7 +309,7 @@ namespace Pyrrho.Level2
         public PDateType(string nm, Sqlx ki, Sqlx st, Sqlx en, int pr, byte sc, string dv, 
             long pp, Context cx)
             : base(Type.PDateType,nm,ki,pr,sc,CharSet.UCS,"",dv,
-                  null, pp, cx)
+                  -1L, pp, cx)
         {
             domain = domain + (Domain.Start, st) + (Domain.End, en);
         }

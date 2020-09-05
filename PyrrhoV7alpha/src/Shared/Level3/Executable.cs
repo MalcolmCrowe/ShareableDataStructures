@@ -431,7 +431,7 @@ namespace Pyrrho.Level3
         /// Constructor: a new local variable
         /// </summary>
         public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>m=null)
-         : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name)  
+         : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name)
           + (AssignmentStatement.Vbl, v.defpos))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -470,6 +470,10 @@ namespace Pyrrho.Level3
                 r += (Init, cx.obuids[init]);
             return r;
         }
+        internal override TypedValue Eval(Context cx)
+        {
+            return cx.FindCx(defpos).values[defpos];
+        }
         /// <summary>
         /// Execute the local variable declaration, by adding the local variable to the activation (overwrites any previous)
         /// </summary>
@@ -483,6 +487,10 @@ namespace Pyrrho.Level3
             a.locals += (defpos, true); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
+        }
+        internal override BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        {
+            return BTree<long, RowSet.Finder>.Empty;
         }
         public override string ToString()
         {
@@ -501,7 +509,6 @@ namespace Pyrrho.Level3
             ParamMode = -98, // Sqlx
             Result = -99; // Sqlx
         public long val => (long)(mem[AssignmentStatement.Val] ?? -1L);
-        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The mode of the parameter: IN, OUT or INOUT
         /// </summary>
@@ -544,6 +551,14 @@ namespace Pyrrho.Level3
             var r = (FormalParameter)base.Fix(cx);
             r += (AssignmentStatement.Val, cx.obuids[val]);
             return r;
+        }
+        internal override TypedValue Eval(Context cx)
+        {
+            return cx.FindCx(defpos).values[defpos];
+        }
+        internal override BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        {
+            return BTree<long, RowSet.Finder>.Empty;
         }
         /// <summary>
         /// A readable version of the ProcParameter

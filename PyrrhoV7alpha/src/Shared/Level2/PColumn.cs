@@ -103,11 +103,11 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
 			table = (Table)table._Relocate(wr);
-			domain = (Domain)domain._Relocate(wr);
+			domain = wr.cx.db.Find(domain);
             wr.PutLong(table.defpos);
             wr.PutString(name.ToString());
             wr.PutInt(seq);
-            wr.PutLong(wr.cx.db.types[domain].Value);
+            wr.PutLong(wr.cx.db.types[domain]);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -204,7 +204,7 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             table += tc; // just the dependency for now
-            table += (DBObject._Domain,ti.domain); // including rowType for now
+            table += (DBObject._Domain,ti.domain);
             cx.db += (ro, p);
             cx.Install(table,p);
             cx.Install(tc,p);

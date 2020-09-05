@@ -59,7 +59,7 @@ namespace Pyrrho.Level4
             _Finder = -403, // BTree<long,Finder> SqlValue
             _Needed = -401, //BTree<long,Finder>  SqlValue
             RowOrder = -404, //CList<long> SqlValue 
-            _Rows = -407; // BList<TRow> 
+            _Rows = -407; // CList<TRow> 
         internal CList<long> rt => domain.rowType;
         internal CList<long> keys => (CList<long>)mem[Index.Keys] ?? CList<long>.Empty;
         internal CList<long> rowOrder => (CList<long>)mem[RowOrder] ?? CList<long>.Empty;
@@ -79,7 +79,7 @@ namespace Pyrrho.Level4
         internal readonly struct Finder 
         {
             public readonly long col;
-            public readonly long rowSet; 
+            public readonly long rowSet;
             public Finder(long c, long r) { col = c; rowSet = r; }
             internal Finder Relocate(Context cx)
             {
@@ -2087,7 +2087,7 @@ namespace Pyrrho.Level4
                   new BTree<long,object>(ExplRows,r))
         { }
         internal ExplicitRowSet(long dp, Context cx, TypedValue val)
-    : base(dp, cx, val.dataType, null, null, null, null, null, null, null,
+    : base(dp, cx, val?.dataType??Domain.Null, null, null, null, null, null, null, null,
           _Vals(val))
         { }
         ExplicitRowSet(Context cx, ExplicitRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -2190,6 +2190,95 @@ namespace Pyrrho.Level4
                     }
                 }
                 _cx.from = ox;
+                return null;
+            }
+            internal override TableRow Rec()
+            {
+                return null;
+            }
+        }
+    }
+    internal class ProcRowSet : RowSet
+    {
+        readonly SqlCall call;
+        internal ProcRowSet(long dp, SqlCall ca, Context cx) :base(dp,cx,ca.domain,null,null,
+            null,null,null,null,null,BTree<long,object>.Empty+(_Needed,BTree<long,Finder>.Empty)
+            +(Built,true))
+        {
+            call = ca;
+        }
+        ProcRowSet(Context cx,ProcRowSet prs,BTree<long,Finder>nd,bool bt) :base(cx,prs,nd,bt)
+        {
+            call = prs.call;
+        }
+        ProcRowSet(long dp,SqlCall ca,BTree<long,object>m) :base(dp,m)
+        {
+            call = ca;
+        }
+        internal override RowSet Build(Context cx)
+        {
+            cx.values += (defpos,call.Eval(cx));
+            return this;
+        }
+        protected override Cursor _First(Context cx)
+        {
+            return ProcRowSetCursor.New(cx, this, (TArray)cx.values[defpos]);
+        }
+
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return new ProcRowSet(cx, this, nd, bt);
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ProcRowSet(defpos, call, m);
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new ProcRowSet(dp, (SqlCall)call.Relocate(dp), mem);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Call: "); sb.Append(call);
+            return sb.ToString();
+        }
+        internal class ProcRowSetCursor : Cursor
+        {
+            readonly ProcRowSet _prs;
+            readonly ABookmark<int, TypedValue> _bmk;
+            ProcRowSetCursor(Context cx,ProcRowSet prs,int pos,
+                ABookmark<int,TypedValue>bmk, TRow rw) 
+                : base(cx,prs,bmk.key(),-1,new TRow(prs,rw)) 
+            { 
+                _prs = prs; _bmk = bmk;
+            }
+            internal static ProcRowSetCursor New(Context cx,ProcRowSet prs,TArray ta)
+            {
+                for (var b = ta.list.First();b!=null;b=b.Next())
+                {
+                    var r = new ProcRowSetCursor(cx, prs, 0, b, (TRow)b.value());
+                    if (r.Matches(cx))
+                        return r;
+                }
+                return null;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new ProcRowSetCursor(cx, _prs, _pos, _bmk,
+                    this + (p, v));
+            }
+
+            protected override Cursor _Next(Context cx)
+            {
+                for (var b = _bmk.Next(); b != null; b = b.Next())
+                {
+                    var r = new ProcRowSetCursor(cx, _prs, _pos+1, b, (TRow)b.value());
+                    if (r.Matches(cx))
+                        return r;
+                }
                 return null;
             }
             internal override TableRow Rec()

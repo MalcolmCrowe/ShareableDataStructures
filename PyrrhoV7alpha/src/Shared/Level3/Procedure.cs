@@ -188,7 +188,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Arity="); sb.Append(arity);
-            sb.Append(" RetType:"); sb.Append(domain);
+            if (domain!=Domain.Null) sb.Append(domain);
             sb.Append(" Params");
             var cm = '(';
             for (var i = 0; i < (int)ins.Count; i++)

@@ -205,7 +205,7 @@ namespace Pyrrho.Level3
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             var dt = data.domain;
             var st = (dt != f.domain) ? dt : null; // subtype
-            var sp = cx.db.types[st] ?? -1L;
+            var sp = cx.db.types[st];
             // parameter cl is only supplied when d_User.defpos==d.owner
             // otherwise check if we should compute it
             if (cx.db.user!=null &&

@@ -478,7 +478,7 @@ namespace Pyrrho.Level4
             // The table domain and cx.defs should contain the columns so far defined
             var cx = new Context(this);
             cx.Frame();
-            var rs = BTree<long, Domain>.Empty;
+            var rs = CTree<long, Domain>.Empty;
             Ident ti = null;
             Table tb = null;
             for (var b = ns?.First(); b != null; b = b.Next())
@@ -748,7 +748,10 @@ namespace Pyrrho.Level4
         {
             return GetType().Name + " "+ cxid;
         }
-
+        internal virtual Context FindCx(long c)
+        {
+            return this;
+        }
         internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)
         {
             return next?.FindTriggerActivation(tabledefpos)
@@ -1098,27 +1101,24 @@ namespace Pyrrho.Level4
             }
             return ch ? r : cs;
         }
-        internal void Scan(CTree<TypedValue,long?> mu)
+        internal void Scan(CTree<TypedValue,long> mu)
         {
-            for (var b=mu?.First();b!=null;b=b.Next())
+            for (var b = mu?.First(); b != null; b = b.Next())
             {
                 b.key().Scan(this);
-                if (b.value() != null)
-                    ObUnheap(b.value().Value);
+                ObUnheap(b.value());
             }
         }
-        internal CTree<TypedValue,long?> Fix(CTree<TypedValue,long?> mu)
+        internal CTree<TypedValue,long> Fix(CTree<TypedValue,long> mu)
         {
-            var r = CTree<TypedValue,long?>.Empty;
+            var r = CTree<TypedValue,long>.Empty;
             var ch = false;
             for (var b = mu?.First(); b != null; b = b.Next())
             {
                 var p = b.key().Fix(this);
-                var iq = b.value();
-                if (iq != null)
-                    iq = obuids[iq.Value];
-                ch = ch || p != b.key() || iq != b.value();
-                r += (p, iq);
+                var q = (obuids.Contains(b.value()))?obuids[b.value()]:-1L;
+                ch = ch || p != b.key() || q != b.value();
+                r += (p, q);
             }
             return ch? r : mu;
         }
@@ -1151,9 +1151,9 @@ namespace Pyrrho.Level4
                 b.value().Scan(this);
             }
         }
-        internal BTree<long,Domain> Fix(BTree<long,Domain> rs)
+        internal CTree<long,Domain> Fix(CTree<long,Domain> rs)
         {
-            var r = BTree<long, Domain>.Empty;
+            var r = CTree<long, Domain>.Empty;
             var ch = false;
             for (var b=rs.First();b!=null;b=b.Next())
             {
@@ -1231,6 +1231,7 @@ namespace Pyrrho.Level4
             Data = -450,    // BTree<long,RowSet>
             Defs = -451,    // Ident.Idents
             Obs = -449,     // BTree<long,DBObject>
+            Relocated = -456, // bool
             Result = -452,  // long
             Results = -453; // BTree<long,long> Query RowSet
         public BTree<long, DBObject> obs => 
@@ -1240,6 +1241,7 @@ namespace Pyrrho.Level4
         public Ident.Idents defs =>
             (Ident.Idents)mem[Defs]??Ident.Idents.Empty;
         public long result => (long)(mem[Result]??-1L);
+        public bool relocated => (bool)(mem[Relocated] ?? false);
         public BTree<long, long> results =>
             (BTree<long, long>)mem[Results] ?? BTree<long, long>.Empty;
  //       public BTree<int, BTree<long, DBObject>> depths =>
@@ -1284,7 +1286,9 @@ namespace Pyrrho.Level4
         }
         internal override Basis _Relocate(Writer wr)
         {
-            var r = (Framing)base._Relocate(wr);
+            if (relocated)
+                return this;
+            var r = (Framing)base._Relocate(wr) + (Relocated,true);
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();

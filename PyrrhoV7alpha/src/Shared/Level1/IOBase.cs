@@ -237,16 +237,11 @@ namespace Pyrrho.Level2
             }
             return ch ? r : ord;
         }
-        internal CTree<TypedValue, long?> Fix(CTree<TypedValue, long?> mu)
+        internal CTree<TypedValue, long> Fix(CTree<TypedValue, long> mu)
         {
-            var r = CTree<TypedValue, long?>.Empty;
+            var r = CTree<TypedValue, long>.Empty;
             for (var b = mu?.First(); b != null; b = b.Next())
-            {
-                var p = b.key().Relocate(this);
-                var np = b.value();
-                if (np != null)
-                    r += (p, np.Value);
-            }
+                r += (b.key().Relocate(this),b.value());
             return r;
         }
         internal BList<long> Fix(BList<long> ord)
@@ -409,9 +404,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : fi;
         }
-        internal BTree<long,Domain> Fix(BTree<long,Domain> rs)
+        internal CTree<long,Domain> Fix(CTree<long,Domain> rs)
         {
-            var r = BTree<long, Domain>.Empty;
+            var r = CTree<long, Domain>.Empty;
             var ch = false;
             for (var b = rs.First(); b != null; b = b.Next())
             {

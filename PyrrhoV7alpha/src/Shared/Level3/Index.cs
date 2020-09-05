@@ -267,9 +267,9 @@ namespace Pyrrho.Level3
                 sb.Append(" RefTable="); sb.Append(Uid(reftabledefpos));
             }
             sb.Append(" Rows:"); sb.Append(rows);
-            if (mem.Contains(Adapter))
+            if (adapter!=-1)
             {
-                sb.Append(" Adapter="); sb.Append(adapter);
+                sb.Append(" Adapter="); sb.Append(Uid(adapter));
                 sb.Append(" References:"); sb.Append(references);
             }
             return sb.ToString();

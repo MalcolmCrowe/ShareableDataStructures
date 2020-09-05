@@ -13,6 +13,7 @@ using System.Diagnostics.Tracing;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Configuration;
+using System.Reflection.Emit;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -3370,7 +3371,12 @@ namespace Pyrrho.Level3
             var ers = ((Query)cx.obs[expr])
                 .RowSets(cx, cx.data[from]?.finder??BTree<long, RowSet.Finder>.Empty);
             if (dm.kind == Sqlx.TABLE)
-                return ers.Eval(cx);
+            {
+                var rs = BList<TypedValue>.Empty;
+                for (var b = ers.First(cx); b != null; b = b.Next(cx))
+                    rs += b;
+                return new TArray(domain, rs);
+            }
             var rb = ers.First(cx);
             if (rb == null)
                 return dm.defaultValue;
@@ -3691,8 +3697,8 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("call ");
-            sb.Append(Uid(call));
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Call: "); sb.Append(Uid(call));
             return sb.ToString();
         }
     }
@@ -3753,10 +3759,6 @@ namespace Pyrrho.Level3
             for (var b = c.parms.First(); b != null; b = b.Next())
                 r = ((SqlValue)cx.obs[b.value()]).Needs(cx, rs);
             return r;
-        }
-        public override string ToString()
-        {
-            return "Call "+Uid(call) + "(..)";
         }
     }
     /// <summary>
@@ -4398,15 +4400,12 @@ namespace Pyrrho.Level3
                         case Sqlx.UNION:
                             {
                                 var cs = vl.domain.unionOf;
-                                for (int i = 0; i < cs.Count; i++)
-                                    if (cs[i].kind == Sqlx.INTEGER)
-                                        goto case Sqlx.INTEGER;
-                                for (int i = 0; i < cs.Count; i++)
-                                    if (cs[i].kind == Sqlx.NUMERIC)
-                                        goto case Sqlx.NUMERIC;
-                                for (int i = 0; i < cs.Count; i++)
-                                    if (cs[i].kind == Sqlx.REAL)
-                                        goto case Sqlx.REAL;
+                                if (cs.Contains(Domain.Int))
+                                    goto case Sqlx.INTEGER;
+                                if (cs.Contains(Domain.Numeric))
+                                    goto case Sqlx.NUMERIC;
+                                if (cs.Contains(Domain.Real))
+                                    goto case Sqlx.REAL;
                                 break;
                             }
                     }

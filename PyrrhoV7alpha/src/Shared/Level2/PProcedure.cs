@@ -33,6 +33,7 @@ namespace Pyrrho.Level2
         /// The return type for the definer's role
         /// </summary>
         public Domain retType;
+        public long retTypeDefpos;
         public Ident source;
         public bool mth = false;
         public BList<long> parameters;
@@ -40,7 +41,9 @@ namespace Pyrrho.Level2
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
-            retType.Create(wr, tr);
+            retType = (Domain)retType._Relocate(wr);
+            retTypeDefpos = retType.Create(wr, tr);
+            wr.cx.db += (Database.Types,wr.cx.db.types+(retType,retTypeDefpos));
             return -1;
         }
         internal int arity => parameters.Length;
@@ -81,7 +84,8 @@ namespace Pyrrho.Level2
         {
             source = x.source;
             wr.srcPos = wr.Length + 1;
-            retType = (Domain)x.retType._Relocate(wr);
+            retType = x.retType;
+            retTypeDefpos = x.retTypeDefpos;
             parameters = wr.Fix(x.parameters);
             nameAndArity = x.nameAndArity;
             name = x.name;
@@ -99,9 +103,8 @@ namespace Pyrrho.Level2
 		{
             wr.PutString(nameAndArity.ToString());
             wr.PutInt(arity);
-            retType = (Domain)retType?._Relocate(wr);
             if (type==Type.PMethod2 || type==Type.PProcedure2)
-                wr.PutLong(wr.cx.db.types[retType].Value);
+                wr.PutLong(retTypeDefpos);
             var s = source;
             if (wr.cx.db.format < 51)
                 s = new Ident(DigestSql(wr,s.ident),s.iix);

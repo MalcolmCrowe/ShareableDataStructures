@@ -33,7 +33,7 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
             : base(t, nm.ident, Sqlx.TYPE, dm.prec,(byte)dm.scale, 
-                  dm.charSet,"",dm.defaultString,dm.super, pp, cx)
+                  dm.charSet,"",dm.defaultString,dm.super.defpos, pp, cx)
 		{
 		}
         public PType(Ident nm, Domain dm, long pp, Context cx)
@@ -59,7 +59,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(wr.cx.db.types[under].Value);
+            wr.PutLong(wr.cx.db.types[under]);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -103,14 +103,14 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var dt = new Domain(this, cx.db);
+            var dt = new Domain(this);
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
             cx.db = cx.db + (ro,p) + (ppos, dt, p);
-            if (dt!=null && cx.db.types[dt]==null)
-                cx.db += (Database.Types, cx.db.types + (dt, ppos));
+            if (dt!=null && cx.db.types.Contains(dt))
+                cx.db += (Database.Types, cx.db.types + (dt-Domain.Representation, ppos));
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

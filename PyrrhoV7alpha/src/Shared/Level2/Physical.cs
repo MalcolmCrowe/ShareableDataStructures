@@ -116,7 +116,7 @@ namespace Pyrrho.Level2
         {
             var r = 1 + IntLength((int)rep.Count);
             for (var b=rep.First();b!=null;b=b.Next())
-                r += IntLength(b.key()) + IntLength(cx.db.types[b.value()].Value);
+                r += IntLength(b.key()) + IntLength(cx.db.types[b.value()]);
             return r;
         }
         /// <summary>

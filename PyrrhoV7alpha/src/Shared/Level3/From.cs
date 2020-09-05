@@ -45,7 +45,7 @@ namespace Pyrrho.Level3
         }
         protected From(Ident ic, Context cx, Table tb, BTree<long, object> mem)
             : base(ic.iix, mem + (_Mem(ic, cx, tb, null, Grant.Privilege.Select, null, null),false)) { }
-        public From(long dp,Context cx,CallStatement pc,CList<long> cr=null)
+        public From(long dp,Context cx,SqlCall pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
         { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
@@ -159,8 +159,9 @@ namespace Pyrrho.Level3
                    + (Target, tb.defpos) + (_Domain, dm)
                    + (Depth, de + 1);
         }
-        static BTree<long,object> _Mem(long dp,Context cx,CallStatement pc,CList<long> cr=null)
+        static BTree<long,object> _Mem(long dp,Context cx,SqlCall ca,CList<long> cr=null)
         {
+            var pc = (CallStatement)cx.obs[ca.call];
             var proc = (Procedure)cx.db.objects[pc.procdefpos];
             var disp = cr?.Length ?? proc.domain.Length;
             var s = CList<long>.Empty;
@@ -171,6 +172,7 @@ namespace Pyrrho.Level3
                 cx.Add( new SqlRowSetCol(ci.defpos,ci, dp));
                 s += ci.defpos;
             }
+            cx.data += (dp,new ProcRowSet(dp, ca, cx));
             return BTree<long, object>.Empty
                 + (Target,pc.procdefpos) 
                 + (_Domain,new Domain(Sqlx.ROW,cx,s,disp)) + (Name, proc.name);

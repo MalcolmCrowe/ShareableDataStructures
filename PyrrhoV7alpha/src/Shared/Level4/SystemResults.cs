@@ -1439,7 +1439,7 @@ namespace Pyrrho.Level4
                         Pos(c.table.defpos),
                         new TChar(c.name),
                         new TInt(c.seq),
-                        Pos(ph.database.types[c.domain]??-1L),
+                        Pos(ph.database.types[c.domain]),
                         Display(c.dfs.ToString()),
                         TBool.For(c.notNull),
                         new TChar(c.generated.ToString()),
@@ -1666,7 +1666,7 @@ namespace Pyrrho.Level4
                     new TChar(d.charSet.ToString()),
                     new TChar(d.culture.Name),
                     Display(d.defaultString),
-                    new TInt(ph.database.types[d.elType].Value),
+                    new TInt(ph.database.types[d.elType]),
                     Pos(ph.trans));
             }
          }
@@ -1730,7 +1730,7 @@ namespace Pyrrho.Level4
                 Edit d = (Edit)ph;
                 return new TRow(res,
                     Pos(d.ppos),
-                    Pos(ph.database.types[d.prev]??-1L),
+                    Pos(ph.database.types[d.prev]),
                     Pos(d.trans));
             }
          }
@@ -4152,7 +4152,7 @@ namespace Pyrrho.Level4
                 var oi = (ObInfo)cx.db.role.infos[tb.defpos];
                 var tc = (TableColumn)cx.db.objects[p];
                 var si = (ObInfo)cx.db.role.infos[p];
-                var dp = cx.db.types[d] ?? -1L;
+                var dp = cx.db.types[d];
                 return new TRow(rs,
                     Pos(p),
                     new TChar(oi.name),
@@ -4546,7 +4546,7 @@ namespace Pyrrho.Level4
                 if (dm.elType is Domain et)
                     elname = et.name;
                 return new TRow(rs,
-                    Pos(_cx.db.types[dm]??-1L),
+                    Pos(_cx.db.types[dm]),
                     new TChar(dm.name),
                     new TChar(dm.kind.ToString()),
                     new TInt(prec),
@@ -5560,14 +5560,14 @@ namespace Pyrrho.Level4
             /// enumerators for implementation
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<string, BTree<int,long>> _middle;
+            readonly ABookmark<string, CTree<int,long>> _middle;
             readonly ABookmark<int,long> _inner;
             /// <summary>
             /// create the Role$Method enumerator
             /// </summary>
             /// <param name="r"></param>
             RoleMethodBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string, BTree<int,long>> middle, ABookmark<int,long> inner)
+                ABookmark<string, CTree<int,long>> middle, ABookmark<int,long> inner)
                 : base(_cx,res,pos,inner.value(),_Value(_cx,res,outer.value(),inner.value()))
             {
                 _outer = outer;

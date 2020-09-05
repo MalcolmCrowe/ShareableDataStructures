@@ -20,8 +20,8 @@ namespace Pyrrho.Common
     /// </summary>
     /// <typeparam name="K">The Key type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    internal class CTree<K, V> : BTree<K, V>
-    where K : ITypedValue
+    internal class CTree<K, V> : BTree<K, V>,IComparable
+    where K : IComparable where V : IComparable
     {
         public new static CTree<K, V> Empty = new CTree<K, V>();
         CTree():base() {}
@@ -48,7 +48,7 @@ namespace Pyrrho.Common
         /// <returns></returns>
         public override int Compare(K a, K b)
         {
-            return (a == null || a.IsNull) ? ((b == null || b.IsNull) ? 0 : -1) : a._CompareTo(b);
+            return (a == null) ? ((b == null) ? 0 : -1) : a.CompareTo(b);
         }
         /// <summary>
         /// Creator: Create a new Tree that adds a given key,value pair.
@@ -108,6 +108,24 @@ namespace Pyrrho.Common
             // note: we allow root to have 1 entry
             return new CTree<K, V>(root.Remove(this, k));
         }
+
+        public int CompareTo(object obj)
+        {
+            var that = (CTree<K,V>)obj??Empty;
+            var tb = that.First();
+            var b = First();
+            for (;b!=null && tb!=null;b=b.Next(),tb=tb.Next())
+            {
+                var c = b.key().CompareTo(tb.key());
+                if (c != 0)
+                    return c;
+                c = b.value().CompareTo(tb.value());
+                if (c != 0)
+                    return c;
+            }
+            return (b != null)? 1 : (tb!=null)?-1: 0;
+        }
+
         public static CTree<K, V> operator +(CTree<K, V> tree, (K, V) v)
         {
             return (CTree<K,V>)tree.Add(v.Item1, v.Item2);

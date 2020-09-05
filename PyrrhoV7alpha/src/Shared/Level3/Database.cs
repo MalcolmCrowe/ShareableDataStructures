@@ -139,7 +139,7 @@ namespace Pyrrho.Level3
             Role = -285, // long
             Roles = -60, // BTree<string,long>
             SchemaKey = -286, // long
-            Types = -61, // BTree<Domain,long?>
+            Types = -61, // CTree<Domain,long>
             User = -277; // long
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
@@ -165,7 +165,7 @@ namespace Pyrrho.Level3
         internal bool cascade => (bool)(mem[Cascade] ?? false);
         internal int format => (int)(mem[Format] ?? 0);
         internal long schemaKey => (long)(mem[SchemaKey] ?? 0L);
-        public BTree<Domain, long?> types => (BTree<Domain, long?>)mem[Types];
+        public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
         public ExecuteStatus parse => (ExecuteStatus)(mem[_ExecuteStatus]??ExecuteStatus.Obey);
@@ -189,7 +189,7 @@ namespace Pyrrho.Level3
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
                   (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
-                  (Types,BTree<Domain,long?>.Empty),
+                  (Types,BTree<Domain,long>.Empty),
                   (NextStmt,Transaction.Executables))
         {
             loadpos = 0;
@@ -302,6 +302,12 @@ namespace Pyrrho.Level3
         {
             return (role.procedures[n] is BTree<int,long> pt &&
                 pt.Contains(a))? objects[pt[a]] as Procedure:null;
+        }
+        public Domain Find(Domain dm)
+        {
+            if (!types.Contains(dm))
+                throw new PEException("PE555");
+            return (Domain)objects[types[dm]];
         }
         /// <summary>
         /// Build a ReadConstraint object.

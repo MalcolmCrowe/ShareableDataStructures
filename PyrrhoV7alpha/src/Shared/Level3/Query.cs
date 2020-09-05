@@ -787,12 +787,12 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
             }
             sb.Append(")");
-            if (mem.Contains(Assig)) { sb.Append(" Assigs:"); sb.Append(assig); }
+            if (assig.Count>0) { sb.Append(" Assigs:"); sb.Append(assig); }
             if (mem.Contains(FetchFirst)) { sb.Append(" FetchFirst="); sb.Append(fetchFirst); }
-            if (mem.Contains(Filter)) { sb.Append(" Filter:"); sb.Append(filter); }
+            if (filter.Count>0) { sb.Append(" Filter:"); sb.Append(filter); }
  //           if (mem.Contains(_Import)) { sb.Append(" Import:"); sb.Append(import); }
-            if (mem.Contains(_Matches)) { sb.Append(" Matches:"); sb.Append(matches); }
-            if (mem.Contains(Matching)) { sb.Append(" Matching:"); sb.Append(matching); }
+            if (matches.Count>0) { sb.Append(" Matches:"); sb.Append(matches); }
+            if (matching.Count>0) { sb.Append(" Matching:"); sb.Append(matching); }
             if (ordSpec!=CList<long>.Empty) 
             { 
                 sb.Append(" OrdSpec (");
@@ -1092,8 +1092,8 @@ namespace Pyrrho.Level3
             sb.Append(" Union: "); sb.Append(Uid(union)); 
             if (mem.Contains(UsingFrom))
             { sb.Append(" Using: "); sb.Append(Uid(usingFrom)); }
-            if (mem.Contains(RVQSpecs)){ sb.Append(" RVQSpecs:"); sb.Append(rVqSpecs); }
-            if (mem.Contains(RestViews))
+            if (rVqSpecs.Count>0) { sb.Append(" RVQSpecs:"); sb.Append(rVqSpecs); }
+            if (restViews.Count>0)
             { sb.Append(" RestViews:{"); sb.Append(restViews); sb.Append('}'); }
             return sb.ToString();
         }
@@ -1210,7 +1210,7 @@ namespace Pyrrho.Level3
             }
             var ma = BTree<long, long>.Empty;
             var cb = r.rt.First();
-            for (var b=rowType.First();b!=null;b=b.Next(),cb=cb.Next())
+            for (var b=rowType.First();b!=null&&cb!=null;b=b.Next(),cb=cb.Next())
             {
                 var p = b.value();
                 var c = cb.value();
@@ -1712,17 +1712,17 @@ namespace Pyrrho.Level3
         FDJoinPart GetRefIndex(Context cx,Query a, Query b,bool left)
         {
             FDJoinPart best = null;
-            if (a is From fa &&  b is From fb && cx.tr.objects[fa.target] is Table ta 
-                && cx.tr.objects[fb.target] is Table tb)
+            if (a is From fa &&  b is From fb && cx.db.objects[fa.target] is Table ta 
+                && cx.db.objects[fb.target] is Table tb)
             {
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
-                    var x = (Index)cx.tr.objects[bx.value()];
+                    var x = (Index)cx.db.objects[bx.value()];
                     if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey)
                     && x.tabledefpos == ta.defpos && x.reftabledefpos == tb.defpos)
                     {
                         var cs = BTree<long,SqlValue>.Empty;
-                        var rx = (Index)cx.tr.objects[x.refindexdefpos];
+                        var rx = (Index)cx.db.objects[x.refindexdefpos];
                         var br = rx.keys.First();
                         for (var bc=x.keys.First();bc!=null&&br!=null;bc=bc.Next(),br=br.Next())
                         {

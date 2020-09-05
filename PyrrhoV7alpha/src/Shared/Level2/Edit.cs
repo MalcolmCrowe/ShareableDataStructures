@@ -34,9 +34,9 @@ namespace Pyrrho.Level2
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
-                  dt.culture.Name,dt.defaultString,dt.super,pp,cx)
+                  dt.culture.Name,dt.defaultString,dt.super.defpos,pp,cx)
         {
-            _defpos = cx.db.types[old].Value;
+            _defpos = cx.db.types[old];
             prev = old;
         }
         /// <summary>

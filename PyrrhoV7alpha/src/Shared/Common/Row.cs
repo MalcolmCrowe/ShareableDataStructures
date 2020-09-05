@@ -609,7 +609,7 @@ namespace Pyrrho.Common
             var ts = new List<Domain>();
             for (var b = dataType.unionOf.First(); b != null; b = b.Next())
             {
-                var dt = b.value();
+                var dt = b.key();
                 if (dt.HasValue(cx,value))
                     ts.Add(dt);
             }
@@ -836,15 +836,15 @@ namespace Pyrrho.Common
     }
     internal class TArray : TypedValue
     {
-        internal readonly CList<TypedValue> list; 
+        internal readonly BList<TypedValue> list; 
         internal TArray(Domain dt, params TypedValue[] a) : base(dt) 
         { 
-            var ts = CList<TypedValue>.Empty;
+            var ts = BList<TypedValue>.Empty;
             foreach (var x in a)
                 ts += x;
             list = ts;
         }
-        internal TArray(Domain dt, CList<TypedValue> a) : base(dt) { list = a; }
+        internal TArray(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException(); // use Relocate
@@ -1447,7 +1447,7 @@ namespace Pyrrho.Common
         /// (the multiplicity of the key V as a member of the multiset).
         /// While this looks like MTree (which is TypedValue[] to long) it doesn't work the same way
         /// </summary>
-        internal CTree<TypedValue,long?> tree; 
+        internal CTree<TypedValue,long> tree; 
         /// <summary>
         /// Accessor
         /// </summary>
@@ -1463,17 +1463,17 @@ namespace Pyrrho.Common
         /// <param name="tr">The transaction</param>
         internal TMultiset(Domain dt) : base (dt)
         {
-            tree = CTree<TypedValue,long?>.Empty;
+            tree = CTree<TypedValue,long>.Empty;
             count = 0;
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(TMultiset tm) : base(tm.dataType)
         {
-            tree = CTree<TypedValue, long?>.Empty;
+            tree = CTree<TypedValue, long>.Empty;
             count = tm.count;
             // Disallow not Allow for duplicates (see below)
         }
-        internal TMultiset(Domain dt,CTree<TypedValue,long?>t,long ct) :base(dt)
+        internal TMultiset(Domain dt,CTree<TypedValue,long>t,long ct) :base(dt)
         {
             tree = t; count = ct;
         }
@@ -1506,7 +1506,7 @@ namespace Pyrrho.Common
                 return;
             else
             {
-                long o = tree[a].Value;
+                long o = tree[a];
                 tree+=(a, o + n);
             }
             count += n;
@@ -1535,10 +1535,10 @@ namespace Pyrrho.Common
         internal class MultisetBookmark : IBookmark<TypedValue>
         {
             readonly TMultiset _set;
-            readonly ABookmark<TypedValue, long?> _bmk;
+            readonly ABookmark<TypedValue, long> _bmk;
             readonly long _pos;
             readonly long? _rep;
-            internal MultisetBookmark(TMultiset set, long pos = 0, ABookmark<TypedValue, long?> bmk = null, long? rep = null)
+            internal MultisetBookmark(TMultiset set, long pos = 0, ABookmark<TypedValue, long> bmk = null, long? rep = null)
             {
                 _set = set; _pos = pos; _bmk = bmk; _rep = rep;
             }
@@ -1554,7 +1554,7 @@ namespace Pyrrho.Common
                         if (rp > 0)
                             return new MultisetBookmark(_set, _pos + 1, bmk, rp - 1);
                     }
-                    bmk = ABookmark<TypedValue, long?>.Next(bmk, _set.tree);
+                    bmk = ABookmark<TypedValue, long>.Next(bmk, _set.tree);
                     if (bmk == null)
                         return null;
                 }
@@ -1634,8 +1634,7 @@ namespace Pyrrho.Common
                 r.tree = a.tree;
                 r.count = a.count;
                 for (var d=b.tree.First();d!=null;d=d.Next())
-                    if (d.value()!=null)
-                    r.Add(d.key(), d.value().Value);
+                    r.Add(d.key(), d.value());
             }
             else
             {
@@ -1668,13 +1667,12 @@ namespace Pyrrho.Common
             for(var d = a.tree.First();d!=null;d=d.Next())
             {
                 TypedValue v = d.key();
-                object o = b.tree[v];
-                if (d.value()==null || o == null)
-                    continue;
-                if (all)
+                if (!b.tree.Contains(v))
+                    r.Remove(v);
+                else if (all)
                 {
-                    long m = d.value().Value;
-                    long n = (long)o;
+                    long m = d.value();
+                    long n = b.tree[v];
                     r.Add(v, (m<n) ? m : n);
                 }
                 else
@@ -1698,22 +1696,21 @@ namespace Pyrrho.Common
             Domain tp = a.dataType.elType;
             TMultiset r = new TMultiset(a.dataType);
             for (var d = a.tree.First(); d != null; d = d.Next())
-                if (d.value() != null)
+            {
+                TypedValue v = d.key();
+                long m = d.value();
+                long n = 0;
+                object o = b.tree[v];
+                if (all)
                 {
-                    TypedValue v = d.key();
-                    long m = d.value().Value;
-                    long n = 0;
-                    object o = b.tree[v];
-                    if (all)
-                    {
-                        if (o != null)
-                            n = (long)o;
-                        if (m > n)
-                            r.Add(v, m - n);
-                    }
-                    else if (o == null)
-                        r.Add(v);
+                    if (o != null)
+                        n = (long)o;
+                    if (m > n)
+                        r.Add(v, m - n);
                 }
+                else if (o == null)
+                    r.Add(v);
+            }
             return r;
         }
         /// <summary>
@@ -1725,13 +1722,12 @@ namespace Pyrrho.Common
             string str = "MULTISET(";
             bool first = true;
             for (var b = tree.First(); b != null; b = b.Next())
-                if (b.value() != null)
-                {
-                    if (!first)
-                        str += ",";
-                    for (var i = 0; i < b.value().Value; i++)
-                        str += b.key().ToString();
-                }
+            {
+                if (!first)
+                    str += ",";
+                for (var i = 0; i < b.value(); i++)
+                    str += b.key().ToString();
+            }
             return str + ")";
         }
         public override int _CompareTo(object obj)

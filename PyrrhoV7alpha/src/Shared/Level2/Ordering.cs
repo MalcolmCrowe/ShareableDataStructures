@@ -76,7 +76,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(wr.cx.db.types[domain].Value);
+            wr.PutLong(wr.cx.db.types[domain]);
             funcdefpos = wr.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
             wr.PutInt((int)flags);
@@ -125,7 +125,7 @@ namespace Pyrrho.Level2
         {
             var dm = domain + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
                 +(Domain.OrderCategory,flags);
-            cx.db += (cx.db.types[domain].Value,dm, p);
+            cx.db += (cx.db.types[domain],dm, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

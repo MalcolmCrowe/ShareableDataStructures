@@ -149,10 +149,10 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var ms = BTree<string, BTree<int, long>>.Empty;
+            var ms = CTree<string, CTree<int, long>>.Empty;
             for (var b=udType.methods.First();b!=null;b=b.Next())
             {
-                var sm = BTree<int, long>.Empty;
+                var sm = CTree<int, long>.Empty;
                 var ch = false;
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (c.value() != defpos)
@@ -162,7 +162,7 @@ namespace Pyrrho.Level3
                 if (ch)
                     ms += (b.key(), sm);
             }
-            nd += (nd.role+(d.types[udType].Value,udType+(Domain.Methods,ms)),p);
+            nd += (nd.role+(d.types[udType],udType+(Domain.Methods,ms)),p);
             return base.Drop(d, nd, p);
         }
     }

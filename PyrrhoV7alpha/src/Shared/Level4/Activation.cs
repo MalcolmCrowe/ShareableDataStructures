@@ -103,6 +103,12 @@ namespace Pyrrho.Level4
         {
             return val;
         }
+        internal override Context FindCx(long c)
+        {
+            if (locals.Contains(c))
+                return this;
+            return next?.FindCx(c) ?? throw new PEException("PE556");
+        }
     }
     internal class CalledActivation : Activation
     {
