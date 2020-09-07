@@ -1812,7 +1812,7 @@ namespace Pyrrho.Level4
     internal class EmptyRowSet : RowSet
     {
         public static readonly EmptyRowSet Value = new EmptyRowSet();
-        EmptyRowSet() : base(-1,null,null) { }
+        EmptyRowSet() : base(-1,Context._system,Domain.Content) { }
         internal EmptyRowSet(long dp, Context cx) : base(dp, Value.mem) 
         {
             cx.data += (dp, this);

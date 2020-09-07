@@ -215,7 +215,7 @@ namespace Pyrrho.Level4
                     && obs[defs[ic.ToString()].Item1] is SqlValue s0)
                 v = s0;
             else
-                v = obs[defs[ic]];
+                v = obs[defs[ic.ident].Item1];
             if (v != null && !xp.CanTakeValueOf(v.domain))
                 throw new DBException("42000", ic);
             return v;

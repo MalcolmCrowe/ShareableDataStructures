@@ -3,6 +3,7 @@ using Pyrrho;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Data;
 
 namespace Test
 {
@@ -80,9 +81,9 @@ namespace Test
             Test15(test);
             Test16(test);
             Test17(test);
-    /*        Test18(test);
+            Test18(test);
             Test19(test);
-            Test20(test);
+    /*        Test20(test);
             Test21(test); */
         }
         void Test1(int t)
@@ -367,6 +368,19 @@ namespace Test
             CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
             conn.Act("insert into dst (select min(x.c)-3 from dst x)");
             CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
+            if (commit)
+            {
+                conn.Prepare("Ins1", "insert into sce values(?,?)");
+                conn.Prepare("Upd1", "update sce set a=? where b=?");
+                conn.Prepare("Del1", "delete from dst where c>?");
+                conn.Prepare("Ins2", "insert into dst (select char_length(b) from sce where a=?)");
+                conn.Prepare("Sel1", "select * from dst where c<?");
+                conn.Execute("Ins1", "" + 5, "'HalfDozen'");
+                conn.Execute("Upd1", "" + 6, "'HalfDozen'");
+                conn.Execute("Del1", "" + 10);
+                conn.Execute("Ins2", "" + 6);
+                CheckExecuteResults(12, 6, "[{C:9}]", "Sel1", "" + 10);
+            }
             Rollback();
         }
         void Test13(int t)
@@ -568,7 +582,7 @@ namespace Test
             CheckResults(18, 2, "select * from table(booksby('Dickens'))", 
                 "[{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]");
             CheckResults(18, 3, "select count(*) from table(booksby('Dickens'))",
-                "[{Col0:2}]");
+                "[{COUNT:2}]");
             Rollback();
         }
         public void Test19(int t)
@@ -713,6 +727,31 @@ namespace Test
                 r?.Close();
                 Check(da, new DocArray(d));
             } catch(Exception e)
+            {
+                Console.WriteLine("Exception (" + t + " " + q + ") " + e.Message);
+            }
+        }
+        void CheckExecuteResults(int t, int q, string d, string c, params string[] ps)
+        {
+            if (qry > 0 && qry != q)
+                return;
+            cur = q;
+            try
+            {
+                var r = conn.ExecuteReader(c,ps);
+                var da = new DocArray();
+                while (r?.Read() == true)
+                {
+                    var rd = new Document();
+                    for (var i = 0; i < r.FieldCount; i++)
+                        if (r[i] != DBNull.Value)
+                            rd.fields.Add(new KeyValuePair<string, object>(r.GetName(i), r[i]));
+                    da.items.Add(rd);
+                }
+                r?.Close();
+                Check(da, new DocArray(d));
+            }
+            catch (Exception e)
             {
                 Console.WriteLine("Exception (" + t + " " + q + ") " + e.Message);
             }

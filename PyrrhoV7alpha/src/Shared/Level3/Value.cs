@@ -425,9 +425,9 @@ namespace Pyrrho.Level3
                     return this;
             return null;
         }
-        internal bool Matches(Context cx)
+        internal bool? Matches(Context cx)
         {
-            return (Eval(cx) is TypedValue tv) ? tv == TBool.True : true;
+           return (Eval(cx) is TBool tb)?tb.value:null;
         }
         internal virtual bool HasAnd(Context cx,SqlValue s)
         {
@@ -435,7 +435,7 @@ namespace Pyrrho.Level3
         }
         internal virtual SqlValue Invert(Context cx)
         {
-            return new SqlValueExpr(defpos, cx, Sqlx.NOT, this, null, Sqlx.NO);
+            return new SqlValueExpr(cx.nextHeap++, cx, Sqlx.NOT, this, null, Sqlx.NO);
         }
         internal virtual SqlValue Operand(Context cx)
         {
@@ -4997,7 +4997,7 @@ namespace Pyrrho.Level3
             var vl = (SqlValue)cx.obs[val];
             if (tr == null)
                 return tg;
-            if (filter != -1L && !((SqlValue)cx.obs[filter]).Matches(cx))
+            if (filter != -1L && ((SqlValue)cx.obs[filter]).Matches(cx)!=true)
                 return tg;
             var fc = tg[defpos];
             if (mod == Sqlx.DISTINCT)

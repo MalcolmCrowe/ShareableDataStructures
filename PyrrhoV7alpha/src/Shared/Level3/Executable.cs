@@ -432,12 +432,12 @@ namespace Pyrrho.Level3
         /// </summary>
         public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name)
-          + (AssignmentStatement.Vbl, v.defpos))
+          + (AssignmentStatement.Vbl, v.defpos)+(_Domain,v.domain))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LocalVariableDec operator+(LocalVariableDec s,(long,object)x)
         {
-            return new LocalVariableDec(s.defpos, s.mem + x);
+            return (LocalVariableDec)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -595,8 +595,9 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
-        public CursorDeclaration(long dp, Context cx,string n,CursorSpecification c) 
-            : base(dp,cx,new SqlCursor(dp,c,n),new BTree<long,object>(CS,c.defpos)) 
+        public CursorDeclaration(long dp, Context cx,SqlCursor sc,CursorSpecification c) 
+            : base(dp,cx,sc,new BTree<long,object>(CS,c.defpos)
+                  +(_Domain,c.domain)) 
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CursorDeclaration operator+(CursorDeclaration c,(long,object)x)
@@ -1213,7 +1214,7 @@ namespace Pyrrho.Level3
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for(var c = whens.First();c!=null; c=c.Next())
-                if (((SqlValue)cx.obs[operand]).Matches(cx))
+                if (((SqlValue)cx.obs[operand]).Matches(cx)==true)
                     return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
         }
@@ -1308,7 +1309,7 @@ namespace Pyrrho.Level3
             for (var c = whens.First(); c != null; c = c.Next())
             {
                 var w = (WhenPart)cx.obs[c.value()];
-                if (((SqlValue)cx.obs[w.cond]).Matches(cx))
+                if (((SqlValue)cx.obs[w.cond]).Matches(cx)==true)
                     return ObeyList(w.stms, cx);
             }
 			return ObeyList(els,cx);
@@ -1398,7 +1399,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var a = cx;
-            if (cond == -1L || ((SqlValue)cx.obs[cond]).Matches(cx))
+            if (cond == -1L || ((SqlValue)cx.obs[cond]).Matches(cx)==true)
             {
                 a.val = TBool.True;
                 return ObeyList(stms, cx);
@@ -1506,11 +1507,11 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; 
             a.exec = this;
-            if (((SqlValue)cx.obs[search]).Matches(cx))
+            if (((SqlValue)cx.obs[search]).Matches(cx)==true)
                 return ObeyList(then, cx);
             for (var g = elsif.First(); g != null; g = g.Next())
                 if (cx.obs[g.value()] is IfThenElse f 
-                    && ((SqlValue)cx.obs[f.search]).Matches(cx))
+                    && ((SqlValue)cx.obs[f.search]).Matches(cx)==true)
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
@@ -1658,7 +1659,7 @@ namespace Pyrrho.Level3
             var a = (Activation)cx; 
             a.exec = this;
             var na = cx;
-            while (na==cx && a.signal == null && ((SqlValue)cx.obs[search]).Matches(cx))
+            while (na==cx && a.signal == null && ((SqlValue)cx.obs[search]).Matches(cx)==true)
             {
                 var lp = new Activation(cx,label);
                 lp.cont = a;
@@ -1759,10 +1760,10 @@ namespace Pyrrho.Level3
             for (; ;)
             {
                 na = ObeyList(what, act);
-                if (na != cx)
+                if (na != act)
                     break;
                 act.signal?.Throw(act);
-                if (!((SqlValue)cx.obs[search]).Matches(act))
+                if (((SqlValue)cx.obs[search]).Matches(act)!=false)
                     break;
             }
             cx = act.SlideDown(); 
@@ -1915,7 +1916,7 @@ namespace Pyrrho.Level3
 	internal class ForSelectStatement : Executable
 	{
         internal const long
-            Cursor = -124, // string
+            Cursor = -124, // long SqlCursor
             ForVn = -125, // string
             Loop = -126, // long
             Sel = -127, // long CursorSpecification
@@ -1925,9 +1926,9 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long sel => (long)(mem[Sel]??-1L);
         /// <summary>
-        /// The name of the cursor
+        /// The SqlCursor
         /// </summary>
-		public string cursor => (string)mem[Cursor];
+		public long cursor => (long)mem[Cursor];
         /// <summary>
         /// The identifier in the AS part
         /// </summary>
@@ -1973,16 +1974,18 @@ namespace Pyrrho.Level3
                 return this;
             var r = (ForSelectStatement)base._Relocate(wr);
             r += (WhileStatement.Loop, wr.Fixed(loop)?.defpos??-1L);
-            r += (Cursor, wr.Fixed(sel).defpos);
-            r += (WhenPart.Stms, wr.Fix(stms));
+            r += (Cursor, wr.Fix(cursor));
+            r += (Sel, wr.Fix(sel));
+            r += (Stms, wr.Fix(stms));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (ForSelectStatement)base.Fix(cx);
             r += (WhileStatement.Loop, cx.obuids[loop]);
-            r += (Cursor, cx.obuids[sel]);
-            r += (WhenPart.Stms, cx.Fix(stms));
+            r += (Cursor, cx.obuids[cursor]);
+            r += (Sel, cx.obuids[sel]);
+            r += (Stms, cx.Fix(stms));
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1999,6 +2002,7 @@ namespace Pyrrho.Level3
             var da = ((Query)cx.obs[sel]).RowSets(cx,BTree<long,RowSet.Finder>.Empty);
             if (da == null)
                 return cx;
+            cx.data += (sel, da);
             var cs = (CursorSpecification)cx.obs[sel];
             var qe = (QueryExpression)cx.obs[cs.union];
             var qs = (QuerySpecification)cx.obs[qe.left];
@@ -2006,6 +2010,7 @@ namespace Pyrrho.Level3
             for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
             {
                 ac.Add(qs);
+                ac.from = cx.data[qs.defpos].finder;
                 ac.brk = cx as Activation;
                 ac.cont = ac;
                 ac = (Activation)ObeyList(stms, ac);
@@ -2038,7 +2043,7 @@ namespace Pyrrho.Level3
     /// </summary>
 	internal class OpenStatement : Executable
 	{
-        SqlCursor cursor => (SqlCursor)mem[FetchStatement.Cursor];
+        long cursor => (long)(mem[FetchStatement.Cursor]??-1L);
         /// <summary>
         /// Constructor: an open statement from the parser
         /// </summary>
@@ -2062,25 +2067,27 @@ namespace Pyrrho.Level3
         internal override void Scan(Context cx)
         {
             base.Scan(cx);
-            cursor.Scan(cx);
+            var c = (SqlCursor)cx.obs[cursor];
+            c.Scan(cx);
         }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = (OpenStatement)base._Relocate(wr);
-            r += (FetchStatement.Cursor, cursor.Relocate(wr));
+            r += (FetchStatement.Cursor, wr.Fix(cursor));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (OpenStatement)base.Fix(cx);
-            r += (FetchStatement.Cursor, cursor.Fix(cx));
+            r += (FetchStatement.Cursor, cx.obuids[cursor]);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cursor.Calls(defpos, cx);
+            var c = (SqlCursor)cx.obs[cursor];
+            return c.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute an open statement
@@ -2088,7 +2095,9 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            ((Query)cx.obs[cursor.spec]).RowSets(cx,BTree<long, RowSet.Finder>.Empty);
+            var c = (SqlCursor)cx.obs[cursor];
+            var rs = ((Query)cx.obs[c.spec]).RowSets(cx,BTree<long, RowSet.Finder>.Empty);
+            cx.data += (c.spec, rs);
             return cx;
         }
         public override string ToString()
@@ -2104,7 +2113,7 @@ namespace Pyrrho.Level3
     /// </summary>
 	internal class CloseStatement : Executable
 	{
-        public SqlCursor cursor => (SqlCursor)mem[FetchStatement.Cursor];
+        public long cursor => (long)(mem[FetchStatement.Cursor]??-1L);
         /// <summary>
         /// Constructor: a close statement from the parser
         /// </summary>
@@ -2128,25 +2137,27 @@ namespace Pyrrho.Level3
         internal override void Scan(Context cx)
         {
             base.Scan(cx);
-            cursor.Scan(cx);
+            var c = (SqlCursor)cx.obs[cursor];
+            c.Scan(cx);
         }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = (CloseStatement)base._Relocate(wr);
-            r += (FetchStatement.Cursor, cursor.Relocate(wr));
+            r += (FetchStatement.Cursor, wr.Fix(cursor));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (CloseStatement)base.Fix(cx);
-            r += (FetchStatement.Cursor, cursor.Fix(cx));
+            r += (FetchStatement.Cursor, cx.obuids[cursor]);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cursor.Calls(defpos, cx);
+            var c = (SqlCursor)cx.obs[cursor];
+            return c.Calls(defpos, cx);
         }
         /// <summary>
         /// Execute the close statement
@@ -2193,7 +2204,7 @@ namespace Pyrrho.Level3
         /// <param name="h">The fetch behaviour: ALL, NEXT, LAST PRIOR, ABSOLUTE, RELATIVE</param>
         /// <param name="w">The output variables</param>
         public FetchStatement(long dp, SqlCursor n, Sqlx h, SqlValue w)
-        : base(dp, BTree<long, object>.Empty + (Cursor, n.defpos) + (How, h) + (Where, w.defpos))
+        : base(dp, BTree<long, object>.Empty + (Cursor, n.defpos) + (How, h) + (Where, w?.defpos??-1L))
         { }
         protected FetchStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static FetchStatement operator+(FetchStatement s,(long,object)x)
@@ -2278,6 +2289,7 @@ namespace Pyrrho.Level3
                 rb = cx.data[cs.defpos].First(cx);
             while (rb != null && rqpos != rb._pos)
                 rb = rb.Next(cx);
+            cx.values += (cu.defpos, rb);
             if (rb == null)
                 cx = new Signal(defpos, "02000", "No data").Obey(cx);
             else
