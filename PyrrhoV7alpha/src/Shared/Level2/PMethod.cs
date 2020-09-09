@@ -24,10 +24,7 @@ namespace Pyrrho.Level2
         /// The different sorts of Method: static, constructor etc
         /// </summary>
 		public enum MethodType { Instance,Overriding, Static,Constructor };
-        /// <summary>
-        /// The UDT
-        /// </summary>
-		public Domain domain;
+		public UDType udt;
         /// <summary>
         /// The type of this method
         /// </summary>
@@ -43,7 +40,7 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PMethod(string nm, BList<long> ar, Domain rt, 
-            MethodType mt, Domain td, Method md, Ident sce,long pp, Context cx)
+            MethodType mt, UDType td, Method md, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{}
         /// <summary>
@@ -59,11 +56,11 @@ namespace Pyrrho.Level2
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
         protected PMethod(Type tp, string nm, BList<long> ar, 
-            Domain rt, MethodType mt, Domain td, Method md, Ident sce,
+            Domain rt, MethodType mt, UDType td, Method md, Ident sce,
             long pp, Context cx)
             : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
-			domain = td;
+			udt = td;
 			methodType = mt;
             if (mt == MethodType.Constructor)
                 retType = td;
@@ -76,7 +73,7 @@ namespace Pyrrho.Level2
 		public PMethod(Type tp, Reader rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
-            domain = (Domain)x.domain._Relocate(wr);
+            udt = (UDType)x.udt._Relocate(wr);
             methodType = x.methodType;
         }
         protected override Physical Relocate(Writer wr)
@@ -89,7 +86,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
-            wr.PutLong(wr.cx.db.types[domain]);
+            wr.PutLong(udt.defpos);
             wr.PutInt((int)methodType);
 			base.Serialise(wr);
         }
@@ -99,7 +96,7 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
 		{
-			domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
+			udt = (UDType)rdr.context.db.objects[rdr.GetLong()];
 			methodType = (MethodType)rdr.GetInt();
             base.Deserialise(rdr);
         }
@@ -109,7 +106,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Method " + methodType.ToString()+" " + domain 
+            return "Method " + methodType.ToString()+" " + udt 
                 + "." + nameAndArity + "[" + retType + "] " + source.ident; 
 		}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -117,18 +114,18 @@ namespace Pyrrho.Level2
             switch (that.type)
             {
                 case Type.Drop:
-                    if (db.types[domain] == ((Drop)that).delpos)
+                    if (udt.defpos == ((Drop)that).delpos)
                         return new DBException("40016", ppos, that, ct);
                     break;
                 case Type.Change:
-                    if (db.types[domain] == ((Change)that).affects)
+                    if (udt.defpos == ((Change)that).affects)
                         return new DBException("40021", ppos, that, ct);
                     break;
                 case Type.PMethod2:
                 case Type.PMethod:
                     {
                         var t = (PMethod)that;
-                        if (db.types[domain] == db.types[t.domain]
+                        if (udt.defpos == t.udt.defpos
                             && nameAndArity == t.nameAndArity)
                             return new DBException("40039", ppos, that, ct);
                         break;
@@ -146,8 +143,11 @@ namespace Pyrrho.Level2
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
-            ro = ro + mt + (mi,true) + (cx.db.types[domain],domain+(mt,name));
+            var mi = new ObInfo(defpos, name, udt)+(ObInfo.Privilege, priv);
+            var oi = (ObInfo)ro.infos[udt.defpos] ??
+                throw new PEException("PE918");
+            var ut = (UDType)oi.domain;
+            ro = ro + mt + (mi,false) + (udt.defpos,oi+(DBObject._Domain,ut+(mt,name)));
             cx.db += (ro, p);
             cx.Install(mt,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

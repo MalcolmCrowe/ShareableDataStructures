@@ -3,6 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System;
+using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -78,6 +79,9 @@ namespace Pyrrho.Level3
         protected Role(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Role operator+(Role r,(long,object)x)
         {
+            var (p, ob) = x;
+            if (p > 0 && !(ob is ObInfo))
+                throw new PEException("PE917");
             return (Role)r.New(r.mem + x);
         }
         public static Role operator +(Role r, (ObInfo,bool) x)
@@ -97,14 +101,18 @@ namespace Pyrrho.Level3
         public static Role operator +(Role r, Procedure p)
         {
             var ps = r.procedures;
-            var pa = ps[p.name] ?? BTree<int, long>.Empty;
+            var pa = ps[p.name] ?? CTree<int, long>.Empty;
             return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
         }
-        public static Role operator +(Role r, PMethod p)
+        public static Role operator +(Role r, Method p)
         {
-            var ps = r.procedures;
-            var pa = ps[p.name] ?? BTree<int, long>.Empty;
-            return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
+            var oi = (ObInfo)r.infos[p.udType.defpos];
+            var udt = (UDType)oi.domain;
+            var ms = udt.methods;
+            var pa = ms[p.name] ?? CTree<int, long>.Empty;
+            return new Role(r.defpos, 
+                r.mem + (udt.defpos, oi+(_Domain,
+                udt + (Domain.Methods,ms+(p.name, pa + (p.arity, p.defpos))))));
         }
         public static Role operator -(Role r, ObInfo ob)
         {

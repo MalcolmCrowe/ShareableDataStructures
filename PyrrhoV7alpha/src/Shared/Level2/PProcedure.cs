@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.Data.SqlTypes;
+using System.Security.Principal;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -89,7 +90,7 @@ namespace Pyrrho.Level2
             parameters = wr.Fix(x.parameters);
             nameAndArity = x.nameAndArity;
             name = x.name;
-            proc = ((Procedure)framing.obs[defpos]).body;//wr.Fix(proc);
+            proc = ((Procedure)framing.obs[defpos])?.body??-1L;//wr.Fix(proc);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -127,7 +128,7 @@ namespace Pyrrho.Level2
             else
                 retType = Domain.Null;
             if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
-                retType = mt.domain;
+                retType = mt.udt;
             source = new Ident(rdr.GetString(), ppos+1);
             var psr = new Parser(rdr.context, source);
             var (pps, _) = psr.ParseProcedureHeading(new Ident(name, ppos));
@@ -142,7 +143,7 @@ namespace Pyrrho.Level2
             var psr = new Parser(rdr.context, source);
             Install(psr.cx, rdr.Position);
             var (_, xp) = psr.ParseProcedureHeading(new Ident(name, ppos));
-            proc = psr.ParseProcedureStatement(xp).defpos;
+            proc = psr.ParseProcedureStatement(xp)?.defpos??-1L;
             psr.cx.obs += (ppos, ((Procedure)psr.cx.obs[ppos]) + (Procedure.Body, proc));
             Frame(psr.cx);
             // final installation now that the body is defined

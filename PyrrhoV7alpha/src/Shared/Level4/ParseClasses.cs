@@ -55,7 +55,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the target type
         /// </summary>
-        public Domain type;
+        public UDType type;
         /// <summary>
         /// the number of parameters of the method
         /// </summary>

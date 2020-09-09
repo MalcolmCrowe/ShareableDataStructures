@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
                         return new DBException("40059", ppos, that, ct);
                     break;
                 case Type.PMethod2:
-                case Type.PMethod: if (delpos == db.types[((PMethod)that).domain])
+                case Type.PMethod: if (delpos == ((PMethod)that).udt.defpos)
                         return new DBException("40060", ppos, that, ct);
                     break;
                 case Type.Edit:

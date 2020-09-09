@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Runtime.CompilerServices;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -16,25 +17,25 @@ using Pyrrho.Level4;
 // this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level2
 {
-	/// <summary>
-	/// A new Domain definition
-	/// </summary>
-	internal class PDomain : Physical
-	{
+    /// <summary>
+    /// A new Domain definition
+    /// </summary>
+    internal class PDomain : Physical
+    {
         /// <summary>
         /// The defining position of the Domain
         /// </summary>
-		public virtual long defpos { get { return ppos; }}
+		public virtual long defpos { get { return ppos; } }
         internal Domain domain;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (domain.super!=null && !wr.cx.db.types.Contains(domain.super))
+            if (domain.super != null && !wr.cx.db.types.Contains(domain.super))
                 domain.super.Create(wr, tr);
-            if (domain.elType!=null && !wr.cx.db.types.Contains(domain.elType))
-                domain.elType.Create(wr, tr); 
-            if (!Committed(wr,domain.structure))
+            if (domain.elType != null && !wr.cx.db.types.Contains(domain.elType))
+                domain.elType.Create(wr, tr);
+            if (!Committed(wr, domain.structure))
                 return domain.structure;
-            if (domain.orderFunc!=null && !Committed(wr, domain.orderFunc.defpos))
+            if (domain.orderFunc != null && !Committed(wr, domain.orderFunc.defpos))
                 return domain.orderFunc.defpos;
             return -1L;
         }
@@ -58,19 +59,19 @@ namespace Pyrrho.Level2
             var k = (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET) ? Domain.Element :
                     Domain.Structure;
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv);
-            domain = new Domain(dt,BTree<long, object>.Empty
-                + (Domain.Precision, dl)+(Domain.Scale,sc)
-                + (Domain.Charset, ch) 
-                + (Domain.Culture,CultureInfo.GetCultureInfo(co))
-                + (Domain.DefaultString,dv)
-                + (Domain.Default, v) + (k, sd) + (Basis.Name,nm));
+            domain = new Domain(dt, BTree<long, object>.Empty
+                + (Domain.Precision, dl) + (Domain.Scale, sc)
+                + (Domain.Charset, ch)
+                + (Domain.Culture, CultureInfo.GetCultureInfo(co))
+                + (Domain.DefaultString, dv)
+                + (Domain.Default, v) + (k, sd) + (Basis.Name, nm));
         }
         public PDomain(string nm, Domain dt, long pp, Context cx)
             : this(Type.PDomain, nm, dt, pp, cx) { }
 
         protected PDomain(Type t, string nm, Domain dt, long pp, Context cx)
-        : base(t, pp, cx) 
-        {        
+        : base(t, pp, cx)
+        {
             domain = dt + (Basis.Name, nm);
         }
         /// <summary>
@@ -85,17 +86,17 @@ namespace Pyrrho.Level2
         protected PDomain(Type t, Domain dt, long pp, Context cx)
         : base(t, pp, cx)
         {
-            if (dt.representation.Count > 0 && dt.structure<0)
+            if (dt.representation.Count > 0 && dt.structure < 0)
             {
                 var cs = CList<Domain>.Empty;
-                for (var b = dt.rowType.First();b!=null;b=b.Next())
-                    cs+= cx.obs[b.value()].domain;
+                for (var b = dt.rowType.First(); b != null; b = b.Next())
+                    cs += cx.obs[b.value()].domain;
                 for (var b = cx.obs.First(); b != null; b = b.Next())
                 {
                     var ob = b.value();
                     if (ob is Domain dc && _Match(cx, cs, dc))
                     {
-                        dt+=(Domain.Structure,dc.defpos);
+                        dt += (Domain.Structure, dc.defpos);
                         break;
                     }
                     else if (ob.mem[DBObject._Domain] is Domain db && _Match(cx, cs, db))
@@ -112,9 +113,9 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PDomain(Reader rdr) : this(Type.PDomain,rdr) 
+		public PDomain(Reader rdr) : this(Type.PDomain, rdr)
         {
-            rdr.context.db += (ppos, domain,rdr.context.db.loadpos);
+            rdr.context.db += (ppos, domain, rdr.context.db.loadpos);
         }
         /// <summary>
         /// Constructor: a new Domain definition from the buffer
@@ -122,12 +123,12 @@ namespace Pyrrho.Level2
         /// <param name="t">The PDomain type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PDomain(Type t, Reader rdr) : base(t,rdr) {}
+		protected PDomain(Type t, Reader rdr) : base(t, rdr) { }
         protected PDomain(PDomain x, Writer wr) : base(x, wr)
         {
             domain = (Domain)x.domain._Relocate(wr);
         }
-        static bool _Match(Context cx,CList<Domain> cs,Domain dc)
+        static bool _Match(Context cx, CList<Domain> cs, Domain dc)
         {
             if (dc.defpos == -1L)
                 return false;
@@ -140,9 +141,13 @@ namespace Pyrrho.Level2
             }
             return true;
         }
-        protected override Physical Relocate(Writer wr)
+        protected virtual PDomain New(Writer wr)
         {
             return new PDomain(this, wr);
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return New(wr);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase

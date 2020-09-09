@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level3;
@@ -57,7 +58,7 @@ namespace Pyrrho.Level2
             modifydefpos = dp;
             name = nm;
             body = pc;
-            now = nw;
+            now = nw?? throw new PEException("PE919");
         }
         /// <summary>
         /// Constructor: A Modify request from the buffer
@@ -70,6 +71,7 @@ namespace Pyrrho.Level2
             modifydefpos = wr.Fix(x.modifydefpos);
             name = x.name;
             body = x.body;
+            now = x.now;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -102,10 +104,30 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
             switch (name)
             {
+                default:
+                    {
+                        var up = rdr.context.db.role.dbobjects[name];
+                        var oi = (ObInfo)rdr.context.db.role.infos[up];
+                        var udt = (UDType)oi.domain;
+                        var psr = new Parser(rdr.context, new Ident(body, ppos + 2));
+                        var (_,xp) = psr.ParseProcedureHeading(new Ident(name, ppos+1));
+                        for (var b = udt.representation.First(); b != null; b = b.Next())
+                        {
+                            var p = b.key();
+                            var ic = new Ident(psr.cx.Inf(p).name, p);
+                            psr.cx.defs += (ic, p);
+                            psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
+                        }
+                        now = psr.ParseProcedureStatement(xp);
+                        framing = new Framing(psr.cx);
+                        break;
+                    }
                 case "Source":
-                    var ps = rdr.context.db.objects[modifydefpos] as Procedure;
-                    now = new Parser(rdr.context).ParseQueryExpression(body,ps.domain);
-                    break;
+                    {
+                        var ps = rdr.context.db.objects[modifydefpos] as Procedure;
+                        now = new Parser(rdr.context).ParseQueryExpression(body, ps.domain);
+                        break;
+                    }
                 case "Insert": // we ignore all of these (PView1)
                 case "Update":
                 case "Delete":
@@ -113,6 +135,15 @@ namespace Pyrrho.Level2
                     break;
             }
 		}
+        internal override void OnLoad(Reader rdr)
+        {
+            if (now == null)
+                return;
+            var psr = new Parser(rdr.context);
+            var pr = (Method)rdr.context.db.objects[ppos];
+            psr.cx.srcFix = ppos + 1;
+            rdr.context.obs += (pr.defpos, pr + (Procedure.Body, now));
+        }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -149,8 +180,9 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            ((DBObject)cx.db.objects[modifydefpos]).Modify(cx,now,p);
-            cx.obs += (modifydefpos, (DBObject)cx.db.objects[modifydefpos]);
+            ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, now, p);
+            var ob = ((DBObject)cx.db.objects[modifydefpos])??now;
+            cx.obs += (modifydefpos,ob);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

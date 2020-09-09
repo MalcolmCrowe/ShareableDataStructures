@@ -296,13 +296,6 @@ namespace Pyrrho.Level3
                 m += (RowType, rt + x.Item1);
             return (Domain)d.New(m + (Representation, d.representation + x));
         }
-        public static Domain operator +(Domain ut, (Method, string) m)
-        {
-            var ms = ut.methods[m.Item2] ?? CTree<int, long>.Empty;
-            ms += (m.Item1.arity, m.Item1.defpos);
-            return new Domain(-1L,ut.mem + (Methods, ut.methods + (m.Item2, ms))
-                + (m.Item1.defpos, m.Item2));
-        }
         public static Domain operator+(Domain d,BTree<long,long>cm)
         {
             var rs = d.representation;
@@ -370,6 +363,8 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal long Create(Writer wr,Transaction tr)
         {
+            if (defpos >= 0)
+                return defpos;
             if (wr.cx.db.types.Contains(this))
                 return wr.cx.db.types[this];
             Physical pp = new PDomain(this,wr.Length,wr.cx);
@@ -3641,5 +3636,31 @@ namespace Pyrrho.Level3
         public readonly static string STRING = xsd + "string";
         public readonly static string DATETIME = xsd + "dateTime";
         public readonly static string DATE = xsd + "date";
+    }
+    internal class UDType: Domain
+    {
+        public UDType(PType pt) : base(pt) { }
+        internal UDType(Domain dm) : base(dm.defpos, dm.mem + (Kind, Sqlx.TYPE)) { }
+        protected UDType(long dp,BTree<long,object>m) :base(dp,m)
+        { }
+        public static Domain operator +(UDType ut, (Method, string) m)
+        {
+            var ms = ut.methods[m.Item2] ?? CTree<int, long>.Empty;
+            ms += (m.Item1.arity, m.Item1.defpos);
+            return new UDType(ut.defpos, ut.mem + (Methods, ut.methods + (m.Item2, ms))
+                + (m.Item1.defpos, m.Item2));
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new UDType(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new UDType(dp,mem);
+        }
+        public override string ToString()
+        {
+            return "UDType: "+name+" "+Uid(defpos);
+        }
     }
 }

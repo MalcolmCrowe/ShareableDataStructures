@@ -2024,7 +2024,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             if (forvn != null)
             { sb.Append(" Var="); sb.Append(forvn); }
-            if (cursor != null)
+            if (cursor != -1L)
             { sb.Append(" Cursor="); sb.Append(cursor); }
             sb.Append(" Sel="); sb.Append(Uid(sel));
             var cm = " Stms: ";
@@ -2357,7 +2357,10 @@ namespace Pyrrho.Level3
         protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
                +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
-        { }
+        {
+            if (pr == null)
+                throw new DBException("42108", pn);
+        }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
         {

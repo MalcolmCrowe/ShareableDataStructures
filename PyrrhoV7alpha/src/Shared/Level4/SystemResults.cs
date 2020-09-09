@@ -2638,7 +2638,7 @@ namespace Pyrrho.Level4
                     PMethod t = (PMethod)ph;
                     return new TRow(res,
                         Pos(t.ppos),
-                        new TChar(t.domain.ToString()),
+                        new TChar(t.udt.ToString()),
                         new TChar(t.nameAndArity),
                         Pos(t.trans));
             }

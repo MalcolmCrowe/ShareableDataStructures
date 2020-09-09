@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Context cx)
             : base(m, cx, BTree<long, object>.Empty
-                  + (TypeDef, m.domain) + (MethodType, m.methodType))
+                  + (TypeDef, m.udt) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Method operator+(Method m,(long,object)x)

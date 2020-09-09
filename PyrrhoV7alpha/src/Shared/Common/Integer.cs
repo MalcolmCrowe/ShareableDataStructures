@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -1157,11 +1158,14 @@ namespace Pyrrho.Common
 				exp = int.Parse(s.Substring(m+1));
 				s = s.Substring(0,m);
 			}
-			int n = s.IndexOf('.');
-			if (n<0)
-				return new Numeric(Integer.Parse(s),-exp);
-			int ln = s.Length;
-			return new Numeric(Integer.Parse(s.Substring(0,n)+s.Substring(n+1)),ln-n-1-exp);
+            var ninfo = new NumberFormatInfo();
+            var dsp = ninfo.NumberDecimalSeparator;
+            int n = s.IndexOf(dsp);
+            if (n < 0)
+                return new Numeric(Integer.Parse(s), -exp);
+            int ln = s.Length;
+            return new Numeric(Integer.Parse(s.Substring(0, n) + s.Substring(n + dsp.Length)),
+                ln - n - dsp.Length - exp);
 		}
         public override bool Equals(object obj)
         {

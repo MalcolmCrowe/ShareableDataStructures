@@ -1,6 +1,8 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Security.Authentication.ExtendedProtection;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -23,7 +25,7 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class PType : PDomain
 	{
-        internal Domain under;
+        internal UDType under;
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser
         /// </summary>
@@ -32,8 +34,7 @@ namespace Pyrrho.Level2
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
         protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
-            : base(t, nm.ident, Sqlx.TYPE, dm.prec,(byte)dm.scale, 
-                  dm.charSet,"",dm.defaultString,dm.super.defpos, pp, cx)
+            : base(t, nm.ident, new UDType(dm), pp, cx)
 		{
 		}
         public PType(Ident nm, Domain dm, long pp, Context cx)
@@ -52,14 +53,21 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
 		protected PType(Type t, Reader rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
-        { }
+        {
+            if (x.under!=null)
+                under = (UDType)wr.Fixed(under.defpos);
+        }
+        protected override PDomain New(Writer wr)
+        {
+            return new PType(this, wr);
+        }
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(wr.cx.db.types[under]);
+            wr.PutLong((under!=null)?wr.cx.db.types[under]:-1L);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -70,7 +78,7 @@ namespace Pyrrho.Level2
         {
             var sp = rdr.GetLong();
             if (sp!=-1)
-                under = (Domain)rdr.context.db.objects[sp];
+                under = (UDType)rdr.context.db.objects[sp];
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -103,14 +111,13 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var dt = new Domain(this);
-            if (domain.name != "")
-                ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
+            domain = new UDType(this); 
+            ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos))
+                + (ppos,new ObInfo(ppos,domain.name,domain));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
-            cx.db = cx.db + (ro,p) + (ppos, dt, p);
-            if (dt!=null && cx.db.types.Contains(dt))
-                cx.db += (Database.Types, cx.db.types + (dt-Domain.Representation, ppos));
+            cx.db = cx.db + (ro,p) + (ppos, domain, p);
+            cx.db += (Database.Types, cx.db.types + (domain-Domain.Representation, ppos));
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

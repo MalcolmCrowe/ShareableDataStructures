@@ -653,7 +653,20 @@ namespace Pyrrho
                     }
                 case 6: cell.val = GetRow(); break;
                 case 7: cell.val = GetArray(ref rc); break;
-                case 8: cell.val = double.Parse(GetString()); break;
+                case 8:
+                    {
+                        var s = GetString();
+                        try
+                        {
+                            cell.val = double.Parse(s);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine("|"+ s + "| " + e.Message);
+                            throw e;
+                        }
+                    }
+                    break;
                 case 9: cell.val = GetInt() != 0; break;
                 case 10: cell.val = GetInterval(); break;
                 case 11: cell.val = GetTimeSpan(); break;
