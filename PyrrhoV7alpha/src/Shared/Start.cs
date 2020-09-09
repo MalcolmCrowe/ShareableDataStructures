@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading;
@@ -78,6 +79,7 @@ namespace Pyrrho
             // process the connection string
             tcp = new TCPStream();
             myThread = Thread.CurrentThread;
+            myThread.CurrentCulture = CultureInfo.InvariantCulture;
             tcp.client = client;
             string user = null;
             int p = -1;
