@@ -631,7 +631,8 @@ namespace Pyrrho
                 case 2:
                     {
                         string s = GetString();
-                        if (decimal.TryParse(s, out decimal de))
+                        if (decimal.TryParse(s, NumberStyles.AllowDecimalPoint,
+                            CultureInfo.InvariantCulture,out decimal de))
                             cell.val = de;
                         else
                             cell.val = s;
@@ -658,7 +659,7 @@ namespace Pyrrho
                         var s = GetString();
                         try
                         {
-                            cell.val = double.Parse(s);
+                            cell.val = double.Parse(s,CultureInfo.InvariantCulture);
                         }
                         catch (Exception e)
                         {
