@@ -2629,6 +2629,19 @@ namespace Pyrrho.Level3
                 qn = ((SqlValue)cx.obs[b.value()]).Needs(cx,qn);
             return qn;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = "";
+            sb.Append(" [");
+            for (var b=columns.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// Prepare an SqlValue with reified columns for use in trigger
@@ -4028,7 +4041,9 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            return sce.name+"(..)";
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Sce:");sb.Append(Uid(sce.defpos));
+            return sb.ToString();
         }
      }
     /// <summary>

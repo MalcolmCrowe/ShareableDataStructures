@@ -1255,21 +1255,18 @@ namespace Pyrrho.Level4
             var ut = (UDType)oi.domain;
             var meth = cx.db.objects[ut.methods[mn.name]?[mn.arity]??-1L] as Method??
                 throw new DBException("42132", mn.mname.ToString(), ut.name).Mix();
-            for (var b = ut.representation.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var ic = new Ident(cx.Inf(p).name, p);
-                cx.defs += (ic, p);
-                cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
-            }
+            ut.Defs(cx);
             meth +=(Procedure.Params, mn.ins);
             meth += (Procedure.Body, ParseProcedureStatement(mn.retType).defpos);
             string ss = new string(lxr.input,st, lxr.start - st);
             // we really should check the signature here
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
-               cx.Add(new Modify(mn.mname.ident, meth.defpos, mn.signature + " " + ss,
-                    meth, tr.nextPos, cx));
-
+            {
+                var md = new Modify(mn.mname.ident, meth.defpos, mn.signature + " " + ss,
+                     meth, tr.nextPos, cx);
+                md.Frame(cx);
+                cx.Add(md);
+            }
             return (Executable)cx.Add(cr);
         }
         /// <summary>
@@ -2593,7 +2590,6 @@ namespace Pyrrho.Level4
             var cs = new CompoundStatement(lxr.Position, n);
             BList<long> r = BList<long>.Empty;
             Mustbe(Sqlx.BEGIN);
-            var ac = new Activation(cx,cs.label);
             if (tok == Sqlx.TRANSACTION)
                 throw new DBException("25001", "Nested transactions are not supported").ISO();
             if (tok == Sqlx.XMLNAMESPACES)
@@ -4774,12 +4770,7 @@ namespace Pyrrho.Level4
                 && ti.domain is UDType ut)
             {
                 Next();
-                for (var b = ut.representation.First(); b != null; b = b.Next())
-                {
-                    var p = b.key();
-                    var sc = cx.Inf(p);
-                    cx.defs += (new Ident(pn, new Ident(sc.name, p)), sc.defpos);
-                }
+                ut.Defs(cx);
                 return ut;
             }
             r = ParseStandardDataType();

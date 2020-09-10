@@ -140,7 +140,7 @@ namespace Pyrrho.Level2
             if (now == null)
                 return;
             var psr = new Parser(rdr.context);
-            var pr = (Method)rdr.context.db.objects[ppos];
+            var pr = (Method)rdr.context.db.objects[modifydefpos];
             psr.cx.srcFix = ppos + 1;
             rdr.context.obs += (pr.defpos, pr + (Procedure.Body, now));
         }

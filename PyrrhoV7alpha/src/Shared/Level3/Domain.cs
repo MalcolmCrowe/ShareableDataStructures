@@ -3658,6 +3658,19 @@ namespace Pyrrho.Level3
         {
             return new UDType(dp,mem);
         }
+        internal void Defs(Context cx)
+        {
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var ic = new Ident(cx.Inf(p).name, p);
+                cx.defs += (ic, p);
+                var dm = b.value();
+                cx.Add(new SqlValue(ic) + (_Domain, dm));
+                if (dm is UDType u)
+                    u.Defs(cx);
+            }
+        }
         public override string ToString()
         {
             return "UDType: "+name+" "+Uid(defpos);

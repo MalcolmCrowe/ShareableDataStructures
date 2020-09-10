@@ -97,6 +97,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			udt = (UDType)rdr.context.db.objects[rdr.GetLong()];
+            udt.Defs(rdr.context);
 			methodType = (MethodType)rdr.GetInt();
             base.Deserialise(rdr);
         }
