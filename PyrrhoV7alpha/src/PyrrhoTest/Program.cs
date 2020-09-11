@@ -562,7 +562,7 @@ namespace Test
                 "if char_length(a)<=1 then return a "+
                 "else return reverse(substring(a from 1 for char_length(a)-1))"+
                 "   ||substring(a from 0 for 1) end if");
-            CheckResults(17, 1, "select reverse('Fred')", "[{Col0:'derF'}]");
+            CheckResults(17, 1, "select reverse('Fred')", "[{REVERSE:'derF'}]");
             Rollback();
         }
         public void Test18(int t)
@@ -613,7 +613,7 @@ namespace Test
                 "  until done end repeat;" +
                 "  close c;" +
                 "  return a end");
-            CheckResults(19, 1, "select gather1()", "[{Col0:'First, Second'}]");
+            CheckResults(19, 1, "select gather1()", "[{GATHER1:'First, Second'}]");
             conn.Act("create function gather2() returns char "+
                 "  begin declare b char default '';" +
                 "   for select a2 from ga do " +
@@ -624,7 +624,7 @@ namespace Test
                 "    end if " +
                 "   end for;" +
                 "   return b end");
-            CheckResults(19, 2, "select gather2()", "[{Col0:'First, Second'}]");
+            CheckResults(19, 2, "select gather2()", "[{GATHER2:'First, Second'}]");
             Rollback();
         }
         public void Test20(int t)
@@ -775,10 +775,10 @@ namespace Test
                     var cf = c[sp.Key];
                     if (sp.Value is decimal && cf is decimal)
                     {
-                        var ss = sp.Value?.ToString()??"";
+                        var ss = sp.Value?.ToString() ?? "";
                         var cs = cf.ToString();
-                        for (var i=0;i<ss.Length && i<cs.Length;i++)
-                            if (ss[i]!=cs[i])
+                        for (var i = 0; i < ss.Length && i < cs.Length; i++)
+                            if (ss[i] != cs[i])
                             {
                                 Console.WriteLine("Decimal values " +
                                     cf + " and " + ss + " differ at position " + i);
@@ -789,8 +789,8 @@ namespace Test
                     else if (cf == sp.Value || cf?.ToString() == sp.Value?.ToString())
                         nc++;
                     else
-                        throw new Exception("Values |"+(cf?.ToString()??"")
-                            +"|" + (sp.Value?.ToString()) ?? "" +"| do not match");
+                        throw new Exception("Values |" + (cf?.ToString() ?? "")
+                            + "|" + (sp.Value?.ToString()) ?? "" + "| do not match");
                 }
             if (nc != c.fields.Count)
                 throw new Exception("Missing field(s)");

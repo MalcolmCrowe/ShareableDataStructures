@@ -3080,29 +3080,34 @@ namespace Pyrrho.Level4
                     ps = ParseSqlValueList(xp);
                 Mustbe(Sqlx.RPAREN);
                 int n = ps.Length;
-                var pn = (ic.sub != null) ? ic.sub.ident : ic.ident;
-                var pr = cx.db.GetProcedure(pn, n);
-                var tg = cx.defs[(ic, 1)].Item1;
-                if (ic.sub==null)
+                var pn = ic[ic.Length - 1].ident;
+                if (ic.Length == 1)
                 {
+                    var pr = cx.db.GetProcedure(pn, n);
                     if (pr == null && cx.db.objects[cx.db.role.dbobjects[pn]] is Domain ut)
                     {
                         if (cx.db.objects[ut.methods[pn]?[n] ?? -1L] is Method me)
                         {
-                            var ca = new CallStatement(lp, me, pn, ps, (SqlValue)cx.obs[tg]);
+                            var ca = new CallStatement(lp, me, pn, ps, null);
                             cx.obs += (lp, ca);
-                            return new SqlConstructor(lp, cx, ut,ca);
+                            return new SqlConstructor(lp, cx, ut, ca);
                         }
                         if (ut.Length == n)
                             return new SqlDefaultConstructor(lp, cx, ut, ps);
                     }
-                    if (pr == null && tg == -1L)
+                    if (pr == null)
                         throw new DBException("42108", ic.ident);
                     var cs = new CallStatement(lp, pr, pn, ps);
                     cx.obs += (lp, cs);
                     return (SqlValue)cx.Add(new SqlProcedureCall(ic.iix, cx, cs));
                 }
-                return new SqlMethodCall(ic.iix,cx,new CallStatement(lp,null,pn,ps,(SqlValue)cx.obs[tg]));
+                else
+                {
+                    var vr = Identify(ic, ic.Length - 1);
+                    var ms = new CallStatement(lp, null, pn, ps, vr);
+                    cx.Add(ms);
+                    return new SqlMethodCall(ic.iix, cx, ms);
+                }
             }
             SqlValue r = null;
             if (ic != null)
@@ -3112,60 +3117,64 @@ namespace Pyrrho.Level4
                     return Reify(s0,ic);
                 var r0 = cx.obs[dp];
                 r = r0 as SqlValue;
-                if (r == null || r.domain.kind == Sqlx.CONTENT)
-                {
-                    for (var i=ic.Length;i>0;i--)
-                    {
-                        if (ic.ident!="" && char.IsDigit(ic.ident[0])) // cx.dbformat<51 compatibility
-                        {
-                            var o1 = (DBObject)cx.db.objects[long.Parse(ic.ident)];
-                            r = o1.ToSql(ic, cx.db);
-                            break;
-                        }
-                        var (ob,_, id) = cx.defs[(ic, i)];
-                        if (cx.obs[ob] is SqlValue sv)
-                        {
-                            r = Dotted(sv, id, dp);
-                            cx.defs += (ic, r.defpos);
-                            return r;
-                        }
-                        if (cx.obs[ob] is TableColumn tc)
-                        {
-                            if (i >= 2)
-                            {
-                                var cn = ic[i - 1];
-                                var (f, _) = cx.defs[ic[i - 2].ident];
-                                var fm = (From)cx.obs[f];
-                                for (var b = fm.rowType.First(); b != null; b = b.Next())
-                                {
-                                    var c = (SqlCopy)cx.obs[b.value()];
-                                    if (c.name == cn.ident)
-                                    {
-                                        Reify(c, cn);
-                                        return new SqlCopy(cn.iix, cx, cn.ident, f, tc.defpos);
-                                    }
-                                }
-                            }
-                            return new SqlCopy(ic.iix, cx, ic.ident, tc.tabledefpos, tc.defpos);
-                        }
-                    }
-                    if (r?.from >= 0 && r.from < Transaction.Analysing && r.defpos > Transaction.Analysing)
-                    {
-                        if (cx.obs[r.from] != null && r is SqlCopy cp) // replace it with one that has a from
-                        {
-                            var nc = new SqlCopy(ic.iix, cx, ic.ident, r.from,  cp);
-                            r = (SqlValue)cx.Replace(r, nc);
-                            cx.defs += (new Ident(ic.ToString(), ic.iix), r.defpos);
-                        }
-                    }
-                    r = Dotted(r,ic,dp);
-                    cx.defs += (ic, r.defpos);
-                }
+                if (r==null || r.domain == Domain.Content)
+                    r = Identify(ic, ic.Length);
                 r = Reify(r,ic);
             }
             if (pseudoTok != Sqlx.NO)
                 r = new SqlFunction(lxr.Position, cx, pseudoTok, r, null, null, Sqlx.NO);
             return (SqlValue)cx.Add(r);
+        }
+        SqlValue Identify(Ident ic,int n)
+        {
+            SqlValue r = null;
+            for (var i = n; i > 0; i--)
+            {
+                if (ic.ident != "" && char.IsDigit(ic.ident[0])) // cx.dbformat<51 compatibility
+                {
+                    var o1 = (DBObject)cx.db.objects[long.Parse(ic.ident)];
+                    r = o1.ToSql(ic, cx.db);
+                    break;
+                }
+                var (ob, _, id) = cx.defs[(ic, i)];
+                if (cx.obs[ob] is SqlValue sv)
+                {
+                    r = Dotted(sv, id, ic.iix);
+                    cx.defs += (ic, r.defpos);
+                    return r;
+                }
+                if (cx.obs[ob] is TableColumn tc)
+                {
+                    if (i >= 2)
+                    {
+                        var cn = ic[i - 1];
+                        var (f, _) = cx.defs[ic[i - 2].ident];
+                        var fm = (From)cx.obs[f];
+                        for (var b = fm.rowType.First(); b != null; b = b.Next())
+                        {
+                            var c = (SqlCopy)cx.obs[b.value()];
+                            if (c.name == cn.ident)
+                            {
+                                Reify(c, cn);
+                                return new SqlCopy(cn.iix, cx, cn.ident, f, tc.defpos);
+                            }
+                        }
+                    }
+                    return new SqlCopy(ic.iix, cx, ic.ident, tc.tabledefpos, tc.defpos);
+                }
+            }
+            if (r?.from >= 0 && r.from < Transaction.Analysing && r.defpos > Transaction.Analysing)
+            {
+                if (cx.obs[r.from] != null && r is SqlCopy cp) // replace it with one that has a from
+                {
+                    var nc = new SqlCopy(ic.iix, cx, ic.ident, r.from, cp);
+                    r = (SqlValue)cx.Replace(r, nc);
+                    cx.defs += (new Ident(ic.ToString(), ic.iix), r.defpos);
+                }
+            }
+            r = Dotted(r, ic, ic.iix);
+            cx.defs += (ic, r.defpos);
+            return r;
         }
         SqlValue Reify(SqlValue sv,Ident ic)
         {
@@ -3199,7 +3208,14 @@ namespace Pyrrho.Level4
             for (var b = s?.columns.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is SqlValue c && c.name==ic.ident)
                     return new SqlValueExpr(dp, cx, Sqlx.DOT, 
-                        s, Dotted(c, ic.sub,ic.iix-1), Sqlx.NO) + (SqlValue._From,s.from);
+                        s, Dotted(c, ic.sub,ic.iix-1), Sqlx.NO) + (DBObject._From,s.from);
+            if (s?.domain is UDType ut)
+            {
+                ut.Defs(cx);
+                if (cx.obs[cx.defs[ic]] is SqlValue d && d.name == ic.ident)
+                    return new SqlValueExpr(dp, cx, Sqlx.DOT,
+                        s, Dotted(d, ic.sub, ic.iix - 1), Sqlx.NO) + (DBObject._From, s.from);
+            }
             var nv = new SqlValue(ic);
             cx.Add(nv);
             if (s == null || s.domain.kind==Sqlx.CONTENT)
