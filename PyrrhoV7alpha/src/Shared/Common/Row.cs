@@ -874,13 +874,8 @@ namespace Pyrrho.Common
                     return this[i];
                 return null;
             }
-            set
-            {
-                int i;
-                if (int.TryParse(n, out i))
-                    this[i] = value;
-            }
         }
+        internal TypedValue this[int i] => list.PositionAt(i).value();
         public override int _CompareTo(object obj)
         {
             var that = (TArray)obj;
@@ -1324,10 +1319,11 @@ namespace Pyrrho.Common
         {
             var vals = BTree<long, TypedValue>.Empty;
             var i = 0;
-            for (var b = dt.rowType.First(); i < v.Length && b != null; b = b.Next(), i++)
+            for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
             {
                 var p = b.value();
-                vals += (p, v[i] ?? dt.representation[p].defaultValue);
+                var vi = (i<v.Length)?v[i]:null;
+                vals += (p, vi ?? dt.representation[p].defaultValue);
             }
             values = vals;
         }

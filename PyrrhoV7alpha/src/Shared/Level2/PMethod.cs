@@ -147,9 +147,9 @@ namespace Pyrrho.Level2
             var mi = new ObInfo(defpos, name, udt)+(ObInfo.Privilege, priv);
             var oi = (ObInfo)ro.infos[udt.defpos] ??
                 throw new PEException("PE918");
-            var ut = (UDType)oi.domain;
-            ro = ro + mt + (mi,false) + (udt.defpos,oi+(DBObject._Domain,ut+(mt,name)));
-            cx.db += (ro, p);
+            oi += (mt,name);
+            ro = ro + mt + (oi,true) + (mi,false);
+            cx.db = cx.db + (ro, p);
             cx.Install(mt,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

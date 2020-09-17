@@ -527,9 +527,9 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.FOR);
                         var tp = lxr.val.ToString();
                         Mustbe(Sqlx.ID);
-                        var ut = cx.db.objects[cx.db.role.dbobjects[tp]] as Domain ??
+                        var oi = cx.db.role.infos[cx.db.role.dbobjects[tp]] as ObInfo ??
                             throw new DBException("42119", tp);
-                        ob = (DBObject)ut.mem[ut.methods[n][arity]];
+                        ob = (DBObject)oi.mem[oi.methodInfos[n][arity]];
                         break;
                     }
                 default:
@@ -1252,10 +1252,9 @@ namespace Pyrrho.Level4
             MethodName mn = ParseMethod(Domain.Null);
             int st = lxr.start;
             var oi = (ObInfo)cx.db.role.infos[mn.type.defpos];
-            var ut = (UDType)oi.domain;
-            var meth = cx.db.objects[ut.methods[mn.name]?[mn.arity]??-1L] as Method??
-                throw new DBException("42132", mn.mname.ToString(), ut.name).Mix();
-            ut.Defs(cx);
+            var meth = cx.db.objects[oi.methodInfos[mn.name]?[mn.arity]??-1L] as Method??
+                throw new DBException("42132", mn.mname.ToString(), oi.name).Mix();
+            ((UDType)oi.domain).Defs(cx);
             meth +=(Procedure.Params, mn.ins);
             meth += (Procedure.Body, ParseProcedureStatement(mn.retType).defpos);
             string ss = new string(lxr.input,st, lxr.start - st);
@@ -2348,6 +2347,7 @@ namespace Pyrrho.Level4
                         fm = new Framing(cx);
                     pr += (DBObject._Framing, fm);
                     s = new string(lxr.input, st, lxr.start - st);
+                    pr += (Procedure.Clause, s);
                     cx.result = null;
                     if (cx.db.parse != op)
                         cx.db += (Database._ExecuteStatus, op);
@@ -3080,33 +3080,34 @@ namespace Pyrrho.Level4
                     ps = ParseSqlValueList(xp);
                 Mustbe(Sqlx.RPAREN);
                 int n = ps.Length;
-                var pn = ic[ic.Length - 1].ident;
+                var pn = ic[ic.Length - 1];
                 if (ic.Length == 1)
                 {
-                    var pr = cx.db.GetProcedure(pn, n);
-                    if (pr == null && cx.db.objects[cx.db.role.dbobjects[pn]] is Domain ut)
+                    var pr = cx.db.GetProcedure(pn.ident, n);
+                    if (pr == null && cx.db.objects[cx.db.role.dbobjects[pn.ident]] is Domain ut)
                     {
-                        if (cx.db.objects[ut.methods[pn]?[n] ?? -1L] is Method me)
+                        var oi = (ObInfo)cx.db.role.infos[ut.defpos];
+                        if (cx.db.objects[oi.methodInfos[pn.ident]?[n] ?? -1L] is Method me)
                         {
-                            var ca = new CallStatement(lp, me, pn, ps, null);
+                            var ca = new CallStatement(lp, me, pn.ident, ps, null);
                             cx.obs += (lp, ca);
-                            return new SqlConstructor(lp, cx, ut, ca);
+                            return new SqlConstructor(pn.iix, cx, ca);
                         }
                         if (ut.Length == n)
-                            return new SqlDefaultConstructor(lp, cx, ut, ps);
+                            return new SqlDefaultConstructor(pn.iix, cx, ut, ps);
                     }
                     if (pr == null)
                         throw new DBException("42108", ic.ident);
-                    var cs = new CallStatement(lp, pr, pn, ps);
+                    var cs = new CallStatement(lp, pr, pn.ident, ps);
                     cx.obs += (lp, cs);
-                    return (SqlValue)cx.Add(new SqlProcedureCall(ic.iix, cx, cs));
+                    return (SqlValue)cx.Add(new SqlProcedureCall(pn.iix, cx, cs));
                 }
                 else
                 {
-                    var vr = Identify(ic, ic.Length - 1);
-                    var ms = new CallStatement(lp, null, pn, ps, vr);
+                    var vr = Identify(ic.Prefix(ic.Length-2));
+                    var ms = new CallStatement(lp, null, pn.ident, ps, vr);
                     cx.Add(ms);
-                    return new SqlMethodCall(ic.iix, cx, ms);
+                    return new SqlMethodCall(pn.iix, cx, ms);
                 }
             }
             SqlValue r = null;
@@ -3118,17 +3119,17 @@ namespace Pyrrho.Level4
                 var r0 = cx.obs[dp];
                 r = r0 as SqlValue;
                 if (r==null || r.domain == Domain.Content)
-                    r = Identify(ic, ic.Length);
+                    r = Identify(ic);
                 r = Reify(r,ic);
             }
             if (pseudoTok != Sqlx.NO)
                 r = new SqlFunction(lxr.Position, cx, pseudoTok, r, null, null, Sqlx.NO);
             return (SqlValue)cx.Add(r);
         }
-        SqlValue Identify(Ident ic,int n)
+        SqlValue Identify(Ident ic)
         {
             SqlValue r = null;
-            for (var i = n; i > 0; i--)
+            for (var i = ic.Length; i > 0; i--)
             {
                 if (ic.ident != "" && char.IsDigit(ic.ident[0])) // cx.dbformat<51 compatibility
                 {
@@ -4546,9 +4547,11 @@ namespace Pyrrho.Level4
             var id = new Ident(lxr);
             Mustbe(Sqlx.ID);
             var dp = cx.db.role.dbobjects[id.ident];
-            var tp = cx.db.objects[dp] as Domain??
-                throw new DBException("42133", id.ident).Mix()
-                    .Add(Sqlx.TYPE, new TChar(id.ident));
+            var oi = cx.db.role.infos[dp] as ObInfo;
+
+            var tp = cx.db.objects[dp] as UDType
+                ?? throw new DBException("42133", id.ident).Mix()
+                    .Add(Sqlx.TYPE, new TChar(id.ident)); 
             if (tok == Sqlx.TO)
             {
                 Next();
@@ -4584,7 +4587,7 @@ namespace Pyrrho.Level4
                 if (MethodModes())
                 {
                     MethodName mn = ParseMethod(Domain.Null);
-                    Method mt = cx.db.objects[tp.methods[mn.mname.ident]?[mn.arity]??-1L] as Method;
+                    Method mt = cx.db.objects[oi.methodInfos[mn.mname.ident]?[mn.arity]??-1L] as Method;
                     if (mt == null)
                         throw new DBException("42133", tp).Mix().
                             Add(Sqlx.TYPE, new TChar(tp.name));
@@ -5265,8 +5268,8 @@ namespace Pyrrho.Level4
                     }
                     if (type == null)
                         throw new DBException("42134").Mix();
-                    var ut = (Domain)cx.db.objects[cx.db.role.dbobjects[type.ident]];
-                    ob = cx.db.objects[ut.methods[n.ident]?[arity]??-1L] as Method;
+                    var oi = (ObInfo)cx.db.role.infos[cx.db.role.dbobjects[type.ident]];
+                    ob = cx.db.objects[oi.methodInfos[n.ident]?[arity]??-1L] as Method;
                 }
                 else
                     ob = cx.db.GetProcedure(n.ident,arity);
@@ -6994,8 +6997,9 @@ namespace Pyrrho.Level4
                         Next();
                         var ps = ParseSqlValueList(xp);
                         var ut = left.domain;
+                        var oi = (ObInfo)cx.db.role.infos[ut.defpos];
                         var ar = ps.Length;
-                        var pr = cx.db.objects[ut.methods[n.ident]?[ar] ?? -1L] as Method
+                        var pr = cx.db.objects[oi.methodInfos[n.ident]?[ar] ?? -1L] as Method
                             ?? throw new DBException("42173", n);
                         var cs = new CallStatement(lp, pr, n.ident, ps, left);
                         Mustbe(Sqlx.RPAREN);
@@ -7036,7 +7040,7 @@ namespace Pyrrho.Level4
                     var t1 = ParseSqlDataType();
                     lp = lxr.Position;
                     if (only)
-                        t1 = new Domain(lp,Sqlx.ONLY,new BTree<long,object>(Domain.Under,t1));
+                        t1 = new UDType(lp,Sqlx.ONLY,new BTree<long,object>(UDType.Under,t1));
                     r+=t1;
                     while (tok == Sqlx.COMMA)
                     {
@@ -7047,7 +7051,7 @@ namespace Pyrrho.Level4
                         t1 = ParseSqlDataType();
                         lp = lxr.Position;
                         if (only)
-                            t1 = new Domain(lp,Sqlx.ONLY, new BTree<long, object>(Domain.Under, t1));
+                            t1 = new UDType(lp,Sqlx.ONLY, new BTree<long, object>(UDType.Under, t1));
                         r+=t1;
                     }
                     Mustbe(Sqlx.RPAREN);
@@ -7335,6 +7339,7 @@ namespace Pyrrho.Level4
                     Next();
                     var ut = cx.db.objects[cx.db.role.dbobjects[vr.name]] as Domain
                         ?? throw new DBException("42139",vr.name).Mix();
+                    var oi = (ObInfo)cx.db.role.infos[ut.defpos];
                     var name = new Ident(lxr);
                     Mustbe(Sqlx.ID);
                     lp = lxr.Position;
@@ -7342,7 +7347,7 @@ namespace Pyrrho.Level4
                     var ps = ParseSqlValueList(xp);
                     Mustbe(Sqlx.RPAREN);
                     int n = ps.Length;
-                    var m = cx.db.objects[vr.domain.methods[name.ident]?[n]??-1L] as Method
+                    var m = cx.db.objects[oi.methodInfos[name.ident]?[n]??-1L] as Method
                         ?? throw new DBException("42132",name.ident,ut.name).Mix();
                     if (m.methodType != PMethod.MethodType.Static)
                         throw new DBException("42140").Mix();
@@ -7540,11 +7545,12 @@ namespace Pyrrho.Level4
                         lp = lxr.Position;
                         var ut = (Domain)cx.db.objects[cx.db.role.dbobjects[o.ident]] as Domain??
                             throw new DBException("42142").Mix();
+                        var oi = (ObInfo)cx.db.role.infos[ut.defpos];
                         Mustbe(Sqlx.LPAREN);
                         var ps = ParseSqlValueList(ut);
                         int n = ps.Length;
                         Mustbe(Sqlx.RPAREN);
-                        Method m = cx.db.objects[ut.methods[o.ident]?[n]??-1L] as Method;
+                        Method m = cx.db.objects[oi.methodInfos[o.ident]?[n]??-1L] as Method;
                         if (m == null)
                         {
                             if (ut.Length != 0 && ut.Length != n)

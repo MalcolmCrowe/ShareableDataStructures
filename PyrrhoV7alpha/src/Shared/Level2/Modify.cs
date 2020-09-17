@@ -1,4 +1,5 @@
 using System;
+using System.Configuration;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using Pyrrho.Common;
@@ -36,6 +37,8 @@ namespace Pyrrho.Level2
         /// The new parameters and body of the routine
         /// </summary>
 		public string body;
+        public long bodydefpos;
+        public BList<long> parms;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>
@@ -59,6 +62,11 @@ namespace Pyrrho.Level2
             name = nm;
             body = pc;
             now = nw?? throw new PEException("PE919");
+            if (now is Method mt)
+            {
+                parms = mt.ins;
+                bodydefpos = mt.body;
+            }
         }
         /// <summary>
         /// Constructor: A Modify request from the buffer
@@ -72,6 +80,8 @@ namespace Pyrrho.Level2
             name = x.name;
             body = x.body;
             now = x.now;
+            parms = wr.Fix(x.parms);
+            bodydefpos = wr.Fix(x.bodydefpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -106,20 +116,27 @@ namespace Pyrrho.Level2
             {
                 default:
                     {
-                        var up = rdr.context.db.role.dbobjects[name];
-                        var oi = (ObInfo)rdr.context.db.role.infos[up];
-                        var udt = (UDType)oi.domain;
-                        var psr = new Parser(rdr.context, new Ident(body, ppos + 2));
-                        var (_,xp) = psr.ParseProcedureHeading(new Ident(name, ppos+1));
-                        for (var b = udt.representation.First(); b != null; b = b.Next())
+                        var mi = (ObInfo)rdr.context.role.infos[modifydefpos];
+                        var mt = (Method)rdr.context.db.objects[modifydefpos];
+                        if (mi.domain is UDType udt)
                         {
-                            var p = b.key();
-                            var ic = new Ident(psr.cx.Inf(p).name, p);
-                            psr.cx.defs += (ic, p);
-                            psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
+                            var psr = new Parser(rdr.context, new Ident(body, ppos + 2));
+                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(name, ppos + 1));
+                            for (var b = udt.representation.First(); b != null; b = b.Next())
+                            {
+                                var p = b.key();
+                                var ic = new Ident(psr.cx.Inf(p).name, p);
+                                psr.cx.defs += (ic, p);
+                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
+                            }
+                            now = psr.ParseProcedureStatement(xp);
+                            framing = new Framing(psr.cx);
+                            Frame(psr.cx);
+                            framing += (Framing.Obs, 
+                                framing.obs + (mt.defpos, mt + (Procedure.Body, now.defpos)));
+                            bodydefpos = now.defpos;
+                            parms = pps;
                         }
-                        now = psr.ParseProcedureStatement(xp);
-                        framing = new Framing(psr.cx);
                         break;
                     }
                 case "Source":
@@ -141,6 +158,8 @@ namespace Pyrrho.Level2
                 return;
             var psr = new Parser(rdr.context);
             var pr = (Method)rdr.context.db.objects[modifydefpos];
+            pr += (DBObject._Framing, framing);
+            rdr.context.db += (pr, rdr.context.db.loadpos);
             psr.cx.srcFix = ppos + 1;
             rdr.context.obs += (pr.defpos, pr + (Procedure.Body, now));
         }
@@ -180,10 +199,10 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, now, p);
+            ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, this, p);
             var ob = ((DBObject)cx.db.objects[modifydefpos])??now;
             cx.obs += (modifydefpos,ob);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.db = cx.db + (ob,p) + (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

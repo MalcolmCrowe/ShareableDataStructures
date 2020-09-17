@@ -177,6 +177,9 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            var dm = domain?._Relocate(wr);
+            if (dm != domain)
+                r += (_Domain, dm);
             var df = wr.Fix(definer);
             if (df != definer)
                 r += (Definer, df);
@@ -295,9 +298,9 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
-        internal virtual void Modify(Context cx, DBObject now, long p)
+        internal virtual void Modify(Context cx, Modify m, long p)
         {
-            cx.db += (now, p);
+            cx.db += (m.now, p);
         }
         internal virtual DBObject TableRef(Context cx,From f)
         {
@@ -466,7 +469,7 @@ namespace Pyrrho.Level3
             switch (Domain.Equivalent(dt.kind))
             {
                 case Sqlx.ONLY: 
-                    FieldType(db, sb, dt.super); return;
+                    FieldType(db, sb, (dt as UDType)?.super); return;
                 case Sqlx.INTEGER:
                     if (dt.prec!=0)
                         sb.Append("[Field(PyrrhoDbType.Integer," + 
@@ -502,7 +505,7 @@ namespace Pyrrho.Level3
         {
             switch (Domain.Equivalent(dt.kind))
             {
-                case Sqlx.ONLY: FieldJava(db, sb, dt.super); return;
+                case Sqlx.ONLY: FieldJava(db, sb, (dt as UDType)?.super); return;
                 case Sqlx.INTEGER:
                     if (dt.prec != 0)
                         sb.Append("@FieldType(PyrrhoDbType.Integer," + dt.prec + ")\r\n");

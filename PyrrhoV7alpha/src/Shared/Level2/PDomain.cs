@@ -29,12 +29,13 @@ namespace Pyrrho.Level2
         internal Domain domain;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (domain.super != null && !wr.cx.db.types.Contains(domain.super))
-                domain.super.Create(wr, tr);
+            var udt = domain as UDType;
+            if (udt?.super != null && !wr.cx.db.types.Contains(udt.super))
+                udt.super.Create(wr, tr);
             if (domain.elType != null && !wr.cx.db.types.Contains(domain.elType))
                 domain.elType.Create(wr, tr);
-            if (!Committed(wr, domain.structure))
-                return domain.structure;
+            if (udt!=null && !Committed(wr, udt.structure))
+                return udt.structure;
             if (domain.orderFunc != null && !Committed(wr, domain.orderFunc.defpos))
                 return domain.orderFunc.defpos;
             return -1L;
@@ -57,7 +58,7 @@ namespace Pyrrho.Level2
             : base(t, pp, cx)
         {
             var k = (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET) ? Domain.Element :
-                    Domain.Structure;
+                    UDType.Structure;
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv);
             domain = new Domain(dt, BTree<long, object>.Empty
                 + (Domain.Precision, dl) + (Domain.Scale, sc)

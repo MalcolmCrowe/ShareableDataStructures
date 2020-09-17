@@ -35,8 +35,7 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
             : base(t, nm.ident, new UDType(dm), pp, cx)
-		{
-		}
+        { }
         public PType(Ident nm, Domain dm, long pp, Context cx)
             : this(Type.PType, nm, dm, pp, cx) { }
         /// <summary>
@@ -44,7 +43,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PType(Reader rdr) : base(Type.PType,rdr) {}
+		public PType(Reader rdr) : base(Type.PType,rdr) 
+        { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
         /// </summary>
@@ -80,17 +80,17 @@ namespace Pyrrho.Level2
             if (sp!=-1)
                 under = (UDType)rdr.context.db.objects[sp];
             base.Deserialise(rdr);
+            domain += (Domain.Default, new TRow(domain));
+            rdr.context.db += (ppos, domain);
         }
         /// <summary>
         /// A readable version of the Physical
         /// </summary>
         /// <returns>the string representation</returns>
 		public override string ToString() 
-		{ 
-			string a = "PType "+domain.name + " ";
-            a += base.ToString();
-            if (under!=null)
-                a += "[" + under.name + "]";
+		{
+            string a = "PType ";
+            a += domain.ToString();
 			return a;
 		}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -111,13 +111,17 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            domain = new UDType(this); 
+            var udt = new UDType(this);
+            domain = udt;
             ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos))
                 + (ppos,new ObInfo(ppos,domain.name,domain));
+            var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+            var oi = new ObInfo(ppos, domain.name, domain) + (ObInfo.Privilege, priv);
+            ro += (oi, true);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
-            cx.db = cx.db + (ro,p) + (ppos, domain, p);
-            cx.db += (Database.Types, cx.db.types + (domain-Domain.Representation, ppos));
+            cx.db = cx.db + (ro,p) + (ppos, udt, p);
+            cx.db += (Database.Types, cx.db.types + (udt-Domain.Representation, ppos));
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

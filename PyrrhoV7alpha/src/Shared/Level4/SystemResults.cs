@@ -5512,7 +5512,7 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(-1L),
                     new TChar(t.name),
-                    new TChar(t.super?.name),
+                    new TChar((t as UDType)?.super?.name),
                     new TChar(fn),
                     new TChar((t.orderflags != OrderCategory.None) ? t.orderflags.ToString() : ""),
                     new TChar(""),
@@ -5581,14 +5581,18 @@ namespace Pyrrho.Level4
             internal static RoleMethodBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE)
-                        for (var middle = ut.methods.First(); middle != null; middle = middle.Next())
+                    if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
+                    {
+                        var oi = (ObInfo)_cx.db.role.infos[ut.defpos];
+                        for (var middle = oi.methodInfos.First(); middle != null; 
+                            middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
-                                var rb = new RoleMethodBookmark(_cx,res, 0, outer, middle, inner);
+                                var rb = new RoleMethodBookmark(_cx, res, 0, outer, middle, inner);
                                 if (rb.Match(res) && Query.Eval(res.where, _cx))
                                     return rb;
                             }
+                    }
                 return null;
             }
             /// <summary>
@@ -5630,14 +5634,17 @@ namespace Pyrrho.Level4
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind==Sqlx.TYPE)
-                        for (middle = ut.methods.First(); middle != null; middle = middle.Next())
+                    if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
+                    {
+                        var oi = (ObInfo)_cx.db.role.infos[ut.defpos];
+                        for (middle = oi.methodInfos.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
-                                var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
+                                var rb = new RoleMethodBookmark(_cx, res, _pos + 1, outer, middle, inner);
                                 if (rb.Match(res) && Query.Eval(res.where, _cx))
                                     return rb;
                             }
+                    }
                 return null;
             }
         }

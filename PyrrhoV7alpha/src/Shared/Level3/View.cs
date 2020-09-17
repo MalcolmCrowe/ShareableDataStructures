@@ -250,9 +250,9 @@ namespace Pyrrho.Level3
                 sb.Append("  self." + n + " = " + cd.defaultValue+ "\r\n");
             }
         }
-        internal override void Modify(Context cx, DBObject now, long p)
+        internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this + (ViewQuery, now), p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this + (ViewQuery, m.now), p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {

@@ -107,12 +107,10 @@ namespace Pyrrho.Level3
         public static Role operator +(Role r, Method p)
         {
             var oi = (ObInfo)r.infos[p.udType.defpos];
-            var udt = (UDType)oi.domain;
-            var ms = udt.methods;
+            var ms = oi.methodInfos;
             var pa = ms[p.name] ?? CTree<int, long>.Empty;
             return new Role(r.defpos, 
-                r.mem + (udt.defpos, oi+(_Domain,
-                udt + (Domain.Methods,ms+(p.name, pa + (p.arity, p.defpos))))));
+                r.mem + (oi.defpos, oi+(ObInfo.MethodInfos,ms+(p.name, pa + (p.arity, p.defpos)))));
         }
         public static Role operator -(Role r, ObInfo ob)
         {
@@ -176,6 +174,7 @@ namespace Pyrrho.Level3
     internal class ObInfo : DBObject
     {
         internal const long
+            MethodInfos = -252, // CTree<string, CTree<int,long>> Method
             Privilege = -253, // Grant.Privilege
             Properties = -254; // BTree<string,long> value object added into vacant mem above 0
                                // (not for bool or long)
@@ -202,6 +201,9 @@ namespace Pyrrho.Level3
         public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
         public BTree<string, long> properties =>
             (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;
+        public CTree<string, CTree<int, long>> methodInfos =>
+(CTree<string, CTree<int, long>>)mem[MethodInfos] ?? CTree<string, CTree<int, long>>.Empty;
+
         internal readonly static ObInfo Any = new ObInfo();
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
         /// <summary>
@@ -224,6 +226,13 @@ namespace Pyrrho.Level3
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
             return new ObInfo(oi.defpos, oi.mem + x);
+        }
+        public static ObInfo operator +(ObInfo ut, (Method, string) m)
+        {
+            var ms = ut.methodInfos[m.Item2] ?? CTree<int, long>.Empty;
+            ms += (m.Item1.arity, m.Item1.defpos);
+            return new ObInfo(ut.defpos, ut.mem + (MethodInfos, ut.methodInfos + (m.Item2, ms))
+                + (m.Item1.defpos, m.Item2));
         }
         public static ObInfo operator +(ObInfo d, Metadata md)
         {

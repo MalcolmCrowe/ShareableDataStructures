@@ -206,6 +206,7 @@ namespace Pyrrho.Level4
             // We cannot Build if Needs not met by now.
             if (was == null)
             {
+                var ox = cx.from;
                 r = ComputeNeeds(cx); // install nd immediately in case Build looks for it
                 var bd = true;
                 for (var b = r.needed.First(); b != null; b = b.Next())
@@ -215,6 +216,7 @@ namespace Pyrrho.Level4
                     if (cx.obs[p].Eval(cx) == null)
                         bd = false;
                 }
+                cx.from = ox;
                 if (bd) // all prerequisites are ok
                     r = r.Build(cx);  // we can Build (will set built to true)
                 return r;

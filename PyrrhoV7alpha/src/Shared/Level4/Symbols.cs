@@ -64,6 +64,12 @@ namespace Pyrrho.Level4
             sub = sb;
         }
         internal int Length => 1 + (sub?.Length ?? 0);
+        internal Ident Prefix(int n) // if n>=Length we return this
+        {
+            if (n < 0)
+                return null;
+            return new Ident(ident, iix, sub?.Prefix(n-1));
+        }
         internal Ident this[int i]
         {
             get
@@ -162,7 +168,7 @@ namespace Pyrrho.Level4
             {
                 get
                 {
-                    var (ob, ids, s) = this[(ic, 1)];
+                    var (ob, _, s) = this[(ic, ic.Length)];
                     if (s != null)
                         return -1L;
                     return ob;

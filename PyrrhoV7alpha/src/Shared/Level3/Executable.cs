@@ -2352,14 +2352,14 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure/function call
         /// </summary>
         public CallStatement(long dp, Procedure pr, string pn, BList<long> acts, SqlValue tg=null)
-         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg))
+         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg.defpos))
         { }
         protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
                +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
         {
-            if (pr == null)
-                throw new DBException("42108", pn);
+   //         if (pr == null)
+   //             throw new DBException("42108", pn);
         }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator+(CallStatement s,(long,object)x)
@@ -2444,8 +2444,10 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" Var="); sb.Append(Uid(var));
             }
-            sb.Append(" Proc="); sb.Append(Uid(procdefpos));
-            var cm = " (";
+            sb.Append(" "); sb.Append(name);
+            sb.Append(" "); sb.Append(Uid(procdefpos));
+            sb.Append(" (");
+            var cm = "";
             for (var b = parms.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";

@@ -562,7 +562,10 @@ namespace Pyrrho.Level1
                 var d = r.dataType.representation[p];
                 PutString(r.dataType.NameFor(_cx,p,b.key()));
                 var c = r[p];
-                PutString(d.ToString());
+                if (c is TArray ta && ta.Length>=1)
+                    c = ta[0];
+                c = d.Coerce(_cx, c);
+                PutString(d.DomainName());
                 PutInt(d.Typecode()); // other flags are 0
                 PutCell(_cx,d, c);
             }

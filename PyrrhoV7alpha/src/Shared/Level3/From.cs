@@ -38,7 +38,7 @@ namespace Pyrrho.Level3
             for (var b=rowType.First();b!=null;b=b.Next())
             {
                 var c = (SqlCopy)cx.obs[b.value()];
-                if (ids[c.name].Item1<Transaction.TransPos)
+                if (ids[c.name].Item1<Transaction.Executables)
                     ids += (c.name, c.defpos, Ident.Idents.Empty); 
             }
             cx.defs += (ic.ident, ic.iix, ids);

@@ -769,6 +769,11 @@ namespace Pyrrho.Level4
             for (var b = ord?.First(); b != null; b = b.Next())
                 ObUnheap(b.value());
         }
+        internal void Scan<K>(BTree<K,BTree<long,bool>> os) where K:IComparable
+        {
+            for (var b = os?.First(); b != null; b = b.Next())
+                Scan(b.value());
+        }
         internal BList<long> Fix(BList<long> ord)
         {
             var r = BList<long>.Empty;
@@ -1273,6 +1278,10 @@ namespace Pyrrho.Level4
         {
             return f + (Data, f.data + (r.defpos, r));
         }
+        public static Framing operator-(Framing f, RowSet r)
+        {
+            return f + (Data, f.data - r.defpos);
+        }
         public static Framing operator-(Framing f,long p)
         {
             return f + (Obs, f.obs - p);
@@ -1308,7 +1317,13 @@ namespace Pyrrho.Level4
                     r -= p;
             }
             for (var b = r.data.First(); b != null; b = b.Next())
-                r += (RowSet)b.value()._Relocate(wr);
+            {
+                var or = (RowSet)b.value();
+                var nr = (RowSet)or._Relocate(wr);
+                if (or.defpos != nr.defpos)
+                    r -= or;
+                r += nr;
+            }
             var rs = BTree<long, long>.Empty;
             for (var b=results.First();b!=null;b=b.Next())
                 rs += (wr.Fix(b.key()),wr.Fix(b.value()));

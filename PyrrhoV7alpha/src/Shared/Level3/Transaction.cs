@@ -97,7 +97,6 @@ namespace Pyrrho.Level3
         public override Database RdrClose(Context cx)
         {
             cx.values = BTree<long, TypedValue>.Empty;
-            cx.data = BTree<long, RowSet>.Empty;
             cx.cursors = BTree<long, Cursor>.Empty;
             if (!autoCommit)
                 return Unheap(cx);

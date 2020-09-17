@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
             Clause = -169,// string
             Inverse = -170, // long
             Monotonic = -171, // bool
-            Params = -172; // BList<long>  ParamInfo
+            Params = -172; // BList<long>  FormalParameter
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -130,9 +130,9 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-        internal override void Modify(Context cx, DBObject now, long p)
+        internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this+(Body,now.defpos),p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this+(Body,m.now.defpos),p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -155,6 +155,13 @@ namespace Pyrrho.Level3
             var r = (Procedure)base._Relocate(wr);
             r += (Params, wr.Fix(ins));
             r += (Body, wr.Fixed(body)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis _Relocate(Context cx, Context nc)
+        {
+            var r = (Procedure)base._Relocate(cx,nc);
+            r += (Params, cx.Fix(ins));
+            r += (Body, cx.obuids[body]);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -187,6 +194,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" "); sb.Append(name);
             sb.Append(" Arity="); sb.Append(arity);
             if (domain!=Domain.Null) sb.Append(domain);
             sb.Append(" Params");

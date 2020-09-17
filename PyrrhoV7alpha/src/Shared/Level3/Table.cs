@@ -130,6 +130,8 @@ namespace Pyrrho.Level3
         internal override void Scan(Context cx)
         {
             cx.ObUnheap(defpos);
+            cx.Scan(indexes);
+            cx.Scan(triggers);
             domain.Scan(cx);
         }
         internal override Basis _Relocate(Writer wr)

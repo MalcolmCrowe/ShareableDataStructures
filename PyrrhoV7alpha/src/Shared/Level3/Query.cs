@@ -1090,7 +1090,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(_Source))
             { sb.Append(" Source={"); sb.Append(_source); sb.Append('}'); }
             sb.Append(" Union: "); sb.Append(Uid(union)); 
-            if (mem.Contains(UsingFrom))
+            if (usingFrom!=-1L)
             { sb.Append(" Using: "); sb.Append(Uid(usingFrom)); }
             if (rVqSpecs.Count>0) { sb.Append(" RVQSpecs:"); sb.Append(rVqSpecs); }
             if (restViews.Count>0)

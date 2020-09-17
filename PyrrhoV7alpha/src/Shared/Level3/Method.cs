@@ -45,11 +45,15 @@ namespace Pyrrho.Level3
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Method operator+(Method m,(long,object)x)
         {
-            return new Method(m.defpos, m.mem + x);
+            return (Method)m.New(m.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new Method(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new Method(dp,mem);
         }
         public override string ToString()
         {
@@ -58,9 +62,12 @@ namespace Pyrrho.Level3
             sb.Append(" MethodType="); sb.Append(methodType);
             return sb.ToString();
         }
-        internal override void Modify(Context cx, DBObject now, long p)
+        internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this + (Body, now.defpos), p) + (Database.SchemaKey,p); // ensure call on the correct operator+
+            cx.db = cx.db 
+                + (this + (Body, m.bodydefpos) + (Params,m.parms) 
+                    + (_Framing,m.framing),p)
+                + (Database.SchemaKey,p); // ensure call on the correct operator+
         }
         /// <summary>
         /// Execute a Method
@@ -81,29 +88,33 @@ namespace Pyrrho.Level3
             var a = cx.GetActivation();
             a.var = (SqlValue)cx.obs[var];
             var ut = udType;
-            var targ = a.var.Eval(cx);
+            var targ = a.var?.Eval(cx)??ut.defaultValue;
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             var i = 0;
-            for (var b = actIns.First(); b != null; b = b.Next(), i++)
+            for (var b = actIns.First(); i<n && b != null; b = b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var act = new CalledActivation(cx, this, ut);
+            act.Install1(framing);
+            act.Install2(framing);
             var bd = (Executable)act.obs[body];
-            act.Install1(bd.framing);
-            act.Install2(bd.framing);
             if (targ is TRow rw)
                 for (var b = rw.values.First(); b != null; b = b.Next())
                     act.values += (b.key(), b.value());
             act.values += (defpos,targ);
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
-                act.values += (((FormalParameter)cx.obs[b.value()]).val, acts[i]);
-            if (methodType != PMethod.MethodType.Constructor)
-                for (var b=ut.representation.First();b!=null;b=b.Next())
-                {
-                    var p= b.key();
-                    act.values+=(p,cx.values[p]);
-                }
+            {
+                var pp = b.value();
+                var pi = (FormalParameter)act.obs[pp];
+                act.values += (pi.val, acts[i]);
+            }
+    //        if (methodType != PMethod.MethodType.Constructor)
+    //            for (var b=ut.representation.First();b!=null;b=b.Next())
+    //            {
+    //                var p= b.key();
+    //                act.values+=(p,cx.values[p]);
+    //            }
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is TArray ts)
@@ -150,7 +161,8 @@ namespace Pyrrho.Level3
         internal override Database Drop(Database d, Database nd, long p)
         {
             var ms = CTree<string, CTree<int, long>>.Empty;
-            for (var b=udType.methods.First();b!=null;b=b.Next())
+            var oi = (ObInfo)d.role.infos[udType.defpos];
+            for (var b=oi.methodInfos.First();b!=null;b=b.Next())
             {
                 var sm = CTree<int, long>.Empty;
                 var ch = false;
@@ -162,7 +174,7 @@ namespace Pyrrho.Level3
                 if (ch)
                     ms += (b.key(), sm);
             }
-            nd += (nd.role+(d.types[udType],udType+(Domain.Methods,ms)),p);
+            nd += (nd.role+(d.types[udType],oi+(ObInfo.MethodInfos,ms)),p);
             return base.Drop(d, nd, p);
         }
     }
