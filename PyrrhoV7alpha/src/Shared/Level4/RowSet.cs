@@ -2364,7 +2364,7 @@ namespace Pyrrho.Level4
             if (t.Denied(cx, Grant.Privilege.Insert))
                 throw new DBException("42105", from);
             var rt = from.rowType; // data rowType
-            var targetInfo = (ObInfo)tr.schemaRole.infos[t.defpos];
+            var targetInfo = (ObInfo)tr.schema.infos[t.defpos];
             m += (TargetInfo,targetInfo);
             var tgTn = BTree<long, Finder>.Empty;
             var tnTg = BTree<long, Finder>.Empty;

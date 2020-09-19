@@ -653,7 +653,7 @@ namespace Test
             conn.Act("insert into figurerect values(2,1,rect(4,5,6,7))");
             conn.Act("insert into figureline values(1,1,line(centrerect(1),centrerect(2)))");
             CheckResults(20, 1, "select what from figureline",
-                "[{Col0:LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))}]");
+                "[{WHAT:'LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))'}]");
             Rollback();
         }
         public void Test21(int t)

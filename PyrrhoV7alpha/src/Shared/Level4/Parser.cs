@@ -1359,7 +1359,7 @@ namespace Pyrrho.Level4
             var name = new Ident(lxr);
             PTable pt = null;
             Mustbe(Sqlx.ID);
-            if (cx.db.schemaRole.dbobjects.Contains(name.ident) || cx.db.role.dbobjects.Contains(name.ident))
+            if (cx.db.schema.dbobjects.Contains(name.ident) || cx.db.role.dbobjects.Contains(name.ident))
                 throw new DBException("42104", name);
             var tr = cx.db as Transaction?? throw new DBException("2F003");
             var np = tr.nextPos;

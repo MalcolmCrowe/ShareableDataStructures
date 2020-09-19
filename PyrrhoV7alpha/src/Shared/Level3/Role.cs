@@ -72,9 +72,9 @@ namespace Pyrrho.Level3
         { }
         public Role(PRole p, Database db, bool first)
             : base(p.name, p.ppos, p.ppos, db.role.defpos,
-                 (first ? db.schemaRole.mem : db.guestRole.mem)
-                 + (DBObjects, first ? db.schemaRole.dbobjects : db.guestRole.dbobjects)
-                 + (Procedures, first ? db.schemaRole.procedures : db.guestRole.procedures))
+                 (first ? db.schema.mem : db.guest.mem)
+                 + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
+                 + (Procedures, first ? db.schema.procedures : db.guest.procedures))
         { }
         protected Role(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Role operator+(Role r,(long,object)x)

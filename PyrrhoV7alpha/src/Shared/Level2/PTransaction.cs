@@ -141,7 +141,7 @@ namespace Pyrrho.Level2
 		}
         internal override void Install(Context cx, long p)
         {
-            var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schemaRole;
+            var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schema;
             if (ro!=cx.db.role)
                 cx.db += (ro,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

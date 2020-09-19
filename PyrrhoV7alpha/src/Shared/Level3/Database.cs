@@ -127,7 +127,8 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
             Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Guest = -55, // Role
+            Guest = -55, // long Role
+            Public = -311, // long -1L
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>
@@ -135,17 +136,18 @@ namespace Pyrrho.Level3
             NextPrep = -394, // long: highwatermark of prepared statements for this connection
             NextPos = -395, // long: next proposed Physical record
             NextId = -58, // long:  will be used for next transaction
-            Owner = -59, // long
-            Role = -285, // long
+            Owner = -59, // long owner.defpos
+            Role = -285, // long Role
+            _Role = -302, // long _system._schema
             Roles = -60, // BTree<string,long>
             SchemaKey = -286, // long
             Types = -61, // CTree<Domain,long>
-            User = -277; // long
+            User = -277, // long  User
+            _User = -301; // long _system._user
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
-        internal long owner => (long)(mem[Owner]??-1L);
         internal long nextPrep => (long)(mem[NextPrep] ?? PyrrhoServer.Preparing);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
@@ -153,13 +155,15 @@ namespace Pyrrho.Level3
         internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
-        internal Role schemaRole => (mem[DBObject.Definer] is Role r)?r
-            :(Role)mem[(long)mem[DBObject.Definer]];
-        internal Role guestRole => (Role)mem[Guest];
-        internal long _role => (long)(mem[Role]??DBObject.Definer);
-        internal long _user => (long)(mem[User]??-500L);
-        internal Role role => (Role)objects[_role]??schemaRole;
-        internal User user => (User)(objects[_user]??mem[owner]);
+        // NB The following 8 entries have default values supplied by _system
+        internal long _schema => (long)mem[DBObject.Definer];
+        internal Role schema => (Role)mem[_schema];
+        internal Role guest => (Role)mem[Guest];
+        internal long _role => (long)mem[Role];
+        internal long owner => (long)mem[Owner];
+        internal long _user => (long)mem[User];
+        internal Role role => (Role)objects[_role];
+        internal User user => (User)objects[_user]; 
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal bool cascade => (bool)(mem[Cascade] ?? false);
@@ -174,12 +178,11 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         static Database()
         {
-            var su = new User(-500, new BTree<long, object>(Name,
+            var su = new User(_User, new BTree<long, object>(Name,
                     System.Security.Principal.WindowsIdentity.GetCurrent().Name));
-            var sr = new Role("$Schema", DBObject.Definer, BTree<long, object>.Empty +
-                    (su.defpos, su) +
-                    (Owner, su.defpos));
-            var gu = new Role("$Guest", Guest, BTree<long, object>.Empty);
+            var sr = new Role("$Schema", _Role, BTree<long, object>.Empty +
+                    (_User, su.defpos) +  (Owner, su.defpos));
+            var gu = new Role("$Guest", Public, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu);
             SystemRowSet.Kludge(); 
             Domain.RdfTypes();
@@ -187,13 +190,18 @@ namespace Pyrrho.Level3
         }
         Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
-                  (Name,n),(Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),
-                  (Guest,gu),(Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),
+                  (Name,n),
+                  // the 7 entries without defaults start here
+                  (DBObject.Definer,sr.defpos),(User,su.defpos),(Guest,gu.defpos),
+                  (Role, sr.defpos),
+                  (Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   (Types,BTree<Domain,long>.Empty),
+                  (Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),                
                   (NextStmt,Transaction.Executables))
         {
             loadpos = 0;
         }
+        // Every database starts out with _system.mem
         public Database(string n,FileStream f):base(_system.mem+(Name,n)
             +(Format,_Format(f)))
         {

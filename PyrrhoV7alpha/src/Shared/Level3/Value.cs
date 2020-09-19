@@ -637,18 +637,12 @@ namespace Pyrrho.Level3
             BTree<long, object> m = null)
             : base(dp, _Mem(fp,m) + (CopyFrom, cf.Defpos(cx)) + (_Columns, cf.columns)
                   + (_Domain, cf.domain) + (Name, nm))
-        {
-            if (nm == "WHAT")
-                Console.WriteLine("Here");
-        }
+        { }
         public SqlCopy(long dp, Context cx, string nm, long fp, long cp,
             BTree<long, object> m = null)
             : base(dp, _Mem(fp, m) + (CopyFrom, cp) + (_Columns, cx.Cols(cp))
                  + (_Domain, cx.obs[cp].domain)+(Name,nm))
-        {
-            if (nm == "WHAT")
-                Console.WriteLine("Here");
-        }
+        { }
         static BTree<long,object> _Mem(long fp,BTree<long,object>m)
         {
             m = m ?? BTree<long, object>.Empty;
