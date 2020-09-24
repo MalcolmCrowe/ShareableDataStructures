@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Pyrrho;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Configuration;
 
 namespace Tpcc
 {
@@ -665,10 +666,13 @@ namespace Tpcc
         }
         void timer2_Tick(object sender, EventArgs e)
         {
-            PyrrhoConnect.reqs.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
-            PyrrhoConnect.reqs.WriteLine("Last fid=" + maxloaded);
-            PyrrhoConnect.reqs.Close();
+            lock (PyrrhoConnect.reqs)
+            {
+                PyrrhoConnect.reqs.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+                Console.WriteLine("At " + DateTime.Now.ToString() + " Commits " + commits + ", Conflicts " + rconflicts + " " + wconflicts);
+                PyrrhoConnect.reqs.WriteLine("Last fid=" + maxloaded);
+                PyrrhoConnect.reqs.Close();
+            }
             Application.Exit();
         }
         int action = -1;
@@ -733,7 +737,8 @@ namespace Tpcc
                 timer1.Enabled = true;
             } catch (Exception e)
             {
-                PyrrhoConnect.reqs.WriteLine("UserChoice caught exception: " + e.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("UserChoice caught exception: " + e.Message);
             }
 		}
 
@@ -784,7 +789,8 @@ namespace Tpcc
 			catch(Exception ex)
 			{
 				label1.Text = ex.Message;
-                PyrrhoConnect.reqs.WriteLine(ex.Message);
+                lock(PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine(ex.Message);
                 action = 0;
 			}
 			timer1.Enabled = true;

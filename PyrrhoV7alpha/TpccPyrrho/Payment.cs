@@ -46,13 +46,15 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 1 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 1 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 1 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 1 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -79,13 +81,15 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                 Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Payment exception 2 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 2 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 2 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 2 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -105,13 +109,15 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 3 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 3 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 3 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 3 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -180,13 +186,15 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 4 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 4 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("Payment exception 4 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 4 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -273,14 +281,16 @@ namespace Tpcc
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
 			{
                 var s = ex.Message;
-                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
                 form.Rollback();
                 if (s.Contains("with read"))
                     Form1.rconflicts++;
@@ -448,7 +458,8 @@ namespace Tpcc
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
@@ -459,7 +470,8 @@ namespace Tpcc
                     Form1.rconflicts++;
                 else
                     Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Payment exception 5 " + ex.Message);
             }
             status.Text = s;
 			SetCurField(curField);

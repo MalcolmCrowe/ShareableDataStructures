@@ -55,13 +55,15 @@ namespace Tpcc
             }
 			catch (TransactionConflict ex)
 			{
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1 " + ex.Message
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1 " + ex.Message
 					+ " " + ex.info["WITH"]);
 				form.Rollback();
 			}
 			catch (Exception)
             {
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1");
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 1");
 				form.Rollback();
             }
             finally
@@ -82,13 +84,15 @@ namespace Tpcc
             }
 			catch (TransactionConflict ex)
 			{
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message
 					+ " " + ex.info["WITH"]);
 				form.Rollback();
 			}
 			catch (Exception ex)
             {
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message);
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 2 " + ex.Message);
 				form.Rollback();
             }
             finally
@@ -125,13 +129,15 @@ namespace Tpcc
             }
 			catch (TransactionConflict ex)
 			{
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message
 					+ " " + ex.info["WITH"]);
 				form.Rollback();
 			}
 			catch (Exception ex)
             {
-				PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message);
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("OrderStatus exception 3 " + ex.Message);
 				form.Rollback();
             }
             finally

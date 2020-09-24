@@ -68,6 +68,7 @@ namespace Tpcc
                         Form1.rconflicts++;
                     else
                         Form1.wconflicts++;
+                    lock(PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("Commit exception " + ex.Message
                         + " " + ex.info["WITH"]);
                     form.Rollback();
@@ -76,7 +77,8 @@ namespace Tpcc
                 {
                     var s = ex.Message;
                         Form1.wconflicts++;
-                    PyrrhoConnect.reqs.WriteLine("Commit exception "+ex.Message);
+                    lock (PyrrhoConnect.reqs)
+                        PyrrhoConnect.reqs.WriteLine("Commit exception "+ex.Message);
                 }
             }
         }
@@ -94,7 +96,8 @@ namespace Tpcc
             {
                 var s = ex.Message;
                 Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
@@ -102,7 +105,8 @@ namespace Tpcc
             {
                 var s = ex.Message;
                     Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message);
             }
             return true;
         }
@@ -149,13 +153,15 @@ namespace Tpcc
             catch (TransactionConflict ex)
             {
                 var s = ex.Message;
-                PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order Exception 1 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order Exception 1 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -178,13 +184,15 @@ namespace Tpcc
             catch (TransactionConflict ex)
             {
                 var s = ex.Message;
-                PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -233,13 +241,15 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -273,13 +283,15 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
             catch (Exception ex)
             {
-                PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message);
                 form.Rollback();
             }
             finally
@@ -356,7 +368,8 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                 Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message 
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message 
                     + " " + ex.info["WITH"]);
                 form.Rollback();
             }
@@ -365,7 +378,8 @@ namespace Tpcc
                 var s = ex.Message;
                 Set(130, s);
                     Form1.wconflicts++;
-                PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message);
+                lock (PyrrhoConnect.reqs)
+                    PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message);
                 form.Rollback();
             }
             return done;

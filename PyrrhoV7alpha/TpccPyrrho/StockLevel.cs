@@ -33,12 +33,14 @@ namespace Tpcc
             }
 			catch (TransactionConflict ex)
 			{
-				PyrrhoConnect.reqs.WriteLine("Stocklevel exception " + ex.Message
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("Stocklevel exception " + ex.Message
 					+ " " + ex.info["WITH"]);
 				form.Rollback();
 			}
 			catch (Exception ex) {
-				PyrrhoConnect.reqs.WriteLine("StockLevel exception " + ex.Message);
+				lock (PyrrhoConnect.reqs)
+					PyrrhoConnect.reqs.WriteLine("StockLevel exception " + ex.Message);
 			}
 			Set(4, n);
             form.Commit("Stocklevel");
