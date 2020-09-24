@@ -92,13 +92,17 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var nu = new User(this, cx.db);
             // If this is the first User to be defined, 
-            // it becomes the Owner of the database
+            // it becomes the Owner of the database, 
+            // and is granted User and Admin for the schema role
             var first = true;
             for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
                 if ((cx.db.objects[b.value()] is User))
                     first = false;
-            ro += (new ObInfo(nu.defpos, nu.name, Domain.Null),false);
-            cx.db = cx.db + (nu,cx.db.schemaKey) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
+            var pr = Grant.Privilege.Select;
+            if (first)
+                pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
+            ro += (new ObInfo(nu.defpos, nu.name, Domain.Null,pr),false);
+            cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
                 cx.db += (Database.Owner, nu.defpos);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

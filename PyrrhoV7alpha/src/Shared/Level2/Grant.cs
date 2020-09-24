@@ -34,7 +34,7 @@ namespace Pyrrho.Level2
             GrantReferences=0x010000, GrantExecute=0x020000, GrantOwner=0x040000, AdminRole=0x080000, 
             GrantUsage=0x100000, GrantUnder=0x200000,  GrantTrigger=0x400000
 		};
-		public static Privilege AllPrivileges = (Privilege)0x4fffff;
+		public static Privilege AllPrivileges = (Privilege)0x7fffff;
         /// <summary>
         /// The privilege being granted (or revoked)
         /// </summary>
@@ -154,7 +154,7 @@ namespace Pyrrho.Level2
 			return "Grant "+priv.ToString()+" on "+Pos(obj)+" to "+((grantee>0)?Pos(grantee):"PUBLIC");
 		}
         /// <summary>
-        /// (Proc and View alwyaes use definer's role so no reparsing)
+        /// (Proc and View always use definer's role so no reparsing)
         /// </summary>
         /// <param name="db"></param>
         /// <param name="ro"></param>
@@ -164,11 +164,13 @@ namespace Pyrrho.Level2
         {
             var gee = cx.db.objects[grantee];
             var ro = cx.db.role;
+            var oi = ro.infos[obj] as ObInfo;
+            if (oi == null)
+                throw new DBException("42105");
             if (gee is Role r)
                 ro = r;
-            var oi = ro.infos[obj] as ObInfo;
             var pr = oi.priv | priv;
-            ro += (new ObInfo(obj, oi.name, oi.domain)+(ObInfo.Privilege,pr),false);
+            ro += (new ObInfo(obj, oi.name, oi.domain,pr),false);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

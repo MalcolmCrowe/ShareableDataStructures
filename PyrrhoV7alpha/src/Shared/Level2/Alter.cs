@@ -59,7 +59,7 @@ namespace Pyrrho.Level2
             var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, domain)+(ObInfo.Privilege,priv);
+            var ci = new ObInfo(defpos, name, domain,priv);
             ro = ro + (defpos,ci) + (ti + (tc.defpos,ci),false);
             table += tc;
             cx.db += (ro, p);
@@ -120,7 +120,7 @@ namespace Pyrrho.Level2
             var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, domain) +(ObInfo.Privilege,priv);
+            var ci = new ObInfo(defpos, name, domain,priv);
             ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv),false);
             table += tc;
             cx.db += (ro, p);
@@ -198,7 +198,7 @@ namespace Pyrrho.Level2
             var tc = new TableColumn(table, this, domain);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(defpos, name, domain)+(ObInfo.Privilege, priv);
+            var oc = new ObInfo(defpos, name, domain, priv);
             ro = ro + (oc.defpos, oc) + (ti + (defpos, oc),true);
             table += tc;
             cx.db += (ro, p);

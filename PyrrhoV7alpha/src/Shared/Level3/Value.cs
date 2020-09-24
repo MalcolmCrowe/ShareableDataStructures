@@ -4339,6 +4339,7 @@ namespace Pyrrho.Level3
                 case Sqlx.CURRENT_DATE: return Domain.Date;
                 case Sqlx.CURRENT_TIME: return Domain.Timespan;
                 case Sqlx.CURRENT_TIMESTAMP: return Domain.Timestamp;
+                case Sqlx.CURRENT_USER: return Domain.Char;
                 case Sqlx.ELEMENT: return val?.domain.elType??Domain.Content;
                 case Sqlx.FIRST: return Domain.Content;
                 case Sqlx.EXP: return Domain.Real;
@@ -6144,12 +6145,19 @@ namespace Pyrrho.Level3
         /// <param name="b">the right operand</param>
         /// <param name="e">the escape character</param>
         internal LikePredicate(long dp,SqlValue a, bool k, SqlValue b, SqlValue e)
-            : base(dp, new BTree<long,object>(_Domain,Domain.Bool)
-                  +(Left,a)+(_Like,k)+(Right,b)+(Escape,e)
-                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true)+(e.defpos,true))
-                  +(Depth,1+_Max(a.depth,b.depth,e.depth)))
+            : base(dp, _Esc(e)+(Left,a.defpos)+(_Like,k)+(Right,b.defpos)
+                  +(_Domain,Domain.Bool)
+                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
+                  +(Depth,1+_Max(a.depth,b.depth,e?.depth??0)))
         { }
         protected LikePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Esc(SqlValue e)
+        {
+            var r = BTree<long, object>.Empty;
+            if (e != null)
+                r = r + (Escape, e.defpos) + (e.defpos, true);
+            return r;
+        }
         public static LikePredicate operator+(LikePredicate s,(long,object)x)
         {
             return new LikePredicate(s.defpos, s.mem + x);
@@ -6336,12 +6344,13 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder();
-            sb.Append(left);
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(" "); sb.Append(Uid(defpos));
+            sb.Append(": "); sb.Append(Uid(left));
             if (!like)
                 sb.Append(" not");
             sb.Append(" like ");
-            sb.Append(right);
+            sb.Append(Uid(right));
             if (escape!=-1L)
             {
                 sb.Append(" escape "); sb.Append(Uid(escape));
@@ -6899,7 +6908,7 @@ namespace Pyrrho.Level3
         internal Sqlx kind => (Sqlx)mem[Domain.Kind];
         public PeriodPredicate(long dp,SqlValue op1, Sqlx o, SqlValue op2) 
             :base(dp,BTree<long,object>.Empty+(_Domain,Domain.Bool)
-                 +(Left,op1)+(Right,op2)+(Domain.Kind,o)
+                 +(Left,op1?.defpos??-1L)+(Right,op2?.defpos??-1L)+(Domain.Kind,o)
                  +(Dependents,new BTree<long,bool>(op1.defpos,true)+(op2.defpos,true))
                  +(Depth,1+_Max(op1.depth,op2.depth)))
         { }

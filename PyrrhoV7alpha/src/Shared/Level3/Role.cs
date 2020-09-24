@@ -90,31 +90,31 @@ namespace Pyrrho.Level3
             var m = r.mem + (ob.defpos, ob);
             if (ob.name != "" && nm)
                 m += (DBObjects, r.dbobjects + (ob.name, ob.defpos));
-            return new Role(r.defpos, m);
+            return (Role)r.New(m);
         }
         public static Role operator+(Role r,PProcedure pp)
         {
             var ps = r.procedures;
             var pa = ps[pp.name] ?? BTree<int, long>.Empty;
-            return new Role(r.defpos,r.mem+(Procedures,ps+(pp.name,pa+(pp.arity,pp.ppos))));
+            return (Role)r.New(r.mem+(Procedures,ps+(pp.name,pa+(pp.arity,pp.ppos))));
         }
         public static Role operator +(Role r, Procedure p)
         {
             var ps = r.procedures;
             var pa = ps[p.name] ?? CTree<int, long>.Empty;
-            return new Role(r.defpos, r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
+            return (Role)r.New(r.mem + (Procedures, ps + (p.name, pa + (p.arity, p.defpos))));
         }
         public static Role operator +(Role r, Method p)
         {
             var oi = (ObInfo)r.infos[p.udType.defpos];
             var ms = oi.methodInfos;
             var pa = ms[p.name] ?? CTree<int, long>.Empty;
-            return new Role(r.defpos, 
-                r.mem + (oi.defpos, oi+(ObInfo.MethodInfos,ms+(p.name, pa + (p.arity, p.defpos)))));
+            return (Role)r.New(r.mem + (oi.defpos, 
+                oi+(ObInfo.MethodInfos,ms+(p.name, pa + (p.arity, p.defpos)))));
         }
         public static Role operator -(Role r, ObInfo ob)
         {
-            return new Role(r.defpos, r.mem - ob.defpos + (DBObjects, r.dbobjects - ob.name));
+            return (Role)r.New(r.mem - ob.defpos + (DBObjects, r.dbobjects - ob.name));
         }
         internal override void Scan(Context cx)
         {
@@ -198,7 +198,7 @@ namespace Pyrrho.Level3
             Y = "Y"; // long
 
         public string name => (string)mem[Name] ?? "";
-        public Grant.Privilege priv => (Grant.Privilege)(mem[Privilege] ?? Grant.AllPrivileges);
+        public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
         public BTree<string, long> properties =>
             (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;
         public CTree<string, CTree<int, long>> methodInfos =>
@@ -213,12 +213,14 @@ namespace Pyrrho.Level3
         /// <param name="name"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public ObInfo(long lp, string name, Domain rt, BTree<long, object> m = null)
+        public ObInfo(long lp, string name, Domain rt, Grant.Privilege pr,
+            BTree<long, object> m = null)
             : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
-          +(_Domain,rt)) { }
+          +(_Domain,rt)+(Privilege,pr)) { }
         public ObInfo(long lp, string name, Context cx, CList<long> rt,
-            BTree<long, object> m = null) 
+            Grant.Privilege pr, BTree<long, object> m = null) 
             : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
+                  + (Privilege, pr)
                 + (_Domain, ((DBObject)cx.db.objects[lp]).domain+(Domain.RowType,rt)))
         { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 

@@ -159,7 +159,7 @@ namespace Pyrrho.Level2
                 if (Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
-                tr.physicals[pd].Commit(wr,tr);
+                tr?.physicals[pd].Commit(wr,tr);
                 // and try again
             }
             wr.srcPos = wr.Length + 1;

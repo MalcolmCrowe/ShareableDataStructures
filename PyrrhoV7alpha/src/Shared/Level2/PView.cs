@@ -118,7 +118,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var vi = new ObInfo(ppos, name, Domain.Content);
+            var vi = new ObInfo(ppos, name, Domain.Content,Grant.Privilege.Select);
             ro = ro+(vi,true)+(ppos,vi);
             cx.db += (ro, p);
             cx.Install(new View(this), p);

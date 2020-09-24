@@ -612,7 +612,6 @@ namespace Pyrrho.Level4
                     return null;
             return new TrivialCursor(_cx, this, -1L);
         }
-
         internal override DBObject Relocate(long dp)
         {
             return new TrivialRowSet(dp,mem);

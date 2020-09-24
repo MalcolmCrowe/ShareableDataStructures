@@ -113,10 +113,9 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var udt = new UDType(this);
             domain = udt;
-            ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos))
-                + (ppos,new ObInfo(ppos,domain.name,domain));
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, domain.name, domain) + (ObInfo.Privilege, priv);
+            var oi = new ObInfo(ppos, domain.name, domain, priv);
+            ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
             ro += (oi, true);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));

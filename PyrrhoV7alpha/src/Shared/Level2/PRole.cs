@@ -108,9 +108,13 @@ namespace Pyrrho.Level2
                 if (b.value()>0 && !(cx.db.objects[b.value()] is User))
                     first = false;
             var nr = new Role(this, cx.db, first);
-            cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,ppos));
+            // givd the current role privileges on the new Role
+            var ri = new ObInfo(nr.defpos, name, Domain.Role,Role.use|Role.admin);
+            nr += (ri, true);
+            var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
+            cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
             if (first)
-                cx.db += (DBObject.Definer, nr.defpos);
+                cx.db = cx.db+(DBObject.Definer, nr.defpos)+(Database._Role,nr.defpos);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

@@ -65,8 +65,8 @@ namespace Pyrrho.Level3
         public const long Analysing = 0x5000000000000000;
         public const long Executables = 0x6000000000000000;
         readonly Database parent;
-        internal Transaction(Database db,long t,string sce,bool auto) :base(db.loadpos,db.mem
-            +(Role,db.role.defpos)+(User,db.user.defpos)+(StartTime,System.DateTime.Now.Ticks)
+        internal Transaction(Database db,long t,string sce,bool auto) :base(db.loadpos,
+            db.mem+(StartTime,DateTime.Now.Ticks)
             +(NextId,t+1)+(NextStmt,db.nextStmt)+(AutoCommit,auto)+(CursorSpecification._Source,sce))
         {
             parent = db;
@@ -84,11 +84,12 @@ namespace Pyrrho.Level3
         {
             return new Transaction(this, c, m);
         }
-        public override Transaction Transact(long t,string sce,bool? auto=null)
+        public override Transaction Transact(long t,string u,string sce,bool? auto=null)
         {
             var r = this;
             if (auto == false && autoCommit)
                 r += (AutoCommit, false);
+            // Ensure the correct role amd user combination
             r += (Step, r.nextPos);
             if (t>=TransPos) // if sce is tranaction-local, we need to make space above nextIid
                 r = r+ (NextId,t+1)+(CursorSpecification._Source,sce);
@@ -711,7 +712,7 @@ namespace Pyrrho.Level3
         /// <param name="roles">a list of Roles (ids)</param>
         /// <param name="grantees">a list of Grantees</param>
         /// <param name="opt">whether with ADMIN option</param>
-		internal Transaction AccessRole(Context cx,bool grant, string[] rols, DBObject[] grantees, bool opt)
+		internal void AccessRole(Context cx,bool grant, string[] rols, DBObject[] grantees, bool opt)
         {
             var db = this;
             Grant.Privilege op = Grant.Privilege.NoPrivilege;
@@ -728,7 +729,6 @@ namespace Pyrrho.Level3
                 var ro = (Role)objects[roles[s]];
                 DoAccess(cx,grant, op, ro.defpos, grantees);
             }
-            return db;
         }
         /// <summary>
         /// Implement grant/revoke on a database obejct
@@ -818,7 +818,7 @@ namespace Pyrrho.Level3
         /// <param name="ct">The constraint type</param>
         /// <param name="afn">The adapter function if specified</param>
         /// <param name="cl">The set of Physicals being gathered by the parser</param>
-        public Transaction AddReferentialConstraint(Context cx,Table tb, Ident name,
+        public void AddReferentialConstraint(Context cx,Table tb, Ident name,
             CList<long> key,Table rt, CList<long> refs, PIndex.ConstraintType ct, 
             string afn)
         {
@@ -835,7 +835,6 @@ namespace Pyrrho.Level3
             var pc = new PIndex2(name.ident, tb.defpos, key, ct, rx.defpos, afn,0,
                 np,cx);
             cx.Add(pc);
-            return (Transaction)cx.db;
         }
         internal override BTree<long, BTree<long, long>> Affected()
         {

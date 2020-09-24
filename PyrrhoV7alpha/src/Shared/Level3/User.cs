@@ -34,9 +34,17 @@ namespace Pyrrho.Level3
             : base(pu.name,pu.ppos,BTree<long,object>.Empty)
         { }
         public User(long defpos, BTree<long, object> m) : base(defpos, m) { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new User(defpos,m);
+        }
         public static User operator+(User u,(long,object)x)
         {
-            return new User(u.defpos, u.mem + x);
+            return (User)u.New(u.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new User(dp,mem);
         }
         /// <summary>
         /// a readable version of the user

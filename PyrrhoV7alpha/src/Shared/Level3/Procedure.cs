@@ -126,10 +126,6 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
-        internal virtual bool Uses(long t)
-        {
-            return false;
-        }
         internal override void Modify(Context cx, Modify m, long p)
         {
             cx.db = cx.db + (this+(Body,m.now.defpos),p) + (Database.SchemaKey,p);

@@ -142,7 +142,7 @@ namespace Pyrrho.Level2
             var ck = new Check(this, cx.db);
             if (name != null && name != "")
             {
-                ro += (new ObInfo(defpos, name,Domain.Bool),true);
+                ro += (new ObInfo(defpos, name,Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro, p);
             }
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
@@ -235,7 +235,7 @@ namespace Pyrrho.Level2
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             if (name != null && name != "")
             {
-                ro += (new ObInfo(defpos, name, Domain.Bool),true);
+                ro += (new ObInfo(defpos, name, Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro,p);
             }
             cx.Install(ck,p);

@@ -48,7 +48,7 @@ namespace Pyrrho.Level4
 
         internal override ObInfo Inf(Context cx)
         {
-            return new ObInfo(defpos,name,domain);
+            return new ObInfo(defpos,name,domain,Grant.AllPrivileges);
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -113,7 +113,7 @@ namespace Pyrrho.Level4
             : base(--_uid, BTree<long, object>.Empty + (Name, n) + (Table, t.defpos) 
                   + (_Domain, dt) + (Key,k))
         {
-            var oc = new ObInfo(defpos, n, dt) + (ObInfo.Privilege, Grant.AllPrivileges);
+            var oc = new ObInfo(defpos, n, dt, Grant.AllPrivileges);
             var ro = Database._system.role + (oc,false);
             var td = t.domain + (defpos, dt);
             t += (_Domain, td);
@@ -5696,7 +5696,10 @@ namespace Pyrrho.Level4
                         if (ro.infos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, 0, outer, inner);
-                            if (rb.Match(res) && Query.Eval(res.where, _cx))
+                            if (rb.Match(res) && Query.Eval(res.where, _cx)
+                                && inner.value() != Database._Role
+                                && rb[1].ToString().Length != 0
+                                && rb[2].CompareTo(rb[4]) != 0)
                                 return rb;
                         }
                     }
@@ -5709,13 +5712,13 @@ namespace Pyrrho.Level4
             {
                 var ro = _cx.db.objects[e.value()] as Role;
                 var t = (DBObject)ob;
-                var dm = (ObInfo)_cx.db.role.infos[t.defpos];
+                var oi = (ObInfo)_cx.db.role.infos[t.defpos];
                 return new TRow(rs,
                     new TChar(t.GetType().Name),
-                    new TChar(dm.name),
+                    new TChar(oi.name),
                     new TChar(ro.name),
-                    new TChar(dm.priv.ToString()),
-                    new TChar(((Role)_cx.db.objects[t.definer]).name));
+                    new TChar(oi.priv.ToString()),
+                    new TChar(((Role)_cx.db.objects[t.definer])?.name??""));
             }
             /// <summary>
             /// Move to the next Role$Privilege data
@@ -5731,7 +5734,10 @@ namespace Pyrrho.Level4
                     if (ro.infos.Contains(outer.key()))
                     {
                         var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                        if (rb.Match(res) && Query.Eval(res.where, _cx))
+                        if (rb.Match(res) && Query.Eval(res.where, _cx)
+                            && inner.value()!=Database._Role 
+                            && rb[1].ToString().Length!=0
+                            && rb[2].CompareTo(rb[4])!=0)
                             return rb;
                     }
                 }
@@ -5742,7 +5748,10 @@ namespace Pyrrho.Level4
                         if (ro.infos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && Query.Eval(res.where, _cx))
+                            if (rb.Match(res) && Query.Eval(res.where, _cx)
+                               && inner.value() != Database._Role
+                               && rb[1].ToString().Length != 0
+                               && rb[2].CompareTo(rb[4]) != 0)
                                 return rb;
                         }
                     }

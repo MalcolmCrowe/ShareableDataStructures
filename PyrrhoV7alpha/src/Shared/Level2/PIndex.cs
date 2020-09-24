@@ -250,7 +250,8 @@ namespace Pyrrho.Level2
                 kc += (tc,true);
             }
             tb += (Table.TableCols, kc);
-            var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs)));
+            var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs),
+                Grant.Privilege.Execute));
             cx.db += (r, p);
             cx.Install(tb, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

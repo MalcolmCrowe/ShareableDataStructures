@@ -184,7 +184,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var oi = ro.infos[affects] as ObInfo;
-            ro = ro + (new ObInfo(affects, name,oi.domain)+(ObInfo.Privilege, oi.priv),true);
+            ro = ro + (new ObInfo(affects, name,oi.domain, oi.priv),true);
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
             cx.db += (Database.Log, cx.db.log + (ppos, type));

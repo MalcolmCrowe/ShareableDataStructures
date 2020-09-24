@@ -84,7 +84,7 @@ namespace Test
             Test18(test);
             Test19(test);
             Test20(test);
-    /*        Test21(test); */
+            Test21(test); 
         }
         void Test1(int t)
         {
@@ -662,6 +662,30 @@ namespace Test
                 return;
             testing = 21;
             Begin();
+            conn.Act("create table members (id int primary key,firstname char)");
+            conn.Act("create table played (id int primary key, winner int references members,"
+              + "loser int references members,agreed boolean)");
+            conn.Act("grant select on members to public");
+            conn.Act("grant select on played to public");
+            conn.Act("create procedure claim(won int,beat int)"
+              + "insert into played(winner,loser) values(claim.won,claim.beat)");
+            conn.Act("create procedure agree(p int)"
+              + "update played set agreed=true "
+               + "where winner=agree.p and loser in"
+                + "(select m.id from members m where current_user like '%'||firstname escape '^')");
+            conn.Act("insert into members(firstname) values(current_user)");
+            CheckResults(21, 1, "select id from members where current_user like '%'||firstname escape'^'",
+              "[{ID:1}]");
+            conn.Act("insert into members(firstname) values('Fred')");
+            conn.Act("insert into played(winner,loser) values(2,1)");
+            conn.Act("create role membergames");
+            conn.Act("grant execute on procedure claim(int,int) to role membergames");
+            conn.Act("grant execute on procedure agree(int) to role membergames");
+            conn.Act("grant membergames to public");
+            conn.Act("set role membergames");
+            conn.Act("call agree(2)");
+            conn.Act("call claim(1,2)");
+            CheckResults(21, 2, "table played", "[{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]");
             Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)

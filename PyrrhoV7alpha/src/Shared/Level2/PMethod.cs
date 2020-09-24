@@ -144,7 +144,7 @@ namespace Pyrrho.Level2
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, udt)+(ObInfo.Privilege, priv);
+            var mi = new ObInfo(defpos, name, udt, priv);
             var oi = (ObInfo)ro.infos[udt.defpos] ??
                 throw new PEException("PE918");
             oi += (mt,name);

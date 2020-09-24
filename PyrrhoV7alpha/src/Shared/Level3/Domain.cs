@@ -32,7 +32,7 @@ namespace Pyrrho.Level3
     Array,Multiset,Collection,Cursor,UnionNumeric,UnionDate,
     UnionDateNumeric,Exception,Period,
     Document,DocArray,ObjectId,JavaScript,ArgList, // Pyrrho 5.1
-    TableType,Row,Delta,
+    TableType,Row,Delta,Role,
     RdfString,RdfBool,RdfInteger,RdfInt,RdfLong,RdfShort,RdfByte,RdfUnsignedInt,
     RdfUnsignedLong,RdfUnsignedShort,RdfUnsignedByte,RdfNonPositiveInteger,
     RdfNonNegativeInteger,RdfPositiveInteger,RdfNegativeInteger,RdfDecimal,
@@ -119,6 +119,7 @@ namespace Pyrrho.Level3
             TableType = new StandardDataType(Sqlx.TABLE);
             Row = new StandardDataType(Sqlx.ROW);
             Delta = new StandardDataType(Sqlx.INCREMENT);
+            Role = new StandardDataType(Sqlx.ROLE);
         }
         internal static void RdfTypes()
         {

@@ -187,7 +187,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            ro = ro + (new ObInfo(ppos, name, retType), true) + this;
+            ro = ro + (new ObInfo(ppos, name, retType,
+                Grant.Privilege.Execute|Grant.Privilege.GrantExecute), true) + this;
             var pr = new Procedure(this, cx) + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing);
             if (cx.db.format < 51)

@@ -753,19 +753,19 @@ namespace Pyrrho
                     i = d.Items(s, i, n);
                     return d;
                 }
-                if (i + 4 < n && s.Substring(i, 4) == "true")
+                if (i + 3 < n && s.Substring(i-1, 4) == "true")
                 {
-                    i += 4;
+                    i += 3;
                     return true;
                 }
-                if (i + 5 < n && s.Substring(i, 5) == "false")
-                {
-                    i += 5;
-                    return false;
-                }
-                if (i + 4 < n && s.Substring(i, 4) == "null")
+                if (i + 4 < n && s.Substring(i-1, 5) == "false")
                 {
                     i += 4;
+                    return false;
+                }
+                if (i + 3 < n && s.Substring(i-1, 4) == "null")
+                {
+                    i += 3;
                     return null;
                 }
                 var sg = c == '-';

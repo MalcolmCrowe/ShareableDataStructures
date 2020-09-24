@@ -5,6 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
+using System.Security.Principal;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -127,7 +128,7 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
             Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Guest = -55, // long Role
+            Guest = -55, // long Role 
             Public = -311, // long -1L
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
@@ -137,13 +138,15 @@ namespace Pyrrho.Level3
             NextPos = -395, // long: next proposed Physical record
             NextId = -58, // long:  will be used for next transaction
             Owner = -59, // long owner.defpos
-            Role = -285, // long Role
-            _Role = -302, // long _system._schema
+            Role = -285, // Role
+            _Role = -302, // long initially _system._role
             Roles = -60, // BTree<string,long>
             SchemaKey = -286, // long
+            System_Role = -291, // long
+            System_User = -292, // long
             Types = -61, // CTree<Domain,long>
-            User = -277, // long  User
-            _User = -301; // long _system._user
+            User = -277, // User
+            _User = -301; // long initially _system._user
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
@@ -159,9 +162,9 @@ namespace Pyrrho.Level3
         internal long _schema => (long)mem[DBObject.Definer];
         internal Role schema => (Role)mem[_schema];
         internal Role guest => (Role)mem[Guest];
-        internal long _role => (long)mem[Role];
+        internal long _role => (long)mem[_Role];
         internal long owner => (long)mem[Owner];
-        internal long _user => (long)mem[User];
+        internal long _user => (long)mem[_User];
         internal Role role => (Role)objects[_role];
         internal User user => (User)objects[_user]; 
         internal virtual bool autoCommit => true;
@@ -178,9 +181,9 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         static Database()
         {
-            var su = new User(_User, new BTree<long, object>(Name,
+            var su = new User(System_User, new BTree<long, object>(Name,
                     System.Security.Principal.WindowsIdentity.GetCurrent().Name));
-            var sr = new Role("$Schema", _Role, BTree<long, object>.Empty +
+            var sr = new Role("$Schema", System_Role, BTree<long, object>.Empty +
                     (_User, su.defpos) +  (Owner, su.defpos));
             var gu = new Role("$Guest", Public, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu);
@@ -190,11 +193,11 @@ namespace Pyrrho.Level3
         }
         Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
-                  (Name,n),
+                  (Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   // the 7 entries without defaults start here
-                  (DBObject.Definer,sr.defpos),(User,su.defpos),(Guest,gu.defpos),
-                  (Role, sr.defpos),
-                  (Owner,su.defpos),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
+                  (_Role,System_Role),(Role, sr),(DBObject.Definer,sr.defpos),
+                  (_User,System_User),(User,su),(Owner,su.defpos),
+                  (Guest,gu),(gu.defpos,gu),
                   (Types,BTree<Domain,long>.Empty),
                   (Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),                
                   (NextStmt,Transaction.Executables))
@@ -290,13 +293,44 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         /// <returns></returns>
-        public virtual Transaction Transact(long t,string sce,bool? auto=null)
+        public virtual Transaction Transact(long t,string usr,string sce,bool? auto=null)
         {
             // if not new, this database may be out of date: ensure we get the latest
             var r = databases[name];
             if (r == null || r.loadpos < loadpos)
                 r = this; // this is more recent!
-            return new Transaction(r,t,sce,auto??autoCommit)+(NextPrep,nextPrep);
+            var tr = new Transaction(r,t,sce,auto??autoCommit)+(NextPrep,nextPrep);
+            // ensure a valid user and role combination
+            User u = null;
+            Role ro = role;
+            if (usr != WindowsIdentity.GetCurrent().Name)
+            {
+                for (var b = roles.First(); u == null && b != null; b = b.Next())
+                {
+                    var rp = b.value();
+                    var ob = objects[rp];
+                    if (ob is User us && us.name == usr)
+                        u = us;
+                }
+                if (u == null) // no such user
+                    throw new DBException("42105");
+                var ui = (ObInfo)role.infos[u.defpos];
+                if (ui?.priv.HasFlag(Grant.Privilege.UseRole) != true)
+                {
+                    ro = null;
+                    for (var b = roles.First(); ro == null && b != null; b = b.Next())
+                    {
+                        var ur = (Role)objects[b.value()];
+                        ui = (ObInfo)ur.infos[u.defpos];
+                        if (ui?.priv.HasFlag(Grant.Privilege.UseRole) == true)
+                            ro = ur;
+                    }
+                }
+                if (ro == null) // no role for user
+                    throw new DBException("42105");
+                tr = tr + (_User, u.defpos) + (_Role, ro.defpos);
+            }
+            return tr;
         }
         public DBObject GetObject(string n)
         {
