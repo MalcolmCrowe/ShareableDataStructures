@@ -4523,7 +4523,7 @@ namespace Pyrrho.Level3
                 case Sqlx.CURRENT_ROLE: return new TChar(cx.db.role.name);
                 case Sqlx.CURRENT_TIME: return new TDateTime(Domain.Timespan, DateTime.UtcNow);
                 case Sqlx.CURRENT_TIMESTAMP: return new TDateTime(Domain.Timestamp, DateTime.UtcNow);
-                case Sqlx.CURRENT_USER: return new TChar(cx.db.user.name);
+                case Sqlx.CURRENT_USER: return new TChar(cx.db.user?.name??"");
                 case Sqlx.ELEMENT:
                     {
                         v = vl?.Eval(cx)?.NotNull();
@@ -6371,7 +6371,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A query should be specified (unless a list of values is supplied instead)
         /// </summary>
-        public long where => (long)(mem[QuantifiedPredicate.Select]??-1L); // or
+        public long select => (long)(mem[QuantifiedPredicate.Select]??-1L); // or
         /// <summary>
         /// A list of values to check (unless a query is supplied instead)
         /// </summary>
@@ -6405,7 +6405,7 @@ namespace Pyrrho.Level3
         {
             base.Scan(cx);
             cx.ObScanned(what);
-            cx.ObScanned(where);
+            cx.ObScanned(select);
             cx.Scan(vals);
         }
         internal override Basis _Relocate(Writer wr)
@@ -6414,7 +6414,7 @@ namespace Pyrrho.Level3
                 return this;
             var r = (InPredicate)base._Relocate(wr);
             r += (QuantifiedPredicate.What, wr.Fixed(what)?.defpos??-1L);
-            r += (QuantifiedPredicate.Where, wr.Fixed(where)?.defpos??-1L);
+            r += (QuantifiedPredicate.Select, wr.Fixed(select)?.defpos??-1L);
             r += (QuantifiedPredicate.Vals, wr.Fix(vals));
             return r;
         }
@@ -6423,8 +6423,8 @@ namespace Pyrrho.Level3
             var r = (InPredicate)base.Fix(cx);
             if (what>=0)
                 r += (QuantifiedPredicate.What, cx.obuids[what]);
-            if (where>=0)
-                r += (QuantifiedPredicate.Where, cx.obuids[where]);
+            if (select>=0)
+                r += (QuantifiedPredicate.Select, cx.obuids[select]);
             r += (QuantifiedPredicate.Vals, cx.Fix(vals));
             return r;
         }
@@ -6436,8 +6436,8 @@ namespace Pyrrho.Level3
             var wh = cx.Replace(r.what, so, sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
-            var wr = cx.Replace(r.where, so, sv);
-            if (wr != r.where)
+            var wr = cx.Replace(r.select, so, sv);
+            if (wr != r.select)
                 r += (QuantifiedPredicate.Select, wr);
             var vs = vals;
             for (var b = vs.First(); b != null; b = b.Next())
@@ -6477,7 +6477,7 @@ namespace Pyrrho.Level3
             for (var b = vals.First(); b != null; b = b.Next())
                 if (((SqlValue)cx.obs[b.value()]).Uses(cx, t))
                     return true;
-            return ((SqlValue)cx.obs[what]).Uses(cx,t) || ((Query)cx.obs[where])?.Uses(cx,t)==true;
+            return ((SqlValue)cx.obs[what]).Uses(cx,t) || ((Query)cx.obs[select])?.Uses(cx,t)==true;
         }
         /// <summary>
         /// Analysis stage Conditions: check to see what conditions can be distributed
@@ -6496,8 +6496,8 @@ namespace Pyrrho.Level3
         internal override BTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
         {
             var r = ((SqlValue)cx.obs[what]).Needs(cx, rs);
-            if (where>=0)
-                r = cx.obs[where].Needs(cx, rs);
+            if (select>=0)
+                r = cx.obs[select].Needs(cx, rs);
             return r;
         }
         /// <summary>
@@ -6519,7 +6519,7 @@ namespace Pyrrho.Level3
                 }
                 else
                 {
-                    for (var rb = ((Query)cx.obs[where])
+                    for (var rb = ((Query)cx.obs[select])
                         .RowSets(cx,cx.data[from]?.finder?? BTree<long, RowSet.Finder>.Empty)
                         .First(cx); 
                         rb != null; rb = rb.Next(cx))
@@ -6589,7 +6589,7 @@ namespace Pyrrho.Level3
                 }
             }
             else
-                sb.Append(Uid(where));
+                sb.Append(Uid(select));
             sb.Append(')');
             return sb.ToString();
         }

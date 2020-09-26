@@ -460,7 +460,7 @@ namespace Pyrrho.Level4
                 var grantees = ParseGranteeList(priv);
                 bool opt = ParseGrantOption();
                 if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
-                    cx.db= tr.AccessObject(cx,true, priv, pob, grantees, opt);
+                    tr.AccessObject(cx,true, priv, pob, grantees, opt);
             }
             else
             {

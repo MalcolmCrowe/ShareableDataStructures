@@ -169,8 +169,17 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             if (gee is Role r)
                 ro = r;
-            var pr = oi.priv | priv;
-            ro += (new ObInfo(obj, oi.name, oi.domain,pr),false);
+            var ci = ro.infos[obj] as ObInfo;
+            var cp = ci?.priv ?? Privilege.NoPrivilege;
+            var pr = (oi.priv & cp) | priv;
+            ro += (new ObInfo(obj, oi.name, oi.domain,pr),true);
+            if (cx.db.objects[obj] is Table tb)
+                for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                {
+                    var c = b.value();
+                    var ic = (ObInfo)cx.db.role.infos[c];
+                    ro += (new ObInfo(c, ic.name, ic.domain, pr), false);
+                }
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

@@ -369,6 +369,17 @@ namespace Pyrrho.Level3
             // Assert(CompareTo(pp.domaim)==0) and tr unchanged
             return pp.ppos;
         }
+        internal bool IsSensitive()
+        {
+            if (kind == Sqlx.SENSITIVE)
+                return true;
+            if (elType?.IsSensitive() == true)
+                return true;
+            for (var b = representation.First(); b != null; b = b.Next())
+                if (b.value().IsSensitive())
+                    return true;
+            return false;
+        }
         internal virtual string DomainName()
         {
             if (name != "")
@@ -953,6 +964,10 @@ namespace Pyrrho.Level3
             if (that is UDType)
                 return 1;
             var c = kind.CompareTo(that.kind);
+            if (c != 0)
+                return c;
+            c = elType?.CompareTo(that.elType) 
+                ?? ((that.elType == null) ? 0 : -1);
             if (c != 0)
                 return c;
             c = prec.CompareTo(that.prec);
@@ -2947,6 +2962,8 @@ namespace Pyrrho.Level3
             var r = this;
             if (constraints.Count>0)
                 r += (Constraints, wr.Fix(constraints));
+            if (elType != null)
+                r += (Element, wr.cx.db.objects[wr.cx.db.types[elType]]);
             if (orderFunc!=null)
                 r += (OrderFunc, orderFunc.Relocate(wr));
             if (representation.Count>0)

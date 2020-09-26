@@ -541,18 +541,20 @@ namespace Pyrrho.Level3
         /// <param name="tr"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        internal virtual bool DoAudit(long pp, Context cx,long[] cols, string[] key)
+        internal virtual bool DoAudit(Context cx,long[] cols, string[] key)
         {
             return false;
         }
-        internal void Audit(long pp, Context cx, long[] cols, string[]key)
+        internal void Audit(Context cx, long[] cols, string[]key)
         {
-            if (DoAudit(pp, cx, cols, key))
+            if (DoAudit(cx, cols, key))
             {
-                var a = new Audit(cx.tr.user, defpos,
-                    cols, key, System.DateTime.Now.Ticks, pp, cx);
-                cx.Add(a);
-                cx.tr.Audit(a);
+                var a = (cx.tr.user.defpos>=0)?
+                        new Audit(cx.tr.user, defpos,
+                            cols, key, DateTime.Now.Ticks, cx.db.nextPos, cx)
+                    :   new Audit2(cx.tr.user.name, defpos,
+                            cols, key, DateTime.Now.Ticks, cx.db.nextPos, cx);
+                cx.tr.Audit(a, cx); // write it to the file immediately
             }
         }
         /// <summary>
@@ -561,33 +563,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="m"></param>
-        internal void Audit(long pp,Context cx,Index ix,PRow m)
-        {
-            var tb = this as Table;
-            if (((!sensitive) && (tb?.classification.minLevel??0) == 0) 
-                || defpos >= Transaction.TransPos)
-                return;
-            if ((!sensitive) && 
-                tb?.enforcement.HasFlag(Grant.Privilege.Select)!=true)
-                return;
-            if (definer==cx.role.defpos || definer == cx.user.defpos)
-                return;
-            var key = new string[m?.Length ?? 0];
-            var cols = new long[m?.Length ?? 0];
-            for (var i = 0; m != null; m = m._tail, i++)
-            {
-                cols[i] = ix.keys[i];
-                key[i] = m._head.ToString();
-            }
-            Audit(pp, cx, cols, key);
-        }
-        /// <summary>
-        /// Issues here: This object may not have been committed yet
-        /// We only want to record audits in the PhysBase for committed data
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="m"></param>
-        internal void Audit(long pp, Context cx, Query f)
+        internal void Audit(Context cx, Query f)
         {
             if (cx.tr == null)
                 return;
@@ -598,7 +574,24 @@ namespace Pyrrho.Level3
             if ((!sensitive) &&
                 tb?.enforcement.HasFlag(Grant.Privilege.Select)!=true)
                 return;
-            if (definer == cx.user.defpos)
+            if (definer == (cx.user?.defpos??0L))
+                return;
+            var ckc = f.display < tb.domain.rowType.Length;
+            if (ckc)
+            {
+                var j = 0;
+                var cb = tb.domain.rowType.First();
+                for (var b = f.rowType.First(); ckc && b != null;
+                        b = b.Next(), cb = cb.Next(), j++)
+                    if (j < f.display)
+                    { 
+                        if (((TableColumn)cx.db.objects[cb.value()]).sensitive)
+                                ckc = false;
+                    } 
+                    else if (b.value() < Transaction.Executables)
+                        ckc = false;
+            }
+            if (ckc)
                 return;
             var m = f.matches?.Count ?? 0;
             var cols = new long[m];
@@ -609,7 +602,7 @@ namespace Pyrrho.Level3
                 cols[i] = cx.obs[b.key()].defpos;
                 key[i] = b.value()?.ToString()??"null";
             }
-            Audit(pp, cx, cols, key);
+            Audit(cx, cols, key);
         }
         internal virtual long Defpos(Context cx)
         {

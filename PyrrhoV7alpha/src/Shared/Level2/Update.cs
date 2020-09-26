@@ -130,7 +130,7 @@ namespace Pyrrho.Level2
             var now = new TableRow(this, cx.db, was);
             var same = true;
             for (var b = fields.First(); same && b != null; b = b.Next())
-                if (tb.tblCols.Contains(b.key()))
+                if (tb.keyCols.Contains(b.key()))
                     same = b.value().CompareTo(was.vals[b.key()]) == 0;
             if (same)
                 return now;
@@ -143,7 +143,7 @@ namespace Pyrrho.Level2
                 var nk = x.MakeKey(now);
                 if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
                     && x.rows.Contains(nk))
-                    throw new DBException("2300", "duplicate key", nk);
+                    throw new DBException("23000", "duplicate key", nk);
                 if (x.reftabledefpos >= 0)
                 {
                     var rx = (Index)cx.db.objects[x.refindexdefpos];

@@ -93,7 +93,8 @@ namespace Pyrrho.Level3
                     var p = b.value();
                     var tc = (TableColumn)cx.db.objects[p];
                     var ci = (ObInfo)cx.role.infos[tc.defpos];
-                    ma += (ci.name, tc);
+                    if (ci!=null)
+                        ma += (ci.name, tc);
                 }
                 // we want to add everything from ti that matches cx.stars or q.Needs
                 if (q != null)
@@ -149,6 +150,8 @@ namespace Pyrrho.Level3
                 if (mp.Contains(p))
                     continue;
                 var ci = cx.Inf(p);
+                if (ci == null)
+                    continue;
                 var u = cx.GetUid();
                 var sv = new SqlCopy(u, cx, ci.name, ic.iix, p);
                 cx.Add(sv);
@@ -389,6 +392,7 @@ namespace Pyrrho.Level3
                     else
                         rowSet = new SelectedRowSet(cx, this,
                             new TableRowSet(cx, tb.defpos,fi),fi);
+                    tb.Audit(cx, this);
                 }
                 if (readC != null)
                     readC.Block();

@@ -241,7 +241,7 @@ namespace Pyrrho.Level2
                 cx.Install(rx,p);
             }
             var cs = CList<long>.Empty;
-            var kc = tb.tblCols;
+            var kc = tb.keyCols;
             for (var b=x.keys.First();b!=null;b=b.Next())
             {
                 var tc = b.value();
@@ -249,7 +249,7 @@ namespace Pyrrho.Level2
                 cx.obs += (tc,(TableColumn)cx.db.objects[tc]);
                 kc += (tc,true);
             }
-            tb += (Table.TableCols, kc);
+            tb += (Table.KeyCols, kc);
             var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs),
                 Grant.Privilege.Execute));
             cx.db += (r, p);

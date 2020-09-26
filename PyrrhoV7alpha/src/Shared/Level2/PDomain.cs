@@ -165,7 +165,8 @@ namespace Pyrrho.Level2
             wr.PutInt((int)domain.charSet);
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
-            if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
+            if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET 
+                || domain.kind==Sqlx.SENSITIVE)
                 wr.PutLong(wr.cx.db.types[domain.elType]);
             else
                 wr.PutLong(domain.structure);
@@ -199,8 +200,8 @@ namespace Pyrrho.Level2
             var ep = rdr.GetLong();
             if (ep >= 0)
             {
-                if (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET)
-                    domain += (Domain.Element, ep);
+                if (kind == Sqlx.ARRAY || kind == Sqlx.MULTISET || kind==Sqlx.SENSITIVE)
+                    domain += (Domain.Element, rdr.context.db.objects[ep]);
                 else
                 {
                     var tb = (Table)rdr.context.db.objects[ep];

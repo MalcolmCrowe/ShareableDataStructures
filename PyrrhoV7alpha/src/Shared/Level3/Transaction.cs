@@ -180,6 +180,18 @@ namespace Pyrrho.Level3
         {
             return parent.Rollback(e);
         }
+        public override void Audit(Audit a,Context cx)
+        {
+            var db = databases[name];
+            var wr = new Writer(new Context(db), dbfiles[name]);
+            lock (wr.file)
+            {
+                wr.segment = wr.file.Position;
+                a.Commit(wr, this);
+                wr.PutBuf();
+                df.Flush();
+            }
+        }
         internal override Database Commit(Context cx)
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
@@ -259,12 +271,12 @@ namespace Pyrrho.Level3
                     }
                 }
                 var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
-                    nextPos, cx);
+                        nextPos, cx);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
-                var (tr,_) = pt.Commit(wr, this);
+                var (tr, _) = pt.Commit(wr, this);
                 for (var b = physicals.First(); b != null; b = b.Next())
-                    (tr,_) = b.value().Commit(wr, tr);
+                    (tr, _) = b.value().Commit(wr, tr);
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
@@ -643,26 +655,20 @@ namespace Pyrrho.Level3
         /// <param name="pr">the privilege</param>
         /// <param name="obj">the database object</param>
         /// <param name="grantees">a list of grantees</param>
-        void DoAccess(Context cx,bool grant, Grant.Privilege pr, long obj, 
+        void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             DBObject[] grantees)
         {
             var np = nextPos;
-            if (grantees == null) // PUBLIC
-            {
-                if (grant)
-                    cx.Add(new Grant(pr, obj, -1, np, cx));
-                else
-                    cx.Add(new Revoke(pr, obj, -1, np, cx));
-            }
-            foreach (var mk in grantees)
-            {
-                long gee = -1;
-                gee = mk.defpos;
-                if (grant)
-                    cx.Add(new Grant(pr, obj, gee, np++, cx));
-                else
-                    cx.Add(new Revoke(pr, obj, gee, np++, cx));
-            }
+            if (grantees != null) // PUBLIC
+                foreach (var mk in grantees)
+                {
+                    long gee = -1;
+                    gee = mk.defpos;
+                    if (grant)
+                        cx.Add(new Grant(pr, obj, gee, np++, cx));
+                    else
+                        cx.Add(new Revoke(pr, obj, gee, np++, cx));
+                }
         }
         /// <summary>
         /// Implement Grant/Revoke on a list of TableColumns
@@ -738,7 +744,7 @@ namespace Pyrrho.Level3
         /// <param name="dp">the database object defining position</param>
         /// <param name="grantees">a list of grantees</param>
         /// <param name="opt">whether with GRANT option (grant) or GRANT for (revoke)</param>
-        internal Transaction AccessObject(Context cx, bool grant, PrivNames[] privs, long dp, DBObject[] grantees, bool opt)
+        internal void AccessObject(Context cx, bool grant, PrivNames[] privs, long dp, DBObject[] grantees, bool opt)
         {
             var db = this;
             var ob = (DBObject)objects[dp];
@@ -803,7 +809,6 @@ namespace Pyrrho.Level3
                 }
             if (changed)
                 DoAccess(cx,grant, p, ob?.defpos ?? 0, grantees);
-            return this;
         }
         /// <summary>
         /// Called from the Parser.

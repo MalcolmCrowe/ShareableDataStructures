@@ -256,15 +256,20 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal Audit(User us,long ta, long[] c, string[] k, long ts,long pp, Context cx)
-            : base(Type.Audit,pp,cx)
+            : this(Type.Audit,us,ta,c,k,ts,pp,cx)
+        {
+        }
+        protected Audit(Type t, User us, long ta, long[] c, string[] k, long ts, long pp, Context cx)
+            : base(t,pp,cx)
         {
             user = us; table = ta; 
             timestamp = ts; cols = c; key = k;
         }
-        internal Audit(Reader rdr) : base(Type.Audit, rdr) { }
+        internal Audit(Reader rdr) : this(Type.Audit, rdr) { }
+        protected Audit(Type t, Reader rdr) : base(t, rdr) { }
         public override void Deserialise(Reader rdr)
         {
-            user = rdr.context.db.objects[rdr.GetLong()] as User;
+            user = (User)rdr.context.db.objects[rdr.GetLong()];
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
@@ -278,10 +283,9 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            user = wr.cx.db.objects[wr.Fix(user.defpos)] as User;
             table = wr.Fix(table);
             timestamp = wr.Fix(timestamp);
-            wr.PutLong(user.defpos);
+            wr.PutLong((user.defpos>=0)?wr.Fix(user.defpos):-1L);
             wr.PutLong(table);
             wr.PutLong(timestamp);
             wr.PutInt(key.Length);
@@ -296,8 +300,9 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Audit ");
-            sb.Append(user);
+            var sb = new StringBuilder();
+            if (user!=null && user.defpos>=0)
+            { sb.Append("Audit: "); sb.Append(user); }
             sb.Append(" ["); sb.Append(table); sb.Append("] ");
             sb.Append(new DateTime(timestamp));
             sb.Append(" {");
@@ -315,13 +320,44 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            throw new NotImplementedException();
+            // nothing 
         }
 
         protected override Physical Relocate(Writer wr)
         {
-            throw new NotImplementedException();
+            if (user.defpos>=0)
+                user = (User)wr.cx.db.objects[wr.Fix(user.defpos)];
+            table = wr.Fix(table);
+            for (var i = 0; i < cols.Length; i++)
+                cols[i] = wr.Fix(cols[i]);
+            return this;
         }
     }
-
+    /// <summary>
+    /// Audit2 is preferred since some users connected is guests
+    /// </summary>
+    internal class Audit2 : Audit
+    {
+        internal string userName;
+        internal Audit2(string us, long ta, long[] c, string[] k, long ts, long pp, Context cx)
+            : base(Type.Audit2, User._public, ta,c,k,ts,pp,cx)
+        {
+            userName = us;
+        }
+        internal Audit2(Reader rdr) : base(Type.Audit2, rdr) { }
+        public override void Deserialise(Reader rdr)
+        {
+            userName = rdr.GetString();
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.PutString(userName);
+            base.Serialise(wr);
+        }
+        public override string ToString()
+        {
+            return "Audit2 " + userName + " " + base.ToString();
+        }
+    }
 }

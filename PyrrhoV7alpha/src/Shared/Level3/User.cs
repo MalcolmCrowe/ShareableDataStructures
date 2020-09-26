@@ -26,6 +26,8 @@ namespace Pyrrho.Level3
         public string pwd => (string)mem[Password]; // if "" will be set on next authentication
         public long initialRole => (long)(mem[InitialRole]??0);
         public Level clearance => (Level)mem[Clearance]??Level.D;
+        internal static User _public = new User(Database.Public, BTree<long, object>.Empty
+            +(Name,"PUBLIC")+(InitialRole,Database.Guest));
         /// <summary>
         /// Constructor: a User from level 2 information
         /// </summary>

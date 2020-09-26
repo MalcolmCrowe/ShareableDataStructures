@@ -27,6 +27,7 @@ namespace Pyrrho.Level3
             ApplicationPS = -262, // long PeriodSpecification
             Enforcement = -263, // Grant.Privilege (T)
             Indexes = -264, // BTree<CList<long>,long> Index
+            KeyCols = -320, // BTree<long,bool> TableColumn (over all indexes)
             TableCols = -332, // BTree<long,bool> TableColumn
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
@@ -39,6 +40,8 @@ namespace Pyrrho.Level3
             (BTree<long,TableRow>)mem[TableRows]??BTree<long,TableRow>.Empty;
         public BTree<CList<long>, long> indexes => 
             (BTree<CList<long>,long>)mem[Indexes]??BTree<CList<long>,long>.Empty;
+        public BTree<long, bool> keyCols =>
+            (BTree<long, bool>)mem[KeyCols] ?? BTree<long, bool>.Empty;
         internal BTree<long, bool> tblCols =>
             (BTree<long, bool>)mem[TableCols] ?? BTree<long, bool>.Empty;
         /// <summary>
@@ -67,7 +70,11 @@ namespace Pyrrho.Level3
         {
             var ds = tb.dependents + (tc.defpos,true);
             var dp = _Max(tb.depth, 1 + tc.depth);
-            return (Table)tb.New(tb.mem + (Dependents, ds) + (Depth, dp));
+            var ts = tb.tblCols + (tc.defpos, true);
+            var m = tb.mem + (Dependents, ds) + (Depth, dp) + (TableCols, ts);
+            if (tc.sensitive)
+                m += (Sensitive, true);
+            return (Table)tb.New(m);
         }
         public static Table operator+(Table tb,Metadata md)
         {
@@ -430,7 +437,7 @@ namespace Pyrrho.Level3
         /// <param name="tr"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        internal override bool DoAudit(long pp, Context cx, long[] cols, string[] key)
+        internal override bool DoAudit(Context cx, long[] cols, string[] key)
         {
             // something clever here would be nice
             return true;
@@ -446,6 +453,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(Enforcement)) { sb.Append(" Enforcement="); sb.Append(enforcement); }
             if (indexes.Count!=0) { sb.Append(" Indexes:"); sb.Append(indexes); }
             if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }
+            sb.Append(" KeyCols: "); sb.Append(keyCols);
             return sb.ToString();
         }
         /// <summary>

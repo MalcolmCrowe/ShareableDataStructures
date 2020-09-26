@@ -203,7 +203,7 @@ namespace Pyrrho.Level2
             ro = ro + (oc,false) + (ti,false); // table name will already be known
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            table += tc; // just the dependency for now
+            table += tc; 
             table += (DBObject._Domain,ti.domain);
             cx.db += (ro, p);
             cx.Install(table,p);

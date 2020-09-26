@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1, Delete1, Drop1, RefAction // 71-75
+            Update1, Delete1, Drop1, RefAction, Audit2 // 71-75
         };
         /// <summary>
         /// The Physical.Type of the Physical

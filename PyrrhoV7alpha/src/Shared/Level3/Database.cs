@@ -6,6 +6,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
 using System.Security.Principal;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -182,10 +183,10 @@ namespace Pyrrho.Level3
         static Database()
         {
             var su = new User(System_User, new BTree<long, object>(Name,
-                    System.Security.Principal.WindowsIdentity.GetCurrent().Name));
+                    WindowsIdentity.GetCurrent().Name));
             var sr = new Role("$Schema", System_Role, BTree<long, object>.Empty +
                     (_User, su.defpos) +  (Owner, su.defpos));
-            var gu = new Role("$Guest", Public, BTree<long, object>.Empty);
+            var gu = new Role("PUBLIC", Public, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu);
             SystemRowSet.Kludge(); 
             Domain.RdfTypes();
@@ -302,7 +303,7 @@ namespace Pyrrho.Level3
             var tr = new Transaction(r,t,sce,auto??autoCommit)+(NextPrep,nextPrep);
             // ensure a valid user and role combination
             User u = null;
-            Role ro = role;
+            Role ro = guest;
             if (usr != WindowsIdentity.GetCurrent().Name)
             {
                 for (var b = roles.First(); u == null && b != null; b = b.Next())
@@ -312,23 +313,27 @@ namespace Pyrrho.Level3
                     if (ob is User us && us.name == usr)
                         u = us;
                 }
-                if (u == null) // no such user
-                    throw new DBException("42105");
-                var ui = (ObInfo)role.infos[u.defpos];
-                if (ui?.priv.HasFlag(Grant.Privilege.UseRole) != true)
+                if (u != null)
                 {
-                    ro = null;
-                    for (var b = roles.First(); ro == null && b != null; b = b.Next())
+                    var ui = (ObInfo)role.infos[u.defpos];
+                    if (ui?.priv.HasFlag(Grant.Privilege.UseRole) != true)
                     {
-                        var ur = (Role)objects[b.value()];
-                        ui = (ObInfo)ur.infos[u.defpos];
-                        if (ui?.priv.HasFlag(Grant.Privilege.UseRole) == true)
-                            ro = ur;
+                        ro = null;
+                        for (var b = roles.First(); ro == null && b != null; b = b.Next())
+                        {
+                            var ur = (Role)objects[b.value()];
+                            ui = (ObInfo)ur.infos[u.defpos];
+                            if (ui?.priv.HasFlag(Grant.Privilege.UseRole) == true)
+                                ro = ur;
+                        }
                     }
                 }
-                if (ro == null) // no role for user
-                    throw new DBException("42105");
-                tr = tr + (_User, u.defpos) + (_Role, ro.defpos);
+                else
+                {
+                    u = new User(--_uid, new BTree<long, object>(Name, usr));
+                    tr += (u.defpos,u);
+                }
+                tr = tr + (_User,u.defpos) +(_Role, ro.defpos);
             }
             return tr;
         }
@@ -425,7 +430,7 @@ namespace Pyrrho.Level3
         /// Accessor: get the start of the work to be committed
         /// </summary>
         public virtual long WorkPos { get { return long.MaxValue; } }
-        public virtual void Audit(Audit a) { }
+        public virtual void Audit(Audit a,Context cx) { }
         internal virtual BTree<long,BTree<long,long>> Affected()
         {
             return BTree<long, BTree<long, long>>.Empty;

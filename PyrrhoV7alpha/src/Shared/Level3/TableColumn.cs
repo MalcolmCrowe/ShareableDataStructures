@@ -4,6 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Configuration;
+using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -65,6 +66,8 @@ namespace Pyrrho.Level3
             if (dt.defaultString != "")
                 r = r + (Domain.DefaultString, dt.defaultString)
                   + (Domain.Default, dt.defaultValue);
+            if (dt.IsSensitive())
+                r += (Sensitive, true);
             if (c.dv != null)
                 r += (Domain.Default, c.dv);
             if (c.ups!="")
@@ -218,6 +221,7 @@ namespace Pyrrho.Level3
                     }
                 }
                 tb += (_Domain, tb.domain - defpos);
+                tb += (Level3.Table.TableCols, tb.tblCols - defpos);
                 tb += (Dependents, tb.dependents - defpos);
                 nd += (tb, nd.loadpos);
                 for (var b = tb.tableRows.First(); b != null; b = b.Next())
