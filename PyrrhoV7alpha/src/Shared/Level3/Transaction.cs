@@ -26,6 +26,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             AutoCommit = -278, // bool
+            ConnUserName = -261, // string
             Deferred = -279, // BList<TriggerActivation>
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
             _Mark = -281, // Transaction
@@ -55,6 +56,7 @@ namespace Pyrrho.Level3
         internal override string source => (string)mem[CursorSpecification._Source];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
+        internal string connUser => (string)mem[ConnUserName];
         internal BList<TriggerActivation> deferred =>
             (BList<TriggerActivation>)mem[Deferred] ?? BList<TriggerActivation>.Empty;
         /// <summary>
@@ -65,8 +67,8 @@ namespace Pyrrho.Level3
         public const long Analysing = 0x5000000000000000;
         public const long Executables = 0x6000000000000000;
         readonly Database parent;
-        internal Transaction(Database db,long t,string sce,bool auto) :base(db.loadpos,
-            db.mem+(StartTime,DateTime.Now.Ticks)
+        internal Transaction(Database db,string user,long t,string sce,bool auto) :base(db.loadpos,
+            db.mem+(StartTime,DateTime.Now.Ticks)+(ConnUserName,user)
             +(NextId,t+1)+(NextStmt,db.nextStmt)+(AutoCommit,auto)+(CursorSpecification._Source,sce))
         {
             parent = db;
@@ -658,7 +660,7 @@ namespace Pyrrho.Level3
         void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             DBObject[] grantees)
         {
-            var np = nextPos;
+            var np = cx.db.nextPos;
             if (grantees != null) // PUBLIC
                 foreach (var mk in grantees)
                 {
@@ -681,35 +683,20 @@ namespace Pyrrho.Level3
         /// <param name="grantees">a list of grantees</param>
         void AccessColumns(Context cx,bool grant, Grant.Privilege pr, Table tb, PrivNames list, DBObject[] grantees)
         {
-            bool SelectCond = pr.HasFlag(Grant.Privilege.Select);
-            bool InsertCond = pr.HasFlag(Grant.Privilege.Insert);
-            bool UpdateCond = pr.HasFlag(Grant.Privilege.Update);
-            int inserts = 0; // for testing whether any columns are permitted
             var rt = role.infos[tb.defpos] as ObInfo;
-            if (InsertCond)
-                for (var cp = rt.domain.representation.First(); cp != null; cp = cp.Next())
-                    if (objects[cp.key()] is TableColumn tc)
-                        inserts++;
-            var i = 0;
-            for (var b = rt.domain.representation.First(); b != null; b = b.Next(), i++)
+            var ne = list.cols != BTree<string, bool>.Empty;
+            for (var b = rt.domain.representation.First(); b != null; b = b.Next())
             {
-                var cn = list.names[i];
                 var p = b.key();
-                var co = objects[p] as TableColumn;
-                if (co == null)
-                    throw Exception("42112", cn).Mix();
-                if (SelectCond && ((co.generated != GenerationRule.None) || co.notNull))
-                    SelectCond = false;
-                if (co.notNull)
-                    inserts--;
-                if (InsertCond && (co.generated != GenerationRule.None))
-                    throw Exception("28107", cn).Mix();
-                DoAccess(cx,grant, pr, co.defpos, grantees);
+                var ci = (ObInfo)cx.db.role.infos[p];
+                if (ci == null 
+                    || (ne && !list.cols.Contains(ci.name)))
+                    continue;
+                list.cols -= ci.name;
+                DoAccess(cx,grant, pr, p, grantees);
             }
-            if (grant && SelectCond)
-                throw Exception("28105").Mix();
-            if (inserts > 0)
-                throw Exception("28106").Mix();
+            if (list.cols.First()?.key() is string cn)
+                throw new DBException("42112", cn);
         }
         /// <summary>
         /// Implement grant/revoke on a Role
@@ -793,12 +780,12 @@ namespace Pyrrho.Level3
                             break;
                         default: throw Exception("4211A", mk).Mix();
                     }
-                    Grant.Privilege pp = (Grant.Privilege)(((int)q) << 0x400);
+                    Grant.Privilege pp = (Grant.Privilege)(((int)q) << 12);
                     if (opt == grant)
                         q |= pp;
                     else if (opt && !grant)
                         q = pp;
-                    if (mk.names.Length != 0)
+                    if (mk.cols.Count != 0L)
                     {
                         if (changed)
                             changed = grant;

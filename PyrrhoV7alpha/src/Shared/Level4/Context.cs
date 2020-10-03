@@ -136,6 +136,7 @@ namespace Pyrrho.Level4
         internal BList<Ident> viewAliases = BList<Ident>.Empty;
         internal ExecuteStatus parse = ExecuteStatus.Obey;
         internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
+        internal BTree<Audit,bool> auds = BTree<Audit,bool>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
         /// Create an empty context for the transaction 
@@ -242,6 +243,20 @@ namespace Pyrrho.Level4
             if (f._head is TQParam q)
                 return new PRow(values[q.qid], t);
             return new PRow(f._head,t);
+        }
+        internal BTree<long,TypedValue> Filter(Table tb,BTree<long,bool> wh)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            for (var b = wh.First(); b != null; b = b.Next())
+                r += obs[b.key()].AddMatch(this, r, tb);
+            return r;
+        }
+        internal BTree<long, TypedValue> Filter(Table tb, BTree<long, SqlValue> wh)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            for (var b = wh.First(); b != null; b = b.Next())
+                r += b.value().AddMatch(this, r, tb);
+            return r;
         }
         internal void Install1(Framing fr)
         {

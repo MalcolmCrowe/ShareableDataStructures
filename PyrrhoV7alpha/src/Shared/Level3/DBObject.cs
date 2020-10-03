@@ -78,14 +78,12 @@ namespace Pyrrho.Level3
         protected DBObject(long dp, BTree<long, object> m) : base(m)
         {
             defpos = dp;
-            if (dp == 0x4fffffffffffffff)
-                Console.WriteLine("!!");
         }
         protected DBObject(long pp, long dp, long dr, BTree<long, object> m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Definer, dr))
         { }
         protected DBObject(string nm, long pp, long dp, long dr, BTree<long, object> m = null)
-            : this(pp, dp, dr, (m ?? BTree<long, object>.Empty) + (Name, nm))
+            : this(pp, dp, dr, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Name, nm))
         { }
         public static DBObject operator +(DBObject ob, (long, object) x)
         {
@@ -155,9 +153,6 @@ namespace Pyrrho.Level3
             var tr = cx.tr;
             if (tr == null)
                 return false;
-            if (tr.user != null && !(classification == Level.D || tr.user.defpos == tr.owner
-                || tr.user.clearance.ClearanceAllows(classification)))
-                return true;
             if (defpos > Transaction.TransPos)
                 return false;
             var oi = (ObInfo)tr.role.infos[defpos];
@@ -373,6 +368,11 @@ namespace Pyrrho.Level3
         {
             return false;
         }
+        internal virtual BTree<long,TypedValue> AddMatch(Context cx,BTree<long,TypedValue> ma,
+            Table tb=null)
+        {
+            return ma;
+        }
         /// <summary>
         /// Check constraints can be added to Domains, TableColumns and Tables
         /// </summary>
@@ -536,73 +536,60 @@ namespace Pyrrho.Level3
             return null;
         }
         /// <summary>
-        /// On reflection: auditing is only relevant for data in base tables!
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        internal virtual bool DoAudit(Context cx,long[] cols, string[] key)
-        {
-            return false;
-        }
-        internal void Audit(Context cx, long[] cols, string[]key)
-        {
-            if (DoAudit(cx, cols, key))
-            {
-                var a = (cx.tr.user.defpos>=0)?
-                        new Audit(cx.tr.user, defpos,
-                            cols, key, DateTime.Now.Ticks, cx.db.nextPos, cx)
-                    :   new Audit2(cx.tr.user.name, defpos,
-                            cols, key, DateTime.Now.Ticks, cx.db.nextPos, cx);
-                cx.tr.Audit(a, cx); // write it to the file immediately
-            }
-        }
-        /// <summary>
         /// Issues here: This object may not have been committed yet
         /// We only want to record audits in the PhysBase for committed data
         /// </summary>
         /// <param name="tr"></param>
         /// <param name="m"></param>
-        internal void Audit(Context cx, Query f)
+        internal void Audit(Context cx, RowSet rs, Query f)
         {
-            if (cx.tr == null)
+            if (cx.tr == null || cx.db.user.defpos == cx.db.owner)
                 return;
             var tb = this as Table;
-            if (((!sensitive) && (tb?.classification.minLevel??0)==0)
-                || defpos >= Transaction.TransPos)
+            if (defpos >= Transaction.TransPos)
                 return;
-            if ((!sensitive) &&
-                tb?.enforcement.HasFlag(Grant.Privilege.Select)!=true)
-                return;
-            if (definer == (cx.user?.defpos??0L))
+            var mac = (tb?.classification.maxLevel ?? 0) > 0&&
+                tb?.enforcement.HasFlag(Grant.Privilege.Select) ==true
+                && cx.db._user!=cx.db.owner;
+            if (!(mac || sensitive))
                 return;
             var ckc = f.display < tb.domain.rowType.Length;
-            if (ckc)
+            if (ckc && !mac)
             {
                 var j = 0;
                 var cb = tb.domain.rowType.First();
                 for (var b = f.rowType.First(); ckc && b != null;
                         b = b.Next(), cb = cb.Next(), j++)
                     if (j < f.display)
-                    { 
+                    {
                         if (((TableColumn)cx.db.objects[cb.value()]).sensitive)
-                                ckc = false;
-                    } 
+                            ckc = false;
+                    }
                     else if (b.value() < Transaction.Executables)
                         ckc = false;
             }
-            if (ckc)
+            if (ckc && !mac)
                 return;
-            var m = f.matches?.Count ?? 0;
-            var cols = new long[m];
-            var key = new string[m];
-            var i = 0;
-            for (var b = f.matches?.First(); b != null; b = b.Next(),i++)
+            if (!sensitive)
             {
-                cols[i] = cx.obs[b.key()].defpos;
-                key[i] = b.value()?.ToString()??"null";
+                var found = false;
+                for (var b = rs.First(cx); (!found) && b != null; b = b.Next(cx))
+                    if (b.Rec().classification.maxLevel > 0)
+                        found = true;
+                if (!found)
+                    return;
             }
-            Audit(cx, cols, key);
+            var match = BTree<long, string>.Empty;
+            for (var b = rs.matches?.First(); b != null; b = b.Next())
+                match += (b.key(), b.value()?.ToString() ?? "null");
+            var a = (cx.tr.user.defpos >= 0) ?
+                    new Audit(cx.tr.user, defpos,match, DateTime.Now.Ticks, cx.db.nextPos, cx)
+                : new Audit2(cx.tr.user.name, defpos,match, DateTime.Now.Ticks, 
+                    cx.db.nextPos, cx);
+            if (cx.auds.Contains(a))
+                return;
+            cx.auds += (a, true);
+            cx.tr.Audit(a, cx); // write it to the file immediately
         }
         internal virtual long Defpos(Context cx)
         {

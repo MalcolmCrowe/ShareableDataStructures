@@ -5,6 +5,8 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Configuration;
 using System.Runtime.CompilerServices;
+using System.Xml.Linq;
+using System.Xml.Schema;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -49,7 +51,7 @@ namespace Pyrrho.Level3
         /// <param name="c">The PColumn def</param>
         /// <param name="dt">the data type</param>
         public TableColumn(Table tb, PColumn c, Domain dt)
-            : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos)) {}
+            : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos) + (LastChange, c.ppos)) {}
         protected TableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TableColumn operator+(TableColumn s,(long,object)x)
         {
@@ -58,7 +60,7 @@ namespace Pyrrho.Level3
         static BTree<long,object> _TableColumn(PColumn c,Domain dt)
         {
             var r = BTree<long, object>.Empty + (Definer, c.database.role.defpos) 
-                + (_Domain, dt) + (_Framing,c.framing);
+                + (_Domain, dt) + (_Framing,c.framing) + (LastChange,c.ppos);
             if (c.notNull)
                 r += (Domain.NotNull, true);
             if (c.generated != GenerationRule.None)
@@ -403,12 +405,12 @@ namespace Pyrrho.Level3
             prev = rc.ppos;
             vals = rc.fields;
         }
-        public TableRow(Update up, Database db, TableRow old)
+        public TableRow(Update up, Database db, TableRow old, Level lv=null)
         {
             defpos = up.defpos;
             time = up.time; user = db.user.defpos; provenance = up.provenance;
             tabledefpos = up.tabledefpos;
-            classification = up.classification ?? Level.D;
+            classification = lv ?? old.classification ?? Level.D;
             prev = up.prev;
             var v = old.vals;
             for (var b = up.fields.First(); b != null; b = b.Next())

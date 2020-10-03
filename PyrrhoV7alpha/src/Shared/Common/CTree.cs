@@ -336,6 +336,14 @@ namespace Pyrrho.Common
         {
             return (CList<K>)b.Remove(i);
         }
+        public CList<K> Without(K k)
+        {
+            var r = Empty;
+            for (var b = First(); b != null; b = b.Next())
+                if (b.value().CompareTo(k) != 0)
+                    r += b.value();
+            return r;
+        }
         public int CompareTo(object obj)
         {
             var that = (CList<K>)obj;

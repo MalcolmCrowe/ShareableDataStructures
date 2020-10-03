@@ -752,7 +752,15 @@ namespace Pyrrho.Level1
                 {
                     var n = cx.Inf(b.key()).name;
                     PutString(n);
-                    PutString((b.value().kind == Sqlx.DOCUMENT) ? "DOCUMENT" : n);
+                    var k = b.value().kind;
+                    switch (k)
+                    {
+                        case Sqlx.DOCUMENT:
+                        case Sqlx.LEVEL:
+                            n = k.ToString();
+                            break;
+                    }
+                    PutString(n);
                     PutInt(flags[j]);
                 }
             }
@@ -840,7 +848,7 @@ namespace Pyrrho.Level1
             {
                 case Sqlx.Null: break;
                 case Sqlx.SENSITIVE:
-                    PutData(_cx,((TSensitive)tv).value);
+                    PutData(_cx, ((TSensitive)tv).value);
                     break;
                 case Sqlx.BOOLEAN:
                     PutInt(((bool)tv.Val()) ? 1 : 0);
@@ -854,9 +862,6 @@ namespace Pyrrho.Level1
                             v = new Integer((long)v);
                         PutInteger((Integer)v);
                     }
-                    break;
-                case Sqlx.LEVEL:
-                    PutString(tv.ToString());
                     break;
                 case Sqlx.NUMERIC:
                     {
@@ -880,6 +885,7 @@ namespace Pyrrho.Level1
                     goto case Sqlx.CHAR;
                 case Sqlx.CLOB: goto case Sqlx.CHAR;
                 case Sqlx.NCLOB: goto case Sqlx.CHAR;
+                case Sqlx.LEVEL:
                 case Sqlx.CHAR:
                     PutString(tv.ToString());
                     break;
@@ -906,10 +912,10 @@ namespace Pyrrho.Level1
                 case Sqlx.OBJECT: PutString(tv.ToString()); break;
                 case Sqlx.BLOB: PutBytes((byte[])tv.Val()); break;
                 case Sqlx.REF:
-                case Sqlx.ROW: PutRow(_cx,tv as TRow); break; // different!
-                case Sqlx.ARRAY: PutArray(_cx,(TArray)tv); break;
-                case Sqlx.MULTISET: PutMultiset(_cx,(TMultiset)tv.Val()); break;
-                case Sqlx.TABLE: PutTable(_cx,(RowSet)tv.Val()); break;
+                case Sqlx.ROW: PutRow(_cx, tv as TRow); break; // different!
+                case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
+                case Sqlx.MULTISET: PutMultiset(_cx, (TMultiset)tv.Val()); break;
+                case Sqlx.TABLE: PutTable(_cx, (RowSet)tv.Val()); break;
                 case Sqlx.INTERVAL: PutInterval((Interval)tv.Val()); break;
                 case Sqlx.TYPE: goto case Sqlx.ROW;
                 case Sqlx.TYPE_URI: PutString(tv.ToString()); break;

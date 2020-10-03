@@ -199,11 +199,6 @@ namespace Pyrrho.Level3
         { }
         public Domain(Sqlx t,Context cx, CList<long> cs, int ds=0)
             : this(-1L,_Mem(cx,cs,ds)+(Kind,t)) { }
-        // Give a standard type a non-predefined defpos because of potential modifications from parser
-        public Domain(long lp, Context cx, Domain d) : base(lp,d.mem) 
-        {
-            cx.db += (lp, this);
-        }
         // A union of standard types
         public Domain(long dp, Sqlx t, CTree<Domain,bool> u)
             : this(dp,BTree<long,object>.Empty + (Kind,t) + (UnionOf,u))
@@ -231,7 +226,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="p">The PDomain level 2 definition</param>
         public Domain(PDomain p) 
-            : base(p.ppos,p.domain.mem)
+            : base(p.ppos,p.domain.mem + (LastChange, p.ppos))
         { }
         static BTree<long,object> _Mem(BList<SqlValue> vs,int ds=0)
         {
@@ -496,6 +491,7 @@ namespace Pyrrho.Level3
                 case Sqlx.INTEGER: return 1;
                 case Sqlx.NUMERIC: return 2;
                 case Sqlx.REAL: return 8;
+                case Sqlx.LEVEL:
                 case Sqlx.NCHAR: return 3;
                 case Sqlx.CHAR: return 3;
                 case Sqlx.TIMESTAMP: return 4;
@@ -3241,6 +3237,7 @@ namespace Pyrrho.Level3
                 wr.PutLong(wr.cx.db.levels[lev]);
             else
             {
+                wr.PutLong(-1L);
                 wr.cx.db += (lev,wr.Length);
                 wr.WriteByte(lev.minLevel);
                 wr.WriteByte(lev.maxLevel);
@@ -3260,6 +3257,7 @@ namespace Pyrrho.Level3
                 lev =rdr.context.db.cache[lp];
             else
             {
+                lp = rdr.Position;
                 var min = (byte)rdr.ReadByte();
                 var max = (byte)rdr.ReadByte();
                 var gps = BTree<string, bool>.Empty;

@@ -1,20 +1,8 @@
 using System;
-using System.Collections.Generic;
 using Pyrrho.Common;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
-using System.CodeDom.Compiler;
-using System.Configuration;
-using System.Net;
-using System.Net.Sockets;
-using System.Data.SqlTypes;
-using System.Runtime.InteropServices;
-using System.CodeDom;
-using System.Diagnostics.Eventing.Reader;
-using System.Security.Cryptography;
-using System.Net.NetworkInformation;
-using System.Text.RegularExpressions;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -161,7 +149,13 @@ namespace Pyrrho.Level4
             }
             return (m??BTree<long,object>.Empty) +(_Finder,fin);
         }
-
+        protected static BTree<long,TypedValue> _Matches(Context cx,BTree<long,bool> wh)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            for (var b=wh.First();b!=null;b=b.Next())
+                r = cx.obs[b.key()].AddMatch(cx,r);
+            return r;
+        }
         internal abstract RowSet New(Context cx, BTree<long, Finder> nd, bool bt);
         internal RowSet New((long,object)x)
         {
@@ -187,7 +181,8 @@ namespace Pyrrho.Level4
             nd = cx.Needs(nd, this, keys);
             nd = cx.Needs(nd, this, rowOrder);
             nd = AllWheres(cx, nd);
-            nd = AllMatches(cx, nd);
+            if (!(this is IndexRowSet || this is TableRowSet))
+                nd = AllMatches(cx, nd);
             return New(cx, nd, false); 
         }
         /// <summary>
@@ -428,8 +423,8 @@ namespace Pyrrho.Level4
                 sb.Append(cm); cm = "],";
                 sb.Append(Uid(b.key()));
                 var f = b.value();
-                sb.Append("="); sb.Append(DBObject.Uid(f.rowSet));
-                sb.Append('['); sb.Append(DBObject.Uid(f.col));
+                sb.Append("="); sb.Append(Uid(f.rowSet));
+                sb.Append('['); sb.Append(Uid(f.col));
             }
             sb.Append("])");
             return sb.ToString();
@@ -1110,8 +1105,8 @@ namespace Pyrrho.Level4
         /// Independent of role, user, command.
         /// Context must have a suitable tr field
         /// </summary>
-        internal TableRowSet(Context cx, long t,BTree<long,Finder>fi)
-            : base(t, cx, cx.Inf(t).domain,fi,null,null,null,null,null,
+        internal TableRowSet(Context cx, long t,BTree<long,Finder>fi,BTree<long,bool> wh)
+            : base(t, cx, cx.Inf(t).domain,fi,null,null,null,_Matches(cx,wh),null,
                   null,new BTree<long,object>(SqlInsert._Table,t))
         { }
         TableRowSet(Context cx, TableRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -1195,6 +1190,7 @@ namespace Pyrrho.Level4
                     var rec = b.value();
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         _cx.db.user != null && _cx.db.user.defpos != table.definer
+                         && _cx.db._user != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     return new TableCursor(_cx, trs, table, 0, b);
@@ -1204,7 +1200,6 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 var bmk = _bmk;
-                var rec = _bmk.value();
                 var table = _table;
                 for (;;) 
                 {
@@ -1212,8 +1207,9 @@ namespace Pyrrho.Level4
                         bmk = bmk.Next();
                     if (bmk == null)
                         return null;
+                    var rec = bmk.value();
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) && 
-                        _cx.db.user.defpos!=table.definer 
+                        _cx.db._user!=table.definer && _cx.db._user!=_cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     return new TableCursor(_cx,_trs,_table, _pos + 1, bmk);
@@ -1246,10 +1242,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal IndexRowSet(Context cx, Table tb, Index x, BTree<long,Finder>fi, long? dp=null,
-            BTree<long,object>m=null) 
-            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,fi,null,null,null,null,
-                  null,null,
+        internal IndexRowSet(Context cx, Table tb, Index x, BTree<long,Finder>fi, 
+            BTree<long,TypedValue> fl,long? dp=null, BTree<long,object>m=null) 
+            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,fi,null,null,null,
+                  fl,null,null,
                   (m??BTree<long,object>.Empty)+(IxTable,tb.defpos)+(_Index,x.defpos))
         { }
         protected IndexRowSet(Context cx, IndexRowSet irs, BTree<long, Finder> nd, bool bt)
@@ -1360,7 +1356,8 @@ namespace Pyrrho.Level4
                         continue;
                     var rec = table.tableRows[iq.Value];
                     if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && _cx.db.user.defpos != table.definer
+                        && _cx.db._user != table.definer
+                         && _cx.db._user != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                         continue;
                     return new IndexCursor(_cx,_irs, 0, bmk, rec, key);
@@ -1380,7 +1377,8 @@ namespace Pyrrho.Level4
                         continue;
                     var rec = _table.tableRows[bmk.Value().Value];
                     if (_table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && _cx.db.user.defpos != _table.definer
+                        && _cx.db._user != _table.definer
+                         && _cx.db._user != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     return new IndexCursor(_cx, _irs, _pos + 1, bmk, rec);
@@ -1405,7 +1403,7 @@ namespace Pyrrho.Level4
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
         internal FilterRowSet(Context cx, Table tb, Index x, PRow filt, BTree<long, Finder> fi)
-            : base(cx, tb, x, fi, cx.nextHeap++,BTree<long, object>.Empty + (IxFilter, filt))
+            : base(cx, tb, x, fi, null, cx.nextHeap++,BTree<long, object>.Empty + (IxFilter, filt))
         { }
         FilterRowSet(Context cx, FilterRowSet irs, BTree<long, Finder> nd, bool bt)
             : base(cx, irs, nd, bt)
@@ -1509,7 +1507,7 @@ namespace Pyrrho.Level4
                         continue;
                     var rec = table.tableRows[iq.Value];
                     if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && _cx.db.user.defpos != table.definer
+                        && _cx.db.user.defpos != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                         continue;
                     return new FilterCursor(_cx, _irs, 0, bmk, rec, key ?? irs.filter);
@@ -1529,7 +1527,7 @@ namespace Pyrrho.Level4
                         continue;
                     var rec = _table.tableRows[bmk.Value().Value];
                     if (_table.enforcement.HasFlag(Grant.Privilege.Select)
-                        && _cx.db.user.defpos != _table.definer
+                        && _cx.db.user.defpos != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
                     return new FilterCursor(_cx, _frs, _pos + 1, bmk, rec);

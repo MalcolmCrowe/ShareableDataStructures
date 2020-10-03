@@ -100,11 +100,19 @@ namespace Pyrrho.Level2
                     first = false;
             var pr = Grant.Privilege.Select;
             if (first)
+            {
                 pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
+                nu += (User.InitialRole, ro.defpos);
+            }
             ro += (new ObInfo(nu.defpos, nu.name, Domain.Null,pr),false);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
-                cx.db += (Database.Owner, nu.defpos);
+            {
+                cx.db = cx.db + (Database.Owner, nu.defpos);
+                if (cx.db is Transaction tr && tr.connUser==nu.name)
+                    cx.db = cx.db + (Database.User, nu) + (Database.Role, ro)
+                        + (Database._User, nu.defpos) + (Database._Role, ro.defpos);
+            }
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
@@ -156,7 +164,10 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            throw new System.NotImplementedException();
+            var us = cx.db.objects[_user] as User;
+            us += (User.Clearance, clearance);
+            cx.db += (us, p);
+            cx.Add(us);
         }
     }
 }

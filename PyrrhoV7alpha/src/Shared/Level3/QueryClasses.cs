@@ -210,7 +210,6 @@ namespace Pyrrho.Level3
             }
             return partition == w.partition;
         }
-        public static long MemoryLimit = 0;
     }
     internal class Grouping :DBObject
     {
@@ -321,7 +320,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BList<long> sets =>
             (BList<long>)mem[Sets] ?? BList<long>.Empty;
-        public GroupSpecification(long dp) :base(dp,BTree<long,object>.Empty) { }
         internal GroupSpecification(long dp,BTree<long, object> m) : base(dp,m) { }
         public static GroupSpecification operator+(GroupSpecification a,GroupSpecification gs)
         {

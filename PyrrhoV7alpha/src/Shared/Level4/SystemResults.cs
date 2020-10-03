@@ -469,7 +469,7 @@ namespace Pyrrho.Level4
                 case "Sys$ClassifiedColumnData": return SysClassifiedColumnDataBookmark.New(_cx, res);
                 case "Sys$Enforcement": return SysEnforcementBookmark.New(_cx, res);
                 case "Sys$Audit": return SysAuditBookmark.New(_cx, res);
-                case "Sys%AuditKey": return SysAuditKeyBookmark.New(_cx, res);
+                case "Sys$AuditKey": return SysAuditKeyBookmark.New(_cx, res);
                 case "Role$PrimaryKey": return RolePrimaryKeyBookmark.New(_cx, res);
 #if PROFILES
                 // profile stuff
@@ -3065,11 +3065,12 @@ namespace Pyrrho.Level4
             internal static SysRoleBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
-                {
-                    var rb = new SysRoleBookmark(_cx,res, 0, en);
-                    if (en.value() is Role && rb.Match(res) && Query.Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (en.value() is Role)
+                    {
+                        var rb = new SysRoleBookmark(_cx, res, 0, en);
+                        if (rb.Match(res) && Query.Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
             /// <summary>
@@ -3131,7 +3132,7 @@ namespace Pyrrho.Level4
                 }
             }
             /// <summary>
-            /// create the Sys$Role enumerator
+            /// create the Sys$User enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             SysUserBookmark(Context _cx, SystemRowSet res,int pos, ABookmark<long,object> bmk)
@@ -3146,11 +3147,12 @@ namespace Pyrrho.Level4
             internal static SysUserBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
-                {
-                    var rb = new SysUserBookmark(_cx,res, 0, en);
-                    if (en.value() is User && rb.Match(res) && Query.Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (en.value() is User)
+                    {
+                        var rb = new SysUserBookmark(_cx, res, 0, en);
+                        if (rb.Match(res) && Query.Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
             /// <summary>
@@ -3172,11 +3174,12 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 for (var e = en.Next(); e != null; e = e.Next())
-                {
-                    var rb = new SysUserBookmark(_cx,res, _pos + 1, e);
-                    if (e.value() is User && rb.Match(res) && Query.Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (e.value() is User)
+                    {
+                        var rb = new SysUserBookmark(_cx, res, _pos + 1, e);
+                        if (rb.Match(res) && Query.Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
         }
@@ -3299,6 +3302,7 @@ namespace Pyrrho.Level4
                     switch(bmk.ph.type)
                     {
                         case Physical.Type.Audit:
+                        case Physical.Type.Audit2:
                             var rb = new SysAuditBookmark(_cx,res, bmk, 0);
                             if (Query.Eval(res.where, _cx))
                                 return rb;
@@ -3314,7 +3318,14 @@ namespace Pyrrho.Level4
                         {
                             var au = ph as Audit;
                             return new TRow(rs, Pos(au.ppos),
-                                Pos(au.user.defpos),Pos(au.table),
+                                new TChar(au.user.name),Pos(au.table),
+                                new TDateTime(new DateTime(au.timestamp)));
+                        }
+                    case Physical.Type.Audit2:
+                        {
+                            var au = ph as Audit2;
+                            return new TRow(rs, Pos(au.ppos),
+                                new TChar(au.userName), Pos(au.table),
                                 new TDateTime(new DateTime(au.timestamp)));
                         }
                 }
@@ -3348,11 +3359,13 @@ namespace Pyrrho.Level4
         internal class SysAuditKeyBookmark : SystemBookmark
         {
             public readonly LogBookmark _bmk;
+            public readonly ABookmark<long,string> _inner;
             public readonly int _ix;
-            public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk, int ix, int pos) 
-                : base(_cx,res, pos,bmk._defpos,_Value(_cx,res,bmk.ph,ix))
+            public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk, 
+                ABookmark<long,string> _in, int ix, int pos) 
+                : base(_cx,res, pos,bmk._defpos,_Value(_cx,res,bmk.ph,_in,ix))
             {
-                _bmk = bmk; _ix = ix; 
+                _bmk = bmk; _inner = _in; _ix = ix;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -3360,46 +3373,56 @@ namespace Pyrrho.Level4
             }
             internal static SysAuditKeyBookmark New(Context _cx, SystemRowSet res)
             {
-                for (var bmk = LogBookmark.New(_cx,res); bmk != null; bmk = bmk.Next(_cx) as LogBookmark)
+                for (var bmk = LogBookmark.New(_cx,res); bmk != null; 
+                    bmk = bmk.Next(_cx) as LogBookmark)
                     switch (bmk.ph.type)
                     {
                         case Physical.Type.Audit:
-                            var rb = new SysAuditKeyBookmark(_cx,res, bmk, 0, 0);
-                            if (Query.Eval(res.where, _cx))
-                                return rb;
+                        case Physical.Type.Audit2:
+                            var a = ((Audit)bmk.ph).match.First();
+                            if (a != null)
+                            {
+                                var rb = new SysAuditKeyBookmark(_cx, res, bmk, a, 0, 0);
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                            }
                             break;
                     }
                 return null;
             }
-            static TRow _Value(Context _cx, SystemRowSet res,Physical ph,int _ix)
+            static TRow _Value(Context _cx, SystemRowSet res, Physical ph,
+                ABookmark<long, string> _in, int _ix)
             {
-                var au = ph as Audit;
-                return new TRow(res, Pos(au.ppos), new TInt(_ix),
-                    Pos(au.cols[_ix]),new TChar(au.key[_ix]));
+                return new TRow(res, Pos(ph.ppos), new TInt(_ix),
+                    Pos(_in.key()), new TChar(_in.value()));
             }
 
             protected override Cursor _Next(Context _cx)
             {
                 var ix = _ix;
+                var b = _inner;
                 var bmk = _bmk;
-                var au = bmk.ph as Audit;
                 for (; ; )
                 {
-                    for (ix = ix + 1; ix < au.key.Length; ix++)
+                    for (b = b?.Next(), ix++; b!=null; b=b.Next(), ix++)
                     {
-                        var sb = new SysAuditKeyBookmark(_cx,res, _bmk, ix, _pos + 1);
+                        var sb = new SysAuditKeyBookmark(_cx,res, _bmk, b, ix, _pos + 1);
                         if (Query.Eval(res.where, _cx))
                             return sb;
                     }
-                    for (bmk = bmk?.Next(_cx) as LogBookmark; bmk != null; 
+                    for (bmk = bmk?.Next(_cx) as LogBookmark; bmk != null;
                         bmk = bmk.Next(_cx) as LogBookmark)
-                        if (bmk.ph.type == Physical.Type.Audit)
-                            break;
+                        if (bmk.ph.type == Physical.Type.Audit
+                            || bmk.ph.type == Physical.Type.Audit2)
+                        {
+                            b = ((Audit)bmk.ph).match.First();
+                            if (b!=null)
+                                break;
+                        }
                     if (bmk == null)
                         return null;
                     ix = 0;
-                    au = bmk.ph as Audit;
-                    var rb = new SysAuditKeyBookmark(_cx,res, bmk, 0, _pos + 1);
+                    var rb = new SysAuditKeyBookmark(_cx,res, bmk, b, 0, _pos + 1);
                     if (Query.Eval(res.where, _cx))
                         return rb;
                 }

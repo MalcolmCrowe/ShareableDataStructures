@@ -62,7 +62,7 @@ namespace Pyrrho.Level3
                   _Mem(p) + (Action,p.def) + (Name,p.name)
                   + (Definer, p.database.role.defpos)
                   + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
-                  + (UpdateCols, p.cols))
+                  + (UpdateCols, p.cols) + (LastChange, p.ppos))
 		{ }
         public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) 
         { }

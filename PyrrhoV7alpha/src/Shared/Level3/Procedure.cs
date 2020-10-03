@@ -54,7 +54,7 @@ namespace Pyrrho.Level3
 		public Procedure(PProcedure p, Context cx,BTree<long,object> m=null)
             : base( p.ppos, p.defpos, cx.role.defpos, (m??BTree<long,object>.Empty)
                   + (Params, p.parameters) +(_Domain,p.retType) + (Body, p.proc)
-                  + (Name,p.name) + (Clause, p.source.ident))
+                  + (Name,p.name) + (Clause, p.source.ident) + (LastChange, p.ppos))
         { }
         /// <summary>
         /// Constructor: a new Procedure/Function from the parser

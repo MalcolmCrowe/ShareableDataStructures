@@ -41,10 +41,13 @@ namespace Pyrrho.Level2
             : base(t,tb,fl,pp,cx)
         {
             _defpos = old.defpos;
+            if (t!=Type.Update1)
+                _classification = old.classification;
             prev = old.prev;
         }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
-        protected Update(Type t, Reader rdr) : base(t, rdr) { }
+        protected Update(Type t, Reader rdr) : base(t, rdr) 
+        {  }
         protected Update(Update x, Writer wr) : base(x, wr)
         {
             _defpos = wr.Fix(x._defpos);
@@ -174,33 +177,16 @@ namespace Pyrrho.Level2
     }
     internal class Update1 : Update
     {
-
         public Update1(TableRow old, Table tb, BTree<long, TypedValue> fl, Level lv, 
             long pp, Context cx) 
             : base(Type.Update1,old, tb, fl, pp, cx)
         {
+            if (cx.db._user != cx.db.owner)
+                throw new DBException("42105");
             _classification = lv;
         }
         public Update1(Reader rdr) : base(Type.Update1, rdr)
-        {
-        }
-
-        public Update1(TableRow old, BTree<long, TypedValue> fl, Table tb, Level lv, 
-            long pp, Context cx) 
-            : base(Type.Update1, old,tb,  fl, pp, cx)
-        {
-            _classification = lv;
-        }
-
-        protected Update1(Type t, Reader rdr) : base(t, rdr)
-        {
-        }
-
-        protected Update1(Type t, TableRow old, Table tb, BTree<long, TypedValue> fl, 
-            long pp, Context cx) 
-            : base(t, old, tb, fl, pp, cx)
-        {
-        }
+        {  }
         protected Update1(Update1 x, Writer wr) : base(x, wr)
         {
             _classification = x._classification;
@@ -213,6 +199,13 @@ namespace Pyrrho.Level2
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
+        }
+        internal override void Install(Context cx, long p)
+        {
+            var fl = AddRow(cx);
+            cx.Install((Table)cx.db.objects[tabledefpos] 
+                + new TableRow(this, cx.db, fl, _classification), p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override void Serialise(Writer wr)
         {

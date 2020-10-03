@@ -441,8 +441,13 @@ namespace Pyrrho.Level2
             var ob = (DBObject)cx.db.objects[obj];
             if (cx.role.defpos != ob.definer && cx.role.defpos != 0)
                 throw new DBException("42105");
-            var nb = ob+ (DBObject.Classification,classification);
-            cx.db += (nb, p);
+            for (var b = cx.db.roles.First(); b != null; b = b.Next())
+            {
+                var ro = (Role)cx.db.objects[b.value()];
+                if (ro.infos[obj] is ObInfo oi)
+                    cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
+            }
+            cx.db += (ob+(DBObject.Classification,classification), p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }

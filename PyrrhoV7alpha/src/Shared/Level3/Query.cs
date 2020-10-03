@@ -473,14 +473,10 @@ namespace Pyrrho.Level3
         /// Add a condition and/or update to the QueryWhere. 
         /// </summary>
         /// <param name="cond">a condition</param>
-        /// <param name="assigns">a set of update assignments</param>
-        /// <param name="data">some insert data</param>
-        /// <param name="rqC">SqlValues requested from possibly remote contributors</param>
-        /// <param name="needed">SqlValues that remote contributors will need to be told</param>
-        /// <returns>an updated querywhere, now containing typedvalues for the condition</returns>
+        /// <returns>an updated query, now containing typedvalues for the condition</returns>
         internal Query AddCondition(Context cx,SqlValue cond)
         {
-            return where.Contains(cond.defpos) ? this : 
+            return where.Contains(cond.defpos) ? this :
                 (Query)cx.Add(this + (Where, where + (cond.defpos, true)));
         }
         internal virtual Query AddCondition(Context cx, BTree<long, bool> cond,
@@ -1888,8 +1884,8 @@ namespace Pyrrho.Level3
             }
             if (FDInfo is FDJoinPart fd)
             {
-                var ds = new IndexRowSet(cx, fd.table, fd.index,fi);
-                var rs = new IndexRowSet(cx, fd.rtable, fd.rindex,fi);
+                var ds = new IndexRowSet(cx, fd.table, fd.index,fi,cx.Filter(fd.table,where));
+                var rs = new IndexRowSet(cx, fd.rtable, fd.rindex,fi,null);
                 if (fd.reverse)
                     return new JoinRowSet(cx, this, new SelectedRowSet(cx,lf,ds,fi), 
                         new SelectedRowSet(cx,rg,rs,fi));

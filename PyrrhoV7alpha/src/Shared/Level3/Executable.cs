@@ -40,6 +40,7 @@ namespace Pyrrho.Level3
             AlterDomain = 3,
             AlterTable = 4,
             Call = 7,
+            Clearance = 8,
             CloseCursor = 9,
             CreateRoutine = 14,
             AlterRoutine = 17,

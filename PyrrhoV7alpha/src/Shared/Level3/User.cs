@@ -21,13 +21,13 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Password = -303, // string (hidden)
-            InitialRole = -304, // long
+            InitialRole = -304, // long Role
             Clearance = -305; // Level
         public string pwd => (string)mem[Password]; // if "" will be set on next authentication
-        public long initialRole => (long)(mem[InitialRole]??0);
+        public long initialRole => (long)(mem[InitialRole]??Database.Public);
         public Level clearance => (Level)mem[Clearance]??Level.D;
-        internal static User _public = new User(Database.Public, BTree<long, object>.Empty
-            +(Name,"PUBLIC")+(InitialRole,Database.Guest));
+        internal static User _guest = new User(Database.Guest, BTree<long, object>.Empty
+            +(Name,"GUEST"));
         /// <summary>
         /// Constructor: a User from level 2 information
         /// </summary>

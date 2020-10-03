@@ -42,12 +42,12 @@ namespace Pyrrho.Level3
 		public Check(PCheck c, Database db) 
             : base(c.name, c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
                   + (From.Target,c.ckobjdefpos)+(Source,c.check)
-                  + (Condition, c.test)+(_Framing,c.framing))
+                  + (Condition, c.test)+(_Framing,c.framing)+(LastChange,c.ppos))
         { }
         public Check(PCheck2 c, Database db)
             : base(c.name, c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
           + (From.Target, c.subobjdefpos) + (Source, c.check)
-          + (Condition, c.test) + (_Framing, c.framing))
+          + (Condition, c.test) + (_Framing, c.framing)+(LastChange,c.ppos))
         { }
         /// <summary>
         /// for system types

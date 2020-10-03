@@ -15,6 +15,7 @@ using System.Security.Cryptography;
 using System.Configuration;
 using System.Reflection.Emit;
 using System.Dynamic;
+using System.Diagnostics.Eventing.Reader;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -282,7 +283,7 @@ namespace Pyrrho.Level3
                     return cx.values[defpos];
                 var f = cx.from[defpos];
                 var r = cx.data[f.rowSet]
-                    ?? throw new PEException("PE192");
+                    ?? throw new PEException("PE112");
                 var c = cx.cursors[f.rowSet];
                 if (c == null) // can happen with unreachable conditions during OrdereredRowSet
                     return null;
@@ -2141,6 +2142,22 @@ namespace Pyrrho.Level3
                 f = f.AddMatchedPair(left, right);
             return f;
         }
+        internal override BTree<long, TypedValue> AddMatch(Context cx, BTree<long, TypedValue> ma,
+            Table tb = null)
+        {
+            if (kind == Sqlx.EQL)
+            {
+                if (cx.obs[left] is SqlCopy sc && cx.obs[right] is SqlLiteral sr
+                    && (tb==null || (cx.db.objects[sc.copyFrom] is TableColumn tc
+                    && tc.tabledefpos==tb.defpos)))
+                    return ma += (sc.copyFrom, sr.val);
+                if (cx.obs[right] is SqlCopy sd && cx.obs[left] is SqlLiteral sl
+                    && (tb == null || (cx.db.objects[sd.copyFrom] is TableColumn td
+                    && td.tabledefpos == tb.defpos)))
+                    return ma += (sd.copyFrom, sl.val);
+            }
+            return base.AddMatch(cx, ma);
+        }
         /// <summary>
         /// analysis stage Conditions()
         /// </summary>
@@ -2281,6 +2298,19 @@ namespace Pyrrho.Level3
             return "NULL";
         }
     }
+    internal class SqlSecurity : SqlValue
+    {
+        internal SqlSecurity(long dp) : base(dp, "SECURITY", Domain._Level) { }
+        protected SqlSecurity(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlSecurity(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new SqlSecurity(dp,mem);
+        }
+    }
     /// <summary>
     /// The SqlLiteral subclass
     /// </summary>
@@ -2288,7 +2318,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Val = -317;// TypedValue
-        protected TypedValue val=>(TypedValue)mem[_Val];
+        internal TypedValue val=>(TypedValue)mem[_Val];
         internal readonly static SqlLiteral Null = new SqlLiteral(-1,Context._system,TNull.Value);
         internal override long target => -1;
         /// <summary>
@@ -4203,7 +4233,7 @@ namespace Pyrrho.Level3
                 if (a.defpos != r.op2)
                     r += (cx, Op2, a.defpos);
             }
-            return (SqlValue)cx.Add(r);
+            return base.AddFrom(cx,q);
         }
         static BTree<long,bool> _Deps(SqlValue vl,SqlValue o1,SqlValue o2)
         {
@@ -4702,6 +4732,14 @@ namespace Pyrrho.Level3
                 case Sqlx.RANK:
                     return new TInt(firstTie._pos + 1);
                 case Sqlx.ROW_NUMBER: return new TInt(fc.wrb._pos+1);
+                case Sqlx.SECURITY:
+                    {
+                        for (var rs = cx.data[from]; rs != null;
+                            rs = cx.data[(long)(rs.mem[From.Source] ?? -1L)])
+                            if (cx.cursors[rs.defpos] is Cursor cu)
+                                return TLevel.New(cu.Rec().classification);
+                        return TLevel.D;
+                    }
                 case Sqlx.SET:
                     {
                         v = vl?.Eval(cx)?.NotNull();
@@ -7911,7 +7949,8 @@ namespace Pyrrho.Level3
             var ut = tr.role.infos[usingTable.defpos] as ObInfo;
             var usingTableColumns = ut.domain.representation;
             var urs = new IndexRowSet(cx, usingTable, usingIndex,
-                cx.data[from]?.finder??BTree<long,RowSet.Finder>.Empty);
+                cx.data[from]?.finder??BTree<long,RowSet.Finder>.Empty,
+                cx.Filter(usingTable,where));
             var r = new TArray(domain);
             for (var b = urs.First(cx); b != null; b = b.Next(cx))
             {

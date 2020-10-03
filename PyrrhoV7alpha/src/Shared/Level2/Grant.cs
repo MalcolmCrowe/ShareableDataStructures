@@ -162,24 +162,45 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         internal override void Install(Context cx, long p)
         {
-            var gee = cx.db.objects[grantee];
+            var gee = (DBObject)cx.db.objects[grantee];
             var ro = cx.db.role;
             var oi = ro.infos[obj] as ObInfo;
             if (oi == null)
                 throw new DBException("42105");
             if (gee is Role r)
+            {
                 ro = r;
+                if (ro.defpos == Database.Public)
+                    priv = (Privilege)((int)priv & 0xfff);
+            }
+            if (gee is User u && u.initialRole==Database.Public)
+                ro += (User.InitialRole, obj);
             var ci = ro.infos[obj] as ObInfo;
             var cp = ci?.priv ?? Privilege.NoPrivilege;
+            var rt = CList<long>.Empty;
             var pr = (oi.priv & cp) | priv;
-            ro += (new ObInfo(obj, oi.name, oi.domain,pr),true);
             if (cx.db.objects[obj] is Table tb)
-                for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+            {
+                if (priv.HasFlag(Privilege.Select))
                 {
-                    var c = b.value();
-                    var ic = (ObInfo)cx.db.role.infos[c];
-                    ro += (new ObInfo(c, ic.name, ic.domain, pr), false);
+                    rt = oi.domain.rowType;
+                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    {
+                        var c = b.value();
+                        var ic = (ObInfo)cx.db.role.infos[c];
+                        ro += (new ObInfo(c, ic.name, ic.domain, pr), false);
+                    }
                 }
+                else
+                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    {
+                        var c = b.value();
+                        if (ro.infos[c] is ObInfo ic &&
+                                ic.priv.HasFlag(Privilege.Select))
+                            rt += c;
+                    }
+            }
+            ro += (new ObInfo(obj, oi.name, oi.domain + (Domain.RowType,rt),pr),true);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

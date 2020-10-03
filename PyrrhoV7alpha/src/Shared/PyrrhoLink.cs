@@ -618,7 +618,8 @@ namespace Pyrrho
             cell.subType = tname;
             switch (flag&0xf)
             {
-                case 0: return cell;
+                case 0:
+                        return cell;
                 case 1:
                     {
                         string s = GetString();
@@ -1004,9 +1005,12 @@ CallingConventions.HasThis, new Type[0], null);
             try
             {
                 IPEndPoint ep;
-                socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
                 if (char.IsDigit(hostName[0]) || hostName[0]==':')
                 {
+                    var af = AddressFamily.InterNetwork;
+                    if (hostName[0] == ':')
+                        af = AddressFamily.InterNetworkV6;
+                    socket = new Socket(af, SocketType.Stream, ProtocolType.Tcp);
                     IPAddress ip = IPAddress.Parse(hostName);
                     ep = new IPEndPoint(ip, port);
                     socket.Connect(ep);
@@ -1022,6 +1026,7 @@ CallingConventions.HasThis, new Type[0], null);
                         try
                         {
                             IPAddress ip = he.AddressList[j];
+                            socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                             ep = new IPEndPoint(ip, port);
                             socket.Connect(ep);
                             if (socket.Connected)
@@ -2249,6 +2254,8 @@ CallingConventions.HasThis, new Type[0], null);
 #else
             if (((PyrrhoColumn)schema.Columns[i]).DataTypeName == "DOCUMENT")
                 return typeof(Document);
+            if (((PyrrhoColumn)schema.Columns[i]).DataTypeName == "LEVEL")
+                return typeof(string);
             return ((PyrrhoColumn)schema.Columns[i]).DataType;
 #endif
         }

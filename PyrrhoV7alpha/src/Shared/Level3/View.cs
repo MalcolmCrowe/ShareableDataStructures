@@ -34,7 +34,7 @@ namespace Pyrrho.Level3
         internal GroupSpecification remoteGroups => (GroupSpecification)mem[RemoteGroups];
         public View(PView pv,BTree<long,object>m=null) 
             : base(pv.ppos, (m??BTree<long, object>.Empty)
-            + (Name,pv.name)+(ViewQuery,pv.view))
+            + (Name,pv.name)+(ViewQuery,pv.view) + (LastChange, pv.ppos))
         { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
         public static View operator+(View v,(long,object)x)

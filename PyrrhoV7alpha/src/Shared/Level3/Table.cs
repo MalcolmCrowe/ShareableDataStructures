@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
+using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -60,8 +61,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Table(PTable pt) :base(pt.ppos, BTree<long,object>.Empty
             +(Name,pt.name)+(Definer,pt.database.role.defpos)
-            +(Indexes,BTree<CList<long>,long>.Empty)
-            +(_Domain,Domain.TableType)
+            +(Indexes,BTree<CList<long>,long>.Empty) + (LastChange, pt.ppos)
+            + (_Domain,Domain.TableType)+(LastChange,pt.ppos)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
@@ -104,7 +105,22 @@ namespace Pyrrho.Level3
         }
         internal virtual ObInfo Inf(Context cx)
         {
-            return cx.Inf(defpos);
+            var ti = cx.Inf(defpos);
+            var rt = domain.rowType;
+            for (var b=rt.First();b!=null;b=b.Next())
+            {
+                var ci = cx.Inf(b.value());
+                if (cx.db._user!=cx.db.owner 
+                    && !cx.db.user.clearance.ClearanceAllows(ci.classification))
+                    rt = rt.Without(b.value());
+            }
+            if (rt != domain.rowType)
+            {
+                if (rt.Count == 0)
+                    throw new DBException("2E111", ti.name);
+                ti += (_Domain, ti.domain + (Domain.RowType, rt));
+            }
+            return ti;
         }
         internal override CList<long> _Cols(Context cx)
         {
@@ -310,7 +326,11 @@ namespace Pyrrho.Level3
         internal override Context Delete(Context cx, From f,BTree<string, bool> ds, Adapters eqs)
         {
             var count = 0;
-            if (Denied(cx, Grant.Privilege.Delete))
+            if (Denied(cx, Grant.Privilege.Delete) ||
+                (enforcement.HasFlag(Grant.Privilege.Insert) &&
+                cx.db.user.clearance.minLevel > 0 &&
+                (cx.db.user.clearance.minLevel != f.classification.minLevel ||
+                cx.db.user.clearance.maxLevel != f.classification.maxLevel)))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             f.RowSets(cx, cx.data[f.from]?.finder??BTree<long, RowSet.Finder>.Empty); 
             var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Delete, eqs);
@@ -358,23 +378,26 @@ namespace Pyrrho.Level3
             if (f.assigns.Count==0)
                 return cx;
             PyrrhoServer.Debug(1, "Update starts");
-            if (Denied(cx, Grant.Privilege.Insert))
+            if (Denied(cx, Grant.Privilege.Update))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Update, eqs);
             var updates = BTree<long, UpdateAssignment>.Empty;
-            SqlValue level = null;
-            for (var ass=f.assigns.First();ass!=null;ass=ass.Next())
-            {
-                var c = cx.obs[ass.value().vbl] as SqlCopy
-                    ?? throw new DBException("0U000");
-                var tc = cx.db.objects[c.copyFrom] as TableColumn ??
-                    throw new DBException("42112", c.name);
-                if (tc.generated != GenerationRule.None)
-                    throw cx.db.Exception("0U000", c.name).Mix();
-                if (c.Denied(cx, Grant.Privilege.Insert))
-                    throw new DBException("42105", c.name);
-                updates += (tc.defpos, ass.value());
-            }
+            SqlValue level = null; // Only the SA can modify the classification
+            for (var ass = f.assigns.First(); ass != null; ass = ass.Next())
+                if (cx.obs[ass.value().vbl] is SqlSecurity)
+                    level = cx.obs[ass.value().val] as SqlValue;
+                else
+                {
+                    var c = cx.obs[ass.value().vbl] as SqlCopy
+                        ?? throw new DBException("0U000");
+                    var tc = cx.db.objects[c.copyFrom] as TableColumn ??
+                        throw new DBException("42112", c.name);
+                    if (tc.generated != GenerationRule.None)
+                        throw cx.db.Exception("0U000", c.name).Mix();
+                    if (c.Denied(cx, Grant.Privilege.Update))
+                        throw new DBException("42105", c.name);
+                    updates += (tc.defpos, ass.value());
+                }
       //      bool nodata = true;
             var cl = cx.db.user?.clearance??Level.D;
             cx.from += trs.finder;
@@ -415,7 +438,8 @@ namespace Pyrrho.Level3
                         var np = cx.db.nextPos;
                         var u = (level == null) ?
                             new Update(rc, this, trb.targetRow.values, np, cx) :
-                            new Update1(rc, this, trb.targetRow.values, (Level)level.Eval(cx).Val(), np, cx);
+                            new Update1(rc, this, trb.targetRow.values, 
+                                (Level)level.Eval(cx).Val(), np, cx);
                         cx.Add(u);
                         var nr = new TableRow(u, cx.db);
                         var ns = cx.newTables[trs.defpos] ?? BTree<long, TableRow>.Empty;
@@ -431,16 +455,13 @@ namespace Pyrrho.Level3
             cx.result = null; //??
             return cx;
         }
-        /// <summary>
-        /// See if we already have an audit covering an access in the current transaction
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        internal override bool DoAudit(Context cx, long[] cols, string[] key)
-        {
-            // something clever here would be nice
-            return true;
+        public override bool Denied(Context cx, Grant.Privilege priv)
+        { 
+            if (cx.db.user != null && enforcement.HasFlag(priv) &&
+                !(cx.db.user.defpos == cx.db.owner
+                    || cx.db.user.clearance.ClearanceAllows(classification)))
+                return true;
+            return base.Denied(cx, priv);
         }
         /// <summary>
         /// A readable version of the Table

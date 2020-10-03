@@ -158,8 +158,8 @@ namespace Pyrrho.Level4
     internal class PrivNames
     {
         public Sqlx priv;
-        public string[] names;
-        internal PrivNames(Sqlx p) { priv = p; names = new string[0]; }
+        public BTree<string,bool> cols;
+        internal PrivNames(Sqlx p) { priv = p; cols = BTree<string, bool>.Empty; }
     }
     /// <summary>
     /// when handling triggers etc we need different owner permissions

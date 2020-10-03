@@ -1,4 +1,5 @@
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
@@ -172,7 +173,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse Sql input
         ///     Sql = SqlStatement [‘;’] .
-        /// The type of database maodification that may occur is determined by tr.parse.
+        /// The type of database modification that may occur is determined by tr.parse.
         /// </summary>
         /// <param name="sql">the input</param>
         /// <param name="rt">the desired result type (default is Domain.Null)</param>
@@ -268,7 +269,7 @@ namespace Pyrrho.Level4
                 case Sqlx.CREATE: e = ParseCreateClause(); break;
                 case Sqlx.DELETE: e = ParseSqlDelete(); break;
                 case Sqlx.DROP: e = ParseDropStatement(); break;
-                case Sqlx.GRANT: e = ParseGrant(); break;
+                case Sqlx.GRANT: e = ParseGrant(); break; 
                 case Sqlx.HTTP: e = ParseHttpREST(xp); break;
                 case Sqlx.INSERT: (cx,e) = ParseSqlInsert(); break;
                 case Sqlx.REVOKE: e = ParseRevoke(); break;
@@ -394,23 +395,23 @@ namespace Pyrrho.Level4
 		/// |	GRANT Role_id { ',' Role_id } TO GranteeList [ WITH ADMIN OPTION ] 
         /// |   GRANT SECURITY Level TO User_id .
         /// </summary>
-        /// <returns>the executable type</returns>
         public Executable ParseGrant()
         {
-            Executable e = null;
+            Executable e; 
             Next();
             if (Match(Sqlx.SECURITY))
             {
+                e = new Executable(lxr.Position,Executable.Type.Clearance);
                 Next();
                 var lv = MustBeLevel();
                 Mustbe(Sqlx.TO);
-                var nm = lxr.val;
+                var nm = lxr.val.ToString();
                 Mustbe(Sqlx.ID);
-                var usr = cx.db.GetObject(nm.ToString()) as User ??
-                    throw new DBException("42135", nm.ToString());
+                var usr = cx.db.objects[cx.db.roles[nm]] as User
+                    ?? throw new DBException("42135", nm.ToString());
                 if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                     cx.Add(new Clearance(usr.defpos, lv, tr.nextPos,cx));
-                return e; // still null
+                return e;
             }
             else if (Match(Sqlx.PASSWORD))
             {
@@ -446,7 +447,6 @@ namespace Pyrrho.Level4
                         cx.Add(new Authenticate(us.defpos, pwd.ToString(), irolepos,tr.nextPos, cx));
                     }
                 }
-                return e;// e.SPop(lxr); // e is still null of course
             }
             Match(Sqlx.OWNER, Sqlx.USAGE);
             if (Match(Sqlx.ALL, Sqlx.SELECT, Sqlx.INSERT, Sqlx.DELETE, Sqlx.UPDATE, Sqlx.REFERENCES, Sqlx.OWNER, Sqlx.TRIGGER, Sqlx.USAGE, Sqlx.EXECUTE))
@@ -605,23 +605,21 @@ namespace Pyrrho.Level4
 		PrivNames ParsePrivilege()
         {
             var r = new PrivNames(tok);
-            var s = new List<string>();
             Mustbe(Sqlx.SELECT, Sqlx.DELETE, Sqlx.INSERT, Sqlx.UPDATE,
                 Sqlx.REFERENCES, Sqlx.USAGE, Sqlx.TRIGGER, Sqlx.EXECUTE, Sqlx.OWNER);
             if ((r.priv == Sqlx.UPDATE || r.priv == Sqlx.REFERENCES || r.priv == Sqlx.SELECT || r.priv == Sqlx.INSERT) && tok == Sqlx.LPAREN)
             {
                 Next();
-                s.Add(lxr.val.ToString());
+                r.cols += (lxr.val.ToString(),true);
                 Mustbe(Sqlx.ID);
                 while (tok == Sqlx.COMMA)
                 {
                     Next();
-                    s.Add(lxr.val.ToString());
+                    r.cols += (lxr.val.ToString(),true);
                     Mustbe(Sqlx.ID);
                 }
                 Mustbe(Sqlx.RPAREN);
             }
-            r.names = s.ToArray();
             return r;
         }
         /// <summary>
@@ -840,6 +838,8 @@ namespace Pyrrho.Level4
         /// <returns>the executable</returns>
 		Executable ParseCreateClause()
         {
+            if (cx.db._role>=0 && !((ObInfo)cx.db.role.infos[cx.db._role]).priv.HasFlag(Grant.Privilege.AdminRole))
+                throw new DBException("42105");
             Next();
             MethodModes();
             Match(Sqlx.TEMPORARY, Sqlx.ROLE, Sqlx.VIEW, Sqlx.TYPE, Sqlx.DOMAIN);
@@ -3074,8 +3074,11 @@ namespace Pyrrho.Level4
             Match(Sqlx.PROVENANCE, Sqlx.TYPE_URI, Sqlx.SYSTEM_TIME, Sqlx.SECURITY);
             if (tok == Sqlx.SECURITY)
             {
+                if (cx.db._user != cx.db.owner)
+                    throw new DBException("42105");
+                var sp = lxr.Position;
                 Next();
-                return (SqlValue)cx.Add(new SqlFunction(lxr.Position, cx, Sqlx.SECURITY, null, null, null, Sqlx.NO));
+                return (SqlValue)cx.Add(new SqlFunction(sp, cx, Sqlx.SECURITY, null, null, null, Sqlx.NO));
             }
             Ident ic = ParseIdentChain();
             var pseudoTok = Sqlx.NO;
@@ -3707,7 +3710,10 @@ namespace Pyrrho.Level4
         /// <returns>the Executable</returns>
 		Executable ParseAlter()
 		{
-			Next();
+            if (cx.db._role>=0 && 
+                !((ObInfo)cx.db.role.infos[cx.db._role]).priv.HasFlag(Grant.Privilege.AdminRole))
+                throw new DBException("42105");
+            Next();
             MethodModes();
             Match(Sqlx.DOMAIN,Sqlx.TYPE,Sqlx.ROLE,Sqlx.VIEW);
 			switch (tok)
@@ -4737,6 +4743,8 @@ namespace Pyrrho.Level4
         /// <returns>the executable</returns>
 		Executable ParseDropStatement()
         {
+            if (cx.db._role>=0 && !((ObInfo)cx.db.role.infos[cx.db._role]).priv.HasFlag(Grant.Privilege.AdminRole))
+                throw new DBException("42105");
             var tr = cx.db as Transaction ?? throw new DBException("2F003");
             Next();
             if (Match(Sqlx.ORDERING))
@@ -5724,10 +5732,10 @@ namespace Pyrrho.Level4
 		{
             var lp = lxr.Position;
             var fm = ParseFromClause(q); // query rewriting occurs during these steps
-            var wh = ParseWhereClause();
+            var wh = AddFrom(ParseWhereClause(),fm);
             fm = fm.Refresh(cx);
             var gp = ParseGroupClause();
-            var ha = ParseHavingClause();
+            var ha = AddFrom(ParseHavingClause(),fm);
             var wi = ParseWindowClause();
             fm = fm.Refresh(cx);
             q = (QuerySpecification)cx.obs[q.defpos];
@@ -5751,6 +5759,12 @@ namespace Pyrrho.Level4
             cx.Add(q);
             r = (TableExpression)cx.obs[r.defpos];
             return (TableExpression)r.Conditions(cx);
+        }
+        BTree<long,bool> AddFrom(BTree<long,bool>w,Query f)
+        {
+            for (var b = w.First(); b != null; b = b.Next())
+                cx.Add(((SqlValue)cx.obs[b.key()]).AddFrom(cx,f));
+            return w;
         }
         /// <summary>
 		/// FromClause = 	FROM TableReference { ',' TableReference } .
@@ -6606,7 +6620,7 @@ namespace Pyrrho.Level4
                 cx.defs += (new Ident(co.name, p), p);
             }
             r = (QuerySearch)cx.Add(r + (SqlInsert._Table,fm.defpos));
-            var wh = ParseWhereClause();
+            var wh = AddFrom(ParseWhereClause(),fm);
             fm = (From)cx.obs[fm.defpos];
             cx.Replace(fm,fm.AddCondition(cx, Query.Where, wh));
             r = (QuerySearch)cx.obs[r.defpos];
@@ -6659,7 +6673,7 @@ namespace Pyrrho.Level4
             fm = (From)cx.obs[fm.defpos];
             fm += (From.Assigns, ua);
             cx.Add(fm);
-             var wh = ParseWhereClause();
+            var wh = AddFrom(ParseWhereClause(),fm);
             fm = (From)cx.obs[fm.defpos];
             fm = (From)fm.AddCondition(cx,Query.Where, wh);
             r += (SqlInsert._Table, fm.defpos);
@@ -6700,14 +6714,14 @@ namespace Pyrrho.Level4
             SqlValue vbl;
             SqlValue val;
             Match(Sqlx.SECURITY);
- /*           if (tok == Sqlx.SECURITY)
+            if (tok == Sqlx.SECURITY)
             {
-                if (tr.user.defpos != tr.owner)
+                if (cx.db._user != cx.db.owner)
                     throw new DBException("42105");
-                sa.vbl = new LevelTarget(lxr);
+                vbl = (SqlValue)cx.Add(new SqlSecurity(lxr.Position));
                 Next();
             }
-            else */
+            else 
             {
                 var ic = new Ident(lxr);
                 Mustbe(Sqlx.ID);

@@ -56,11 +56,6 @@ namespace Pyrrho.Level3
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
-        /// An empty role for the Context (query analysis)
-        /// </summary>
-        /// <param name="dp"></param>
-        internal Role(long dp) : base(dp, BTree<long, object>.Empty) { }
-        /// <summary>
         /// Just to create the schema and guest roles
         /// </summary>
         /// <param name="nm"></param>
@@ -72,7 +67,7 @@ namespace Pyrrho.Level3
         { }
         public Role(PRole p, Database db, bool first)
             : base(p.name, p.ppos, p.ppos, db.role.defpos,
-                 (first ? db.schema.mem : db.guest.mem)
+                 (first ? db.schema.mem : db.guest.mem) + (LastChange, p.ppos)
                  + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
                  + (Procedures, first ? db.schema.procedures : db.guest.procedures))
         { }

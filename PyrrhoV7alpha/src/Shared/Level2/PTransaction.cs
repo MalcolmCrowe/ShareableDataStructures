@@ -233,12 +233,11 @@ namespace Pyrrho.Level2
     /// <summary>
     /// If there is no primary index, an audit record applies to the whole table
     /// </summary>
-    internal class Audit : Physical
+    internal class Audit : Physical,IComparable
     {
         internal User user;
         internal long table;
-        internal long[] cols;// may be length 0
-        internal string[] key; // length must match cols
+        internal BTree<long, string> match; 
         internal long timestamp;
         public override long Dependent(Writer wr,Transaction tr)
         {
@@ -251,19 +250,19 @@ namespace Pyrrho.Level2
         long _Dependent(Writer wr)
         {
             if (!Committed(wr,table)) return table;
-            for (var i = 0; i < cols.Length; i++)
-                if (!Committed(wr,cols[i])) return cols[i];
+            for (var b=match.First();b!=null;b=b.Next())
+                if (!Committed(wr,b.key())) return b.key();
             return -1;
         }
-        internal Audit(User us,long ta, long[] c, string[] k, long ts,long pp, Context cx)
-            : this(Type.Audit,us,ta,c,k,ts,pp,cx)
+        internal Audit(User us,long ta, BTree<long,string> ma, long ts,long pp, Context cx)
+            : this(Type.Audit,us,ta,ma,ts,pp,cx)
         {
         }
-        protected Audit(Type t, User us, long ta, long[] c, string[] k, long ts, long pp, Context cx)
+        protected Audit(Type t, User us, long ta, BTree<long,string> ma, long ts, long pp, Context cx)
             : base(t,pp,cx)
         {
             user = us; table = ta; 
-            timestamp = ts; cols = c; key = k;
+            timestamp = ts; match = ma;
         }
         internal Audit(Reader rdr) : this(Type.Audit, rdr) { }
         protected Audit(Type t, Reader rdr) : base(t, rdr) { }
@@ -273,12 +272,13 @@ namespace Pyrrho.Level2
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
-            cols = new long[n];
-            key = new string[n];
+            var cols = new long[n];
             for (var i = 0; i < n; i++)
                 cols[i] = rdr.GetLong();
+            var ma = BTree<long, string>.Empty;
             for (var i = 0; i < n; i++)
-                key[i] = rdr.GetString();
+                ma += (cols[i],rdr.GetString());
+            match = ma;
             base.Deserialise(rdr);
         }
         public override void Serialise(Writer wr)
@@ -288,33 +288,32 @@ namespace Pyrrho.Level2
             wr.PutLong((user.defpos>=0)?wr.Fix(user.defpos):-1L);
             wr.PutLong(table);
             wr.PutLong(timestamp);
-            wr.PutInt(key.Length);
-            for (var i=0;i<cols.Length;i++)
-            {
-                cols[i] = wr.Fix(cols[i]);
-                wr.PutLong(cols[i]);
-            }
-            for (var i = 0; i < key.Length; i++)
-                wr.PutString(key[i]);
+            wr.PutLong(match.Count);
+            for (var b = match.First();b!=null;b=b.Next())
+                wr.PutLong(wr.Fix(b.key()));
+            for (var b = match.First(); b != null; b = b.Next())
+                wr.PutString(b.value());
             base.Serialise(wr);
         }
         public override string ToString()
         {
             var sb = new StringBuilder();
             if (user!=null && user.defpos>=0)
-            { sb.Append("Audit: "); sb.Append(user); }
+            { sb.Append("Audit: "); sb.Append(user.name); }
             sb.Append(" ["); sb.Append(table); sb.Append("] ");
             sb.Append(new DateTime(timestamp));
-            sb.Append(" {");
-            var n = cols.Length;
-            var cm = "";
-            for (var i = 0; i < n; i++)
+            if (match.Count > 0)
             {
-                sb.Append(cm); cm = ",";
-                sb.Append(cols[i]); sb.Append('=');
-                sb.Append(key[i]);
+                sb.Append(" {");
+                var cm = "";
+                for (var b=match.First(); b!=null; b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.key()); sb.Append("='");
+                    sb.Append(b.value()); sb.Append("'");
+                }
+                sb.Append('}');
             }
-            sb.Append('}');
             return sb.ToString();
         }
 
@@ -328,9 +327,30 @@ namespace Pyrrho.Level2
             if (user.defpos>=0)
                 user = (User)wr.cx.db.objects[wr.Fix(user.defpos)];
             table = wr.Fix(table);
-            for (var i = 0; i < cols.Length; i++)
-                cols[i] = wr.Fix(cols[i]);
+            match = wr.Fix(match);
             return this;
+        }
+
+        public int CompareTo(object obj)
+        {
+            var that = obj as Audit;
+            if (that == null)
+                return 1;
+            var c = user.name.CompareTo(that.user.name);
+            if (c != 0)
+                return c;
+            var tb = that.match.First();
+            var b = match.First();
+            for (; b != null && tb != null; b = b.Next(), tb = tb.Next())
+            {
+                c = b.key().CompareTo(tb.key());
+                if (c != 0)
+                    return c;
+                c = b.value().CompareTo(tb.value());
+                if (c != 0)
+                    return c;
+            }
+            return (b != null) ? 1 : (tb != null) ? -1 : 0;
         }
     }
     /// <summary>
@@ -339,8 +359,8 @@ namespace Pyrrho.Level2
     internal class Audit2 : Audit
     {
         internal string userName;
-        internal Audit2(string us, long ta, long[] c, string[] k, long ts, long pp, Context cx)
-            : base(Type.Audit2, User._public, ta,c,k,ts,pp,cx)
+        internal Audit2(string us, long ta, BTree<long,string> ma, long ts, long pp, Context cx)
+            : base(Type.Audit2, User._guest, ta, ma,ts,pp,cx)
         {
             userName = us;
         }

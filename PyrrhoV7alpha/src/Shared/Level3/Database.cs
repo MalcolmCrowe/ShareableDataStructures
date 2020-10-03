@@ -294,47 +294,33 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         /// <returns></returns>
-        public virtual Transaction Transact(long t,string usr,string sce,bool? auto=null)
+        public virtual Transaction Transact(long t, string usr, string sce, bool? auto = null)
         {
             // if not new, this database may be out of date: ensure we get the latest
             var r = databases[name];
             if (r == null || r.loadpos < loadpos)
                 r = this; // this is more recent!
-            var tr = new Transaction(r,t,sce,auto??autoCommit)+(NextPrep,nextPrep);
+            var tr = new Transaction(r, usr, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep);
             // ensure a valid user and role combination
             User u = null;
             Role ro = guest;
-            if (usr != WindowsIdentity.GetCurrent().Name)
+            for (var b = roles.First(); u == null && b != null; b = b.Next())
             {
-                for (var b = roles.First(); u == null && b != null; b = b.Next())
-                {
-                    var rp = b.value();
-                    var ob = objects[rp];
-                    if (ob is User us && us.name == usr)
-                        u = us;
-                }
-                if (u != null)
-                {
-                    var ui = (ObInfo)role.infos[u.defpos];
-                    if (ui?.priv.HasFlag(Grant.Privilege.UseRole) != true)
-                    {
-                        ro = null;
-                        for (var b = roles.First(); ro == null && b != null; b = b.Next())
-                        {
-                            var ur = (Role)objects[b.value()];
-                            ui = (ObInfo)ur.infos[u.defpos];
-                            if (ui?.priv.HasFlag(Grant.Privilege.UseRole) == true)
-                                ro = ur;
-                        }
-                    }
-                }
-                else
-                {
-                    u = new User(--_uid, new BTree<long, object>(Name, usr));
-                    tr += (u.defpos,u);
-                }
-                tr = tr + (_User,u.defpos) +(_Role, ro.defpos);
+                var rp = b.value();
+                var ob = objects[rp];
+                if (ob is User us && us.name == usr)
+                    u = us;
             }
+            if (u != null)
+                ro = (Role)objects[u.initialRole] ?? guest;
+            else if (usr == WindowsIdentity.GetCurrent().Name)
+                return tr;
+            else
+            {
+                u = new User(--_uid, new BTree<long, object>(Name, usr));
+                tr += (u.defpos, u);
+            }
+            tr = tr + (_User, u.defpos) + (_Role, ro.defpos);
             return tr;
         }
         public DBObject GetObject(string n)

@@ -34,6 +34,9 @@ namespace Pyrrho.Level3
             Grant.Privilege pr=Grant.Privilege.Select, string a= null, BList<Ident> cr = null) 
             : base(ic.iix, _Mem(ic,cx, tb,q,pr,a,cr))
         {
+            if (tb.enforcement.HasFlag(pr) && cx.db._user!=cx.db.owner &&
+                !cx.db.user.clearance.ClearanceAllows(tb.classification))
+                throw new DBException("42105");
             var (_, ids) = cx.defs[ic.ident];
             for (var b=rowType.First();b!=null;b=b.Next())
             {
@@ -43,8 +46,6 @@ namespace Pyrrho.Level3
             }
             cx.defs += (ic.ident, ic.iix, ids);
         }
-        protected From(Ident ic, Context cx, Table tb, BTree<long, object> mem)
-            : base(ic.iix, mem + (_Mem(ic, cx, tb, null, Grant.Privilege.Select, null, null),false)) { }
         public From(long dp,Context cx,SqlCall pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
         { }
@@ -365,7 +366,7 @@ namespace Pyrrho.Level3
             }
             if (index != null && index.rows != null)
             {
-                var sce = (match == null) ? new IndexRowSet(cx, ta, index, fi) 
+                var sce = (match == null) ? new IndexRowSet(cx, ta, index, fi, filter) 
                             : new FilterRowSet(cx, ta, index, match, fi);
                 rowSet = new SelectedRowSet(cx,this,sce,fi);
                 if (readC != null)
@@ -386,13 +387,13 @@ namespace Pyrrho.Level3
                 else if (cx.obs[target] is Table tb)
                 {
                     index = tb.FindPrimaryIndex(cx.db);
+                    RowSet sa;
                     if (index != null && index.rows != null)
-                        rowSet = new SelectedRowSet(cx, this,
-                            new IndexRowSet(cx, tb, index,fi),fi);
+                        sa = new IndexRowSet(cx, tb, index,fi,cx.Filter(tb,where));
                     else
-                        rowSet = new SelectedRowSet(cx, this,
-                            new TableRowSet(cx, tb.defpos,fi),fi);
-                    tb.Audit(cx, this);
+                        sa = new TableRowSet(cx, tb.defpos,fi,where);
+                    tb.Audit(cx, sa, this);
+                    rowSet = new SelectedRowSet(cx, this, sa, fi);
                 }
                 if (readC != null)
                     readC.Block();
@@ -422,7 +423,7 @@ namespace Pyrrho.Level3
         internal void TableCheck(Transaction tr, PCheck c)
         {
             var cx = new Context(tr);
-            var trs = new TableRowSet(cx,target,BTree<long,RowSet.Finder>.Empty);
+            var trs = new TableRowSet(cx,target,BTree<long,RowSet.Finder>.Empty,where);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
         }

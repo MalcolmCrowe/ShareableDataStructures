@@ -133,9 +133,9 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             // The definer is the given role
             var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
-                Grant.Privilege.Delete | Grant.Privilege.References | Grant.Privilege.GrantDelete |
-                Grant.Privilege.GrantSelect | Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences |
-                Grant.Privilege.References | Grant.Privilege.GrantReferences |
+                Grant.Privilege.Update | Grant.Privilege.Delete | Grant.Privilege.References | 
+                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect | 
+                Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
             var tb = new Table(this);
@@ -297,7 +297,10 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            throw new NotImplementedException();
+            var tb = (Table)cx.db.objects[tabledefpos];
+            tb += (Table.Enforcement, enforcement);
+            cx.db += (tb, p);
+            cx.Add(tb);
         }
     }
 }

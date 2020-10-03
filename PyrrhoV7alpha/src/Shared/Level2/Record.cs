@@ -79,13 +79,16 @@ namespace Pyrrho.Level2
             if (fl.Count == 0)
                 throw new DBException("2201C");
             fields = fl;
+            if (t!=Type.Record3)
+                _classification = cx.db.user.classification; 
         }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record(Reader rdr) : base(Type.Record, rdr) { }
+        public Record(Reader rdr) : base(Type.Record, rdr) 
+        { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
         /// </summary>
@@ -289,6 +292,8 @@ namespace Pyrrho.Level2
                 sb.Append(cm); cm = ",";
                 sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.Val());
             }
+            if (_classification != Level.D || type == Type.Update1)
+            { sb.Append(" Classification: "); sb.Append(_classification); }
             return sb.ToString();
         }
     }
@@ -420,7 +425,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record3(Reader rdr) : base(Type.Record3, rdr) { }
+        public Record3(Reader rdr) : base(Type.Record3, rdr) 
+        { }
         /// <summary>
         /// A new Record1 from the parser
         /// </summary>
@@ -459,6 +465,10 @@ namespace Pyrrho.Level2
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
+        }
+        internal override void Install(Context cx, long p)
+        {
+            base.Install(cx, p);
         }
     }
 }
