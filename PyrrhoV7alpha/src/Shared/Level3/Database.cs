@@ -393,11 +393,11 @@ namespace Pyrrho.Level3
             rdr.context.db = d;
             return d;
         }
-        internal (Physical, long) _NextPhysical(long pp)
+        internal (Physical, long) _NextPhysical(long pp,PTransaction trans=null)
         {
             try
             {
-                var rdr = new Reader(new Context(this), pp);
+                var rdr = new Reader(new Context(this), pp, trans);
                 var ph = rdr.Create();
                 pp = (int)rdr.Position;
                 if (ph == null)

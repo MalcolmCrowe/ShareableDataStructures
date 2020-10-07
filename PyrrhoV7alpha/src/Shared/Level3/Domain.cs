@@ -32,7 +32,7 @@ namespace Pyrrho.Level3
     Array,Multiset,Collection,Cursor,UnionNumeric,UnionDate,
     UnionDateNumeric,Exception,Period,
     Document,DocArray,ObjectId,JavaScript,ArgList, // Pyrrho 5.1
-    TableType,Row,Delta,Role,
+    TableType,Row,Delta,Position,Role,
     RdfString,RdfBool,RdfInteger,RdfInt,RdfLong,RdfShort,RdfByte,RdfUnsignedInt,
     RdfUnsignedLong,RdfUnsignedShort,RdfUnsignedByte,RdfNonPositiveInteger,
     RdfNonNegativeInteger,RdfPositiveInteger,RdfNegativeInteger,RdfDecimal,
@@ -120,6 +120,7 @@ namespace Pyrrho.Level3
             Row = new StandardDataType(Sqlx.ROW);
             Delta = new StandardDataType(Sqlx.INCREMENT);
             Role = new StandardDataType(Sqlx.ROLE);
+            Position = new StandardDataType(Sqlx.POSITION);
         }
         internal static void RdfTypes()
         {
@@ -471,6 +472,7 @@ namespace Pyrrho.Level3
                 case Sqlx.CLOB:
                 case Sqlx.NCLOB:
                 case Sqlx.VARCHAR: return Sqlx.CHAR;
+                case Sqlx.POSITION:
                 case Sqlx.INT:
                 case Sqlx.BIGINT:
                 case Sqlx.SMALLINT: return Sqlx.INTEGER;
@@ -682,6 +684,7 @@ namespace Pyrrho.Level3
                 case Sqlx.PASSWORD: return Password;
                 case Sqlx.TABLE: return TableType;
                 case Sqlx.TYPE: return TypeSpec;
+                case Sqlx.POSITION: return Position;
             }
             return Null;
         }
@@ -2095,6 +2098,8 @@ namespace Pyrrho.Level3
         {
             if (this == Null || this==Content)
                 return v;
+            if (v is TArray ta && ta.Length == 1 && CanTakeValueOf(ta.dataType))
+                return Coerce(cx, ta[0]);
             for (var b = constraints?.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()].Eval(null) != TBool.True)
                     throw new DBException("22211");
@@ -2411,6 +2416,7 @@ namespace Pyrrho.Level3
                 case Sqlx.NUMERIC: return Numeric;
                 case Sqlx.NUMERICLITERAL: return Numeric;
                 case Sqlx.PASSWORD: return Password;
+                case Sqlx.POSITION: return Int;
                 case Sqlx.REAL: return Real;
                 case Sqlx.REALLITERAL: return Real;
                 case Sqlx.TIME: return Timespan;

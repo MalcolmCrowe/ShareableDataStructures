@@ -213,6 +213,16 @@ namespace Pyrrho.Common
             }
         }
     }
+    internal class TPosition : TInt
+    {
+        internal TPosition(long? p) : base(Domain.Position, p) { }
+        public override string ToString()
+        {
+            if (value == null)
+                return "";
+            return DBObject.Uid(value.Value);
+        }
+    }
     internal class TInteger : TInt
     {
         internal readonly Integer ivalue;

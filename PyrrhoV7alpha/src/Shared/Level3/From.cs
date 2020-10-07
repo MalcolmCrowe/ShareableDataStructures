@@ -49,6 +49,9 @@ namespace Pyrrho.Level3
         public From(long dp,Context cx,SqlCall pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
         { }
+        public From(long dp,Context cx,RowSet rs,string a)
+            :base(dp,_Mem(dp,cx,rs,a))
+        { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
         { }
         public static From operator+(From f,(long,object) x)
@@ -180,6 +183,13 @@ namespace Pyrrho.Level3
             return BTree<long, object>.Empty
                 + (Target,pc.procdefpos) 
                 + (_Domain,new Domain(Sqlx.ROW,cx,s,disp)) + (Name, proc.name);
+        }
+        static BTree<long, object> _Mem(long dp, Context cx, RowSet rs, string a)
+        {
+            cx.data += (dp, rs);
+            return BTree<long, object>.Empty
+                + (Target, rs.defpos)
+                + (_Domain, rs.domain) + (Name, a);
         }
         internal override TypedValue Eval(Context cx)
         {

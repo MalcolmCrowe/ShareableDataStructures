@@ -52,6 +52,19 @@ namespace Pyrrho.Level3
         /// <param name="dt">the data type</param>
         public TableColumn(Table tb, PColumn c, Domain dt)
             : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos) + (LastChange, c.ppos)) {}
+        /// <summary>
+        /// Ad hoc TableColumn for LogRows, LogRowCol
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="tb"></param>
+        /// <param name="nm"></param>
+        /// <param name="dt"></param>
+        internal TableColumn(Context cx,Table tb,string nm,Domain dt)
+            :base(cx.nextHeap++,BTree<long,object>.Empty+(Name,nm)+(Table,tb.defpos)
+                 + (_Domain,dt))
+        {
+            cx.Add(this);
+        }
         protected TableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TableColumn operator+(TableColumn s,(long,object)x)
         {

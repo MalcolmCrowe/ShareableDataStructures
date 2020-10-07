@@ -890,6 +890,8 @@ namespace Pyrrho.Level1
                     PutString(tv.ToString());
                     break;
                 case Sqlx.PASSWORD: PutString("********"); break;
+                case Sqlx.POSITION:
+                    PutString(DBObject.Uid(tv.ToLong().Value)); break;
                 case Sqlx.DATE:
                     if (tv.Val() is long)
                         PutDateTime(new DateTime(tv.ToLong().Value));

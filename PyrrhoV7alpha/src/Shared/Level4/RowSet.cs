@@ -3,6 +3,7 @@ using Pyrrho.Common;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
+using System.Diagnostics.Eventing.Reader;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -917,10 +918,9 @@ namespace Pyrrho.Level4
                 {
                     var s = cx.obs[b.value()]; 
                     var v = s?.Eval(cx)??TNull.Value;
-                    if (v == TNull.Value && bmk[b.value()] is TypedValue tv 
-                        && tv != TNull.Value) 
-                        // tv would be the right value but something has gone wrong
-                        throw new PEException("PE788");
+                    if (v == TNull.Value && bmk[b.value()] is TypedValue tv
+                        && tv != TNull.Value)
+                        v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
                     vs += (b.value(),v);
                 }
                 cx.from = ox;
@@ -3223,6 +3223,348 @@ namespace Pyrrho.Level4
             internal override TableRow Rec()
             {
                 throw new NotImplementedException();
+            }
+        }
+    }
+
+    // An ad-hoc RowSet for a row history: the work is mostly done by
+    // LogRowsCursor
+    internal class LogRowsRowSet : RowSet
+    {
+        internal const long
+            TargetTable = -369; // long Table
+        public long targetTable => (long)(mem[TargetTable] ?? -1L);
+        public LogRowsRowSet(long dp, Context cx, long td)
+            : base(dp, _Mem(cx, dp, td)+(Built,true))
+        { }
+        protected LogRowsRowSet(long dp,BTree<long,object> m) :base(dp,m)
+        { }
+        protected LogRowsRowSet(Context cx, RowSet rs, BTree<long, Finder> nd, bool bt)
+            : base(cx, rs, nd, bt)
+        { }
+        static BTree<long, object> _Mem(Context cx, long dp, long td)
+        {
+            var tb = cx.db.objects[td] as Table ??
+                throw new DBException("42131", "" + td).Mix();
+            cx.Add(tb);
+            var r = new BTree<long, object>(TargetTable, tb.defpos);
+            var rt = BList<SqlValue>.Empty;
+            var fi = BTree<long, Finder>.Empty;
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Pos", Domain.Position);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Action", Domain.Char);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "DefPos", Domain.Position);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Transaction", Domain.Position);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Timestamp", Domain.Timestamp);
+            return r + (_Domain, new Domain(Sqlx.TABLE,rt)) + (_Finder, fi);
+        }
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return new LogRowsRowSet(cx, this, nd, bt);
+        }
+
+        protected override Cursor _First(Context _cx)
+        {
+            return LogRowsCursor.New(_cx, this,0,targetTable);
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new LogRowsRowSet(dp,mem);
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new LogRowsRowSet(defpos, m);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(Uid(targetTable));
+            return sb.ToString();
+        }
+        internal class LogRowsCursor : Cursor
+        {
+            readonly LogRowsRowSet _lrs;
+            readonly TRow _row;
+            LogRowsCursor(Context cx,LogRowsRowSet rs,int pos,long defpos,TRow rw)
+                :base(cx,rs,pos,defpos,rw)
+            {
+                _lrs = rs; _row = rw;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new LogRowsCursor(cx, _lrs, _pos, _defpos, _row + (p, v));
+            }
+            internal static LogRowsCursor New(Context cx,LogRowsRowSet lrs,int pos,long p)
+            {
+                Physical ph;
+                PTransaction pt = null;
+                for (var b = cx.db.log.PositionAt(p); b != null; b = b.Next())
+                {
+                    var vs = BTree<long, TypedValue>.Empty;
+                    p = b.key();
+                    switch (b.value())
+                    {
+                        case Physical.Type.Record:
+                        case Physical.Type.Record1:
+                        case Physical.Type.Record2:
+                        case Physical.Type.Record3:
+                            {
+                                (ph, _) = cx.db._NextPhysical(b.key(),pt);
+                                var rc = ph as Record;
+                                if (rc.tabledefpos != lrs.targetTable)
+                                    continue;
+                                for (var c = lrs.rt.First(); c != null; c = c.Next())
+                                {
+                                    var cp = c.value();
+                                    switch (c.key())
+                                    {
+                                        case 0: vs += (cp, new TPosition(p)); break;
+                                        case 1: vs += (cp, new TChar("Insert")); break;
+                                        case 2: vs += (cp, new TPosition(rc.defpos)); break;
+                                        case 3: vs += (cp, new TPosition(rc.trans)); break;
+                                        case 4:
+                                            vs += (cp, new TDateTime(new DateTime(rc.time)));
+                                            break;
+                                    }
+                                }
+                                return new LogRowsCursor(cx, lrs, pos, p, new TRow(lrs.domain, vs));
+                            }
+                        case Physical.Type.Update:
+                        case Physical.Type.Update1:
+                            {
+                                (ph, _) = cx.db._NextPhysical(b.key(),pt);
+                                var rc = ph as Record;
+                                if (rc.tabledefpos != lrs.targetTable)
+                                    continue;
+                                for (var c = lrs.rt.First(); c != null; c = c.Next())
+                                {
+                                    var cp = c.value();
+                                    switch (c.key())
+                                    {
+                                        case 0: vs += (cp, new TPosition(p)); break;
+                                        case 1: vs += (cp, new TChar("Update")); break;
+                                        case 2: vs += (cp, new TPosition(rc.defpos)); break;
+                                        case 3: vs += (cp, new TPosition(rc.trans)); break;
+                                        case 4:
+                                            vs += (cp, new TDateTime(new DateTime(rc.time)));
+                                            break;
+                                    }
+                                }
+                                return new LogRowsCursor(cx, lrs, pos, p, new TRow(lrs.domain, vs));
+                            }
+                        case Physical.Type.Delete:
+                        case Physical.Type.Delete1:
+                            {
+                                (ph, _) = cx.db._NextPhysical(b.key(),pt);
+                                var rc = ph as Delete;
+                                if (rc.tabledefpos != lrs.targetTable)
+                                    continue;
+                                for (var c = lrs.rt.First(); c != null; c = c.Next())
+                                {
+                                    var cp = c.value();
+                                    switch (c.key())
+                                    {
+                                        case 0: vs += (cp, new TPosition(p)); break;
+                                        case 1: vs += (cp, new TChar("Delete")); break;
+                                        case 2: vs += (cp, new TPosition(rc.ppos)); break;
+                                        case 3: vs += (cp, new TPosition(rc.trans)); break;
+                                        case 4:
+                                            vs += (cp, new TDateTime(new DateTime(rc.time)));
+                                            break;
+                                        default: vs += (cp, TNull.Value); break;
+                                    }
+                                }
+                                return new LogRowsCursor(cx, lrs, pos, p, new TRow(lrs.domain, vs));
+                            }
+                        case Physical.Type.PTransaction:
+                        case Physical.Type.PTransaction2:
+                            {
+                                (ph,_) = cx.db._NextPhysical(b.key(), pt);
+                                pt = (PTransaction)ph;
+                                break;
+                            }
+                    }
+                }
+                return null;
+            }
+            protected override Cursor _Next(Context cx)
+            {
+                return New(cx,_lrs,_pos+1,_defpos+1);
+            }
+            internal override TableRow Rec()
+            {
+                return null;
+            }
+        }
+    }
+    /// <summary>
+    /// An Ad-hoc RowSet for a row,column history: the work is mostly done by
+    /// LogRowColCursor
+    /// </summary>
+    internal class LogRowColRowSet : RowSet
+    {
+        internal const long
+            LogCol = -337, // long TableColumn
+            LogRow = -339; // long TableRow
+        public long targetTable => (long)(mem[LogRowsRowSet.TargetTable] ?? -1L);
+        public long logCol => (long)(mem[LogCol] ?? -1L);
+        public long logRow => (long)(mem[LogRow] ?? -1L);
+        public LogRowColRowSet(long dp, Context cx, long r, long c)
+        : base(dp, _Mem(cx, dp, c) + (LogRow, r) + (LogCol, c)+(Built,true))
+        { }
+        protected LogRowColRowSet(long dp,BTree<long,object>m) :base(dp,m)
+        { }
+        protected LogRowColRowSet(Context cx, RowSet rs, BTree<long, Finder> nd, bool bt)
+            : base(cx, rs, nd, bt)
+        { }
+        static BTree<long, object> _Mem(Context cx, long dp, long cd)
+        {
+            var tc = cx.db.objects[cd] as TableColumn ??
+                throw new DBException("42131", "" + cd).Mix();
+            cx.Add(tc);
+            var tb = cx.db.objects[tc.tabledefpos] as Table;
+            cx.Add(tb);
+            var rt = BList<SqlValue>.Empty;
+            var fi = BTree<long, Finder>.Empty;
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Pos", Domain.Char);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "Value", Domain.Char);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "StartTransaction", Domain.Char);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "StartTimestamp", Domain.Timestamp);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "EndTransaction", Domain.Char);
+            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
+            rt += new SqlFormal(cx, "EndTimestamp", Domain.Timestamp);
+            return BTree<long, object>.Empty + (_Domain,new Domain(Sqlx.TABLE,rt))+
+                (LogRowsRowSet.TargetTable, tb.defpos) + (_Finder,fi);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(targetTable);
+            sb.Append("(");  sb.Append(Uid(logRow)); 
+            sb.Append(",");  sb.Append(Uid(logCol)); 
+            sb.Append(")"); 
+            return sb.ToString();
+        }
+        internal override Basis New(BTree<long,object> m)
+        {
+            return new LogRowColRowSet(defpos, m);
+        }
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return new LogRowColRowSet(cx, this, nd, bt);
+        }
+        protected override Cursor _First(Context _cx)
+        {
+            return LogRowColCursor.New(_cx,this,0,(null,logRow));
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new LogRowColRowSet(dp,mem);
+        }
+        internal class LogRowColCursor : Cursor
+        {
+            readonly LogRowColRowSet _lrs;
+            readonly (Physical,long) _next;
+            LogRowColCursor(Context cx, LogRowColRowSet lrs, int pos, long defpos, 
+                (Physical,long) next, TRow rw) 
+                : base(cx, lrs, pos, defpos, rw) 
+            {
+                _lrs = lrs; _next = next;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new LogRowColCursor(cx, _lrs, _pos, _defpos, _next, this + (p, v));
+            }
+            internal static LogRowColCursor New(Context cx,LogRowColRowSet lrs,int pos,
+                (Physical,long) nx,PTransaction trans=null)
+            {
+                var vs = BTree<long, TypedValue>.Empty;
+                var tb = lrs.targetTable;
+                var tc = lrs.logCol;
+                var rp = nx.Item2;
+                if (trans == null)
+                    for (var b = cx.db.log.PositionAt(nx.Item2); trans == null && b != null;
+                        b = b.Previous())
+                        if (b.value() is Physical.Type.PTransaction ||
+                            b.value() is Physical.Type.PTransaction2)
+                            trans = (PTransaction)cx.db._NextPhysical(b.key()).Item1;
+                if (rp < 0)
+                    return null;
+                if (nx.Item1==null)
+                    nx = cx.db._NextPhysical(rp,trans);
+                for (; nx.Item1 != null;)
+                {
+                    var rc = nx.Item1 as Record; // may be an Update 
+                    if (rc==null || lrs.logRow != rc.defpos || !rc.fields.Contains(tc))
+                    {
+                        nx = cx.db._NextPhysical(nx.Item2, trans);
+                        if (nx.Item1 is PTransaction nt)
+                            trans = nt;
+                        continue;
+                    }
+                    var b = lrs.rt.First(); vs += (b.value(), new TChar(Uid(rc.ppos)));
+                    b = b.Next(); vs += (b.value(), rc.fields[tc] ?? TNull.Value);
+                    b = b.Next(); vs += (b.value(), new TChar(Uid(rc.trans)));
+                    b = b.Next(); vs += (b.value(), new TDateTime(new DateTime(rc.time)));
+                    var done = false;
+                    for (nx = cx.db._NextPhysical(nx.Item2, trans);
+                        nx.Item1 != null && nx.Item2 >= 0;
+                        nx = cx.db._NextPhysical(nx.Item2, trans))
+                    {
+                        var (ph, _) = nx;
+                        switch (ph.type)
+                        {
+                            case Physical.Type.Delete:
+                            case Physical.Type.Delete1:
+                                done = ((Delete)ph).delpos == rp;
+                                    break;
+                            case Physical.Type.Update:
+                            case Physical.Type.Update1:
+                                {
+                                    var up = (Update)ph;
+                                    done = up.defpos == rp && up.fields.Contains(tc);
+                                    break;
+                                }
+                            case Physical.Type.PTransaction:
+                            case Physical.Type.PTransaction2:
+                                trans = (PTransaction)ph;
+                                break;
+                        }
+                        if (done)
+                            break;
+                    }
+                    if (done)
+                    {
+                        b = b.Next(); vs += (b.value(), new TChar(Uid(trans.ppos)));
+                        b = b.Next(); vs += (b.value(), new TDateTime(new DateTime(trans.pttime)));
+                    }
+                    var rb = new LogRowColCursor(cx, lrs, pos, rc.ppos,
+                                        nx, new TRow(lrs.domain, vs));
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor _Next(Context cx)
+            {
+                return New(cx,_lrs,_pos+1,_next);
+            }
+
+            internal override TableRow Rec()
+            {
+                return null;
             }
         }
     }

@@ -5,6 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System.Text;
 using System.Data.Common;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -804,65 +805,6 @@ namespace Pyrrho.Level3
             if (mem.Contains(_Repl)) { sb.Append(" Replace:"); sb.Append(replace); }
             if (mem.Contains(Where)) { sb.Append(" Where:"); sb.Append(where); }
             return sb.ToString();
-        }
-    }
-
-    // An ad-hoc SystemTable for a row history: the work is mostly done by
-    // LogTableSelectBookmark
-    internal class LogRowTable :Query
-    {
-        internal const long
-            LogRows = -368, // SystemTable
-            TargetTable = -369; // long Table
-        public SystemTable logRows => (SystemTable)mem[LogRows]; 
-        public long targetTable => (long)(mem[TargetTable]??-1L);
-        public LogRowTable(Transaction tr, Context cx, long td, string ta) 
-            :base(tr.uid,_Mem(tr,td))
-        { }
-        static BTree<long,object> _Mem(Transaction tr,long td)
-        {
-            var r = new BTree<long,object>(TargetTable,tr.objects[td] as Table ??
-                throw new DBException("42131", "" + td).Mix());
-            var tt = new SystemTable("" + td);
-            tt += new SystemTableColumn(tt, "Pos", Domain.Int, 1);
-            tt += new SystemTableColumn(tt, "Action", Domain.Char, 0);
-            tt += new SystemTableColumn(tt, "DefPos", Domain.Int, 0);
-            tt += new SystemTableColumn(tt, "Transaction", Domain.Int, 0);
-            tt += new SystemTableColumn(tt, "Timestamp", Domain.Timestamp, 0);
-            return r + (LogRows, tt) + (_Domain, tt.domain);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" for "); sb.Append(targetTable);
-            sb.Append(logRows);
-            return sb.ToString();
-        }
-    }
-    /// <summary>
-    /// An Ad-hoc SystemTable for a row,column history: the work is mostly done by
-    /// LogRowColSelectBookmark
-    /// </summary>
-    internal class LogRowColTable : Query
-    {
-        public readonly Table st,tb;
-        public readonly long rd, cd;
-        public LogRowColTable(Transaction tr, Context cx, long r, long c, string ta)
-        : base(tr.uid, BTree<long,object>.Empty)
-        {
-            var tc = tr.objects[c] as TableColumn ??
-                throw new DBException("42131", "" + cd).Mix();
-            rd = r;
-            cd = c;
-            tb = tr.objects[tc.tabledefpos] as Table;
-            var tt = new SystemTable("" + rd + ":" + cd);
-            tt+=new SystemTableColumn(tt, "Pos", Domain.Int,1);
-            tt+=new SystemTableColumn(tt, "Value", Domain.Char,0);
-            tt+=new SystemTableColumn(tt, "StartTransaction", Domain.Int,0);
-            tt+=new SystemTableColumn(tt, "StartTimestamp", Domain.Timestamp,0);
-            tt+=new SystemTableColumn(tt, "EndTransaction", Domain.Int,0);
-            tt+=new SystemTableColumn(tt, "EndTimestamp", Domain.Timestamp,0);
-            st = tt;
         }
     }
     /// <summary>

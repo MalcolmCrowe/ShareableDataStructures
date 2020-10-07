@@ -4965,6 +4965,11 @@ namespace Pyrrho.Level4
                 r = r0 = Domain.Password;
                 Next();
             }
+            else if (Match(Sqlx.POSITION))
+            {
+                r = r0 = Domain.Position;
+                Next();
+            }
             else if (Match(Sqlx.DOCUMENT))
             {
                 r = r0 = Domain.Document;
@@ -5828,20 +5833,19 @@ namespace Pyrrho.Level4
 		Query ParseTableReferenceItem(QuerySpecification q)
 		{
             Query rf;
+            var lp = lxr.Position;
             cx.Add(q);
             if (tok == Sqlx.ROWS) // Pyrrho specific
             {
                 var tr = cx.db as Transaction ?? throw new DBException("2F003");
                 Next();
                 Mustbe(Sqlx.LPAREN);
-                var v = lxr.val;
-                Mustbe(Sqlx.INTEGERLITERAL);
-                TypedValue w = new TInt(0);
+                var v = ParseSqlValue(Domain.Position);
+                SqlValue w = null;
                 if (tok == Sqlx.COMMA)
                 {
                     Next();
-                    w = lxr.val;
-                    Mustbe(Sqlx.INTEGERLITERAL);
+                    w = ParseSqlValue(Domain.Position);
                 }
                 Mustbe(Sqlx.RPAREN);
                 Ident a = null;
@@ -5852,11 +5856,16 @@ namespace Pyrrho.Level4
                     a = new Ident(lxr);
                     Mustbe(Sqlx.ID);
                 }
-                if (w.ToInt() != 0)
-                    rf = (Query)cx.Add(new LogRowColTable(tr, cx, (long)v.Val(), (long)w.Val(), 
-                        a?.ident??""));
+                RowSet rs;
+                if (w!=null)
+                    rs = new LogRowColRowSet(lp, cx, 
+                        Domain.Int.Coerce(cx,v.Eval(cx)).ToLong().Value, 
+                        Domain.Int.Coerce(cx,w.Eval(cx)).ToLong().Value);
                 else
-                    rf = (Query)cx.Add(new LogRowTable(tr, cx, (long)v.Val(), a?.ident ?? ""));
+                    rs = new LogRowsRowSet(lp, cx, 
+                        Domain.Int.Coerce(cx, v.Eval(cx)).ToLong().Value);
+                cx.data += (lp, rs);
+                rf = new From(lp, cx, rs, a?.ident ?? "");
             }
             else if (tok == Sqlx.UNNEST)
             {
@@ -5885,7 +5894,6 @@ namespace Pyrrho.Level4
             }
             else if (tok == Sqlx.TABLE)
             {
-                var lp = lxr.Position;
                 Next();
                 var cp = lxr.Position;
                 Mustbe(Sqlx.LPAREN); // SQL2003-2 7.6 required before table valued function
@@ -5915,7 +5923,6 @@ namespace Pyrrho.Level4
             }
             else if (tok == Sqlx.LPAREN) // subquery
             {
-                var lp = lxr.Position;
                 Next();
                 var qs = BList<SqlValue>.Empty;
                 for (var b = q?.rowType.First(); b != null; b = b.Next())

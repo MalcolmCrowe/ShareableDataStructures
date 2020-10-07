@@ -66,6 +66,16 @@ namespace Pyrrho.Level3
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
+        /// <summary>
+        /// Ad hoc table for LogRows, LogRowCol
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="nm"></param>
+        internal Table(Context cx,string nm)
+            :base(cx.nextHeap++,BTree<long,object>.Empty+(Name,nm)+(_Domain,Domain.TableType))
+        {
+            cx.Add(this);
+        }
         protected Table(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Table operator+(Table tb,TableColumn tc)
         {
@@ -470,7 +480,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(domain);
+            sb.Append(" "); sb.Append(domain);
             if (mem.Contains(Enforcement)) { sb.Append(" Enforcement="); sb.Append(enforcement); }
             if (indexes.Count!=0) { sb.Append(" Indexes:"); sb.Append(indexes); }
             if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }

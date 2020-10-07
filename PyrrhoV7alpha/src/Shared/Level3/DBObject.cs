@@ -604,7 +604,7 @@ namespace Pyrrho.Level3
             if (u >= Transaction.Analysing)
                 return "#" + (u - Transaction.Analysing);
             if (u >= Transaction.TransPos)
-                return "'" + (u - Transaction.TransPos); 
+                return "!" + (u - Transaction.TransPos); 
             if (u == -1)
                 return "_";
             return "" + u;
@@ -618,7 +618,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" Ppos="); sb.Append(Uid(lastChange)); }
-            if (mem.Contains(Sensitive)) sb.Append(" Sensitive"); 
+            if (sensitive) sb.Append(" Sensitive"); 
             return sb.ToString();
         }
     }

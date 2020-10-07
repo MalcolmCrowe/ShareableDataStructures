@@ -430,8 +430,8 @@ namespace Pyrrho.Level4
                 case "Log$TypeMethod": return LogTypeMethodBookmark.New(_cx, res);
                 //            case "Log$TypeUnion": return new LogTypeUnionEnumerator(r,matches);
                 case "Log$View": return LogViewBookmark.New(_cx, res);
-                case "Log$Insert": return LogRecordBookmark.New(_cx, res);
-                case "Log$InsertField": return LogRecordFieldBookmark.New(_cx, res);
+                case "Log$Record": return LogRecordBookmark.New(_cx, res);
+                case "Log$RecordField": return LogRecordFieldBookmark.New(_cx, res);
                 case "Log$Revoke": return LogRevokeBookmark.New(_cx, res);
                 case "Log$Transaction": return LogTransactionBookmark.New(_cx, res);
                 case "Log$Update": return LogUpdateBookmark.New(_cx, res);
@@ -510,9 +510,11 @@ namespace Pyrrho.Level4
             {
                 if (p == -1)
                     return TNull.Value;
-                if (p < Transaction.TransPos)
+                return new TPosition(p);
+      /*          if (p < Transaction.TransPos)
                     return new TChar("" + p);
                 return new TChar("'" + (p - Transaction.TransPos));
+      */
             }
             internal override TableRow Rec()
             {
@@ -587,10 +589,10 @@ namespace Pyrrho.Level4
         static void LogResults()
         {
             var t = new SystemTable("Log$");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Desc", Domain.Char,0);
             t+=new SystemTableColumn(t, "Type", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Affects", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Affects", Domain.Position,0);
             t = t.AddIndex("Pos");
             t.Add();
         }
@@ -658,8 +660,8 @@ namespace Pyrrho.Level4
         static void LogAlterResults()
         {
             var t = new SystemTable("Log$Alter");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -730,8 +732,8 @@ namespace Pyrrho.Level4
         static void LogChangeResults()
         {
             var t = new SystemTable("Log$Change");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Previous", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Previous", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
@@ -794,8 +796,8 @@ namespace Pyrrho.Level4
         static void LogDeleteResults()
         {
             var t = new SystemTable("Log$Delete");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DelPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -856,9 +858,9 @@ namespace Pyrrho.Level4
         static void LogDropResults()
         {
             var t = new SystemTable("Log$Drop");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DelPos", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -919,12 +921,12 @@ namespace Pyrrho.Level4
         static void LogMetadataResults()
         {
             var t = new SystemTable("Log$Metadata");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Description", Domain.Char,0);
             t+=new SystemTableColumn(t, "Output", Domain.Char,0);
-            t+=new SystemTableColumn(t, "RefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "RefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Iri", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
@@ -990,8 +992,8 @@ namespace Pyrrho.Level4
         static void LogModifyResults()
         {
             var t = new SystemTable("Log$Modify");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
             t.AddIndex("Pos");
@@ -1056,7 +1058,7 @@ namespace Pyrrho.Level4
         static void LogUserResults()
         {
             var t = new SystemTable("Log$User");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
@@ -1118,7 +1120,7 @@ namespace Pyrrho.Level4
         static void LogRoleResults()
         {
             var t = new SystemTable("Log$Role");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Details", Domain.Char,0);
             t.AddIndex("Pos");
@@ -1182,9 +1184,9 @@ namespace Pyrrho.Level4
         static void LogCheckResults()
         {
             var t = new SystemTable("Log$Check");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Ref", Domain.Char,0);
-            t+=new SystemTableColumn(t, "ColRef", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Ref", Domain.Position,0);
+            t+=new SystemTableColumn(t, "ColRef", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Check", Domain.Char,0);
             t.AddIndex("Pos");
@@ -1247,10 +1249,10 @@ namespace Pyrrho.Level4
         static void LogClassificationResults()
         {
             var t = new SystemTable("Log$Classification");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Obj", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Obj", Domain.Position,0);
             t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1308,10 +1310,10 @@ namespace Pyrrho.Level4
         static void LogClearanceResults()
         {
             var t = new SystemTable("Log$Clearance");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "User", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "User", Domain.Position,0);
             t+=new SystemTableColumn(t, "Clearance", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1372,16 +1374,16 @@ namespace Pyrrho.Level4
         static void LogColumnResults()
         {
             var t = new SystemTable("Log$Column");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Seq", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Domain", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
             t+=new SystemTableColumn(t, "Default", Domain.Char,0);
             t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
             t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Update", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Update", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1453,13 +1455,13 @@ namespace Pyrrho.Level4
         static void LogTablePeriodResults()
         {
             var t = new SystemTable("Log$TablePeriod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
             t+=new SystemTableColumn(t, "PeriodName", Domain.Char,0);
             t+=new SystemTableColumn(t, "Versioning", Domain.Bool,0);
-            t+=new SystemTableColumn(t, "StartColumn", Domain.Char,0);
-            t+=new SystemTableColumn(t, "EndColumn", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "StartColumn", Domain.Position,0);
+            t+=new SystemTableColumn(t, "EndColumn", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
 
@@ -1526,12 +1528,12 @@ namespace Pyrrho.Level4
         static void LogDateTypeResults()
         {
             var t = new SystemTable("Log$DateType");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
             t+=new SystemTableColumn(t, "StartField", Domain.Int,0);
             t+=new SystemTableColumn(t, "EndField",  Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1596,7 +1598,7 @@ namespace Pyrrho.Level4
         static void LogDomainResults()
         {
             var t = new SystemTable("Log$Domain");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
@@ -1606,7 +1608,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Collate", Domain.Char,0);
             t+=new SystemTableColumn(t, "Default", Domain.Char,0);
             t+=new SystemTableColumn(t, "StructDef", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1676,9 +1678,9 @@ namespace Pyrrho.Level4
         static void LogEditResults()
         {
             var t = new SystemTable("Log$Edit");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Prev", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Prev", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1737,10 +1739,10 @@ namespace Pyrrho.Level4
         static void LogEnforcementResults()
         {
             var t = new SystemTable("Log$Enforcement");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Table", Domain.Char,0);
             t+=new SystemTableColumn(t, "Flags", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1794,11 +1796,11 @@ namespace Pyrrho.Level4
         static void LogGrantResults()
         {
             var t = new SystemTable("Log$Grant");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Object", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1863,13 +1865,13 @@ namespace Pyrrho.Level4
         static void LogIndexResults()
         {
             var t = new SystemTable("Log$Index");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
             t+=new SystemTableColumn(t, "Flags", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Reference", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Adapter", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Reference", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Adapter", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1937,10 +1939,10 @@ namespace Pyrrho.Level4
         static void LogIndexKeyResults()
         {
             var t = new SystemTable("Log$IndexKey");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "ColNo", Domain.Int,1);
             t+=new SystemTableColumn(t, "Column", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2020,11 +2022,11 @@ namespace Pyrrho.Level4
         static void LogOrderingResults()
         {
             var t = new SystemTable("Log$Ordering");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "TypeDefPos", Domain.Char,0);
-            t+=new SystemTableColumn(t, "FuncDefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "TypeDefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "FuncDefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "OrderFlags", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2088,12 +2090,12 @@ namespace Pyrrho.Level4
         static void LogProcedureResults()
         {
             var t = new SystemTable("Log$Procedure");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Arity", Domain.Int,0);
-            t+=new SystemTableColumn(t, "RetDefPos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "RetDefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2158,11 +2160,11 @@ namespace Pyrrho.Level4
         static void LogRevokeResults()
         {
             var t = new SystemTable("Log$Revoke");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Object", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2224,10 +2226,10 @@ namespace Pyrrho.Level4
         static void LogTableResults()
         {
             var t = new SystemTable("Log$Table");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Defpos", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Defpos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2290,16 +2292,16 @@ namespace Pyrrho.Level4
         static void LogTriggerResults()
         {
             var t = new SystemTable("Log$Trigger");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
             t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
             t+=new SystemTableColumn(t, "OldTable", Domain.Char,0);
             t+=new SystemTableColumn(t, "NewTable", Domain.Char,0);
             t+=new SystemTableColumn(t, "OldRow", Domain.Char,0);
             t+=new SystemTableColumn(t, "NewRow", Domain.Char,0);
             t+=new SystemTableColumn(t, "Def", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2368,9 +2370,9 @@ namespace Pyrrho.Level4
         static void LogTriggerUpdateColumnResults()
         {
             var t = new SystemTable("Log$TriggerUpdateColumn");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2458,9 +2460,9 @@ namespace Pyrrho.Level4
         static void LogTriggeredActionResults()
         {
             var t = new SystemTable("Log$TriggeredAction");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Trigger", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Trigger", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2519,9 +2521,9 @@ namespace Pyrrho.Level4
         static void LogTypeResults()
         {
             var t = new SystemTable("Log$Type");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "SuperType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "SuperType", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2583,10 +2585,10 @@ namespace Pyrrho.Level4
         static void LogTypeMethodResults()
         {
             var t = new SystemTable("Log$TypeMethod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Type", Domain.Char,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2649,12 +2651,12 @@ namespace Pyrrho.Level4
         static void LogViewResults()
         {
             var t = new SystemTable("Log$View");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Select", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Using", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Using", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2724,12 +2726,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRecordResults()
         {
-            var t = new SystemTable("Log$Insert");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
-            t+=new SystemTableColumn(t, "SubType", Domain.Char,0);
+            var t = new SystemTable("Log$Record");
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
             t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2795,11 +2797,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRecordFieldResults()
         {
-            var t = new SystemTable("Log$InsertField");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "ColRef", Domain.Char,1);
+            var t = new SystemTable("Log$RecordField");
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "ColRef", Domain.Position,1);
             t+=new SystemTableColumn(t, "Data", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2887,12 +2889,12 @@ namespace Pyrrho.Level4
         static void LogUpdateResults()
         {
             var t = new SystemTable("Log$Update");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
-            t+=new SystemTableColumn(t, "SubType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
             t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2958,13 +2960,13 @@ namespace Pyrrho.Level4
         static void LogTransactionResults()
         {
             var t = new SystemTable("Log$Transaction");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "NRecs", Domain.Int,0);
             t+=new SystemTableColumn(t, "Time", Domain.Int,0);
-            t+=new SystemTableColumn(t, "User", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Role", Domain.Char,0);
+            t+=new SystemTableColumn(t, "User", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Role", Domain.Position,0);
             t+=new SystemTableColumn(t, "Source", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3031,7 +3033,7 @@ namespace Pyrrho.Level4
         static void SysRoleResults()
         {
             var t = new SystemTable("Sys$Role");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Name");
             t.Add();
@@ -3104,7 +3106,7 @@ namespace Pyrrho.Level4
         static void SysUserResults()
         {
             var t = new SystemTable("Sys$User");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "SetPassword", Domain.Bool,0); // usually null
             t+=new SystemTableColumn(t, "InitialRole", Domain.Char,0); // usually null
@@ -3278,9 +3280,9 @@ namespace Pyrrho.Level4
         static void SysAuditResults()
         {
             var t = new SystemTable("Sys$Audit");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "User", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
             t+=new SystemTableColumn(t, "Timestamp", Domain.Timestamp,0);
             t.Add();
         }
@@ -3350,9 +3352,9 @@ namespace Pyrrho.Level4
         static void SysAuditKeyResults()
         {
             var t = new SystemTable("Sys$AuditKey");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Col", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Col", Domain.Position,0);
             t+=new SystemTableColumn(t, "Key", Domain.Char,0);
             t.Add();
         }
@@ -3431,10 +3433,10 @@ namespace Pyrrho.Level4
         static void SysClassificationResults()
         {
             var t = new SystemTable("Sys$Classification");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Type", Domain.Char,0);
             t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "LastTransaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3545,10 +3547,10 @@ namespace Pyrrho.Level4
         static void SysClassifiedColumnDataResults()
         {
             var t = new SystemTable("Sys$ClassifiedColumnData");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Col", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Col", Domain.Position,1);
             t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "LastTransaction", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
             t.AddIndex("Pos", "Col");
             t.Add();
         }
@@ -3697,12 +3699,12 @@ namespace Pyrrho.Level4
         static void RoleViewResults()
         {
             var t = new SystemTable("Role$View");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "View", Domain.Char,1);
             t+=new SystemTableColumn(t, "Select", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Using", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Using", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Position,0);
             t.AddIndex("View");
             t.AddIndex("Pos");
             t.Add();
@@ -3789,7 +3791,7 @@ namespace Pyrrho.Level4
         static void RoleDomainCheckResults()
         {
             var t = new SystemTable("Role$DomainCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "DomainName", Domain.Char,1);
             t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
             t+=new SystemTableColumn(t, "Select", Domain.Char,0);
@@ -3897,7 +3899,7 @@ namespace Pyrrho.Level4
         static void RoleTableCheckResults()
         {
             var t = new SystemTable("Role$TableCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
             t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
             t+=new SystemTableColumn(t, "Select", Domain.Char,0);
@@ -3998,7 +4000,7 @@ namespace Pyrrho.Level4
         static void RoleTablePeriodResults()
         {
             var t = new SystemTable("Role$TablePaeriod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
             t+=new SystemTableColumn(t, "PeriodName", Domain.Char,1);
             t+=new SystemTableColumn(t, "PeriodStartColumn", Domain.Char,0);
@@ -4110,11 +4112,11 @@ namespace Pyrrho.Level4
         static void RoleColumnResults()
         {
             var t = new SystemTable("Role$Column");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Table", Domain.Char,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Domain", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
             t+=new SystemTableColumn(t, "Default", Domain.Char,0);
             t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
             t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
@@ -4278,7 +4280,7 @@ namespace Pyrrho.Level4
         static void RoleColumnCheckResults()
         {
             var t = new SystemTable("Role$ColumnCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0); 
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0); 
             t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
             t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
             t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
@@ -4496,7 +4498,7 @@ namespace Pyrrho.Level4
         static void RoleDomainResults()
         {
             var t = new SystemTable("Role$Domain");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
             t+=new SystemTableColumn(t, "DataLength", Domain.Int,0);
@@ -4603,7 +4605,7 @@ namespace Pyrrho.Level4
         static void RoleIndexResults()
         {
             var t = new SystemTable("Role$Index");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Table", Domain.Char,0);
             t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
             t+=new SystemTableColumn(t, "RefTable", Domain.Char,0);
@@ -4901,7 +4903,7 @@ namespace Pyrrho.Level4
         static void RoleProcedureResults()
         {
             var t = new SystemTable("Role$Procedure");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "Arity", Domain.Int,1);
             t+=new SystemTableColumn(t, "Returns", Domain.Char,0);
@@ -4987,7 +4989,7 @@ namespace Pyrrho.Level4
         static void RoleParameterResults()
         {
             var t = new SystemTable("Role$Parameter");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t,"Seq", Domain.Int,1);
             t+=new SystemTableColumn(t,"Name", Domain.Char,0);
             t+=new SystemTableColumn(t,"Type", Domain.Char,0);
@@ -5073,7 +5075,7 @@ namespace Pyrrho.Level4
         static void RoleSubobjectResults()
         {
             var t = new SystemTable("Role$Subobject");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Type", Domain.Char,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
@@ -5173,7 +5175,7 @@ namespace Pyrrho.Level4
         static void RoleTableResults()
         {
             var t = new SystemTable("Role$Table");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "Columns", Domain.Int,0);
             t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
@@ -5258,7 +5260,7 @@ namespace Pyrrho.Level4
         static void RoleTriggerResults()
         {
             var t = new SystemTable("Role$Trigger");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
             t+=new SystemTableColumn(t, "TableName", Domain.Char,0);
@@ -5362,7 +5364,7 @@ namespace Pyrrho.Level4
         static void RoleTriggerUpdateColumnResults()
         {
             var t = new SystemTable("Role$TriggerUpdateColumn");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
             t.AddIndex("Pos");
@@ -5480,7 +5482,7 @@ namespace Pyrrho.Level4
         static void RoleTypeResults()
         {
             var t = new SystemTable("Role$Type");
-            t+=new SystemTableColumn(t, "Pos", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,1);
             t+=new SystemTableColumn(t, "SuperType", Domain.Char,0);
             t+=new SystemTableColumn(t, "OrderFunc", Domain.Char,0);
@@ -6034,11 +6036,11 @@ namespace Pyrrho.Level4
         {
             var t = new SystemTable("Profile$Table");
             new SystemTableColumn(t, "Id", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Table", 0, Domain.Char);
+            new SystemTableColumn(t, "Table", 0, Domain.Position);
             new SystemTableColumn(t, "BlockAny", Sqlx.BOOLEAN); 
             new SystemTableColumn(t, "Dels", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Index", 0, Domain.Char);
-            new SystemTableColumn(t, "Pos", 0, Domain.Char);
+            new SystemTableColumn(t, "Index", 0, Domain.Position);
+            new SystemTableColumn(t, "Pos", 0, Domain.Position);
             new SystemTableColumn(t, "ReadRecs", Sqlx.INTEGER);
             new SystemTableColumn(t, "Schema", Sqlx.BOOLEAN);
         }
@@ -6120,7 +6122,7 @@ namespace Pyrrho.Level4
             var t = new SystemTable("Profile$ReadConstraint");
             new SystemTableColumn(t, "Id", Sqlx.INTEGER);
             new SystemTableColumn(t, "Table", 0, Domain.Char);
-            new SystemTableColumn(t, "ColPos", 0, Domain.Char);
+            new SystemTableColumn(t, "ColPos", 0, Domain.Position);
             new SystemTableColumn(t, "ReadCol", 0, Domain.Char);
         }
         internal class ProfileReadConstraintBookmark : SystemBookmark

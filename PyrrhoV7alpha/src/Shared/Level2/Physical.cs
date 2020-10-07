@@ -83,7 +83,8 @@ namespace Pyrrho.Level2
             type = tp;
             ppos = rdr.Position-1;
             database = rdr.context.db;
-            time = rdr.time;
+            trans = rdr.trans?.ppos??0;
+            time = rdr.trans?.pttime??0;
         }
         protected Physical(Physical ph,Writer wr)
         {

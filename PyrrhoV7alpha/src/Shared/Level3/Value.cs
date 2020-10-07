@@ -16,6 +16,7 @@ using System.Configuration;
 using System.Reflection.Emit;
 using System.Dynamic;
 using System.Diagnostics.Eventing.Reader;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -71,8 +72,20 @@ namespace Pyrrho.Level3
             base(dp,(m??BTree<long, object>.Empty)+(_Domain,dt??Domain.Content)
                 +(Name,nm)+(_Columns,cols??CList<long>.Empty))
         { }
+        protected SqlValue(Context cx,string nm,Domain dt,long cf=-1L)
+            :base(cx.nextHeap++,_Mem(cf)+(Name,nm)+(_Domain,dt))
+        {
+            cx.Add(this);
+        }
         protected SqlValue(long dp, BTree<long, object> m) : base(dp, m)
         { }
+        static BTree<long,object> _Mem(long cf)
+        {
+            var r = BTree<long, object>.Empty;
+            if (cf >= 0)
+                r += (SqlCopy.CopyFrom, cf);
+            return r;
+        }
         public static SqlValue operator+(SqlValue s,(long,object)x)
         {
             return (SqlValue)s.New(s.mem + x);
@@ -2309,6 +2322,36 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new SqlSecurity(dp,mem);
+        }
+    }
+    /// <summary>
+    /// Added for LogRowsRowSet and similar: Values are computed in Cursor constructor
+    /// and do not depend on other SqlValues
+    /// </summary>
+    internal class SqlFormal : SqlValue 
+    {
+        public SqlFormal(Context cx, string nm, Domain dm, long cf=-1L)
+            : base(cx, nm, dm, cf) { }
+        protected SqlFormal(long dp,BTree<long,object>m):base(dp,m){ }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlFormal(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new SqlFormal(dp,mem);
+        }
+        internal override BTree<long, bool> Needs(Context cx, BTree<long, bool> qn)
+        {
+            return BTree<long,bool>.Empty;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            var cf = mem[SqlCopy.CopyFrom];
+            if (cf != null)
+            { sb.Append(" from: "); sb.Append((long)cf); }
+            return sb.ToString();
         }
     }
     /// <summary>

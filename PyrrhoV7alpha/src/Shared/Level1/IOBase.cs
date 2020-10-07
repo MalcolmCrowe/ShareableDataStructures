@@ -596,7 +596,6 @@ namespace Pyrrho.Level2
         internal Role role;
         internal User user;
         internal PTransaction trans = null;
-        internal long time => trans?.pttime ?? 0;
         public long segment;
         public long limit;
         public bool locked = false;
@@ -645,7 +644,7 @@ namespace Pyrrho.Level2
             limit = file.Length;
             GetBuf(db.loadpos);
         }
-        internal Reader(Context cx, long p)
+        internal Reader(Context cx, long p, PTransaction pt=null)
         {
             var db = cx.db;
             context = new Context(db);
@@ -653,6 +652,7 @@ namespace Pyrrho.Level2
             user = (User)db.objects[db.owner];
             file = db.File();
             limit = file.Length;
+            trans = pt;
             GetBuf(p);
         }
         internal int GetInt32()

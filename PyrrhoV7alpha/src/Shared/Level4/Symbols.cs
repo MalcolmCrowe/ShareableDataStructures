@@ -728,14 +728,55 @@ namespace Pyrrho.Level4
 					val = new TChar(new string(rb));
 					return tok=Sqlx.CHARLITERAL;
 				}
-        /*        case '^': // ^^uri can occur in Type
-                {
-                    val = new TChar("");
-                    tok = Sqlx.ID;
-                    CheckForRdfLiteral();
-                    return tok;
-                } */
-				case '\0':
+                /*        case '^': // ^^uri can occur in Type
+                        {
+                            val = new TChar("");
+                            tok = Sqlx.ID;
+                            CheckForRdfLiteral();
+                            return tok;
+                        } */
+                // These are for the new Position Domain in v7. Positions are always longs
+                case '!':
+                    {
+                        Advance();
+                        while (char.IsDigit(Advance()))
+                            ;
+                        str = new string(input, start+1, pos - start-1);
+                        val = new TInt(long.Parse(str)+Transaction.TransPos);
+                        tok = Sqlx.INTEGERLITERAL;
+                        return tok;
+                    }
+                case '#':
+                    {
+                        Advance();
+                        while (char.IsDigit(Advance()))
+                            ;
+                        str = new string(input, start + 1, pos - start - 1);
+                        val = new TInt(long.Parse(str) + Transaction.Analysing);
+                        tok = Sqlx.INTEGERLITERAL;
+                        return tok;
+                    }
+                case '@':
+                    {
+                        Advance();
+                        while (char.IsDigit(Advance()))
+                            ;
+                        str = new string(input, start + 1, pos - start - 1);
+                        val = new TInt(long.Parse(str) + Transaction.Executables);
+                        tok = Sqlx.INTEGERLITERAL;
+                        return tok;
+                    }
+                case '%':
+                    {
+                        Advance();
+                        while (char.IsDigit(Advance()))
+                            ;
+                        str = new string(input, start + 1, pos - start - 1);
+                        val = new TInt(long.Parse(str) + 0x7000000000000000);
+                        tok = Sqlx.INTEGERLITERAL;
+                        return tok;
+                    }
+                case '\0':
 					return tok=Sqlx.EOF;
 			}
 			throw new DBException("42101",ch).Mix();
