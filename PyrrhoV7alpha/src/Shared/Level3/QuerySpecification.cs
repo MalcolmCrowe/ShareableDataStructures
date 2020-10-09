@@ -80,6 +80,25 @@ namespace Pyrrho.Level3
             r += (Scope, scope + (v.defpos, v.domain));
             return r;
         }
+        internal override void ReviewJoins(Context cx)
+        {
+            tableExp.ReviewJoins(cx);
+        }
+        internal override bool Knows(Context cx, long p)
+        {
+            for (var b = domain.rowType.First(); b != null; b = b.Next())
+                if (b.value() == p)
+                    return true;
+            return false;
+        }
+        internal override void Distribute(Context cx, SqlValueExpr cond)
+        {
+            tableExp.Distribute(cx, cond);
+        }
+        internal override void Distribute(Context cx, UpdateAssignment ua)
+        {
+            tableExp.Distribute(cx, ua);
+        }
         internal bool HasStar(Context cx,Query f=null)
         {
             for (var b=rowType.First();b!=null;b=b.Next())
@@ -427,6 +446,26 @@ namespace Pyrrho.Level3
             if (right == -1L)
                 r += (_Left,cx.Add(((Query)cx.obs[left]).AddMatches(cx,q)).defpos);
             return (QueryExpression)cx.Add(r);
+        }
+        internal override void ReviewJoins(Context cx)
+        {
+            ((Query)cx.obs[left]).ReviewJoins(cx);
+            ((Query)cx.obs[right])?.ReviewJoins(cx);
+        }
+        internal override bool Knows(Context cx, long p)
+        {
+            return ((Query)cx.obs[left]).Knows(cx,p)
+            || (((Query)cx.obs[right])?.Knows(cx,p)==true);
+        }
+        internal override void Distribute(Context cx, SqlValueExpr cond)
+        {
+            ((Query)cx.obs[left]).Distribute(cx, cond);
+            ((Query)cx.obs[right])?.Distribute(cx, cond);
+        }
+        internal override void Distribute(Context cx, UpdateAssignment ua)
+        {
+            ((Query)cx.obs[left]).Distribute(cx, ua);
+            ((Query)cx.obs[right])?.Distribute(cx, ua);
         }
         /// <summary>
         /// Analysis stage Conditions().

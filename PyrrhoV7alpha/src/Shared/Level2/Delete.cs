@@ -138,7 +138,7 @@ namespace Pyrrho.Level2
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
                 if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
                 {
-                    var delRow = tb.tableRows[delpos] as TableRow;
+                    var delRow = tb.tableRows[delpos];
                     ro = delRow.Cascade(cx.db, cx, ro, p);
                     for (var b = tb.indexes.First(); b != null; b = b.Next())
                     {
@@ -213,7 +213,7 @@ namespace Pyrrho.Level2
                 var ix = (Index)cx.db.objects[b.value()];
                 var inf = ix.rows.info;
                 var key = delRow.MakeKey(ix);
-                ix -= key;
+                ix -= (key,delpos);
                 if (ix.rows == null)
                     ix += (Index.Tree, new MTree(inf));
                 cx.Install(ix,p);

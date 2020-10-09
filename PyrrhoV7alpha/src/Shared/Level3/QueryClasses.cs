@@ -238,7 +238,7 @@ namespace Pyrrho.Level3
         internal bool Has(SqlValue sv)
         {
             for (var b = members.First(); b != null; b = b.Next())
-                if (b.value() == sv.defpos)
+                if (b.key() == sv.defpos)
                     return true;
             for (var b = groups.First(); b != null; b = b.Next())
                 if (b.value().Has(sv))
@@ -335,14 +335,9 @@ namespace Pyrrho.Level3
         public bool Has(Context cx,SqlValue sv)
         {
             for (var b = sets.First(); b != null; b = b.Next())
-                if (((GroupSpecification)cx.obs[b.value()]).Has(cx,sv))
+                if (((Grouping)cx.obs[b.value()]).Has(sv))
                     return true;
             return false;
-        }
-        internal void Grouped(Context cx, BTree<long, bool> svs)
-        {
-            for (var b = svs.First(); b != null; b = b.Next())
-                ((SqlValue)cx.obs[b.key()]).Grouped(cx, this);
         }
         internal override BTree<long, bool> Needs(Context cx)
         {
@@ -374,6 +369,16 @@ namespace Pyrrho.Level3
         {
             cx.ObUnheap(defpos);
             cx.Scan(sets);
+        }
+        internal void Grouped(Context cx,BList<long> vals)
+        {
+            for (var b = vals?.First(); b != null; b = b.Next())
+                ((SqlValue)cx.obs[b.value()]).Grouped(cx, this);
+        }
+        internal void Grouped(Context cx, BTree<long,bool> vals)
+        {
+            for (var b = vals?.First(); b != null; b = b.Next())
+                ((SqlValue)cx.obs[b.key()]).Grouped(cx, this);
         }
         public override string ToString()
         {

@@ -233,9 +233,9 @@ namespace Pyrrho.Level4
         }
         internal Cursor MoveToMatch(Context _cx)
         {
-            Cursor r = this;
+            JoinBookmark r = this;
             while (r != null && !Query.Eval(_jrs.where, _cx))
-                r = r.Next(_cx);
+                r = (JoinBookmark)r.Next(_cx);
             return r;
         }
     }
@@ -774,7 +774,23 @@ namespace Pyrrho.Level4
             var s = cx.data[j.second].First(cx);
             if (f == null || s == null)
                 return null;
-            return new CrossJoinBookmark(cx,j, f, s);
+            for (;; )
+            {
+                if (s != null)
+                {
+                    var rb = new CrossJoinBookmark(cx, j, f, s);
+                    if (Query.Eval(j.join.joinCond, cx))
+                        return rb;
+                    s = s.Next(cx);
+                }
+                if (s == null)
+                {
+                    f = f.Next(cx);
+                    if (f == null)
+                        return null;
+                    s = cx.data[j.second].First(cx);
+                }
+            }
         }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
@@ -792,13 +808,20 @@ namespace Pyrrho.Level4
             for (; ; )
             {
                 if (right != null)
-                    break;
-                left = left.Next(cx);
-                if (left == null)
-                    return null;
-                right = cx.data[_jrs.second].First(cx);
+                {
+                    var rb = new CrossJoinBookmark(cx, _jrs, left, right, _pos + 1);
+                    if (Query.Eval(_jrs.join.joinCond, cx))
+                        return rb;
+                    right = right.Next(cx);
+                }
+                if (right == null)
+                {
+                    left = left.Next(cx);
+                    if (left == null)
+                        return null;
+                    right = cx.data[_jrs.second].First(cx);
+                }
             }
-            return new CrossJoinBookmark(cx,_jrs, left, right, _pos + 1);
         }
 
         internal override TableRow Rec()

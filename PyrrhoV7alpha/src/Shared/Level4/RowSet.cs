@@ -2221,7 +2221,8 @@ namespace Pyrrho.Level4
         }
         protected override Cursor _First(Context cx)
         {
-            return ProcRowSetCursor.New(cx, this, (TArray)cx.values[defpos]);
+            var v = cx.values[defpos];
+            return (v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TArray)v);
         }
 
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
@@ -3514,9 +3515,9 @@ namespace Pyrrho.Level4
                             trans = nt;
                         continue;
                     }
-                    var b = lrs.rt.First(); vs += (b.value(), new TChar(Uid(rc.ppos)));
+                    var b = lrs.rt.First(); vs += (b.value(), new TPosition(rc.ppos));
                     b = b.Next(); vs += (b.value(), rc.fields[tc] ?? TNull.Value);
-                    b = b.Next(); vs += (b.value(), new TChar(Uid(rc.trans)));
+                    b = b.Next(); vs += (b.value(), new TPosition(rc.trans));
                     b = b.Next(); vs += (b.value(), new TDateTime(new DateTime(rc.time)));
                     var done = false;
                     for (nx = cx.db._NextPhysical(nx.Item2, trans);
@@ -3547,7 +3548,7 @@ namespace Pyrrho.Level4
                     }
                     if (done)
                     {
-                        b = b.Next(); vs += (b.value(), new TChar(Uid(trans.ppos)));
+                        b = b.Next(); vs += (b.value(), new TPosition(trans.ppos));
                         b = b.Next(); vs += (b.value(), new TDateTime(new DateTime(trans.pttime)));
                     }
                     var rb = new LogRowColCursor(cx, lrs, pos, rc.ppos,

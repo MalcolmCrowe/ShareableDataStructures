@@ -5356,7 +5356,7 @@ namespace Pyrrho.Level4
         {
             var lp = lxr.Position;
             int st = lxr.start;
-            CursorSpecification r = new CursorSpecification(lxr.Position);
+            CursorSpecification r = new CursorSpecification(lp);
             ParseXmlOption(false);
             var qe = ParseQueryExpression(Domain.TableType);
             if (!xp.CanTakeValueOf(qe.domain))
@@ -5366,7 +5366,8 @@ namespace Pyrrho.Level4
             r += (Domain.RowType, qe.rowType);
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
             r = (CursorSpecification)cx.Add(r);
-            var s = new SelectStatement(lp - 1, r);
+            r.ReviewJoins(cx);
+            var s = new SelectStatement(lp - 1, (CursorSpecification)cx.obs[lp]);
             var rs = r.RowSets(cx, cx.data[r.from]?.finder??BTree<long, RowSet.Finder>.Empty);
             return (SelectStatement)cx.Add(s);
         }

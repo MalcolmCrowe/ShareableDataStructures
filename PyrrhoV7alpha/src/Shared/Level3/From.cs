@@ -191,6 +191,13 @@ namespace Pyrrho.Level3
                 + (Target, rs.defpos)
                 + (_Domain, rs.domain) + (Name, a);
         }
+        internal override bool Knows(Context cx, long p)
+        {
+            for (var b = domain.rowType.First(); b != null; b = b.Next())
+                if (b.value() == p)
+                    return true;
+            return false;
+        }
         internal override TypedValue Eval(Context cx)
         {
             return cx.cursors[defpos];

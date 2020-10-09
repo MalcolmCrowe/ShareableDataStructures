@@ -121,6 +121,10 @@ namespace Pyrrho.Level3
         {
             return this;
         }
+        internal virtual bool KnownBy(Context cx,Query q)
+        {
+            return q.Knows(cx, defpos);
+        }
         internal override BTree<long, bool> Needs(Context cx)
         {
             return new BTree<long,bool>(defpos,true);
@@ -200,13 +204,10 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-        internal virtual bool _Grouped(Context cx,GroupSpecification gs)
+        internal virtual void Grouped(Context cx,GroupSpecification gs)
         {
-            return false;
-        }
-        internal bool Grouped(Context cx,GroupSpecification gs)
-        {
-            return gs.Has(cx, this) || _Grouped(cx, gs);
+            if (!gs.Has(cx, this))
+                throw new DBException("42170", name);
         }
         internal virtual (SqlValue,Query) Resolve(Context cx,Query q,string a=null)
         {
@@ -431,16 +432,6 @@ namespace Pyrrho.Level3
             j += (JoinPart.RightOperand, ((Query)cx.obs[j.right]).AddCondition(cx,Query.Where,this).defpos);
             return j;
         }
-        /// <summary>
-        /// Analysis stage Conditions: Distribute conditions to joins, froms
-        /// </summary>
-        /// <param name="q"> Query</param>
-        /// <param name="repl">Updated list of equality conditions for possible replacements</param>
-        /// <param name="needed">Updated list of fields mentioned in conditions</param>
-        internal virtual Query DistributeConditions(Context cx,Query q)
-        {
-            return q;
-        }
         internal virtual SqlValue PartsIn(BList<long> dt)
         {
             for (var b=dt.First();b!=null;b=b.Next())
@@ -622,6 +613,10 @@ namespace Pyrrho.Level3
         {
             return cx.cursors[from];
         }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return true;
+        }
         /// <summary>
         /// We aren't a column reference
         /// </summary>
@@ -676,6 +671,12 @@ namespace Pyrrho.Level3
         internal override bool IsFrom(Context cx, Query q, bool ordered = false, Domain ut = null)
         {
             return q.domain.representation.Contains(defpos);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            if (q.Knows(cx,copyFrom))
+                return true;
+            return base.KnownBy(cx, q);
         }
         internal override long Defpos(Context cx)
         {
@@ -810,6 +811,10 @@ namespace Pyrrho.Level3
         {
             return qn;
         }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return true;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -916,6 +921,10 @@ namespace Pyrrho.Level3
                 r += (TreatExpr, v);
             cx.done += (defpos, r);
             return r;
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return ((SqlValue)cx.obs[val]).KnownBy(cx, q);
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -1140,6 +1149,11 @@ namespace Pyrrho.Level3
             }
             return r;
         }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return ((cx.obs[left] as SqlValue)?.KnownBy(cx, q) != false)
+                || ((cx.obs[right] as SqlValue)?.KnownBy(cx, q) != false);
+        }
         internal override bool Uses(Context cx,long t)
         {
             return ((cx.obs[left] as SqlValue)?.Uses(cx,t)==true) 
@@ -1151,10 +1165,10 @@ namespace Pyrrho.Level3
                 ((SqlValue)cx.obs[right]).Disjoin(cx)+(left, true)
                 :base.Disjoin(cx);
         }
-        internal override bool _Grouped(Context cx, GroupSpecification gs)
+        internal override void Grouped(Context cx, GroupSpecification gs)
         {
-            return ((SqlValue)cx.obs[left])?.Grouped(cx, gs)!=false &&
-            ((SqlValue)cx.obs[right])?.Grouped(cx, gs)!=false;
+            ((SqlValue)cx.obs[left])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[right])?.Grouped(cx, gs);
         }
         internal override SqlValue Import(Context cx,Query q)
         {
@@ -1311,9 +1325,9 @@ namespace Pyrrho.Level3
                 cse += rr;
                 er = er._ColsForRestView(dp, cx, gf, gs, ref gfr, ref rer, ref rgr, ref map);
             }
-            if (el?.Grouped(cx,gs)==true)
+            if (gs?.Has(cx,el)==true)
                 cse += lg;
-            if (er?.Grouped(cx,gs) == true)
+            if (gs?.Has(cx,er) == true)
                 cse += rg;
             // I know we could save on the declaration of csa here
             // But this case numbering follows documentation
@@ -2220,7 +2234,7 @@ namespace Pyrrho.Level3
                     }
             }
             if (q != null && domain == Domain.Bool)
-                DistributeConditions(cx, q);
+                q.Distribute(cx, this);
             move = false;
             return q;
         }
@@ -2297,6 +2311,8 @@ namespace Pyrrho.Level3
             move = true;
             return q;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         /// <summary>
         /// We aren't a column reference
         /// </summary>
@@ -2323,6 +2339,8 @@ namespace Pyrrho.Level3
         {
             return new SqlSecurity(dp,mem);
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
     }
     /// <summary>
     /// Added for LogRowsRowSet and similar: Values are computed in Cursor constructor
@@ -2345,6 +2363,12 @@ namespace Pyrrho.Level3
         {
             return BTree<long,bool>.Empty;
         }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return true;
+        }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -2409,6 +2433,8 @@ namespace Pyrrho.Level3
             r += (_Val, val.Relocate(wr));
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override Query Conditions(Context cx, Query q, bool disj,out bool move)
         {
             move = true;
@@ -2442,6 +2468,10 @@ namespace Pyrrho.Level3
             if (that == null)
                 return 1;
             return val?.CompareTo(that.val) ?? throw new PEException("PE000");
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return true;
         }
         /// <summary>
         /// A literal is supplied by any query
@@ -2646,6 +2676,8 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override (SqlValue, Query) Resolve(Context cx, Query fm, string a = null)
         {
             if (domain.kind != Sqlx.CONTENT)
@@ -2679,6 +2711,13 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (_Columns, cs);
             return (SqlValue)cx.Add(r);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            for (var b=columns.First();b!=null;b=b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx,q))
+                        return false;
+            return true;
         }
         /// <summary>
         /// the value
@@ -2837,6 +2876,8 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)
@@ -2855,6 +2896,13 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (Rows, rws);
             return (SqlValue)cx.Add(r);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            for (var b = rows.First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx, q))
+                    return false;
+            return true;
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -3175,6 +3223,8 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override bool Uses(Context cx,long t)
         {
             return ((SqlValue)cx.obs[aqe]).Uses(cx,t);
@@ -3327,6 +3377,13 @@ namespace Pyrrho.Level3
             if (s.defpos != svs)
                 r += (Svs,s.defpos);
             return (SqlValue)cx.Add(r);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            for (var b = array?.First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx, q))
+                    return false;
+            return ((SqlValue)cx.obs[svs])?.KnownBy(cx, q) != false;
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -3583,6 +3640,8 @@ namespace Pyrrho.Level3
             r += (Bits, cx.Fix(bits));
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         /// <summary>
         /// We aren't a column reference
         /// </summary>
@@ -3659,6 +3718,8 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override bool Uses(Context cx,long t)
         {
             return ((SqlValue)cx.obs[spec]).Uses(cx,t);
@@ -3725,6 +3786,10 @@ namespace Pyrrho.Level3
             r += (Call, cx.obuids[call]);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((CallStatement)cx.obs[call]).Grouped(cx, gs);
+        }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)
@@ -3757,6 +3822,14 @@ namespace Pyrrho.Level3
                 r += (Call, ca);
             cx.done += (defpos, r);
             return r;
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            var ca = (CallStatement)cx.obs[call];
+            for (var b=ca.parms.First();b!=null;b=b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx,q))
+                        return false;
+            return true;
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -4384,11 +4457,17 @@ namespace Pyrrho.Level3
              && MatchExp(cx, q,(SqlValue)cx.obs[op1], (SqlValue)cx.obs[f.op1]) 
              && MatchExp(cx, q,(SqlValue)cx.obs[op2], (SqlValue)cx.obs[f.op2]);
         }
-        internal override bool _Grouped(Context cx,GroupSpecification gs)
+        internal override void Grouped(Context cx,GroupSpecification gs)
         {
-            return ((SqlValue)cx.obs[val])?.Grouped(cx, gs) != false
-            && ((SqlValue)cx.obs[op1])?.Grouped(cx, gs) != false
-            && ((SqlValue)cx.obs[op2])?.Grouped(cx, gs) != false;
+            ((SqlValue)cx.obs[val])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[op1])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[op2])?.Grouped(cx, gs);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return ((SqlValue)cx.obs[val])?.KnownBy(cx, q)!=false &&
+            ((SqlValue)cx.obs[op1])?.KnownBy(cx, q)!=false &&
+            ((SqlValue)cx.obs[op2])?.KnownBy(cx, q) !=false;  
         }
         internal static Domain _Type(Context cx,Sqlx kind,SqlValue val, SqlValue op1)
         {
@@ -5877,6 +5956,10 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[what])?.Grouped(cx, gs);
+        }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)
@@ -6047,6 +6130,12 @@ namespace Pyrrho.Level3
             r += (QuantifiedPredicate.High, wr.Fixed(high)?.defpos ?? -1L);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[what])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[low])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[high])?.Grouped(cx, gs);
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (BetweenPredicate)base.Fix(cx);
@@ -6074,6 +6163,12 @@ namespace Pyrrho.Level3
                 r += (QuantifiedPredicate.High, hg);
             cx.done += (defpos, r);
             return r;
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return ((SqlValue)cx.obs[low]).KnownBy(cx, q)
+                && ((SqlValue)cx.obs[high]).KnownBy(cx, q)
+                && ((SqlValue)cx.obs[what]).KnownBy(cx, q);
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -6288,6 +6383,12 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[escape])?.Grouped(cx, gs);
+            ((SqlValue)cx.obs[left]).Grouped(cx, gs);
+            ((SqlValue)cx.obs[right]).Grouped(cx, gs);
+        }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from>0)
@@ -6312,6 +6413,12 @@ namespace Pyrrho.Level3
                     r += (Right, a.defpos);
             }
             return (SqlValue)cx.Add(r);
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            return ((SqlValue)cx.obs[left]).KnownBy(cx, q)
+                && ((SqlValue)cx.obs[right]).KnownBy(cx, q)
+                && ((SqlValue)cx.obs[escape])?.KnownBy(cx, q) != false;
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -6532,6 +6639,11 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[what]).Grouped(cx, gs);
+            gs.Grouped(cx, vals);
+        }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)
@@ -6552,6 +6664,13 @@ namespace Pyrrho.Level3
             if (ch)
                 r += (QuantifiedPredicate.Vals, vs);
             return r;
+        }
+        internal override bool KnownBy(Context cx, Query q)
+        {
+            for (var b = vals.First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx, q))
+                    return false;
+            return ((SqlValue)cx.obs[what]).KnownBy(cx, q);
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -6755,6 +6874,11 @@ namespace Pyrrho.Level3
                 r += (Rhs,rg);
             cx.done += (defpos, r);
             return r;
+        }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[lhs]).Grouped(cx, gs);
+            ((SqlValue)cx.obs[rhs]).Grouped(cx, gs);
         }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
@@ -7020,6 +7144,11 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[left]).Grouped(cx, gs);
+            ((SqlValue)cx.obs[right]).Grouped(cx, gs);
+        }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)
@@ -7145,6 +7274,8 @@ namespace Pyrrho.Level3
                     return true;
             return base.Check(cx,group);
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override bool aggregates(Context cx)
         {
             return cx.obs[expr].aggregates(cx);
@@ -7338,6 +7469,10 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[val]).Grouped(cx, gs);
+        }
         /// <summary>
         /// Test to see if the value is null in the current row
         /// </summary>
@@ -7450,6 +7585,8 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
+        internal override void Grouped(Context cx, GroupSpecification gs)
+        { }
         internal override SqlValue AddFrom(Context cx, Query q)
         {
             if (from > 0)

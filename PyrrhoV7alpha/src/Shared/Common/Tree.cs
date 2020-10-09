@@ -244,7 +244,7 @@ namespace Pyrrho.Common
             if (u >= 0x5000000000000000)
                 return "#" + (u - 0x5000000000000000);
             if (u >= 0x4000000000000000)
-                return "'" + (u - 0x4000000000000000);
+                return "!" + (u - 0x4000000000000000);
             if (u == -1)
                 return "_";
             return "" + u;

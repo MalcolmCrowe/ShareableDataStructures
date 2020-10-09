@@ -391,6 +391,8 @@ namespace Pyrrho.Level3
                     r = true;
             return r;
         }
+        internal virtual void ReviewJoins(Context cx)
+        { }
         internal virtual Query Conditions(Context cx)
         {
             var svs = where;
@@ -497,9 +499,13 @@ namespace Pyrrho.Level3
                 q = q.AddCondition(cx, prop, (SqlValue)cx.obs[b.key()]);
             return q;
         }
+        internal virtual void Distribute(Context cx,SqlValueExpr cond)
+        {  }
+        internal virtual void Distribute(Context cx,UpdateAssignment ua)
+        {  }
         internal Query AddCondition(Context cx,long prop, SqlValue cond)
         {
-            if (where.Contains(cond.defpos))
+            if (where.Contains(cond.defpos) || !cond.KnownBy(cx,this))
                 return this;
             var filt = filter;
             var q = this + (Dependents,dependents+(cond.defpos,true));
@@ -538,15 +544,7 @@ namespace Pyrrho.Level3
             }
             return r;
         }
-        /// <summary>
-        /// Distribute a set of update assignments to table expressions
-        /// </summary>
-        /// <param name="assigns">the list of assignments</param>
-        internal virtual Query DistributeAssigns(BTree<UpdateAssignment, bool> assigns)
-        {
-            return this;
-        }
-        internal virtual bool Knows(Context cx,SqlValue c)
+        internal virtual bool Knows(Context cx,long p)
         {
             return false;
         }
@@ -918,6 +916,18 @@ namespace Pyrrho.Level3
         {
             return ((Query)cx.obs[union]).Uses(cx,t) || base.Uses(cx,t);
         }
+        internal override void ReviewJoins(Context cx)
+        {
+            ((Query)cx.obs[union]).ReviewJoins(cx);
+        }
+        internal override void Distribute(Context cx, SqlValueExpr cond)
+        {
+            ((Query)cx.obs[union]).Distribute(cx, cond);
+        }
+        internal override void Distribute(Context cx, UpdateAssignment ua)
+        {
+            ((Query)cx.obs[union]).Distribute(cx, ua);
+        }
         /// <summary>
         /// Analysis stage Conditions: do Conditions on the union.
         /// </summary>
@@ -952,7 +962,7 @@ namespace Pyrrho.Level3
             var cs = new CursorSpecification(defpos,base.AddCondition(cx,cond, assigns, data).mem);
             return cs._Union(((Query)cx.obs[cs.union]).AddCondition(cx,cond, assigns, data));
         }
-        internal override bool Knows(Context cx,SqlValue c)
+        internal override bool Knows(Context cx,long c)
         {
             return base.Knows(cx,c) 
                 || (((Query)cx.obs[union])?.Knows(cx,c) 
@@ -1123,6 +1133,10 @@ namespace Pyrrho.Level3
             ((Query)cx.obs[target]).Refresh(cx);
             return base.Refresh(cx);
         }
+        internal override void ReviewJoins(Context cx)
+        {
+            ((Query)cx.obs[target]).ReviewJoins(cx);
+        }
         internal override bool Uses(Context cx,long t)
         {
             return ((Query)cx.obs[target]).Uses(cx,t);
@@ -1139,13 +1153,9 @@ namespace Pyrrho.Level3
             var r = fr.RowSets(cx,fi);
             if (r == null)
                 return null;
-            if (where.Count > 0)
-            {
-                var grp = (GroupSpecification)cx.obs[group];
-                if (grp != null)
-                    for (var gs = grp.sets.First();gs!=null;gs=gs.Next())
-                        ((GroupSpecification)cx.obs[gs.value()]).Grouped(cx,where);
-            }
+            if (cx.obs[group] is GroupSpecification grp)
+                for (var b=where.First();b!=null;b=b.Next())
+                    ((SqlValue)cx.obs[b.key()]).Grouped(cx, grp);
             var ma = BTree<long, long>.Empty;
             var cb = r.rt.First();
             for (var b=rowType.First();b!=null&&cb!=null;b=b.Next(),cb=cb.Next())
@@ -1172,7 +1182,7 @@ namespace Pyrrho.Level3
             tg = cx.obs[target].AddIn(cx,rs,tg);
             return base.AddIn(cx,rs,tg);
         }
-        internal override bool Knows(Context cx,SqlValue c)
+        internal override bool Knows(Context cx,long c)
         {
             return ((Query)cx.obs[target]).Knows(cx,c);
         }
@@ -1378,7 +1388,24 @@ namespace Pyrrho.Level3
             r += (RightOperand, cx.obuids[right]);
             return r;
         }
-        internal override bool Knows(Context cx,SqlValue c)
+        internal override void ReviewJoins(Context cx)
+        {
+            if (kind==Sqlx.CROSS)
+                Conditions(cx);
+            ((Query)cx.obs[left]).ReviewJoins(cx);
+            ((Query)cx.obs[right]).ReviewJoins(cx);
+        }
+        internal override void Distribute(Context cx, SqlValueExpr cond)
+        {
+            ((Query)cx.obs[left]).Distribute(cx, cond);
+            ((Query)cx.obs[right]).Distribute(cx, cond);
+        }
+        internal override void Distribute(Context cx, UpdateAssignment ua)
+        {
+            ((Query)cx.obs[left]).Distribute(cx, ua);
+            ((Query)cx.obs[right]).Distribute(cx, ua);
+        }
+        internal override bool Knows(Context cx,long c)
         {
             return ((Query)cx.obs[left]).Knows(cx,c) 
                 || ((Query)cx.obs[right]).Knows(cx,c);
@@ -1492,6 +1519,7 @@ namespace Pyrrho.Level3
                 }
             }
             // first ensure each joinCondition has the form leftExpr compare rightExpr
+            // reversing if necessary
             // if not, move it to where
             var wh = where;
             var jc = r.joinCond;
@@ -1546,13 +1574,15 @@ namespace Pyrrho.Level3
                     r = qq;
                 }
             }
-            if (jc.Count == 0)
-                k = Sqlx.CROSS;
             var lf = ((Query)cx.obs[r.left]).Conditions(cx).defpos;
             var rg = ((Query)cx.obs[r.right]).Conditions(cx).defpos;
             r = (JoinPart)r.New(r.mem + (LeftOperand, lf) + (RightOperand, rg)
                 + (JoinCond, jc) + (JoinKind, k));
-            return r.AddCondition(cx,Where,w);
+            r =  (JoinPart)r.AddCondition(cx,Where,w).Orders(cx,r.ordSpec);
+            if (r.FDInfo==null)
+                r+= (JoinKind,kind);
+            cx.Add(r);
+            return r;
         }
         /// <summary>
         /// Now is the right time to optimise join conditions. 
@@ -1852,7 +1882,7 @@ namespace Pyrrho.Level3
             for (var b=joinCond.First();b!=null;b=b.Next())
             {
                 var se = cx.obs[b.key()] as SqlValueExpr;
-                var c = cx.obs[se.left].Eval(cx)?.CompareTo(cx.obs[se.right].Eval(cx))??-1;
+                var c = cx.obs[se.left].Eval(cx)?.CompareTo(cx.obs[se.right].Eval(cx)) ?? -1;
                 if (c != 0)
                     return c;
             }

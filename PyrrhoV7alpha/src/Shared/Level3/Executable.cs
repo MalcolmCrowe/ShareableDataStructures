@@ -2407,7 +2407,11 @@ namespace Pyrrho.Level3
                 return true;
             return procdefpos==defpos || Calls(parms,defpos, cx);
         }
-
+        internal void Grouped(Context cx,GroupSpecification gs)
+        {
+            ((SqlValue)cx.obs[var])?.Grouped(cx, gs);
+            gs.Grouped(cx, parms);
+        }
         /// <summary>
         /// Execute a proc/method call
         /// </summary>
