@@ -633,7 +633,6 @@ namespace Pyrrho
                     return;
                 }
                 string role = dbn.ident;
-                var db = Database.Get(dbn.ident).Transact(Transaction.Analysing,"");
                 var h = client.Request.Headers["Authorization"];
                 var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;
@@ -641,6 +640,7 @@ namespace Pyrrho
                 details+=("Password", s[1]);
         //        ConnectionFor(dbn, details);
                 var acc = client.Request.Headers["Accept"];
+                var db = Database.Get(dbn.ident).Transact(Transaction.Analysing,s[0],"");
                 if (acc != null && acc.Contains("text/plain"))
                     woutput = new SqlWebOutput(db, sbuild);
                 else if (acc != null && acc.Contains("text/html"))
