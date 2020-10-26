@@ -4,6 +4,7 @@ using Pyrrho.Level4;
 using System.Collections.Generic;
 using System;
 using System.Text;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -17,29 +18,42 @@ using System.Text;
 namespace Pyrrho.Level3
 {
 	/// <summary>
-	/// A database object for a view
+	/// A database object for a view.
+    /// The domain is computed from the pv.viewdef immediately
     /// Immutable
 	/// </summary>
 	internal class View : DBObject
 	{
         internal const long
-            RemoteGroups = -378, // GroupSpecification
-            ViewDef = -379, // string
-            ViewQuery = -380; // QueryExpression
+            ViewDef = -379; // string
         public string viewDef => (string)mem[ViewDef];
-        /// <summary>
-        /// The definition of the view
-        /// </summary>
-        public QueryExpression viewQry => (QueryExpression)mem[ViewQuery];
-        internal GroupSpecification remoteGroups => (GroupSpecification)mem[RemoteGroups];
         public View(PView pv,BTree<long,object>m=null) 
-            : base(pv.ppos, (m??BTree<long, object>.Empty)
-            + (Name,pv.name)+(ViewQuery,pv.view) + (LastChange, pv.ppos))
+            : base(pv.ppos, (m??BTree<long, object>.Empty) 
+                  + (Name,pv.name) + (_Domain,_Dom(pv))
+                  + (ViewDef,pv.viewdef) 
+                  + (LastChange, pv.ppos))
         { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
+        static Domain _Dom(PView pv)
+        {
+            var psr = new Parser(new Context(pv.database), new Ident(pv.name, pv.ppos));
+            var cs = psr.ParseCursorSpecification(pv.viewdef, Domain.TableType);
+            return cs.domain;
+        }
         public static View operator+(View v,(long,object)x)
         {
             return new View(v.defpos, v.mem + x);
+        }
+        internal override ObInfo Inf(Context cx)
+        {
+            return cx.Inf(defpos);
+        }
+        internal override CList<long> _Cols(Context cx)
+        {
+            return domain.rowType;
+        }
+        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        {
         }
         /// <summary>
         /// Execute an Insert (for an updatable View)
@@ -52,9 +66,7 @@ namespace Pyrrho.Level3
         internal override Context Insert(Context cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
             Level cl)
         {
-            var sce = (Query)cx.obs[f.source];
-            sce.AddCondition(cx,f.where, null, data);
-            return sce.Insert( cx,prov, data, eqs, rs, cl);
+            return cx;
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -64,9 +76,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         internal override Context Delete(Context cx,From f, BTree<string, bool> dr, Adapters eqs)
         {
-            var sce = (Query)cx.obs[f.source];
-            sce.AddCondition(cx, f.where, f.assigns, null);
-            return sce.Delete(cx,dr,eqs);
+            return cx;
         }
         /// <summary>
         /// Execute an Update (for an updatabale View)
@@ -77,19 +87,7 @@ namespace Pyrrho.Level3
         /// <param name="rs">the affected rowsets</param>
         internal override Context Update(Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
-            var sce = (Query)cx.obs[f.source];
-            sce.AddCondition(cx,f.where, f.assigns, null);
-            return sce.Update(cx,ur, eqs, rs);
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            var vw = (View)base._Replace(cx, so, sv);
-            var df = (QueryExpression)viewQry._Replace(cx, so, sv);
-            if (df != viewQry)
-                vw += (ViewQuery, df);
-            if (vw == this)
-                return this;
-            return cx.Add(vw);
+            return cx;
         }
         /// <summary>
         /// a readable version of the View
@@ -97,7 +95,9 @@ namespace Pyrrho.Level3
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "View "+defpos;
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Query "); sb.Append(viewDef);
+            return sb.ToString();
 		}
         /// <summary>
         /// API development support: generate the C# information for a Role$Class description
@@ -252,11 +252,17 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this + (ViewQuery, m.now), p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this + (ViewDef, m.body), p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new View(defpos, mem);
+            return new View(defpos, m);
+        }
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+                return (m == mem) ? this : (View)New(m);
+            return cx.Add(new View(cx.nextHeap++, m));
         }
         internal override DBObject Relocate(long dp)
         {
@@ -265,24 +271,6 @@ namespace Pyrrho.Level3
         internal override void Scan(Context cx)
         {
             cx.ObUnheap(defpos);
-            viewQry.Scan(cx);
-            remoteGroups.Scan(cx);
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (View)base._Relocate(wr);
-            r += (RemoteGroups,remoteGroups.Relocate(wr));
-            r += (ViewQuery, viewQry.Relocate(wr));
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (View)base.Fix(cx);
-            r += (RemoteGroups, remoteGroups?.Fix(cx));
-            r += (ViewQuery, viewQry?.Fix(cx));
-            return r;
         }
     }
     /// <summary>

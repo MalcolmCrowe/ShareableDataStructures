@@ -261,6 +261,7 @@ namespace Pyrrho.Level4
         internal void Install1(Framing fr)
         {
             obs += (fr.obs,true);
+            defs += fr.defs;
         }
         internal void Install2(Framing fr)
         {
@@ -476,6 +477,8 @@ namespace Pyrrho.Level4
                         defs += (ic, ob.defpos);
                 }
             }
+            if (ob.defpos >= PyrrhoServer.Preparing)
+                done += (ob.defpos, ob);
             return ob;
         }
         /// <summary>
@@ -521,7 +524,11 @@ namespace Pyrrho.Level4
         internal void Frame()
         {
             if (frame == null)
+            {
+                obs = BTree<long, DBObject>.Empty;
+                data = BTree<long, RowSet>.Empty;
                 frame = new Framing(this);
+            }
         }
         internal void Frame(long p,long q=-1L)
         {
@@ -597,7 +604,7 @@ namespace Pyrrho.Level4
                 for (var c = done.First(); c != null; c = c.Next())
                 {
                     var cv = c.value();
-                    if (cv.depth==bk)
+                    if (cv.depth == bk)
                         Add(cv);
                 }
             }
@@ -685,7 +692,7 @@ namespace Pyrrho.Level4
             {
                 var p = b.value();
                 var ob = obs[p] ?? (DBObject)db.objects[p];
-                var n = (ob is SqlValue v) ? v.name : Inf(p)?.name;
+                var n = (ob is SqlValue v) ? v.alias??v.name : Inf(p)?.name;
                 if (n == null)
                     continue;
                 var ic = new Ident(n, p);
@@ -1319,6 +1326,11 @@ namespace Pyrrho.Level4
                 if (p >= Transaction.TransPos)
                     wr.cx.obs += (p, b.value());
             }
+            for (var b = r.data.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                wr.cx.data += (p, b.value());
+            }
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -1333,7 +1345,7 @@ namespace Pyrrho.Level4
             }
             for (var b = r.data.First(); b != null; b = b.Next())
             {
-                var or = (RowSet)b.value();
+                var or =  b.value();
                 var nr = (RowSet)or._Relocate(wr);
                 if (or.defpos != nr.defpos)
                     r -= or;

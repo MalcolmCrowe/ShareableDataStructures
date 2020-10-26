@@ -382,6 +382,19 @@ namespace Pyrrho.Level3
                 return name;
             return ToString();
         }
+        internal Domain DisplayOnly()
+        {
+            var rt = CList<long>.Empty;
+            var rp = CTree<long, Domain>.Empty;
+            var d = display;
+            for (var b=rowType.First();b!=null && b.key()<d;b=b.Next())
+            {
+                var p = b.value();
+                rt += p;
+                rp += (p, representation[p]);
+            }
+            return new Domain(Sqlx.TABLE, rp, rt);
+        }
         /// <summary>
         /// A readable version of the Domain
         /// </summary>
@@ -1360,7 +1373,13 @@ namespace Pyrrho.Level3
 #endif
             }
         }
-
+        internal bool HasOneOf(BTree<long,bool> t)
+        {
+            for (var b = t?.First(); b != null; b = b.Next())
+                if (representation.Contains(b.key()))
+                    return true;
+            return false;
+        }
         public virtual bool HasValue(Context cx,TypedValue v)
         {
             if (v is TSensitive st)
@@ -3739,7 +3758,7 @@ namespace Pyrrho.Level3
             if (r.super?._Replace(cx, was, now) is Domain und
     && und != super)
                 r += (Under, und);
-            return r;
+            return New(cx,r.mem);
         }
         internal override void Scan(Context cx)
         {

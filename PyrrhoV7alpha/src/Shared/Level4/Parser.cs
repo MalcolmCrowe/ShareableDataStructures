@@ -952,9 +952,8 @@ namespace Pyrrho.Level4
                 schema = true;
             }
             Mustbe(Sqlx.AS);
-            Context old = cx;
-            cx = new Context(cx);
             var rest = Match(Sqlx.GET);
+            var st = lxr.start;
             QueryExpression qe = null;
             if (!rest)
                 qe = ParseQueryExpression(Domain.TableType);
@@ -972,7 +971,6 @@ namespace Pyrrho.Level4
                         throw new DBException("42107", idu);
                 }
             }
-            cx = old;
             PView pv = null;
             var tr = cx.tr;
             if (cx.db.parse == ExecuteStatus.Obey)
@@ -986,14 +984,17 @@ namespace Pyrrho.Level4
                         pv = new PRestView2(id, structdef, ut.defpos, np, cx);
                 }
                 else
-                    pv = new PView(id, qe, np, cx);
+                    pv = new PView(id, new string(lxr.input,st,lxr.pos-st), np, cx);
                 cx.Add(pv);
             }
             var ob = (DBObject)cx.db.objects[cx.db.loadpos];
-            var md = ParseMetadata(cx.db, ob, -1, Sqlx.ADD);
-            if (md != null && cx.db.parse == ExecuteStatus.Obey)
-                new PMetadata(id, -1, pv.ppos, md.description,
-                    md.iri, md.seq + 1, md.flags, tr.nextPos, cx);
+            if (StartMetadata(tok))
+            {
+                var md = ParseMetadata(cx.db, ob, -1, Sqlx.ADD);
+                if (md != null && cx.db.parse == ExecuteStatus.Obey)
+                    new PMetadata(id, -1, pv.ppos, md.description,
+                        md.iri, md.seq + 1, md.flags, tr.nextPos, cx);
+            }
             return (Executable)cx.Add(ct);
         }
         /// <summary>
@@ -1716,7 +1717,7 @@ namespace Pyrrho.Level4
                            }
                            Next();
                        } */
-            var ua = BList<UpdateAssignment>.Empty;
+            var ua = BTree<UpdateAssignment,bool>.Empty;
             var gr = GenerationRule.None;
             var dfs = "";
             TypedValue dv = TNull.Value;
@@ -3024,7 +3025,7 @@ namespace Pyrrho.Level4
             var qe = new QueryExpression(lp+1);
             var s = new QuerySpecification(lp+2,cx,xp)
                 + (QueryExpression._Distinct, ParseDistinctClause());
-            cs = cs._Union(qe);
+            cs = cs + (CursorSpecification.Union,qe.defpos) + (DBObject._From,qe.from);
             s = ParseSelectList(s,xp);
             qe+=(QueryExpression._Left,cx.Add(s).defpos);
             Mustbe(Sqlx.INTO);
@@ -3672,6 +3673,7 @@ namespace Pyrrho.Level4
             pt.src = new Ident(new string(lxr.input, st, lxr.pos - st), lp);
             cx.db += (Database._ExecuteStatus, op);
             cx.Add(pt);
+            cx.result = null;
             return (Executable)cx.Add(ct);
         }
         /// <summary>
@@ -4336,8 +4338,8 @@ namespace Pyrrho.Level4
                         cx.Add(new Alter3(tc.defpos, nm, ti.domain.PosFor(cx,nm), 
                             (Table)cx.db.objects[tc.tabledefpos],
                             tc.domain, ds, dv, "",
-                            BList<UpdateAssignment>.Empty, tc.notNull, GenerationRule.None,
-                            cx.tr.nextPos, cx));
+                            BTree<UpdateAssignment,bool>.Empty, tc.notNull, 
+                            GenerationRule.None, cx.tr.nextPos, cx));
                     return ns;
                 }
                 if (Match(Sqlx.GENERATED))
@@ -4354,8 +4356,8 @@ namespace Pyrrho.Level4
                         new Alter3(tc.defpos, nm, ti.domain.PosFor(cx,nm), 
                             (Table)cx.db.objects[tc.tabledefpos],tc.domain,
                             gr.gfs??type.defaultValue?.ToString()??"",
-                            type.defaultValue,"",BList<UpdateAssignment>.Empty, tc.notNull, 
-                            gr, cx.tr.nextPos, cx);
+                            type.defaultValue,"",BTree<UpdateAssignment,bool>.Empty, 
+                            tc.notNull, gr, cx.tr.nextPos, cx);
                     }
                     return ns;
                 }
@@ -4369,8 +4371,8 @@ namespace Pyrrho.Level4
                         tc.ColumnCheck(tr, false);
                         new Alter3(tc.defpos, nm, ti.domain.PosFor(cx,nm),
                             (Table)cx.db.objects[tc.tabledefpos],tc.domain,
-                            "",TNull.Value, "", BList<UpdateAssignment>.Empty, true, 
-                            tc.generated, cx.tr.nextPos, cx);
+                            "",TNull.Value, "", BTree<UpdateAssignment,bool>.Empty, 
+                            true, tc.generated, cx.tr.nextPos, cx);
                     }
                     return ns;
                 }
@@ -5072,7 +5074,7 @@ namespace Pyrrho.Level4
                 var (nm,dm) = b.value();
                 np = cx.db.nextPos;
                 cx.Add(new PColumn3((Table)cx.db.objects[pt.defpos], nm, j, dm,
-                    "", dm.defaultValue, "", BList<UpdateAssignment>.Empty,
+                    "", dm.defaultValue, "", BTree<UpdateAssignment,bool>.Empty,
                     false, GenerationRule.None, np, cx));
                 ms += (np, dm);
                 rt += np;
@@ -5361,13 +5363,13 @@ namespace Pyrrho.Level4
             var qe = ParseQueryExpression(Domain.TableType);
             if (!xp.CanTakeValueOf(qe.domain))
                 throw new DBException("22000");
-            r = r._Union(qe);
+            r = r + (CursorSpecification.Union,qe.defpos)+(DBObject._From,qe.from);
             r += (Query.OrdSpec, qe.ordSpec);
-            r += (Domain.RowType, qe.rowType);
+            r += (DBObject._Domain, qe.domain);
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
             r = (CursorSpecification)cx.Add(r);
-            r.ReviewJoins(cx);
-            var s = new SelectStatement(lp - 1, (CursorSpecification)cx.obs[lp]);
+            r = (CursorSpecification)r.ReviewJoins(cx);
+            var s = new SelectStatement(lp - 1, (CursorSpecification)cx.obs[r.defpos]);
             var rs = r.RowSets(cx, cx.data[r.from]?.finder??BTree<long, RowSet.Finder>.Empty);
             return (SelectStatement)cx.Add(s);
         }
@@ -5376,7 +5378,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="sql">The sql string</param>
         /// <returns>A QueryExpression</returns>
-		public QueryExpression ParseQueryExpression(string sql,Domain xp)
+		public QueryExpression ParseQueryExpression(Ident sql,Domain xp)
 		{
 			lxr = new Lexer(sql);
 			tok = lxr.tok;
@@ -5940,7 +5942,7 @@ namespace Pyrrho.Level4
                 for (var b = cs.rowType.First(); b != null; b = b.Next())
                     qs += (SqlValue)cx.obs[b.value()];
                 cs = (CursorSpecification)Resolve(q, r?.alias??r?.name, cs);
-                rf = cs._Union(qe);
+                rf = cs+(CursorSpecification.Union,qe.defpos)+(DBObject._From,qe.from);
             }
             else if (tok == Sqlx.STATIC)
             {
@@ -5959,23 +5961,28 @@ namespace Pyrrho.Level4
                     a = lxr.val.ToString();
                     Next();
                 }
-                var ob = (cx.db.GetObject(ic.ident) ?? (DBObject)cx.obs[cx.defs[ic]]);
-                Table tb;
+                var ob = (cx.db.GetObject(ic.ident) ?? cx.obs[cx.defs[ic]])
+                    ?? throw new DBException("42107",ic.ToString());
                 if (ob is From f)
                 {
                     rf = f;
-                    tb = cx.obs[f.target] as Table;
-                } else if (ob is Table t)
-                {
-                    tb = t;
-                    rf = _From(ic, tb, a, q);
+                    ob = cx.obs[f.target] as Table;
                 }
                 else
-                    throw new DBException("42107", ic.ident); // View TBD
+                {
+                    if (ob is View vw)
+                    {
+                        cx.Install1(vw.framing);
+                        cx.Install2(vw.framing);
+                    }
+                    rf = _From(ic, ob, a, q);
+                }
                 q = (QuerySpecification)cx.obs[q.defpos];
                 if (Match(Sqlx.FOR))
                 {
                     var ps = ParsePeriodSpec();
+                    var tb = ob as Table
+                        ?? throw new DBException("42000");
                     rf += (Query.Periods, rf.periods + (tb.defpos, ps));
                     long pp = (ps.periodname == "SYSTEM_TIME") ? tb.systemPS : tb.applicationPS;
                     if (pp<0)
@@ -6000,11 +6007,11 @@ namespace Pyrrho.Level4
         /// Then we will resolve undefined expressions in the SelectList.
         /// </summary>
         /// <param name="dp">The occurrence of this table</param>
-        /// <param name="tb">The table</param>
+        /// <param name="tb">The table or view</param>
         /// <param name="a">The alias or null</param>
         /// <param name="q">The query with the select list</param>
         /// <returns></returns>
-        From _From(Ident ic,Table tb,string a,QuerySpecification q)
+        From _From(Ident ic,DBObject tb,string a,QuerySpecification q)
         {
             var dp = ic.iix;
             DBObject ut = null, ua = null;
@@ -6534,7 +6541,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.INTO);
             Ident ic = new Ident(lxr);
             Mustbe(Sqlx.ID);
-            var tb = cx.db.GetObject(ic.ident) as Table ??
+            var tb = cx.db.GetObject(ic.ident)??
                 throw new DBException("42107", ic.ident);
             cx.Install1(tb.framing);
             var ti = cx.Inf(tb.defpos);
@@ -6566,7 +6573,17 @@ namespace Pyrrho.Level4
                 v = ParseSqlValue(fm.domain);
             if (v is SqlRow) // tolerate a single value without the VALUES keyword
                 v = new SqlRowArray(vp, cx, v.domain, new BList<long>(v.defpos));
-            SqlInsert s = new SqlInsert(lp,fm, prov, v);
+            var vd = fm.domain.DisplayOnly();
+            var sce = v.RowSet(vp, cx, vd);
+            cx.data += (vp, sce);
+            // the columns of sce must be assignment compatible to fm
+            // and have the same length as fm.display
+            var vrs = new ValueRowSet(fm.defpos+1, cx, vd, fm, sce);
+            cx.data += (vrs.defpos, vrs);
+            // The SqlInsert constructor (in From) maps fm to tb cols
+            // Columns after fm.display are needed for where conds etc
+            SqlInsert s = new SqlInsert(lp, fm, prov, vrs);
+            cx.Add(s);
             if (Match(Sqlx.SECURITY))
             {
                 Next();
@@ -6574,25 +6591,9 @@ namespace Pyrrho.Level4
                     throw new DBException("42105");
                 s += (DBObject.Classification, MustBeLevel());
             }
-            fm.RowSets(cx, cx.data[fm.source]?.finder??BTree<long, RowSet.Finder>.Empty);
             if (cx.db.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                 cx = tr.Execute(s, cx);
             return (cx,(SqlInsert)cx.Add(s));
-        }
-        BList<long> For(long dp,Table tb)
-        {
-            var oi = cx.Inf(tb.defpos);
-            var qn = BList<long>.Empty;
-            var off = cx.db.nextStmt;
-            cx.db += (Database.NextStmt, cx.db.nextStmt+ oi.domain.Length);
-            for (var b = oi.domain.representation.First(); b != null; b = b.Next(), off++)
-            {
-                var p = b.key();
-                var c = cx.Inf(p);
-                var sc = new SqlCopy(off, cx, c.name, oi.defpos, c.defpos);
-                qn += sc.defpos;
-            }
-            return qn;
         }
         /// <summary>
 		/// DeleteSearched = DELETE [XMLOption] FROM Table_id [ WhereClause] .
@@ -6672,14 +6673,15 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ID);
             }
             Mustbe(Sqlx.SET);
-            var tb = cx.db.GetObject(ic.ident) as Table ?? // TBD for views
+            var tb = cx.db.GetObject(ic.ident) ?? 
                 throw new DBException("42107", ic.ident);
+            cx.Install1(tb.framing);
             UpdateSearch r = new UpdateSearch(lp, cx, ic, tb, Grant.Privilege.Update);
             var fm = (From)cx.obs[r.table]; 
             cx.defs += (ic, fm.defpos);
             var ua = ParseAssignments(fm.domain);
             fm = (From)cx.obs[fm.defpos];
-            fm += (From.Assigns, ua);
+            fm += (Query.Assig, ua);
             cx.Add(fm);
             var wh = AddFrom(ParseWhereClause(),fm);
             fm = (From)cx.obs[fm.defpos];
@@ -6693,7 +6695,7 @@ namespace Pyrrho.Level4
             r = (UpdateSearch)cx.Add(r);
             return (cx,r);
         }
-        internal BList<UpdateAssignment> ParseAssignments(string sql,Domain xp)
+        internal BTree<UpdateAssignment,bool> ParseAssignments(string sql,Domain xp)
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
@@ -6703,13 +6705,13 @@ namespace Pyrrho.Level4
         /// Assignment = 	SET Target '='  TypedValue { ',' Target '='  TypedValue }
         /// </summary>
         /// <returns>the list of assignments</returns>
-		BList<UpdateAssignment> ParseAssignments(Domain xp)
+		BTree<UpdateAssignment,bool> ParseAssignments(Domain xp)
 		{
-            var r = BList<UpdateAssignment>.Empty + ParseUpdateAssignment(xp);
+            var r = BTree<UpdateAssignment,bool>.Empty + (ParseUpdateAssignment(xp),true);
             while (tok==Sqlx.COMMA)
 			{
 				Next();
-				r+=ParseUpdateAssignment(xp);
+				r+=(ParseUpdateAssignment(xp),true);
 			}
 			return r;
 		}
@@ -7169,7 +7171,7 @@ namespace Pyrrho.Level4
                     (QuantifiedPredicate.Found, !invert);
                 Mustbe(Sqlx.LPAREN);
                 if (Match(Sqlx.SELECT, Sqlx.TABLE, Sqlx.VALUES))
-                    n+=(QuantifiedPredicate.Select,cx.Add(ParseQuerySpecification(xp)).defpos);
+                    n+=(QuantifiedPredicate._Select,cx.Add(ParseQuerySpecification(xp)).defpos);
                 else
                     n+=(QuantifiedPredicate.Vals,ParseSqlValueList(left.domain));
                 Mustbe(Sqlx.RPAREN);

@@ -117,6 +117,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
             var r = base._Replace(cx, so, sv);
             if (table == so.defpos)
                 r += (From.Target, sv.defpos);
@@ -145,6 +147,8 @@ namespace Pyrrho.Level3
             o = cx.Replace(newTable, so, sv);
             if (o != newTable)
                 r += (NewTable, o);
+            r = New(cx, r.mem);
+            cx.done += (defpos, r);
             return r;
         }
         internal override Database Drop(Database d, Database nd, long p)

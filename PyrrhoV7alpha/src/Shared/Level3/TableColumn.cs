@@ -28,7 +28,7 @@ namespace Pyrrho.Level3
             Checks = -268,  // BTree<long,bool> Check
             Generated = -269, // GenerationRule (C)
             Table = -270, // long
-            UpdateAssignments = -271, // BList<UpdateAssignment>
+            UpdateAssignments = -271, // BTree<UpdateAssignment,bool>
             UpdateString = -272; // string
         /// <summary>
         /// A set of column constraints
@@ -40,8 +40,9 @@ namespace Pyrrho.Level3
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
         public long tabledefpos => (long)(mem[Table] ?? -1L);
-        public BList<UpdateAssignment> update =>
-            (BList<UpdateAssignment>)mem[UpdateAssignments] ?? BList<UpdateAssignment>.Empty;
+        public BTree<UpdateAssignment,bool> update =>
+            (BTree<UpdateAssignment,bool>)mem[UpdateAssignments] 
+            ?? BTree<UpdateAssignment,bool>.Empty;
         public string updateString => (string)mem[UpdateString];
         public readonly static TableColumn Doc = new TableColumn(-1, BTree<long, object>.Empty);
         /// <summary>
@@ -138,6 +139,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
             var tc = (TableColumn) base._Replace(cx, so, sv);
             var dm = (Domain)tc.domain._Replace(cx,so, sv);
             if (dm != domain)
@@ -149,11 +152,13 @@ namespace Pyrrho.Level3
                 if (ge != cx._Ob(go))
                     tc += (Generated, new GenerationRule(tc.generated.gen, tc.generated.gfs, ge));
             }
-            var ua = BList<UpdateAssignment>.Empty;
+            var ua = BTree<UpdateAssignment,bool>.Empty;
             for (var b = tc.update.First(); b != null; b = b.Next())
-                ua += b.value().Replace(cx, so, sv);
+                ua += (b.key().Replace(cx, so, sv),true);
             if (ua != tc.update)
                 tc += (UpdateAssignments, ua);
+            tc = (TableColumn)New(cx, tc.mem);
+            cx.done += (defpos, tc);
             return cx.Add(tc);
         }
         /// <summary>

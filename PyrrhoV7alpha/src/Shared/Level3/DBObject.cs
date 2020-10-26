@@ -87,7 +87,19 @@ namespace Pyrrho.Level3
         { }
         public static DBObject operator +(DBObject ob, (long, object) x)
         {
-            return (DBObject)ob.New(ob.mem + x);
+            return (DBObject)ob.New(ob.mem+x);
+        }
+        /// <summary>
+        /// Used for shared Query and RowSets to create new copies 
+        /// when we want to modify a property (e.g. adding a filter).
+        /// As far as I can see this is not required for SqlValues or Executables.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal virtual DBObject New(Context cx,BTree<long,object>m)
+        {
+            return (DBObject)New(m);
         }
         internal static int _Max(params int[] x)
         {
@@ -95,25 +107,6 @@ namespace Pyrrho.Level3
             for (var i = 0; i < x.Length; i++)
                 if (x[i] > r)
                     r = x[i];
-            return r;
-        }
-        internal static int _Max(Context cx, params long[] x)
-        {
-            var r = 0;
-            for (var i = 0; i < x.Length; i++)
-            {
-                var v = cx.obs[x[i]];
-                if (v.depth > r)
-                    r = v.depth;
-            }
-            return r;
-        }
-        internal static int _Max(BList<SqlValue> x)
-        {
-            var r = 0;
-            for (var b = x.First(); b != null; b = b.Next())
-                if (b.value().depth > r)
-                    r = b.value().depth;
             return r;
         }
         internal static BTree<long, bool> _Deps(BList<long> vs)
@@ -161,6 +154,10 @@ namespace Pyrrho.Level3
         internal virtual BTree<long,bool> Needs(Context cx)
         {
             return BTree<long, bool>.Empty;
+        }
+        internal virtual ObInfo Inf(Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal virtual BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
         {
@@ -297,10 +294,19 @@ namespace Pyrrho.Level3
         {
             cx.db += (m.now, p);
         }
+#if TABLEREF
+        /// <summary>
+        /// This looks as if it should be called during Replace
+        /// nut nobody does
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="f"></param>
+        /// <returns></returns>
         internal virtual DBObject TableRef(Context cx,From f)
         {
             return this;
         }
+#endif
         internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             return this;
@@ -308,6 +314,7 @@ namespace Pyrrho.Level3
         internal DBObject Replace(Context cx,DBObject was,DBObject now)
         {
             var r = _Replace(cx, was, now);
+
             if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
             {
                 r += (Depth, now.depth + 1);
@@ -386,6 +393,11 @@ namespace Pyrrho.Level3
         internal virtual DBObject AddProperty(Check ck, Database db)
         {
             throw new PEException("PE481");
+        }
+        internal virtual void Select(Context cx,From f,BTree<long,RowSet.Finder> fi)
+        {
+            if (!cx.data.Contains(defpos))
+                cx.data+=(defpos, new TrivialRowSet(defpos, cx, new TRow(domain, cx.values), -1, fi));
         }
         /// <summary>
         /// Execute an Insert operation for a Table, View, RestView.

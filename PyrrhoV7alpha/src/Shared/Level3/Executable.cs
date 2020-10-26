@@ -2439,6 +2439,7 @@ namespace Pyrrho.Level3
             }
             if (np != r.parms)
                 r += (Parms, np);
+            r = (CallStatement)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
         }

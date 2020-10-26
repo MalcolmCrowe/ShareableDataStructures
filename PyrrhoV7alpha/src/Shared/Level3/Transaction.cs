@@ -525,7 +525,8 @@ namespace Pyrrho.Level3
                         string ss = cp.Substring(8 + off);
                         string[] sk = cp.Split(',');
                         int n = sk.Length;
-                        var qout = new CursorSpecification(uid+4+off)._Union(f); // ???
+                        var qout = new CursorSpecification(uid+4+off)
+                            +(CursorSpecification.Union,f.defpos)+(DBObject._From,f.from); // ???
                         var qin = f;
                         cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                         for (int j = 0; j < n; j++)

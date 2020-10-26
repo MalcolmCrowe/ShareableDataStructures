@@ -4,6 +4,8 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Diagnostics.Eventing.Reader;
+using System.Data;
+using System.Runtime.Remoting.Channels;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -69,7 +71,12 @@ namespace Pyrrho.Level4
         {
             public readonly long col;
             public readonly long rowSet;
-            public Finder(long c, long r) { col = c; rowSet = r; }
+            public Finder(long c, long r) 
+            {
+                if (r == 0 || c == 0)
+                    Console.WriteLine("Bad finder");
+                col = c; rowSet = r; 
+            }
             internal Finder Relocate(Context cx)
             {
                 var c = cx.obuids[col];
@@ -79,7 +86,9 @@ namespace Pyrrho.Level4
             internal Finder Relocate(Writer wr)
             {
                 var c = wr.Fix(col);
-                var r = wr.Fix(rowSet);
+                var r = wr.rss.Contains(rowSet) ? wr.rss[rowSet].defpos
+                    : (rowSet==wr.curs) ? wr.Fix(wr.curs)
+                    : ((RowSet)wr.cx.data[rowSet]._Relocate(wr)).defpos;
                 return (c != col || r != rowSet) ? new Finder(c, r) : this;
             }
             public override string ToString()
@@ -158,14 +167,10 @@ namespace Pyrrho.Level4
             return r;
         }
         internal abstract RowSet New(Context cx, BTree<long, Finder> nd, bool bt);
-        internal RowSet New((long,object)x)
-        {
-            return (RowSet)New(mem + x);
-        }
         internal virtual bool TableColsOk => false;
         public static RowSet operator+(RowSet rs,(long,object)x)
         {
-            return rs.New(x);
+            return (RowSet)rs.New(rs.mem+x);
         }
         internal virtual RowSet Build(Context cx)
         {
@@ -194,7 +199,6 @@ namespace Pyrrho.Level4
         /// have been evaluated/changed. Either we can't or we must build this RowSet.
         /// </summary>
         /// <param name="was"></param>
-        /// <param name="now"></param>
         /// <returns></returns>
         internal RowSet MaybeBuild(Context cx,BTree<long,TypedValue>was=null)
         {
@@ -233,7 +237,25 @@ namespace Pyrrho.Level4
                 }
             }
             // Otherwise we don't need to
-            return this;
+            return r;
+        }
+        protected void Fixup(Context cx,RowSet now)
+        {
+            var fi = BTree<long, Finder>.Empty;
+            for (var b = finder.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var f = b.value();
+                if (f.rowSet == defpos)
+                    fi += (p, new Finder(f.col, now.defpos));
+                else
+                    fi += (p,f);
+            }
+            now += (_Finder, fi);
+            cx.data += (now.defpos, now);
+            for (var b = cx.data.First(); b != null; b = b.Next())
+                if (b.value() == this)
+                    cx.data += (b.key(), now);  
         }
         internal override void Scan(Context cx)
         {
@@ -276,7 +298,11 @@ namespace Pyrrho.Level4
         {
             if (defpos < wr.Length)
                 return this;
+            if (wr.rss.Contains(defpos))
+                return wr.rss[defpos];
             var r = (RowSet)Relocate(wr.Fix(defpos));
+            var oc = wr.curs;
+            wr.curs = defpos;
             var dm = (Domain)domain._Relocate(wr);
             r += (_Domain, dm);
             r += (_Finder, wr.Fix(finder));
@@ -286,6 +312,8 @@ namespace Pyrrho.Level4
             r += (Query._Matches, wr.Fix(matches));
             r += (Query.Matching, wr.Fix(matching));
             r += (TableExpression.Group, wr.Fix(groupSpec));
+            wr.rss += (defpos, r);
+            wr.curs = oc;
             return r;
         }
         public string NameFor(Context cx, int i)
@@ -592,6 +620,23 @@ namespace Pyrrho.Level4
         {
             return new TrivialRowSet(cx,this,nd,bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new TrivialRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         internal override bool TableColsOk => true;
         public static TrivialRowSet operator +(TrivialRowSet rs, (long, object) x)
         {
@@ -678,7 +723,8 @@ namespace Pyrrho.Level4
         SelectedRowSet(Context cx, SelectedRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
         { }
-        protected SelectedRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected SelectedRowSet(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
         static BTree<long, object> _Fin(Context cx, Query q, BTree<long,Finder>fi,
             BTree<long,object>m)
         {
@@ -694,6 +740,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new SelectedRowSet(defpos, m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new SelectedRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -754,6 +817,7 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Source: "); sb.Append(Uid(source));
+            sb.Append(" SQMap: "); sb.Append(sQMap);
             return sb.ToString();
         }
         internal class SelectedCursor : Cursor
@@ -824,7 +888,6 @@ namespace Pyrrho.Level4
         /// This constructor builds a rowset for the given QuerySpec
         /// directly using its defpos, rowType, ordering, where and match info.
         /// Note we cannot assume that columns are simple SqlCopy.
-        /// Suggestion here is to use the source keyType. Maybe the source ordering too?
         /// </summary>
         internal SelectRowSet(Context cx, QuerySpecification q, RowSet r)
             : base(q.defpos, cx, q.domain, r.finder, null, q.where, q.ordSpec, 
@@ -837,6 +900,23 @@ namespace Pyrrho.Level4
         internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
         {
             return new SelectRowSet(cx, this, nd, bt);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new SelectRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -995,6 +1075,23 @@ namespace Pyrrho.Level4
         {
             return new EvalRowSet(defpos, m);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new EvalRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new EvalRowSet(cx, this, nd, bt);
@@ -1120,6 +1217,23 @@ namespace Pyrrho.Level4
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new TableRowSet(cx, this, nd, bt);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new TableRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         public static TableRowSet operator+(TableRowSet rs,(long,object)x)
         {
@@ -1255,6 +1369,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new IndexRowSet(defpos,m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new IndexRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
@@ -1408,7 +1539,8 @@ namespace Pyrrho.Level4
         FilterRowSet(Context cx, FilterRowSet irs, BTree<long, Finder> nd, bool bt)
             : base(cx, irs, nd, bt)
         { }
-        protected FilterRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected FilterRowSet(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
         internal override Basis New(BTree<long, object> m)
         {
             return new FilterRowSet(defpos, m);
@@ -1416,6 +1548,23 @@ namespace Pyrrho.Level4
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new FilterRowSet(cx, this, nd, bt);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new FilterRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         public static FilterRowSet operator +(FilterRowSet rs, (long, object) x)
         {
@@ -1564,6 +1713,23 @@ namespace Pyrrho.Level4
         internal override RowSet New(Context cx, BTree<long,Finder> nd, bool bt)
         {
             return new DistinctRowSet(cx, this, nd, bt);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new DistinctRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         public static DistinctRowSet operator+(DistinctRowSet rs,(long,object)x)
         {
@@ -1718,6 +1884,23 @@ namespace Pyrrho.Level4
         {
             return new OrderedRowSet(cx, this, nd, bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new OrderedRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static OrderedRowSet operator+(OrderedRowSet rs,(long,object)x)
         {
             return (OrderedRowSet)rs.New(rs.mem + x);
@@ -1827,6 +2010,23 @@ namespace Pyrrho.Level4
         {
             return new EmptyRowSet(cx, this, nd, bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new EmptyRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static EmptyRowSet operator+(EmptyRowSet rs,(long,object)x)
         {
             return (EmptyRowSet)rs.New(rs.mem + x);
@@ -1865,6 +2065,23 @@ namespace Pyrrho.Level4
         {
             return new SqlRowSet(cx, this, nd, bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.TransPos)
+                return (RowSet)New(m);
+            var rs = new SqlRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static SqlRowSet operator +(SqlRowSet rs, (long, object) x)
         {
             return (SqlRowSet)rs.New(rs.mem + x);
@@ -1901,7 +2118,7 @@ namespace Pyrrho.Level4
             readonly SqlRowSet _srs;
             readonly ABookmark<int, long> _bmk;
             SqlCursor(Context cx,SqlRowSet rs,int pos,ABookmark<int,long> bmk)
-                : base(cx,rs,pos,0,(TRow)cx.obs[rs.sqlRows[bmk.key()]].Eval(cx))
+                : base(cx,rs,pos,0,_Row(cx,rs,bmk.key()))
             {
                 _srs = rs;
                 _bmk = bmk;
@@ -1909,6 +2126,11 @@ namespace Pyrrho.Level4
             SqlCursor(SqlCursor cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
             {
                 _srs = cu._srs;
+            }
+            static TRow _Row(Context cx,SqlRowSet rs,int p)
+            {
+                var rw = (TRow)cx.obs[rs.sqlRows[p]].Eval(cx);
+                return new TRow(rs, rw);
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
             {
@@ -1960,6 +2182,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new TableExpRowSet(defpos,m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new TableExpRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         static BTree<long,Finder> _Fin(BTree<long,Finder> fi,RowSet sc)
         {
@@ -2068,7 +2307,8 @@ namespace Pyrrho.Level4
         }
     }
     /// <summary>
-    /// a row set for TRows
+    /// a row set for TRows.
+    /// Each TRow has the same domain as the ExplicitRowSet.
     /// </summary>
     internal class ExplicitRowSet : RowSet
     {
@@ -2085,24 +2325,30 @@ namespace Pyrrho.Level4
             : base(dp,cx,dt,null,null,null,null,null,null,null,
                   new BTree<long,object>(ExplRows,r))
         { }
-        internal ExplicitRowSet(long dp, Context cx, TypedValue val)
-    : base(dp, cx, val?.dataType??Domain.Null, null, null, null, null, null, null, null,
-          _Vals(val))
-        { }
         ExplicitRowSet(Context cx, ExplicitRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
         { }
         protected ExplicitRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Vals(TypedValue v)
-        {
-            var r = BList<(long, TRow)>.Empty;
-            for (var b = (v as TArray)?.list.First(); b != null; b = b.Next())
-                r += (-1, (TRow)b.value());
-            return new BTree<long,object>(ExplRows,r);
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new ExplicitRowSet(defpos,m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new ExplicitRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
         {
@@ -2206,6 +2452,7 @@ namespace Pyrrho.Level4
         {
             call = ca;
         }
+        protected ProcRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         ProcRowSet(Context cx,ProcRowSet prs,BTree<long,Finder>nd,bool bt) :base(cx,prs,nd,bt)
         {
             call = prs.call;
@@ -2229,7 +2476,23 @@ namespace Pyrrho.Level4
         {
             return new ProcRowSet(cx, this, nd, bt);
         }
-
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new ProcRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new ProcRowSet(defpos, call, m);
@@ -2291,17 +2554,20 @@ namespace Pyrrho.Level4
     /// Deal with execution of Triggers. The main complication here is that triggers execute 
     /// in their definer's role (possibly many roles involved in defining table, columns, etc)
     /// so the column names and data types will be different for different triggers, and
-    /// trigger actions may affect different tables.
-    /// We need to ensure that the TransitionRowSet rowType contains all the columns for the target,
-    /// even if they are not in the data rowSet.
-    /// As with TableRowSet and IndexRowSet, _finder refers to physical uids.
-    /// Another nuisance is that we need to manage our own copies of autokeys, as we may be preparing
-    /// many new rows for a table.
+    /// trigger actions may affect other tables.
+    /// We need to ensure that the TransitionRowSet rowType matches the 
+    /// current role's view of the target, although the supplied data may not match this
+    /// if named column syntax is used.
+    /// The TargetCursor will match the target owner's view of the target.
+    /// OLD and NEW ROW/TABLE in triggers will use the trigger definer's role.
+    /// Another nuisance is that the TransitionRowSet must manage autokeys, 
+    /// as it may be preparing many new rows in the transaction context.
     /// </summary>
     internal class TransitionRowSet : RowSet
     {
         internal const long
             _Adapters = -429, // Adapters
+            _Data = -368, // RowSet
             Defaults = -415, // BTree<long,TypedValue>  SqlValue
             IxDefPos = -420, // long    Index
             Ra = -424,  // TriggerContext
@@ -2320,6 +2586,7 @@ namespace Pyrrho.Level4
         internal BTree<long, TypedValue> defaults =>
             (BTree<long,TypedValue>)mem[Defaults]??BTree<long, TypedValue>.Empty; 
         internal new From from => (From)mem[TrsFrom]; // will be a SqlInsert, QuerySearch or UpdateSearch
+        internal RowSet data => (RowSet)mem[_Data];
         internal ObInfo targetInfo => (ObInfo)mem[TargetInfo];
         internal Activation targetAc => (Activation)mem[TargetAc];
         internal BTree<long, Finder> targetTrans => 
@@ -2340,11 +2607,11 @@ namespace Pyrrho.Level4
         internal TriggerContext ta => (TriggerContext)mem[Ta];
         internal TriggerContext td => (TriggerContext)mem[Td];
         internal Adapters _eqs => (Adapters)mem[_Adapters];
-        internal TransitionRowSet(Context cx, From q, PTrigger.TrigType tg, Adapters eqs)
+        internal TransitionRowSet(Context cx, From q, RowSet data, PTrigger.TrigType tg, Adapters eqs)
             : base(cx.nextHeap++, cx, q.domain,
-                  cx.data[q.defpos]?.finder ?? BTree<long, Finder>.Empty, 
+                  data?.finder ?? BTree<long, Finder>.Empty, 
                   null, q.where, null, null, null, null, 
-                  _Mem(cx.nextHeap-1,cx, q, tg, eqs))
+                  _Mem(cx.nextHeap-1,cx, q, tg, eqs)+(_Data,data))
         {
             cx.data += (defpos, this);
             targetAc.data = cx.data;
@@ -2363,10 +2630,11 @@ namespace Pyrrho.Level4
                 throw new DBException("42105", from);
             var rt = from.rowType; // data rowType
             var targetInfo = (ObInfo)tr.schema.infos[t.defpos];
+            var tt = targetInfo.domain.rowType;
             m += (TargetInfo,targetInfo);
             var tgTn = BTree<long, Finder>.Empty;
             var tnTg = BTree<long, Finder>.Empty;
-            for (var b = rt.First(); b != null; b = b.Next()) // at this point q is the insert statement, simpleQuery is the base table
+            for (var b = rt.First(); b != null; b = b.Next()) 
             {
                 var p = b.value();
                 var s = cx.obs[p];
@@ -2437,6 +2705,23 @@ namespace Pyrrho.Level4
         internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
         {
             return new TransitionRowSet(cx,this,nd,bt);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new TransitionRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override bool TableColsOk => true;
         internal override RowSet Source(Context cx)
@@ -2511,42 +2796,12 @@ namespace Pyrrho.Level4
             }
             return cx;
         }
-/*        /// <summary>
-        /// Perform the triggers in a set. 
-        /// </summary>
-        /// <param name="acts"></param>
-        (TransitionCursor,bool) Exec(Context _cx, TriggerContext tgc)
-        {
-            var r = false;
-            if (tgc.acts == null)
-            {
-                if (tgc.tgs==BTree<long,bool>.Empty)
-                    return (_cx.cursors[defpos] as TransitionCursor, r);
-                tgc.CreateActs();
-            }
-            targetAc.db = _cx.db;
-            var c = _cx.cursors[defpos];
-            TargetCursor row = (c as TargetCursor)
-                ??((c is TransitionCursor tc)? new TargetCursor(targetAc,tc):null);
-            bool skip;
-            for (var a = tgc.acts?.First(); a != null; a = a.Next())
-            {
-                var ta = a.value();
-                ta.db = _cx.db;
-                (row, skip) = ta.Exec(targetAc, row);
-                r = r || skip;
-                targetAc.db = ta.db;
-            }
-            _cx = targetAc.SlideDown();
-            _cx.val = TBool.For(r);
-            var cu = row?._trsCu;
-            _cx.cursors += (defpos, cu); // restore the TransitionCursor
-            return (cu,r);
-        } */
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Source: "); sb.Append(Uid(from.defpos));
+            sb.Append(" From: "); sb.Append(Uid(from.defpos));
+            if (data!=null)
+            { sb.Append(" Data: ");sb.Append(Uid(data.defpos)); }
             return sb.ToString();
         }
         internal bool? InsertSA(Context _cx)
@@ -2568,7 +2823,7 @@ namespace Pyrrho.Level4
             internal readonly TRow targetRow; // for physical record construction, triggers, constraints
             internal readonly BTree<long,TypedValue> _oldVals;
             internal TransitionCursor(Context cx, TransitionRowSet trs, Cursor fbm, int pos)
-                : base(cx, trs, pos, fbm._defpos, new TRow(trs,fbm))
+                : base(cx, trs, pos, fbm._defpos, _Row(trs,fbm))
             {
                 _trs = trs;
                 _fbm = fbm;
@@ -2576,13 +2831,21 @@ namespace Pyrrho.Level4
                 targetRow = new TRow(_trs.targetInfo.domain,_trs.targetTrans, values);
                 cx.values += (targetRow.values,false);
             }
-            TransitionCursor(TransitionCursor cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
+            TransitionCursor(TransitionCursor cu,Context cx,long p,TypedValue v)
+                :base(cu,cx,cu._trs.finder[p].col,v)
             {
                 _trs = cu._trs;
                 _fbm = cu._fbm;
                 _oldVals = cu._oldVals;
                 targetRow = new TRow(_trs.targetInfo.domain,_trs.targetTrans, values);
                 cx.values += (targetRow.values,false);
+            }
+            static TRow _Row(TransitionRowSet trs,Cursor fbm)
+            {
+                var v = BTree<long, TypedValue>.Empty;
+                for (var b = fbm.dataType.rowType.First(); b != null; b = b.Next())
+                    v += (trs.finder[b.value()].col, fbm[b.value()]);
+                return new TRow(trs.domain, v);
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
             {
@@ -2600,8 +2863,7 @@ namespace Pyrrho.Level4
                  Cursor fbm)
             { 
                 var trc = new TransitionCursor(cx, trs, fbm, pos);
-                var tb = trs.rt.First();
-                for (var b=fbm.columns.First(); b!=null&&tb!=null;b=b.Next(),tb=tb.Next())
+                for (var b=fbm.columns.First(); b!=null;b=b.Next())
                 {
                     var cp = b.value();
                     var sl = cx.obs[cp];
@@ -2616,14 +2878,14 @@ namespace Pyrrho.Level4
                                 tv = sl.Eval(cx);
                             else // there's an adapter function
                             {
-                                // tv = fn (fbm[j])
+                                // tv = fn(fbm[j]);
                                 var pr = cx.db.objects[m.Value] as Procedure;
                                 var ac = new CalledActivation(cx, pr, Domain.Null);
                                 tv = cx.obs[pr.body].Eval(ac);
                             }
                         }
+                        trc += (cx, b.value(), tv);
                     }
-                    trc += (cx, tb.value(), tv);
                 }
                 trc = TargetCursor.New(trs.targetAc, trc, pos)._trsCu;
                 return trc;
@@ -2631,7 +2893,7 @@ namespace Pyrrho.Level4
             internal static TransitionCursor New(Context _cx,TransitionRowSet trs)
             {
                 var ox = _cx.from;
-                var sce = _cx.data[trs.from.defpos];
+                var sce = trs.data; //_cx.data[trs.from.defpos];
                 _cx.from += sce?.finder;
                 for (var fbm = sce?.First(_cx); fbm != null;
                     fbm = fbm.Next(_cx))
@@ -2859,6 +3121,23 @@ namespace Pyrrho.Level4
         {
             return new TransitionTableRowSet(cx, this, nd, bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new TransitionTableRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static TransitionTableRowSet operator+(TransitionTableRowSet rs,(long,object)x)
         {
             return (TransitionTableRowSet)rs.New(rs.mem + x);
@@ -2935,6 +3214,23 @@ namespace Pyrrho.Level4
         {
             throw new NotImplementedException();
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new RoutineCallRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static RoutineCallRowSet operator+(RoutineCallRowSet rs,(long,object) x)
         {
             return (RoutineCallRowSet)rs.New(rs.mem + x);
@@ -2974,6 +3270,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new RowSetSection(defpos,m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new RowSetSection(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override RowSet New(Context cx, BTree<long,Finder>nd,bool bt)
         {
@@ -3064,6 +3377,23 @@ namespace Pyrrho.Level4
         {
             return new DocArrayRowSet(defpos,m);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new DocArrayRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         internal override RowSet New(Context cx, BTree<long,Finder> nd, bool bt)
         {
             return new DocArrayRowSet(cx,this, nd, bt);
@@ -3121,6 +3451,154 @@ namespace Pyrrho.Level4
             }
         }
     }
+    internal class ValueRowSet : RowSet
+    {
+        internal long source => (long)(mem[From.Source] ?? -1L);
+        public ValueRowSet(long dp, Context cx, Domain dm, From f, RowSet r)
+            : base(dp, BTree<long,object>.Empty+(From.Source,r.defpos)
+                  +(_Domain,dm)+ (_Finder,_Fin(cx, f, r))
+                  +(Query.Where, r.where)
+                  +(RowOrder,r.rowOrder)+(Query._Matches, r.matches)
+                  + (Query.Matching,r.matching))
+        { }
+        protected ValueRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected ValueRowSet(Context cx, RowSet rs, BTree<long, Finder> nd,bool bt)
+            : base(cx, rs, nd, bt) { }
+        static BTree<long,Finder> _Fin(Context cx,From f,RowSet s)
+        {
+            var fi = BTree<long,Finder>.Empty;
+            var sb = s.rt.First();
+            for (var b = f.rowType.First(); b != null && sb != null;
+                b = b.Next(), sb = sb.Next())
+                fi += (b.value(), s.finder[sb.value()]);
+            return fi;
+        }
+        public static ValueRowSet operator+(ValueRowSet v,(long,object)x)
+        {
+            return (ValueRowSet)v.New(v.mem + x);
+        }
+        internal override RowSet Source(Context cx)
+        {
+            return cx.data[source];
+        }
+        protected override Cursor _First(Context _cx)
+        {
+            return ValueCursor.New(_cx,this,0);
+        }
+
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return new ValueRowSet(cx,this,nd,bt);
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ValueRowSet(defpos,m);
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new ValueRowSet(dp,mem);
+        }
+        internal override Basis _Relocate(Context cx, Context nc)
+        {
+            var r = (RowSet)base._Relocate(cx, nc);
+            var s = (RowSet)cx.data[source]._Relocate(cx, nc);
+            if (s.defpos != source)
+                r += (From.Source, s.defpos);
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (RowSet)base._Relocate(wr);
+            var s = (RowSet)wr.cx.data[source]._Relocate(wr);
+            if (s.defpos != source)
+                r += (From.Source, s.defpos);
+            return r;
+        }
+        internal override void Scan(Context cx)
+        {
+            cx.RsScanned(source);
+            base.Scan(cx);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (ValueRowSet)base.Fix(cx);
+            r += (From.Source, cx.rsuids[source]);
+            return r;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Source: ");sb.Append(Uid(source));
+            return sb.ToString();
+        }
+        internal class ValueCursor : Cursor
+        {
+            ValueRowSet _vrs;
+            Cursor _sc;
+            ValueCursor(Context cx, ValueRowSet rs, int pos, long defpos, Cursor sc)
+                : base(cx, rs, pos, defpos, _Row(rs,sc)) 
+            {
+                _vrs = rs; _sc = sc;
+            }
+            ValueCursor(ValueCursor cu, Context cx, long p, TypedValue v) 
+                : base(cu, cx, p, v) 
+            { }
+            static TRow _Row(ValueRowSet rs,Cursor sc)
+            {
+                var vs = BTree<long, TypedValue>.Empty;
+                for (var b = rs.rt.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var fi = rs.finder[p];
+                    vs += (p, sc[fi.col]);
+                }
+                return new TRow(rs.domain, vs);
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new ValueCursor(this,cx,p,v);
+            }
+            internal static ValueCursor New(Context cx,ValueRowSet vrs,int pos)
+            {
+                var sce = vrs.Source(cx);
+                var ox = cx.from;
+                cx.from += sce.finder;
+                for (var b = sce.First(cx);b!=null;b=b.Next(cx))
+                {
+                    var rb = new ValueCursor(cx, vrs, pos, b._defpos, b);
+                    if (rb.Matches(cx) && Query.Eval(vrs.where, cx))
+                    {
+                        cx.from = ox;
+                        return rb;
+                    }
+                }
+                return null;
+            }
+            protected override Cursor _Next(Context cx)
+            {
+                var sce = _vrs.Source(cx);
+                var ox = cx.from;
+                cx.from += sce.finder;
+                for (var b = _sc.Next(cx); b != null; b = b.Next(cx))
+                {
+                    var rb = new ValueCursor(cx, _vrs, _pos+1, b._defpos, b);
+                    if (rb.Matches(cx) && Query.Eval(_vrs.where, cx))
+                    {
+                        cx.from = ox;
+                        return rb;
+                    }
+                }
+                return null;
+            }
+
+            internal override TableRow Rec()
+            {
+                return _sc.Rec();
+            }
+        }
+    } 
     /// <summary>
     /// WindowRowSet is built repeatedly during traversal of the source rowset.
     /// </summary>
@@ -3145,6 +3623,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new WindowRowSet(defpos, m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new WindowRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         protected override Cursor _First(Context _cx)
         {
@@ -3267,7 +3762,23 @@ namespace Pyrrho.Level4
         {
             return new LogRowsRowSet(cx, this, nd, bt);
         }
-
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new LogRowsRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         protected override Cursor _First(Context _cx)
         {
             return LogRowsCursor.New(_cx, this,0,targetTable);
@@ -3460,6 +3971,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long,object> m)
         {
             return new LogRowColRowSet(defpos, m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new LogRowColRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {

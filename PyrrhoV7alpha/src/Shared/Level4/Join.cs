@@ -69,6 +69,23 @@ namespace Pyrrho.Level4
         {
             return new JoinRowSet(cx, this, k);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new JoinRowSet(cx.nextHeap++, m);
+            cx.data += (rs.defpos, rs);
+            return rs;
+        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
         {
             return new JoinRowSet(cx, this, nd, bt);

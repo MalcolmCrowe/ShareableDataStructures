@@ -113,7 +113,7 @@ namespace Pyrrho.Level3
         {
             return (Table)tb.New(tb.mem + v);
         }
-        internal virtual ObInfo Inf(Context cx)
+        internal override ObInfo Inf(Context cx)
         {
             var ti = cx.Inf(defpos);
             var rt = domain.rowType;
@@ -205,6 +205,7 @@ namespace Pyrrho.Level3
             var dm = (Domain)domain._Replace(cx, so, sv);
             if (dm != domain)
                 r += (_Domain, dm);
+            r = (Table)New(cx,r.mem);
             cx.done += (defpos, r);
             return r;
         }
@@ -256,7 +257,7 @@ namespace Pyrrho.Level3
                 // (a subset of the user’s references)
                 cl = uc.ForInsert(classification);
             }
-            var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Insert, eqs);
+            var trs = new TransitionRowSet(cx, f, data, PTrigger.TrigType.Insert, eqs);
             //       var ckc = new ConstraintChecking(tr, trs, this);
             // Do statement-level triggers
             bool? fi = trs.InsertSB(cx);
@@ -327,13 +328,132 @@ namespace Pyrrho.Level3
         {
             return (Index)db.objects[indexes[key]];
         }
-        /// <summary>
-        /// Execute a Delete on a Table, including triggers
-        /// </summary>
-        /// <param name="f">The Delete operation</param>
-        /// <param name="ds">A set of delete strings may be explicit</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Context Delete(Context cx, From f,BTree<string, bool> ds, Adapters eqs)
+        internal override void Select(Context cx, From f,BTree<long,RowSet.Finder> fi)
+        {
+            // ReadConstraints only apply in explicit transactions 
+            ReadConstraint readC = cx.db.autoCommit ? null
+                : cx.db._ReadConstraint(cx, this);
+            // At this point we have a table/alias, 
+            // we want to find the Index best meeting our needs
+            // Score: Add 10^n for n ordType cols occurring in order, 
+            // add n+1 for each filter column occurring in position k-n 
+            // in an index with k cols.
+            // Find the index with highest score, then set up
+            // the match Link for it
+            /*     if (periods.Contains(target.defpos))
+                 {
+                     // a periodspecification has been supplied for this table.
+                     var ps = periods[target.defpos];
+                     if (ps.kind == Sqlx.NO)
+                     {
+                         // simply use the appropriate time versioning index for this table
+                         var tb = (Table)target;
+                         var pp = (ps.periodname == "SYSTEM_TIME") ? tb.systemPS : tb.applicationPS;
+                         var pd = (PeriodDef)tr.objects[pp];
+                         if (pd != null)
+                             index = tb.indexes[pp]; // I doubt this
+                     }
+                 } 
+                 else */
+
+            int matches = 0;
+            PRow match = null;
+            Index index = null;
+            int bs = 0;      // score for best index
+            for (var p = indexes.First(); p != null; p = p.Next())
+            {
+                var x = (Index)cx.db.objects[p.value()];
+                if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
+                    || x.tabledefpos != defpos)
+                    continue;
+                var dt = (ObInfo)cx.db.role.infos[x.defpos];
+                int sc = 0;
+                int nm = 0;
+                int n = 0;
+                PRow pr = null;
+                var havematch = false;
+                int sb = 1;
+                var j = dt.domain.Length - 1;
+                for (var b = dt.domain.rowType.Last(); b != null; b = b.Previous(), j--)
+                {
+                    var c = b.value();
+                    for (var fd = f.filter.First(); fd != null; fd = fd.Next())
+                    {
+                        if (cx.obs[fd.key()] is SqlCopy co
+                            && co.copyFrom == c)
+                        {
+                            sc += 9 - j;
+                            nm++;
+                            pr = new PRow(fd.value(), pr);
+                            havematch = true;
+                            goto nextj;
+                        }
+                    }
+                    if (n < f.ordSpec.Length)
+                    {
+                        var ok = f.ordSpec[n];
+                        if (ok != -1L)
+                        {
+                            n++;
+                            sb *= 10;
+                        }
+                    }
+                    pr = new PRow(TNull.Value, pr);
+                nextj:;
+                }
+                if (!havematch)
+                    pr = null;
+                sc += sb;
+                if (sc > bs)
+                {
+                    index = x;
+                    matches = nm;
+                    match = pr;
+                    bs = sc;
+                }
+            }
+            RowSet rowSet;
+            if (index != null && index.rows != null)
+            {
+                var sce = (match == null) ? new IndexRowSet(cx, this, index, fi, f.filter)
+                            : new FilterRowSet(cx, this, index, match, fi);
+                rowSet = new SelectedRowSet(cx, f, sce, fi);
+                if (readC != null)
+                {
+                    if (matches == index.keys.Length &&
+                        (index.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
+                            != PIndex.ConstraintType.NoType)
+                        readC.Singleton(index, match);
+                    else
+                        readC.Block();
+                }
+            }
+            else
+            {
+                index = FindPrimaryIndex(cx.db);
+                RowSet sa;
+                if (index != null && index.rows != null)
+                    sa = new IndexRowSet(cx, this, index, fi,
+                        cx.Filter(this, f.where));
+                else
+                    sa = new TableRowSet(cx, defpos, fi, f.where);
+                Audit(cx, sa, f);
+                rowSet = new SelectedRowSet(cx, f, sa, fi);
+                if (readC != null)
+                    readC.Block();
+            }
+            cx.data += (f.defpos, rowSet);
+            cx.results += (f.defpos, rowSet.defpos);
+            if (readC != null)
+                cx.rdC += (defpos, readC);
+        }
+    /// <summary>
+    /// Execute a Delete on a Table, including triggers
+    /// </summary>
+    /// <param name="f">The Delete operation</param>
+    /// <param name="ds">A set of delete strings may be explicit</param>
+    /// <param name="eqs">equality pairings (e.g. join conditions)</param>
+    internal override Context Delete(Context cx, From f,BTree<string, bool> ds, Adapters eqs)
         {
             var count = 0;
             if (Denied(cx, Grant.Privilege.Delete) ||
@@ -342,8 +462,8 @@ namespace Pyrrho.Level3
                 (cx.db.user.clearance.minLevel != f.classification.minLevel ||
                 cx.db.user.clearance.maxLevel != f.classification.maxLevel)))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            f.RowSets(cx, cx.data[f.from]?.finder??BTree<long, RowSet.Finder>.Empty); 
-            var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Delete, eqs);
+            var data = f.RowSets(cx, cx.data[f.from]?.finder??BTree<long, RowSet.Finder>.Empty); 
+            var trs = new TransitionRowSet(cx, f, data, PTrigger.TrigType.Delete, eqs);
             var cl = cx.db.user.clearance;
             cx.from += trs.finder;
             bool? fi = trs.DeleteSB(cx);
@@ -385,20 +505,20 @@ namespace Pyrrho.Level3
         internal override Context Update(Context cx,From f,BTree<string, bool> ur, 
             Adapters eqs,List<RowSet>rs)
         {
-            if (f.assigns.Count==0)
+            if (f.assig.Count==0)
                 return cx;
             PyrrhoServer.Debug(1, "Update starts");
             if (Denied(cx, Grant.Privilege.Update))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var trs = new TransitionRowSet(cx, f, PTrigger.TrigType.Update, eqs);
+            var trs = new TransitionRowSet(cx, f, cx.data[f.defpos], PTrigger.TrigType.Update, eqs);
             var updates = BTree<long, UpdateAssignment>.Empty;
             SqlValue level = null; // Only the SA can modify the classification
-            for (var ass = f.assigns.First(); ass != null; ass = ass.Next())
-                if (cx.obs[ass.value().vbl] is SqlSecurity)
-                    level = cx.obs[ass.value().val] as SqlValue;
+            for (var ass = f.assig.First(); ass != null; ass = ass.Next())
+                if (cx.obs[ass.key().vbl] is SqlSecurity)
+                    level = cx.obs[ass.key().val] as SqlValue;
                 else
                 {
-                    var c = cx.obs[ass.value().vbl] as SqlCopy
+                    var c = cx.obs[ass.key().vbl] as SqlCopy
                         ?? throw new DBException("0U000");
                     var tc = cx.db.objects[c.copyFrom] as TableColumn ??
                         throw new DBException("42112", c.name);
@@ -406,7 +526,7 @@ namespace Pyrrho.Level3
                         throw cx.db.Exception("0U000", c.name).Mix();
                     if (c.Denied(cx, Grant.Privilege.Update))
                         throw new DBException("42105", c.name);
-                    updates += (tc.defpos, ass.value());
+                    updates += (tc.defpos, ass.key());
                 }
       //      bool nodata = true;
             var cl = cx.db.user?.clearance??Level.D;
@@ -482,7 +602,23 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" "); sb.Append(domain);
             if (mem.Contains(Enforcement)) { sb.Append(" Enforcement="); sb.Append(enforcement); }
-            if (indexes.Count!=0) { sb.Append(" Indexes:"); sb.Append(indexes); }
+            if (indexes.Count!=0) 
+            { 
+                sb.Append(" Indexes:(");
+                var cm = "";
+                for (var b=indexes.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm);cm = ",";
+                    var cn = "(";
+                    for (var c=b.key().First();c!=null;c=c.Next())
+                    {
+                        sb.Append(cn);cn = ",";
+                        sb.Append(Uid(c.value()));
+                    }
+                    sb.Append(")"); sb.Append(Uid(b.value()));
+                }
+                sb.Append(")");
+            }
             if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }
             sb.Append(" KeyCols: "); sb.Append(keyCols);
             return sb.ToString();

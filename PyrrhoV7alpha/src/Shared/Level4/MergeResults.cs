@@ -70,6 +70,23 @@ namespace Pyrrho.Level4
         {
             return new MergeRowSet(cx, this, nd, bt);
         }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.Analysing)
+                return (RowSet)New(m);
+            var rs = new MergeRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
+        }
         public static MergeRowSet operator+(MergeRowSet rs,(long,object)x)
         {
             return (MergeRowSet)rs.New(rs.mem + x);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
+using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -131,6 +132,10 @@ namespace Pyrrho.Level4
             public static Idents operator +(Idents t, (string, long, Idents) x)
             {
                 return new Idents(t + (x.Item1,(x.Item2,x.Item3)));
+            }
+            public static Idents operator +(Idents t, Idents x)
+            {
+                return new Idents((BTree<string,(long,Idents)>)t+x);
             }
             public static Idents operator +(Idents t, (Ident, long) x)
             {
@@ -772,7 +777,7 @@ namespace Pyrrho.Level4
                         while (char.IsDigit(Advance()))
                             ;
                         str = new string(input, start + 1, pos - start - 1);
-                        val = new TInt(long.Parse(str) + 0x7000000000000000);
+                        val = new TInt(long.Parse(str) + PyrrhoServer.Preparing);
                         tok = Sqlx.INTEGERLITERAL;
                         return tok;
                     }

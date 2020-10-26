@@ -46,7 +46,7 @@ namespace Pyrrho.Level2
         public long domdefpos = -1L;
 		public TypedValue dv = null; // see PColumn2
         public string dfs,ups;
-        public BList<UpdateAssignment> upd = BList<UpdateAssignment>.Empty; // see PColumn3
+        public BTree<UpdateAssignment,bool> upd = BTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool notNull = false;    // ditto
 		public GenerationRule generated = GenerationRule.None; // ditto
         public override long Dependent(Writer wr, Transaction tr)
@@ -349,7 +349,7 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, BList<UpdateAssignment> ua, bool nn, GenerationRule ge, long pp,
+            string us, BTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
             Context cx)
             : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
         { }
@@ -366,7 +366,7 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
-            TypedValue dv, string us, BList<UpdateAssignment> ua, bool nn, 
+            TypedValue dv, string us, BTree<UpdateAssignment,bool> ua, bool nn, 
             GenerationRule ge, long pp, Context cx)
             : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
         {
@@ -421,7 +421,7 @@ namespace Pyrrho.Level2
                 } 
                 catch(Exception)
                 {
-                    upd = BList<UpdateAssignment>.Empty;
+                    upd = BTree<UpdateAssignment,bool>.Empty;
                 }
             rdr.GetLong();
             rdr.GetLong();
@@ -431,7 +431,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (upd != BList<UpdateAssignment>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
+            if (upd != BTree<UpdateAssignment,bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
             return sb.ToString();
         }
     }

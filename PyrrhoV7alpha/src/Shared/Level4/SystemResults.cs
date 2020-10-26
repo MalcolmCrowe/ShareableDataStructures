@@ -94,6 +94,13 @@ namespace Pyrrho.Level4
         {
             return new SystemTable(defpos,m);
         }
+        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        {
+            var sr = new SystemRowSet(cx, this, f.where);
+            cx.data += (defpos, sr);
+            var r = new SelectedRowSet(cx, f, sr, fi);
+            cx.data += (f.defpos, r);
+        }
     }
     internal class SystemTableColumn : TableColumn
     {
@@ -280,6 +287,23 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new SystemRowSet(defpos, m);
+        }
+        /// <summary>
+        /// We need to change some properties, but if it has come from a framing
+        /// it will be shareable and so we must create a new copy first
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns></returns>
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            if (m == mem)
+                return this;
+            if (defpos >= Transaction.TransPos)
+                return (RowSet)New(m);
+            var rs = new SystemRowSet(cx.nextHeap++, m);
+            Fixup(cx, rs);
+            return rs;
         }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
@@ -2715,7 +2739,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(d.ppos),
                     new TChar(d.name),
-                    Display(d.view.ToString()),
+                    Display(d.viewdef),
                     st,
                     us,
                     Pos(d.trans));
@@ -3764,7 +3788,7 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(pos),
                     new TChar(ov.name),
-                    new TChar(vw.viewQry.ToString()),
+                    new TChar(vw.viewDef),
                     new TChar(st),
                     new TChar(us),
                     new TChar(((Role)_cx.db.objects[vw.definer]).name));

@@ -170,7 +170,26 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            throw new NotImplementedException();
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (Procedure)base._Replace(cx, so, sv);
+            var bd = cx.obs[body]._Replace(cx, so, sv);
+            var ch = (bd?.defpos ?? -1L) != body;
+            if (ch)
+                r += (Body, bd.defpos);
+            var fs = BList<long>.Empty;
+            ch = false;
+            for (var b=ins.First();b!=null;b=b.Next())
+            {
+                var fp = cx._Replace(b.value(), so, sv);
+                ch = ch || (fp.defpos != b.value());
+                fs += fp.defpos;
+            }
+            if (ch)
+                r += (Params, fs);
+            r = (Procedure)New(cx, r.mem);
+            cx.done += (defpos, r);
+            return r;
         }
         internal override void Cascade(Context cx,
             Drop.DropAction a = 0, BTree<long, TypedValue> u = null)

@@ -106,6 +106,8 @@ namespace Pyrrho.Level2
         public Stream file; // shared with Reader(s)
         public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
         internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
+        internal BTree<long, RowSet> rss = BTree<long, RowSet>.Empty; // ditto RowSets
+        internal long curs = -1;
         public long segment;  // the most recent PTransaction/PTriggeredAction written
         public long srcPos; // for Fixing iids
         internal BList<Rvv> rvv= BList<Rvv>.Empty;
@@ -198,17 +200,6 @@ namespace Pyrrho.Level2
             }
             return ob;
         }
-        internal BList<FormalParameter> Relocate(BList<FormalParameter> rp)
-        {
-            var r = BList<FormalParameter>.Empty;
-            for (var b = rp.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                r += (FormalParameter)p.Relocate(this);
-            }
-            return r;
-        }
-
         internal CList<long> Fix(CList<long> ord)
         {
             var r = CList<long>.Empty;
@@ -305,14 +296,14 @@ namespace Pyrrho.Level2
             }
             return ch ? r : refs;
         }
-        internal BList<TypedValue> Fix(BList<TypedValue> key)
+        internal BList<K> Fix<K>(BList<K> key) where K:TypedValue
         {
-            var r = BList<TypedValue>.Empty;
+            var r = BList<K>.Empty;
             var ch = false;
             for (var b = key?.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var f = p.Relocate(this);
+                var f =(K)p.Relocate(this);
                 if (p != f)
                     ch = true;
                 r += f;
@@ -331,13 +322,6 @@ namespace Pyrrho.Level2
                 r += (p, d);
             }
             return ch ? r : rs;
-        }
-        internal BList<TXml> Fix(BList<TXml> ch)
-        {
-            var r = BList<TXml>.Empty;
-            for (var b = ch.First(); b != null; b = b.Next())
-                r += (TXml)b.value().Relocate(this);
-            return r;
         }
         internal BList<Grouping> Fix(BList<Grouping> gs)
         {

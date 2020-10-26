@@ -142,7 +142,7 @@ namespace Pyrrho.Level2
                 case "Source":
                     {
                         var ps = rdr.context.db.objects[modifydefpos] as Procedure;
-                        now = new Parser(rdr.context).ParseQueryExpression(body, ps.domain);
+                        now = new Parser(rdr.context).ParseQueryExpression(new Ident(body,ppos+1), ps.domain);
                         break;
                     }
                 case "Insert": // we ignore all of these (PView1)
