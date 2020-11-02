@@ -30,7 +30,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("26 November 2019 Repeatable tests");
+                Console.WriteLine("2 November 2020 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Ensure testdb not present in database folder for any of");
@@ -382,6 +382,12 @@ namespace Test
                 conn.Execute("Ins2", "" + 6);
                 CheckExecuteResults(12, 6, "[{C:9}]", "Sel1", "" + 10);
             }
+            conn.Act("create table p(q int primary key,r char)");
+            conn.Act("create view v as select q,r as s from p");
+            conn.Act("insert into v(s) values('Twenty'),('Thirty')");
+            conn.Act("update v set s='Forty two' where q=1");
+            CheckResults(12, 7, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
+            // tbd: update view of join 
             Rollback();
         }
         void Test13(int t)

@@ -467,7 +467,7 @@ namespace Pyrrho.Level3
                                 var cond = new SqlValueExpr(1, cx, Sqlx.EQL,
                                     new SqlCopy(2,cx,"",f.defpos,tc.defpos),
                                     new SqlLiteral(3,cx,kv,ft),Sqlx.NO);
-                                f = (From)f.AddCondition(cx,Query.Where,cond);
+                                f = (From)f.AddCondition(cx,Query.Where,cond,false);
                             }
                             cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                             break;

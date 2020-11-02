@@ -99,20 +99,26 @@ namespace Pyrrho.Level3
         {
             var vs = BList<SqlValue>.Empty;
             var de = 1; // we almost always have some columns
-            var ti = ob.Inf(cx); // target info
+            var rt = CList<long>.Empty;
+            if (ob is Table)
+                rt = ob.Inf(cx).domain.rowType;
+            else if (ob is View vw)
+            {
+                ob = new View(vw,cx);
+                rt = ob.domain.rowType;
+            }
             cx._Add(ob);
-            cx.AddDefs(ic, ti.domain.rowType);
+            cx.AddDefs(ic, rt);
             var mp = BTree<long, bool>.Empty;
             if (cr == null)
             {
                 var ma = BTree<string, DBObject>.Empty;
-                for (var b = ti.domain.rowType.First(); b != null; b = b.Next())
+                for (var b = rt.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
                     var tc = (DBObject)cx.db.objects[p]??cx.obs[p];
-                    var ci = (ObInfo)cx.role.infos[tc.defpos];
-                    if (ci != null)
-                        ma += (ci.name, tc);
+                    var nm = ((ObInfo)cx.role.infos[tc.defpos])?.name ?? ((SqlValue)tc).name;
+                    ma += (nm, tc);
                 }
                 // we want to add everything from ti that matches cx.stars or q.Needs
                 if (q != null)
@@ -136,7 +142,7 @@ namespace Pyrrho.Level3
                         }
                     }
                     if (q.HasStar(cx))
-                        for (var b = ti.domain.rowType.First(); b != null; b = b.Next())
+                        for (var b = rt.First(); b != null; b = b.Next())
                         {
                             var p = b.value();
                             var ci = cx.Inf(p); // for Table
@@ -163,19 +169,20 @@ namespace Pyrrho.Level3
                 }
             }
             var d = vs.Length;
-            for (var b = ti.domain.rowType.First(); b != null; b = b.Next())
+            for (var b = rt.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 if (mp.Contains(p))
                     continue;
                 var ci = cx.Inf(p);
                 var sc = cx.obs[p] as SqlValue;
-                var u = cx.GetUid();
-                var sv = new SqlCopy(u, cx, ci?.name??sc.alias??sc.name, ic.iix, p);
-                cx.Add(sv);
-                vs += sv;
+                if (!(ob is View))
+                    sc = new SqlCopy(cx.GetUid(), cx, ci?.name??sc.alias??sc.name, ic.iix, p);
+                cx.Add(sc);
+                vs += sc;
             }
             var dm = new Domain(Sqlx.TABLE,vs,d);
+            de = _Max(de, ob.depth);
             return BTree<long, object>.Empty + (Name, ic.ident)
                    + (Target, ob.defpos) + (_Domain, dm)
                    + (Depth, de + 1);
@@ -195,14 +202,14 @@ namespace Pyrrho.Level3
             }
             cx.data += (dp,new ProcRowSet(dp, ca, cx));
             return BTree<long, object>.Empty
-                + (Target,pc.procdefpos) 
+                + (Target,pc.procdefpos) + (Depth,1+ca.depth)
                 + (_Domain,new Domain(Sqlx.ROW,cx,s,disp)) + (Name, proc.name);
         }
         static BTree<long, object> _Mem(long dp, Context cx, RowSet rs, string a)
         {
             cx.data += (dp, rs);
             return BTree<long, object>.Empty
-                + (Target, rs.defpos)
+                + (Target, rs.defpos) + (Depth, 1 + rs.depth)
                 + (_Domain, rs.domain) + (Name, a);
         }
         internal override bool Knows(Context cx, long p)
@@ -261,6 +268,17 @@ namespace Pyrrho.Level3
                 r += (Target, tg);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (From)base.Fix(fx);
+            var ag = BTree<UpdateAssignment, bool>.Empty;
+            for (var b = assig.First(); b != null; b = b.Next())
+                ag += ((UpdateAssignment)b.key().Fix(fx), b.value());
+            r += (Assig, ag);
+            r += (Source, fx[source]??source);
+            r += (Target, fx[target]??target);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (From)base.Fix(cx);
@@ -305,15 +323,15 @@ namespace Pyrrho.Level3
         }
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs, Level cl)
         {
-            return ((DBObject)_cx.db.objects[target]).Insert(_cx, this, prov, data, eqs, rs, cl);
+            return _cx.obs[target].Insert(_cx, this, prov, data, eqs, rs, cl);
         }
         internal override Context Delete(Context cx, BTree<string, bool> dr, Adapters eqs)
         {
-            return ((DBObject)cx.db.objects[target]).Delete(cx, this, dr, eqs);
+            return cx.obs[target].Delete(cx, this, dr, eqs);
         }
         internal override Context Update(Context cx, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
-            return ((DBObject)cx.db.objects[target]).Update(cx, this, ur, eqs, rs);
+            return cx.obs[target].Update(cx, this, ur, eqs, rs);
         }
         /// <summary>
         /// Accessor: Check a new table check constraint
@@ -406,6 +424,13 @@ namespace Pyrrho.Level3
             var r =  (SqlInsert)base._Relocate(wr);
             r += (_Table, wr.Fixed(target).defpos);
             r += (Value, ((RowSet)wr.cx.data[value]._Relocate(wr)).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlInsert)base.Fix(fx);
+            r += (_Table, fx[target]??target);
+            r += (Value, fx[value]??value);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -503,6 +528,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (QuerySearch)base._Relocate(wr);
             r += (SqlInsert._Table, wr.Fixed(table).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (QuerySearch)base.Fix(fx);
+            r += (SqlInsert._Table, fx[table]??table);
             return r;
         }
         internal override Basis Fix(Context cx)

@@ -209,6 +209,13 @@ namespace Pyrrho.Level3
             r += (UpdateCols, wr.Fix(cols));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Trigger)base.Fix(fx);
+            r += (Action, fx[action]??action);
+            r += (UpdateCols, Fix(cols,fx));
+            return r;
+        }
     }
     /// <summary>
     /// Transition tables are not listed in roles but referred to in triggers
@@ -238,6 +245,7 @@ namespace Pyrrho.Level3
             var cs = CList<long>.Empty;
             var vs = BList<SqlValue>.Empty;
             var ds = BTree<long, bool>.Empty;
+            var d = 1+fm.depth;
             for (var b = fm.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
@@ -248,10 +256,11 @@ namespace Pyrrho.Level3
                 vs += v;
                 cs += v.defpos;
                 ds += (u, true);
+                d = _Max(d, 1 + v.depth);
             } 
             var nd = new Domain(Sqlx.ROW,vs);
             return BTree<long, object>.Empty + (_Domain, nd) + (Name, ic.ident)
-                  + (SqlValue._Columns, cs) + (Dependents, ds) + (Depth, 2)
+                  + (SqlValue._Columns, cs) + (Dependents, ds) + (Depth, d)
                   + (Target, fm.target);
         }
         internal override DBObject Relocate(long dp)
@@ -268,9 +277,16 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r =  base._Relocate(wr);
+            var r =  (TransitionTable)base._Relocate(wr);
             r += (Trig, wr.Fix(trig));
             r += (SqlValue._Columns, wr.Fix(columns));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (TransitionTable)base.Fix(fx);
+            r += (Trig, fx[trig]??trig);
+            r += (SqlValue._Columns, Fix(columns,fx));
             return r;
         }
         internal override Basis Fix(Context cx)

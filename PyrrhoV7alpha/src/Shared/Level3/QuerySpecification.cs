@@ -126,6 +126,14 @@ namespace Pyrrho.Level3
                 r += (TableExp, te);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (QuerySpecification)base.Fix(fx);
+            var te = tableExp.Fix(fx);
+            if (te != tableExp)
+                r += (TableExp, te);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (QuerySpecification)base.Fix(cx);
@@ -349,6 +357,13 @@ namespace Pyrrho.Level3
             var r = (QueryExpression)base._Relocate(wr);
             r += (_Left, wr.Fixed(left).defpos);
             r += (_Right, wr.Fixed(right)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (QueryExpression)base.Fix(fx);
+            r += (_Left,fx[left]??left);
+            r += (_Right, fx[right]??right);
             return r;
         }
         internal override Basis Fix(Context cx)

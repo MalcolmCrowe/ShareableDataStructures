@@ -1,6 +1,7 @@
 using System;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
+using System.Threading;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -177,6 +178,14 @@ namespace Pyrrho.Level3
             r += (WQuery, wr.Fixed(query));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (WindowSpecification)base.Fix(fx);
+            r += (Order, Fix(order,fx));
+            r += (PartitionType, Fix(partitionType,fx));
+            r += (WQuery, fx[query]??query);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (WindowSpecification)base.Fix(cx);
@@ -295,6 +304,19 @@ namespace Pyrrho.Level3
             r += (Members, wr.Fix(members));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Grouping)base.Fix(fx);
+            var gs = BList<Grouping>.Empty;
+            for (var b = groups.First(); b != null; b = b.Next())
+                gs += (Grouping)b.value().Fix(fx);
+            r += (Groups, gs);
+            var ms = BTree<long, int>.Empty;
+            for (var b = members.First(); b != null; b = b.Next())
+                ms += (fx[b.key()] ?? b.key(), b.value());
+            r += (Members, ms);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (Grouping)base.Fix(cx);
@@ -357,6 +379,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (GroupSpecification)base._Relocate(wr);
             r += (Sets, wr.Fix(sets));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (GroupSpecification)base.Fix(fx);
+            r += (Sets, Fix(sets,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -422,13 +450,20 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
-            var r = base._Relocate(wr);
+            var r = (UpdateAssignment)base._Relocate(wr);
             var va = (SqlValue)wr.Fixed(val);
             if (va.defpos != val)
                 r += (Val, va.defpos);
             var vb = (SqlValue)wr.Fixed(vbl);
             if (vb.defpos != vbl)
                 r += (Vbl, vb.defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (UpdateAssignment)base.Fix(fx);
+            r += (Val, fx[val]??val);
+            r += (Vbl, fx[vbl]??vbl);
             return r;
         }
         internal override Basis Fix(Context cx)

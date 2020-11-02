@@ -117,6 +117,13 @@ namespace Pyrrho.Level4
             r += (QueryExpression._Right, wr.Fix(right));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (MergeRowSet)base.Fix(fx);
+            r += (QueryExpression._Left, fx[left]??left);
+            r += (QueryExpression._Right, fx[right]??right);
+            return r;
+        }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder>nd)
         {
             nd = cx.Needs(nd,this,where);

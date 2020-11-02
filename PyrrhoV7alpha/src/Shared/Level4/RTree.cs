@@ -1,5 +1,6 @@
 using System;
 using System.Configuration;
+using System.Security.Cryptography;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -118,10 +119,20 @@ namespace Pyrrho.Level4
             return new RTree(cx.rsuids[defpos], _cx, cx.Fix(keyType), (Domain)domain.Fix(cx),
                 mt.Fix(cx),cx.Fix(rows));
         }
+        internal RTree Fix(BTree<long,long?>fx)
+        {
+            return new RTree(fx[defpos] ?? defpos, _cx, Basis.Fix(keyType, fx), 
+                (Domain)domain.Fix(fx), mt.Fix(fx), Basis.Fix(rows, fx));
+        }
         internal RTree Relocate(Writer wr)
         {
             return new RTree(wr.Fix(defpos), _cx, (Domain)domain._Relocate(wr),
                 mt.info.onDuplicate, mt.info.onNullKey);
+        }
+        internal RTree Replace(Context cx,DBObject so,DBObject sv)
+        {
+            return new RTree(defpos, cx, cx.Replaced(keyType), (Domain)domain._Replace(cx,so,sv),
+                mt.Replaced(cx,so,sv), rows);
         }
     }
     internal class RTreeBookmark : Cursor

@@ -153,6 +153,13 @@ namespace Pyrrho.Level3
             r += (Body, wr.Fixed(body)?.defpos??-1L);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Procedure)base.Fix(fx);
+            r += (Params, Fix(ins,fx));
+            r += (Body, fx[body]??body);
+            return r;
+        }
         internal override Basis _Relocate(Context cx, Context nc)
         {
             var r = (Procedure)base._Relocate(cx,nc);

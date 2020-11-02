@@ -103,6 +103,14 @@ namespace Pyrrho.Common
         {
             return New((Domain)dataType.Fix(cx));
         }
+        internal virtual TypedValue Fix(BTree<long,long?>fx)
+        {
+            return New((Domain)dataType.Fix(fx));
+        }
+        internal virtual TypedValue Replaced(Context cx)
+        {
+            return New(dataType.Replaced(cx));
+        }
         internal virtual TypedValue Relocate(Writer wr)
         {
             return New((Domain)dataType._Relocate(wr));
@@ -1215,6 +1223,14 @@ namespace Pyrrho.Common
         {
             return new PRow(_head?.Fix(cx), _tail?.Fix(cx));
         }
+        internal PRow Fix(BTree<long,long?>fx)
+        {
+            return new PRow(_head?.Fix(fx), _tail?.Fix(fx));
+        }
+        internal PRow Replaced(Context cx)
+        {
+            return new PRow(_head?.Replaced(cx), _tail.Replaced(cx));
+        }
         public int Length { get { if (_tail == null) return 1; return 1 + _tail.Length; } }
         public int _CompareTo(object ob)
         {
@@ -1486,6 +1502,11 @@ namespace Pyrrho.Common
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException(); // use Relocate
+        }
+        internal override void Scan(Context cx)
+        {
+            cx.Scan(tree);
+            base.Scan(cx);
         }
         internal override TypedValue Fix(Context cx)
         {

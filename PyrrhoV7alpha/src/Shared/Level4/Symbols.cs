@@ -202,6 +202,16 @@ namespace Pyrrho.Level4
                 }
                 return new Idents(r);
             }
+            internal Idents Fix(BTree<long,long?>fx)
+            {
+                var r = BTree<string,(long,Idents)>.Empty;
+                for (var b = First(); b != null; b = b.Next())
+                {
+                    var (p, t) = b.value();
+                    r += (b.key(), (fx[p] ?? p, t.Fix(fx)));
+                }
+                return new Idents(r);
+            }
             internal static Idents For(long ob,Database db,Context cx)
             {
                 var r = Empty;

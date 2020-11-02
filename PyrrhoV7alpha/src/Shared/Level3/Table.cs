@@ -171,7 +171,7 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (Table)base._Relocate(wr);
             r += (_Domain, domain._Relocate(wr));
             if (applicationPS>=0)
                 r += (ApplicationPS, wr.Fix(applicationPS));
@@ -181,6 +181,25 @@ namespace Pyrrho.Level3
                 r += (SystemPS, wr.Fix(systemPS));
             r += (TableChecks, wr.Fix(tableChecks));
             r += (Triggers, wr.Fix(triggers));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Table)base.Fix(fx);
+            if (applicationPS >= 0)
+                r += (ApplicationPS, fx[applicationPS]??applicationPS);
+            var xs = BTree<CList<long>, long>.Empty;
+            for (var b = indexes.First(); b != null; b = b.Next())
+                xs += (Fix(b.key(), fx), fx[b.value()] ?? b.value());
+            r += (Indexes, xs);
+            r += (TableCols, Fix(tblCols,fx));
+            if (systemPS >= 0)
+                r += (SystemPS, fx[systemPS]??systemPS);
+            r += (TableChecks, Fix(tableChecks,fx));
+            var tgs = BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
+            for (var b = triggers.First(); b != null; b = b.Next())
+                tgs += (b.key(), Fix(b.value(), fx));
+            r += (Triggers, tgs);
             return r;
         }
         internal override Basis Fix(Context cx)

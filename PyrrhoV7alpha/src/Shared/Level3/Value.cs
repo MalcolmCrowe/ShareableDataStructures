@@ -296,8 +296,9 @@ namespace Pyrrho.Level3
                 if (from == -1L)
                     return cx.values[defpos];
                 var f = cx.from[defpos];
-                var r = cx.data[f.rowSet]
-                    ?? throw new PEException("PE112");
+                var r = cx.data[f.rowSet];
+                if (r == null)
+                    return null;
                 var c = cx.cursors[f.rowSet];
                 if (c == null) // can happen with unreachable conditions during OrdereredRowSet
                     return null;
@@ -333,20 +334,6 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-#if TABLEREF
-        internal override DBObject TableRef(Context cx, From f)
-        {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
-            if (domain.kind == Sqlx.CONTENT && f.mem.Contains(_Alias) && name == f.alias)
-            {
-                var r = new SqlTable(defpos, f);
-                cx.done += (defpos,r);
-                return r;
-            }
-            return base.TableRef(cx, f);
-        }
-#endif
         /// <summary>
         /// Used for Window Function evaluation.
         /// Called by GroupingBookmark (when not building) and SelectedCursor
@@ -435,8 +422,8 @@ namespace Pyrrho.Level3
             ref BTree<long, bool> where)
         {
             var m = j.mem;
-            m += (JoinPart.LeftOperand, ((Query)cx.obs[j.left]).AddCondition(cx,Query.Where, this).defpos);
-            m += (JoinPart.RightOperand, ((Query)cx.obs[j.right]).AddCondition(cx,Query.Where,this).defpos);
+            m += (JoinPart.LeftOperand, ((Query)cx.obs[j.left]).AddCondition(cx,Query.Where, this, true).defpos);
+            m += (JoinPart.RightOperand, ((Query)cx.obs[j.right]).AddCondition(cx,Query.Where,this, true).defpos);
             return (Query)j.New(cx,m);
         }
         internal virtual SqlValue PartsIn(BList<long> dt)
@@ -571,6 +558,17 @@ namespace Pyrrho.Level3
             // don't worry about TableRow
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlValue)base.Fix(fx);
+            r += (_From, fx[from]??from);
+            r += (Left, fx[left] ?? left);
+            r += (Right, fx[right]??right);
+            r += (_Columns, Fix(columns,fx));
+            r += (Sub, fx[sub]??sub);
+            // don't worry about TableRow
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlValue)base.Fix(cx);
@@ -606,18 +604,6 @@ namespace Pyrrho.Level3
         {
             return new SqlTable(dp,mem);
         }
-#if TABLEREF
-        internal override DBObject TableRef(Context cx, From f)
-        {
-            if (domain.kind == Sqlx.CONTENT && name == f.name)
-            {
-                var r = this + (_From, f.defpos) + (_Domain, f.domain);
-                cx.Replace(this, r);
-                return r;
-            }
-            return this;
-        }
-#endif
         internal override TypedValue Eval(Context cx)
         {
             return cx.cursors[from];
@@ -706,6 +692,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SqlCopy)base._Relocate(wr);
             r += (CopyFrom, wr.Fixed(copyFrom).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlCopy)base.Fix(fx);
+            r += (CopyFrom, fx[copyFrom]??copyFrom);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -844,6 +836,12 @@ namespace Pyrrho.Level3
                 r += (TreatType, t);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlTypeExpr)base.Fix(fx);
+            r += (TreatType, (Domain)type.Fix(fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlTypeExpr)base.Fix(cx);
@@ -901,6 +899,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SqlTreatExpr)base._Relocate(wr);
             r += (TreatExpr, wr.Fixed(val)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlTreatExpr)base.Fix(fx);
+            r += (TreatExpr, fx[val]??val);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1145,27 +1149,10 @@ namespace Pyrrho.Level3
             }
             return (SqlValue)cx.Add(r);
         }
-#if TABLEREF
-        internal override DBObject TableRef(Context cx, From f)
-        {
-            DBObject r = this;
-            if (kind==Sqlx.DOT)
-            {
-                var lf = (SqlValue)cx.obs[left]?.TableRef(cx, f);
-                var rg = (SqlValue)cx.obs[right]?.TableRef(cx, f);
-                if (lf.defpos != left || rg.defpos != right)
-                {
-                    r = new SqlValueExpr(defpos, cx, kind, lf, rg, mod, mem);
-                    cx.done += (defpos, r);
-                }
-            }
-            return r;
-        }
-#endif
         internal override bool KnownBy(Context cx, Query q)
         {
             return ((cx.obs[left] as SqlValue)?.KnownBy(cx, q) != false)
-                || ((cx.obs[right] as SqlValue)?.KnownBy(cx, q) != false);
+                && ((cx.obs[right] as SqlValue)?.KnownBy(cx, q) != false);
         }
         internal override bool Uses(Context cx,long t)
         {
@@ -2657,6 +2644,12 @@ namespace Pyrrho.Level3
             r += (_Columns, wr.Fix(columns));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlRow)base.Fix(fx);
+            r += (_Columns, Fix(columns,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlRow)base.Fix(cx);
@@ -2865,6 +2858,12 @@ namespace Pyrrho.Level3
             r += (Rows, wr.Fix(rows));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (Rows, Fix(rows,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlRowArray)base.Fix(cx);
@@ -3039,10 +3038,24 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (SqlXmlValue)base._Relocate(wr);
             r += (Attrs, wr.Fix(attrs));
             r += (Children, wr.Fix(children));
             r += (Content, wr.Fixed(content)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlXmlValue)base.Fix(fx);
+            var al = BList<(XmlName, long)>.Empty;
+            for (var b = attrs.First(); b != null; b = b.Next())
+            {
+                var (n, p) = b.value();
+                al += (n, fx[p] ?? p);
+            }
+            r += (Attrs, al);
+            r += (Children, Fix(children,fx));
+            r += (Content, fx[content]??content);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3221,8 +3234,14 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (SqlSelectArray)base._Relocate(wr);
             r += (ArrayValuedQE, wr.Fixed(aqe).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlSelectArray)base.Fix(fx);
+            r += (ArrayValuedQE, fx[aqe]??aqe);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3347,6 +3366,13 @@ namespace Pyrrho.Level3
             var r = (SqlValueArray)base._Relocate(wr);
             r += (Array, wr.Fix(array));
             r += (Svs, wr.Fixed(svs)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlValueArray)base.Fix(fx);
+            r += (Array, Fix(array,fx));
+            r += (Svs, fx[svs]??svs);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3518,6 +3544,12 @@ namespace Pyrrho.Level3
                 r = r._Expr(wr.cx, e);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlValueSelect)base.Fix(fx);
+            r += (Expr,fx[expr]??expr);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlValueSelect)base.Fix(cx);
@@ -3656,6 +3688,12 @@ namespace Pyrrho.Level3
             r += (Bits, wr.Fix(bits));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (Bits, Fix(bits,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (ColumnFunction)base.Fix(cx);
@@ -3721,6 +3759,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SqlCursor)base._Relocate(wr);
             r += (Spec, wr.Fixed(spec).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlCursor)base.Fix(fx);
+            r += (Spec, fx[spec]??spec);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3801,6 +3845,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SqlCall)base._Relocate(wr);
             r += (Call, wr.Fixed(call).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlCall)base.Fix(fx);
+            r += (Call, fx[call]??call);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -4148,6 +4198,12 @@ namespace Pyrrho.Level3
                 r += (Sce, sc);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlDefaultConstructor)base.Fix(fx);
+            r += (Sce, fx[sce]??sce);
+            return r;
+        }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             if (cx.done.Contains(defpos))
@@ -4332,6 +4388,17 @@ namespace Pyrrho.Level3
             r += (_Val, wr.Fixed(val)?.defpos??-1L);
             r += (Window, wr.Fixed(window)?.defpos??-1L);
             r += (WindowId, wr.Fix(windowId));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (Filter, fx[filter]??filter);
+            r += (Op1, fx[op1]??op1);
+            r += (Op2, fx[op2]??op2);
+            r += (_Val, fx[val]??val);
+            r += (Window, fx[window]??window);
+            r += (WindowId, fx[windowId]??windowId);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -5961,6 +6028,13 @@ namespace Pyrrho.Level3
             r += (_Select, wr.Fixed(select)?.defpos??-1L);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (QuantifiedPredicate)base.Fix(fx);
+            r += (What, fx[what]??what);
+            r += (_Select, fx[select]??select);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (QuantifiedPredicate)base.Fix(cx);
@@ -6155,6 +6229,14 @@ namespace Pyrrho.Level3
             r += (QuantifiedPredicate.What, wr.Fixed(what)?.defpos??-1L);
             r += (QuantifiedPredicate.Low, wr.Fixed(low)?.defpos ?? -1L);
             r += (QuantifiedPredicate.High, wr.Fixed(high)?.defpos ?? -1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (BetweenPredicate)base.Fix(fx);
+            r += (QuantifiedPredicate.What,fx[what]??what);
+            r += (QuantifiedPredicate.Low, fx[low]??low);
+            r += (QuantifiedPredicate.High, fx[high]??high);
             return r;
         }
         internal override void Grouped(Context cx, GroupSpecification gs)
@@ -6386,6 +6468,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = base._Relocate(wr);
             r += (Escape, wr.Fixed(escape)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (Escape, fx[escape]??escape);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -6634,6 +6722,14 @@ namespace Pyrrho.Level3
             r += (QuantifiedPredicate.What, wr.Fixed(what)?.defpos??-1L);
             r += (QuantifiedPredicate._Select, wr.Fixed(select)?.defpos??-1L);
             r += (QuantifiedPredicate.Vals, wr.Fix(vals));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (InPredicate)base.Fix(fx);
+            r += (QuantifiedPredicate.What, fx[what]??what);
+            r += (QuantifiedPredicate._Select, fx[select]??select);
+            r += (QuantifiedPredicate.Vals, Fix(vals,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -6886,6 +6982,13 @@ namespace Pyrrho.Level3
             r += (Rhs, wr.Fixed(rhs)?.defpos ?? -1L);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (MemberPredicate)base.Fix(fx);
+            r += (Lhs, fx[lhs]??lhs);
+            r += (Rhs, fx[rhs]??rhs);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (MemberPredicate)base.Fix(cx);
@@ -7059,9 +7162,19 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (TypePredicate)base._Relocate(wr);
             r += (MemberPredicate.Lhs, wr.Fixed(lhs).defpos);
             r += (MemberPredicate.Rhs, wr.Fix(rhs));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (TypePredicate)base.Fix(fx);
+            r += (MemberPredicate.Lhs, fx[lhs]??lhs);
+            var rh = BList<Domain>.Empty;
+            for (var b = rhs.First(); b != null; b = b.Next())
+                rh += (Domain)b.value().Fix(fx);
+            r += (MemberPredicate.Rhs, rh);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -7272,6 +7385,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (QueryPredicate)base._Relocate(wr);
             r += (QExpr, wr.Fixed(expr).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (QueryPredicate)base.Fix(fx);
+            r += (QExpr, fx[expr]??expr);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -7491,6 +7610,12 @@ namespace Pyrrho.Level3
             r += (NVal, wr.Fixed(val).defpos);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (NVal, fx[val]??val);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (NullPredicate)base.Fix(cx);
@@ -7582,10 +7707,21 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (SqlHttpBase)base._Relocate(wr);
             r += (GlobalFrom, globalFrom.Relocate(wr));
             r += (HttpWhere,wr.Fix(where));
             r += (HttpMatches, wr.Fix(matches));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlHttpBase)base.Fix(fx);
+            r += (GlobalFrom, globalFrom.Fix(fx));
+            r += (HttpWhere, Fix(where,fx));
+            var ms = BTree<SqlValue, TypedValue>.Empty;
+            for (var b = matches.First(); b != null; b = b.Next())
+                ms += ((SqlValue)b.key().Fix(fx), b.value());
+            r += (HttpMatches, ms);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -7728,10 +7864,18 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (SqlHttp)base._Relocate(wr);
             r += (KeyType, keyType._Relocate(wr));
             r += (TargetType, targetType._Relocate(wr));
             r += (Url, expr.Relocate(wr));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlHttp)base.Fix(fx);
+            r += (KeyType, keyType.Fix(fx));
+            r += (TargetType, targetType.Fix(fx));
+            r += (Url, expr.Fix(fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -8079,6 +8223,13 @@ namespace Pyrrho.Level3
             var r = (SqlHttpUsing)base._Relocate(wr);
             r += (UsingCols, wr.Fix(usC));
             r += (UsingTablePos, wr.Fix(usingtablepos));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SqlHttpUsing)base.Fix(fx);
+            r += (UsingCols, Fix(usC,fx));
+            r += (UsingTablePos, fx[usingtablepos]??usingtablepos);
             return r;
         }
         internal override Basis Fix(Context cx)

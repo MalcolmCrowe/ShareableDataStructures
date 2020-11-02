@@ -95,6 +95,12 @@ namespace Pyrrho.Level4
         {
             return new GroupingRowSet(dp,mem);
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (RowSet)base._Replace(cx, so, sv);
+            r += (Groupings, cx.Replaced(groupings));
+            return r;
+        }
         internal override void Scan(Context cx)
         {
             base.Scan(cx);
@@ -115,6 +121,13 @@ namespace Pyrrho.Level4
             var r = (GroupingRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
             r += (Groupings, wr.Fix(groupings));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (GroupingRowSet)base.Fix(fx);
+            r += (From.Source, fx[source]??source);
+            r += (Groupings, Fix(groupings,fx));
             return r;
         }
         static BList<long> _Info(Context cx,Grouping g,BList<long>gs)

@@ -80,7 +80,6 @@ namespace Pyrrho.Level3
             }
             count = 1;
         }
-
         /// <summary>
         /// Constructor: implementation of add, update etc
         /// </summary>
@@ -428,6 +427,14 @@ namespace Pyrrho.Level3
             }
             return r;
         }
+        internal MTree Fix(BTree<long, long?> fx)
+        {
+            return new MTree(new TreeInfo(info, fx), impl, impl.Count);
+        }
+        internal MTree Replaced(Context cx,DBObject so,DBObject sv)
+        {
+            return new MTree(info.Replaced(cx, so, sv), impl, count);
+        }
         internal MTree Relocate(Writer wr)
         {
             var r = new MTree(info.Relocate(wr));
@@ -726,6 +733,12 @@ namespace Pyrrho.Level3
         {
             head = h; headType = dm; onDuplicate = d; onNullKey = n; tail = t;
         }
+        internal TreeInfo(TreeInfo ti,BTree<long,long?> fx)
+        {
+            head = fx[ti.head] ?? ti.head; headType = (Domain)ti.headType.Fix(fx);
+            onDuplicate = ti.onDuplicate; onNullKey = ti.onNullKey;
+            tail = (tail != null) ? new TreeInfo(tail, fx) : null;
+        }
         /// <summary>
         /// Set up Tree information for a simple result set
         /// </summary>
@@ -775,12 +788,28 @@ namespace Pyrrho.Level3
         internal TreeInfo Fix(Context cx)
         {
             return new TreeInfo(cx.obuids[head], (Domain)headType.Fix(cx), 
-                onDuplicate, onNullKey, tail.Fix(cx));
+                onDuplicate, onNullKey, tail?.Fix(cx));
+        }
+        internal TreeInfo Fix(BTree<long, long?> fx)
+        {
+            return new TreeInfo(fx[head] ?? head, (Domain)headType.Fix(fx),
+                onDuplicate, onNullKey, tail?.Fix(fx));
+        }
+        internal TreeInfo Replaced(Context cx)
+        {
+            return new TreeInfo(cx.done[head]?.defpos ?? head, (Domain)headType.Fix(cx),
+                onDuplicate, onNullKey, tail?.Replaced(cx));
         }
         internal TreeInfo Relocate(Level2.Writer wr)
         {
             return new TreeInfo(wr.Fix(head), (Domain)headType._Relocate(wr),
-                onDuplicate, onNullKey, tail.Relocate(wr));
+                onDuplicate, onNullKey, tail?.Relocate(wr));
+        }
+        internal TreeInfo Replaced(Context cx,DBObject so,DBObject sv)
+        {
+            return new TreeInfo(cx.done[head]?.defpos ?? head, 
+                (Domain)headType._Replace(cx, so, sv),
+                onDuplicate, onNullKey, tail?.Replaced(cx, so, sv));
         }
     }
 

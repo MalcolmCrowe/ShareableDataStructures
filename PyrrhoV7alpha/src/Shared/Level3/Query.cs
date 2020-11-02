@@ -141,6 +141,20 @@ namespace Pyrrho.Level3
             r += (Assig, wr.Fix(assig));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Query)base.Fix(fx);
+            r += (Filter, Fix(filter,fx));
+            r += (_Matches, Fix(matches,fx));
+            r += (Matching, Fix(matching,fx));
+            r += (OrdSpec, Fix(ordSpec,fx));
+            r += (Where, Fix(where,fx));
+            var ua = BTree<UpdateAssignment, bool>.Empty;
+            for (var b = assig.First(); b != null; b = b.Next())
+                ua += ((UpdateAssignment)b.key().Fix(fx), b.value());
+            r += (Assig, ua);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (Query)base.Fix(cx);
@@ -171,29 +185,11 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos)) // includes the case was==this
                 return cx.done[defpos];
             var de = 0;
-            var vs = BList<SqlValue>.Empty;
-            var ch = false;
             var r = this;
-            for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var x = b.value();
-                if (x == was.defpos)
-                {
-                    ch = true;
-                    de = Math.Max(de, now.depth);
-                    vs += (SqlValue)now;
-                }
-                else
-                {
-                    if (cx.done.Contains(x))
-                        ch = true;
-                    vs += (SqlValue)(cx.done[x] ?? cx.obs[x]);
-                }
-            }
-           if (ch)
-                r += (_Domain, new Domain(r.domain.kind,vs));
+            if (domain.representation.Contains(was.defpos))
+                de = _Max(de, now.depth);
             var dm = domain._Replace(cx, was, now);
-            if (dm != domain)
+            if (dm != r.domain)
                 r += (_Domain, dm); 
             var w = r.where;
             for (var b = w.First(); b != null; b = b.Next())
@@ -265,82 +261,6 @@ namespace Pyrrho.Level3
         {
             return (Query)cx.obs[defpos];
         }
-#if TABLEREF
-        internal override DBObject TableRef(Context cx, From f)
-        {
-            if (cx.done.Contains(defpos)) 
-                return cx.done[defpos];
-            var cs = rowType;
-            var r = this;
-            for (var b = cs.First(); b != null; b = b.Next())
-            {
-                var x = (SqlValue)cx.obs[b.value()];
-                var bv = x?.TableRef(cx, f);
-                if (bv != x && bv!=null)
-                    cs += (b.key(), bv.defpos);
-            }
-            if (cs != rowType)
-                r += (_Domain, new Domain(Sqlx.ROW,cx,cs));
-            var w = r.where;
-            for (var b = w.First(); b != null; b = b.Next())
-            {
-                var v = (SqlValue)cx.obs[b.key()].TableRef(cx, f);
-                if (v.defpos != b.key())
-                    w = w - b.key() + (v.defpos, true);
-            }
-            if (w != r.where)
-                r += (Where,w);
-            var ms = r.matches;
-            for (var b = ms.First(); b != null; b = b.Next())
-            {
-                var bk = (SqlValue)cx.obs[b.key()].TableRef(cx, f);
-                if (bk.defpos != b.key())
-                    ms = ms - b.key() + (bk.defpos, b.value());
-            }
-            if (ms != r.matches)
-                r += (_Matches, ms);
-            var mg = matching;
-            for (var b = mg.First(); b != null; b = b.Next())
-            {
-                var bk = (SqlValue)cx.obs[b.key()].TableRef(cx, f);
-                var bv = b.value();
-                for (var c = bv.First(); c != null; c = c.Next())
-                {
-                    var ck = (SqlValue)cx.obs[c.key()].TableRef(cx, f);
-                    if (ck.defpos != c.key())
-                        bv = bv - c.key() + (ck.defpos, true);
-                }
-                if (bk.defpos!=b.key())
-                    mg -= b.key();
-                if (bv != b.value())
-                    mg += (bk.defpos, bv);
-            }
-            if (mg != matching)
-                r += (Matching, mg);
-            var os = ordSpec;
-            for (var b = os?.First(); b != null; b = b.Next())
-            {
-                var it = b.value();
-                var ow = (SqlValue)cx.obs[it].TableRef(cx, f);
-                if (it != ow.defpos)
-                    os += (b.key(), ow.defpos);
-            }
-            if (os != ordSpec)
-                r += (OrdSpec, os);
-            var ag = r.assig;
-            for (var b = ag.First(); b != null; b = b.Next())
-            {
-                var aa = (SqlValue)cx.obs[b.key().val].TableRef(cx, f);
-                var ab = (SqlValue)cx.obs[b.key().vbl].TableRef(cx, f);
-                if (aa.defpos != b.key().val || ab.defpos != b.key().vbl)
-                    ag += (new UpdateAssignment(ab.defpos, aa.defpos), b.value());
-            }
-            if (ag != r.assig)
-                r += (Assig, ag);
-            cx.done += (defpos, r);
-            return (r == this) ? this : (Query)cx.Add(r);
-        }
-#endif
         internal virtual bool HasColumn(Context cx,SqlValue sv)
         {
             return false;
@@ -500,7 +420,10 @@ namespace Pyrrho.Level3
         internal virtual Query AddConditions(Context cx, ref BTree<long, bool> conds,
             ref BTree<UpdateAssignment, bool> assigns, RowSet data)
         {
-            return TryToAdd(cx,ref conds).TryToAdd(ref assigns);
+            var r = TryToAdd(cx,ref conds).TryToAdd(ref assigns);
+            if (r != this)
+                cx.Add(r);
+            return r;
         }
         internal Query TryToAdd(Context cx,ref BTree<long,bool> conds)
         {
@@ -508,13 +431,13 @@ namespace Pyrrho.Level3
             for (var b = conds?.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                if (KnowsOneOf(cx, matching[p]))
+                if (((SqlValue)cx.obs[p]).KnownBy(cx,this) || KnowsOneOf(cx, matching[p]))
                 {
                     wh += (p, true);
                     conds -= p;
                 }
             }
-            return this + (Where, wh);
+            return (wh==where)?this:(this + (Where, wh));
         }
         internal Query TryToAdd(ref BTree<UpdateAssignment, bool> assigns)
         {
@@ -522,7 +445,7 @@ namespace Pyrrho.Level3
             for (var b = assigns?.First(); b != null; b = b.Next())
             {
                 var ua = b.key();
-                if (domain.HasOneOf(matching[ua.vbl]))
+                if (domain.representation.Contains(ua.vbl) || domain.HasOneOf(matching[ua.vbl]))
                 {
                     r += (ua, true);
                     assigns -= ua;
@@ -549,22 +472,24 @@ namespace Pyrrho.Level3
         {
             var q = this;
             for (var b = conds.First(); b != null; b = b.Next())
-                q = q.AddCondition(cx, prop, (SqlValue)cx.obs[b.key()]);
+                q = q.AddCondition(cx, prop, (SqlValue)cx.obs[b.key()], false);
             return (Query)New(cx,q.mem);
         }
-        internal Query AddCondition(Context cx,long prop, SqlValue cond)
+        internal Query AddCondition(Context cx, long prop, SqlValue cond, bool onlyKnown)
         {
-            if (where.Contains(cond.defpos) || !cond.KnownBy(cx,this))
+            if (where.Contains(cond.defpos))
+                return this;
+            if (onlyKnown && !cond.KnownBy(cx, this))
                 return this;
             var filt = filter;
-            var q = this + (Dependents,dependents+(cond.defpos,true));
+            var q = this + (Dependents, dependents + (cond.defpos, true));
             if (cond is SqlValueExpr se && se.kind == Sqlx.EQL)
             {
                 var lv = cx.obs[se.left] as SqlValue;
                 var rg = (SqlValue)cx.obs[se.right];
-                if (lv.target>=0 && rg.isConstant(cx))
+                if (lv.target >= 0 && rg.isConstant(cx))
                     filt += (lv.target, rg.Eval(cx));
-                else if (rg.target>=0 && lv.isConstant(cx))
+                else if (rg.target >= 0 && lv.isConstant(cx))
                     filt += (rg.target, lv.Eval(cx));
             }
             if (filt != filter)
@@ -576,7 +501,7 @@ namespace Pyrrho.Level3
             if (cond.depth >= q.depth)
                 q += (Depth, cond.depth + 1);
             cx.Replace(this, q);
-            return (Query)New(cx,q.mem);
+            return (Query)New(cx, q.mem);
         }
         internal long QuerySpec(Context cx)
         {
@@ -596,7 +521,7 @@ namespace Pyrrho.Level3
         internal bool KnowsOneOf(Context cx,BTree<long,bool> t)
         {
             for (var b = t?.First(); b != null; b = b.Next())
-                if (Knows(cx, b.key()))
+                if (((SqlValue)cx.obs[b.key()]).KnownBy(cx, this))
                     return true;
             return false;
         }
@@ -824,7 +749,9 @@ namespace Pyrrho.Level3
             var cm = "";
             for (var b=rowType?.First();b!=null;b=b.Next())
             {
-                sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
+                sb.Append(cm); 
+                cm = (b.key()+1==display)?"|":","; 
+                sb.Append(Uid(b.value()));
             }
             sb.Append(")");
             if (assig.Count>0) { sb.Append(" Assigs:"); sb.Append(assig); }
@@ -936,6 +863,15 @@ namespace Pyrrho.Level3
             r += (RestViews, wr.Fix(restViews));
             r += (Union, wr.Fixed(union)?.defpos??-1L);
             r += (UsingFrom, wr.Fixed(usingFrom)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (CursorSpecification)base.Fix(fx);
+            r += (RVQSpecs, Fix(rVqSpecs,fx));
+            r += (RestViews, Fix(restViews,fx));
+            r += (Union, fx[union]??union);
+            r += (UsingFrom, fx[usingFrom]??usingFrom);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1158,6 +1094,14 @@ namespace Pyrrho.Level3
             r += (Target, wr.Fixed(target).defpos);
             r += (Having, wr.Fix(having));
             r += (Windows, wr.Fix(window));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (TableExpression)base.Fix(fx);
+            r += (Target, fx[target]??target);
+            r += (Having, Fix(having,fx));
+            r += (Windows, Fix(window,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1438,6 +1382,17 @@ namespace Pyrrho.Level3
             r += (NamedCols, wr.Fix(namedCols));
             r += (LeftOperand, wr.Fixed(left).defpos);
             r += (RightOperand, wr.Fixed(right).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (JoinPart)base.Fix(fx);
+            r += (JoinCond, Fix(joinCond,fx));
+            r += (LeftOrder, Fix(leftOrder,fx));
+            r += (RightOrder, Fix(rightOrder,fx));
+            r += (NamedCols, Fix(namedCols,fx));
+            r += (LeftOperand, fx[left]??left);
+            r += (RightOperand, fx[right]??right);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2051,6 +2006,16 @@ namespace Pyrrho.Level3
             r += (FDTable, table.Fix(cx));
             r += (FDRefIndex, rindex?.Fix(cx));
             r += (FDRefTable, rtable?.Fix(cx));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = this;
+            r += (FDConds, Fix(conds,fx));
+            r += (FDIndex, index.Fix(fx));
+            r += (FDTable, table.Fix(fx));
+            r += (FDRefIndex, rindex?.Fix(fx));
+            r += (FDRefTable, rtable?.Fix(fx));
             return r;
         }
     }

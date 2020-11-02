@@ -17,7 +17,7 @@ namespace Pyrrho.Level2
 	/// <summary>
 	/// A View definition
 	/// </summary>
-    internal class PView : Physical  // not Compiled
+    internal class PView : Compiled
     {
         /// <summary>
         /// The name of the View
@@ -27,8 +27,17 @@ namespace Pyrrho.Level2
         /// The definition of the view
         /// </summary>
         public string viewdef;
+        public long query;
         public override long Dependent(Writer wr, Transaction tr)
         {
+            for (var b = framing.obs.First(); b != null; b = b.Next())
+                if (b.value() is TableColumn tc)
+                {
+                    if (!Committed(wr, tc.tabledefpos))
+                        return tc.tabledefpos;
+                    if (!Committed(wr, tc.defpos))
+                        return tc.defpos;
+                }
             return -1;
         }
         /// <summary>
@@ -39,14 +48,15 @@ namespace Pyrrho.Level2
         /// <param name="vd">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, string vd, long pp, Context cx)
-            : this(Type.PView, nm, vd, pp, cx) 
+        internal PView(string nm, string vd, long vq, long pp, Context cx)
+            : this(Type.PView, nm, vd, vq, pp, cx) 
         { }
-        protected PView(Type pt,string nm,string vd, long pp, Context cx) 
-            : base(pt,pp,cx)
+        protected PView(Type pt,string nm,string vd, long vq,long pp, Context cx) 
+            : base(pt,pp,cx,new Framing(cx))
         {
             name = nm;
             viewdef = vd;
+            query = vq;
         }
         /// <summary>
         /// Constructor: A view definition from the buffer
@@ -60,6 +70,7 @@ namespace Pyrrho.Level2
             name = x.name;
             wr.srcPos = wr.Length + 1;
             viewdef = x.viewdef;
+            query = wr.Fix(x.query);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -84,9 +95,17 @@ namespace Pyrrho.Level2
         {
             name = rdr.GetString();
             viewdef = rdr.GetString();
-            var source = new Ident(viewdef, ppos + 1);
             base.Deserialise(rdr);
-            Install(rdr.context, rdr.Position);
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            if (viewdef!="")
+            {
+                var psr = new Parser(rdr, new Ident(viewdef, ppos + 1), null);
+                var cs = psr.ParseCursorSpecification(Domain.TableType);
+                query = cs.cs;
+                Frame(psr.cx);
+            }
         }
         /// <summary>
         /// a readable version of this Physical
@@ -126,10 +145,27 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            var vw = new View(this);
-            cx.db = cx.db + (vw,p);
+            var ro = cx.db.role;
+            // The definer is the given role
+            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
+                Grant.Privilege.Update | Grant.Privilege.Delete | 
+                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
+                Grant.Privilege.GrantInsert |
+                Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+            var vw = new View(this,cx.db);
+            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            cx.db = cx.db + (ro,p)+ (vw,p);
             cx.Install(vw, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+        }
+        public override (Transaction, Physical) Commit(Writer wr, Transaction t)
+        {
+            var (tr, ph) = base.Commit(wr, t);
+            var pv = (PView)ph;
+            var vw = (DBObject)tr.objects[ppos] + (View.ViewQry, pv.framing.obs[pv.query])
+                + (DBObject._Framing, pv.framing);
+            return ((Transaction)(tr + (vw, tr.loadpos)), ph);
         }
     }
     internal class PRestView : PView
@@ -141,7 +177,7 @@ namespace Pyrrho.Level2
         public PRestView(string nm, long tp, long pp, Context cx)
             : this(Type.RestView, nm, tp, pp, cx) { }
         protected PRestView(Type t,string nm,long tp,long pp, Context cx)
-            : base(t,"",nm,pp,cx)
+            : base(t,"",nm,-1L,pp,cx)
         {
             structpos = tp;
         }

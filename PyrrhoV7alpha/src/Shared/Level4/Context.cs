@@ -260,7 +260,9 @@ namespace Pyrrho.Level4
         }
         internal void Install1(Framing fr)
         {
-            obs += (fr.obs,true);
+            //      obs += (fr.obs,true);
+            for (var b = fr.obs.First(); b != null; b = b.Next())
+                Add(b.value());
             defs += fr.defs;
         }
         internal void Install2(Framing fr)
@@ -470,7 +472,7 @@ namespace Pyrrho.Level4
                 {
                     var ic = new Ident(nm, ob.defpos);
                     // Careful: we don't want to overwrite an undefined Ident by an unreified one
-                    // as it is about to be Resolved
+                    // if it is about to be Resolved
                     var od = defs[ic];
                     if (od == -1L || !(ob.defpos >= Transaction.Executables && obs[od] is SqlValue ov
                         && ov.domain.kind == Sqlx.CONTENT))
@@ -575,6 +577,8 @@ namespace Pyrrho.Level4
         /// <param name="now"></param>
         internal DBObject Replace(DBObject was, DBObject now)
         {
+            if (was.defpos == 0x7000000000000006)
+                Console.WriteLine("Here");
             if (dbformat<51)
                 Add(now);
             if (was == now)
@@ -587,7 +591,7 @@ namespace Pyrrho.Level4
             for (var b = depths.First(); b != null; b = b.Next())
             {
                 var bv = b.value();
-                for (var c = bv.First(); c != null; c = c.Next())
+                for (var c = bv.PositionAt(Transaction.TransPos); c != null; c = c.Next())
                 {
                     var p = c.value();
                     var cv = p.Replace(this, was, now); // may update done
@@ -597,6 +601,8 @@ namespace Pyrrho.Level4
                 if (bv != b.value())
                     depths += (b.key(), bv);
             }
+            for (var b = data.First(); b != null; b = b.Next())
+                b.value()._Replace(this, was, now);
             // now scan by depth to install the new versions
             for (var b = depths.First(); b != null; b = b.Next())
             {
@@ -605,7 +611,16 @@ namespace Pyrrho.Level4
                 {
                     var cv = c.value();
                     if (cv.depth == bk)
-                        Add(cv);
+                    {
+                        obs += (cv.defpos, cv);
+                        if (obs[c.key()] is DBObject oo && oo.depth != cv.depth)
+                        {
+                            var de = depths[oo.depth];
+                            depths += (oo.depth, de - cv.defpos);
+                        }
+                        if (cv is SqlValue sv)
+                            defs += (new Ident(sv.name,sv.defpos), cv.defpos);
+                    }
                 }
             }
             defs = defs.ApplyDone(this);
@@ -618,6 +633,66 @@ namespace Pyrrho.Level4
             if (done.Contains(dp))
                 return done[dp].defpos;
             return obs[dp]?._Replace(this,was, now)?.defpos??-1L;
+        }
+        internal BTree<long,RowSet.Finder> Replaced(BTree<long,RowSet.Finder>fi)
+        {
+            var r = BTree<long, RowSet.Finder>.Empty;
+            for (var b=fi.First();b!=null;b=b.Next())
+            {
+                var f = b.value();
+                var k = done[b.key()]?.defpos??b.key();
+                var nc = done[f.col]?.defpos??f.col;
+                r += (k, new RowSet.Finder(nc, f.rowSet));
+            }
+            return r;
+        }
+        internal BList<long> Replaced(BList<long> ks)
+        {
+            var r = BList<long>.Empty;
+            for (var b = ks.First(); b != null; b = b.Next())
+                r += done[b.value()]?.defpos ?? b.value();
+            return r;
+        }
+        internal CList<long> Replaced(CList<long> ks)
+        {
+            var r = CList<long>.Empty;
+            for (var b = ks.First(); b != null; b = b.Next())
+                r += done[b.value()]?.defpos ?? b.value();
+            return r;
+        }
+        internal BTree<long,bool> Replaced(BTree<long,bool> wh)
+        {
+            var r = BTree<long,bool>.Empty;
+            for (var b = wh.First(); b != null; b = b.Next())
+                r += (done[b.key()]?.defpos ?? b.key(),b.value());
+            return r;
+        }
+        internal BTree<long, TypedValue> Replaced(BTree<long, TypedValue> wh)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            for (var b = wh.First(); b != null; b = b.Next())
+                r += (done[b.key()]?.defpos ?? b.key(), b.value().Replaced(this));
+            return r;
+        }
+        internal BTree<long, TRow> Replaced(BTree<long, TRow> wh)
+        {
+            var r = BTree<long, TRow>.Empty;
+            for (var b = wh.First(); b != null; b = b.Next())
+                r += (done[b.key()]?.defpos ?? b.key(), (TRow)b.value().Replaced(this));
+            return r;
+        }
+        internal BTree<long, BTree<long,bool>> 
+            Replaced(BTree<long, BTree<long,bool>> ma)
+        {
+            var r = BTree<long, BTree<long,bool>>.Empty;
+            for (var b = ma.First(); b != null; b = b.Next())
+            {
+                var t = BTree<long, bool>.Empty;
+                for (var c = b.value().First(); b != null; b = b.Next())
+                    t += (done[c.key()]?.defpos ?? c.key(), c.value());
+                r += (done[b.key()]?.defpos ?? b.key(), t);
+            }
+            return r;
         }
         internal DBObject _Replace(long dp, DBObject was, DBObject now)
         {
@@ -696,8 +771,11 @@ namespace Pyrrho.Level4
                 if (n == null)
                     continue;
                 var ic = new Ident(n, p);
-                defs += (new Ident(id, ic), ob.defpos);
-                defs += (ic, ob.defpos);
+                var iq = new Ident(id, ic);
+                if (defs[iq]<0)
+                    defs += (iq, ob.defpos);
+                if (defs[ic]<0)
+                    defs += (ic, ob.defpos);
             }
         }
         internal void AddParams(Procedure pr)
@@ -1149,6 +1227,18 @@ namespace Pyrrho.Level4
             }
             return ch? r : mu;
         }
+        internal void Scan(BTree<string, long> cs)
+        {
+            for (var b = cs?.First(); b != null; b = b.Next())
+                ObUnheap(b.value());
+        }
+        internal BTree<string,long> Fix(BTree<string,long>cs)
+        {
+            var r = BTree<string, long>.Empty;
+            for (var b = cs?.First(); b != null; b = b.Next())
+                r += (b.key(), obuids[b.value()]);
+            return r;
+        }
         internal void Scan(BTree<long,BTree<long,bool>> ma)
         {
             for (var b=ma.First();b!=null;b=b.Next())
@@ -1282,6 +1372,33 @@ namespace Pyrrho.Level4
                   +(Results,cx.results)
                   +(Defs,cx.defs)+(Result,cx.result?.defpos??-1L))//+(Depths,cx.depths))
         { }
+        internal Framing(DBObject ob, BTree<long, long?> fx)
+            : base(_Fix(ob.defpos,ob.framing, fx)) { }
+        static BTree<long,object> _Fix(long dp,Framing of,BTree<long,long?>fx)
+        {
+            var fd = of.defs.Fix(fx);
+            var fo = BTree<long, DBObject>.Empty;
+            for (var b = of.obs.PositionAt(dp); b != null; b = b.Next())
+            {
+                var ob = (DBObject)b.value().Fix(fx);
+                fo += (ob.defpos, ob);
+            }
+            var fs = BTree<long, RowSet>.Empty;
+            for (var b = of.data.First(); b != null; b = b.Next())
+            {
+                var rs = (RowSet)b.value().Fix(fx);
+                fs += (rs.defpos, rs);
+            }
+            var fr = BTree<long, long>.Empty;
+            for (var b = of.results.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var p = b.value();
+                fr += (fx[k] ?? k, fx[p]??p);
+            }
+            return BTree<long, object>.Empty + (Defs, fd) + (Obs, fo)
+                + (Data, fs) + (Results, fr);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new Framing(m);
@@ -1356,6 +1473,19 @@ namespace Pyrrho.Level4
                 rs += (wr.Fix(b.key()),wr.Fix(b.value()));
             r += (Defs, r.defs.Relocate(wr));
             r += (Result, wr.Fix(r.result));
+            r += (Results, rs);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Framing)base.Fix(fx);
+            r += (Obs, Fix(obs, fx));
+            r += (Data, Fix(data, fx));
+            var rs = BTree<long, long>.Empty;
+            for (var b = results.First(); b != null; b = b.Next())
+                rs += (fx[b.key()]??b.key(), fx[b.value()]??b.value());
+            r += (Defs, defs.Fix(fx));
+            r += (Result, fx[result]??result);
             r += (Results, rs);
             return r;
         }

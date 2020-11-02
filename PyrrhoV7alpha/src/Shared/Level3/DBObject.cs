@@ -50,8 +50,8 @@ namespace Pyrrho.Level3
         /// </summary>
         public long definer => (long)(mem[Definer] ?? -1L);
         public string description => (string)mem[Description] ?? "";
-//        internal Context compareContext => 
-        internal long lastChange => (long)(mem[LastChange]??0L);// compareContext?.db.loadpos ?? 0L;
+        //        internal Context compareContext => 
+        internal long lastChange => (long)(mem[LastChange] ?? 0L);// compareContext?.db.loadpos ?? 0L;
         /// <summary>
         /// Sensitive if it contains a sensitive type
         /// </summary>
@@ -87,7 +87,7 @@ namespace Pyrrho.Level3
         { }
         public static DBObject operator +(DBObject ob, (long, object) x)
         {
-            return (DBObject)ob.New(ob.mem+x);
+            return (DBObject)ob.New(ob.mem + x);
         }
         /// <summary>
         /// Used for shared Query and RowSets to create new copies 
@@ -97,7 +97,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="m"></param>
         /// <returns></returns>
-        internal virtual DBObject New(Context cx,BTree<long,object>m)
+        internal virtual DBObject New(Context cx, BTree<long, object> m)
         {
             return (DBObject)New(m);
         }
@@ -151,7 +151,7 @@ namespace Pyrrho.Level3
             var oi = (ObInfo)tr.role.infos[defpos];
             return (oi != null) && (oi.priv & priv) == 0;
         }
-        internal virtual BTree<long,bool> Needs(Context cx)
+        internal virtual BTree<long, bool> Needs(Context cx)
         {
             return BTree<long, bool>.Empty;
         }
@@ -161,7 +161,21 @@ namespace Pyrrho.Level3
         }
         internal virtual BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
         {
-            return BTree<long,RowSet.Finder>.Empty;
+            return BTree<long, RowSet.Finder>.Empty;
+        }
+        /// <summary>
+        /// Helpers for cloning a shared DBObject for use in query optimisation
+        /// </summary>
+        /// <param name="fx">Map for new uids to be used</param>
+        /// <returns>the new cloned DBObject</returns>
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = this;
+            if (fx.Contains(defpos))
+                r = Relocate(fx[defpos].Value);
+            if (domain == null)
+                return r;
+            return r + (_Domain, domain.Fix(fx));
         }
         internal abstract DBObject Relocate(long dp);
         internal override Basis _Relocate(Writer wr)
@@ -294,19 +308,6 @@ namespace Pyrrho.Level3
         {
             cx.db += (m.now, p);
         }
-#if TABLEREF
-        /// <summary>
-        /// This looks as if it should be called during Replace
-        /// nut nobody does
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="f"></param>
-        /// <returns></returns>
-        internal virtual DBObject TableRef(Context cx,From f)
-        {
-            return this;
-        }
-#endif
         internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             return this;

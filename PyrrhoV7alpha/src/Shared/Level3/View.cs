@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Configuration;
+using System.Diagnostics.Eventing.Reader;
+using System.Net.NetworkInformation;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -19,26 +22,75 @@ namespace Pyrrho.Level3
 {
 	/// <summary>
 	/// A database object for a view.
-    /// The domain is computed from the pv.viewdef immediately
+    /// The domain is computed from the pv.viewdef immediately.
     /// Immutable
+    /// However, we want to optimise queries deribed from views, so
+    /// we use the second constructor to make a private immutable copy
+    /// of the committed version.
 	/// </summary>
 	internal class View : DBObject
 	{
         internal const long
-            ViewDef = -379; // string
+            ViewCols = -378, // BTree<string,long> SqlValue
+            ViewDef = -379, // string
+            ViewPpos = -377,// long
+            ViewQry = -380; // long QueryExpression
+        public string name => (string)mem[Name];
         public string viewDef => (string)mem[ViewDef];
-        public View(PView pv,BTree<long,object>m=null) 
-            : base(pv.ppos, (m??BTree<long, object>.Empty) 
-                  + (Name,pv.name) + (_Domain,_Dom(pv))
-                  + (ViewDef,pv.viewdef) 
+        public BTree<string, long> viewCols =>
+            (BTree<string, long>)mem[ViewCols] ?? BTree<string, long>.Empty;
+        public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
+        public long viewQry => (long)(mem[ViewQry]??-1L);
+        public View(PView pv,Database db,BTree<long,object>m=null) 
+            : base(pv.ppos, _Dom(pv)
+                  + (Name,pv.name) + (Definer,db.role.defpos)
+                  + (ViewDef,pv.viewdef)
                   + (LastChange, pv.ppos))
         { }
+        internal View(View vw, Context cx)
+            : base(cx.nextHeap++,_Dom(cx,vw))
+        { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
-        static Domain _Dom(PView pv)
+        static BTree<long,object> _Dom(PView pv)
         {
-            var psr = new Parser(new Context(pv.database), new Ident(pv.name, pv.ppos));
-            var cs = psr.ParseCursorSpecification(pv.viewdef, Domain.TableType);
-            return cs.domain;
+            var vd = pv.framing.obs[pv.query];
+            var ns = BTree<string, long>.Empty;
+            var d = 1+vd.depth;
+            for (var b=vd.domain.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                var c = (SqlValue)pv.framing.obs[p];
+                d = _Max(d, 1 + c.depth);
+                ns += (c.name, p);
+            }
+            return BTree<long,object>.Empty + (_Domain,vd.domain) + (ViewPpos,pv.ppos)
+                +(ViewCols,ns) + (_Framing,pv.framing) + (ViewQry,pv.query)
+                +(Depth,d);
+        }
+        /// <summary>
+        /// This routine prepares a fresh copy of the View for use in query optimisation
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="vw"></param>
+        /// <returns></returns>
+        static BTree<long, object> _Dom(Context cx,View vw)
+        {
+            var fx = BTree<long, long?>.Empty;
+            for (var b = vw.framing.obs.PositionAt(vw.viewPpos); b != null; b = b.Next())
+                fx += (b.key(), cx.nextHeap++);
+            for (var b = vw.framing.data.PositionAt(vw.viewPpos); b != null; b = b.Next())
+                if (!fx.Contains(b.key()))
+                    fx += (b.key(), cx.nextHeap++);
+            var nf = new Framing(vw, fx);
+            cx.Install1(nf);
+            cx.Install2(nf);
+            var ns = BTree<string, long>.Empty;
+            for (var b = vw.viewCols.First(); b != null; b = b.Next())
+                ns += (b.key(), fx[b.value()] ?? b.value());
+            return BTree<long, object>.Empty + (_Domain, vw.domain.Fix(fx))
+                + (ViewDef, vw.viewDef) + (ViewPpos, vw.viewPpos)
+                + (ViewCols, ns) + (ViewQry,fx[vw.viewQry]) 
+                + (_Framing,nf) + (Depth,vw.depth);
         }
         public static View operator+(View v,(long,object)x)
         {
@@ -46,7 +98,12 @@ namespace Pyrrho.Level3
         }
         internal override ObInfo Inf(Context cx)
         {
-            return cx.Inf(defpos);
+            throw new NotImplementedException();
+        }
+        internal override void _Add(Context cx)
+        {
+            cx.Install1(framing);
+            base._Add(cx);
         }
         internal override CList<long> _Cols(Context cx)
         {
@@ -54,6 +111,20 @@ namespace Pyrrho.Level3
         }
         internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
         {
+            cx.Install2(framing);
+            if (!cx.data.Contains(defpos))
+            {
+                var vq = (Query)cx.obs[viewQry];
+                var rs = vq.RowSets(cx, fi);
+                var sc = (long)rs.mem[From.Source];
+                var fb = f.domain.rowType.First();
+                for (var b=domain.rowType.First();b!=null&&fb!=null;
+                    b=b.Next(),fb=fb.Next())
+                    fi += (b.value(), new RowSet.Finder(fb.value(), sc));
+                rs += (RowSet._Finder, fi);
+                cx.data += (rs.defpos, rs);
+                cx.data += (f.defpos, rs);
+            }
         }
         /// <summary>
         /// Execute an Insert (for an updatable View)
@@ -64,9 +135,19 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">the rowsets affected</param>
         internal override Context Insert(Context cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl)
+                Level cl)
         {
-            return cx;
+            var vrs = new ValueRowSet(cx.nextHeap++, cx, domain, f, data);
+            var fi = data.finder;
+            for (var b = data.rt.First(); b != null; b = b.Next())
+            {
+                var sc = (SqlCopy)cx.obs[b.value()];
+                fi += (sc.copyFrom, new RowSet.Finder(b.value(), data.defpos));
+            }
+            vrs = vrs + (RowSet._Finder, fi);
+            cx.data += (vrs.defpos, vrs);
+            var vq = (Query)cx.obs[viewQry];
+            return vq.Insert(cx, prov, vrs, eqs, rs, cl);
         }
         /// <summary>
         /// Execute a Delete (for an updatable View)
@@ -76,7 +157,8 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         internal override Context Delete(Context cx,From f, BTree<string, bool> dr, Adapters eqs)
         {
-            return cx;
+            var vq = (Query)cx.obs[viewQry];
+            return vq.Delete(cx, dr, eqs);
         }
         /// <summary>
         /// Execute an Update (for an updatabale View)
@@ -87,18 +169,13 @@ namespace Pyrrho.Level3
         /// <param name="rs">the affected rowsets</param>
         internal override Context Update(Context cx,From f, BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
         {
-            return cx;
+            var vq = (Query)cx.obs[viewQry];
+            var wh = f.where;
+            var ua = f.assig;
+            vq = vq.AddConditions(cx, ref wh, ref ua, null);
+            cx.Add(vq);
+            return vq.Update(cx, ur, eqs, rs);
         }
-        /// <summary>
-        /// a readable version of the View
-        /// </summary>
-        /// <returns>the string representation</returns>
-		public override string ToString()
-		{
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" Query "); sb.Append(viewDef);
-            return sb.ToString();
-		}
         /// <summary>
         /// API development support: generate the C# information for a Role$Class description
         /// </summary>
@@ -270,7 +347,79 @@ namespace Pyrrho.Level3
         }
         internal override void Scan(Context cx)
         {
+            cx.Scan(viewCols);
+            cx.ObUnheap(viewQry);
             cx.ObUnheap(defpos);
+        }
+        internal override Basis Fix(Context cx)
+        {
+            return base.Fix(cx)+(ViewCols,cx.Fix(viewCols))+(ViewQry,cx.Fix(viewQry));
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (View)base._Relocate(wr);
+            var cs = wr.Fix(viewCols);
+            if (cs != viewCols)
+                r += (ViewCols, cs);
+            var vq = wr.Fix(viewQry);
+            if (vq != viewQry)
+                r += (ViewQry, vq);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (View)base.Fix(fx);
+            r += (ViewCols, Fix(viewCols,fx));
+            r += (ViewQry, fx[viewQry]??viewQry);
+            return r;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (View)base._Replace(cx, so, sv);
+            var ch = false;
+            var cs = BTree<string, long>.Empty;
+            for (var b=viewCols?.First();b!=null;b=b.Next())
+            {
+                var p = cx.Replace(b.value(),so,sv);
+                cs += (b.key(), p);
+                if (p != b.value())
+                    ch = true;
+            }
+            if (ch)
+                r += (ViewCols, cs);
+            var vq = cx.Replace(viewQry,so,sv);
+            if (vq != viewQry)
+                r = r + (ViewQry, vq);
+            if (domain.representation.Contains(so.defpos))
+                r += (_Domain, domain._Replace(cx,so, sv));
+            cx.done+=(defpos,r);
+            return r;
+        }
+        /// <summary>
+        /// a readable version of the View
+        /// </summary>
+        /// <returns>the string representation</returns>
+		public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Query "); sb.Append(viewDef);
+            sb.Append(" Ppos: "); sb.Append(viewPpos);
+            sb.Append(" Cols (");
+            var cm = "";
+            for (var b=viewCols.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.key()); sb.Append("=");
+                sb.Append(Uid(b.value()));
+            }
+            sb.Append(") "); sb.Append(domain); 
+            if (viewQry>=0)
+            {
+                sb.Append(" ViewQry: ");sb.Append(Uid(viewQry));
+            }
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -319,7 +468,7 @@ namespace Pyrrho.Level3
         /// <param name="ro">the current (definer's) role</param>
         /// <param name="ow">the owner</param>
         /// <param name="rs">the list of grantees</param>
-        public RestView(PRestView pv) : base(pv,BTree<long,object>.Empty
+        public RestView(PRestView pv,Database db) : base(pv,db,BTree<long,object>.Empty
             +(ViewStructPos,pv.structpos)+(UsingTablePos,pv.usingtbpos)
             +(ClientName,pv.rname)+(ClientPassword,pv.rpass))
         { }
@@ -345,6 +494,13 @@ namespace Pyrrho.Level3
             var r = base._Relocate(wr);
             r += (ViewStructPos, wr.Fix(viewStruct));
             r += (UsingTablePos, wr.Fix(usingTable));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (ViewStructPos, fx[viewStruct]??viewStruct);
+            r += (UsingTablePos, fx[usingTable]??usingTable);
             return r;
         }
         internal override Basis Fix(Context cx)

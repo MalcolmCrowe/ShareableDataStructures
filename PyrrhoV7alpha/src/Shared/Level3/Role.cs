@@ -429,6 +429,12 @@ namespace Pyrrho.Level3
             r += (Properties, wr.Fix(properties));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            r += (Properties, Fix(properties,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);

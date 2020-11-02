@@ -7,6 +7,7 @@ using Pyrrho.Common;
 using System.Threading;
 using System.Security.Principal;
 using System.Configuration;
+using System.Diagnostics.Eventing.Reader;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -71,6 +72,116 @@ namespace Pyrrho.Level3
         internal virtual Basis _Relocate(Context cx,Context nc)
         {
             return this;
+        }
+        internal virtual Basis Fix(BTree<long,long?> fx)
+        {
+            throw new NotImplementedException();
+        }
+        protected static BList<long> Fix(BList<long> x, BTree<long, long?> fx)
+        {
+            var r = BList<long>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += np;
+            }
+            return ch ? r : x;
+        }
+        internal static CList<long> Fix(CList<long> x, BTree<long, long?> fx)
+        {
+            var r = CList<long>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += np;
+            }
+            return ch ? r : x;
+        }
+        protected static BTree<string,long> Fix(BTree<string,long> x,BTree<long,long?>fx)
+        {
+            var r = BTree<string,long>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (b.key(), np);
+            }
+            return ch ? r : x;
+        }
+        protected static BTree<long, bool> Fix(BTree<long, bool> x, BTree<long, long?> fx)
+        {
+            var r = BTree<long, bool>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (np, true);
+            }
+            return ch ? r : x;
+        }
+        protected static BTree<long, TypedValue> Fix(BTree<long, TypedValue> x, BTree<long, long?> fx)
+        {
+            var r = BTree<long, TypedValue>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (np, b.value().Fix(fx));
+            }
+            return ch ? r : x;
+        }
+        internal static BList<TRow> Fix(BList<TRow> x, BTree<long, long?> fx)
+        {
+            var r = BList<TRow>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (TRow)b.value().Fix(fx);
+            }
+            return ch ? r : x;
+        }
+        protected static BTree<long, BTree<long,bool>> 
+            Fix(BTree<long, BTree<long,bool>> x, BTree<long, long?> fx)
+        {
+            var r = BTree<long, BTree<long,bool>>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (np, Fix(b.value(),fx));
+            }
+            return ch ? r : x;
+        }
+        protected static BTree<long, B> Fix<B>(BTree<long, B> x, BTree<long, long?> fx)
+            where B : Basis
+        {
+            var r = BTree<long, B>.Empty;
+            var ch = false;
+            for (var b = x.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = fx[p] ?? p;
+                ch = ch || p != np;
+                r += (np, (B)b.value().Fix(fx));
+            }
+            return ch ? r : x;
         }
         internal virtual Basis Fix(Context cx)
         {

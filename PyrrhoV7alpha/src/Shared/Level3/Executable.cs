@@ -222,7 +222,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="c">The cursor specification</param>
         public SelectStatement(long dp, CursorSpecification c)
-            : base(dp, new BTree<long, object>(CS, c.defpos) + (Dependents, c.dependents))
+            : base(dp, new BTree<long, object>(CS, c.defpos) + (Dependents, c.dependents)
+                  +(Depth,1+c.depth))
         { }
         protected SelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SelectStatement operator+(SelectStatement s,(long,object)x)
@@ -248,6 +249,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SelectStatement)base._Relocate(wr);
             r += (CS, wr.Fixed(cs).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SelectStatement)base.Fix(fx);
+            r += (CS, fx[cs]??cs);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -320,6 +327,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (CompoundStatement)base._Relocate(wr);
             r += (Stms, wr.Fix(stms));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (CompoundStatement)base.Fix(fx);
+            r += (Stms, Fix(stms,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -463,6 +476,13 @@ namespace Pyrrho.Level3
             r += (Init, wr.Fixed(init)?.defpos??-1L);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (LocalVariableDec)base.Fix(fx);
+            r += (AssignmentStatement.Vbl, fx[vbl]??vbl);
+            r += (Init, fx[init]??init);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (LocalVariableDec)base.Fix(cx);
@@ -531,6 +551,10 @@ namespace Pyrrho.Level3
         {
             return new FormalParameter(s.defpos,s.mem + x);
         }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new FormalParameter(defpos, m);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new FormalParameter(dp,mem);
@@ -572,11 +596,6 @@ namespace Pyrrho.Level3
             if (mem.Contains(ParamMode)) { sb.Append(" "); sb.Append(paramMode); }
             if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
             return sb.ToString();
-        }
-
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new FormalParameter(defpos,m);
         }
     }
     /// <summary>
@@ -708,6 +727,12 @@ namespace Pyrrho.Level3
             r += (Action, wr.Fixed(action).defpos);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (HandlerStatement)base.Fix(fx);
+            r += (Action, fx[action]??action);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (HandlerStatement)base.Fix(cx);
@@ -792,6 +817,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (Handler)base._Relocate(wr);
             r += (Hdlr, hdlr.Relocate(wr));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Handler)base.Fix(fx);
+            r += (Hdlr, hdlr.Fix(fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -933,6 +964,13 @@ namespace Pyrrho.Level3
             r += (Vbl, wr.Fixed(vbl).defpos);
             return r;
         }
+        internal override Basis Fix(BTree<long,long?> fx)
+        {
+            var r = (AssignmentStatement)base.Fix(fx);
+            r += (Val, fx[val]??val);
+            r += (Vbl, fx[vbl]??vbl);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (AssignmentStatement)base.Fix(cx);
@@ -1025,6 +1063,14 @@ namespace Pyrrho.Level3
             r += (Rhs, wr.Fixed(rhs).defpos);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (MultipleAssignment)base.Fix(fx);
+            r += (LhsType, fx[lhsType]??lhsType);
+            r += (List, Fix(list,fx));
+            r += (Rhs, fx[rhs]??rhs);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (MultipleAssignment)base.Fix(cx);
@@ -1104,6 +1150,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (ReturnStatement)base._Relocate(wr);
             r += (Ret, wr.Fixed(ret).defpos);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (ReturnStatement)base.Fix(fx);
+            r += (Ret, fx[ret]??ret);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1189,6 +1241,14 @@ namespace Pyrrho.Level3
             r += (Else, wr.Fix(els));
             r += (Operand, wr.Fixed(operand).defpos);
             r += (Whens, wr.Fix(whens));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SimpleCaseStatement)base.Fix(fx);
+            r += (Else, Fix(els,fx));
+            r += (Operand, fx[operand]??operand);
+            r += (Whens, Fix(whens,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1282,6 +1342,13 @@ namespace Pyrrho.Level3
             var r = (SearchedCaseStatement)base._Relocate(wr);
             r += (SimpleCaseStatement.Else,wr.Fix(els));
             r += (SimpleCaseStatement.Whens, wr.Fix(whens));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SearchedCaseStatement)base.Fix(fx);
+            r += (SimpleCaseStatement.Else, Fix(els,fx));
+            r += (SimpleCaseStatement.Whens, Fix(whens,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1380,9 +1447,16 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = base._Relocate(wr);
+            var r = (WhenPart)base._Relocate(wr);
             r += (Cond, wr.Fixed(cond)?.defpos??-1L);
             r += (Stms, wr.Fix(stms));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (WhenPart)base.Fix(fx);
+            r += (Cond, fx[cond]??cond);
+            r += (Stms, Fix(stms,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1485,6 +1559,15 @@ namespace Pyrrho.Level3
             r += (Then,wr.Fix(then));
             r += (Else, wr.Fix(els)); 
             r += (Elsif, wr.Fix(elsif)); 
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (IfThenElse)base.Fix(fx);
+            r += (Search, fx[search]??search);
+            r += (Then, Fix(then,fx));
+            r += (Else, Fix(els,fx));
+            r += (Elsif, Fix(elsif,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1643,6 +1726,14 @@ namespace Pyrrho.Level3
             r += (What, wr.Fix(what));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (WhileStatement)base.Fix(fx);
+            r += (Loop, fx[loop]??loop);
+            r += (Search, fx[search]??search);
+            r += (What, Fix(what,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (WhileStatement)base.Fix(cx);
@@ -1733,6 +1824,14 @@ namespace Pyrrho.Level3
             r += (WhileStatement.Loop, wr.Fix(loop));
             r += (WhileStatement.Search, wr.Fixed(search).defpos);
             r += (WhileStatement.What, wr.Fix(what));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (RepeatStatement)base.Fix(fx);
+            r += (WhileStatement.Loop, fx[loop]??loop);
+            r += (WhileStatement.Search, fx[search]??search);
+            r += (WhileStatement.What, Fix(what,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1860,6 +1959,13 @@ namespace Pyrrho.Level3
             r += (WhenPart.Stms, wr.Fix(stms));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (LoopStatement)base.Fix(fx);
+            r += (WhileStatement.Loop, fx[loop]??loop);
+            r += (WhenPart.Stms, Fix(stms,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (LoopStatement)base.Fix(cx);
@@ -1980,6 +2086,15 @@ namespace Pyrrho.Level3
             r += (Stms, wr.Fix(stms));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (ForSelectStatement)base.Fix(fx);
+            r += (WhileStatement.Loop, fx[loop]??loop);
+            r += (Cursor, fx[cursor]??cursor);
+            r += (Sel, fx[sel]??sel);
+            r += (Stms, Fix(stms,fx));
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (ForSelectStatement)base.Fix(cx);
@@ -2079,6 +2194,12 @@ namespace Pyrrho.Level3
             r += (FetchStatement.Cursor, wr.Fix(cursor));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (OpenStatement)base.Fix(fx);
+            r += (FetchStatement.Cursor, fx[cursor]??cursor);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (OpenStatement)base.Fix(cx);
@@ -2147,6 +2268,12 @@ namespace Pyrrho.Level3
                 return this;
             var r = (CloseStatement)base._Relocate(wr);
             r += (FetchStatement.Cursor, wr.Fix(cursor));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (CloseStatement)base.Fix(fx);
+            r += (FetchStatement.Cursor, fx[cursor]??cursor);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2235,6 +2362,14 @@ namespace Pyrrho.Level3
             r += (Cursor, wr.Fixed(cursor).defpos);
             r += (Outs, wr.Fix(outs));
             r += (Where, wr.Fixed(where)?.defpos??-1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (FetchStatement)base.Fix(fx);
+            r += (Cursor, fx[cursor]??cursor);
+            r += (Outs, Fix(outs,fx));
+            r += (Where, fx[where]??where);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2392,6 +2527,14 @@ namespace Pyrrho.Level3
             r += (Var, wr.Fix(var));
             return r;
         }
+        internal override Basis Fix(BTree<long,long?>fx)
+        {
+            var r = (CallStatement)base.Fix(fx);
+            r += (ProcDefPos, fx[procdefpos]??procdefpos);
+            r += (Parms, Fix(parms,fx));
+            r += (Var, fx[var]??var);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (CallStatement)base.Fix(cx);
@@ -2525,6 +2668,15 @@ namespace Pyrrho.Level3
                 return this;
             var r = (Signal)base._Relocate(wr);
             r += (SetList, wr.Fix(setlist));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Signal)base.Fix(fx);
+            var sl = BTree<Sqlx,long>.Empty;
+            for (var b = setlist.First(); b != null; b = b.Next())
+                sl += (b.key(), fx[b.value()] ?? b.value());
+            r += (SetList, sl);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2669,6 +2821,15 @@ namespace Pyrrho.Level3
             r += (List, wr.Fix(list));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = base.Fix(fx);
+            var ls = BTree<long, Sqlx>.Empty;
+            for (var b = list.First(); b != null; b = b.Next())
+                ls += (fx[b.key()] ?? b.key(), b.value());
+            r += (List, ls);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (Executable)base.Fix(cx);
@@ -2755,6 +2916,13 @@ namespace Pyrrho.Level3
             var r = (SelectSingle)base._Relocate(wr);
             r += (ForSelectStatement.Sel, wr.Fixed(sel).defpos);
             r += (Outs, wr.Fix(outs));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (SelectSingle)base.Fix(fx);
+            r += (ForSelectStatement.Sel, fx[sel]??sel);
+            r += (Outs, Fix(outs,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2868,6 +3036,15 @@ namespace Pyrrho.Level3
             r += (CredUs, wr.Fixed(us)?.defpos ?? -1L);
             r += (Posted, wr.Fixed(data)?.defpos ?? -1L);
             r += (Where, wr.Fixed(wh)?.defpos ?? -1L);
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (HttpREST)base.Fix(fx);
+            r += (CredPw, fx[pw]??pw);
+            r += (CredUs, fx[us]??us);
+            r += (Posted, fx[data]??data);
+            r += (Where, fx[wh]??wh);
             return r;
         }
         internal override Basis Fix(Context cx)

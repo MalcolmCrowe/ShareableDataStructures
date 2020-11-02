@@ -123,6 +123,22 @@ namespace Pyrrho.Level4
             r += (JSecond, wr.Fix(second));
             return r;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (RowSet)base._Replace(cx, so, sv);
+            r += (_Join, cx.done[join.defpos] ?? join);
+            r += (JFirst, cx.Replace(first, so, sv));
+            r += (JSecond, cx.Replace(second, so, sv));
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (JoinRowSet)base.Fix(fx);
+            r += (_Join, join.Fix(fx));
+            r += (JFirst, fx[first]??first);
+            r += (JSecond, fx[second]??second);
+            return r;
+        }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder> nd)
         {
             nd = cx.Needs(nd,this,where);

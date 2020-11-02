@@ -123,6 +123,18 @@ namespace Pyrrho.Level3
             r += (UpdateAssignments, wr.Fix(update));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (TableColumn)base.Fix(fx);
+            r += (Table, fx[tabledefpos]??tabledefpos);
+            r += (Generated, generated.Fix(fx));
+            r += (Checks, Fix(constraints,fx));
+            var ua = BTree<UpdateAssignment, bool>.Empty;
+            for (var b = update.First(); b != null; b = b.Next())
+                ua += ((UpdateAssignment)b.key().Fix(fx), b.value());
+            r += (UpdateAssignments, ua);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (TableColumn)base.Fix(cx);
@@ -320,6 +332,12 @@ namespace Pyrrho.Level3
             if (exp < 0)
                 return this;
             return this + (GenExp, wr.Fixed(exp).defpos);
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (GenerationRule)base.Fix(fx);
+            r += (GenExp, fx[exp]??exp);
+            return r;
         }
         internal override Basis Fix(Context cx)
         {
@@ -623,6 +641,13 @@ namespace Pyrrho.Level3
                 return this;
             return new PeriodDef(wr.Fix(defpos), wr.Fix(tabledefpos),
                 wr.Fix(startCol), wr.Fix(endCol),wr.cx.db);
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (PeriodDef)base.Fix(fx);
+            r += (StartCol, fx[startCol] ?? startCol);
+            r += (EndCol, fx[endCol] ?? endCol);
+            return r;
         }
         internal override Basis Fix(Context cx)
         {

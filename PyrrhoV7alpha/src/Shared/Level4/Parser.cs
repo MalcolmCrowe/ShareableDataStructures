@@ -91,13 +91,16 @@ namespace Pyrrho.Level4
         {
             var infs = BTree<long, ObInfo>.Empty;
             var cs = CList<long>.Empty;
-            for (var b=ob.domain.representation.First();b!=null;b=b.Next())
-                cs += b.key();
-            infs += (ob.defpos, (ObInfo)rdr.context.db.role.infos[ob.defpos]);
-            for (var b = ob.domain.representation.First(); b != null; b = b.Next())
+            if (ob != null)
             {
-                var co = (TableColumn)rdr.context.db.objects[b.key()];
-                infs += (co.defpos, (ObInfo)rdr.context.db.role.infos[co.defpos]);
+                for (var b = ob.domain.representation.First(); b != null; b = b.Next())
+                    cs += b.key();
+                infs += (ob.defpos, (ObInfo)rdr.context.db.role.infos[ob.defpos]);
+                for (var b = ob.domain.representation.First(); b != null; b = b.Next())
+                {
+                    var co = (TableColumn)rdr.context.db.objects[b.key()];
+                    infs += (co.defpos, (ObInfo)rdr.context.db.role.infos[co.defpos]);
+                }
             }
             return infs;
         }
@@ -917,6 +920,7 @@ namespace Pyrrho.Level4
             Next();
             var id = lxr.val.ToString();
             Mustbe(Sqlx.ID);
+            cx.Frame();
             Domain t = Domain.Null;
             long structdef = -1;
             string tn = null; // explicit view type
@@ -984,7 +988,8 @@ namespace Pyrrho.Level4
                         pv = new PRestView2(id, structdef, ut.defpos, np, cx);
                 }
                 else
-                    pv = new PView(id, new string(lxr.input,st,lxr.pos-st), np, cx);
+                    pv = new PView(id, new string(lxr.input,st,lxr.pos-st),
+                        qe?.defpos??-1L, np, cx);
                 cx.Add(pv);
             }
             var ob = (DBObject)cx.db.objects[cx.db.loadpos];
@@ -5344,11 +5349,14 @@ namespace Pyrrho.Level4
         /// <returns>A CursorSpecification</returns>
 		public SelectStatement ParseCursorSpecification(string sql,Domain xp)
 		{
+            var olx = lxr;
 			lxr = new Lexer(sql, cx.db.lexeroffset);
 			tok = lxr.tok;
             if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
                 cx.db += (Database.NextId, cx.db.nextId+sql.Length);
-			return ParseCursorSpecification(xp);
+			var r = ParseCursorSpecification(xp);
+            lxr = olx;
+            return r;
 		}
         /// <summary>
 		/// CursorSpecification = [ XMLOption ] QueryExpression  .
@@ -5363,7 +5371,8 @@ namespace Pyrrho.Level4
             var qe = ParseQueryExpression(Domain.TableType);
             if (!xp.CanTakeValueOf(qe.domain))
                 throw new DBException("22000");
-            r = r + (CursorSpecification.Union,qe.defpos)+(DBObject._From,qe.from);
+            r = r + (CursorSpecification.Union,qe.defpos)+(DBObject._From,qe.from)
+                + (DBObject.Depth,1+qe.depth);
             r += (Query.OrdSpec, qe.ordSpec);
             r += (DBObject._Domain, qe.domain);
             r += (CursorSpecification._Source,new string(lxr.input, st, lxr.start - st));
@@ -6007,22 +6016,24 @@ namespace Pyrrho.Level4
         /// Then we will resolve undefined expressions in the SelectList.
         /// </summary>
         /// <param name="dp">The occurrence of this table</param>
-        /// <param name="tb">The table or view</param>
+        /// <param name="ob">The table or view</param>
         /// <param name="a">The alias or null</param>
         /// <param name="q">The query with the select list</param>
         /// <returns></returns>
-        From _From(Ident ic,DBObject tb,string a,QuerySpecification q)
+        From _From(Ident ic,DBObject ob,string a,QuerySpecification q)
         {
             var dp = ic.iix;
             DBObject ut = null, ua = null;
-            if (tb!=null)
+            if (ob!=null)
             {
-                if (tb.Inf(cx) is ObInfo oi && cx.defs.Contains(oi.name))
+                if (ob is Table && ob.Inf(cx) is ObInfo oi && cx.defs.Contains(oi.name))
                     ut = cx.obs[cx.defs[oi.name].Item1];
+                else if (ob is View vw && cx.defs.Contains(vw.name))
+                    ut = cx.obs[cx.defs[vw.name].Item1];
                 if (a != null && cx.defs.Contains(a))
                     ua = cx.obs[cx.defs[a].Item1];
             }
-            var fm = new From(ic, cx, tb, q, Grant.Privilege.Select, a);
+            var fm = new From(ic, cx, ob, q, Grant.Privilege.Select, a);
             if (ut!=null && ((Domain)ut.mem[DBObject._Domain]).kind == Sqlx.CONTENT)
                 cx.Replace(ut, fm);
             if (ua != null)// && ((Domain)ua.mem[DBObject._Domain]).kind==Sqlx.CONTENT)

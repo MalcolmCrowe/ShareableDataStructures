@@ -108,7 +108,7 @@ namespace Pyrrho.Common
         }
         public static BTree<K, V> operator -(BTree<K, V> tree, K k)
         {
-            return (BTree<K, V>)tree.Remove(k);
+            return (BTree<K, V>)tree?.Remove(k);
         }
         /// <summary>
         /// Creator: Create a new BTree that has a new association in the BTree

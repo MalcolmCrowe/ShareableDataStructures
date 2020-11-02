@@ -412,8 +412,8 @@ namespace Pyrrho.Level3
                 var cm = " (";
                 for (var b=rowType.First();b!=null;b=b.Next())
                 {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(DBObject.Uid(b.value()));
+                    sb.Append(cm); cm=(b.key()+1==display)?"|":",";
+                    sb.Append(Uid(b.value()));
                 }
                 if (rowType != CList<long>.Empty)
                     sb.Append(")");
@@ -3075,6 +3075,82 @@ namespace Pyrrho.Level3
             // NB We can't use cx.done for Domains (or ObInfos)
             return r;
         }
+        internal Domain Replaced(Context cx)
+        {
+            var r = this;
+            var ch = false;
+            var rs = CTree<long, Domain>.Empty;
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var od = b.value();
+                var nk = cx.done[b.key()]?.defpos??b.key();
+                var rr = od.Replaced(cx);
+                if (rr != od || nk != b.key())
+                    ch = true;
+                rs += (nk, rr);
+            }
+            if (ch)
+                r += (Representation, rs);
+            var rt = CList<long>.Empty;
+            ch = false;
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var np = cx.done[p]?.defpos??p;
+                if (p != np)
+                    ch = true;
+                rt += np;
+            }
+            if (ch)
+                r += (RowType, rt);
+            return r;
+        }
+        // Helper for updatable Views
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            // NB We can't use cx.done for Domains (or ObInfos)
+            var r = this;
+            var ch = false;
+            var cs = BTree<long, bool>.Empty;
+            for (var b = r.constraints?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var ck = fx[p]??p;
+                ch = ch || p != ck;
+                cs += (ck, true);
+            }
+            if (ch)
+                r += (Constraints, cs);
+            var e = r.elType?.Fix(fx);
+            if (e != elType)
+                r += (Element, e);
+            var rs = CTree<long, Domain>.Empty;
+            ch = false;
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var od = b.value();
+                var p = b.key();
+                var nk = fx[p]??p;
+                var rr = (Domain)od.Fix(fx);
+                if (rr != od || nk != p)
+                    ch = true;
+                rs += (nk, rr);
+            }
+            if (ch)
+                r += (Representation, rs);
+            var rt = CList<long>.Empty;
+            ch = false;
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var np = fx[p]??p;
+                ch = ch || np != p;
+                rt += np;
+            }
+            if (ch)
+                r += (RowType, rt);
+            return r;
+        }
         public string NameFor(Context cx, long p, int i)
         {
             var sv = cx.obs[p];
@@ -3774,7 +3850,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Context cx, Context nc)
         {
-            var r = base._Relocate(cx, nc);
+            var r = (UDType)base._Relocate(cx, nc);
             if (super != null)
                 r += (Under, super._Relocate(cx,nc));
             if (defaultString == "")
@@ -3783,11 +3859,18 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Relocate(Writer wr)
         {
-            var r = base._Relocate(wr);
+            var r = (UDType)base._Relocate(wr);
             if (super != null)
                 r += (Under, super._Relocate(wr));
             if (defaultString == "")
                 r += (Default, NullValue());
+            return r;
+        }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (UDType)base.Fix(fx);
+            if (super != null)
+                r += (Under, super.Fix(fx));
             return r;
         }
         public override void PutDataType(Domain nt, Writer wr)

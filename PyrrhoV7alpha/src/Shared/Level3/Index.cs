@@ -303,6 +303,19 @@ namespace Pyrrho.Level3
             r += (RefTable, wr.Fix(reftabledefpos));
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Index)base.Fix(fx);
+            r += (Adapter, fx[adapter]??adapter);
+            r += (Keys, Fix(keys,fx));
+            var rf = BTree<long, BList<TypedValue>>.Empty;
+            for (var b = references?.First(); b != null; b = b.Next())
+                rf += (fx[b.key()]?? b.key(), b.value());
+            r += (References, rf);
+            r += (RefIndex, fx[refindexdefpos]??refindexdefpos);
+            r += (RefTable, fx[reftabledefpos]??reftabledefpos);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (Index)base.Fix(cx);

@@ -104,6 +104,12 @@ namespace Pyrrho.Level3
             r += (Condition, wr.Fixed(search).defpos);
             return r;
         }
+        internal override Basis Fix(BTree<long, long?> fx)
+        {
+            var r = (Check)base.Fix(fx);
+            r += (Condition, fx[search] ?? search);
+            return r;
+        }
         internal override Basis Fix(Context cx)
         {
             var r = (Check)base.Fix(cx);
