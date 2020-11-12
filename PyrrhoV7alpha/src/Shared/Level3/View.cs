@@ -42,7 +42,7 @@ namespace Pyrrho.Level3
         public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
         public long viewQry => (long)(mem[ViewQry]??-1L);
         public View(PView pv,Database db,BTree<long,object>m=null) 
-            : base(pv.ppos, _Dom(pv)
+            : base(pv.ppos, _Dom(db,pv)
                   + (Name,pv.name) + (Definer,db.role.defpos)
                   + (ViewDef,pv.viewdef)
                   + (LastChange, pv.ppos))
@@ -51,19 +51,21 @@ namespace Pyrrho.Level3
             : base(cx.nextHeap++,_Dom(cx,vw))
         { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Dom(PView pv)
+        static BTree<long,object> _Dom(Database db,PView pv)
         {
             var vd = pv.framing.obs[pv.query];
             var ns = BTree<string, long>.Empty;
-            var d = 1+vd.depth;
-            for (var b=vd.domain.rowType.First();b!=null;b=b.Next())
+            var d = 1+(vd?.depth??0);
+            var dm = vd?.domain ?? ((ObInfo)db.role.infos[(pv as PRestView).structpos]).domain;
+
+            for (var b=vd?.domain.rowType.First();b!=null;b=b.Next())
             {
                 var p = b.value();
                 var c = (SqlValue)pv.framing.obs[p];
                 d = _Max(d, 1 + c.depth);
                 ns += (c.name, p);
             }
-            return BTree<long,object>.Empty + (_Domain,vd.domain) + (ViewPpos,pv.ppos)
+            return BTree<long,object>.Empty + (_Domain,dm) + (ViewPpos,pv.ppos)
                 +(ViewCols,ns) + (_Framing,pv.framing) + (ViewQry,pv.query)
                 +(Depth,d);
         }
@@ -115,8 +117,8 @@ namespace Pyrrho.Level3
             if (!cx.data.Contains(defpos))
             {
                 var vq = (Query)cx.obs[viewQry];
-                var rs = vq.RowSets(cx, fi);
-                var sc = (long)rs.mem[From.Source];
+                var rs = vq?.RowSets(cx, fi)??new EmptyRowSet(defpos,cx,f.domain);
+                var sc = (long)(rs.mem[From.Source]??-1L);
                 var fb = f.domain.rowType.First();
                 for (var b=domain.rowType.First();b!=null&&fb!=null;
                     b=b.Next(),fb=fb.Next())
@@ -450,16 +452,16 @@ namespace Pyrrho.Level3
         internal const long
             ClientName = -381, // string, deprecated
             ClientPassword = -382, // string, deprecated
-            RemoteCols = -383, // BTree<string,int>
+            JoinCols = -383, // BTree<string,int>
             RemoteAggregates = -384, // bool
             UsingTablePos = -385, // long
-            ViewStructPos = -386; // long
+            ViewStruct = -386; // Domain
         internal string nm => (string)mem[ClientName];
         internal string pw => (string)mem[ClientPassword]; // deprecated
-        internal long viewStruct => (long)(mem[ViewStructPos]??-1L);
+        internal Domain viewStruct => (Domain)mem[ViewStruct];
         internal long usingTable => (long)(mem[UsingTablePos]??-1L);
         internal BTree<string,long> joinCols => 
-            (BTree<string,long>)mem[RemoteCols]??BTree<string,long>.Empty;
+            (BTree<string,long>)mem[JoinCols]??BTree<string,long>.Empty;
         internal bool remoteAggregates => (bool)(mem[RemoteAggregates]??false);
         /// <summary>
         /// Constructor: a RestView from level 2
@@ -469,7 +471,8 @@ namespace Pyrrho.Level3
         /// <param name="ow">the owner</param>
         /// <param name="rs">the list of grantees</param>
         public RestView(PRestView pv,Database db) : base(pv,db,BTree<long,object>.Empty
-            +(ViewStructPos,pv.structpos)+(UsingTablePos,pv.usingtbpos)
+            +(ViewStruct,((ObInfo)db.role.infos[pv.structpos]).domain)
+            +(UsingTablePos,pv.usingtbpos)
             +(ClientName,pv.rname)+(ClientPassword,pv.rpass))
         { }
         protected RestView(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -484,7 +487,6 @@ namespace Pyrrho.Level3
         internal override void Scan(Context cx)
         {
             base.Scan(cx);
-            cx.ObScanned(viewStruct);
             cx.ObScanned(usingTable);
         }
         internal override Basis _Relocate(Writer wr)
@@ -492,23 +494,33 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r = base._Relocate(wr);
-            r += (ViewStructPos, wr.Fix(viewStruct));
+            r += (ViewStruct, domain._Relocate(wr));
             r += (UsingTablePos, wr.Fix(usingTable));
             return r;
         }
         internal override Basis Fix(BTree<long, long?> fx)
         {
             var r = base.Fix(fx);
-            r += (ViewStructPos, fx[viewStruct]??viewStruct);
+            r += (ViewStruct, viewStruct.Fix(fx));
             r += (UsingTablePos, fx[usingTable]??usingTable);
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (RestView)base.Fix(cx);
-            r += (ViewStructPos, cx.obuids[viewStruct]);
+            r += (ViewStruct, viewStruct.Fix(cx));
             r += (UsingTablePos, cx.obuids[usingTable]);
             return r;
+        }
+        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        {
+            var url = description;
+            var sh = new SqlHttp(cx.nextHeap++, f, 
+                new SqlLiteral(-1L, cx, new TChar(url)),"applications/json",
+                BTree<long, bool>.Empty, "*");
+            var r = sh.Eval(cx);
+            var rs = new RestRowSet(cx, f, (TArray)r);
+            cx.data += (rs.defpos, rs);
         }
     }
 }

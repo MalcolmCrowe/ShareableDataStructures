@@ -60,7 +60,6 @@ namespace Pyrrho.Level4
         internal BTree<long, RowSet.Finder> from = BTree<long, RowSet.Finder>.Empty; 
         public long nextHeap, nextStmt, parseStart, srcFix;
         public TypedValue val = TNull.Value;
-        internal BTree<long, ETag> etag = BTree<long, ETag>.Empty;
         internal Database db = null;
         internal Transaction tr => db as Transaction;
         internal BTree<long, BTree<long, bool>> copy = BTree<long, BTree<long, bool>>.Empty;
@@ -168,7 +167,6 @@ namespace Pyrrho.Level4
             data = cx.data;
             from = cx.from;
             cursors = cx.cursors;
-            etag = cx.etag;
             val = cx.val;
             parent = cx.parent; // for triggers
             dbformat = cx.dbformat;
@@ -188,7 +186,6 @@ namespace Pyrrho.Level4
             data = cx.data;
             from = cx.from;
             cursors = cx.cursors;
-            etag = cx.etag;
             val = cx.val;
             parent = cx.parent; // for triggers
             dbformat = cx.dbformat;

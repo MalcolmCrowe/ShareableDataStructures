@@ -198,7 +198,7 @@ namespace Pyrrho.Level3
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
                 return parent.Commit(cx);
-            for (var b=deferred.First();b!=null;b=b.Next())
+            for (var b = deferred.First(); b != null; b = b.Next())
             {
                 var ta = b.value();
                 ta.deferred = false;
@@ -212,35 +212,40 @@ namespace Pyrrho.Level3
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
-            for (var pb=since.First(); pb!=null; pb=pb.Next())
+            Physical lph =null;
+            try
             {
-                ph = pb.value();
-                PTransaction pt = null;
-                if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
-                    pt = (PTransaction)ph;
-                for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
+                for (var pb = since.First(); pb != null; lph=ph,pb = pb.Next())
                 {
-                    var ce = cb.value()?.Check(ph,pt);
-                    if (ce != null)
+                    ph = pb.value();
+                    PTransaction pt = null;
+                    if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
+                        pt = (PTransaction)ph;
+                    for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                     {
-                        cx.rconflicts++;
-                        throw ce;
+                        var ce = cb.value()?.Check(ph, pt);
+                        if (ce != null)
+                        {
+                            cx.rconflicts++;
+                            throw ce;
+                        }
+                    }
+                    for (var b = tb; b != null; b = b.Next())
+                    {
+                        var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
+                        if (ce != null)
+                        {
+                            cx.wconflicts++;
+                            throw ce;
+                        }
                     }
                 }
-                for (var b = tb; b != null; b = b.Next())
-                {
-                    var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
-                    if (ce!=null)
-                    {
-                        cx.wconflicts++;
-                        throw ce;
-                    }
-                }
-            }
+            } catch(Exception)
+            { }
             lock (wr.file)
             {
                 db = databases[name]; // may have moved on
-                var lb = db.log.PositionAt(ph?.ppos ?? loadpos)?.Next();
+                var lb = db.log.PositionAt(lph?.ppos ?? loadpos)?.Next();
                 if (lb != null)
                 {
                     rdr = new Reader(new Context(db), lb.key());
@@ -439,9 +444,9 @@ namespace Pyrrho.Level3
                 case "key":
                     {
                         var ix = (objects[f.target] as Table)?.FindPrimaryIndex(this);
-                        var kt = (ObInfo)role.infos[ix.defpos];
                         if (ix != null)
                         {
+                            var kt = (ObInfo)role.infos[ix.defpos];
                             var kn = 0;
                             while (kn < ix.keys.Count && p < path.Length)
                             {

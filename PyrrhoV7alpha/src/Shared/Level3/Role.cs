@@ -165,6 +165,8 @@ namespace Pyrrho.Level3
     /// <summary>
     /// Immutable (everything in level 3 must be immutable)
     /// mem includes Selectors and some metadata
+    /// Note: DBObject.Description and Domain.Iri are set by Role metadata
+    /// (this is a design anomaly)
     /// </summary>
     internal class ObInfo : DBObject
     {

@@ -175,7 +175,7 @@ namespace Pyrrho.Level2
         {
             name = x.name;
             seq = x.seq;
-            defpos = wr.Fix(defpos);
+            defpos = wr.Fix(x.defpos);
             description = x.description;
             iri = x.iri;
             refpos = wr.Fix(x.refpos);

@@ -118,7 +118,6 @@ namespace Pyrrho.Level2
             PutFields(wr);
             //         database.SerialiseIndexConstraint(indC,refC,ppos,r);
             base.Serialise(wr);
-            wr.rvv += new Rvv(tabledefpos, defpos, ppos);
         }
         /// <summary>
         /// Deserialise this Record from the buffer

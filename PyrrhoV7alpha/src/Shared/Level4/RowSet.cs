@@ -7,6 +7,8 @@ using System.Diagnostics.Eventing.Reader;
 using System.Data;
 using System.Runtime.Remoting.Channels;
 using System.Security.Policy;
+using System.Runtime.InteropServices;
+using System.Runtime.Remoting.Messaging;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -358,6 +360,10 @@ namespace Pyrrho.Level4
             var sv = cx.obs[p];
             var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
             return cx.Inf(p)?.name ?? n??("Col"+i);
+        }
+        public virtual Rvv _Rvv(Context cx)
+        {
+            return Rvv.Empty;
         }
         internal virtual RowSet Source(Context cx)
         {
@@ -794,6 +800,10 @@ namespace Pyrrho.Level4
             Fixup(cx, rs);
             return rs;
         }
+        public override Rvv _Rvv(Context cx)
+        {
+            return cx.data[source]._Rvv(cx);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new SelectedRowSet(dp,mem);
@@ -977,6 +987,10 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new SelectRowSet(defpos,m);
+        }
+        public override Rvv _Rvv(Context cx)
+        {
+            return cx.data[source]._Rvv(cx);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -1320,6 +1334,10 @@ namespace Pyrrho.Level4
             return (TableRowSet)rs.New(rs.mem + x);
         }
         internal override bool TableColsOk => true;
+        public override Rvv _Rvv(Context cx)
+        {
+            return Rvv.Empty+cx.cursors[defpos].Rec();
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableRowSet(dp,mem);
@@ -1482,6 +1500,10 @@ namespace Pyrrho.Level4
             return (IndexRowSet)rs.New(rs.mem + x);
         }
         internal override bool TableColsOk => true;
+        public override Rvv _Rvv(Context cx)
+        {
+            return Rvv.Empty+cx.cursors[defpos].Rec();
+        }
         internal override DBObject Relocate(long dp)
         {
             return new IndexRowSet(dp,mem);
@@ -2086,6 +2108,10 @@ namespace Pyrrho.Level4
         {
             return OrderedCursor.New(_cx, this, RTreeBookmark.New(_cx, tree));
         }
+        public override Rvv _Rvv(Context cx)
+        {
+            return Rvv.Empty+cx.cursors[defpos].Rec();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2124,9 +2150,8 @@ namespace Pyrrho.Level4
     }
     internal class EmptyRowSet : RowSet
     {
-        public static readonly EmptyRowSet Value = new EmptyRowSet();
-        EmptyRowSet() : base(-1,Context._system,Domain.Content) { }
-        internal EmptyRowSet(long dp, Context cx) : base(dp, Value.mem) 
+        internal EmptyRowSet(long dp, Context cx,Domain dm) 
+            : base(dp, new BTree<long,object>(_Domain,dm)) 
         {
             cx.data += (dp, this);
         }
@@ -2342,6 +2367,10 @@ namespace Pyrrho.Level4
             var rs = new TableExpRowSet(cx.nextHeap++, m);
             Fixup(cx, rs);
             return rs;
+        }
+        public override Rvv _Rvv(Context cx)
+        {
+            return cx.data[from]._Rvv(cx);
         }
         static BTree<long,Finder> _Fin(BTree<long,Finder> fi,RowSet sc)
         {
@@ -3932,6 +3961,85 @@ namespace Pyrrho.Level4
             internal override TableRow Rec()
             {
                 throw new NotImplementedException();
+            }
+        }
+    }
+    internal class RestRowSet : RowSet
+    {
+        internal const long
+            RestValue = -457;   // TArray
+        internal TArray aVal => (TArray)mem[RestValue];
+        public RestRowSet(Context cx, From f, TArray rs)
+            : base(f.defpos, cx, f.domain, null, null, null, null, null, null, null,
+                 BTree<long, object>.Empty +(RestValue,rs))
+        { }
+        protected RestRowSet(Context cx, RestRowSet rs, BTree<long, Finder> nd, bool bt)
+            : base(cx, rs, nd, bt) { }
+        protected RestRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static RestRowSet operator+(RestRowSet rs,(long,object)x)
+        {
+            return (RestRowSet)rs.New(rs.mem + x);
+        }
+        protected override Cursor _First(Context _cx)
+        {
+            return RestCursor.New(_cx, this);
+        }
+
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return new RestRowSet(cx, this, nd, bt);
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new RestRowSet(defpos,m);
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new RestRowSet(dp, mem);
+        }
+        internal class RestCursor : Cursor
+        {
+            readonly RestRowSet _rrs;
+            readonly int _ix;
+            RestCursor(Context cx,RestRowSet rrs,int pos,int ix)
+                :base(cx,rrs.defpos,pos,ix,(TRow)rrs.aVal[pos])
+            {
+                _rrs = rrs; _ix = ix;
+            }
+            RestCursor(Context cx,RestCursor rb,long p,TypedValue v)
+                :base(cx,rb._rrs,rb._pos,rb._ix,rb+(p,v))
+            { }
+            internal static RestCursor New(Context cx,RestRowSet rrs)
+            {
+                for (var i = 0; i < rrs.aVal.Length; i++)
+                {
+                    var rb = new RestCursor(cx, rrs, 0, i);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new RestCursor(cx, this, p, v);
+            }
+
+            protected override Cursor _Next(Context cx)
+            {
+                for (var i = _ix+1; i < _rrs.aVal.Length; i++)
+                {
+                    var rb = new RestCursor(cx, _rrs, _pos+1, i);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+
+            internal override TableRow Rec()
+            {
+                return null;
             }
         }
     }

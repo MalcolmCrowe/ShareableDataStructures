@@ -6,8 +6,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
 using System.Security.Principal;
-using System.Configuration;
-using System.Diagnostics.Eventing.Reader;
+using System.IO;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -375,6 +374,18 @@ namespace Pyrrho.Level3
         {
             var f = dbfiles[fn];
             if (f == null)
+                try
+                {
+                    var fp = PyrrhoStart.path + fn;
+                    if (!File.Exists(fp))
+                        return null;
+                    var db = new Database(fn, new FileStream(fp,
+                        FileMode.Open, FileAccess.ReadWrite, FileShare.None));
+                    db.Load();
+                    f = dbfiles[fn];
+                }
+                catch (Exception) { }
+            if (f == null)
                     return null;
             for (; ; )
             {
@@ -389,7 +400,7 @@ namespace Pyrrho.Level3
         {
             ph.Install(cx, lp);
         }
-        internal FileStream File()
+        internal FileStream _File()
         {
             return dbfiles[name];
         }

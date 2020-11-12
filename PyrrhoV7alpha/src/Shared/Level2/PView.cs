@@ -1,6 +1,8 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Collections.ObjectModel;
+using System.Configuration;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -162,6 +164,8 @@ namespace Pyrrho.Level2
         public override (Transaction, Physical) Commit(Writer wr, Transaction t)
         {
             var (tr, ph) = base.Commit(wr, t);
+            if (this is PRestView)
+                return (tr, ph);
             var pv = (PView)ph;
             var vw = (DBObject)tr.objects[ppos] + (View.ViewQry, pv.framing.obs[pv.query])
                 + (DBObject._Framing, pv.framing);
@@ -172,12 +176,17 @@ namespace Pyrrho.Level2
     {
         internal long structpos,usingtbpos;
         internal string rname = null, rpass = null;
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (!Committed(wr, usingtbpos)) return usingtbpos;
+            return -1;
+        }
         public PRestView(Reader rdr) : this(Type.RestView, rdr) { }
         protected PRestView(Type t, Reader rdr) : base(t,rdr) { }
         public PRestView(string nm, long tp, long pp, Context cx)
             : this(Type.RestView, nm, tp, pp, cx) { }
         protected PRestView(Type t,string nm,long tp,long pp, Context cx)
-            : base(t,"",nm,-1L,pp,cx)
+            : base(t,nm,"",-1L,pp,cx)
         {
             structpos = tp;
         }
@@ -192,7 +201,6 @@ namespace Pyrrho.Level2
 
         public override void Serialise(Writer wr)
         {
-
             wr.PutLong(structpos);
             base.Serialise(wr);
         }
@@ -201,9 +209,47 @@ namespace Pyrrho.Level2
             structpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
+        internal override void OnLoad(Reader rdr)
+        {
+            var db = rdr.context.db;
+            var ro = db.role;
+            var os = BTree<long, DBObject>.Empty;
+            var ds = Ident.Idents.Empty;
+            var tb = (Table)db.objects[structpos];
+            var ti = (ObInfo)ro.infos[structpos];
+            var cs = Ident.Idents.Empty;
+            os += (structpos, tb);
+            for (var b=ti.domain.rowType.First();b!=null;b=b.Next())
+            {
+                var cp = b.value();
+                var ci = (ObInfo)ro.infos[cp];
+                var tc = (TableColumn)db.objects[cp];
+                cs += (ci.name, cp, Ident.Idents.Empty);
+                ds += (ci.name, cp, Ident.Idents.Empty);
+                os += (cp, tc);
+            }
+            ds += (name,ppos, cs);
+            framing = Framing.Empty + (Framing.Obs, os) + (Framing.Defs, ds);
+        }
+        internal override void Install(Context cx, long p)
+        {
+            var ro = cx.db.role;
+            // The definer is the given role
+            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
+                Grant.Privilege.Update | Grant.Privilege.Delete |
+                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
+                Grant.Privilege.GrantInsert |
+                Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+            var vw = new RestView(this, cx.db);
+            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            cx.db = cx.db + (ro, p) + (vw, p);
+            cx.Install(vw, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
+        }
         public override string ToString()
         {
-            return "PRestView "+name + "("+structpos+")";
+            return "PRestView "+name + "["+DBObject.Uid(structpos)+"]";
         }
     }
     /// <summary>

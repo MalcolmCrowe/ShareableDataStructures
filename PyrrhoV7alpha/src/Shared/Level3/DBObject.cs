@@ -237,6 +237,8 @@ namespace Pyrrho.Level3
         }
         internal virtual Database Add(Database d,PMetadata pm, long p)
         {
+            if (pm.description != "")
+                d += (this + (Description, pm.description), p);
             return d;
         }
         // Helper for format<51 compatibility

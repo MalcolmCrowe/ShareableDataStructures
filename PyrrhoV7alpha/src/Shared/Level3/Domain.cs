@@ -365,6 +365,13 @@ namespace Pyrrho.Level3
             // Assert(CompareTo(pp.domaim)==0) and tr unchanged
             return pp.ppos;
         }
+        internal override Database Add(Database d, PMetadata pm, long p)
+        {
+            d = base.Add(d, pm, p);
+            if (pm.iri!="")
+                d += (this + (Iri, pm.iri), p);
+            return d;
+        }
         internal bool IsSensitive()
         {
             if (kind == Sqlx.SENSITIVE)
@@ -1460,7 +1467,7 @@ namespace Pyrrho.Level3
                         var str = new string(lx.input, st, ln);
                         var lxr = new Lexer(str);
                         lx.pos += lxr.pos;
-                        lx.ch = lxr.input[lxr.pos];
+                        lx.ch = (lxr.pos>=lxr.input.Length)?(char)0:lxr.input[lxr.pos];
                         return lxr.val;
                     }
                 case Sqlx.BOOLEAN:

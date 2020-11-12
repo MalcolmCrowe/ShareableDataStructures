@@ -3779,9 +3779,7 @@ namespace Pyrrho.Level4
                     var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
                     if (tb != null)
                         us = oi.name;
-                    var sp = (ObInfo)_cx.db.role.infos[rv.viewStruct];
-                    if (sp != null)
-                        st = sp.name;
+                    st = rv.name;
                 }
                 var vw = (View)ob;
                 var ov = (ObInfo)_cx.db.role.infos[vw.defpos];

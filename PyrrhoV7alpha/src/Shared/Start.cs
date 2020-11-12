@@ -1097,6 +1097,7 @@ namespace Pyrrho
         /// </summary>
 		static TcpListener tcp;
         public static string host = "::1";
+        public static string hostname = "localhost";
         public static int port = 5433;
         internal static bool RoleMode = false, TutorialMode = false, FileMode = false, CheckMode = false,
             DebugMode = false, VerifyMode = false, StrategyMode = false, HTTPFeedbackMode = false;
@@ -1190,6 +1191,7 @@ namespace Pyrrho
                     {
                         case 'p': port = int.Parse(args[k].Substring(3)); break;
                         case 'h': host = args[k].Substring(3); break;
+                        case 'n': hostname = args[k].Substring(3); break;
                         case 'd':
                             path = args[k].Substring(3);
                             FixPath();
@@ -1227,7 +1229,7 @@ namespace Pyrrho
             arule.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
                 FileSystemRights.FullControl, AccessControlType.Allow));
             if (httpport > 0 || httpsport > 0)
-                new Thread(new ThreadStart(new HttpService(host, httpport, httpsport).Run)).Start();
+                new Thread(new ThreadStart(new HttpService(hostname, httpport, httpsport).Run)).Start();
 #if MONGO
             if (MongoService.port!=0)
                 new Thread(new ThreadStart(MongoService.Run)).Start(); 
@@ -1297,7 +1299,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (2 November 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (12 November 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

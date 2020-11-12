@@ -467,8 +467,7 @@ namespace Pyrrho.Level3
             if (cx.Eval(dp,xp.rowType) is TRow r)
                 return new TrivialRowSet(dp,cx, r, -1L,
                     cx.data[from]?.finder?? BTree<long,RowSet.Finder>.Empty);
-            cx.data += (dp, EmptyRowSet.Value);
-            return EmptyRowSet.Value;
+            return new EmptyRowSet(dp,cx,xp);
         }
         internal virtual Domain FindType(Context cx,Domain dt)
         {
@@ -4754,7 +4753,7 @@ namespace Pyrrho.Level3
                         return new TInt(0);
                     }
                 case Sqlx.CHARACTER_LENGTH: goto case Sqlx.CHAR_LENGTH;
-             //   case Sqlx.CHECK: return new TRvv(rb);
+                case Sqlx.CHECK: return new TRvv(cx);
                 case Sqlx.COLLECT: return domain.Coerce(cx,(TypedValue)fc.mset ??TNull.Value);
                 //		case Sqlx.CONVERT: transcoding all seems to be implementation-defined TBD
                 case Sqlx.COUNT: return new TInt(fc.count);
@@ -7687,7 +7686,7 @@ namespace Pyrrho.Level3
             (BTree<long,SqlValue>)mem[HttpWhere]??BTree<long,SqlValue>.Empty;
         public BTree<SqlValue, TypedValue> matches=>
             (BTree<SqlValue,TypedValue>)mem[HttpMatches]??BTree<SqlValue,TypedValue>.Empty;
-        protected RowSet rows => (RowSet)mem[HttpRows]??EmptyRowSet.Value;
+        protected RowSet rows => (RowSet)mem[HttpRows];
         protected SqlHttpBase(long dp, Query q,BTree<long,object> m=null) : base(dp, 
             (m??BTree<long,object>.Empty)+(_Domain,q.domain)+(HttpMatches,q.matches)
             +(GlobalFrom,q))
@@ -7923,8 +7922,8 @@ namespace Pyrrho.Level3
         {
             string url = ev.ToString();
             var rx = url.LastIndexOf("/");
-            var rtype = ((Query)cx.obs[globalFrom.source]).rowType;
-            var vw = cx.tr.objects[globalFrom.target] as View;
+       //     var rtype = ((Query)cx.obs[globalFrom.source]).rowType;
+       //     var vw = cx.tr.objects[globalFrom.target] as View;
             string targetName = "";
             if (globalFrom != null)
             {
@@ -7973,17 +7972,11 @@ namespace Pyrrho.Level3
                     throw new DBException("2E201", url);
                 var et = wr.GetResponseHeader("ETag");
                 if (et != null)
-                {
-        //            tr.etags.Add(et);
-                    if (PyrrhoStart.DebugMode)
-                        Console.WriteLine("Response ETag: " + et);
-                }
+                    Console.WriteLine(et + " " +Rvv.Parse(et).Validate(cx.db));
                 var s = wr.GetResponseStream();
                 TypedValue r = null;
-
-         //       if (s != null)
-         //           r = new ObInfo(defpos,cx.Pick(rtype))
-         //               .Parse(new Scanner(0,new StreamReader(s).ReadToEnd().ToCharArray(),0));
+                if (s != null)
+                    r = domain.Parse(new Scanner(0,new StreamReader(s).ReadToEnd().ToCharArray(),0));
                 if (PyrrhoStart.HTTPFeedbackMode)
                 {
                     if (r is TArray)

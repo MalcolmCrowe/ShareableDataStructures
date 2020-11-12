@@ -87,12 +87,6 @@ namespace Pyrrho.Level3
                 m += (Sensitive, true);
             return (Table)tb.New(m);
         }
-        public static Table operator+(Table tb,Metadata md)
-        {
-            var m = tb.mem;
-            if (md.description != "") m += (Description, md.description); 
-            return new Table(tb.defpos, m);
-        }
         public static Table operator-(Table tb,long p)
         {
             return new Table(tb.defpos, tb.mem + (TableRows,tb.tableRows-p));

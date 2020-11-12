@@ -634,7 +634,7 @@ namespace Pyrrho.Level2
             context = new Context(db);
             role = db.role;
             user = (User)db.objects[db.owner];
-            file = db.File();
+            file = db._File();
             limit = file.Length;
             trans = pt;
             GetBuf(p);

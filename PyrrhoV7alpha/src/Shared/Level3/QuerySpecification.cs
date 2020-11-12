@@ -549,7 +549,7 @@ namespace Pyrrho.Level3
             var lf = ((Query)cx.obs[left]).Orders(cx, ord);
             ch = ch || lf.defpos!=left;
             var rg = ((Query)cx.obs[right])?.Orders(cx, ord);
-            ch = ch || rg.defpos != right;
+            ch = ch || (rg?.defpos??-1L) != right;
             return ch ? (Query)New(cx,r.mem + (_Left, lf.defpos) + (_Right, rg?.defpos ?? -1L)) : this;
         }
         /// <summary>

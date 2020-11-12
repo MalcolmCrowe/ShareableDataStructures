@@ -921,8 +921,7 @@ namespace Pyrrho.Level4
             var id = lxr.val.ToString();
             Mustbe(Sqlx.ID);
             cx.Frame();
-            Domain t = Domain.Null;
-            long structdef = -1;
+            var t = Domain.TableType;
             string tn = null; // explicit view type
             Table ut = null;
             bool schema = false; // will record whether a schema for GET follows
@@ -950,7 +949,7 @@ namespace Pyrrho.Level4
                 {
                     tn = lxr.val.ToString();
                     Mustbe(Sqlx.ID);
-                    t = ((ObInfo)cx.db.objects[cx.db.role.dbobjects[tn]]).domain??
+                    t = ((ObInfo)cx.db.objects[cx.db.role.dbobjects[tn]]).domain ??
                         throw new DBException("42119", tn, "").Mix();
                 }
                 schema = true;
@@ -976,29 +975,28 @@ namespace Pyrrho.Level4
                 }
             }
             PView pv = null;
-            var tr = cx.tr;
+            var np = cx.db.nextPos;
             if (cx.db.parse == ExecuteStatus.Obey)
             {
-                var np = cx.db.nextPos;
                 if (rest)
                 {
                     if (ut == null)
-                        pv = new PRestView(id, structdef, np, cx);
+                        pv = new PRestView(id, t.defpos, np, cx);
                     else
-                        pv = new PRestView2(id, structdef, ut.defpos, np, cx);
+                        pv = new PRestView2(id, t.defpos, ut.defpos, np, cx);
                 }
                 else
                     pv = new PView(id, new string(lxr.input,st,lxr.pos-st),
                         qe?.defpos??-1L, np, cx);
                 cx.Add(pv);
             }
-            var ob = (DBObject)cx.db.objects[cx.db.loadpos];
+            var ob = (DBObject)cx.db.objects[np]; // hmm may be null if not Obey somehow
             if (StartMetadata(tok))
             {
                 var md = ParseMetadata(cx.db, ob, -1, Sqlx.ADD);
                 if (md != null && cx.db.parse == ExecuteStatus.Obey)
-                    new PMetadata(id, -1, pv.ppos, md.description,
-                        md.iri, md.seq + 1, md.flags, tr.nextPos, cx);
+                    cx.Add(new PMetadata(id, -1, pv.ppos, md.description,
+                        md.iri, md.seq + 1, md.flags, cx.db.nextPos, cx));
             }
             return (Executable)cx.Add(ct);
         }
@@ -1825,10 +1823,10 @@ namespace Pyrrho.Level4
         {
             Metadata m = null;
             var checkedRole = 0;
-            var pr = ((ObInfo)tr.role.infos[ob.defpos])?.priv??Grant.Privilege.NoPrivilege;
+            var pr = ((ObInfo)tr.role.infos[ob?.defpos??-1L])?.priv??Grant.Privilege.NoPrivilege;
             while (StartMetadata(kind))
             {
-                if (checkedRole++ == 0 && (tr.role == null || !pr.HasFlag(Grant.Privilege.AdminRole)))
+                if (checkedRole++ == 0 && (tr.role == null))// || !pr.HasFlag(Grant.Privilege.AdminRole)))
                     throw new DBException("42105");
                 if (m == null)
                     m = new Metadata();
@@ -3257,7 +3255,8 @@ namespace Pyrrho.Level4
         Ident ParseIdent()
         {
             var c = new Ident(lxr);
-            Mustbe(Sqlx.ID);
+            Mustbe(Sqlx.ID, Sqlx.PARTITION, Sqlx.POSITION, Sqlx.VERSIONING, Sqlx.CHECK,
+                Sqlx.PROVENANCE, Sqlx.TYPE_URI, Sqlx.SYSTEM_TIME);
             return c;
         }
         /// <summary>
@@ -5084,7 +5083,8 @@ namespace Pyrrho.Level4
                 ms += (np, dm);
                 rt += np;
             }
-           return new Domain(d,ms,rt)+(Domain.Structure,pt.defpos);
+            return new Domain(pt.ppos,d,BTree<long,object>.Empty
+                +(Domain.Representation,ms)+(Domain.RowType,rt));
         }
         /// <summary>
         /// Member = id Type [DEFAULT TypedValue] Collate .
@@ -5108,9 +5108,12 @@ namespace Pyrrho.Level4
 			}
             if (tok == Sqlx.COLLATE)
                 dm+= (Domain.Culture,ParseCollate());
-            var r = cx.Add(new SqlElement(n.iix,cx,pn?.iix??-1L,dm));
+            var r = new SqlElement(n.iix,cx,pn?.iix??-1L,dm);
             if (pn != null)
+            {
+                cx.Add(r);
                 cx.defs += (new Ident(pn, n), r.defpos);
+            }
             if (StartMetadata(Sqlx.COLUMN))
                 r +=(SqlValue._Meta,ParseMetadata(cx.db,(DBObject)null,-1, Sqlx.COLUMN));
             return (n,r.domain);

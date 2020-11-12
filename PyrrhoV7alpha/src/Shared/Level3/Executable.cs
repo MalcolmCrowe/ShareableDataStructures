@@ -2292,7 +2292,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public override Context Obey(Context cx)
         {
-            cx.data += (defpos,EmptyRowSet.Value);
+            cx.data += (defpos,new EmptyRowSet(defpos,cx,cx.data[defpos].domain));
             return cx;
         }
         public override string ToString()
@@ -3078,7 +3078,7 @@ namespace Pyrrho.Level3
             if (s == null)
                 return cx;
             // Okay, use HTTP
-            var rq = SqlHttp.GetRequest(cx, cx.obs[url].Eval(cx).ToString());
+            var rq = SqlHttp.GetRequest(cx, s);
             rq.UserAgent = "Pyrrho 7.0 http://" + PyrrhoStart.host + "/" 
                 + cx.tr.startTime + "/" + cx.db.loadpos;
             rq.ContentType = mime ?? "application/tcc+json, application/json";

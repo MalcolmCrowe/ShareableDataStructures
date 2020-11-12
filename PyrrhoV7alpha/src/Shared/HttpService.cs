@@ -130,7 +130,7 @@ namespace Pyrrho
             Context cx, string rdc)
         {
             rs.StatusCode = 200;
-            string s = (cx.etag?.ToString() ?? "") + rdc;
+            string s = (cx.result?._Rvv(cx).ToString() ?? "") + rdc;
             if (s != null)
             {
                 rs.AddHeader("ETag", s);
@@ -640,7 +640,8 @@ namespace Pyrrho
                 details+=("Password", s[1]);
         //        ConnectionFor(dbn, details);
                 var acc = client.Request.Headers["Accept"];
-                var db = Database.Get(dbn.ident).Transact(Transaction.Analysing,s[0],"");
+                var d = Database.Get(dbn.ident);
+                var db = d.Transact(Transaction.Analysing,s[0],"");
                 if (acc != null && acc.Contains("text/plain"))
                     woutput = new SqlWebOutput(db, sbuild);
                 else if (acc != null && acc.Contains("text/html"))
