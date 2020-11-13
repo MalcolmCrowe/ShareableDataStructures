@@ -26,6 +26,8 @@ namespace Pyrrho
         static bool SqlStateDone = false;
         static void InitSqlstate()
         {
+            if (SqlStateDone)
+                return;
             dict.Add("02000", "Not found");
             dict.Add("08000", "Invalid connection name");
             dict.Add("08001", "SQL-client unable to establish SQL-connection");

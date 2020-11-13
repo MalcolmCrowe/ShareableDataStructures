@@ -212,40 +212,35 @@ namespace Pyrrho.Level3
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
-            Physical lph =null;
-            try
+            for (var pb = since.First(); pb != null; pb = pb.Next())
             {
-                for (var pb = since.First(); pb != null; lph=ph,pb = pb.Next())
+                ph = pb.value();
+                PTransaction pt = null;
+                if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
+                    pt = (PTransaction)ph;
+                for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                 {
-                    ph = pb.value();
-                    PTransaction pt = null;
-                    if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
-                        pt = (PTransaction)ph;
-                    for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
+                    var ce = cb.value()?.Check(ph, pt);
+                    if (ce != null)
                     {
-                        var ce = cb.value()?.Check(ph, pt);
-                        if (ce != null)
-                        {
-                            cx.rconflicts++;
-                            throw ce;
-                        }
-                    }
-                    for (var b = tb; b != null; b = b.Next())
-                    {
-                        var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
-                        if (ce != null)
-                        {
-                            cx.wconflicts++;
-                            throw ce;
-                        }
+                        cx.rconflicts++;
+                        throw ce;
                     }
                 }
-            } catch(Exception)
-            { }
+                for (var b = tb; b != null; b = b.Next())
+                {
+                    var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
+                    if (ce != null)
+                    {
+                        cx.wconflicts++;
+                        throw ce;
+                    }
+                }
+            }
             lock (wr.file)
             {
                 db = databases[name]; // may have moved on
-                var lb = db.log.PositionAt(lph?.ppos ?? loadpos)?.Next();
+                var lb = db.log.PositionAt(ph?.ppos ?? loadpos)?.Next();
                 if (lb != null)
                 {
                     rdr = new Reader(new Context(db), lb.key());

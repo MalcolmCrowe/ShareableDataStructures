@@ -49,7 +49,10 @@ namespace Tpcc
                 if (!rdr.Read())
                     return true;
                 clast = (string)rdr[3];
-                c_balance = (decimal)rdr[0];
+				var o = rdr[0];
+				if (o is string)
+					o = decimal.Parse((string)o);
+                c_balance = (decimal)o;
                 c_first = (string)rdr[1];
                 c_middle = (string)rdr[2];
             }
@@ -80,7 +83,7 @@ namespace Tpcc
 			try { 
                 while (rdr.Read())
                     cids.Add((long)rdr[0]);
-                cid = (int)(long)cids[(cids.Count + 1) / 2];
+                cid = (int)(long)cids[(cids.Count-1)/2]; // round up but base from 0
             }
 			catch (TransactionConflict ex)
 			{
@@ -103,7 +106,10 @@ namespace Tpcc
             try { 
                 if (!rdr.Read())
                     return true;
-                c_balance = (decimal)rdr[0];
+				var o = rdr[0];
+				if (o is string)
+					o = decimal.Parse((string)o);
+                c_balance = (decimal)o;
                 c_first = (string)rdr[1];
                 c_middle = (string)rdr[2];
             }
