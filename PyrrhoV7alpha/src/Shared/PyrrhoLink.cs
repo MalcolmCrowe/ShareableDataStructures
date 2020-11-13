@@ -632,7 +632,8 @@ namespace Pyrrho
                 case 2:
                     {
                         string s = GetString();
-                        if (decimal.TryParse(s, NumberStyles.AllowDecimalPoint,
+                        if (decimal.TryParse(s, 
+                            NumberStyles.AllowDecimalPoint|NumberStyles.AllowLeadingSign,
                             CultureInfo.InvariantCulture,out decimal de))
                             cell.val = de;
                         else
