@@ -20,7 +20,7 @@ namespace Pyrrho.Level3
     /// Level 3 Role object. 
     /// Roles manage grantable and renamable role-based database objects: 
     /// roles/users, table/views, procedures, domains/UDTypes.
-    /// These also have ObInfo and Selector for giving names/metadata and rowTypes of these objects.
+    /// These also have infos for giving names/metadata and rowTypes of these objects.
     /// Roles also manage granted permissions for these and for database, role, TableColumn:
     /// If ob is not User, role.obinfos[ob.defpos] contains the privilege that this role has on ob.
     /// If us is a User, then role.obinfo[us.defpos] tells whether the user has usage rights on the role.
@@ -33,12 +33,15 @@ namespace Pyrrho.Level3
     /// Two special implicit roles cannot be ALTERed.
     /// The schema role has access to system tables, and is the initial role for a new database.
     /// The database owner is always allowed to use the schema role, but it is otherwise
-    /// subject to normal SQL statements.
+    /// subject to normal SQL statements. The schema role has the same uid as _system.role,
+    /// and maintains a list of all users and roles known to the database.
     /// The guest role has access to all such that have been granted to PUBLIC: there is no Role object for this.
     /// In Pyrrho users are granted roles, and roles can be granted objects.  
-    /// There is one exception: a single user can be granted ownership of the database.
+    /// There is one exception: a single user can be granted ownership of the database:
+    /// this happens by default for the first user to be granted the schema role.
     /// If a role is granted to another role it causes a cascade of permissions, but does not establish
-    /// an ongoing relationship between the roles (granting a role to a user does). 
+    /// an ongoing relationship between the roles (granting a role to a user does):
+    /// for this reason granting a role to a role is deprecated.
     /// For ease of implementation, the transaction's Role also holds ObInfos for SqlValues and Queries. 
     /// Immutable
     /// </summary>
@@ -111,10 +114,6 @@ namespace Pyrrho.Level3
         {
             return (Role)r.New(r.mem - ob.defpos + (DBObjects, r.dbobjects - ob.name));
         }
-        internal override void Scan(Context cx)
-        {
-            throw new NotImplementedException();
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -155,7 +154,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            throw new NotImplementedException();
+            return new Role(dp, mem);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -171,33 +170,16 @@ namespace Pyrrho.Level3
     internal class ObInfo : DBObject
     {
         internal const long
+            _Metadata = -254, // BTree<Sqlx,object>
+            Inverts = -353, // long SqlProcedure
             MethodInfos = -252, // CTree<string, CTree<int,long>> Method
-            Privilege = -253, // Grant.Privilege
-            Properties = -254; // BTree<string,long> value object added into vacant mem above 0
-                               // (not for bool or long)
-        internal const string // some standard property names used in the code
-            Attribute = "Attribute", // BTree<string,bool>
-            Caption = "Caption", // string
-            Csv = "Csv", // bool
-            _Description = "Description", // string for role (DBOBject also has Description)
-            Entity = "Entity", // bool
-            Histogram = "Histogram", // bool
-            Id = "Id", // long
-            Iri = "Iri", // string
-            Inverts = "Inverts", // BTree<long,long>
-            Json = "Json", // bool
-            Legend = "Legend", // string
-            Line = "Line", // bool
-            Monotonic = "Monotonic", // BTree<long,bool>
-            Points = "Points", // bool
-            Pie = "Pie", // bool
-            X = "X", // long
-            Y = "Y"; // long
-
+            Privilege = -253; // Grant.Privilege
         public string name => (string)mem[Name] ?? "";
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
-        public BTree<string, long> properties =>
-            (BTree<string, long>)mem[Properties] ?? BTree<string, long>.Empty;
+        public long inverts => (long)(mem[Inverts] ?? -1L);
+        public string iri => (string)mem[Domain.Iri] ?? "";
+        public BTree<Sqlx, object> metadata =>
+            (BTree<Sqlx, object>)mem[_Metadata] ?? BTree<Sqlx, object>.Empty;
         public CTree<string, CTree<int, long>> methodInfos =>
 (CTree<string, CTree<int, long>>)mem[MethodInfos] ?? CTree<string, CTree<int, long>>.Empty;
 
@@ -213,14 +195,14 @@ namespace Pyrrho.Level3
         public ObInfo(long lp, string name, Domain rt, Grant.Privilege pr,
             BTree<long, object> m = null)
             : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
-          +(_Domain,rt)+(Privilege,pr)) { }
+          + (_Domain, rt) + (Privilege, pr)) { }
         public ObInfo(long lp, string name, Context cx, CList<long> rt,
-            Grant.Privilege pr, BTree<long, object> m = null) 
+            Grant.Privilege pr, BTree<long, object> m = null)
             : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
                   + (Privilege, pr)
-                + (_Domain, ((DBObject)cx.db.objects[lp]).domain+(Domain.RowType,rt)))
+                + (_Domain, ((DBObject)cx.db.objects[lp]).domain + (Domain.RowType, rt)))
         { }
-        protected ObInfo(long dp, BTree<long, object> m) : base(dp, m) 
+        protected ObInfo(long dp, BTree<long, object> m) : base(dp, m)
         { }
         public static ObInfo operator +(ObInfo oi, (long, object) x)
         {
@@ -233,31 +215,14 @@ namespace Pyrrho.Level3
             return new ObInfo(ut.defpos, ut.mem + (MethodInfos, ut.methodInfos + (m.Item2, ms))
                 + (m.Item1.defpos, m.Item2));
         }
-        public static ObInfo operator +(ObInfo d, Metadata md)
+        public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
-            var ps = d.properties;
-            var mm = d.mem;
-            if (md.description != "")
-            {
-                var pp = _Gap(d, 0);
-                ps += (_Description, pp);
-                mm += (pp, md.description);
-            }
-            if (md.iri != "")
-            {
-                var pp = _Gap(d, 0);
-                ps += (Iri, pp);
-                mm += (pp, md.iri);
-            }
-            mm += (Properties, ps);
-            return (ObInfo)d.New(mm);
-        }
-        static long _Gap(Basis a, long off)
-        {
-            long r = off;
-            while (a.mem.Contains(r))
-                r++;
-            return r;
+            d += (_Metadata, pm.Metadata());
+            if (pm.detail != "")
+                d += (Description, pm.detail);
+            if (pm.refpos > 0)
+                d += (Inverts, pm.refpos);
+            return d;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -295,64 +260,6 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new ObInfo(dp, mem);
-        }
-        public string Props(Database db)
-        {
-            var sb = new StringBuilder();
-            var cm = "";
-            for (var b = properties.First(); b != null; b = b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                switch (b.key())
-                {
-                    default: // boolean property
-                        sb.Append(b.key());
-                        break;
-                    case Caption: // string property
-                    case _Description:
-                    case Iri:
-                    case Legend:
-                        sb.Append(b.key());
-                        sb.Append("=");
-                        sb.Append((string)mem[b.value()]);
-                        break;
-                    case Id: // long
-                        sb.Append(Uid(b.value()));
-                        break;
-                    case Attribute:
-                    case Monotonic:
-                        {
-                            sb.Append(b.key());
-                            sb.Append("(");
-                            var at = (BTree<long, bool>)mem[b.value()];
-                            for (var a = at?.First(); a != null; a = a.Next())
-                            {
-                                var ai = (ObInfo)db.role.infos[a.key()];
-                                sb.Append(ai?.name ?? "?");
-                                sb.Append(' ');
-                            }
-                            sb.Append(")");
-                            break;
-                        }
-                    case Inverts:
-                        {
-                            sb.Append("Inverses(");
-                            var at = (BTree<long, long>)mem[b.value()];
-                            for (var a = at?.First(); a != null; a = a.Next())
-                            {
-                                var ai = (ObInfo)db.role.infos[a.key()];
-                                sb.Append(ai?.name ?? "?");
-                                sb.Append(":");
-                                var bi = (ObInfo)db.role.infos[a.value()];
-                                sb.Append(bi?.name ?? "?");
-                                sb.Append(' ');
-                            }
-                            sb.Append(")");
-                            break;
-                        }
-                }
-            }
-            return sb.ToString();
         }
         /// <summary>
         /// API development support: generate the C# type information for a field 
@@ -400,47 +307,74 @@ namespace Pyrrho.Level3
                 sb.Append("  }\r\n");
             }
         }
+        internal string Metadata()
+        {
+            var sb = new StringBuilder();
+            var cm = "";
+            for (var b = metadata.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = " "; 
+                switch (b.key())
+                {
+                    case Sqlx.URL:
+                    case Sqlx.MIME:
+                    case Sqlx.SQLAGENT:
+                        sb.Append(b.key());
+                        sb.Append(" "); sb.Append((string)b.value());
+                        continue;
+                    case Sqlx.PASSWORD:
+                        sb.Append(b.key());
+                        sb.Append(" ******");
+                        continue;
+                    case Sqlx.IRI:
+                        sb.Append(b.key());
+                        sb.Append(" "); sb.Append((string)b.value());
+                        continue;
+                    case Sqlx.NO: 
+                        if (description != "")
+                        { sb.Append(" "); sb.Append(description); }
+                        continue;
+                    case Sqlx.INVERTS:
+                        sb.Append(b.key());
+                        sb.Append(" "); sb.Append(Uid((long)(b.value()??-1L)));
+                        continue;
+                    default:
+                        sb.Append(b.key());
+                        continue;
+                }
+            }
+            return sb.ToString();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(name); 
+            sb.Append(" "); sb.Append(name);
             sb.Append(" "); sb.Append(domain);
             if (mem.Contains(Privilege))
             {
                 sb.Append(" Privilege="); sb.Append((long)priv);
             }
-            var cm = "";
-            if (mem.Contains(Properties))
-            {
-                sb.Append(" Properties: "); sb.Append(properties); 
-                for (var b=mem.PositionAt(0);b!=null;b=b.Next())
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(Uid(b.key())); sb.Append("="); sb.Append(b.value());
-                }
+            if (mem.Contains(_Metadata))
+            { 
+                sb.Append(" "); sb.Append(Metadata()); 
             }
+            if (mem.Contains(Domain.Iri))
+            {
+                sb.Append(" Iri: "); sb.Append(iri);
+            }    
             return sb.ToString();
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(properties);
         }
         internal override Basis _Relocate(Writer wr)
         {
             var r = base._Relocate(wr);
-            r += (Properties, wr.Fix(properties));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (Properties, Fix(properties,fx));
+            r += (Inverts, wr.Fix(inverts));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
-            r += (Properties, cx.Fix(properties));
+            if (mem.Contains(Inverts))
+                r += (Inverts, cx.Fix(inverts));
             return r;
         }
     }

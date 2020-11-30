@@ -167,18 +167,21 @@ namespace Pyrrho.Level2
             var oi = ro.infos[obj] as ObInfo;
             if (oi == null)
                 throw new DBException("42105");
+            // limit any grant to PUBLIC 
             if (gee is Role r)
             {
                 ro = r;
                 if (ro.defpos == Database.Public)
                     priv = (Privilege)((int)priv & 0xfff);
             }
-            if (gee is User u && u.initialRole==Database.Public)
-                ro += (User.InitialRole, obj);
+    //        if (gee is User u && u.initialRole==Database.Public)
+    //            ro += (User.InitialRole, obj);
             var ci = ro.infos[obj] as ObInfo;
             var cp = ci?.priv ?? Privilege.NoPrivilege;
             var rt = CList<long>.Empty;
+            // limit grant to the request, then add the requested privilege (as limited)
             var pr = (oi.priv & cp) | priv;
+            // if its a table, modify grantees privileges on columns too
             if (cx.db.objects[obj] is Table tb)
             {
                 if (priv.HasFlag(Privilege.Select))
@@ -200,6 +203,7 @@ namespace Pyrrho.Level2
                             rt += c;
                     }
             }
+            // install the privilege on the target object
             ro += (new ObInfo(obj, oi.name, oi.domain + (Domain.RowType,rt),pr),true);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));

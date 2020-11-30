@@ -103,11 +103,29 @@ namespace Pyrrho.Level2
         {
             if (viewdef!="")
             {
-                var psr = new Parser(rdr, new Ident(viewdef, ppos + 1), null);
+                var psr = new Parser(rdr, new Ident(viewdef, ppos + 2), null);
                 var cs = psr.ParseCursorSpecification(Domain.TableType);
                 query = cs.cs;
                 Frame(psr.cx);
             }
+        }
+        internal virtual BTree<long,object> _Dom(Database db,BTree<long,object>m)
+        {
+            var vd = framing.obs[query];
+            var ns = BTree<string, long>.Empty;
+            var d = 1 + (vd?.depth ?? 0);
+            var dm = vd?.domain;
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var c = (SqlValue)framing.obs[p];
+                d = DBObject._Max(d, 1 + c.depth);
+                ns += (c.name, p);
+            }
+            return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm) 
+                + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
+                + (DBObject._Framing, framing) + (View.ViewQry, query)
+                + (DBObject.Depth, d);
         }
         /// <summary>
         /// a readable version of this Physical
@@ -246,6 +264,21 @@ namespace Pyrrho.Level2
             cx.db = cx.db + (ro, p) + (vw, p);
             cx.Install(vw, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+        }
+        internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
+        {
+            var ns = BTree<string, long>.Empty;
+            var dm = ((ObInfo)db.role.infos[structpos]).domain;
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var c = (ObInfo)db.role.infos[p];
+                ns += (c.name, p);
+            }
+            return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm)
+                + (View.ViewPpos, ppos) + (View.ViewCols, ns)
+                + (DBObject._Framing, framing) + (View.ViewQry, query)
+                + (DBObject.Depth, 1);
         }
         public override string ToString()
         {

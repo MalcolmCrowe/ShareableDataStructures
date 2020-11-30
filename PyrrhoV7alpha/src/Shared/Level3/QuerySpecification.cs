@@ -111,25 +111,12 @@ namespace Pyrrho.Level3
         {
             return new QuerySpecification(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(tableExp.defpos);
-        }
         internal override Basis _Relocate(Level2.Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = (QuerySpecification)base._Relocate(wr);
             var te = tableExp.Relocate(wr);
-            if (te != tableExp)
-                r += (TableExp, te);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (QuerySpecification)base.Fix(fx);
-            var te = tableExp.Fix(fx);
             if (te != tableExp)
                 r += (TableExp, te);
             return r;
@@ -344,12 +331,6 @@ namespace Pyrrho.Level3
         {
             return new QueryExpression(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(left);
-            cx.ObScanned(right);
-        }
         internal override Basis _Relocate(Level2.Writer wr)
         {
             if (defpos < wr.Length)
@@ -359,19 +340,12 @@ namespace Pyrrho.Level3
             r += (_Right, wr.Fixed(right)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (QueryExpression)base.Fix(fx);
-            r += (_Left,fx[left]??left);
-            r += (_Right, fx[right]??right);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (QueryExpression)base.Fix(cx);
-            r += (_Left, cx.obuids[left]);
+            r += (_Left, cx.obuids[left]??left);
             if (right>=0)
-            r += (_Right, cx.obuids[right]);
+            r += (_Right, cx.obuids[right]??right);
             return r;
         }
         internal override bool aggregates(Context cx)

@@ -63,7 +63,8 @@ namespace Pyrrho.Level3
         internal long left => (long)(mem[Left]??-1L); 
         internal long right => (long)(mem[Right]??-1L);
         internal long sub => (long)(mem[Sub]??-1L);
-        internal Metadata meta => (Metadata)mem[_Meta];
+        internal BTree<Sqlx,object> meta => 
+            (BTree<Sqlx,object>)mem[_Meta]??BTree<Sqlx,object>.Empty;
         internal CList<long> columns => (CList<long>)mem[_Columns] ?? CList<long>.Empty;
         internal virtual long target => defpos;
         public SqlValue(Ident ic) : this(ic.iix, ic.ident) { }
@@ -206,7 +207,7 @@ namespace Pyrrho.Level3
         }
         internal virtual void Grouped(Context cx,GroupSpecification gs)
         {
-            if (!gs.Has(cx, this))
+            if (!gs.Has(cx, defpos))
                 throw new DBException("42170", name);
         }
         internal virtual (SqlValue,Query) Resolve(Context cx,Query q,string a=null)
@@ -533,16 +534,6 @@ namespace Pyrrho.Level3
         {
             return new SqlValue(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.ObScanned(from);
-            cx.ObScanned(left);
-            cx.ObScanned(right);
-            domain.Scan(cx);
-            cx.Scan(columns);
-            cx.ObScanned(sub);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -557,31 +548,20 @@ namespace Pyrrho.Level3
             // don't worry about TableRow
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlValue)base.Fix(fx);
-            r += (_From, fx[from]??from);
-            r += (Left, fx[left] ?? left);
-            r += (Right, fx[right]??right);
-            r += (_Columns, Fix(columns,fx));
-            r += (Sub, fx[sub]??sub);
-            // don't worry about TableRow
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlValue)base.Fix(cx);
             if (from>=0)
-                r += (_From, cx.obuids[from]);
+                r += (_From, cx.obuids[from]??from);
             if (left>=0)
-                r += (Left, cx.obuids[left]);
+                r += (Left, cx.obuids[left]??left);
             if (right>=0)
-                r += (Right, cx.obuids[right]);
+                r += (Right, cx.obuids[right]??right);
             r += (_Domain,domain.Fix(cx));
             if (columns.Count>0)
                 r += (_Columns, cx.Fix(columns));
             if (sub>=0)
-                r += (Sub, cx.obuids[sub]);
+                r += (Sub, cx.obuids[sub]??sub);
             return r;
         }
     }
@@ -638,13 +618,13 @@ namespace Pyrrho.Level3
         public long copyFrom => (long)mem[CopyFrom];
         public SqlCopy(long dp, Context cx, string nm, long fp, SqlValue cf,
             BTree<long, object> m = null)
-            : base(dp, _Mem(fp,m) + (CopyFrom, cf.Defpos(cx)) + (_Columns, cf.columns)
+            : base(dp, _Mem(fp,m) + (CopyFrom, cf.defpos) + (_Columns, cf.columns)
                   + (_Domain, cf.domain) + (Name, nm))
         { }
         public SqlCopy(long dp, Context cx, string nm, long fp, long cp,
             BTree<long, object> m = null)
             : base(dp, _Mem(fp, m) + (CopyFrom, cp) + (_Columns, cx.Cols(cp))
-                 + (_Domain, cx.obs[cp].domain)+(Name,nm))
+                 + (_Domain, (cx.obs[cp]??(DBObject)cx.db.objects[cp]).domain)+(Name,nm))
         { }
         static BTree<long,object> _Mem(long fp,BTree<long,object>m)
         {
@@ -672,18 +652,9 @@ namespace Pyrrho.Level3
                 return true;
             return base.KnownBy(cx, q);
         }
-        internal override long Defpos(Context cx)
-        {
-            return (cx.obs.Contains(copyFrom))?cx.obs[copyFrom].Defpos(cx):copyFrom;
-        }
         internal override DBObject Relocate(long dp)
         {
             return new SqlCopy(dp, mem);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObUnheap(copyFrom);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -693,21 +664,16 @@ namespace Pyrrho.Level3
             r += (CopyFrom, wr.Fixed(copyFrom).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlCopy)base.Fix(fx);
-            r += (CopyFrom, fx[copyFrom]??copyFrom);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlCopy)base.Fix(cx);
-            r += (CopyFrom, cx.obuids[copyFrom]);
+            r += (CopyFrom, cx.obuids[copyFrom]??copyFrom);
             return r;
         }
         internal override SqlValue Reify(Context cx, Ident ic)
         {
-            if (defpos >= Transaction.Executables && ic.iix < Transaction.Executables)
+            if (defpos >= Transaction.Executables && defpos < Transaction.HeapStart
+                && ic.iix < Transaction.Executables)
                 return (SqlCopy)cx.Add(new SqlCopy(ic.iix, cx, ic.ident, from, this));
             else
                 return this;
@@ -835,12 +801,6 @@ namespace Pyrrho.Level3
                 r += (TreatType, t);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlTypeExpr)base.Fix(fx);
-            r += (TreatType, (Domain)type.Fix(fx));
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlTypeExpr)base.Fix(cx);
@@ -887,11 +847,6 @@ namespace Pyrrho.Level3
         {
             return new SqlTreatExpr(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(val);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -900,16 +855,10 @@ namespace Pyrrho.Level3
             r += (TreatExpr, wr.Fixed(val)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlTreatExpr)base.Fix(fx);
-            r += (TreatExpr, fx[val]??val);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlTreatExpr)base.Fix(cx);
-            r += (TreatExpr, cx.obuids[val]);
+            r += (TreatExpr, cx.obuids[val]??val);
             return r;
         }
         internal override SqlValue AddFrom(Context cx, Query q)
@@ -1290,188 +1239,6 @@ namespace Pyrrho.Level3
             (cx.obs[left] as SqlValue)?.AddReqs(cx, gf, ut, ref gfreqs, i);
             (cx.obs[right] as SqlValue)?.AddReqs(cx, gf, ut, ref gfreqs, i);
 
-        }
-        const int ea = 1, eg = 2, la = 4, lr = 8, lg = 16, ra = 32, rr = 64, rg = 128;
-        internal override SqlValue _ColsForRestView(long dp,Context cx,
-            From gf, GroupSpecification gs, ref BTree<SqlValue, string> gfc, 
-            ref BTree<long, string> rem, ref BTree<string, bool?> reg, 
-            ref BTree<long, SqlValue> map)
-        {
-            var rgl = BTree<string, bool?>.Empty;
-            var gfl = BTree<SqlValue, string>.Empty;
-            var rel = BTree<long, string>.Empty;
-            var rgr = BTree<string, bool?>.Empty;
-            var gfr = BTree<SqlValue, string>.Empty;
-            var rer = BTree<long, string>.Empty;
-            // we distinguish many cases here using the above constants: exp/left/right:agg/grouped/remote
-            int cse = 0, csa;
-            SqlValue el = cx.obs[left] as SqlValue, er = cx.obs[right] as SqlValue;
-            if (((Query)cx.obs[gf.QuerySpec(cx)]).aggregates(cx))
-                cse += ea;
-            if (gs?.Has(cx,this) == true)
-                cse += eg;
-            if (el.aggregates(cx))
-                cse += la;
-            if (er?.aggregates(cx) == true)
-                cse += ra;
-            if (el.IsFrom(cx,gf) && (!el.isConstant(cx)))
-            {
-                cse += lr;
-                el = el._ColsForRestView(dp, cx, gf, gs, ref gfl, ref rel, ref rgl, ref map);
-            }
-            if (er?.IsFrom(cx,gf) == true && (!er.isConstant(cx)))
-            {
-                cse += rr;
-                er = er._ColsForRestView(dp, cx, gf, gs, ref gfr, ref rer, ref rgr, ref map);
-            }
-            if (gs?.Has(cx,el)==true)
-                cse += lg;
-            if (gs?.Has(cx,er) == true)
-                cse += rg;
-            // I know we could save on the declaration of csa here
-            // But this case numbering follows documentation
-            switch (cse)
-            {
-                case ea + lr + rr:
-                case lr + rr: csa = 1; break;
-                case ea + lr:
-                case lr: csa = 2; break;
-                case ea + rr:
-                case rr: csa = 3; break;
-                case ea + la + lr + ra + rr: csa = 4; break;
-                case ea + eg + lr + rr: csa = 5; break;
-                case ea + eg + lr: csa = 6; break;
-                case ea + eg + rr: csa = 7; break;
-                case ea + eg + la + lr + ra + rr: csa = 8; break;
-                case ea + la + lr + rr + rg: csa = 9; break;
-                case ea + lr + lg + ra + rr: csa = 10; break;
-                case ea + la + lr + rg: csa = 11; break;
-                case ea + ra + rr + lg: csa = 12; break;
-                default:
-                    {   // if none of the above apply, we can't rewrite this expression
-                        // so simply ensure we can compute it
-                       /* for (var b = needed.First(); b != null; b = b.Next())
-                        {
-                            var sv = b.key();
-                            var id = sv.alias ?? cx.idents[sv.defpos].ident ?? ("C_" + sv.defpos);
-                            gfc +=(sv, id);
-                            rem +=(sv, id);
-                            if (aggregates())
-                                reg+=(id, true);
-                        } */
-                        return base._ColsForRestView(dp, cx, gf, gs, ref gfc, ref rem, ref reg, ref map);
-                    }
-            }
-            gfc = BTree<SqlValue, string>.Empty;
-            rem = BTree<long, string>.Empty;
-            reg = BTree<string, bool?>.Empty;
-            SqlValueExpr se = this;
-            SqlValue st = null;
-            var nn = alias;
-            var nl = el?.alias;
-            var nr = er?.alias;
-            switch (csa)
-            {
-                case 1: // lr rr : QS->Cexp as exp ; CS->Left’ op right’ as Cexp
-                    // rel and rer will have just one entry each
-                    st = new SqlValue(dp);
-                    se = new SqlValueExpr(defpos, cx, kind, 
-                        (SqlValue)cx.obs[rel.First().key()], (SqlValue)cx.obs[rer.First().key()], mod,
-                        new BTree<long, object>(_Alias, nn));
-                    rem += (se.defpos, nn);
-                    gfc += (st, nn);
-                    map += (defpos, st);
-                    return st;
-                case 2: // lr: QS->Cleft op right as exp; CS->Left’ as Cleft 
-                    // rel will have just one entry, rer will have 0 entries
-                    se = new SqlValueExpr(defpos,cx, kind,
-                        new SqlValue(dp), er, mod,
-                        new BTree<long, object>(_Alias, alias));
-                    rem += (rel.First().key(), nl);
-                    gfc += (gfl.First().key(), nl);
-                    map += (defpos, se);
-                    return se;
-                case 3:// rr: QS->Left op Cright as exp; CS->Right’ as CRight
-                    // rer will have just one entry, rel will have 0 entries
-                    se = new SqlValueExpr(defpos, cx, kind, el,
-                        new SqlValue(dp),  
-                        mod, new BTree<long, object>(_Alias, alias));
-                    rem += (rer.First().key(), nr);
-                    gfc += (gfr.First().key(), nr);
-                    map += (defpos, se);
-                    return se;
-                case 4: // ea lr rr: QS->SCleft op SCright; CS->Left’ as Cleft,right’ as Cright
-                    // gfl, gfr, rgl and rgr may have sevral entries: we need all of them
-                    se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, nn));
-                    gfc += (gfl,false); gfc += (gfr,false); rem += (rel,false); rem += (rer,false);
-                    map += (defpos, se);
-                    return se;
-                case 5: // ea eg lr rr: QS->Cexp as exp  group by exp; CS->Left’ op right’ as Cexp group by Cexp
-                    // rel and rer will have just one entry each
-                    reg += (nn, true);
-                    goto case 1;
-                case 6: // ea eg lr: QS->Cleft op right as exp group by exp; CS-> Left’ as Cleft group by Cleft
-                    CopyFrom(cx,ref reg, rel);
-                    goto case 2;
-                case 7: // ea eg rr: QS->Left op Cright as exp group by exp; CS->Right’ as Cright group by Cright
-                    CopyFrom(cx,ref reg, rer);
-                    goto case 3;
-                case 8: // ea eg la lr ra rr: QS->SCleft op SCright as exp group by exp; CS->Left’ as Cleft,right’ as Cright group by Cleft,Cright
-                    GroupOperands(cx,ref reg, rel);
-                    GroupOperands(cx, ref reg, rer);
-                    goto case 4;
-                case 9: // ea la lr rr rg: QS->SCleft op Cright as exp group by right; CS->Left’ as Cleft,right’ as Cright group by Cright
-                    se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, alias));
-                    gfc += (gfl,false); rem += (rel,false);
-                    map += (defpos, se);
-                    return se;
-                case 10: // ea lr lg rg: QS->Left op SCright as exp group by left; CS->Left’ as Cleft,right’ as Cright group by Cleft
-                    se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, alias));
-                    gfc += (gfr,false); rem += (rer,false);
-                    map += (defpos, se);
-                    return se;
-                case 11: // ea la lr rg: QS->SCleft op right as exp group by right; CS->Left’ as Cleft
-                    se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, alias));
-                    gfc += (gfl,false); rem += (rel,false);
-                    map += (defpos, se);
-                    break;
-                case 12: // ea lg ra: QS->Left op SCright as exp group by left; CS->Right’ as Cright
-                    se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, alias));
-                    gfc += (gfr,false); rem += (rer,false);
-                    map += (defpos, se);
-                    break;
-            }
-            se = new SqlValueExpr(defpos, cx, kind, el, er, mod, new BTree<long, object>(_Alias, nn));
-            if (gs.Has(cx,this))// what we want if grouped
-                st = new SqlValue(dp);
-            if (gs.Has(cx,this))
-            {
-                rem += (se.defpos, se.alias);
-                gfc += (se, alias);
-            }
-            else
-            {
-                if (!el.isConstant(cx))
-                    gfc += (el, nl);
-                if (!er.isConstant(cx))
-                    gfc += (er, nr);
-            }
-            map += (defpos, se);
-            return se;
-        }
-        void CopyFrom(Context cx,ref BTree<string, bool?> dst, BTree<long, string> sce)
-        {
-            for (var b = sce.First(); b != null; b = b.Next())
-            {
-                var sv = (SqlValue)cx.obs[b.key()];
-                dst +=(sv.alias ?? sv.name, true);
-            }
-        }
-        void GroupOperands(Context cx,ref BTree<string, bool?> dst, BTree<long, string> sce)
-        {
-            for (var b = sce.First(); b != null; b = b.Next())
-                if (((SqlValue)cx.obs[b.key()]).Operand(cx) is SqlValue sv)
-                    dst +=(sv.alias ?? sv.name, true);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -2384,7 +2151,7 @@ namespace Pyrrho.Level3
         internal const long
             _Val = -317;// TypedValue
         internal TypedValue val=>(TypedValue)mem[_Val];
-        internal readonly static SqlLiteral Null = new SqlLiteral(-1,Context._system,TNull.Value);
+        internal readonly static SqlLiteral Null = new SqlLiteral(--_uid,Context._system,TNull.Value);
         internal override long target => -1;
         /// <summary>
         /// Constructor: a Literal
@@ -2395,8 +2162,15 @@ namespace Pyrrho.Level3
         public SqlLiteral(long dp, Context cx, TypedValue v, Domain td=null,CList<long>cols=null) 
             : base(dp,BTree<long,object>.Empty+(_Domain,td??v.dataType)+(_Val, v)
                   +(_Columns,cols??CList<long>.Empty))
-        { }
-        public SqlLiteral(long dp, BTree<long, object> m) : base(dp, m) { }
+        {
+            if (dp == -1L)
+                throw new PEException("PE999");
+        }
+        public SqlLiteral(long dp, BTree<long, object> m) : base(dp, m) 
+        {
+            if (dp == -1L)
+                throw new PEException("PE999");
+        }
         public static SqlLiteral operator+(SqlLiteral s,(long,object)x)
         {
             return new SqlLiteral(s.defpos, s.mem + x);
@@ -2411,11 +2185,6 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new SqlLiteral(dp,mem);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            val.Scan(cx);
         }
         internal override Basis Fix(Context cx)
         {
@@ -2624,29 +2393,12 @@ namespace Pyrrho.Level3
         {
             return new SqlRow(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(columns);
-        }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = (SqlRow)base._Relocate(cx,nc);
-            r += (_Columns, cx.Fix(columns));
-            return r;
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = (SqlRow)base._Relocate(wr);
             r += (_Columns, wr.Fix(columns));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlRow)base.Fix(fx);
-            r += (_Columns, Fix(columns,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -2844,23 +2596,12 @@ namespace Pyrrho.Level3
         {
             return new SqlRowArray(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(rows);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = base._Relocate(wr);
             r += (Rows, wr.Fix(rows));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (Rows, Fix(rows,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3026,13 +2767,6 @@ namespace Pyrrho.Level3
         {
             return new SqlXmlValue(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(attrs);
-            cx.Scan(children);
-            cx.ObUnheap(content);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3043,27 +2777,13 @@ namespace Pyrrho.Level3
             r += (Content, wr.Fixed(content)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlXmlValue)base.Fix(fx);
-            var al = BList<(XmlName, long)>.Empty;
-            for (var b = attrs.First(); b != null; b = b.Next())
-            {
-                var (n, p) = b.value();
-                al += (n, fx[p] ?? p);
-            }
-            r += (Attrs, al);
-            r += (Children, Fix(children,fx));
-            r += (Content, fx[content]??content);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlXmlValue)base.Fix(cx);
             r += (Attrs, cx.Fix(attrs));
             r += (Children, cx.Fix(children));
             if (content>=0)
-                r += (Content, cx.obuids[content]);
+                r += (Content, cx.obuids[content]??content);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3224,11 +2944,6 @@ namespace Pyrrho.Level3
         {
             return new SqlSelectArray(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(aqe);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3237,16 +2952,10 @@ namespace Pyrrho.Level3
             r += (ArrayValuedQE, wr.Fixed(aqe).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlSelectArray)base.Fix(fx);
-            r += (ArrayValuedQE, fx[aqe]??aqe);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlSelectArray)base.Fix(cx);
-            r += (ArrayValuedQE, cx.obuids[aqe]);
+            r += (ArrayValuedQE, cx.obuids[aqe]??aqe);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3352,12 +3061,6 @@ namespace Pyrrho.Level3
         {
             return new SqlValueArray(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(array);
-            cx.ObScanned(svs);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3367,19 +3070,12 @@ namespace Pyrrho.Level3
             r += (Svs, wr.Fixed(svs)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlValueArray)base.Fix(fx);
-            r += (Array, Fix(array,fx));
-            r += (Svs, fx[svs]??svs);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlValueArray)base.Fix(cx);
             r += (Array, cx.Fix(array));
             if (svs>=0)
-                r += (Svs, cx.obuids[svs]);
+                r += (Svs, cx.obuids[svs]??svs);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3528,11 +3224,6 @@ namespace Pyrrho.Level3
         {
             return new SqlValueSelect(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(expr);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3543,16 +3234,10 @@ namespace Pyrrho.Level3
                 r = r._Expr(wr.cx, e);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlValueSelect)base.Fix(fx);
-            r += (Expr,fx[expr]??expr);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlValueSelect)base.Fix(cx);
-            r += (Expr,cx.obuids[expr]);
+            r += (Expr,cx.obuids[expr]??expr);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3674,23 +3359,12 @@ namespace Pyrrho.Level3
         {
             return new ColumnFunction(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(bits);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
             var r = base._Relocate(wr);
             r += (Bits, wr.Fix(bits));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (Bits, Fix(bits,fx));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -3747,11 +3421,6 @@ namespace Pyrrho.Level3
         {
             return new SqlCursor(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(spec);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3760,16 +3429,10 @@ namespace Pyrrho.Level3
             r += (Spec, wr.Fixed(spec).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlCursor)base.Fix(fx);
-            r += (Spec, fx[spec]??spec);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlCursor)base.Fix(cx);
-            r += (Spec, cx.obuids[spec]);
+            r += (Spec, cx.obuids[spec]??spec);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3833,11 +3496,6 @@ namespace Pyrrho.Level3
         {
             return new SqlCall(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(call);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -3846,16 +3504,10 @@ namespace Pyrrho.Level3
             r += (Call, wr.Fixed(call).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlCall)base.Fix(fx);
-            r += (Call, fx[call]??call);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlCall)base.Fix(cx);
-            r += (Call, cx.obuids[call]);
+            r += (Call, cx.obuids[call]??call);
             return r;
         }
         internal override void Grouped(Context cx, GroupSpecification gs)
@@ -4109,10 +3761,6 @@ namespace Pyrrho.Level3
         {
             return new SqlConstructor(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlConstructor)base.Fix(cx);
@@ -4156,7 +3804,7 @@ namespace Pyrrho.Level3
         /// <param name="lk">the actual parameters</param>
         public SqlDefaultConstructor(long dp, Context cx, Domain u, CList<long> ins)
             : base(dp, BTree<long, object>.Empty+(_Domain, u)
-                  +(Sce,cx.Add(new SqlRow(cx.nextHeap++,cx,u,ins)).defpos)
+                  +(Sce,cx._Add(new SqlRow(cx.nextHeap++,cx,u,ins)).defpos)
                   +(_Domain,u)+(Dependents,_Deps(ins))+(Depth,cx.Depth(ins)))
         { }
         protected SqlDefaultConstructor(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -4172,35 +3820,14 @@ namespace Pyrrho.Level3
         {
             return new SqlDefaultConstructor(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(sce);
-            base.Scan(cx);
-        }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = (SqlDefaultConstructor)base._Relocate(cx,nc);
-            if (cx.obuids[r.sce]==0)
-                cx.obs[r.sce]._Relocate(cx, nc);
-            var sc = cx.obuids[r.sce];
-            if (sc != r.sce)
-                r += (Sce, sc);
-            return r;
-        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (SqlDefaultConstructor)base._Relocate(wr);
             if (wr.uids[r.sce]==0)
-                wr.cx.obs[r.sce]._Relocate(wr);
+                wr.cx.obs[r.sce]?._Relocate(wr);
             var sc = wr.Fix(r.sce);
             if (sc != r.sce)
                 r += (Sce, sc);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlDefaultConstructor)base.Fix(fx);
-            r += (Sce, fx[sce]??sce);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -4214,6 +3841,12 @@ namespace Pyrrho.Level3
                 r += (Sce, sc.defpos);
             r = (SqlDefaultConstructor)New(cx, r.mem);
             cx.done += (defpos, r);
+            return r;
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (SqlDefaultConstructor)base.Fix(cx);
+            r += (Sce, cx.obuids[sce] ?? sce);
             return r;
         }
         internal override SqlValue AddFrom(Context cx, Query q)
@@ -4366,16 +3999,6 @@ namespace Pyrrho.Level3
         {
             return new SqlFunction(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(filter);
-            cx.ObScanned(op1);
-            cx.ObScanned(op2);
-            cx.ObScanned(val);
-            cx.ObScanned(window);
-            cx.ObUnheap(windowId);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -4389,32 +4012,21 @@ namespace Pyrrho.Level3
             r += (WindowId, wr.Fix(windowId));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (Filter, fx[filter]??filter);
-            r += (Op1, fx[op1]??op1);
-            r += (Op2, fx[op2]??op2);
-            r += (_Val, fx[val]??val);
-            r += (Window, fx[window]??window);
-            r += (WindowId, fx[windowId]??windowId);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlFunction)base.Fix(cx);
             if (filter >= 0)
-                r += (cx, Filter, cx.obuids[filter]);
+                r += (cx, Filter, cx.obuids[filter]??filter);
             if (op1 >= 0)
-                r += (cx, Op1, cx.obuids[op1]);
+                r += (cx, Op1, cx.obuids[op1]??op1);
             if (op2 >= 0)
-                r += (cx, Op2, cx.obuids[op2]);
+                r += (cx, Op2, cx.obuids[op2]??op2);
             if (val >= 0)
-                r += (cx, _Val, cx.obuids[val]);
+                r += (cx, _Val, cx.obuids[val]??val);
             if (window >= 0)
-                r += (cx, Window, cx.obuids[window]);
+                r += (cx, Window, cx.obuids[window]??window);
             if (windowId >= 0)
-                r += (cx, WindowId, cx.obuids[windowId]);
+                r += (cx, WindowId, cx.obuids[windowId]??windowId);
             return r;
         }
         internal override SqlValue AddFrom(Context cx, Query q)
@@ -6012,12 +5624,6 @@ namespace Pyrrho.Level3
         {
             return new QuantifiedPredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(what);
-            cx.ObScanned(select);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -6027,18 +5633,11 @@ namespace Pyrrho.Level3
             r += (_Select, wr.Fixed(select)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (QuantifiedPredicate)base.Fix(fx);
-            r += (What, fx[what]??what);
-            r += (_Select, fx[select]??select);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (QuantifiedPredicate)base.Fix(cx);
-            r += (What, cx.obuids[what]);
-            r += (_Select, cx.obuids[select]);
+            r += (What, cx.obuids[what]??what);
+            r += (_Select, cx.obuids[select]??select);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -6213,13 +5812,6 @@ namespace Pyrrho.Level3
         {
             return new BetweenPredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(what);
-            cx.ObScanned(low);
-            cx.ObScanned(high);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -6228,14 +5820,6 @@ namespace Pyrrho.Level3
             r += (QuantifiedPredicate.What, wr.Fixed(what)?.defpos??-1L);
             r += (QuantifiedPredicate.Low, wr.Fixed(low)?.defpos ?? -1L);
             r += (QuantifiedPredicate.High, wr.Fixed(high)?.defpos ?? -1L);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (BetweenPredicate)base.Fix(fx);
-            r += (QuantifiedPredicate.What,fx[what]??what);
-            r += (QuantifiedPredicate.Low, fx[low]??low);
-            r += (QuantifiedPredicate.High, fx[high]??high);
             return r;
         }
         internal override void Grouped(Context cx, GroupSpecification gs)
@@ -6248,11 +5832,11 @@ namespace Pyrrho.Level3
         {
             var r = (BetweenPredicate)base.Fix(cx);
             if (what >= 0)
-                r += (QuantifiedPredicate.What, cx.obuids[what]);
+                r += (QuantifiedPredicate.What, cx.obuids[what]??what);
             if (low >= 0)
-                r += (QuantifiedPredicate.Low, cx.obuids[low]);
+                r += (QuantifiedPredicate.Low, cx.obuids[low]??low);
             if (high >= 0)
-                r += (QuantifiedPredicate.High, cx.obuids[high]);
+                r += (QuantifiedPredicate.High, cx.obuids[high]??high);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -6456,11 +6040,6 @@ namespace Pyrrho.Level3
         {
             return new LikePredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(escape);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -6469,17 +6048,11 @@ namespace Pyrrho.Level3
             r += (Escape, wr.Fixed(escape)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (Escape, fx[escape]??escape);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (LikePredicate)base.Fix(cx);
             if (escape>=0)
-                r += (Escape, cx.obuids[escape]);
+                r += (Escape, cx.obuids[escape]??escape);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -6706,13 +6279,6 @@ namespace Pyrrho.Level3
         {
             return new InPredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(what);
-            cx.ObScanned(select);
-            cx.Scan(vals);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -6723,21 +6289,13 @@ namespace Pyrrho.Level3
             r += (QuantifiedPredicate.Vals, wr.Fix(vals));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (InPredicate)base.Fix(fx);
-            r += (QuantifiedPredicate.What, fx[what]??what);
-            r += (QuantifiedPredicate._Select, fx[select]??select);
-            r += (QuantifiedPredicate.Vals, Fix(vals,fx));
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (InPredicate)base.Fix(cx);
             if (what>=0)
-                r += (QuantifiedPredicate.What, cx.obuids[what]);
+                r += (QuantifiedPredicate.What, cx.obuids[what]??what);
             if (select>=0)
-                r += (QuantifiedPredicate._Select, cx.obuids[select]);
+                r += (QuantifiedPredicate._Select, cx.obuids[select]??select);
             r += (QuantifiedPredicate.Vals, cx.Fix(vals));
             return r;
         }
@@ -6966,12 +6524,6 @@ namespace Pyrrho.Level3
         {
             return new MemberPredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(lhs);
-            cx.ObScanned(rhs);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -6981,18 +6533,11 @@ namespace Pyrrho.Level3
             r += (Rhs, wr.Fixed(rhs)?.defpos ?? -1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (MemberPredicate)base.Fix(fx);
-            r += (Lhs, fx[lhs]??lhs);
-            r += (Rhs, fx[rhs]??rhs);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (MemberPredicate)base.Fix(cx);
-            r += (Lhs, cx.obuids[lhs]);
-            r += (Rhs, cx.obuids[rhs]);
+            r += (Lhs, cx.obuids[lhs]??lhs);
+            r += (Rhs, cx.obuids[rhs]??rhs);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -7151,12 +6696,6 @@ namespace Pyrrho.Level3
         {
             return new TypePredicate(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(lhs);
-            cx.Scan(rhs);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -7166,20 +6705,10 @@ namespace Pyrrho.Level3
             r += (MemberPredicate.Rhs, wr.Fix(rhs));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (TypePredicate)base.Fix(fx);
-            r += (MemberPredicate.Lhs, fx[lhs]??lhs);
-            var rh = BList<Domain>.Empty;
-            for (var b = rhs.First(); b != null; b = b.Next())
-                rh += (Domain)b.value().Fix(fx);
-            r += (MemberPredicate.Rhs, rh);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TypePredicate)base.Fix(cx);
-            r += (MemberPredicate.Lhs, cx.obuids[lhs]);
+            r += (MemberPredicate.Lhs, cx.obuids[lhs]??lhs);
             r += (MemberPredicate.Rhs, cx.Fix(rhs));
             return r;
         }
@@ -7373,11 +6902,6 @@ namespace Pyrrho.Level3
         {
             return (QueryPredicate)q.New(q.mem + x);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(expr);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -7386,16 +6910,10 @@ namespace Pyrrho.Level3
             r += (QExpr, wr.Fixed(expr).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (QueryPredicate)base.Fix(fx);
-            r += (QExpr, fx[expr]??expr);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (QueryPredicate)base.Fix(cx);
-            r += (QExpr, cx.obuids[expr]);
+            r += (QExpr, cx.obuids[expr]??expr);
             return r;
         }
         internal override DBObject _Replace(Context cx,DBObject so,DBObject sv)
@@ -7596,11 +7114,6 @@ namespace Pyrrho.Level3
                 r += (NVal, a.defpos);
             return (SqlValue)cx.Add(r);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(val);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -7609,16 +7122,10 @@ namespace Pyrrho.Level3
             r += (NVal, wr.Fixed(val).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (NVal, fx[val]??val);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (NullPredicate)base.Fix(cx);
-            r += (NVal, cx.obuids[val]);
+            r += (NVal, cx.obuids[val]??val);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -7673,715 +7180,5 @@ namespace Pyrrho.Level3
         {
             return isnull?"is null":"is not null";
         }
-    }
-    internal abstract class SqlHttpBase : SqlValue
-    {
-        internal const long
-            GlobalFrom = -255, // From
-            HttpWhere = -256, // BTree<long,SqlValue>
-            HttpMatches = -257, // BTree<SqlValue,TypedValue>
-            HttpRows = -258; // RowSet
-        internal From globalFrom => (From)mem[GlobalFrom];
-        public BTree<long,SqlValue> where => 
-            (BTree<long,SqlValue>)mem[HttpWhere]??BTree<long,SqlValue>.Empty;
-        public BTree<SqlValue, TypedValue> matches=>
-            (BTree<SqlValue,TypedValue>)mem[HttpMatches]??BTree<SqlValue,TypedValue>.Empty;
-        protected RowSet rows => (RowSet)mem[HttpRows];
-        protected SqlHttpBase(long dp, Query q,BTree<long,object> m=null) : base(dp, 
-            (m??BTree<long,object>.Empty)+(_Domain,q.domain)+(HttpMatches,q.matches)
-            +(GlobalFrom,q))
-        { }
-        protected SqlHttpBase(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SqlHttpBase operator+(SqlHttpBase s,(long,object)x)
-        {
-            return (SqlHttpBase)s.New(s.mem + x);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            globalFrom.Scan(cx);
-            cx.Scan(where);
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SqlHttpBase)base._Relocate(wr);
-            r += (GlobalFrom, globalFrom.Relocate(wr));
-            r += (HttpWhere,wr.Fix(where));
-            r += (HttpMatches, wr.Fix(matches));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlHttpBase)base.Fix(fx);
-            r += (GlobalFrom, globalFrom.Fix(fx));
-            r += (HttpWhere, Fix(where,fx));
-            var ms = BTree<SqlValue, TypedValue>.Empty;
-            for (var b = matches.First(); b != null; b = b.Next())
-                ms += ((SqlValue)b.key().Fix(fx), b.value());
-            r += (HttpMatches, ms);
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (SqlHttpBase)base.Fix(cx);
-            r += (GlobalFrom, globalFrom.Fix(cx));
-            r += (HttpWhere, cx.Fix(where));
-            r += (HttpMatches, cx.Fix(matches));
-            return r;
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
-            var r = (SqlHttpBase)base._Replace(cx,so,sv);
-            var gf = r.globalFrom._Replace(cx, so, sv);
-            if (gf != r.globalFrom)
-                r += (GlobalFrom, gf);
-            var wh = r.where;
-            for (var b=wh.First();b!=null;b=b.Next())
-            {
-                var v = b.value()._Replace(cx,so,sv);
-                if (v != b.value())
-                    wh += (b.key(), (SqlValue)v);
-            }
-            if (wh != r.where)
-                r += (HttpWhere, wh);
-            var ma = r.matches;
-            for (var b=ma.First();b!=null;b=b.Next())
-            {
-                var v = b.key()._Replace(cx, so, sv);
-                if (v != b.key())
-                    ma += ((SqlValue)v, b.value());
-            }
-            if (ma != r.matches)
-                r += (HttpMatches, ma);
-            r = (SqlHttpBase)New(cx, r.mem);
-            cx.done += (defpos, r);
-            return r;
-        }
-        internal override void Grouped(Context cx, GroupSpecification gs)
-        { }
-        internal override SqlValue AddFrom(Context cx, Query q)
-        {
-            if (from > 0)
-                return this;
-            var r = (SqlHttpBase)base.AddFrom(cx, q);
-            var w = BTree<long, SqlValue>.Empty;
-            var ch = false;
-            for (var b=r.where.First();b!=null;b=b.Next())
-            {
-                var a = b.value().AddFrom(cx,q);
-                if (a != b.value())
-                    ch = true;
-                w += (b.key(), a);
-            }
-            if (ch)
-                r += (HttpWhere, w);
-            ch = false;
-            var m = BTree<SqlValue, TypedValue>.Empty;
-            for (var b=r.matches.First();b!=null;b=b.Next())
-            {
-                var a = b.key().AddFrom(cx, q);
-                if (a != b.key())
-                ch = true;
-                m += (a, b.value());
-            }
-            if (ch)
-                r += (HttpMatches, m);
-            return (SqlValue)cx.Add(r);
-        }
-        internal virtual SqlHttpBase AddCondition(Context cx,SqlValue wh)
-        {
-            return (wh!=null)? this+(HttpWhere,where+(wh.defpos, wh)):this;
-        }
-        internal virtual void Delete(Transaction tr,RestView rv, Query f,BTree<string,bool>dr,Adapters eqs)
-        {
-        }
-        internal virtual void Update(Transaction tr,RestView rv, Query f, BTree<string, bool> ds, Adapters eqs, List<RowSet> rs)
-        {
-        }
-        internal virtual void Insert(RestView rv, Query f, string prov, RowSet data, Adapters eqs, List<RowSet> rs)
-        {
-        }
-        /// <summary>
-        /// We aren't a column reference
-        /// </summary>
-        /// <param name="qn"></param>
-        /// <returns></returns>
-        internal override BTree<long, bool> Needs(Context cx, BTree<long, bool> qn)
-        {
-            for (var b = where.First(); b != null; b = b.Next())
-                qn = b.value().Needs(cx,qn);
-            for (var b = matches.First(); b != null; b = b.Next())
-                qn = b.key().Needs(cx,qn);
-            return qn;
-        }
-    }
-    internal class SqlHttp : SqlHttpBase
-    {
-        internal const long
-            KeyType = -370, // ObInfo
-            Mime = -371, // string
-            Pre = -372, // TRow
-            RemoteCols = -373, //string
-            TargetType = -374, //ObInfo
-            Url = -375; //SqlValue
-        public SqlValue expr => (SqlValue)mem[Url]; // for the url
-        public string mime=>(string)mem[Mime];
-        public TRow pre => (TRow)mem[Pre];
-        public ObInfo targetType=> (ObInfo)mem[TargetType];
-        public ObInfo keyType => (ObInfo)mem[KeyType];
-        public string remoteCols => (string)mem[RemoteCols];
-        internal SqlHttp(long dp, Query gf, SqlValue v, string m, 
-            BTree<long, bool> w, string rCols, TRow ur = null, BTree<long, TypedValue> mts = null)
-            : base(dp,gf,BTree<long,object>.Empty+(HttpWhere,w)+(HttpMatches,mts)
-                  +(Url,v)+(Mime,m)+(Pre,ur)+(RemoteCols,rCols))
-        { }
-        protected SqlHttp(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SqlHttp operator+(SqlHttp s,(long,object)x)
-        {
-            return new SqlHttp(s.defpos, s.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new SqlHttp(defpos,m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new SqlHttp(dp,mem);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            keyType.Scan(cx);
-            targetType.Scan(cx);
-            expr.Scan(cx);
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SqlHttp)base._Relocate(wr);
-            r += (KeyType, keyType._Relocate(wr));
-            r += (TargetType, targetType._Relocate(wr));
-            r += (Url, expr.Relocate(wr));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlHttp)base.Fix(fx);
-            r += (KeyType, keyType.Fix(fx));
-            r += (TargetType, targetType.Fix(fx));
-            r += (Url, expr.Fix(fx));
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (SqlHttp)base.Fix(cx);
-            r += (KeyType, keyType.Fix(cx));
-            r += (TargetType, targetType.Fix(cx));
-            r += (Url, expr.Fix(cx));
-            return r;
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
-            var r = (SqlHttp)base._Replace(cx,so,sv);
-            var u = r.expr._Replace(cx,so,sv);
-            if (u != r.expr)
-                r += (Url, u);
-            r = (SqlHttp)New(cx, r.mem);
-            cx.done += (defpos, r);
-            return r;
-        }
-        internal override SqlValue AddFrom(Context cx, Query q)
-        {
-            if (from > 0)
-                return this;
-            var r = (SqlHttp)base.AddFrom(cx, q);
-            var a = r.expr.AddFrom(cx, q);
-            if (a != r.expr)
-                r += (Url, a);
-            return (SqlValue)cx.Add(r);
-        }
-        /// <summary>
-        /// A lot of the fiddly rowType calculation is repeated from RestView.RowSets()
-        /// - beware of these mutual dependencies
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <returns></returns>
-        internal override TypedValue Eval(Context cx)
-        {
-            return (expr?.Eval(cx) is TypedValue ev)?
-                    OnEval(cx,ev):TNull.Value;
-        }
-        TypedValue OnEval(Context cx, TypedValue ev)
-        {
-            string url = ev.ToString();
-            var rx = url.LastIndexOf("/");
-       //     var rtype = ((Query)cx.obs[globalFrom.source]).rowType;
-       //     var vw = cx.tr.objects[globalFrom.target] as View;
-            string targetName = "";
-            if (globalFrom != null)
-            {
-                targetName = url.Substring(rx + 1);
-                url = url.Substring(0, rx);
-            }
-            if (url != null)
-            {
-                var rq = GetRequest(cx, url);
-                rq.Method = "POST";
-                rq.Accept = mime;
-                var sql = new StringBuilder("select ");
-                sql.Append(remoteCols);
-                sql.Append(" from "); sql.Append(targetName);
-                var qs = (Query)cx.obs[globalFrom.QuerySpec(cx)];
-                var cs = (CursorSpecification)cx.obs[globalFrom.source];
-                if (cs.where.Count > 0 || cs.matches.Count > 0)
-                {
-                    var sw = globalFrom.WhereString(cs.where, cs.matches, pre);
-                    if (sw.Length > 0)
-                    {
-                        sql.Append(" where ");
-                        sql.Append(sw);
-                    }
-                }
-                if (PyrrhoStart.HTTPFeedbackMode)
-                    Console.WriteLine(url + " " + sql.ToString());
-                if (globalFrom != null)
-                {
-                    var bs = Encoding.UTF8.GetBytes(sql.ToString());
-                    rq.ContentType = "text/plain";
-                    rq.ContentLength = bs.Length;
-                    try
-                    {
-                        var rqs = rq.GetRequestStream();
-                        rqs.Write(bs, 0, bs.Length);
-                        rqs.Close();
-                    }
-                    catch (WebException)
-                    {
-                        throw new DBException("3D002", url);
-                    }
-                }
-                var wr = GetResponse(rq);
-                if (wr == null)
-                    throw new DBException("2E201", url);
-                var et = wr.GetResponseHeader("ETag");
-                if (et != null)
-                    Console.WriteLine(et + " " +Rvv.Parse(et).Validate(cx.db));
-                var s = wr.GetResponseStream();
-                TypedValue r = null;
-                if (s != null)
-                    r = domain.Parse(new Scanner(0,new StreamReader(s).ReadToEnd().ToCharArray(),0));
-                if (PyrrhoStart.HTTPFeedbackMode)
-                {
-                    if (r is TArray)
-                        Console.WriteLine("--> " + ((TArray)r).list.Count + " rows");
-                    else
-                        Console.WriteLine("--> " + (r?.ToString() ?? "null"));
-                }
-                s.Close();
-                return r;
-            }
-            return null;
-        }
-        void Grouped(Context cx,Grouping gs,StringBuilder sql,ref string cm,List<string> ids,Query gf)
-        {
-            var m = cx.Map(gf.rowType);
-            for (var b = gs.members.First(); b!=null;b=b.Next())
-            {
-                var g = b.key();
-                if (m[g] is SqlValue s && !ids.Contains(s.name))
-                {
-                    ids.Add(s.name);
-                    sql.Append(cm); cm = ",";
-                    sql.Append(s.name);
-                }
-            }
-            for (var gi = gs.groups.First();gi!=null;gi=gi.Next())
-                Grouped(cx,gi.value(), sql, ref cm,ids, gf);
-        }
-        bool Contains(List<Ident> ids,string n)
-        {
-            foreach (var i in ids)
-                if (i.ToString() == n)
-                    return true;
-            return false;
-        }
-#if !SILVERLIGHT && !WINDOWS_PHONE
-        public static HttpWebResponse GetResponse(WebRequest rq)
-        {
-            HttpWebResponse wr = null;
-            try
-            {
-                wr = rq.GetResponse() as HttpWebResponse;
-            }
-            catch (WebException e)
-            {
-                wr = e.Response as HttpWebResponse;
-                if (wr == null)
-                    throw new DBException("3D003");
-                if (wr.StatusCode == HttpStatusCode.Unauthorized)
-                    throw new DBException("42105");
-                if (wr.StatusCode == HttpStatusCode.Forbidden)
-                    throw new DBException("42105");
-            }
-            catch (Exception e)
-            {
-                throw new DBException(e.Message);
-            }
-            return wr;
-        }
-#endif
-        public static HttpWebRequest GetRequest(Context cx,string url)
-        {
-            string user = null, password = null;
-            var ss = url.Split('/');
-            if (ss.Length>3)
-            {
-                var st = ss[2].Split('@');
-                if (st.Length>1)
-                {
-                    var su = st[0].Split(':');
-                    user = su[0];
-                    if (su.Length > 1)
-                        password = su[1];
-                }
-            }
-            var rq = WebRequest.Create(url) as HttpWebRequest;
-#if EMBEDDED
-            rq.UserAgent = "Pyrrho";
-#else
-            rq.UserAgent = "Pyrrho "+PyrrhoStart.Version[1];
-#endif
-            if (user == null)
-                rq.UseDefaultCredentials = true;
-            else
-            {
-                var cr = user + ":" + password;
-                var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
-                rq.Headers.Add("Authorization: Basic " + d);
-            }
-            return rq;
-        }
-/*        /// <summary>
-        /// Execute a Delete operation (for an updatable REST view)
-        /// </summary>
-        /// <param name="f">The From</param>
-        /// <param name="dr">The delete information</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override void Delete(Transaction tr,RestView rv, Query f, BTree<string, bool> dr, Adapters eqs)
-        {
-            var url = expr.Eval(tr,f.rowSet).ToString();
-            if (f.source.where.Count >0 || f.source.matches.Count>0)
-            {
-                var wc = f.WhereString(f.source.where, f.source.matches, tr, pre);
-                if (wc == null)
-                    throw new DBException("42152", ToString()).Mix();
-                url += "/" + wc;
-            }
-            var wr = GetRequest(tr[rv], url);
-#if !EMBEDDED
-            if (PyrrhoStart.HTTPFeedbackMode)
-                Console.WriteLine("DELETE " +url);
-#endif
-            wr.Method = "DELETE";
-            wr.Accept = mime;
-            var ws = GetResponse(wr);
-            var et = ws.GetResponseHeader("ETag");
-            if (et != null)
-                tr.etags.Add(et);
-            if (ws.StatusCode != HttpStatusCode.OK)
-                throw new DBException("2E203").Mix();
-        }
-        /// <summary>
-        /// Execute an Update operation (for an updatable REST view)
-        /// </summary>
-        /// <param name="f">the From</param>
-        /// <param name="ds">The list of updates</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">the rowsets affected</param>
-        internal override void Update(Transaction tr, RestView rv, Query f, BTree<string, bool> ds, Adapters eqs, List<RowSet> rs)
-        {
-            var db = tr[rv];
-            var url = expr.Eval(tr, f.rowSet).ToString();
-            if (f.source.where.Count > 0 || f.source.matches.Count>0)
-            {
-                var wc = f.WhereString(f.source.where, f.source.matches, tr, pre);
-                if (wc == null)
-                    throw new DBException("42152", ToString()).Mix();
-                url += "/" + wc;
-            }
-            var wr = GetRequest(db, url);
-            wr.Method = "PUT";
-            wr.Accept = mime;
-            var dc = new TDocument(tr);
-            foreach (var b in f.assigns)
-                dc.Add(b.vbl.name, b.val.Eval(tr, f.rowSet));
-            var d = Encoding.UTF8.GetBytes(dc.ToString());
-            wr.ContentLength = d.Length;
-#if !EMBEDDED
-            if (PyrrhoStart.HTTPFeedbackMode)
-                Console.WriteLine("PUT " + url+" "+dc.ToString());
-#endif
-            var ps = wr.GetRequestStream();
-            ps.Write(d, 0, d.Length);
-            ps.Close();
-            var ws = GetResponse(wr);
-            var et = ws.GetResponseHeader("ETag");
-            if (et != null)
-                tr.etags.Add(et);
-            ws.Close();
-        }
-        /// <summary>
-        /// Execute an Insert (for an updatable REST view)
-        /// </summary>
-        /// <param name="f">the From</param>
-        /// <param name="prov">the provenance</param>
-        /// <param name="data">the data to be inserted</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">the rowsets affected</param>
-        internal override void Insert(RestView rv, Query f, string prov, RowSet data, Adapters eqs, List<RowSet> rs)
-        {
-            if (data.tr is Transaction tr)
-            {
-                var db = data.tr.Db(rv.dbix);
-                var url = expr.Eval(data.tr,f.rowSet).ToString();
-                var ers = new ExplicitRowSet(data.tr, f);
-                var wr = GetRequest(db, url);
-                wr.Method = "POST";
-                wr.Accept = mime;
-                var dc = new TDocArray(data);
-                var d = Encoding.UTF8.GetBytes(dc.ToString());
-#if !EMBEDDED
-                if (PyrrhoStart.HTTPFeedbackMode)
-                    Console.WriteLine("POST " + url + " "+dc.ToString());
-#endif
-                wr.ContentLength = d.Length;
-                var ps = wr.GetRequestStream();
-                ps.Write(d, 0, d.Length);
-                ps.Close();
-                var ws = GetResponse(wr);
-                var et = ws.GetResponseHeader("ETag");
-                if (et != null)
-                    tr.etags.Add(et);
-            }
-        }
-        */
-    }
-    /// <summary>
-    /// To implement RESTViews properly we need to hack the domain of the FROM globalView.
-    /// After stage Selects, globalFrom.domain is as declared in the view definition.
-    /// So globalRowSet always has the same rowType as globalfrom,
-    /// and the same grouping operation takes place on each remote contributor
-    /// </summary>
-    internal class SqlHttpUsing : SqlHttpBase
-    {
-        internal const long
-            UsingCols = -259, // BTree<string,long>
-            UsingTablePos = -260; // long
-        internal long usingtablepos => (long)(mem[usingtablepos] ?? 0);
-        internal BTree<string, long> usC =>
-            (BTree<string,long>)mem[UsingCols]??BTree<string, long>.Empty;
-        // the globalRowSetType is our domain
-        /// <summary>
-        /// Get our bearings in the RestView (repeating some query analysis)
-        /// </summary>
-        /// <param name="f"></param>
-        /// <param name="ut"></param>
-        internal SqlHttpUsing(long dp,Query f,Table ut) 
-            : base(dp,f,BTree<long,object>.Empty+(UsingTablePos,ut.defpos))
-        { }
-        protected SqlHttpUsing(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SqlHttpUsing operator+(SqlHttpUsing s,(long,object) x)
-        {
-            return new SqlHttpUsing(s.defpos, s.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new SqlHttpUsing(defpos,m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new SqlHttpUsing(dp,mem);
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SqlHttpUsing)base._Relocate(wr);
-            r += (UsingCols, wr.Fix(usC));
-            r += (UsingTablePos, wr.Fix(usingtablepos));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlHttpUsing)base.Fix(fx);
-            r += (UsingCols, Fix(usC,fx));
-            r += (UsingTablePos, fx[usingtablepos]??usingtablepos);
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (SqlHttpUsing)base.Fix(cx);
-            r += (UsingCols, cx.Fix(usC));
-            r += (UsingTablePos, cx.obuids[usingtablepos]);
-            return r;
-        }
-        internal override DBObject _Replace(Context cx,DBObject so,DBObject sv)
-        {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
-            var r = (SqlHttpUsing)base._Replace(cx,so,sv);
-            var uc = BTree<string, long>.Empty;
-            var ch = false;
-            for (var b = usC.First(); b != null; b = b.Next())
-            {
-                var u = cx.Fix(b.value());
-                ch = ch || u != b.value();
-                uc += (b.key(), u);
-            }
-            if (ch)
-                r += (UsingCols, uc);
-            var ut = cx.Fix(usingtablepos);
-            if (ut != usingtablepos)
-                r += (UsingTablePos, ut);
-            r = (SqlHttpUsing)New(cx, r.mem);
-            cx.done += (defpos, r);
-            return r;
-        }
-        internal override SqlHttpBase AddCondition(Context cx,SqlValue wh)
-        {
-            var cs = (Query)cx.obs[globalFrom.source];
-            return base.AddCondition(cx,wh?.PartsIn(cs.rowType));
-        }
-        internal override TypedValue Eval(Context cx)
-        {
-            var tr = cx.db;
-            long qp = globalFrom.QuerySpec(cx); // can be a From if we are in a join
-            var cs = cx.obs[globalFrom.source] as CursorSpecification;
-            cs.MoveConditions(cx,(Query)cx.obs[cs.usingFrom]); // probably updates all the queries
-            var qs = (Query)cx.obs[qp];
-            cs = cx.obs[globalFrom.source] as CursorSpecification;
-            var uf = (From)cx.obs[cs.usingFrom];
-            var usingTable = tr.objects[uf.target] as Table;
-            var usingIndex = usingTable.FindPrimaryIndex(tr);
-            var ut = tr.role.infos[usingTable.defpos] as ObInfo;
-            var usingTableColumns = ut.domain.representation;
-            var urs = new IndexRowSet(cx, usingTable, usingIndex,
-                cx.data[from]?.finder??BTree<long,RowSet.Finder>.Empty,
-                cx.Filter(usingTable,where));
-            var r = new TArray(domain);
-            for (var b = urs.First(cx); b != null; b = b.Next(cx))
-            {
-                var ur = b;
-                var url = ur[usingTableColumns.Last().key()];
-                var sv = new SqlHttp(defpos, globalFrom, 
-                    (SqlValue)cx.Add(new SqlLiteral(cx.nextHeap++,cx,url)), "application/json", 
-                    globalFrom.where, cs.ToString(), ur, globalFrom.matches);
-                cx.Add(sv);
-                if (sv.Eval(cx) is TArray rv)
-                    r += rv;
-            }
-            return r;
-        }
-/*        internal override void Delete(Transaction tr,RestView rv, Query f, BTree<string, bool> dr, Adapters eqs)
-        {
-            var globalFrom = tr.Ctx(blockid) as Query;
-            for (var b = usingIndex.rows.First(tr);b!=null;b=b.Next(tr))
-            {
-                var qv = b.Value();
-                if (!qv.HasValue)
-                    continue;
-                var db = tr[rv];
-                var ur = db.GetD(qv.Value) as Record;
-                var urs = new TrivialRowSet(tr, (globalFrom.source as CursorSpecification).usingFrom, ur);
-                if (!(globalFrom.CheckMatch(tr,ur)&&Query.Eval(globalFrom.where,tr,urs)))
-                    continue;
-                var url = ur.Field(usingTableColumns[usingTableColumns.Length - 1].defpos);
-                var s = new SqlHttp(tr, f, new SqlLiteral(tr, url), "application/json", f.source.domain, Query.PartsIn(where,f.source.domain),"",ur);
-                s.Delete(tr,rv, f, dr, eqs);
-            }
-        }
-        internal override void Update(Transaction tr,RestView rv, Query f, BTree<string, bool> ds, Adapters eqs, List<RowSet> rs)
-        {
-            var globalFrom = tr.Ctx(blockid) as Query;
-            for (var b = usingIndex.rows.First(tr); b != null; b = b.Next(tr))
-            {
-                var qv = b.Value();
-                if (!qv.HasValue)
-                    continue;
-                var db = tr[rv];
-                var ur = db.GetD(qv.Value) as Record;
-                var uf = (globalFrom.source as CursorSpecification).usingFrom;
-                var urs = new TrivialRowSet(tr, uf, ur);
-                if (!(globalFrom.CheckMatch(tr, ur) && Query.Eval(globalFrom.where, tr, urs)))
-                    continue;
-                var url = ur.Field(usingTableColumns[usingTableColumns.Length - 1].defpos);
-                var s = new SqlHttp(tr, f, new SqlLiteral(tr, url), "application/json", f.source.domain, Query.PartsIn(f.source.where, f.source.domain), "", ur);
-                s.Update(tr, rv, f, ds, eqs, rs);
-            }
-        }
-        internal override void Insert(RestView rv, Query f, string prov, RowSet data, Adapters eqs, List<RowSet> rs)
-        {
-            if (data.tr is Transaction tr)
-            {
-                var ers = new ExplicitRowSet(data.tr, f);
-                for (var b = usingIndex.rows.First(data.tr); b != null; b = b.Next(data.tr))
-                {
-                    var qv = b.Value();
-                    if (!qv.HasValue)
-                        continue;
-                    var db = data.tr.Db(rv.dbix);
-                    var ur = db.GetD(qv.Value) as Record;
-                    var url = ur.Field(usingTableColumns[usingTableColumns.Length - 1].defpos);
-                    var rda = new TDocArray(data.tr);
-                    for (var a = data.First(); a != null; a = a.Next())
-                    {
-                        var rw = a.row;
-                        var dc = new TDocument(data.tr,f, rw);
-                        for (var i = 0; i < usingIndex.cols.Length - 1; i++)
-                        {
-                            var ft = usingIndexKeys[i].DataType(db);
-                            var cn = usingIndexKeys[i].NameInSession(db);
-                            if (ft.Compare(data.tr, ur.Field(usingIndexKeys[i].defpos), dc[cn]) != 0)
-                                goto skip;
-                            dc = dc.Remove(cn);
-                        }
-                        for (var i = 0; i < usingTableColumns.Length - 1; i++)
-                        {
-                            var ft = usingTableColumns[i].DataType(db);
-                            var cn = usingTableColumns[i].NameInSession(db);
-                            dc = dc.Remove(cn);
-                        }
-                        rda.Add(dc);
-                        skip:;
-                    }
-                    if (rda.content.Count == 0)
-                        continue;
-                    var wr = SqlHttp.GetRequest(db, url.ToString());
-                    wr.Method = "POST";
-                    wr.Accept = "application/json";
-                    var d = Encoding.UTF8.GetBytes(rda.ToString());
-#if !EMBEDDED
-                    if (PyrrhoStart.HTTPFeedbackMode)
-                        Console.WriteLine("POST " + url + " "+rda.ToString());
-#endif
-                    wr.ContentLength = d.Length;
-                    var ps = wr.GetRequestStream();
-                    ps.Write(d, 0, d.Length);
-                    ps.Close();
-                    var ws = SqlHttp.GetResponse(wr);
-                    var et = ws.GetResponseHeader("ETag");
-                    if (et != null)
-                        tr.etags.Add(et);
-                }
-                rs.Add(ers);
-            }
-        }*/
     }
 }

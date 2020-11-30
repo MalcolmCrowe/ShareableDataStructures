@@ -282,15 +282,6 @@ namespace Pyrrho.Level3
         {
             return new Index(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.ObScanned(adapter);
-            cx.Scan(keys);
-            cx.Scan(references);
-            cx.ObScanned(refindexdefpos);
-            cx.ObScanned(reftabledefpos);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -303,29 +294,16 @@ namespace Pyrrho.Level3
             r += (RefTable, wr.Fix(reftabledefpos));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Index)base.Fix(fx);
-            r += (Adapter, fx[adapter]??adapter);
-            r += (Keys, Fix(keys,fx));
-            var rf = BTree<long, BList<TypedValue>>.Empty;
-            for (var b = references?.First(); b != null; b = b.Next())
-                rf += (fx[b.key()]?? b.key(), b.value());
-            r += (References, rf);
-            r += (RefIndex, fx[refindexdefpos]??refindexdefpos);
-            r += (RefTable, fx[reftabledefpos]??reftabledefpos);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (Index)base.Fix(cx);
-            r += (Adapter, cx.obuids[adapter]);
+            r += (Adapter, cx.obuids[adapter]??adapter);
             r += (Keys, cx.Fix(keys));
             r += (References, cx.Fix(references));
             if (refindexdefpos>=0)
-                r += (RefIndex, cx.obuids[refindexdefpos]);
+                r += (RefIndex, cx.obuids[refindexdefpos]??refindexdefpos);
             if (reftabledefpos>=0)
-                r += (RefTable, cx.obuids[reftabledefpos]);
+                r += (RefTable, cx.obuids[reftabledefpos]??reftabledefpos);
             return r;
         }
     }

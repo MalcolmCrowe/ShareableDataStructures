@@ -102,11 +102,8 @@ namespace Pyrrho.Level3
             var rt = CList<long>.Empty;
             if (ob is Table)
                 rt = ob.Inf(cx).domain.rowType;
-            else if (ob is View vw)
-            {
-                ob = new View(vw,cx);
+            else if (ob is View)
                 rt = ob.domain.rowType;
-            }
             cx._Add(ob);
             cx.AddDefs(ic, rt);
             var mp = BTree<long, bool>.Empty;
@@ -249,13 +246,6 @@ namespace Pyrrho.Level3
         {
             return new From(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(assig);
-            cx.ObUnheap(source);
-            cx.ObUnheap(target);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -268,23 +258,12 @@ namespace Pyrrho.Level3
                 r += (Target, tg);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (From)base.Fix(fx);
-            var ag = BTree<UpdateAssignment, bool>.Empty;
-            for (var b = assig.First(); b != null; b = b.Next())
-                ag += ((UpdateAssignment)b.key().Fix(fx), b.value());
-            r += (Assig, ag);
-            r += (Source, fx[source]??source);
-            r += (Target, fx[target]??target);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (From)base.Fix(cx);
             if (assig.Count>0)
                 r += (Assig, cx.Fix(assig));
-            r += (Target, cx.obuids[target]);
+            r += (Target, cx.obuids[target]??target);
             return r;
         }
         internal override SqlValue ToSql(Ident id,Database db)
@@ -318,7 +297,7 @@ namespace Pyrrho.Level3
                 return new TrivialRowSet(defpos,cx,new TRow(domain, cx.values),-1,fi);
             if (cx.data.Contains(defpos))
                 return cx.data[defpos];
-            cx.obs[target].Select(cx, this, fi);
+            cx.obs[target].RowSets(cx, this, fi);
             return cx.data[defpos].ComputeNeeds(cx);
         }
         internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs, Level cl)
@@ -411,12 +390,6 @@ namespace Pyrrho.Level3
         {
             return new SqlInsert(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(target);
-            cx.RsScanned(value);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -426,19 +399,12 @@ namespace Pyrrho.Level3
             r += (Value, ((RowSet)wr.cx.data[value]._Relocate(wr)).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlInsert)base.Fix(fx);
-            r += (_Table, fx[target]??target);
-            r += (Value, fx[value]??value);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlInsert)base.Fix(cx);
-            r += (_Table, cx.obuids[target]);
+            r += (_Table, cx.obuids[target]??target);
             if (cx.rsuids.Contains(value))
-                r += (Value, cx.rsuids[value]);
+                r += (Value, cx.rsuids[value]??value);
             return r;
         }
         public override Context Obey(Context cx)
@@ -517,11 +483,6 @@ namespace Pyrrho.Level3
         {
             return new QuerySearch(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(table);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -530,16 +491,10 @@ namespace Pyrrho.Level3
             r += (SqlInsert._Table, wr.Fixed(table).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (QuerySearch)base.Fix(fx);
-            r += (SqlInsert._Table, fx[table]??table);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (QuerySearch)base.Fix(cx);
-            r += (SqlInsert._Table, cx.obuids[table]);
+            r += (SqlInsert._Table, cx.obuids[table]??table);
             return r;
         }
         /// <summary>

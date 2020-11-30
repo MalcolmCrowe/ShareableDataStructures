@@ -99,17 +99,11 @@ namespace Pyrrho.Level4
         {
             return new MergeRowSet(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(left);
-            cx.RsScanned(right);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (MergeRowSet)base.Fix(cx);
-            r += (QueryExpression._Left, cx.rsuids[left]);
-            r += (QueryExpression._Right, cx.rsuids[right]);
+            r += (QueryExpression._Left, cx.rsuids[left] ??left);
+            r += (QueryExpression._Right, cx.rsuids[right]??right);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -119,13 +113,6 @@ namespace Pyrrho.Level4
             var r = (MergeRowSet)base._Relocate(wr);
             r += (QueryExpression._Left, wr.Fix(left));
             r += (QueryExpression._Right, wr.Fix(right));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (MergeRowSet)base.Fix(fx);
-            r += (QueryExpression._Left, fx[left]??left);
-            r += (QueryExpression._Right, fx[right]??right);
             return r;
         }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder>nd)

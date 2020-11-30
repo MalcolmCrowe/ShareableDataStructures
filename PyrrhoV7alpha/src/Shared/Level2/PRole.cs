@@ -102,13 +102,12 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             // If this is the first Role to be defined, 
-            // it becomes the schema role
-            var first = true;
-            for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
-                if (b.value()>0 && !(cx.db.objects[b.value()] is User))
-                    first = false;
+            // it becomes the schema role and also the current role
+            var first = cx.db.roles.Count == Database._system.roles.Count;
             var nr = new Role(this, cx.db, first);
-            // givd the current role privileges on the new Role
+            if (first) // give the new Role the Schema uid
+                nr = (Role)nr.Relocate(cx.db._role);
+            // give the current role privileges on the new Role
             var ri = new ObInfo(nr.defpos, name, Domain.Role,Role.use|Role.admin);
             nr += (ri, true);
             var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
@@ -126,48 +125,45 @@ namespace Pyrrho.Level2
          /// </summary>
         public long seq;
         public long defpos;
-        public string description = "";
+        public string detail = "";
         public string iri = "";
         public long refpos;
-        public ulong flags = 0;
-        static Sqlx[] keys = new Sqlx[] { Sqlx.ENTITY, Sqlx.ATTRIBUTE, Sqlx.REFERS, Sqlx.REFERRED,
-            Sqlx.PIE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, Sqlx.LINE,
-            Sqlx.CAPTION, Sqlx.LEGEND, Sqlx.JSON, Sqlx.CSV };
+        public long flags;
+        public static Sqlx[] keys = { Sqlx.NO, Sqlx.ENTITY, Sqlx.ATTRIBUTE, //0x0-0x2
+            Sqlx.PIE, Sqlx.NONE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, //0x4-0x80
+            Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x4000
+            Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x8000-0x80000
+            Sqlx.PASSWORD, Sqlx.IRI}; // 0x100000-0x200000
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        /// <summary>
-        /// Constructor: role-based metadata from the parser
-        /// </summary>
-        /// <param name="nm">The name of the object</param>
-        /// <param name="md">The new metadata</param>
-        /// <param name="sq">The column seq no for a view column</param>
-        /// <param name="ob">the DBObject ref</param>
-        /// <param name="wh">The physical database</param>
-        /// <param name="curpos">The position in the datafile</param>
-        public PMetadata(string nm, long sq, long ob, string ds,string i,
-            long rf,ulong fl,long pp, Context cx)
-          : this(Type.Metadata,nm,sq,ob,ds,i,rf,fl,pp,cx)
-		{
+        public PMetadata(string nm, long sq, long ob, BTree<Sqlx,object> md, long pp, Context cx)
+            : this(Type.Metadata, nm, sq, ob, md, pp, cx) { }
+        public PMetadata(Type t,string nm,long sq,long ob, BTree<Sqlx,object> md,long pp,Context cx)
+            :base(t,pp,cx)
+        { 
+            name = nm;
+            seq = sq;
+            defpos = ob;
+            detail = Detail(md);
+            iri = Iri(md);
+            refpos = Inv(md);
+            flags = Flags(md);
         }
-        public PMetadata(string nm, Metadata md, long op, long pp, Context cx)
-            : this(Type.Metadata,nm,md.seq,op,md.description,md.iri,md.refpos,md.flags,pp,
-                  cx)
-        { }
         protected PMetadata(Type t, string nm, long sq, long ob, string ds, 
-            string i,long rf,ulong fl,long pp, Context cx)
+            string ir,long rf,BTree<Sqlx,object> md,long pp, Context cx)
           : base(t, pp, cx)
         {
             name = nm;
             seq = sq;
             defpos = ob;
-            description = ds;
-            iri = i;
+            detail = ds;
+            iri = ir;
             refpos = rf;
-            flags = fl;
+            flags = Flags(md);
         }
         public PMetadata(Reader rdr) : this(Type.Metadata, rdr) { }
         protected PMetadata(Type t, Reader rdr) : base(t, rdr) { }
@@ -176,7 +172,7 @@ namespace Pyrrho.Level2
             name = x.name;
             seq = x.seq;
             defpos = wr.Fix(x.defpos);
-            description = x.description;
+            detail = x.detail;
             iri = x.iri;
             refpos = wr.Fix(x.refpos);
             flags = x.flags;
@@ -192,12 +188,12 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(name.ToString());
-            wr.PutString(description);
+            wr.PutString(detail);
             wr.PutString(iri);
             defpos = wr.Fix(defpos);
             wr.PutLong(seq+1); 
-            wr.PutLong(defpos);
-            wr.PutLong((long)flags);
+            wr.PutLong(wr.Fix(refpos));
+            wr.PutLong(flags);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -207,22 +203,96 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{
 			name =rdr.GetString();
-            description = rdr.GetString();
+            detail = rdr.GetString();
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
-            flags = (ulong)rdr.GetLong();
+            flags = rdr.GetLong();
             base.Deserialise(rdr);
 		}
+        internal static long Flags(BTree<Sqlx,object> md)
+        {
+            var r = 0L;
+            for (var b=md.First();b!=null;b=b.Next())
+            {
+                var m = 1L;
+                for (var i = 0; i < keys.Length; i++, m <<= 1)
+                    if (b.key() == keys[i])
+                        r += m;
+            }
+            return r;
+        }
+        internal string MetaFlags()
+        {
+            var sb = new StringBuilder();
+            var cm = "";
+            var m = 1L;
+            for (var i=0;i<keys.Length;i++,m<<=1)
+                if ((flags&m)!=0L)
+                { sb.Append(cm); cm = " "; sb.Append(keys[i]); }
+            return sb.ToString();
+        }
+        internal BTree<Sqlx,object> Metadata()
+        {
+            var r = BTree<Sqlx, object>.Empty;
+            var m = 1L;
+            for (var i = 1; i < keys.Length; i++, m <<= 1)
+                if ((flags & m) != 0L)
+                {
+                    object v = "";
+                    var k = keys[i];
+                    switch (k)
+                    {
+                        case Sqlx.NO:
+                        case Sqlx.URL:
+                        case Sqlx.MIME:
+                        case Sqlx.SQLAGENT:
+                            r += (k, (detail == "") ? iri : detail);
+                            break;
+                        case Sqlx.INVERTS:
+                            r += (k, refpos);
+                            break;
+                        default:
+                            r += (k, v);
+                            break;
+                    }
+                }
+            return r;
+        }
+        long Inv(BTree<Sqlx,object> md)
+        {
+            return (long)(md[Sqlx.INVERTS] ?? -1L);
+        }
+        string Iri(BTree<Sqlx, object> md)
+        {
+            return (string)md[Sqlx.NO];
+        }
+        string Detail(BTree<Sqlx,object> md)
+        {
+            return (string)md[Sqlx.NO];
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
         /// <returns>the string representation</returns>
 		public override string ToString() 
         {
-            return "PMetadata "+name + "["+defpos+((seq>=0)?("."+seq):"")+"]" 
-                + ((description!="")?"(" + description +")":"")+
-                iri + Flags();
+            var sb = new StringBuilder();
+            sb.Append("PMetadata "); sb.Append(name);
+            sb.Append("["); sb.Append(DBObject.Uid(defpos));
+            if (seq >= 0) { sb.Append("."); sb.Append(seq);  }
+            sb.Append("]");
+            var m = 1L;
+            var cm = "";
+            for (var i = 1; i < keys.Length; i++, m <<= 1)
+                if ((flags&m)!=0L)
+                {
+                    sb.Append(cm); cm = ","; sb.Append(keys[i]);
+                }
+            if (detail != "")
+            { sb.Append("("); sb.Append(detail); sb.Append(")"); }
+            sb.Append(iri);
+            return sb.ToString();
         }
         public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
@@ -244,39 +314,21 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that,ct);
         }
-        internal void Add(Sqlx k)
-        {
-            ulong m = 1;
-            for (int i = 0; i < keys.Length; i++, m = m * 2)
-                if (k == keys[i])
-                    flags |= m;
-        }
-        internal void Drop(Sqlx k)
-        {
-            ulong m = 1;
-            for (int i = 0; i < keys.Length; i++, m = m * 2)
-                if (k == keys[i])
-                    flags &= ~m;
-        }
-        internal bool Has(Sqlx k)
-        {
-            ulong m = 1;
-            for (int i = 0; i < keys.Length; i++, m = m * 2)
-                if (k == keys[i] && (flags & m) != 0)
-                    return true;
-            return false;
-        }
-        internal string Flags()
-        {
-            var sb = new StringBuilder();
-            ulong m = 1;
-            for (int i = -0; i < keys.Length; i++, m = m * 2)
-                if ((flags & m) != 0)
-                    sb.Append(" " + keys[i]);
-            return sb.ToString();
-        }
+        /// <summary>
+        /// The default behaviour is to update the ObInfo for the current role.
+        /// We allow for the possibility that an object itself may be affected by metadata.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="p"></param>
         internal override void Install(Context cx, long p)
         {
+            var oi = (ObInfo)cx.db.role.infos[defpos];
+            var ni = oi + this;
+            if (oi != ni)
+            {
+                var ro = cx.db.role + (ni, false);
+                cx.db = cx.db+(ro, p);
+            }
             cx.db = ((DBObject)cx.db.objects[defpos]).Add(cx.db,this, p);
        }
     }
@@ -290,14 +342,8 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject ref</param>
         /// <param name="db">The physical database</param>
-         public PMetadata2(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, long pp, Context cx)
-          : this(Type.Metadata2,nm,sq,ob,ds,i,rf,fl,pp,cx)
-		{
-        }
-        protected PMetadata2(Type tp,string nm, long sq, long ob, string ds, string i,
-           long rf, ulong fl, long pp,Context cx)
-         : base(tp, nm, sq, ob, ds, i, rf, fl, pp, cx)
+        protected PMetadata2(Type tp,string nm, long sq, long ob, BTree<Sqlx,object> md, long pp,Context cx)
+         : base(tp, nm, sq, ob, md, pp, cx)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -333,8 +379,8 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
         {
-            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + ((description != "") ? "(" + description + ")" : "") +
-                iri + Flags();
+            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + ((detail != "") ? "(" + detail + ")" : "") +
+                iri + flags;
         }
 
      }
@@ -349,9 +395,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject ref</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, long ob, string ds, string i,
-            long rf, ulong fl, long pp, Context cx)
-         : base(Type.Metadata3, nm, sq, ob, ds,i,rf,fl,pp,cx)
+        public PMetadata3(string nm, long sq, long ob, BTree<Sqlx,object> md, long pp, Context cx)
+            : base(Type.Metadata3, nm, sq, ob, md, pp, cx)
         {
         }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
@@ -386,8 +431,8 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
         {
-            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + ((description != "") ? "(" + description + ")" : "") +
-                iri + Flags() + DBObject.Uid(refpos);
+            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + ((detail != "") ? "(" + detail + ")" : "") +
+                iri + flags + DBObject.Uid(refpos);
         }
 
     }

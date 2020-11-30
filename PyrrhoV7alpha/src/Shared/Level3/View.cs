@@ -31,6 +31,7 @@ namespace Pyrrho.Level3
 	internal class View : DBObject
 	{
         internal const long
+            CallerQS = -375, // long QuerySpecification
             ViewCols = -378, // BTree<string,long> SqlValue
             ViewDef = -379, // string
             ViewPpos = -377,// long
@@ -41,59 +42,14 @@ namespace Pyrrho.Level3
             (BTree<string, long>)mem[ViewCols] ?? BTree<string, long>.Empty;
         public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
         public long viewQry => (long)(mem[ViewQry]??-1L);
+        public long callerQS => (long)(mem[CallerQS] ?? -1L);
         public View(PView pv,Database db,BTree<long,object>m=null) 
-            : base(pv.ppos, _Dom(db,pv)
+            : base(pv.ppos, pv._Dom(db,m)
                   + (Name,pv.name) + (Definer,db.role.defpos)
-                  + (ViewDef,pv.viewdef)
+                  + (ViewDef,pv.viewdef) 
                   + (LastChange, pv.ppos))
         { }
-        internal View(View vw, Context cx)
-            : base(cx.nextHeap++,_Dom(cx,vw))
-        { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Dom(Database db,PView pv)
-        {
-            var vd = pv.framing.obs[pv.query];
-            var ns = BTree<string, long>.Empty;
-            var d = 1+(vd?.depth??0);
-            var dm = vd?.domain ?? ((ObInfo)db.role.infos[(pv as PRestView).structpos]).domain;
-
-            for (var b=vd?.domain.rowType.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                var c = (SqlValue)pv.framing.obs[p];
-                d = _Max(d, 1 + c.depth);
-                ns += (c.name, p);
-            }
-            return BTree<long,object>.Empty + (_Domain,dm) + (ViewPpos,pv.ppos)
-                +(ViewCols,ns) + (_Framing,pv.framing) + (ViewQry,pv.query)
-                +(Depth,d);
-        }
-        /// <summary>
-        /// This routine prepares a fresh copy of the View for use in query optimisation
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="vw"></param>
-        /// <returns></returns>
-        static BTree<long, object> _Dom(Context cx,View vw)
-        {
-            var fx = BTree<long, long?>.Empty;
-            for (var b = vw.framing.obs.PositionAt(vw.viewPpos); b != null; b = b.Next())
-                fx += (b.key(), cx.nextHeap++);
-            for (var b = vw.framing.data.PositionAt(vw.viewPpos); b != null; b = b.Next())
-                if (!fx.Contains(b.key()))
-                    fx += (b.key(), cx.nextHeap++);
-            var nf = new Framing(vw, fx);
-            cx.Install1(nf);
-            cx.Install2(nf);
-            var ns = BTree<string, long>.Empty;
-            for (var b = vw.viewCols.First(); b != null; b = b.Next())
-                ns += (b.key(), fx[b.value()] ?? b.value());
-            return BTree<long, object>.Empty + (_Domain, vw.domain.Fix(fx))
-                + (ViewDef, vw.viewDef) + (ViewPpos, vw.viewPpos)
-                + (ViewCols, ns) + (ViewQry,fx[vw.viewQry]) 
-                + (_Framing,nf) + (Depth,vw.depth);
-        }
         public static View operator+(View v,(long,object)x)
         {
             return new View(v.defpos, v.mem + x);
@@ -111,13 +67,69 @@ namespace Pyrrho.Level3
         {
             return domain.rowType;
         }
-        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        /// <summary>
+        /// This routine prepares a fresh copy of a View reference and optimises the RowSets
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="qs"></param>
+        /// <returns></returns>
+        internal virtual View Instance(Context cx,QuerySpecification qs)
+        {
+            var fx = cx.nextHeap;
+            var st = viewPpos;
+            for (var b = framing.obs.PositionAt(st); b != null; b = b.Next())
+            {
+                var ob = b.value();
+                var np = cx.nextHeap++;
+                cx._Add(ob.Relocate(np));
+                cx.obuids += (ob.defpos, np); 
+            }
+            for (var b = framing.data.PositionAt(st); b != null; b = b.Next())
+            {
+                var rb = b.value();
+                var np = cx.obuids[rb.defpos]??cx.nextHeap++;
+                cx._Add(rb.Relocate(np));
+                cx.rsuids += (rb.defpos, np);
+            }
+            var ro = cx.role;
+            for (var p = fx; p<cx.nextHeap; p++)
+                if (ro.infos[p] is ObInfo oi)
+                    ro += ((ObInfo)oi.Relocate(cx.obuids[p]??p), false);
+            cx.db += (ro, cx.db.loadpos);
+            cx.Install1(framing);
+            var nf = (Framing)framing.Fix(cx);
+            cx.Install1(nf);
+            cx.Install2(nf);
+            var ns = BTree<string, long>.Empty;
+            var r = (View)Fix(cx)+ (_Framing, nf) + (CallerQS, qs);
+            cx._Add(r);
+            r.ReviewRowSets(cx);
+            return r;
+        }
+        /// <summary>
+        /// Triggered on the complete set if a view is referenced in a From.
+        /// 3.	A view column can be dropped from the request if nobody references it.
+        /// 4.	If a view column is used as a simple filter, 
+        /// we can pass the filter to the target, 
+        /// and simplify everything by using the constant value.
+        /// 5.	If a view column is aggregated, 
+        /// we can perform some or all of the aggregation on the target, 
+        /// but we may need to group by the other visible remote columns.
+        /// 6.	With joins we need to preserve columns referenced in the join condition, 
+        /// and keep track of keys. Then perform the join with the target instead.
+        /// </summary>
+        /// <param name="cx"></param>
+        protected virtual void ReviewRowSets(Context cx)
+        { 
+            // TBD
+        }
+        internal override void RowSets(Context cx, From f, BTree<long, RowSet.Finder> fi)
         {
             cx.Install2(framing);
             if (!cx.data.Contains(defpos))
             {
                 var vq = (Query)cx.obs[viewQry];
-                var rs = vq?.RowSets(cx, fi)??new EmptyRowSet(defpos,cx,f.domain);
+                var rs = vq.RowSets(cx, fi);
                 var sc = (long)(rs.mem[From.Source]??-1L);
                 var fb = f.domain.rowType.First();
                 for (var b=domain.rowType.First();b!=null&&fb!=null;
@@ -347,12 +359,6 @@ namespace Pyrrho.Level3
         {
             return new View(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(viewCols);
-            cx.ObUnheap(viewQry);
-            cx.ObUnheap(defpos);
-        }
         internal override Basis Fix(Context cx)
         {
             return base.Fix(cx)+(ViewCols,cx.Fix(viewCols))+(ViewQry,cx.Fix(viewQry));
@@ -366,13 +372,6 @@ namespace Pyrrho.Level3
             var vq = wr.Fix(viewQry);
             if (vq != viewQry)
                 r += (ViewQry, vq);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (View)base.Fix(fx);
-            r += (ViewCols, Fix(viewCols,fx));
-            r += (ViewQry, fx[viewQry]??viewQry);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -452,17 +451,18 @@ namespace Pyrrho.Level3
         internal const long
             ClientName = -381, // string, deprecated
             ClientPassword = -382, // string, deprecated
-            JoinCols = -383, // BTree<string,int>
-            RemoteAggregates = -384, // bool
+            Mime = -255, // string
+            SqlAgent = -256, // string
             UsingTablePos = -385, // long
             ViewStruct = -386; // Domain
         internal string nm => (string)mem[ClientName];
         internal string pw => (string)mem[ClientPassword]; // deprecated
         internal Domain viewStruct => (Domain)mem[ViewStruct];
+        internal string mime => (string)mem[Mime];
+        internal string sqlAgent => (string)mem[SqlAgent];
+        internal string clientName => (string)mem[ClientName];
+        internal string clientPassword => (string)mem[ClientPassword];
         internal long usingTable => (long)(mem[UsingTablePos]??-1L);
-        internal BTree<string,long> joinCols => 
-            (BTree<string,long>)mem[JoinCols]??BTree<string,long>.Empty;
-        internal bool remoteAggregates => (bool)(mem[RemoteAggregates]??false);
         /// <summary>
         /// Constructor: a RestView from level 2
         /// </summary>
@@ -476,6 +476,41 @@ namespace Pyrrho.Level3
             +(ClientName,pv.rname)+(ClientPassword,pv.rpass))
         { }
         protected RestView(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new RestView(defpos,m);
+        }
+        internal override View Instance(Context cx,QuerySpecification qs)
+        {
+            var r = this; //  (RestView)base.Instance(cx,qs); does nothing for RestView
+     //       var oi = (ObInfo)cx.db.role.infos[defpos];
+     //       var r = new RestView(r.defpos,r.mem
+     // +(Mime,oi.metadata[Sqlx.MIME])+(SqlAgent,oi.metadata[Sqlx.SQLAGENT])
+    // +(Description, oi.description));
+            if (cx.data!=BTree<long,RowSet>.Empty)
+                r.ReviewRowSets(cx);
+            return r;
+        }
+        /// <summary>
+        /// 1.	The RestRowSet works out the remoteCols from the view.Domain
+        /// 2.	This analysis is triggered on the complete set if a restview is referenced.
+        /// 3.	A remote column can be dropped from the request if nobody references it.
+        /// 4.	If a remote column is used as a simple filter, 
+        ///     we can pass the filter to the remote contributor, and 
+        ///     simplify everything by using its constant value.
+        /// 5.	If a remote column is aggregated, 
+        ///     we can perform some or all of the aggregation in the remote, 
+        ///     but we may need to group by the other visible remote columns.
+        /// 6.	With joins we need to preserve columns referenced in the join condition, 
+        ///     and keep track of keys.
+        ///     But we do not attempt to construct remote joins 
+        ///     (a different restview should be created for this).
+        /// </summary>
+        /// <param name="cx"></param>
+        protected override void ReviewRowSets(Context cx)
+        {
+            base.ReviewRowSets(cx);
+        }
         public static RestView operator +(RestView r, (long, object) x)
         {
             return new RestView(r.defpos, r.mem + x);
@@ -483,11 +518,6 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new RestView(dp,mem);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(usingTable);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -498,29 +528,44 @@ namespace Pyrrho.Level3
             r += (UsingTablePos, wr.Fix(usingTable));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = base.Fix(fx);
-            r += (ViewStruct, viewStruct.Fix(fx));
-            r += (UsingTablePos, fx[usingTable]??usingTable);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (RestView)base.Fix(cx);
             r += (ViewStruct, viewStruct.Fix(cx));
-            r += (UsingTablePos, cx.obuids[usingTable]);
+            r += (UsingTablePos, cx.obuids[usingTable]??usingTable);
             return r;
         }
-        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        internal override void RowSets(Context cx, From gf, BTree<long, RowSet.Finder> fi)
         {
-            var url = description;
-            var sh = new SqlHttp(cx.nextHeap++, f, 
-                new SqlLiteral(-1L, cx, new TChar(url)),"applications/json",
-                BTree<long, bool>.Empty, "*");
-            var r = sh.Eval(cx);
-            var rs = new RestRowSet(cx, f, (TArray)r);
-            cx.data += (rs.defpos, rs);
+            RowSet r = new RestRowSet(cx, gf, this);
+            var cs = BList<string>.Empty;
+            for (var b=viewStruct._Cols(cx).First();b!=null;b=b.Next())
+            {
+                var ci = (ObInfo)cx.db.role.infos[b.value()];
+                cs += ci.name;
+            }
+            r += (RestRowSet.RemoteCols, cs);
+            if (cx.obs[usingTable] is Table ut)
+            {
+                var vs = CList<long>.Empty;
+                var ps = BTree<long, bool>.Empty;
+                for (var b=ut.domain.rowType.First();name!=null;b=b.Next())
+                {
+                    vs += b.value();
+                    ps += (b.value(), true);
+                }
+                for (var b = r.rt.First(); b != null; b = b.Next())
+                    if (!ps.Contains(b.value()))
+                        vs += b.value();
+                var dm = new Domain(Sqlx.TABLE, cx, vs);
+                r = new JoinRowSet(cx,
+                    new JoinPart(cx.nextHeap++) + (JoinPart.Natural, Sqlx.USING)
+                        +(_Domain,dm)+(JoinPart.NamedCols,vs),
+                    new TableRowSet(cx, ut.defpos,
+                        BTree<long, RowSet.Finder>.Empty, BTree<long, bool>.Empty),
+                    r);
+            }
+            cx.data += (r.defpos, r);
         }
     }
 }

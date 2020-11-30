@@ -94,18 +94,9 @@ namespace Pyrrho.Common
         {
             get;
         }
-        internal virtual void Scan(Context cx)
-        {
-            cx.Scan(dataType.representation);
-            cx.Scan(dataType.rowType);
-        }
         internal virtual TypedValue Fix(Context cx)
         {
             return New((Domain)dataType.Fix(cx));
-        }
-        internal virtual TypedValue Fix(BTree<long,long?>fx)
-        {
-            return New((Domain)dataType.Fix(fx));
         }
         internal virtual TypedValue Replaced(Context cx)
         {
@@ -548,14 +539,9 @@ namespace Pyrrho.Common
     {
         internal readonly long qid;
         public TQParam(Domain dt,long id) :base(dt) { qid = id; }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(qid);
-            base.Scan(cx);
-        }
         internal override TypedValue Fix(Context cx)
         {
-            var id = cx.obuids[qid];
+            var id = cx.obuids[qid]??qid;
             if (id==qid)
                 return base.Fix(cx);
             return new TQParam((Domain)dataType.Fix(cx), id);
@@ -1122,16 +1108,18 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TRvv : TypedValue
     {
-        internal Rvv value;
-        internal TRvv(Rvv ck) : base (Domain.Char)
-        { value = ck; }
+        internal Rvv rvv;
+        internal TRvv(Context cx) : base (Domain.Char)
+        {
+            rvv = cx.result._Rvv(cx);
+        }
         internal override TypedValue New(Domain t)
         {
             return this;
         }
         internal override object Val()
         {
-            return value;
+            return rvv;
         }
         public override bool IsNull
         {
@@ -1140,11 +1128,11 @@ namespace Pyrrho.Common
         public override int _CompareTo(object obj)
         {
             var that = obj as TRvv;
-            return value.off.CompareTo(that.value.off);
+            return rvv.CompareTo(that.rvv);
         }
         public override string ToString()
         {
-            return value.ToString();
+            return rvv.ToString();
         }
     }
     /// <summary>
@@ -1222,10 +1210,6 @@ namespace Pyrrho.Common
         internal PRow Fix(Context cx)
         {
             return new PRow(_head?.Fix(cx), _tail?.Fix(cx));
-        }
-        internal PRow Fix(BTree<long,long?>fx)
-        {
-            return new PRow(_head?.Fix(fx), _tail?.Fix(fx));
         }
         internal PRow Replaced(Context cx)
         {
@@ -1502,11 +1486,6 @@ namespace Pyrrho.Common
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException(); // use Relocate
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(tree);
-            base.Scan(cx);
         }
         internal override TypedValue Fix(Context cx)
         {

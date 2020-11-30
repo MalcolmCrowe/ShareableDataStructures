@@ -100,16 +100,14 @@ namespace Pyrrho.Level2
                     first = false;
             var pr = Grant.Privilege.Select;
             if (first)
-            {
                 pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-                nu += (User.InitialRole, ro.defpos);
-            }
-            ro += (new ObInfo(nu.defpos, nu.name, Domain.Null,pr),false);
+            var ui = new ObInfo(nu.defpos, nu.name, Domain.Null, pr);
+            ro += (ui,false);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             if (first)
             {
                 cx.db = cx.db + (Database.Owner, nu.defpos);
-                if (cx.db is Transaction tr && tr.connUser==nu.name)
+                if (cx.db is Transaction tr && tr.user.name==nu.name)
                     cx.db = cx.db + (Database.User, nu) + (Database.Role, ro)
                         + (Database._User, nu.defpos) + (Database._Role, ro.defpos);
             }

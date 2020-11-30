@@ -72,11 +72,6 @@ namespace Pyrrho.Level3
                 sb.Append(" following");
             return sb.ToString();
         }
-
-        internal override void Scan(Context cx)
-        {
-            distance?.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             return this + (Distance, distance?.Fix(cx));
@@ -157,15 +152,6 @@ namespace Pyrrho.Level3
         {
             return new WindowSpecification(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            high?.Scan(cx);
-            low?.Scan(cx);
-            cx.Scan(order);
-            cx.Scan(partitionType);
-            cx.ObScanned(query);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -178,14 +164,6 @@ namespace Pyrrho.Level3
             r += (WQuery, wr.Fixed(query));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (WindowSpecification)base.Fix(fx);
-            r += (Order, Fix(order,fx));
-            r += (PartitionType, Fix(partitionType,fx));
-            r += (WQuery, fx[query]??query);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (WindowSpecification)base.Fix(cx);
@@ -193,7 +171,7 @@ namespace Pyrrho.Level3
             r += (Low, low?.Fix(cx));
             r += (Order, cx.Fix(order));
             r += (PartitionType, cx.Fix(partitionType));
-            r += (WQuery, cx.obuids[query]);
+            r += (WQuery, cx.obuids[query]??query);
             return r;
         }
         /// <summary>
@@ -244,13 +222,12 @@ namespace Pyrrho.Level3
         {
             return new Grouping(g.defpos,g.mem+x);
         }
-        internal bool Has(SqlValue sv)
+        internal bool Has(long s)
         {
-            for (var b = members.First(); b != null; b = b.Next())
-                if (b.key() == sv.defpos)
-                    return true;
+            if (members.Contains(s))
+                 return true;
             for (var b = groups.First(); b != null; b = b.Next())
-                if (b.value().Has(sv))
+                if (b.value().Has(s))
                     return true;
             return false;
         }
@@ -289,12 +266,6 @@ namespace Pyrrho.Level3
         {
             return new Grouping(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.Scan(groups);
-            cx.Scan(members);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -302,19 +273,6 @@ namespace Pyrrho.Level3
             var r = (Grouping)base._Relocate(wr);
             r += (Groups, wr.Fix(groups));
             r += (Members, wr.Fix(members));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Grouping)base.Fix(fx);
-            var gs = BList<Grouping>.Empty;
-            for (var b = groups.First(); b != null; b = b.Next())
-                gs += (Grouping)b.value().Fix(fx);
-            r += (Groups, gs);
-            var ms = BTree<long, int>.Empty;
-            for (var b = members.First(); b != null; b = b.Next())
-                ms += (fx[b.key()] ?? b.key(), b.value());
-            r += (Members, ms);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -354,11 +312,24 @@ namespace Pyrrho.Level3
         {
             return (GroupSpecification)gs.New(gs.mem + x);
         }
-        public bool Has(Context cx,SqlValue sv)
+        public bool Has(Context cx,long s)
         {
             for (var b = sets.First(); b != null; b = b.Next())
-                if (((Grouping)cx.obs[b.value()]).Has(sv))
+                if (((Grouping)cx.obs[b.value()]).Has(s))
                     return true;
+            return false;
+        }
+        internal bool Has(Context cx,BList<long> ns)
+        {
+            if (ns == BList<long>.Empty)
+                return true;
+            for (var b=sets.First();b!=null;b=b.Next())
+            {
+                var g = (Grouping)cx.obs[b.value()];
+                for (var c=ns.First();c!=null;c=c.Next())
+                    if (g.Has(c.value()))
+                        return true;
+            }
             return false;
         }
         internal override BTree<long, bool> Needs(Context cx)
@@ -381,22 +352,11 @@ namespace Pyrrho.Level3
             r += (Sets, wr.Fix(sets));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (GroupSpecification)base.Fix(fx);
-            r += (Sets, Fix(sets,fx));
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (GroupSpecification)base.Fix(cx);
             r += (Sets, cx.Fix(sets));
             return r;
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.Scan(sets);
         }
         internal void Grouped(Context cx,BList<long> vals)
         {
@@ -443,11 +403,6 @@ namespace Pyrrho.Level3
         {
             return new UpdateAssignment(m);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObScanned(vbl);
-            cx.ObScanned(val);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (UpdateAssignment)base._Relocate(wr);
@@ -459,18 +414,11 @@ namespace Pyrrho.Level3
                 r += (Vbl, vb.defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (UpdateAssignment)base.Fix(fx);
-            r += (Val, fx[val]??val);
-            r += (Vbl, fx[vbl]??vbl);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
-            r += (Val, cx.obuids[val]);
-            r += (Vbl, cx.obuids[vbl]);
+            r += (Val, cx.obuids[val]??val);
+            r += (Vbl, cx.obuids[vbl]??vbl);
             return r;
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)

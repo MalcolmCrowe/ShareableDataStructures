@@ -94,7 +94,7 @@ namespace Pyrrho.Level4
         {
             return new SystemTable(defpos,m);
         }
-        internal override void Select(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        internal override void RowSets(Context cx, From f, BTree<long, RowSet.Finder> fi)
         {
             var sr = new SystemRowSet(cx, this, f.where);
             cx.data += (defpos, sr);
@@ -951,7 +951,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Description", Domain.Char,0);
             t+=new SystemTableColumn(t, "Output", Domain.Char,0);
             t+=new SystemTableColumn(t, "RefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Iri", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Detail", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1000,14 +1000,16 @@ namespace Pyrrho.Level4
             static TRow _Value(SystemRowSet res, Physical ph)
             {
                 PMetadata m = (PMetadata)ph;
+                var md = m.Metadata();
                 return new TRow(res,
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name),
-                    new TChar(m.description),
-                    new TChar(m.Flags()),
+                    new TChar(md.Contains(Sqlx.PASSWORD)?"*******":m.detail),
+                    new TChar(m.MetaFlags()),
                     Pos(m.refpos),
-                    new TChar(m.iri));
+                    // At present m.iri may contain a password (this should get fixed)
+                    new TChar((m.iri!="" && md.Contains(Sqlx.PASSWORD))?"*******":m.iri));
             }
          }
         /// <summary>
@@ -3133,7 +3135,6 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "SetPassword", Domain.Bool,0); // usually null
-            t+=new SystemTableColumn(t, "InitialRole", Domain.Char,0); // usually null
             t+=new SystemTableColumn(t, "Clearance", Domain.Char,0); // usually null, otherwise D to A
             t.AddIndex("Name");
             t.Add();
@@ -3190,7 +3191,6 @@ namespace Pyrrho.Level4
                     Pos(a.defpos),
                     new TChar(a.name),
                     (a.pwd==null)?TNull.Value:TBool.For(a.pwd.Length==0),
-                    new TChar(((Role)_cx.db.objects[a.initialRole]).name),
                     new TChar(a.clearance.ToString()));
             }
             /// <summary>
@@ -3328,7 +3328,6 @@ namespace Pyrrho.Level4
                     switch(bmk.ph.type)
                     {
                         case Physical.Type.Audit:
-                        case Physical.Type.Audit2:
                             var rb = new SysAuditBookmark(_cx,res, bmk, 0);
                             if (Query.Eval(res.where, _cx))
                                 return rb;
@@ -3345,13 +3344,6 @@ namespace Pyrrho.Level4
                             var au = ph as Audit;
                             return new TRow(rs, Pos(au.ppos),
                                 new TChar(au.user.name),Pos(au.table),
-                                new TDateTime(new DateTime(au.timestamp)));
-                        }
-                    case Physical.Type.Audit2:
-                        {
-                            var au = ph as Audit2;
-                            return new TRow(rs, Pos(au.ppos),
-                                new TChar(au.userName), Pos(au.table),
                                 new TDateTime(new DateTime(au.timestamp)));
                         }
                 }
@@ -3404,7 +3396,6 @@ namespace Pyrrho.Level4
                     switch (bmk.ph.type)
                     {
                         case Physical.Type.Audit:
-                        case Physical.Type.Audit2:
                             var a = ((Audit)bmk.ph).match.First();
                             if (a != null)
                             {
@@ -3438,8 +3429,7 @@ namespace Pyrrho.Level4
                     }
                     for (bmk = bmk?.Next(_cx) as LogBookmark; bmk != null;
                         bmk = bmk.Next(_cx) as LogBookmark)
-                        if (bmk.ph.type == Physical.Type.Audit
-                            || bmk.ph.type == Physical.Type.Audit2)
+                        if (bmk.ph.type == Physical.Type.Audit)
                         {
                             b = ((Audit)bmk.ph).match.First();
                             if (b!=null)
@@ -5203,7 +5193,6 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
             t+=new SystemTableColumn(t, "Triggers", Domain.Int,0);
             t+=new SystemTableColumn(t, "CheckConstraints", Domain.Int,0);
-            t+=new SystemTableColumn(t, "References", Domain.Int,0);
             t+=new SystemTableColumn(t, "RowIri", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
@@ -5256,8 +5245,7 @@ namespace Pyrrho.Level4
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
-                    new TInt(rt.properties.Count),
-                    new TChar((string)t.mem[Domain.Iri] ?? ""));
+                    new TChar(t.domain.iri));
             }
             /// <summary>
             /// Move to next Table
@@ -5744,7 +5732,7 @@ namespace Pyrrho.Level4
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, 0, outer, inner);
                             if (rb.Match(res) && Query.Eval(res.where, _cx)
-                                && inner.value() != Database._Role
+                                && inner.value() != Database._system._role
                                 && rb[1].ToString().Length != 0
                                 && rb[2].CompareTo(rb[4]) != 0)
                                 return rb;
@@ -5813,10 +5801,9 @@ namespace Pyrrho.Level4
             var t = new SystemTable("Role$Object");
             t+=new SystemTableColumn(t, "Type", Domain.Char,1); 
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Source", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Output", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Description", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Iri", Domain.Char,0);
+            t += new SystemTableColumn(t, "Description", Domain.Char, 0);
+            t += new SystemTableColumn(t, "Iri", Domain.Char, 0);
+            t+=new SystemTableColumn(t, "Metadata", Domain.Char,0);
             t.AddIndex("Type", "Name");
             t.Add();
         }
@@ -5829,15 +5816,14 @@ namespace Pyrrho.Level4
             /// enumerate the RoleObject tree
             /// </summary>
             readonly ABookmark<long,object> _en;
-            readonly string _output;
             /// <summary>
             /// create the Role$Obejct enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            RoleObjectBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                string ou) : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value(),ou))
+            RoleObjectBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en)
+                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
             {
-                _en = en; _output = ou;
+                _en = en; 
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -5848,12 +5834,10 @@ namespace Pyrrho.Level4
                 for (var bm = _cx.db.objects.PositionAt(0); bm != null; bm = bm.Next())
                 {
                     var ob = (DBObject)bm.value();
-                    var ou = (_cx.db.role.infos[ob.defpos] as ObInfo)?.Props(_cx.db);
-                    if (!(ob.mem.Contains(DBObject.Description)
-                        || ob.mem.Contains(Domain.Iri)
-                        || (ou!=null)))
+                    var oi = _cx.db.role.infos[ob.defpos] as ObInfo;
+                    if (oi == null)
                         continue;
-                    var rb = new RoleObjectBookmark(_cx,res, 0, bm, ou);
+                    var rb = new RoleObjectBookmark(_cx,res, 0, bm);
                     if (rb.Match(res) && Query.Eval(res.where, _cx))
                         return rb;
                 }
@@ -5862,17 +5846,17 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Name,Type,Owner,Source)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object oo,string ou)
+            static TRow _Value(Context _cx, SystemRowSet rs, object oo)
             {
                 var ob = (DBObject)oo;
                 var oi = (ObInfo)_cx.db.role.infos[ob.defpos];
+                var dm = ob as Domain;
                 return new TRow(rs,
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
-                    new TChar((oo as Domain)?.provenance ?? ""),
-                    new TChar(ou??""),
-                    new TChar(ob.description),
-                    new TChar((oo as Domain)?.iri));
+                    new TChar(ob.description ?? ""),
+                    new TChar(dm?.iri ?? ""),
+                    new TChar(oi.Metadata())); ;
             }
             /// <summary>
             /// Move to the next object
@@ -5884,12 +5868,13 @@ namespace Pyrrho.Level4
                 for (en=en.Next();en!=null ;en=en.Next())
                 {
                     var ob = (DBObject)en.value();
-                    var output = (_cx.db.role.infos[ob.defpos] as ObInfo)?.Props(_cx.db);
-                    if (!(ob.mem.Contains(DBObject.Description)
-                        || ob.mem.Contains(Domain.Iri)
-                        || (output!=null)))
+                    var oi = _cx.db.role.infos[ob.defpos] as ObInfo;
+                    if (oi == null)
                         continue;
-                    var rb = new RoleObjectBookmark(_cx,res, _pos+1, en,output);
+                    var ou = oi.Metadata();
+                    if (ou=="")
+                        continue;
+                    var rb = new RoleObjectBookmark(_cx,res, _pos+1, en);
                     if (rb.Match(res) && Query.Eval(res.where, _cx))
                         return rb;
                 }

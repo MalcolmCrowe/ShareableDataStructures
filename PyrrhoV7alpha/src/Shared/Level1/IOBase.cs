@@ -734,7 +734,6 @@ namespace Pyrrho.Level2
                 case Physical.Type.Delete1: p = new Delete1(this); break;
                 case Physical.Type.Drop1: p = new Drop1(this); break;
                 case Physical.Type.RefAction: p = new RefAction(this); break;
-                case Physical.Type.Audit2: p = new Audit2(this); break;
             }
             p.Deserialise(this);
             return p;

@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The object to which the check applies
         /// </summary>
-        internal long checkobjpos => (long)mem[From.Target];
+        internal long checkobjpos => (long)(mem[From.Target]??-1L);
         public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The source SQL for the check constraint
@@ -56,7 +56,8 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(Database._system).ParseSqlValue(s,Domain.Bool))) { }
+                  new Parser(new Context(Database._system),new Ident(s,dp))
+                  .ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -91,11 +92,6 @@ namespace Pyrrho.Level3
         {
             return new Check(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.ObScanned(search);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -104,16 +100,10 @@ namespace Pyrrho.Level3
             r += (Condition, wr.Fixed(search).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Check)base.Fix(fx);
-            r += (Condition, fx[search] ?? search);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (Check)base.Fix(cx);
-            r += (Condition, cx.obuids[search]);
+            r += (Condition, cx.obuids[search]??search);
             return r;
         }
         internal override Database Drop(Database d, Database nd, long p)

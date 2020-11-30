@@ -138,12 +138,6 @@ namespace Pyrrho.Level3
         {
             return new Procedure(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.Scan(ins);
-            cx.ObScanned(body);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -153,26 +147,12 @@ namespace Pyrrho.Level3
             r += (Body, wr.Fixed(body)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Procedure)base.Fix(fx);
-            r += (Params, Fix(ins,fx));
-            r += (Body, fx[body]??body);
-            return r;
-        }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = (Procedure)base._Relocate(cx,nc);
-            r += (Params, cx.Fix(ins));
-            r += (Body, cx.obuids[body]);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (Procedure)base.Fix(cx);
             r += (Params, cx.Fix(ins));
             if (body>=0)
-                r += (Body, cx.obuids[body]);
+                r += (Body, cx.obuids[body]??body);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)

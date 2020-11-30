@@ -107,22 +107,11 @@ namespace Pyrrho.Level4
         {
             return rows[(int)mt.Get(cx.MakeKey(keyType)).Value];
         }
-        internal void Scan(Context cx)
-        {
-            cx.RsUnheap(defpos);
-            domain.Scan(cx);
-            mt.Scan(cx);
-            cx.Scan(rows);
-        }
         internal RTree Fix(Context cx)
         {
-            return new RTree(cx.rsuids[defpos], _cx, cx.Fix(keyType), (Domain)domain.Fix(cx),
+            return new RTree(cx.rsuids[defpos]??defpos, _cx, 
+                cx.Fix(keyType), (Domain)domain.Fix(cx),
                 mt.Fix(cx),cx.Fix(rows));
-        }
-        internal RTree Fix(BTree<long,long?>fx)
-        {
-            return new RTree(fx[defpos] ?? defpos, _cx, Basis.Fix(keyType, fx), 
-                (Domain)domain.Fix(fx), mt.Fix(fx), Basis.Fix(rows, fx));
         }
         internal RTree Relocate(Writer wr)
         {

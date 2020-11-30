@@ -210,9 +210,21 @@ namespace PyrrhoCmd
                     str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
                     cmd.CommandText = str;
                     str = str.Trim().Trim(';').ToLower();
+                    if (str.StartsWith("begin"))
+                        str = str.Substring(5).Trim();
+                    if (str.StartsWith("set"))
+                    {
+                        var s1 = str.Substring(3).Trim();
+                        if (s1.StartsWith("role"))
+                        {
+                            var rn = s1.Substring(4).Trim();
+                            db.SetRole(rn);
+                            continue;
+                        }
+                    }
                     switch (str)
                     {
-                        case "begin transaction":
+                        case "transaction": // begin transaction
                             if (transaction != null)
                             {
                                 Console.WriteLine(Format("0016"));

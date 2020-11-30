@@ -105,7 +105,7 @@ namespace Pyrrho.Level4
         }
         internal Ident Fix(Context cx)
         {
-            return new Ident(ident, cx.obuids[iix], sub?.Fix(cx));
+            return new Ident(ident, cx.obuids[iix]??iix, sub?.Fix(cx));
         }
         public int CompareTo(object obj)
         {
@@ -242,7 +242,7 @@ namespace Pyrrho.Level4
                 {
                     var n = b.key();
                     var (p, ids) = b.value();
-                    r += (n, cx.obuids[p], ids?.Relocate(cx));
+                    r += (n, cx.obuids[p]??p, ids?.Relocate(cx));
                 }
                 return r;
             }

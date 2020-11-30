@@ -9,6 +9,8 @@ using System.Runtime.Remoting.Channels;
 using System.Security.Policy;
 using System.Runtime.InteropServices;
 using System.Runtime.Remoting.Messaging;
+using System.Net;
+using System.IO;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -82,8 +84,8 @@ namespace Pyrrho.Level4
             }
             internal Finder Relocate(Context cx)
             {
-                var c = cx.obuids[col];
-                var r = cx.rsuids[rowSet];
+                var c = cx.obuids[col]??col;
+                var r = cx.rsuids[rowSet]??rowSet;
                 return (c != col || r != rowSet) ? new Finder(c, r) : this;
             }
             internal Finder Relocate(Writer wr)
@@ -127,13 +129,12 @@ namespace Pyrrho.Level4
             BTree<long, TypedValue> ma = null,
             BTree<long, BTree<long, bool>> mg = null,
             GroupSpecification gp = null,BTree<long,object> m=null) 
-            : base(dp,_Fin(dp,cx,fin,dt.rowType,m)
+            : base(dp,_Fin(dp,cx,fin,dt.rowType,gp,m)
                 +(_Domain,dt)+(Index.Keys,kt??dt.rowType)
                 +(RowOrder,or??CList<long>.Empty)
                 +(Query.Where, wh??BTree<long,bool>.Empty)
                 +(Query._Matches,ma??BTree<long, TypedValue>.Empty)
-                + (Query.Matching,mg ?? BTree<long, BTree<long, bool>>.Empty)
-                +(TableExpression.Group,gp))
+                + (Query.Matching,mg ?? BTree<long, BTree<long, bool>>.Empty))
         {
             cx.data += (dp, this);
             if (cx.db.parse==ExecuteStatus.Obey)
@@ -149,7 +150,7 @@ namespace Pyrrho.Level4
                 cx.result = this;
         }
         static BTree<long,object> _Fin(long dp,Context cx,BTree<long,Finder> fin,CList<long> rt,
-            BTree<long,object>m)
+            GroupSpecification gp,BTree<long,object>m)
         {
             fin = fin ?? BTree<long, Finder>.Empty;
             for (var b = rt.First(); b != null; b = b.Next())
@@ -160,7 +161,10 @@ namespace Pyrrho.Level4
                     fin += (cx.defs[a].Item1, new Finder(p, dp));
                 fin += (p, new Finder(p, dp));
             }
-            return (m??BTree<long,object>.Empty) +(_Finder,fin);
+            var r = (m??BTree<long,object>.Empty) +(_Finder,fin);
+            if (gp != null)
+                r += (TableExpression.Group, gp.defpos);
+            return r;
         }
         protected static BTree<long,TypedValue> _Matches(Context cx,BTree<long,bool> wh)
         {
@@ -207,7 +211,7 @@ namespace Pyrrho.Level4
         {
             var r = this;
             // We cannot Build if Needs not met by now.
-            if (was == null)
+            if (was == null || this is RestRowSet)
             {
                 var ox = cx.from;
                 r = ComputeNeeds(cx); // install nd immediately in case Build looks for it
@@ -260,32 +264,12 @@ namespace Pyrrho.Level4
                 if (b.value() == this)
                     cx.data += (b.key(), now);  
         }
-        internal override void Scan(Context cx)
-        {
-            cx.RsUnheap(defpos);
-            domain.Scan(cx);
-            cx.Scan(finder);
-            cx.Scan(keys);
-            cx.Scan(rowOrder);
-            cx.Scan(where);
-            cx.Scan(matching);
-            cx.Scan(matches);
-            cx.Scan(rows);
-            cx.ObScanned(groupSpec);
-        }
-        internal override Basis _Relocate(Context cx,Context nc)
-        {
-            if (nc.data.Contains(defpos))
-                return this;
-            var r = (RowSet)Fix(cx);
-            nc.data += (r.defpos, r);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
-            var r = (RowSet)Relocate(cx.rsuids[defpos]);
+            var r = (RowSet)Relocate(cx.rsuids[defpos]??defpos);
             var dm = (Domain)domain.Fix(cx);
-            var gs = (GroupSpecification)cx.obs[cx.obuids[groupSpec]]?.Fix(cx);
+            var gs = (GroupSpecification)
+                cx.obs[cx.obuids[groupSpec]??groupSpec]?.Fix(cx);
             r += (_Domain,dm);
             r += (_Finder, cx.Fix(finder));
             r += (Index.Keys, cx.Fix(keys));
@@ -331,27 +315,8 @@ namespace Pyrrho.Level4
             r += (Query._Matches, cx.Replaced(matches));
             r += (Query.Matching, cx.Replaced(matching));
             if (cx.done.Contains(groupSpec))
-                r += (TableExpression.Group, cx.done[groupSpec]);
+                r += (TableExpression.Group, cx.done[groupSpec].defpos);
             cx.data += (defpos, r);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (RowSet)base.Fix(fx);
-            var fi = BTree<long, Finder>.Empty;
-            for (var b=finder.First();b!=null;b=b.Next())
-            {
-                var p = b.key();
-                var f = b.value();
-                fi += (fx[p] ?? p, new Finder(fx[f.col] ?? f.col, fx[f.rowSet] ?? f.rowSet));
-            }
-            r += (_Finder, fi);
-            r += (Index.Keys, Fix(keys,fx));
-            r += (RowOrder, Fix(rowOrder,fx));
-            r += (Query.Where, Fix(where,fx));
-            r += (Query._Matches, Fix(matches,fx));
-            r += (Query.Matching, Fix(matching,fx));
-            r += (TableExpression.Group, fx[groupSpec]??groupSpec);
             return r;
         }
         public string NameFor(Context cx, int i)
@@ -699,11 +664,6 @@ namespace Pyrrho.Level4
         {
             return new TrivialRowSet(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            row?.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TrivialRowSet)base.Fix(cx);
@@ -842,16 +802,10 @@ namespace Pyrrho.Level4
                 return new SelectedCursor(cx, this, IndexRowSet.IndexCursor.New(cx, irs, key),0);
             return base.PositionAt(cx, key);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-            cx.Scan(sQMap);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SelectedRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             r += (SQMap, cx.Fix(sQMap));
             return r;
         }
@@ -863,20 +817,6 @@ namespace Pyrrho.Level4
             r += (From.Source, wr.Fix(source));
             r += (SQMap, wr.Fix(sQMap));
             wr.cx.data += (r.defpos, r);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SelectedRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
-            var fi = BTree<long, Finder>.Empty;
-            for (var b = sQMap.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var f = b.value();
-                fi += (fx[p] ?? p, new Finder(fx[f.col] ?? f.col, fx[f.rowSet] ?? f.rowSet));
-            }
-            r += (SQMap, fi);
             return r;
         }
         public override string ToString()
@@ -907,8 +847,6 @@ namespace Pyrrho.Level4
                 var ox = cx.from;
                 var sce = srs.Source(cx);
                 cx.from += sce.finder;
-                if (PyrrhoServer.tracing)
-                    Console.WriteLine("SelectedCursor");
                 for (var bmk = sce.First(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new SelectedCursor(cx,srs, bmk, 0);
@@ -1002,15 +940,10 @@ namespace Pyrrho.Level4
             r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SelectRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1019,12 +952,6 @@ namespace Pyrrho.Level4
                 return this;
             var r = (SelectRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SelectRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
             return r;
         }
         public static SelectRowSet operator +(SelectRowSet rs, (long, object) x)
@@ -1192,15 +1119,10 @@ namespace Pyrrho.Level4
             r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (EvalRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1209,12 +1131,6 @@ namespace Pyrrho.Level4
                 return this;
             var r = (EvalRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (EvalRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -1348,15 +1264,10 @@ namespace Pyrrho.Level4
             r += (SqlInsert._Table, cx.Replace(tabledefpos, so, sv));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(tabledefpos);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TableRowSet)base.Fix(cx);
-            r += (SqlInsert._Table, cx.obuids[tabledefpos]);
+            r += (SqlInsert._Table, cx.obuids[tabledefpos]??tabledefpos);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1502,24 +1413,21 @@ namespace Pyrrho.Level4
         internal override bool TableColsOk => true;
         public override Rvv _Rvv(Context cx)
         {
-            return Rvv.Empty+cx.cursors[defpos].Rec();
+            var r = Rvv.Empty;
+            if (cx.cursors[defpos]?.Rec() is TableRow t)
+                r += t;
+            return r;
         }
         internal override DBObject Relocate(long dp)
         {
             return new IndexRowSet(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(table);
-            cx.ObScanned(index);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (IndexRowSet)base.Fix(cx);
             var ch = r != this;
-            r += (_Index, cx.obuids[index]);
-            r += (IxTable, cx.obuids[table]);
+            r += (_Index, cx.obuids[index]??index);
+            r += (IxTable, cx.obuids[table]??table);
             if ((!ch) && r.index == index && r.table == table)
                 r = this;
             return r;
@@ -1541,14 +1449,6 @@ namespace Pyrrho.Level4
             r += (IxTable, wr.Fix(table));
             if (ch || r.index != index || r.table != table)
                 wr.cx.obs += (r.defpos, r);
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (IndexRowSet)base.Fix(fx);
-            var ch = r != this;
-            r += (_Index, fx[index]??index);
-            r += (IxTable, fx[table]??table);
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -1697,11 +1597,6 @@ namespace Pyrrho.Level4
         internal override DBObject Relocate(long dp)
         {
             return new FilterRowSet(dp, mem);
-        }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(filter);
         }
         internal override Basis Fix(Context cx)
         {
@@ -1873,16 +1768,10 @@ namespace Pyrrho.Level4
             r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-            mtree?.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (DistinctRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             if (mtree!=null)
                r += (Index.Tree, new MTree(mtree.info.Fix(cx)));
             return r;
@@ -1895,14 +1784,6 @@ namespace Pyrrho.Level4
             r += (From.Source, wr.Fix(source));
             if (mtree != null)
                 r += (Index.Tree, new MTree(mtree.info.Relocate(wr)));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (DistinctRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
-            if (mtree != null)
-                r += (Index.Tree, mtree.Fix(fx));
             return r;
         }
         internal override RowSet Build(Context cx)
@@ -2047,17 +1928,12 @@ namespace Pyrrho.Level4
         {
             return new OrderedRowSet(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-            tree?.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (OrderedRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
-            r += (_RTree, tree?.Fix(cx));
+            r += (From.Source, cx.rsuids[source]??source);
+            if (tree != null)
+                r += (_RTree, tree.Fix(cx));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -2066,22 +1942,16 @@ namespace Pyrrho.Level4
                 return this;
             var r = (OrderedRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            r += (_RTree, tree?.Relocate(wr));
+            if (tree != null)
+                r += (_RTree, tree.Relocate(wr));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (OrderedRowSet)base._Replace(cx, so, sv);
-            r += (_RTree, tree.Replace(cx, so, sv));
+            if (tree != null)
+                r += (_RTree, tree.Replace(cx, so, sv));
             r += (From.Source, cx.Replace(source, so, sv));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (OrderedRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
-            if (tree!=null)
-            r += (_RTree, tree.Fix(fx));
             return r;
         }
         internal override RowSet Build(Context cx)
@@ -2252,11 +2122,6 @@ namespace Pyrrho.Level4
             r += (SqlRows, cx.Replaced(sqlRows));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(sqlRows);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlRowSet)base.Fix(cx);
@@ -2269,12 +2134,6 @@ namespace Pyrrho.Level4
                 return this;
             var r = (SqlRowSet)base._Relocate(wr);
             r += (SqlRows, wr.Fix(sqlRows));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (SqlRowSet)base.Fix(fx);
-            r += (SqlRows, Fix(sqlRows,fx));
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -2397,15 +2256,10 @@ namespace Pyrrho.Level4
             r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.RsScanned(source);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TableExpRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -2414,12 +2268,6 @@ namespace Pyrrho.Level4
                 return this;
             var r = (TableExpRowSet)base._Relocate(wr);
             r += (From.Source, wr.Fix(source));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (TableExpRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -3722,14 +3570,6 @@ namespace Pyrrho.Level4
             r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = (ValueRowSet)base._Relocate(cx, nc);
-            var s = (RowSet)cx.data[source]._Relocate(cx, nc);
-            if (s.defpos != source)
-                r += (From.Source, s.defpos);
-            return r;
-        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = (ValueRowSet)base._Relocate(wr);
@@ -3738,21 +3578,10 @@ namespace Pyrrho.Level4
                 r += (From.Source, s.defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (ValueRowSet)base.Fix(fx);
-            r += (From.Source, fx[source]??source);
-            return r;
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.RsScanned(source);
-            base.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (ValueRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]);
+            r += (From.Source, cx.rsuids[source]??source);
             return r;
         }
         public override string ToString()
@@ -3877,13 +3706,6 @@ namespace Pyrrho.Level4
         {
             return (WindowRowSet)rs.New(rs.mem+x);
         }
-        internal override void Scan(Context cx)
-        {
-            tree.Scan(cx);
-            values.Scan(cx);
-            cx.RsUnheap(source);
-            wf?.Scan(cx);
-        }
         internal override DBObject Relocate(long dp)
         {
             return new WindowRowSet(dp,mem);
@@ -3903,12 +3725,6 @@ namespace Pyrrho.Level4
         {
             var r = (WindowRowSet)base._Relocate(wr);
             r += (Window, wf._Relocate(wr));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (WindowRowSet)base.Fix(fx);
-            r += (Window, wf.Fix(fx));
             return r;
         }
         internal override RowSet Build(Context cx)
@@ -3967,14 +3783,32 @@ namespace Pyrrho.Level4
     internal class RestRowSet : RowSet
     {
         internal const long
-            RestValue = -457;   // TArray
+            JoinCols = -383, // BTree<string,int>
+            RemoteAggregates = -384, // bool
+            RemoteCols = -373, // BList<string>
+            RemoteGroups = -374, // GroupSpecification
+            RestView = -459,    // long
+            RestValue = -457,   // TArray
+            UsingCols = -259, // BTree<string,long> TableColumns
+            UsingTable = -260; // long Table
         internal TArray aVal => (TArray)mem[RestValue];
-        public RestRowSet(Context cx, From f, TArray rs)
+        internal long restView => (long)(mem[RestView] ?? -1L);
+   //     internal long globalFrom => (long)(mem[GlobalFrom] ?? -1L);
+        internal BList<string> remoteCols => 
+            (BList<string>)mem[RemoteCols] ?? BList<string>.Empty;
+        internal BTree<string, long> usingCols =>
+            (BTree<string, long>)mem[UsingCols] ?? BTree<string, long>.Empty;
+        internal long usingTable => (long)(mem[UsingTable] ?? -1L);
+        internal BTree<string, int> joinCols =>
+            (BTree<string, int>)mem[JoinCols] ?? BTree<string, int>.Empty;
+        internal bool remoteAggregates => (bool)(mem[RemoteAggregates] ?? false);
+        internal GroupSpecification remoteGroups =>(GroupSpecification)mem[RemoteGroups];
+        public RestRowSet(Context cx, From f, RestView vw)
             : base(f.defpos, cx, f.domain, null, null, null, null, null, null, null,
-                 BTree<long, object>.Empty +(RestValue,rs))
+                 BTree<long,object>.Empty +(RestView,vw.defpos)+(RemoteCols,vw.viewCols))
         { }
         protected RestRowSet(Context cx, RestRowSet rs, BTree<long, Finder> nd, bool bt)
-            : base(cx, rs, nd, bt) { }
+            : base(cx, rs, nd, bt) { } 
         protected RestRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         public static RestRowSet operator+(RestRowSet rs,(long,object)x)
         {
@@ -3998,6 +3832,245 @@ namespace Pyrrho.Level4
         internal override DBObject Relocate(long dp)
         {
             return new RestRowSet(dp, mem);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (RestRowSet)base._Replace(cx, so, sv);
+            r += (RestView, cx.Replace(restView, so, sv));
+            var rg = remoteGroups._Replace(cx, so, sv);
+            if (rg != remoteGroups)
+                r += (RemoteGroups, rg);
+            if (usingTable >= 0)
+                r += (UsingTable, cx.Replace(UsingTable, so, sv));
+            var ch = false;
+            var uc = BTree<string, long>.Empty;
+            for (var b=usingCols.First();b!=null;b=b.Next())
+            {
+                var p = cx.Replace(b.value(), so, sv);
+                uc += (b.key(), p);
+                ch = ch || p != b.value();
+            }
+            if (ch)
+                r += (UsingCols, uc);
+            return r;
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (RestRowSet)base.Fix(cx);
+            r += (RestView, cx.Fix(restView));
+            var rg = remoteGroups?.Fix(cx);
+            if (rg != remoteGroups)
+                r += (RemoteGroups, rg);
+            if (usingTable>=0)
+            {
+                r += (UsingTable, cx.Fix(usingTable));
+                r += (UsingCols, cx.Fix(usingCols));
+            }
+            return r;
+        }
+        internal override Basis _Relocate(Writer wr)
+        {
+            var r = (RestRowSet)base._Relocate(wr);
+            r += (RestView, wr.Fix(restView));
+            var rg = remoteGroups?._Relocate(wr);
+            if (rg != remoteGroups)
+                r += (RemoteGroups, rg);
+            if (usingTable >= 0)
+            {
+                r += (UsingTable, wr.Fix(usingTable));
+                r += (UsingCols, wr.Fix(usingCols));
+            }
+            return r;
+        }
+        public HttpWebRequest GetRequest(Context cx)
+        {
+            var rv = (RestView)cx.obs[restView];
+            string url = rv.description;
+            string user = rv.clientName??cx.user.name, password = rv.clientPassword;
+            var ss = url.Split('/');
+            if (ss.Length > 3)
+            {
+                var st = ss[2].Split('@');
+                if (st.Length > 1)
+                {
+                    var su = st[0].Split(':');
+                    user = su[0];
+                    if (su.Length > 1)
+                        password = su[1];
+                }
+            }
+            var rq = WebRequest.Create(url) as HttpWebRequest;
+            rq.UserAgent = "Pyrrho";
+            rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
+            if (user == null)
+                rq.UseDefaultCredentials = true;
+            else
+            {
+                var cr = user + ":" + password;
+                var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
+                rq.Headers.Add("Authorization: Basic " + d);
+            }
+            return rq;
+        }
+        public static HttpWebResponse GetResponse(WebRequest rq)
+        {
+            HttpWebResponse wr;
+            try
+            {
+                wr = rq.GetResponse() as HttpWebResponse;
+            }
+            catch (WebException e)
+            {
+                wr = e.Response as HttpWebResponse;
+                if (wr == null)
+                    throw new DBException("3D003");
+                if (wr.StatusCode == HttpStatusCode.Unauthorized)
+                    throw new DBException("42105");
+                if (wr.StatusCode == HttpStatusCode.Forbidden)
+                    throw new DBException("42105");
+            }
+            catch (Exception e)
+            {
+                throw new DBException(e.Message);
+            }
+            return wr;
+        }
+        internal override RowSet Build(Context cx)
+        {
+            var ut = (Table)cx.obs[usingTable]; // non-null for get using
+            var u = ut?.domain.rowType.Last().value() ?? -1L;
+            var vw = (RestView)cx.obs[restView];
+            var url = (string)(((SqlValue)cx.obs[u])?.Eval(cx).Val()
+                ?? vw.description);
+            var rx = url.LastIndexOf("/");
+            var globalFrom = (From)cx.obs[defpos];
+            string targetName = "";
+            if (globalFrom != null)
+            {
+                targetName = url.Substring(rx + 1);
+                url = url.Substring(0, rx);
+            }
+            var rq = GetRequest(cx);
+            rq.Method = "POST";
+            rq.Accept = vw.mime ?? "application/json";
+            var sql = new StringBuilder("select ");
+            sql.Append(remoteCols);
+            sql.Append(" from "); sql.Append(targetName);
+            var cs = cx.obs[globalFrom.source] as CursorSpecification;
+            var cm = " group by ";
+            if ((remoteGroups != null && remoteGroups.sets.Count > 0)
+                || globalFrom.aggregates(cx))
+            {
+                var ids = BTree<long, bool>.Empty;
+                for (var b = cs.restGroups.First(); b != null; b = b.Next())
+                {
+                    var n = b.key();
+                    if (!ids.Contains(n))
+                    {
+                        ids += (n, true);
+                        sql.Append(cm); cm = ",";
+                        sql.Append(n);
+                    }
+                }
+                if (remoteGroups != null)
+                    for (var b = remoteGroups.sets.First(); b != null; b = b.Next())
+                    {
+                        var gs = (Grouping)cx.obs[b.value()];
+                        Grouped(cx, gs, sql, ref cm, ids, globalFrom);
+                    }
+                for (var b = needed.First(); b != null; b = b.Next())
+                    if (!ids.Contains(b.key()))
+                        {
+                        ids += (b.key(), true);
+                        sql.Append(cm); cm = ",";
+                        sql.Append(b.key());
+                    }
+                if (cs?.where.Count > 0 || cs?.matches.Count > 0)
+                {
+                    var sw = globalFrom.WhereString(cs.where, cs.matches, null);
+                    if (sw.Length > 0)
+                    {
+                        sql.Append((ids.Count > 0) ? " having " : " where ");
+                        sql.Append(sw);
+                    }
+                }
+            }
+            else
+            if (cs?.where.Count > 0 || cs?.matches.Count > 0)
+            {
+                var sw = globalFrom.WhereString(cs.where, cs.matches, null);
+                if (sw.Length > 0)
+                {
+                    sql.Append(" where ");
+                    sql.Append(sw);
+                }
+            }
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine(url + " " + sql.ToString());
+            if (globalFrom != null)
+            {
+                var bs = Encoding.UTF8.GetBytes(sql.ToString());
+                rq.ContentType = "text/plain";
+                rq.ContentLength = bs.Length;
+                try
+                {
+                    var rqs = rq.GetRequestStream();
+                    rqs.Write(bs, 0, bs.Length);
+                    rqs.Close();
+                }
+                catch (WebException)
+                {
+                    throw new DBException("3D002", url);
+                }
+            }
+            var wr = GetResponse(rq);
+            if (wr == null)
+                throw new DBException("2E201", url);
+            var et = wr.GetResponseHeader("ETag");
+            var mime = wr.GetResponseHeader("Content-Type")??"text/plain";
+            if (et != null)
+            {
+                //              cx.etags.Add(et);
+                if (PyrrhoStart.DebugMode)
+                    Console.WriteLine("Response ETag: " + et);
+            }
+            var s = wr.GetResponseStream();
+            TypedValue a = null;
+            if (s != null)
+                a = domain.Parse(0, new StreamReader(s).ReadToEnd(),mime,cx.role);
+            if (PyrrhoStart.HTTPFeedbackMode)
+            {
+                if (a is TArray)
+                    Console.WriteLine("--> " + ((TArray)a).list.Count + " rows");
+                else
+                    Console.WriteLine("--> " + (a?.ToString() ?? "null"));
+            }
+            s.Close();
+            return this+(RestValue,a);
+        }
+        BTree<long,bool> Grouped(Context cx, Grouping gs, StringBuilder sql, ref string cm, 
+            BTree<long,bool> ids, Query gf)
+        {
+            for (var b = gs.members.First(); b!=null; b=b.Next())
+            {
+                var gi = (Grouping)cx.obs[b.key()];
+                if (gf.Knows(cx,gi.defpos) && !ids.Contains(gi.defpos))
+                {
+                    ids+=(gi.defpos,true);
+                    sql.Append(cm); cm = ",";
+                    sql.Append(gi.alias);
+                }
+            }
+            for (var b=gs.groups.First();b!=null;b=b.Next())
+                ids = Grouped(cx, b.value(), sql, ref cm, ids, gf);
+            return ids;
+        }
+        internal override string ToString(Context cx, int n)
+        {
+            var sb = new StringBuilder(base.ToString(cx,n));
+            var oi = (ObInfo)cx.db.role.infos[defpos];
+            sb.Append(oi.Metadata());
+            return sb.ToString();
         }
         internal class RestCursor : Cursor
         {
@@ -4036,7 +4109,6 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-
             internal override TableRow Rec()
             {
                 return null;

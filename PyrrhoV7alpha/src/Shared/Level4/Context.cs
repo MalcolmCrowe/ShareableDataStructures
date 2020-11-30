@@ -78,8 +78,8 @@ namespace Pyrrho.Level4
         /// </summary>
         public BTree<long, (string, long)> digest = BTree<long, (string, long)>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
-        internal BTree<long, long> obuids = BTree<long, long>.Empty;
-        internal BTree<long, long> rsuids = BTree<long, long>.Empty;
+        internal BTree<long, long?> obuids = BTree<long, long?>.Empty;
+        internal BTree<long, long?> rsuids = BTree<long, long?>.Empty;
         // Keep track of rowsets for query
         internal BTree<long, long> results = BTree<long, long>.Empty; 
         internal RowSet result;
@@ -145,7 +145,7 @@ namespace Pyrrho.Level4
         {
             next = null;
             cxid = db.lexeroffset;
-            nextHeap = db.nextPrep;
+            nextHeap = db.nextPrep; // NB
             nextStmt = db.nextStmt;
             dbformat = db.format;
             parseStart = 0L;
@@ -257,7 +257,7 @@ namespace Pyrrho.Level4
         }
         internal void Install1(Framing fr)
         {
-            //      obs += (fr.obs,true);
+            obs += (fr.obs,true);
             for (var b = fr.obs.First(); b != null; b = b.Next())
                 Add(b.value());
             defs += fr.defs;
@@ -289,72 +289,71 @@ namespace Pyrrho.Level4
         {
             return nextHeap++;
         }
-        internal void ObUnheap(long p)
+        internal long ObUnheap(long p)
         {
+            var r = p;
             if (unLex)
-                ObUnLex(p);
-            else if (!obuids.Contains(p))
+                r = ObUnLex(p);
+            else if ((!obuids.Contains(p)) && p >= Transaction.Executables)
             {
-                if (p < Transaction.Executables)
-                    obuids += (p, p);
-                else
+                while (obs.Contains(srcFix))
+                    srcFix++;
+                obs += (srcFix, SqlNull.Value);
+                obuids += (p, srcFix);
+                r = srcFix;
+            }
+            return r;
+        }
+        internal long RsUnheap(long p)
+        {
+            var r = p;
+            if (unLex)
+                r = RsUnLex(p);
+            else if ((!rsuids.Contains(p))&& p >= Transaction.Executables)
+            {
+                if (obuids.Contains(p))
                 {
-                    while (obs.Contains(srcFix))
-                        srcFix++;
-                    obs += (srcFix, SqlNull.Value);
-                    obuids += (p, srcFix);
-                }
-            } 
-        }
-        internal void ObScanned(long p)
-        {
-            if (!obuids.Contains(p))
-                (obs[p]??(DBObject)db.objects[p])?.Scan(this);
-        }
-        internal void RsUnheap(long p)
-        {
-            if (unLex)
-                RsUnLex(p);
-            else if (!rsuids.Contains(p))
-            {
-                if (p < Transaction.Executables)
-                    rsuids += (p, p);
-                else if (obuids.Contains(p))
                     rsuids += (p, obuids[p]);
+                    r = obuids[p]??p;
+                } 
                 else
                 {
                     while (obs.Contains(srcFix))
                         srcFix++;
                     rsuids += (p, srcFix);
+                    r = srcFix;
                 }
             }
+            return r;
         }
-        internal void RsScanned(long p)
+        internal long ObUnLex(long p)
         {
-            if (!rsuids.Contains(p))
-                data[p]?.Scan(this);
-        }
-        internal void ObUnLex(long p)
-        {
-            if (!obuids.Contains(p))
+            var r = p;
+            if ((!obuids.Contains(p)) && p >= Transaction.TransPos && p < Transaction.Executables)
             {
-                if (p >= Transaction.TransPos && p < Transaction.Executables)
-                    obuids += (p, nextHeap++);
-                else
-                    obuids += (p, p);
+                r = nextHeap++;
+                obuids += (p, r);
             }
+            return r;
         }
-        internal void RsUnLex(long p)
+        internal long RsUnLex(long p)
         {
-            if (p < Transaction.TransPos || p >= Transaction.Executables)
-                rsuids += (p, p);
-            else if (!rsuids.Contains(p))
+            var r = p;
+            if (p >= Transaction.TransPos && p < Transaction.Executables
+                && !rsuids.Contains(p))
             {
                 if (obuids.Contains(p))
-                    rsuids += (p, obuids[p]);
+                {
+                    r = obuids[p]??p;
+                    rsuids += (p, r);
+                }
                 else
-                    rsuids += (p, nextHeap++);
+                {
+                    r = nextHeap++;
+                    rsuids += (p, r);
+                }
             }
+            return r;
         }
         internal int Depth(BList<long> os)
         {
@@ -685,7 +684,7 @@ namespace Pyrrho.Level4
             for (var b = ma.First(); b != null; b = b.Next())
             {
                 var t = BTree<long, bool>.Empty;
-                for (var c = b.value().First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
                     t += (done[c.key()]?.defpos ?? c.key(), c.value());
                 r += (done[b.key()]?.defpos ?? b.key(), t);
             }
@@ -866,11 +865,6 @@ namespace Pyrrho.Level4
             for (var b = ord?.First(); b != null; b = b.Next())
                 ObUnheap(b.value());
         }
-        internal void Scan<K>(BTree<K,BTree<long,bool>> os) where K:IComparable
-        {
-            for (var b = os?.First(); b != null; b = b.Next())
-                Scan(b.value());
-        }
         internal BList<long> Fix(BList<long> ord)
         {
             var r = BList<long>.Empty;
@@ -878,7 +872,7 @@ namespace Pyrrho.Level4
             for (var b = ord?.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var f = obuids[p];
+                var f = obuids[p]??p;
                 if (p != f)
                     ch = true;
                 r += f;
@@ -892,17 +886,12 @@ namespace Pyrrho.Level4
             for (var b = ord?.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var f = obuids[p];
+                var f = obuids[p]??p;
                 if (p != f)
                     ch = true;
                 r += f;
             }
             return ch ? r : ord;
-        }
-        internal void Scan(BList<Domain> ds)
-        {
-            for (var b = ds.First(); b != null; b = b.Next())
-                b.value().Scan(this);
         }
         internal BList<Domain> Fix(BList<Domain> ds)
         {
@@ -918,11 +907,6 @@ namespace Pyrrho.Level4
             }
             return ch ? r : ds;
         }
-        internal void Scan(BList<UpdateAssignment> us)
-        {
-            for (var b = us.First(); b != null; b = b.Next())
-                b.value().Scan(this);
-        }
         internal BList<UpdateAssignment> Fix(BList<UpdateAssignment> us)
         {
             var r = BList<UpdateAssignment>.Empty;
@@ -934,11 +918,6 @@ namespace Pyrrho.Level4
                 r += u;
             }
             return ch ? r : us;
-        }
-        internal void Scan(BList<Grouping> gs)
-        {
-            for (var b = gs.First(); b != null; b = b.Next())
-                b.value().Scan(this);
         }
         internal BList<Grouping> Fix(BList<Grouping> gs)
         {
@@ -952,11 +931,6 @@ namespace Pyrrho.Level4
             }
             return ch ? r : gs;
         }
-        internal void Scan(BTree<UpdateAssignment,bool> us)
-        {
-            for (var b = us.First(); b != null; b = b.Next())
-                b.key().Scan(this);
-        }
         internal BTree<UpdateAssignment,bool> Fix(BTree<UpdateAssignment,bool> us)
         {
             var r = BTree<UpdateAssignment,bool>.Empty;
@@ -968,11 +942,6 @@ namespace Pyrrho.Level4
                 r += (u,true);
             }
             return ch ? r : us;
-        }
-        internal void Scan(BList<TypedValue> key)
-        {
-            for (var b = key?.First(); b != null; b = b.Next())
-                b.value().Scan(this);
         }
         internal BList<TypedValue> Fix(BList<TypedValue> key)
         {
@@ -1002,11 +971,6 @@ namespace Pyrrho.Level4
             }
             return ch ? r : key;
         }
-        internal void Scan(BList<TRow> rws)
-        {
-            for (var b = rws.First(); b != null; b = b.Next())
-                b.value().Scan(this);
-        }
         internal BList<TRow> Fix(BList<TRow> rws)
         {
             var r = BList<TRow>.Empty;
@@ -1019,27 +983,18 @@ namespace Pyrrho.Level4
             }
             return ch ? r : rws;
         }
-        internal void Scan<V>(BTree<long,V> ms)
-        {
-            for (var b = ms.First(); b != null; b = b.Next())
-                ObScanned(b.key());
-        }
         internal BTree<long,V> Fix<V>(BTree<long,V> ms)
         {
             var r = BTree<long, V>.Empty;
             var ch = false;
             for (var b=ms.First();b!=null;b=b.Next())
             {
-                var m = obuids[b.key()];
-                ch = ch || m != b.key();
+                var k = b.key();
+                var m = obuids[k]??k;
+                ch = ch || m != k;
                 r += (m, b.value());
             }
             return ch ? r : ms;
-        }
-        internal void Scan<K>(BTree<K,long> ms) where K:IComparable
-        {
-            for (var b = ms.First(); b != null; b = b.Next())
-                ObScanned(b.value());
         }
         internal BTree<K,long> Fix<K>(BTree<K, long> ms) where K:IComparable
         {
@@ -1047,19 +1002,12 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = ms.First(); b != null; b = b.Next())
             {
-                var m = obuids[b.value()];
-                ch = ch || m != b.value();
+                var p = b.value();
+                var m = obuids[p]??p;
+                ch = ch || m != p;
                 r += (b.key(),m);
             }
             return ch ? r : ms;
-        }
-        internal void Scan(BTree<long, BList<TypedValue>> refs)
-        {
-            for (var b = refs?.First(); b != null; b = b.Next())
-            {
-                ObUnheap(b.key());
-                Scan(b.value());
-            }
         }
         internal BTree<long,BList<TypedValue>> Fix(BTree<long,BList<TypedValue>> refs)
         {
@@ -1067,30 +1015,13 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b=refs?.First();b!=null;b=b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var vs = Fix(b.value());
-                ch = ch || (p != b.key()) || vs != b.value();
+                ch = ch || (p != k) || vs != b.value();
                 r += (p, vs);
             }
             return ch? r:refs;
-        }
-        internal void Scan(PRow rw)
-        {
-            if (rw!=null)
-            {
-                rw._head.Scan(this);
-                Scan(rw._tail);
-            }
-        }
-        internal void Scan(BTree<long,RowSet.Finder> fi)
-        {
-            for (var b=fi?.First();b!=null;b=b.Next())
-            {
-                ObScanned(b.key());
-                var f = b.value();
-                RsScanned(f.rowSet);
-                ObScanned(f.col);
-            }
         }
         internal BTree<long,RowSet.Finder> Fix(BTree<long,RowSet.Finder> fi)
         {
@@ -1098,7 +1029,8 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = fi?.First(); b != null; b = b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var f = b.value().Relocate(this);
                 if (p != b.key() || (object)f!=(object)b.value())
                     ch = true;
@@ -1106,35 +1038,20 @@ namespace Pyrrho.Level4
             }
             return ch ? r : fi;
         }
-        internal void Scan(BTree<long,TypedValue> vt)
-        {
-            for (var b=vt.First();b!=null;b=b.Next())
-            {
-                ObScanned(b.key());
-                b.value().Scan(this);
-            }
-        }
         internal BTree<long, TypedValue> Fix(BTree<long, TypedValue> vt)
         {
             var r = BTree<long, TypedValue>.Empty;
             var ch = false;
             for (var b = vt?.First(); b != null; b = b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var v = b.value().Fix(this);
                 if (p != b.key() || v != b.value())
                     ch = true;
                 r += (p, v);
             }
             return ch ? r : vt;
-        }
-        internal void Scan(BTree<SqlValue, TypedValue> vt)
-        {
-            for (var b = vt.First(); b != null; b = b.Next())
-            {
-                b.key().Scan(this);
-                b.value().Scan(this);
-            }
         }
         internal BTree<SqlValue, TypedValue> Fix(BTree<SqlValue, TypedValue> vt)
         {
@@ -1150,11 +1067,6 @@ namespace Pyrrho.Level4
             }
             return ch ? r : vt;
         }
-        internal void Scan(BTree<string,TypedValue> a)
-        {
-            for (var b = a.First(); b != null; b = b.Next())
-                b.value().Scan(this);
-        }
         internal BTree<string,TypedValue> Fix(BTree<string, TypedValue> a)
         {
             var r = BTree<string, TypedValue>.Empty;
@@ -1167,16 +1079,6 @@ namespace Pyrrho.Level4
                 r += (p, v);
             }
             return ch?r:a;
-        }
-        internal void Scan(BList<TXml> cl)
-        {
-            for (var b = cl?.First(); b != null; b = b.Next())
-                b.value().Scan(this);
-        }
-        internal void Scan(BList<(SqlXmlValue.XmlName,long)> es)
-        {
-            for (var b = es?.First(); b != null; b = b.Next())
-                ObScanned(b.value().Item2);
         }
         internal BList<TXml> Fix(BList<TXml> cl)
         {
@@ -1197,19 +1099,11 @@ namespace Pyrrho.Level4
             for (var b = cs?.First(); b != null; b = b.Next())
             {
                 var (n, p) = b.value();
-                var np = obuids[p];
+                var np = obuids[p]??p;
                 ch = ch || p!=np;
                 r += (n,np);
             }
             return ch ? r : cs;
-        }
-        internal void Scan(CTree<TypedValue,long> mu)
-        {
-            for (var b = mu?.First(); b != null; b = b.Next())
-            {
-                b.key().Scan(this);
-                ObUnheap(b.value());
-            }
         }
         internal CTree<TypedValue,long> Fix(CTree<TypedValue,long> mu)
         {
@@ -1218,7 +1112,7 @@ namespace Pyrrho.Level4
             for (var b = mu?.First(); b != null; b = b.Next())
             {
                 var p = b.key().Fix(this);
-                var q = (obuids.Contains(b.value()))?obuids[b.value()]:-1L;
+                var q = obuids[b.value()]??-1L;
                 ch = ch || p != b.key() || q != b.value();
                 r += (p, q);
             }
@@ -1233,16 +1127,11 @@ namespace Pyrrho.Level4
         {
             var r = BTree<string, long>.Empty;
             for (var b = cs?.First(); b != null; b = b.Next())
-                r += (b.key(), obuids[b.value()]);
-            return r;
-        }
-        internal void Scan(BTree<long,BTree<long,bool>> ma)
-        {
-            for (var b=ma.First();b!=null;b=b.Next())
             {
-                ObUnheap(b.key());
-                Scan(b.value());
+                var p = b.value();
+                r += (b.key(), obuids[p]??p);
             }
+            return r;
         }
         internal BTree<long,BTree<long,bool>> Fix(BTree<long, BTree<long,bool>> ma)
         {
@@ -1250,20 +1139,13 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = ma?.First(); b != null; b = b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var v = Fix(b.value());
-                ch = ch || p != b.key() || v != b.value();
+                ch = ch || p != k || v != b.value();
                 r += (p, v);
             }
             return ch ? r : ma;
-        }
-        internal void Scan(BTree<long,Domain> rs)
-        {
-            for (var b=rs.First();b!=null;b=b.Next())
-            {
-                ObUnheap(b.key());
-                b.value().Scan(this);
-            }
         }
         internal CTree<long,Domain> Fix(CTree<long,Domain> rs)
         {
@@ -1271,36 +1153,13 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b=rs.First();b!=null;b=b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var d = (Domain)b.value().Fix(this);
-                ch = ch || p != b.key() || d != b.value();
+                ch = ch || p != k || d != b.value();
                 r += (p, d);
             }
             return ch?r:rs;
-        }
-        internal void Scan(BTree<long, DBObject> os)
-        {
-            for (var b = os.First(); b != null; b = b.Next())
-            {
-                ObUnheap(b.key());
-                b.value().Scan(this);
-            }
-        }
-        internal void Scan(BTree<long, RowSet> rs)
-        {
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                RsUnheap(b.key());
-                b.value().Scan(this);
-            }
-        }
-        internal void Scan(BTree<long, SqlValue> rs)
-        {
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                ObUnheap(b.key());
-                b.value().Scan(this);
-            }
         }
         internal BTree<long, RowSet> Fix(BTree<long, RowSet> rs)
         {
@@ -1308,9 +1167,10 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = rs.First(); b != null; b = b.Next())
             {
-                var p = rsuids[b.key()];
+                var k = b.key();
+                var p = rsuids[k]??k;
                 var d = (RowSet)b.value().Fix(this);
-                ch = ch || p != b.key() || d != b.value();
+                ch = ch || p != k || d != b.value();
                 r += (p, d);
             }
             return ch ? r : rs;
@@ -1321,9 +1181,10 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = rs.First(); b != null; b = b.Next())
             {
-                var p = obuids[b.key()];
+                var k = b.key();
+                var p = obuids[k]??k;
                 var d = (SqlValue)b.value().Fix(this);
-                ch = ch || p != b.key() || d != b.value();
+                ch = ch || p != k || d != b.value();
                 r += (p, d);
             }
             return ch ? r : rs;
@@ -1369,33 +1230,6 @@ namespace Pyrrho.Level4
                   +(Results,cx.results)
                   +(Defs,cx.defs)+(Result,cx.result?.defpos??-1L))//+(Depths,cx.depths))
         { }
-        internal Framing(DBObject ob, BTree<long, long?> fx)
-            : base(_Fix(ob.defpos,ob.framing, fx)) { }
-        static BTree<long,object> _Fix(long dp,Framing of,BTree<long,long?>fx)
-        {
-            var fd = of.defs.Fix(fx);
-            var fo = BTree<long, DBObject>.Empty;
-            for (var b = of.obs.PositionAt(dp); b != null; b = b.Next())
-            {
-                var ob = (DBObject)b.value().Fix(fx);
-                fo += (ob.defpos, ob);
-            }
-            var fs = BTree<long, RowSet>.Empty;
-            for (var b = of.data.First(); b != null; b = b.Next())
-            {
-                var rs = (RowSet)b.value().Fix(fx);
-                fs += (rs.defpos, rs);
-            }
-            var fr = BTree<long, long>.Empty;
-            for (var b = of.results.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                var p = b.value();
-                fr += (fx[k] ?? k, fx[p]??p);
-            }
-            return BTree<long, object>.Empty + (Defs, fd) + (Obs, fo)
-                + (Data, fs) + (Results, fr);
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new Framing(m);
@@ -1421,13 +1255,6 @@ namespace Pyrrho.Level4
         public static Framing operator-(Framing f,long p)
         {
             return f + (Obs, f.obs - p);
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(obs);
-            cx.Scan(data);
-            defs.Scan(cx);
-            cx.RsUnheap(result);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -1473,32 +1300,55 @@ namespace Pyrrho.Level4
             r += (Results, rs);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
+        /// <summary>
+        /// create maps taking heap uids to a shared range.
+        /// Fix(cx) uses the maps.
+        /// </summary>
+        /// <param name="cx"></param>
+        internal void Relocate(Context cx)
         {
-            var r = (Framing)base.Fix(fx);
-            r += (Obs, Fix(obs, fx));
-            r += (Data, Fix(data, fx));
-            var rs = BTree<long, long>.Empty;
-            for (var b = results.First(); b != null; b = b.Next())
-                rs += (fx[b.key()]??b.key(), fx[b.value()]??b.value());
-            r += (Defs, defs.Fix(fx));
-            r += (Result, fx[result]??result);
-            r += (Results, rs);
-            return r;
-        }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = Empty;
+            defs.Scan(cx);
             for (var b = obs.First(); b != null; b = b.Next())
-                r += (DBObject)b.value()._Relocate(cx, nc);
+            {
+                var p = b.key();
+                var np = cx.ObUnheap(p);
+                if (p!=np)
+                    cx.obuids += (p,np);
+            }
             for (var b = data.First(); b != null; b = b.Next())
-                r += (RowSet)b.value()._Relocate(cx, nc);
+            {
+                var p = b.key();
+                var np = cx.RsUnheap(p);
+                if (p != np)
+                    cx.rsuids += (p, np);
+            }
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = this;
             var rs = BTree<long, long>.Empty;
+            var os = BTree<long, DBObject>.Empty;
+            var da = BTree<long, RowSet>.Empty;
+            for (var b = obs.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                os += (cx.obuids[k]??k, (DBObject)b.value().Fix(cx));
+            }
+            for (var b = data.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                da += (cx.rsuids[k]??k, (RowSet)b.value().Fix(cx));
+            }
             for (var b = results.First(); b != null; b = b.Next())
-                rs += (cx.obuids[b.key()], cx.rsuids[b.value()]);
-            nc.results = rs;
-            r += (Defs, defs.Relocate(cx));
-            r += (Result, cx.rsuids[result]);
+            {
+                var k = b.key();
+                var v = b.value();
+                rs += (cx.rsuids[k]??k, cx.rsuids[v]??v);
+            }
+            r += (Defs, r.defs.Relocate(cx));
+            r += (Obs, os);
+            r += (Data, da);
+            r += (Result, cx.rsuids[r.result]??r.result);
             r += (Results, rs);
             return r;
         }

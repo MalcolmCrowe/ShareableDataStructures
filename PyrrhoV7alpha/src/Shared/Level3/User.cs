@@ -14,20 +14,22 @@ using Pyrrho.Level2;
 namespace Pyrrho.Level3
 {
 	/// <summary>
-	/// A database object defining a user
+	/// A database object defining a user. 
+    /// During execution/query processing there must always be a valid user. 
+    /// If the user name provided is not known to the database,
+    /// (and is therefore using the guest role) an ad-hoc User with a transaction uid is
+    /// created for the access: if an access by such a user needs to be audited, 
+    /// this User will be committed to the database first.
     /// Immutable
 	/// </summary>
 	internal class User : Role
 	{
         internal const long
             Password = -303, // string (hidden)
-            InitialRole = -304, // long Role
             Clearance = -305; // Level
         public string pwd => (string)mem[Password]; // if "" will be set on next authentication
-        public long initialRole => (long)(mem[InitialRole]??Database.Public);
+   //     public long initialRole => (long)(mem[InitialRole]??Database.Public);
         public Level clearance => (Level)mem[Clearance]??Level.D;
-        internal static User _guest = new User(Database.Guest, BTree<long, object>.Empty
-            +(Name,"GUEST"));
         /// <summary>
         /// Constructor: a User from level 2 information
         /// </summary>
@@ -35,6 +37,11 @@ namespace Pyrrho.Level3
 		public User(PUser pu,Database db) 
             : base(pu.name,pu.ppos,BTree<long,object>.Empty)
         { }
+        /// <summary>
+        /// An ad-hoc guest user (will be reified by Transaction constructor)
+        /// </summary>
+        /// <param name="n"></param>
+        public User(string n):base(-1L, BTree<long, object>.Empty + (Name,n)) { }
         public User(long defpos, BTree<long, object> m) : base(defpos, m) { }
         internal override Basis New(BTree<long, object> m)
         {
@@ -57,8 +64,8 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             if (mem.Contains(Password))
             { sb.Append(" Password:"); sb.Append((pwd.Length==0)?"":"****"); }
-            if (mem.Contains(InitialRole))
-            { sb.Append(" InitialRole:"); sb.Append(Uid(initialRole)); }
+       //     if (mem.Contains(InitialRole))
+       //     { sb.Append(" InitialRole:"); sb.Append(Uid(initialRole)); }
             sb.Append(" Clearance:"); sb.Append(clearance);
             return sb.ToString();
 		}

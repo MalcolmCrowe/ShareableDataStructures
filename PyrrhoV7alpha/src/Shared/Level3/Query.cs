@@ -94,6 +94,8 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
+            if (defpos < Transaction.Analysing)
+                Console.WriteLine("Here"); // consider using New(cx,m)
             return new Query(defpos,m);
         }
         /// <summary>
@@ -117,16 +119,6 @@ namespace Pyrrho.Level3
         {
             return new Query(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            domain.Scan(cx);
-            cx.Scan(assig);
-            cx.Scan(filter);
-            cx.Scan(matching);
-            cx.Scan(matches);
-            cx.Scan(where);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -139,20 +131,6 @@ namespace Pyrrho.Level3
             r += (OrdSpec, wr.Fix(ordSpec));
             r += (Where, wr.Fix(where));
             r += (Assig, wr.Fix(assig));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Query)base.Fix(fx);
-            r += (Filter, Fix(filter,fx));
-            r += (_Matches, Fix(matches,fx));
-            r += (Matching, Fix(matching,fx));
-            r += (OrdSpec, Fix(ordSpec,fx));
-            r += (Where, Fix(where,fx));
-            var ua = BTree<UpdateAssignment, bool>.Empty;
-            for (var b = assig.First(); b != null; b = b.Next())
-                ua += ((UpdateAssignment)b.key().Fix(fx), b.value());
-            r += (Assig, ua);
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -220,7 +198,10 @@ namespace Pyrrho.Level3
                 {
                     var ck = (SqlValue)cx._Replace(c.key(), was, now);
                     if (ck.defpos != c.key())
+                    {
+                        bv -= c.key();
                         bv += (ck.defpos, true);
+                    }
                     de = Math.Max(de, ck.depth);
                 }
                 if (bk.defpos != b.key() || bv != b.value())
@@ -784,7 +765,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             RVQSpecs = -192, // BList<long> QuerySpecification
-            RestGroups = -193, // BTree<string,int>
+            RestGroups = -193, // BTree<long,int>
             RestViews = -194, // BTree<long,bool>
             _Source = -195, // string
             Union = -196, // long
@@ -811,8 +792,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BTree<long, bool> restViews =>
             (BTree<long, bool>)mem[RestViews]?? BTree<long, bool>.Empty;
-        internal BTree<string, int> restGroups =>
-            (BTree<string, int>)mem[RestGroups] ?? BTree<string, int>.Empty;
+        internal BTree<long, int> restGroups =>
+            (BTree<long, int>)mem[RestGroups] ?? BTree<long, int>.Empty;
         /// <summary>
         /// Constructor: a CursorSpecification from the Parser
         /// </summary>
@@ -846,14 +827,6 @@ namespace Pyrrho.Level3
         {
             return new CursorSpecification(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(rVqSpecs);
-            cx.Scan(restViews);
-            cx.ObScanned(union);
-            cx.ObScanned(usingFrom);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -865,23 +838,14 @@ namespace Pyrrho.Level3
             r += (UsingFrom, wr.Fixed(usingFrom)?.defpos??-1L);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (CursorSpecification)base.Fix(fx);
-            r += (RVQSpecs, Fix(rVqSpecs,fx));
-            r += (RestViews, Fix(restViews,fx));
-            r += (Union, fx[union]??union);
-            r += (UsingFrom, fx[usingFrom]??usingFrom);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (CursorSpecification)base.Fix(cx);
             r += (RVQSpecs, cx.Fix(rVqSpecs));
             r += (RestViews, cx.Fix(restViews));
-            r += (Union,cx.obuids[union]);
+            r += (Union,cx.obuids[union]??union);
             if (usingFrom>=0)
-                r += (UsingFrom, cx.obuids[usingFrom]); 
+                r += (UsingFrom, cx.obuids[usingFrom]??usingFrom); 
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -962,6 +926,7 @@ namespace Pyrrho.Level3
             r = Ordering(cx,r,false);
             cx.result = r;
             cx.results += (defpos, r.defpos);
+            cx.data += (defpos, r);
             return r.ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
@@ -1079,13 +1044,6 @@ namespace Pyrrho.Level3
         {
             return new TableExpression(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(target);
-            cx.Scan(having);
-            cx.Scan(window);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -1096,18 +1054,10 @@ namespace Pyrrho.Level3
             r += (Windows, wr.Fix(window));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (TableExpression)base.Fix(fx);
-            r += (Target, fx[target]??target);
-            r += (Having, Fix(having,fx));
-            r += (Windows, Fix(window,fx));
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TableExpression)base.Fix(cx);
-            r += (Target, cx.obuids[target]);
+            r += (Target, cx.obuids[target]??target);
             r += (Having, cx.Fix(having));
             r += (Windows, cx.Fix(window));
             return r;
@@ -1116,6 +1066,8 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
+            if (target == 425)
+                Console.WriteLine("Here");
             var r = (TableExpression)base._Replace(cx, was, now);
             var fm = cx.Replace(r.target, was, now);
             if (fm != r.target)
@@ -1336,8 +1288,10 @@ namespace Pyrrho.Level3
         /// Constructor: a join part being built by the parser
         /// </summary>
         /// <param name="t"></param>
-        protected JoinPart(long u, BTree<long,object> m)  : base(u,m) { }
-        internal JoinPart(long u) : base(u) { }
+        protected JoinPart(long u, BTree<long,object> m)  : base(u,m) 
+        { }
+        internal JoinPart(long u) : base(u) 
+        { }
         public static JoinPart operator+ (JoinPart j,(long,object)x)
         {
             return new JoinPart(j.defpos, j.mem + x);
@@ -1361,16 +1315,6 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.Scan(joinCond);
-            cx.Scan(leftOrder);
-            cx.Scan(rightOrder);
-            cx.Scan(namedCols);
-            cx.ObScanned(left);
-            cx.ObScanned(right);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -1384,17 +1328,6 @@ namespace Pyrrho.Level3
             r += (RightOperand, wr.Fixed(right).defpos);
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (JoinPart)base.Fix(fx);
-            r += (JoinCond, Fix(joinCond,fx));
-            r += (LeftOrder, Fix(leftOrder,fx));
-            r += (RightOrder, Fix(rightOrder,fx));
-            r += (NamedCols, Fix(namedCols,fx));
-            r += (LeftOperand, fx[left]??left);
-            r += (RightOperand, fx[right]??right);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (JoinPart)base.Fix(cx);
@@ -1402,8 +1335,8 @@ namespace Pyrrho.Level3
             r += (LeftOrder, cx.Fix(leftOrder));
             r += (RightOrder, cx.Fix(rightOrder));
             r += (NamedCols, cx.Fix(namedCols));
-            r += (LeftOperand, cx.obuids[left]);
-            r += (RightOperand, cx.obuids[right]);
+            r += (LeftOperand, cx.obuids[left]??left);
+            r += (RightOperand, cx.obuids[right]??right);
             return r;
         }
         internal override Query ReviewJoins(Context cx)
@@ -1980,14 +1913,6 @@ namespace Pyrrho.Level3
         {
             return new FDJoinPart(m);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(conds);
-            index.Scan(cx);
-            table.Scan(cx);
-            rindex?.Scan(cx);
-            rtable?.Scan(cx);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = this;
@@ -2006,16 +1931,6 @@ namespace Pyrrho.Level3
             r += (FDTable, table.Fix(cx));
             r += (FDRefIndex, rindex?.Fix(cx));
             r += (FDRefTable, rtable?.Fix(cx));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = this;
-            r += (FDConds, Fix(conds,fx));
-            r += (FDIndex, index.Fix(fx));
-            r += (FDTable, table.Fix(fx));
-            r += (FDRefIndex, rindex?.Fix(fx));
-            r += (FDRefTable, rtable?.Fix(fx));
             return r;
         }
     }

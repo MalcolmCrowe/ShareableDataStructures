@@ -412,10 +412,6 @@ namespace Pyrrho.Level3
                 }
                 return tv.Val() as long?;
         }
-        internal void Scan(Context cx)
-        {
-            info.Scan(cx);
-        }
         internal MTree Fix(Context cx)
         {
             var r = new MTree(info.Fix(cx));
@@ -426,10 +422,6 @@ namespace Pyrrho.Level3
                     r += (b.key().Fix(cx), b.Value().Value);
             }
             return r;
-        }
-        internal MTree Fix(BTree<long, long?> fx)
-        {
-            return new MTree(new TreeInfo(info, fx), impl, impl.Count);
         }
         internal MTree Replaced(Context cx,DBObject so,DBObject sv)
         {
@@ -733,12 +725,6 @@ namespace Pyrrho.Level3
         {
             head = h; headType = dm; onDuplicate = d; onNullKey = n; tail = t;
         }
-        internal TreeInfo(TreeInfo ti,BTree<long,long?> fx)
-        {
-            head = fx[ti.head] ?? ti.head; headType = (Domain)ti.headType.Fix(fx);
-            onDuplicate = ti.onDuplicate; onNullKey = ti.onNullKey;
-            tail = (tail != null) ? new TreeInfo(tail, fx) : null;
-        }
         /// <summary>
         /// Set up Tree information for a simple result set
         /// </summary>
@@ -779,21 +765,10 @@ namespace Pyrrho.Level3
             onNullKey = n;
             tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, dt, d, n, off + 1) : null;
         }
-        internal void Scan(Context cx)
-        {
-            cx.ObScanned(head);
-            headType.Scan(cx);
-            tail?.Scan(cx);
-        }
         internal TreeInfo Fix(Context cx)
         {
-            return new TreeInfo(cx.obuids[head], (Domain)headType.Fix(cx), 
+            return new TreeInfo(cx.obuids[head]??head, (Domain)headType.Fix(cx), 
                 onDuplicate, onNullKey, tail?.Fix(cx));
-        }
-        internal TreeInfo Fix(BTree<long, long?> fx)
-        {
-            return new TreeInfo(fx[head] ?? head, (Domain)headType.Fix(fx),
-                onDuplicate, onNullKey, tail?.Fix(fx));
         }
         internal TreeInfo Replaced(Context cx)
         {

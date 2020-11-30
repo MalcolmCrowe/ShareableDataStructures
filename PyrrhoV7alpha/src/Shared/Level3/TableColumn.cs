@@ -102,15 +102,6 @@ namespace Pyrrho.Level3
         {
             return cx.Inf(defpos).domain.rowType;
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            domain.Scan(cx);
-            cx.ObScanned(tabledefpos);
-            generated.Scan(cx);
-            cx.Scan(constraints);
-            cx.Scan(update);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -123,23 +114,11 @@ namespace Pyrrho.Level3
             r += (UpdateAssignments, wr.Fix(update));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (TableColumn)base.Fix(fx);
-            r += (Table, fx[tabledefpos]??tabledefpos);
-            r += (Generated, generated.Fix(fx));
-            r += (Checks, Fix(constraints,fx));
-            var ua = BTree<UpdateAssignment, bool>.Empty;
-            for (var b = update.First(); b != null; b = b.Next())
-                ua += ((UpdateAssignment)b.key().Fix(fx), b.value());
-            r += (UpdateAssignments, ua);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TableColumn)base.Fix(cx);
             r += (_Domain, domain.Fix(cx));
-            r += (Table, cx.obuids[tabledefpos]);
+            r += (Table, cx.obuids[tabledefpos]??tabledefpos);
             r += (Generated, generated.Fix(cx));
             r += (Checks, cx.Fix(constraints));
             r += (UpdateAssignments, cx.Fix(update));
@@ -317,15 +296,11 @@ namespace Pyrrho.Level3
         protected GenerationRule(BTree<long, object> m) : base(m) { }
         public static GenerationRule operator +(GenerationRule gr, (long, object) x)
         {
-            return (GenerationRule)gr.New(gr.mem + x);
+            return (GenerationRule)gr?.New(gr.mem + x)??None;
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new GenerationRule(m);
-        }
-        internal override void Scan(Context cx)
-        {
-            cx.ObScanned(exp);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -333,17 +308,11 @@ namespace Pyrrho.Level3
                 return this;
             return this + (GenExp, wr.Fixed(exp).defpos);
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (GenerationRule)base.Fix(fx);
-            r += (GenExp, fx[exp]??exp);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = this;
             if (exp >= 0)
-                r += (GenExp, cx.obuids[exp]);
+                r += (GenExp, cx.obuids[exp]??exp);
             return r;
         }
         internal TypedValue Eval(Context cx)
@@ -628,13 +597,6 @@ namespace Pyrrho.Level3
         {
             return new PeriodDef(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(endCol);
-            cx.ObScanned(startCol);
-            cx.ObScanned(tabledefpos);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -642,17 +604,12 @@ namespace Pyrrho.Level3
             return new PeriodDef(wr.Fix(defpos), wr.Fix(tabledefpos),
                 wr.Fix(startCol), wr.Fix(endCol),wr.cx.db);
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (PeriodDef)base.Fix(fx);
-            r += (StartCol, fx[startCol] ?? startCol);
-            r += (EndCol, fx[endCol] ?? endCol);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
-            var r = new PeriodDef(cx.obuids[defpos], cx.obuids[tabledefpos],
-                cx.obuids[startCol], cx.obuids[endCol], cx.db);
+            var r = new PeriodDef(cx.obuids[defpos]??defpos, 
+                cx.obuids[tabledefpos]??tabledefpos,
+                cx.obuids[startCol]??startCol, 
+                cx.obuids[endCol]??endCol, cx.db);
             return r;
         }
     }

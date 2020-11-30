@@ -6,7 +6,8 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
 using System.Security.Principal;
-using System.IO;
+using System.Security.AccessControl;
+using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
 //
@@ -24,9 +25,9 @@ namespace Pyrrho.Level3
     /// to hold multiple properties of the database objects, using a fixed static
     /// set of negative longs as system keys. Full lists of these keys are in
     /// the SourceIntro document: the actual longs used will be different 
-    /// each time the server is built.
+    /// (in principle, each time the server is built).
     /// User keys can also be used, and these will be positive longs.
-    /// Almost all perties of database objects are handled this way. The exceptions are
+    /// Almost all properties of database objects are handled this way. The exceptions are
     /// records,roles,loadpos (for Database)
     /// defpos (for DBObject)
     /// kind (for Domain)
@@ -59,130 +60,20 @@ namespace Pyrrho.Level3
             return b.New(b.mem + x);
         }
         /// <summary>
-        /// Relocation of Basis objects changes many uids but not the structure.
-        /// In preparation for Relocation, deep Scan the object for uids.
+        /// Deep Fix of uids following Commit or View.Instance
         /// </summary>
         /// <param name="cx"></param>
-        internal abstract void Scan(Context cx);
-        internal virtual Basis _Relocate(Writer wr)
-        {
-            return this;
-        }
-        internal virtual Basis _Relocate(Context cx,Context nc)
-        {
-            return this;
-        }
-        internal virtual Basis Fix(BTree<long,long?> fx)
-        {
-            throw new NotImplementedException();
-        }
-        protected static BList<long> Fix(BList<long> x, BTree<long, long?> fx)
-        {
-            var r = BList<long>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += np;
-            }
-            return ch ? r : x;
-        }
-        internal static CList<long> Fix(CList<long> x, BTree<long, long?> fx)
-        {
-            var r = CList<long>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += np;
-            }
-            return ch ? r : x;
-        }
-        protected static BTree<string,long> Fix(BTree<string,long> x,BTree<long,long?>fx)
-        {
-            var r = BTree<string,long>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (b.key(), np);
-            }
-            return ch ? r : x;
-        }
-        protected static BTree<long, bool> Fix(BTree<long, bool> x, BTree<long, long?> fx)
-        {
-            var r = BTree<long, bool>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (np, true);
-            }
-            return ch ? r : x;
-        }
-        protected static BTree<long, TypedValue> Fix(BTree<long, TypedValue> x, BTree<long, long?> fx)
-        {
-            var r = BTree<long, TypedValue>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (np, b.value().Fix(fx));
-            }
-            return ch ? r : x;
-        }
-        internal static BList<TRow> Fix(BList<TRow> x, BTree<long, long?> fx)
-        {
-            var r = BList<TRow>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (TRow)b.value().Fix(fx);
-            }
-            return ch ? r : x;
-        }
-        protected static BTree<long, BTree<long,bool>> 
-            Fix(BTree<long, BTree<long,bool>> x, BTree<long, long?> fx)
-        {
-            var r = BTree<long, BTree<long,bool>>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (np, Fix(b.value(),fx));
-            }
-            return ch ? r : x;
-        }
-        protected static BTree<long, B> Fix<B>(BTree<long, B> x, BTree<long, long?> fx)
-            where B : Basis
-        {
-            var r = BTree<long, B>.Empty;
-            var ch = false;
-            for (var b = x.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = fx[p] ?? p;
-                ch = ch || p != np;
-                r += (np, (B)b.value().Fix(fx));
-            }
-            return ch ? r : x;
-        }
+        /// <returns></returns>
         internal virtual Basis Fix(Context cx)
+        {
+            return this;
+        }
+        /// <summary>
+        /// Relocation for Commit
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <returns></returns>
+        internal virtual Basis _Relocate(Writer wr)
         {
             return this;
         }
@@ -228,19 +119,26 @@ namespace Pyrrho.Level3
     internal class Database : Basis
     {
         static long _did = 0;
-        internal long did = ++_did;
+        internal readonly long did = ++_did;
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
         protected static BTree<string, Database> databases = BTree<string, Database>.Empty;
+        /// <summary>
+        /// The _system database contains primitive domains and system tables and columns.
+        /// These objects are inherited by any new database, and the _system._role uid
+        /// becomes the schema role uid (obviously evolves to have all of the database objects).
+        /// If there no users or roles defined in a database, the _system role uid is used
+        /// </summary>
         internal static Database _system = null;
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
             Cascade = -227, // bool (only used for Transaction subclass)
+            _Connection = -261, // BTree<string,string>: the session details
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
             Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Guest = -55, // long Role 
-            Public = -311, // long -1L
+            Guest = -55, // long: a role holding all grants to PUBLIC
+            Public = -311, // long: always -1L, a dummy user ID
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>
@@ -248,16 +146,15 @@ namespace Pyrrho.Level3
             NextPrep = -394, // long: highwatermark of prepared statements for this connection
             NextPos = -395, // long: next proposed Physical record
             NextId = -58, // long:  will be used for next transaction
-            Owner = -59, // long owner.defpos
-            Role = -285, // Role
-            _Role = -302, // long initially _system._role
+            Owner = -59, // long: the defpos of the owner user for the database
+            Role = -285, // Role: the current role (e.g. an executable's definer)
+            _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
-            SchemaKey = -286, // long
-            System_Role = -291, // long
-            System_User = -292, // long
+            _Schema = -291, // long: (always the same as _system._role) the owner role for the database
+            SchemaKey = -286, // long: highwatermark for schema changes
             Types = -61, // CTree<Domain,long>
-            User = -277, // User
-            _User = -301; // long initially _system._user
+            User = -277, // User: always the connection user
+            _User = -301; // long: user.defpos, always the connection user, maybe uncommitted
         internal virtual long uid => -1;
         public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
@@ -270,8 +167,7 @@ namespace Pyrrho.Level3
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
         // NB The following 8 entries have default values supplied by _system
-        internal long _schema => (long)mem[DBObject.Definer];
-        internal Role schema => (Role)mem[_schema];
+        internal Role schema => (Role)mem[(long)mem[_Schema]];
         internal Role guest => (Role)mem[Guest];
         internal long _role => (long)mem[_Role];
         internal long owner => (long)mem[Owner];
@@ -290,24 +186,37 @@ namespace Pyrrho.Level3
         public BTree<long, Physical.Type> log =>
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
+        public BTree<string, string> conn => (BTree<string,string>)mem[_Connection];
+        /// <summary>
+        /// This code sets up the _system Database.
+        /// It contains two roles ($Schema and _public), 
+        /// the predefined types and system tables.
+        /// </summary>
         static Database()
         {
-            var su = new User(System_User, new BTree<long, object>(Name,
+            var su = new User(--_uid, new BTree<long, object>(Name,
                     WindowsIdentity.GetCurrent().Name));
-            var sr = new Role("$Schema", System_Role, BTree<long, object>.Empty +
+            var sr = new Role("$Schema",--_uid,BTree<long, object>.Empty +
                     (_User, su.defpos) +  (Owner, su.defpos));
-            var gu = new Role("PUBLIC", Public, BTree<long, object>.Empty);
-            _system = new Database("System", su, sr, gu);
+            var gu = new Role("GUEST", Guest, BTree<long, object>.Empty);
+            _system = new Database("System", su, sr, gu)+(_Schema,sr.defpos);
             SystemRowSet.Kludge(); 
             Domain.RdfTypes();
             Context._system = new Context(_system);
         }
+        /// <summary>
+        /// The creates the _system database
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="su"></param>
+        /// <param name="sr"></param>
+        /// <param name="gu"></param>
         Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   // the 7 entries without defaults start here
-                  (_Role,System_Role),(Role, sr),(DBObject.Definer,sr.defpos),
-                  (_User,System_User),(User,su),(Owner,su.defpos),
+                  (_Role,sr.defpos),(Role, sr),(DBObject.Definer,sr.defpos),
+                  (_User,su.defpos),(User,su),(Owner,su.defpos),
                   (Guest,gu),(gu.defpos,gu),
                   (Types,BTree<Domain,long>.Empty),
                   (Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),                
@@ -315,13 +224,23 @@ namespace Pyrrho.Level3
         {
             loadpos = 0;
         }
-        // Every database starts out with _system.mem
+        /// <summary>
+        /// Each named Database starts off with the _system definitions
+        /// </summary>
+        /// <param name="n"></param>
+        /// <param name="f"></param>
         public Database(string n,FileStream f):base(_system.mem+(Name,n)
             +(Format,_Format(f)))
         {
             dbfiles += (n, f);
             loadpos = 5;
         }
+        /// <summary>
+        /// After that all changes to a named database are made using the
+        /// operator+ methods defined below
+        /// </summary>
+        /// <param name="c">The current load position</param>
+        /// <param name="m">All the other properties</param>
         internal Database(long c, BTree<long,object> m):base(m)
         {
             loadpos = c;
@@ -370,8 +289,9 @@ namespace Pyrrho.Level3
             var (dp, dm, curpos) = x;
             return d.New(curpos, d.mem + (dp, dm));
         }
-        public static Database Get(string fn)
+        public static Database Get(BTree<string,string> cs)
         {
+            var fn = cs["Files"];
             var f = dbfiles[fn];
             if (f == null)
                 try
@@ -390,8 +310,8 @@ namespace Pyrrho.Level3
             for (; ; )
             {
                 var r = databases[fn];
-                if (r != null)
-                    return r;
+                if (r != null) // add the connectionString for the session
+                    return r + (_Connection, cs);
                 // otherwise the database is loading
                 Thread.Sleep(1000);
             }
@@ -416,31 +336,88 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         /// <returns></returns>
-        public virtual Transaction Transact(long t, string usr, string sce, bool? auto = null)
+        public virtual Transaction Transact(long t, string sce, bool? auto = null)
         {
             // if not new, this database may be out of date: ensure we get the latest
-            var r = databases[name];
+            // and add the connection for the session
+            var r = databases[name] + (_Connection, conn);
             if (r == null || r.loadpos < loadpos)
                 r = this; // this is more recent!
-            var tr = new Transaction(r, usr, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep);
             // ensure a valid user and role combination
-            User u = null;
+            // 1. Default:
             Role ro = guest;
-            for (var b = roles.First(); u == null && b != null; b = b.Next())
+            var user = conn["User"];
+            User u = objects[roles[user]] as User;
+            if (u == null)// 2. if the user is unknown
             {
-                var rp = b.value();
-                var ob = objects[rp];
-                if (ob is User us && us.name == usr)
-                    u = us;
+                // Has the schema role any users?
+                var users = false;
+                for (var b=log.PositionAt(0L);(!users) && b!=null; b=b.Next())
+                    if (b.value() == Physical.Type.PUser)
+                    {
+                        var up = b.key();
+                        if (schema.infos[up] is ObInfo si
+                            && si.priv.HasFlag(Grant.Privilege.UseRole))
+                            users = true;
+                    }
+                if (users) // 2a make an uncommitted user
+                    u = new User(user); // added to the new Transaction below
+                else {  // 2b 
+                    if (user == WindowsIdentity.GetCurrent().Name) //2bi
+                    {
+                        u = (User)objects[_system._user]
+                            ?? throw new PEException("PE855");
+                        ro = schema // allow the server account use the schema role
+                            ?? throw new PEException("PE856");
+                    }
+                    else // 2bii deny access
+                        throw new DBException("42105");
+                }
             }
-            if (u != null)
-                ro = (Role)objects[u.initialRole] ?? guest;
-            else if (usr == WindowsIdentity.GetCurrent().Name)
-                return tr;
-            else
+            if (conn["Role"] is string rn) // 3. has a specific role been requested?
             {
-                u = new User(--_uid, new BTree<long, object>(Name, usr));
-                tr += (u.defpos, u);
+                ro = (Role)objects[roles[rn]]
+                    ?? throw new DBException("42105"); // 3a
+                if (role.infos[guest.defpos] is ObInfo oi
+                    && oi.priv.HasFlag(Grant.Privilege.UseRole)) // 3b public role
+                    goto done;
+                if (owner == u.defpos && ro == schema) // 3ci1
+                    goto done;
+                throw new DBException("42105");
+            }
+            // 4. No specific role requested
+            if (u.defpos == owner)
+                ro = schema; // 4ai
+            else if (u.defpos >= 0 && u.defpos < Transaction.TransPos)
+            {
+                // 4aii See if the use can access just one role 
+                for (var b = roles.First(); b != null; b = b.Next())
+                {
+                    var br = (Role)objects[b.value()];
+                    if (br.infos[u.defpos] is ObInfo bi
+                        && bi.priv.HasFlag(Grant.Privilege.UseRole))
+                    {
+                        if (ro == guest)
+                            ro = br;   // we found one
+                        else
+                        {
+                            ro = guest; // we found another, so leave it as guest
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+                ro = guest;
+            done:
+            var tr = new Transaction(r, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep);
+            if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
+            { 
+                var cx = new Context(tr);
+                var pu = new PUser(user, tr.nextPos, cx);
+                u = new User(pu, this);
+                tr.Add(cx,pu,loadpos);
+                tr = (Transaction)cx.db;
             }
             tr = tr + (_User, u.defpos) + (_Role, ro.defpos);
             return tr;
@@ -603,10 +580,6 @@ namespace Pyrrho.Level3
         public virtual DBException Exception(string sig, params object[] obs)
         {
             return new DBException(sig, obs);
-        }
-        internal override void Scan(Context cx)
-        {
-            throw new NotImplementedException();
         }
     }
  }

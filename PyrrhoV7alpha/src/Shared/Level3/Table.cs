@@ -17,8 +17,8 @@ using System.Runtime.CompilerServices;
 namespace Pyrrho.Level3
 {
     /// <summary>
-    /// When a Table is accessed, the Rows information comes from the schemaRole, 
-    /// and any role with select access to the table will be able to retrieve rows subject 
+    /// When a Table is accessed
+    /// any role with select access to the table will be able to retrieve rows subject 
     /// to security clearance and classification. Which columns are accessible also depends
     /// on privileges (but columns are not subject to classification).
     /// </summary>
@@ -154,13 +154,6 @@ namespace Pyrrho.Level3
         {
             return new Table(dp, mem);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.Scan(indexes);
-            cx.Scan(triggers);
-            domain.Scan(cx);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -177,35 +170,16 @@ namespace Pyrrho.Level3
             r += (Triggers, wr.Fix(triggers));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Table)base.Fix(fx);
-            if (applicationPS >= 0)
-                r += (ApplicationPS, fx[applicationPS]??applicationPS);
-            var xs = BTree<CList<long>, long>.Empty;
-            for (var b = indexes.First(); b != null; b = b.Next())
-                xs += (Fix(b.key(), fx), fx[b.value()] ?? b.value());
-            r += (Indexes, xs);
-            r += (TableCols, Fix(tblCols,fx));
-            if (systemPS >= 0)
-                r += (SystemPS, fx[systemPS]??systemPS);
-            r += (TableChecks, Fix(tableChecks,fx));
-            var tgs = BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
-            for (var b = triggers.First(); b != null; b = b.Next())
-                tgs += (b.key(), Fix(b.value(), fx));
-            r += (Triggers, tgs);
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r =(Table) base.Fix(cx);
             r += (_Domain, domain.Fix(cx));
             if (applicationPS >= 0)
-                r += (ApplicationPS, cx.obuids[applicationPS]);
+                r += (ApplicationPS, cx.obuids[applicationPS]??applicationPS);
             r += (Indexes, cx.Fix(indexes));
             r += (TableCols, cx.Fix(tblCols));
             if (systemPS >= 0)
-                r += (SystemPS, cx.obuids[systemPS]);
+                r += (SystemPS, cx.obuids[systemPS]??systemPS);
             r += (TableChecks, cx.Fix(tableChecks));
             r += (Triggers, cx.Fix(triggers));
             return r;
@@ -341,7 +315,7 @@ namespace Pyrrho.Level3
         {
             return (Index)db.objects[indexes[key]];
         }
-        internal override void Select(Context cx, From f,BTree<long,RowSet.Finder> fi)
+        internal override void RowSets(Context cx, From f,BTree<long,RowSet.Finder> fi)
         {
             // ReadConstraints only apply in explicit transactions 
             ReadConstraint readC = cx.db.autoCommit ? null
@@ -520,7 +494,6 @@ namespace Pyrrho.Level3
         {
             if (f.assig.Count==0)
                 return cx;
-            PyrrhoServer.Debug(1, "Update starts");
             if (Denied(cx, Grant.Privilege.Update))
                 throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
             var trs = new TransitionRowSet(cx, f, cx.data[f.defpos], PTrigger.TrigType.Update, eqs);
@@ -547,12 +520,10 @@ namespace Pyrrho.Level3
             if ((level != null || updates.Count > 0))
             {
                 var fi = trs.UpdateSB(cx);
-                PyrrhoServer.Debug(1, "About to start traverse");
                 if (fi!=true)
                     for (var trb = trs.First(cx) as TransitionRowSet.TransitionCursor;
                         trb != null; trb = trb.Next(cx) as TransitionRowSet.TransitionCursor)
                     {
-                        PyrrhoServer.Debug(1, "Trb available");
                         for (var b=updates.First();b!=null;b=b.Next())
                         {
                             var ua = b.value();

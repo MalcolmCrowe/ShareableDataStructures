@@ -60,7 +60,7 @@ namespace Pyrrho.Level4
         public Parser(Database da)
         {
             cx = new Context(da);
-            cx.db = da.Transact(da.nextId, da.user.name, da.source);
+            cx.db = da.Transact(da.nextId,da.source);
         }
         public Parser(Context c)
         {
@@ -273,7 +273,6 @@ namespace Pyrrho.Level4
                 case Sqlx.DELETE: e = ParseSqlDelete(); break;
                 case Sqlx.DROP: e = ParseDropStatement(); break;
                 case Sqlx.GRANT: e = ParseGrant(); break; 
-                case Sqlx.HTTP: e = ParseHttpREST(xp); break;
                 case Sqlx.INSERT: (cx,e) = ParseSqlInsert(); break;
                 case Sqlx.REVOKE: e = ParseRevoke(); break;
                 case Sqlx.ROLLBACK:
@@ -303,56 +302,6 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.WORK)
                 Next();
             return new CommitStatement(lxr.Position);
-        }
-        private Executable ParseHttpREST(Domain xp)
-        {
-            Sqlx t = Next();
-            SqlValue us = null;
-            SqlValue pw = null;
-            if (!Match(Sqlx.ADD, Sqlx.UPDATE, Sqlx.DELETE))
-            {
-                us = ParseSqlValue(Domain.Char);
-                if (Match(Sqlx.COLON))
-                {
-                    Next();
-                    pw = ParseSqlValue(Domain.Char);
-                }
-            }
-            HttpREST h = null;
-            var lp = lxr.Position;
-            switch (t)
-            {
-                case Sqlx.ADD: h = new HttpREST(lp,"POST", us, pw); break;
-                case Sqlx.UPDATE: h = new HttpREST(lp, "UPDATE", us, pw); break;
-                case Sqlx.DELETE: h = new HttpREST(lp,"DELETE", us, pw); break;
-            }
-                Next();
-                h+= (HttpREST.Url,ParseSqlValue(Domain.Char).Eval(cx));
-            cx = new Context(cx, h);
-            try
-            { 
-                if (t != Sqlx.DELETE)
-                {
-                    var e = ParseProcedureStatement(Domain.Content);
-                    cx=cx.next;
-                    return (Executable)cx.Add(e);
-                }
-                h +=(HttpREST.Mime,"text/xml");
-                if (tok == Sqlx.AS)
-                {
-                    Next();
-                    h += (HttpREST.Mime,lxr.val.ToString());
-                    Mustbe(Sqlx.CHARLITERAL);
-                }
-                if (Match(Sqlx.WHERE))
-                {
-                    Next();
-                    h+=(HttpREST.Where, ParseSqlValue(Domain.Bool));
-                }
-            }
-            catch (Exception e) { throw e; }
-            finally { cx = cx.next; }
-            return (Executable)cx.Add(h);
         }
         byte MustBeLevelByte()
         {
@@ -993,10 +942,9 @@ namespace Pyrrho.Level4
             var ob = (DBObject)cx.db.objects[np]; // hmm may be null if not Obey somehow
             if (StartMetadata(tok))
             {
-                var md = ParseMetadata(cx.db, ob, -1, Sqlx.ADD);
-                if (md != null && cx.db.parse == ExecuteStatus.Obey)
-                    cx.Add(new PMetadata(id, -1, pv.ppos, md.description,
-                        md.iri, md.seq + 1, md.flags, cx.db.nextPos, cx));
+                var m = ParseMetadata(cx.db, ob, -1, Sqlx.ADD);
+                if (m!=null && cx.db.parse == ExecuteStatus.Obey)
+                    cx.Add(new PMetadata(id, -1, pv.ppos, m, cx.db.nextPos, cx));
             }
             return (Executable)cx.Add(ct);
         }
@@ -1776,6 +1724,7 @@ namespace Pyrrho.Level4
                     Sqlx.REFERS);
                 case Sqlx.FUNCTION: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND,
                     Sqlx.LINE, Sqlx.POINTS, Sqlx.DROP, Sqlx.JSON, Sqlx.CSV, Sqlx.INVERTS, Sqlx.MONOTONIC);
+                case Sqlx.VIEW: return Match(Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, Sqlx.PASSWORD);
                 default: return Match(Sqlx.CHARLITERAL, Sqlx.RDFLITERAL);
             }
         }
@@ -1786,7 +1735,7 @@ namespace Pyrrho.Level4
         /// <param name="ob">the object the metadata is for</param>
         /// <param name="seq">the position of the metadata</param>
         /// <param name="kind">the metadata</param>
-        Metadata ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind)
+        BTree<Sqlx,object> ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind)
         {
             var drop = false;
             if (Match(Sqlx.ADD))
@@ -1798,7 +1747,7 @@ namespace Pyrrho.Level4
             }
             return ParseMetadata(tr, ob, seq, kind, drop);
         }
-        Metadata ParseMetadata(Database tr, Domain dm, int seq, Sqlx kind)
+        BTree<Sqlx, object> ParseMetadata(Database tr, Domain dm, int seq, Sqlx kind)
         {
             var drop = false;
             if (Match(Sqlx.ADD))
@@ -1819,79 +1768,67 @@ namespace Pyrrho.Level4
         /// <param name="kind">the metadata</param>
         /// <param name="drop">whether drop</param>
         /// <returns>the metadata</returns>
-        Metadata ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind, bool drop)
+        BTree<Sqlx, object> ParseMetadata(Database tr, DBObject ob, int seq, Sqlx kind, bool drop)
         {
-            Metadata m = null;
+            var m = BTree<Sqlx,object>.Empty;
+            string ds = null;
+            long iv = -1;
             var checkedRole = 0;
             var pr = ((ObInfo)tr.role.infos[ob?.defpos??-1L])?.priv??Grant.Privilege.NoPrivilege;
             while (StartMetadata(kind))
             {
                 if (checkedRole++ == 0 && (tr.role == null))// || !pr.HasFlag(Grant.Privilege.AdminRole)))
                     throw new DBException("42105");
-                if (m == null)
-                    m = new Metadata();
                 var o = lxr.val;
                 switch (tok)
                 {
-                    case Sqlx.CHARLITERAL: m.description = drop ? "" : o.ToString(); break;
+                    case Sqlx.CHARLITERAL: ds = drop ? "" : o.ToString();
+                        break;
                     case Sqlx.RDFLITERAL:
                         if (!pr.HasFlag(Grant.Privilege.Owner))
                             throw new DBException("42105");
-                        m.iri = drop ? "" : o.ToString();
-                        break;
-                    case Sqlx.ID:
-                        {
-                            var ic = new Ident(lxr);
-                            var x = tr.GetObject(ic.ident)??
-                                throw new DBException("42108", lxr.val.ToString()).Pyrrho();
-                            m.refpos = x.defpos;
-                            break;
-                        }
-                    default:
-                        {
-                            var ic = new Ident(lxr);
-                            if (drop)
-                                m.Drop(tok);
-                            else
-                                m.Add(tok);
-                            break;
-                        }
-                }
-                Next();
-            }
-            return m;
-        }
-        Metadata ParseMetadata(Database tr, Domain dm, int seq, Sqlx kind, bool drop)
-        {
-            Metadata m = null;
-            while (StartMetadata(kind))
-            {
-                if (m == null)
-                    m = new Metadata();
-                var o = lxr.val;
-                switch (tok)
-                {
-                    case Sqlx.CHARLITERAL: m.description = drop ? "" : o.ToString(); break;
-                    case Sqlx.RDFLITERAL:
-                        m.iri = drop ? "" : o.ToString();
+                        ds = drop ? "" : o.ToString();
                         break;
                     case Sqlx.ID:
                         {
                             var ic = new Ident(lxr);
                             var x = tr.GetObject(ic.ident) ??
                                 throw new DBException("42108", lxr.val.ToString()).Pyrrho();
-                            m.refpos = x.defpos;
+                            iv = x.defpos;
                             break;
                         }
                     default:
+                        m += (tok,ds);
+                        break;
+                }
+                Next();
+            }
+            return m;
+        }
+        BTree<Sqlx,object> ParseMetadata(Database tr, Domain dm, int seq, Sqlx kind, bool drop)
+        {
+            var m = BTree<Sqlx,object>.Empty;
+            object ds = null;
+            while (StartMetadata(kind))
+            {
+                var o = lxr.val;
+                switch (tok)
+                {
+                    case Sqlx.CHARLITERAL: ds = drop ? "" : o.ToString(); break;
+                    case Sqlx.RDFLITERAL:
+                        m += (Sqlx.IRI, drop ? "" : o.ToString());
+                        break;
+                    case Sqlx.ID:
                         {
                             var ic = new Ident(lxr);
-                            if (drop)
-                                m.Drop(tok);
-                            else
-                                m.Add(tok);
+                            var x = tr.GetObject(ic.ident) ??
+                                throw new DBException("42108", lxr.val.ToString()).Pyrrho();
+                            ds = drop? -1L:x.defpos;
                             break;
                         }
+                    default:
+                        m += (tok,ds);
+                        break;
                 }
                 Next();
             }
@@ -2343,9 +2280,11 @@ namespace Pyrrho.Level4
             else
             {
                 var sq = 1;
-                if (ParseMetadata(cx.db, pr, sq, Sqlx.FUNCTION, false) is Metadata md)
-                    new PMetadata3(n.ident, md.seq, pr.defpos, md.description,
-                        md.iri, pr.defpos, md.flags, cx.db.nextPos, cx);
+                if (StartMetadata(Sqlx.FUNCTION))
+                {
+                    var m = ParseMetadata(cx.db, pr, sq, Sqlx.FUNCTION, false);
+                    new PMetadata3(n.ident, 0, pr.defpos, m, cx.db.nextPos, cx);
+                }
                 var s = new string(lxr.input, st, lxr.start - st);
                 if (tok != Sqlx.EOF && tok != Sqlx.SEMICOLON)
                 {
@@ -2687,7 +2626,6 @@ namespace Pyrrho.Level4
                 case Sqlx.FETCH: r = ParseFetchStatement(); break;
                 case Sqlx.FOR: r = ParseForStatement(xp, null); break;
                 case Sqlx.GET: r = ParseGetDiagnosticsStatement(); break;
-                case Sqlx.HTTP: r = ParseHttpREST(xp); break;
                 case Sqlx.IF: r = ParseIfThenElse(xp); break;
                 case Sqlx.INSERT: (cx,r) = ParseSqlInsert(); break;
                 case Sqlx.ITERATE: r = ParseIterate(); break;
@@ -3084,14 +3022,14 @@ namespace Pyrrho.Level4
                 Next();
                 return (SqlValue)cx.Add(new SqlFunction(sp, cx, Sqlx.SECURITY, null, null, null, Sqlx.NO));
             }
-            Ident ic = ParseIdentChain();
-            var pseudoTok = Sqlx.NO;
             if (Match(Sqlx.PARTITION, Sqlx.POSITION, Sqlx.VERSIONING, Sqlx.CHECK, 
                 Sqlx.PROVENANCE, Sqlx.TYPE_URI, Sqlx.SYSTEM_TIME))
             {
-                pseudoTok = tok;
+                var ps = new SqlFunction(lxr.Position, cx, tok, null, null, null, Sqlx.NO); 
                 Next();
+                return (SqlValue)cx.Add(ps);
             }
+            Ident ic = ParseIdentChain();
             var lp = lxr.Position;
             var dp = ic.iix;
             if (tok == Sqlx.LPAREN)
@@ -3144,8 +3082,6 @@ namespace Pyrrho.Level4
                     r = Identify(ic);
                 r = Reify(r,ic);
             }
-            if (pseudoTok != Sqlx.NO)
-                r = new SqlFunction(lxr.Position, cx, pseudoTok, r, null, null, Sqlx.NO);
             return (SqlValue)cx.Add(r);
         }
         SqlValue Identify(Ident ic)
@@ -3840,7 +3776,7 @@ namespace Pyrrho.Level4
                         throw new DBException("42105", cx.db.role.name??"").Mix();
                 var m = ParseMetadata(cx.db, ob, -1, Sqlx.COLUMN);
                 np = tr.nextPos;
-                cx.Add(new PMetadata(ic.ident, m, ob.defpos, np, cx));
+                cx.Add(new PMetadata(ic.ident, 0, ob.defpos, m, np, cx));
             }
             if (StartMetadata(kind) || Match(Sqlx.ADD))
             {
@@ -3849,7 +3785,8 @@ namespace Pyrrho.Level4
                 if (tok == Sqlx.ALTER)
                     Next();
                 var m = ParseMetadata(cx.db, ob, -1, kind);
-                cx.Add(new PMetadata(oi.name, m, -1, ob.defpos, cx));
+                np = tr.nextPos;
+                cx.Add(new PMetadata(oi.name,  -1,ob.defpos,m,np, cx));
             }
             return cx.Add(tr, ob.defpos);
         }
@@ -3937,8 +3874,8 @@ namespace Pyrrho.Level4
                     if (tr.role == null || 
                         tr.role.Denied(cx, Grant.Privilege.AdminRole))
                         throw new DBException("42105", tr.role.name ?? "").Mix();
-                   cx.Add(new PMetadata(d.name, ParseMetadata(cx.db, d, -1, Sqlx.DOMAIN), -1, 
-                        dp, cx));
+                   var m = ParseMetadata(cx.db, d, -1, Sqlx.DOMAIN);
+                   cx.Add(new PMetadata(d.name, 0, -1, m, dp, cx));
                 }
                 else
                 {
@@ -3955,8 +3892,8 @@ namespace Pyrrho.Level4
             {
                 if (tr.role.Denied(cx, Grant.Privilege.AdminRole))
                     throw new DBException("42105", cx.db.role.name??"").Mix();
-                cx.Add(new PMetadata(d.name,ParseMetadata(cx.db, d, -1, Sqlx.DOMAIN), 
-                    tr.nextPos, cx.db.types[d], cx));
+                cx.Add(new PMetadata(d.name,0,cx.db.types[d],ParseMetadata(cx.db, d, -1, Sqlx.DOMAIN), 
+                    tr.nextPos, cx));
             }
             else
             {
@@ -4132,9 +4069,9 @@ namespace Pyrrho.Level4
                                         var ti = tr.role.infos[tb.defpos] as ObInfo;
                                         if (tr.role.Denied(cx, Grant.Privilege.AdminRole))
                                             throw new DBException("42105", cx.db.role.name ?? "").Mix();
-                                        cx.Add(new PMetadata(ti.name, 
+                                        cx.Add(new PMetadata(ti.name,0,tb.defpos, 
                                             ParseMetadata(tr, tb, -1, Sqlx.TABLE,true), 
-                                            -1, tb.defpos, cx));
+                                            tr.nextPos, cx));
                                         return ns;
                                     }
                                     if (tok == Sqlx.COLUMN)
@@ -4249,8 +4186,8 @@ namespace Pyrrho.Level4
                             var oi = tr.role.infos[tb.defpos] as ObInfo;
                             if (tb.Denied(cx, Grant.Privilege.AdminRole))
                                 throw new DBException("42015",oi.name);
-                            cx.Add(new PMetadata(oi.name, ParseMetadata(cx.db, tb, -1, Sqlx.TABLE), 
-                                -1, tb.defpos, cx));
+                            cx.Add(new PMetadata(oi.name, 0,tb.defpos, ParseMetadata(cx.db, tb, -1, Sqlx.TABLE), 
+                                tr.nextPos, cx));
                         }
                     break;
             }
@@ -4305,8 +4242,8 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     if (tb.Denied(cx, Grant.Privilege.AdminRole))
                         throw new DBException("42105", ti.name).Mix();
-                    cx.Add(new PMetadata(nm, 
-                        ParseMetadata(cx.db, tc, -1, Sqlx.COLUMN, false), 0, tc.defpos, cx));
+                    cx.Add(new PMetadata(nm, 0,tc.defpos,
+                        ParseMetadata(cx.db, tc, -1, Sqlx.COLUMN, false), tr.nextPos, cx));
                     return ns;
                 }
                 if (tok == Sqlx.CONSTRAINT)
@@ -4391,9 +4328,9 @@ namespace Pyrrho.Level4
                     var lp = lxr.Position;
                     if (tb.Denied(cx, Grant.Privilege.AdminRole))
                         throw new DBException("42105", ti.name ?? "").Mix();
-                    new PMetadata(nm, 
-                            ParseMetadata(cx.db, tc, -1, Sqlx.COLUMN, true), 0,
-                        tc.defpos, cx);
+                    new PMetadata(nm, 0, tc.defpos,
+                            ParseMetadata(cx.db, tc, -1, Sqlx.COLUMN, true), 
+                        tr.nextPos, cx);
                     return ns;
                 }
                 if (tok != Sqlx.DEFAULT && tok != Sqlx.NOT && tok != Sqlx.PRIMARY && tok != Sqlx.REFERENCES && tok != Sqlx.UNIQUE && tok != Sqlx.CONSTRAINT && !StartMetadata(Sqlx.COLUMN))
@@ -4554,7 +4491,7 @@ namespace Pyrrho.Level4
                 if (tb.Denied(cx, Grant.Privilege.AdminRole))
                     throw new DBException("42105", ti.name ?? "").Mix();
                 var md = ParseMetadata(cx.db, tc, -1, Sqlx.COLUMN);
-                new PMetadata(nm, md, tc.defpos, tr.nextPos, cx);
+                new PMetadata(nm, 0, tc.defpos, md, tr.nextPos, cx);
             }
             return ns;
 		}
@@ -5083,8 +5020,9 @@ namespace Pyrrho.Level4
                 ms += (np, dm);
                 rt += np;
             }
-            return new Domain(pt.ppos,d,BTree<long,object>.Empty
-                +(Domain.Representation,ms)+(Domain.RowType,rt));
+            return new Domain(-1L,d,BTree<long,object>.Empty
+                +(Domain.Representation,ms)+(Domain.RowType,rt)
+                +(Domain.Structure,pt.ppos));
         }
         /// <summary>
         /// Member = id Type [DEFAULT TypedValue] Collate .
@@ -5175,13 +5113,6 @@ namespace Pyrrho.Level4
 		Executable ParseSqlSet()
         {
             Next();
-            if (Match(Sqlx.ROLE))
-            {
-                var sr = new Executable(lxr.Position, Executable.Type.SetRole);
-                Next();
-                ParseSetRole();
-                return (Executable)cx.Add(sr);
-            }
             if (Match(Sqlx.AUTHORIZATION))
             {
                 var ss = new Executable(lxr.Position, Executable.Type.SetSessionAuthorization);
@@ -5320,30 +5251,6 @@ namespace Pyrrho.Level4
                     cx.Add(new Change(ob.defpos, nm.ident, tr.nextPos, cx));
             }
             return (Executable)cx.Add(at);
-        }
-        /// <summary>
-        /// 	|	SET ROLE id | NONE
-        /// 	This needs to change properties of the connection, so that it applies to the session
-        /// </summary>
-		void ParseSetRole()
-        {
-            var n = new Ident(lxr);
-            Mustbe(Sqlx.ID);
-            if (tok == Sqlx.FOR)
-            {
-                Next();
-                Mustbe(Sqlx.DATABASE);
-                Mustbe(Sqlx.ID);
-            }
-            var a = cx.db.GetObject(n.ident) as Role;
-            var dm = (a != null) ? (ObInfo)cx.db.role.infos[a.defpos] : null;
-            if (dm == null || (dm.priv&Grant.Privilege.UseRole)==0)
-                throw new DBException("42135", n.ident);
-            cx.db += (Database.Role, a.defpos);
-            if (cx.next == null)
-                cx = new Context(cx.db);
-            else
-                cx = new Context(cx, a, cx.user);
         }
         /// <summary>
         /// Start the parse for a Query
@@ -5982,11 +5889,10 @@ namespace Pyrrho.Level4
                 }
                 else
                 {
+                    var ds = cx.defs;
                     if (ob is View vw)
-                    {
-                        cx.Install1(vw.framing);
-                        cx.Install2(vw.framing);
-                    }
+                        ob = vw.Instance(cx,q);
+                    cx.defs += ds;
                     rf = _From(ic, ob, a, q);
                 }
                 q = (QuerySpecification)cx.obs[q.defpos];
@@ -7351,37 +7257,6 @@ namespace Pyrrho.Level4
             if (Match(Sqlx.LEVEL))
             {
                 return (SqlValue)cx.Add(new SqlLiteral(lxr.Position, cx, TLevel.New(MustBeLevel())));
-            }
-            if (Match(Sqlx.HTTP))
-            {
-                Next();
-                if (!Match(Sqlx.GET))
-                { // supplying user and password this way is no longer supported
-                    ParseSqlValue(Domain.Char);
-                    if (Match(Sqlx.COLON))
-                    {
-                        Next();
-                        ParseSqlValue(Domain.Char);
-                    }
-                }
-                Mustbe(Sqlx.GET);
-                var x = ParseSqlValue(xp);
-                string m = "application/json";
-                if (Match(Sqlx.AS))
-                {
-                    Next();
-                    m = lxr.val.ToString();
-                    Mustbe(Sqlx.CHARLITERAL);
-                }
-                var wh = BTree<long,bool>.Empty;
-                if (Match(Sqlx.WHERE))
-                {
-                    Next();
-                    wh = ParseSqlValue(Domain.Bool).Disjoin(cx);
-        //            for (var b = wh.First(); b != null; b = b.Next())
-       //                 lxr.context.cur.Needs(b.value().alias ?? b.value().name,Query.Need.condition);
-                }
-                return (SqlValue)cx.Add(new SqlHttp(lxr.Position, null, x, m, wh, "*"));
             }
             Match(Sqlx.SCHEMA); // for Pyrrho 5.1 most recent schema change
             if (Match(Sqlx.ID,Sqlx.NEXT,Sqlx.LAST,Sqlx.CHECK,Sqlx.PROVENANCE,Sqlx.TYPE_URI)) // ID or pseudo ident

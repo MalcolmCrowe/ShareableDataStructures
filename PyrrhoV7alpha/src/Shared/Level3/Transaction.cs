@@ -26,7 +26,6 @@ namespace Pyrrho.Level3
     {
         internal const long
             AutoCommit = -278, // bool
-            ConnUserName = -261, // string
             Deferred = -279, // BList<TriggerActivation>
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
             _Mark = -281, // Transaction
@@ -56,7 +55,6 @@ namespace Pyrrho.Level3
         internal override string source => (string)mem[CursorSpecification._Source];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
-        internal string connUser => (string)mem[ConnUserName];
         internal BList<TriggerActivation> deferred =>
             (BList<TriggerActivation>)mem[Deferred] ?? BList<TriggerActivation>.Empty;
         /// <summary>
@@ -66,10 +64,21 @@ namespace Pyrrho.Level3
         public const long TransPos = 0x4000000000000000;
         public const long Analysing = 0x5000000000000000;
         public const long Executables = 0x6000000000000000;
+        // actual start of Heap is given by db.nextPrep for the connection (see Context(db))
+        public const long HeapStart = 0x7000000000000000; //so heap starts after prepared statements
         readonly Database parent;
-        internal Transaction(Database db,string user,long t,string sce,bool auto) :base(db.loadpos,
-            db.mem+(StartTime,DateTime.Now.Ticks)+(ConnUserName,user)
-            +(NextId,t+1)+(NextStmt,db.nextStmt)+(AutoCommit,auto)+(CursorSpecification._Source,sce))
+        /// <summary>
+        /// As created from the Database: 
+        /// via db.mem below we inherit its objects, and the session user and role
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="t"></param>
+        /// <param name="sce"></param>
+        /// <param name="auto"></param>
+        internal Transaction(Database db,long t,string sce,bool auto) 
+            :base(db.loadpos,db.mem+(StartTime,DateTime.Now.Ticks)+(NextId,t+1)
+            +(NextStmt,db.nextStmt)+(AutoCommit,auto)
+            +(CursorSpecification._Source,sce))
         {
             parent = db;
         }
@@ -86,7 +95,7 @@ namespace Pyrrho.Level3
         {
             return new Transaction(this, c, m);
         }
-        public override Transaction Transact(long t,string u,string sce,bool? auto=null)
+        public override Transaction Transact(long t,string sce,bool? auto=null)
         {
             var r = this;
             if (auto == false && autoCommit)
@@ -182,10 +191,19 @@ namespace Pyrrho.Level3
         {
             return parent.Rollback(e);
         }
+        /// <summary>
+        /// We commit unknown users to the database if necessary for audit.
+        /// There is a theoretical danger here that a conncurrent transaction will
+        /// have committed the same user id. Watch out for this and take appropriate action.
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="cx"></param>
         public override void Audit(Audit a,Context cx)
         {
             var db = databases[name];
             var wr = new Writer(new Context(db), dbfiles[name]);
+            if (a.user.defpos > TransPos && db.roles.Contains(a.user.name))
+                a.user = (User)db.objects[db.roles[a.user.name]];
             lock (wr.file)
             {
                 wr.segment = wr.file.Position;
@@ -198,7 +216,10 @@ namespace Pyrrho.Level3
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
                 return parent.Commit(cx);
-            for (var b = deferred.First(); b != null; b = b.Next())
+            // check for the case of an ad-hoc user that does not need to commit
+            if (physicals.Count == 1L && physicals.First().value() is PUser)
+                return parent.Commit(cx);
+            for (var b=deferred.First();b!=null;b=b.Next())
             {
                 var ta = b.value();
                 ta.deferred = false;
@@ -212,7 +233,7 @@ namespace Pyrrho.Level3
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
-            for (var pb = since.First(); pb != null; pb = pb.Next())
+            for (var pb=since.First(); pb!=null; pb=pb.Next())
             {
                 ph = pb.value();
                 PTransaction pt = null;
@@ -220,7 +241,7 @@ namespace Pyrrho.Level3
                     pt = (PTransaction)ph;
                 for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                 {
-                    var ce = cb.value()?.Check(ph, pt);
+                    var ce = cb.value()?.Check(ph,pt);
                     if (ce != null)
                     {
                         cx.rconflicts++;
@@ -230,7 +251,7 @@ namespace Pyrrho.Level3
                 for (var b = tb; b != null; b = b.Next())
                 {
                     var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
-                    if (ce != null)
+                    if (ce!=null)
                     {
                         cx.wconflicts++;
                         throw ce;
@@ -282,7 +303,9 @@ namespace Pyrrho.Level3
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
-                return wr.cx.db.Install(wr.Length);
+                // we install the new version of the database, and then 
+                // add the Connection information for the session
+                return wr.cx.db.Install(wr.Length) + (_Connection,conn);
             }
         }
         /// <summary>
@@ -605,6 +628,12 @@ namespace Pyrrho.Level3
                             off = -6;
                             goto case "table";
                         }
+                        else if (ob is Role ro)
+                        {
+                            cx.db += (Role, ro.defpos);
+                            Execute(cx, f, id, path, p + 1, etag);
+                            return;
+                        }
                         if (cn.Contains(":"))
                         {
                             off -= 4;
@@ -648,7 +677,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42107", sp[0]).Mix();
                     }
             }
-            Execute(cx.db.role, id + "." + p, path, p + 1, etag);
+            Execute(cx, f, id + "." + p, path, p + 1, etag);
         }
 
         /// <summary>

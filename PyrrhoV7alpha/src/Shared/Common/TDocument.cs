@@ -548,7 +548,7 @@ namespace Pyrrho.Common
                         sb.Append("]");
                         break;
                     default:
-                        sb.Append(v.ToString());
+                        sb.Append(v.Item2.ToString());
                         break;
                 }
         }

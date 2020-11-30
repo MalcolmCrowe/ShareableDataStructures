@@ -164,20 +164,18 @@ namespace Pyrrho.Level3
             return BTree<long, RowSet.Finder>.Empty;
         }
         /// <summary>
-        /// Helpers for cloning a shared DBObject for use in query optimisation
+        /// This one is used mainly in commit to transaction log,
+        /// blindly changes the defpos
         /// </summary>
-        /// <param name="fx">Map for new uids to be used</param>
-        /// <returns>the new cloned DBObject</returns>
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = this;
-            if (fx.Contains(defpos))
-                r = Relocate(fx[defpos].Value);
-            if (domain == null)
-                return r;
-            return r + (_Domain, domain.Fix(fx));
-        }
+        /// <param name="dp"></param>
+        /// <returns></returns>
         internal abstract DBObject Relocate(long dp);
+        /// <summary>
+        /// When a Physical commits to transaction log, this routine
+        /// helps to relocate the associated compiled objects
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <returns></returns>
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -197,15 +195,20 @@ namespace Pyrrho.Level3
             wr.cx.obs += (r.defpos, r);
             return r;
         }
+        /// <summary>
+        /// Adjust compiled DBObject (calls _Relocate)
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <returns></returns>
         internal DBObject Relocate(Writer wr)
         {
             if (this is RowSet)
             {
                 if (wr.cx.rsuids.Contains(defpos))
-                    return wr.cx.data[wr.cx.rsuids[defpos]];
+                    return wr.cx.data[wr.cx.rsuids[defpos]??defpos];
             }
             else if (wr.cx.obuids.Contains(defpos))
-                return wr.cx.obs[wr.cx.obuids[defpos]];
+                return wr.cx.obs[wr.cx.obuids[defpos]??defpos];
             var r = (DBObject)_Relocate(wr);
             if (r is RowSet rs)
                 wr.cx.data += (r.defpos, rs);
@@ -213,20 +216,18 @@ namespace Pyrrho.Level3
                 wr.cx.obs += (r.defpos, r);
             return r;
         }
-        internal override Basis _Relocate(Context cx,Context nc)
-        {
-            if (nc.obs.Contains(cx.obuids[defpos]))
-                return this;
-            var r = (DBObject)Fix(cx);
-            nc.obs += (r.defpos, r);
-            return r;
-        }
+        /// <summary>
+        /// Scan and Fix do the work of the relocation for sharing.
+        /// obuids and rsuids are prepared by Basis.Scan.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
         internal override Basis Fix(Context cx)
         {
-            var r = Relocate(cx.obuids[defpos]);
+            var r = Relocate(cx.obuids[defpos]??defpos);
             if (definer > 0)
             {
-                var df = cx.obuids[definer];
+                var df = cx.obuids[definer]??definer;
                 if (df != definer)
                     r += (Definer, df);
             }
@@ -235,10 +236,15 @@ namespace Pyrrho.Level3
                 r += (Dependents, ds);
             return r;
         }
+        /// <summary>
+        /// Some DBObjects are modified when metadata is defined
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="pm"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
         internal virtual Database Add(Database d,PMetadata pm, long p)
         {
-            if (pm.description != "")
-                d += (this + (Description, pm.description), p);
             return d;
         }
         // Helper for format<51 compatibility
@@ -317,7 +323,6 @@ namespace Pyrrho.Level3
         internal DBObject Replace(Context cx,DBObject was,DBObject now)
         {
             var r = _Replace(cx, was, now);
-
             if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
             {
                 r += (Depth, now.depth + 1);
@@ -397,7 +402,7 @@ namespace Pyrrho.Level3
         {
             throw new PEException("PE481");
         }
-        internal virtual void Select(Context cx,From f,BTree<long,RowSet.Finder> fi)
+        internal virtual void RowSets(Context cx,From f,BTree<long,RowSet.Finder> fi)
         {
             if (!cx.data.Contains(defpos))
                 cx.data+=(defpos, new TrivialRowSet(defpos, cx, new TRow(domain, cx.values), -1, fi));
@@ -546,9 +551,9 @@ namespace Pyrrho.Level3
                     return;
             }
         }
-        internal virtual Metadata Meta()
+        internal virtual BTree<Sqlx,object> Meta(Database db)
         {
-            return null;
+            return ((ObInfo)db.role.infos[defpos]).metadata;
         }
         /// <summary>
         /// Issues here: This object may not have been committed yet
@@ -597,18 +602,11 @@ namespace Pyrrho.Level3
             var match = BTree<long, string>.Empty;
             for (var b = rs.matches?.First(); b != null; b = b.Next())
                 match += (b.key(), b.value()?.ToString() ?? "null");
-            var a = (cx.tr.user.defpos >= 0) ?
-                    new Audit(cx.tr.user, defpos,match, DateTime.Now.Ticks, cx.db.nextPos, cx)
-                : new Audit2(cx.tr.user.name, defpos,match, DateTime.Now.Ticks, 
-                    cx.db.nextPos, cx);
+            var a = new Audit(cx.tr.user, defpos, match, DateTime.Now.Ticks, cx.db.nextPos, cx);
             if (cx.auds.Contains(a))
                 return;
             cx.auds += (a, true);
             cx.tr.Audit(a, cx); // write it to the file immediately
-        }
-        internal virtual long Defpos(Context cx)
-        {
-            return defpos;
         }
         internal static string Uid(long u)
         {

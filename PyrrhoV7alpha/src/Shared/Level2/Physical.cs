@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1, Delete1, Drop1, RefAction, Audit2 // 71-75
+            Update1, Delete1, Drop1, RefAction // 71-74
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -68,7 +68,7 @@ namespace Pyrrho.Level2
         protected Physical(Type tp, long pp, Context cx)
         {
             type = tp;
-            database = cx.db;
+            database = cx?.db; // will be null for ad-hoc PUser
             ppos = pp;
             time = DateTime.Now.Ticks;
         }
@@ -452,6 +452,9 @@ namespace Pyrrho.Level2
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
+    /// <summary>
+    /// Compiled objects are Modify, PColumn, PCheck, PProcedure, PTrigger, PView
+    /// </summary>
     internal abstract class Compiled : Physical
     {
         internal Framing framing;
@@ -476,13 +479,9 @@ namespace Pyrrho.Level2
         internal override void Relocate(Context cx)
         {
             framing.Install(cx);
-            framing.Scan(cx);
-            var nc = new Context(cx);
-            nc.obs = BTree<long, DBObject>.Empty;
-            nc.data = BTree<long, RowSet>.Empty;
-            nc.defs = Ident.Idents.Empty;
+            framing.Relocate(cx);
             cx.SrcFix(ppos + 1);
-            framing = (Framing)framing._Relocate(cx, nc);
+            framing = (Framing)framing.Fix(cx);
             framing.Install(cx);
         }
         /// <summary>

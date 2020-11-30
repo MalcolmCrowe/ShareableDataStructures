@@ -17,8 +17,7 @@ namespace Pyrrho.Level2
 	/// <summary>
 	/// A Level 2 Update record for the physical database
     /// Only changed values need be in the Update as serialised on disk. Fields not in this update are searched for in oldRec
-    /// On install, we store the updated TableRow in schemaRole->TableRows
-    /// but we do not update our copy of oldRow
+    /// On install, we store the updated TableRow in table->tableRows
 	/// </summary>
 	internal class Update : Record
 	{

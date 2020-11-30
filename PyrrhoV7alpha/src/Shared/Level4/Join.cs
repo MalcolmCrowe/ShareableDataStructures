@@ -102,19 +102,12 @@ namespace Pyrrho.Level4
         {
             return cx.data[first]._Rvv(cx) + cx.data[second]._Rvv(cx);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            join.Scan(cx);
-            cx.RsScanned(first);
-            cx.RsScanned(second);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (JoinRowSet)base.Fix(cx);
             r += (_Join, join.Fix(cx));
-            r += (JFirst, cx.rsuids[first]);
-            r += (JSecond, cx.rsuids[second]);
+            r += (JFirst, cx.rsuids[first]??first);
+            r += (JSecond, cx.rsuids[second]??second);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -133,14 +126,6 @@ namespace Pyrrho.Level4
             r += (_Join, cx.done[join.defpos] ?? join);
             r += (JFirst, cx.Replace(first, so, sv));
             r += (JSecond, cx.Replace(second, so, sv));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (JoinRowSet)base.Fix(fx);
-            r += (_Join, join.Fix(fx));
-            r += (JFirst, fx[first]??first);
-            r += (JSecond, fx[second]??second);
             return r;
         }
         internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder> nd)

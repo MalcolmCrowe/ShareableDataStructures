@@ -241,17 +241,12 @@ namespace Pyrrho.Level2
         internal long timestamp;
         public override long Dependent(Writer wr,Transaction tr)
         {
-            // This would be really strange: Audit is never added to Transaction.physicals
-            // but anyway it does not make sense to audit uncommitted objects 
-            if (_Dependent(wr) >= 0)
-                throw new DBException("0000");
-            return -1;
-        }
-        long _Dependent(Writer wr)
-        {
-            if (!Committed(wr,table)) return table;
+            if (!Committed(wr,table))
+                throw new DBException("0000"); // audit of uncommitted object ???
+            if (!Committed(wr,user.defpos)) return user.defpos; // ad-hoc user
             for (var b=match.First();b!=null;b=b.Next())
-                if (!Committed(wr,b.key())) return b.key();
+                if (!Committed(wr,b.key()))
+                    throw new DBException("0000"); // audit of uncommitted object ???
             return -1;
         }
         internal Audit(User us,long ta, BTree<long,string> ma, long ts,long pp, Context cx)
@@ -351,33 +346,6 @@ namespace Pyrrho.Level2
                     return c;
             }
             return (b != null) ? 1 : (tb != null) ? -1 : 0;
-        }
-    }
-    /// <summary>
-    /// Audit2 is preferred since some users connected is guests
-    /// </summary>
-    internal class Audit2 : Audit
-    {
-        internal string userName;
-        internal Audit2(string us, long ta, BTree<long,string> ma, long ts, long pp, Context cx)
-            : base(Type.Audit2, User._guest, ta, ma,ts,pp,cx)
-        {
-            userName = us;
-        }
-        internal Audit2(Reader rdr) : base(Type.Audit2, rdr) { }
-        public override void Deserialise(Reader rdr)
-        {
-            userName = rdr.GetString();
-            base.Deserialise(rdr);
-        }
-        public override void Serialise(Writer wr)
-        {
-            wr.PutString(userName);
-            base.Serialise(wr);
-        }
-        public override string ToString()
-        {
-            return "Audit2 " + userName + " " + base.ToString();
         }
     }
 }

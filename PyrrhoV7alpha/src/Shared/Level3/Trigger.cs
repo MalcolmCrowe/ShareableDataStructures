@@ -171,28 +171,18 @@ namespace Pyrrho.Level3
             nd += (tb, p);
             return base.Drop(d, nd, p);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.ObUnheap(defpos);
-            cx.ObScanned(action);
-            cx.ObScanned(newRow);
-            cx.ObScanned(newTable);
-            cx.ObScanned(oldRow);
-            cx.ObScanned(oldTable);
-            cx.Scan(cols);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (Trigger)base.Fix(cx);
-            r += (Action, cx.obuids[action]);
+            r += (Action, cx.obuids[action]??action);
             if (newRow>=0)
-                r += (NewRow, cx.obuids[newRow]);
+                r += (NewRow, cx.obuids[newRow]??newRow);
             if (newTable >= 0)
-                r += (NewTable, cx.obuids[newTable]);
+                r += (NewTable, cx.obuids[newTable]??newTable);
             if (oldRow >= 0)
-                r += (OldRow, cx.obuids[oldRow]);
+                r += (OldRow, cx.obuids[oldRow]??oldRow);
             if (oldTable >= 0)
-                r += (OldTable, cx.obuids[oldTable]);
+                r += (OldTable, cx.obuids[oldTable]??oldTable);
             r += (UpdateCols, cx.Fix(cols));
             return r; 
         }
@@ -207,13 +197,6 @@ namespace Pyrrho.Level3
             r += (OldRow, wr.Fixed(oldRow)?.defpos ?? -1L);
             r += (OldTable, wr.Fixed(oldTable)?.defpos ?? -1L);
             r += (UpdateCols, wr.Fix(cols));
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (Trigger)base.Fix(fx);
-            r += (Action, fx[action]??action);
-            r += (UpdateCols, Fix(cols,fx));
             return r;
         }
     }
@@ -267,12 +250,6 @@ namespace Pyrrho.Level3
         {
             return new TransitionTable(dp,mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            cx.ObScanned(trig);
-            cx.Scan(columns);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
@@ -282,17 +259,10 @@ namespace Pyrrho.Level3
             r += (SqlValue._Columns, wr.Fix(columns));
             return r;
         }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (TransitionTable)base.Fix(fx);
-            r += (Trig, fx[trig]??trig);
-            r += (SqlValue._Columns, Fix(columns,fx));
-            return r;
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (TransitionTable)base.Fix(cx);
-            r += (Trig, cx.obuids[trig]);
+            r += (Trig, cx.obuids[trig]??trig);
             r += (SqlValue._Columns, cx.Fix(columns));
             return r;
         }

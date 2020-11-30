@@ -4,6 +4,7 @@ using System.Data.SqlTypes;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -1438,13 +1439,13 @@ namespace Pyrrho.Level3
                 return new TDocument(s);
             return Parse(new Scanner(off,s.ToCharArray(), 0));
         }
-        public virtual TypedValue Parse(long off,string s, string m)
+        public virtual TypedValue Parse(long off,string s, string m, Role r)
         {
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.Parse(new Scanner(off, s.ToCharArray(), 0, m)));
+                return new TSensitive(this, elType.Parse(new Scanner(off, s.ToCharArray(), 0, m,r)));
             if (kind == Sqlx.DOCUMENT)
                 return new TDocument(s);
-            return Parse(new Scanner(off,s.ToCharArray(), 0, m));
+            return Parse(new Scanner(off,s.ToCharArray(), 0, m,r));
         }
         /// <summary>
         /// Parse a string value for this type. 
@@ -1453,6 +1454,8 @@ namespace Pyrrho.Level3
         /// <returns>a typedvalue</returns>
         public TypedValue Parse(Scanner lx, bool union = false)
         {
+            if (lx.len == 0)
+                return new TRow(this);
             if (kind == Sqlx.SENSITIVE)
                 return new TSensitive(this, elType.Parse(lx, union));
             int start = lx.pos;
@@ -1669,14 +1672,203 @@ namespace Pyrrho.Level3
                 case Sqlx.TIME: return new TTimeSpan(this, GetTime(lx, lx.pos));
                 case Sqlx.TIMESTAMP: return new TDateTime(this, GetTimestamp(lx, lx.pos));
                 case Sqlx.INTERVAL: return new TInterval(this, GetInterval(lx));
+                case Sqlx.TYPE:
                 case Sqlx.TABLE:
+                    return (this+(Kind,Sqlx.ROW)).ParseList(lx);
+                case Sqlx.ROW:
                     {
-                        return ParseList(lx);
+                        if (lx.mime == "text/xml")
+                        {
+                            // tolerate missing values and use of attributes
+                            var cols = BTree<long,TypedValue>.Empty;
+                            var xd = new XmlDocument();
+                            xd.LoadXml(new string(lx.input));
+                            var xc = xd.FirstChild;
+                            if (xc != null && xc is XmlDeclaration)
+                                xc = xc.NextSibling;
+                            if (xc == null)
+                                goto bad;
+                            bool blank = true;
+                            for (var b=rowType.First(); b!=null; b=b.Next())
+                            {
+                                var co = (ObInfo)lx.role.infos[b.value()];
+                                var cd = representation[b.value()];
+                                TypedValue item = null;
+                                if (xc.Attributes != null)
+                                {
+                                    var att = xc.Attributes[co?.name??b.key().ToString()];
+                                    if (att != null)
+                                        item = cd.Parse(0, att.InnerXml, lx.mime,lx.role);
+                                }
+                                if (item == null)
+                                    for (int j = 0; j < xc.ChildNodes.Count; j++)
+                                    {
+                                        var xn = xc.ChildNodes[j];
+                                        if (xn.Name == (co?.name??b.key().ToString()))
+                                        {
+                                            item = cd.Parse(0, xn.InnerXml, lx.mime,lx.role);
+                                            break;
+                                        }
+                                    }
+                                blank = blank && (item == null);
+                                cols+=(b.value(),item);
+                            }
+                            if (blank)
+                                return TXml.Null;
+                            return new TRow(this, cols);
+                        }
+                        else
+                            if (lx.mime == "text/csv")
+                        {
+                            // we expect all columns, separated by commas, without string quotes
+                            var vs = BTree<long, TypedValue>.Empty;
+                            for (var b=rowType.First();b!=null;b=b.Next())
+                            {
+                                var co = (ObInfo)lx.role?.infos[b.value()];
+                                var cd = representation[b.value()];
+                                TypedValue vl = null;
+                                try
+                                {
+                                    switch (cd.kind)
+                                    {
+                                        case Sqlx.CHAR:
+                                            {
+                                                int st = lx.pos;
+                                                string s = "";
+                                                if (lx.ch == '"')
+                                                {
+                                                    lx.Advance();
+                                                    st = lx.pos;
+                                                    while (lx.ch != '"')
+                                                        lx.Advance();
+                                                    s = new string(lx.input, st, lx.pos - st);
+                                                    lx.Advance();
+                                                }
+                                                else
+                                                {
+                                                    while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
+                                                        lx.Advance();
+                                                    s = new string(lx.input, st, lx.pos - st);
+                                                }
+                                                vl = new TChar(s);
+                                                break;
+                                            }
+                                        case Sqlx.DATE:
+                                            {
+                                                int st = lx.pos;
+                                                char oc = lx.ch;
+                                                string s = "";
+                                                while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
+                                                    lx.Advance();
+                                                s = new string(lx.input, st, lx.pos - st);
+                                                if (s.IndexOf("/") >= 0)
+                                                {
+                                                    var sa = s.Split('/');
+                                                    vl = new TDateTime(Domain.Date, new DateTime(int.Parse(sa[2]), int.Parse(sa[0]), int.Parse(sa[1])));
+                                                    break;
+                                                }
+                                                lx.pos = st;
+                                                lx.ch = oc;
+                                                vl = cd.Parse(lx);
+                                                break;
+                                            }
+                                        default: vl = cd.Parse(lx); break;
+                                    }
+                                }
+                                catch (Exception)
+                                {
+                                    while (lx.ch != '\0' && lx.ch != ',' && lx.ch != '\r' && lx.ch != '\n')
+                                        lx.Advance();
+                                }
+                                if (b.Next()!=null)
+                                {
+                                    if (lx.ch != ',')
+                                        throw new DBException("42101", lx.ch).Mix();
+                                    lx.Advance();
+                                }
+                                else
+                                {
+                                    if (lx.ch == ',')
+                                        lx.Advance();
+                                    if (lx.ch != '\0' && lx.ch != '\r' && lx.ch != '\n')
+                                        throw new DBException("42101", lx.ch).Mix();
+                                    while (lx.ch == '\r' || lx.ch == '\n')
+                                        lx.Advance();
+                                }
+                                vs += (b.value(),vl);
+                            }
+                            return new TRow(this, vs);
+                        }
+                        else
+                        {
+                            //if (names.Length > 0)
+                            //    throw new DBException("2200N");
+                            //tolerate named columns in SQL version
+                            //mixture of named and unnamed columns is not supported
+                            var comma = '(';
+                            var end = ')';
+                            if (lx.ch == '{')
+                            {
+                                comma = '{'; end = '}';
+                            }
+                            if (lx.ch == '[')
+                                goto case Sqlx.TABLE;
+                            var cols = BTree<long,TypedValue>.Empty;
+                            var names = BTree<string, long>.Empty;
+                            var b = rowType.First();
+                            for (;b!=null;b=b.Next())
+                            {
+                                var cd = representation[b.value()];
+                                var co = (ObInfo)lx.role?.infos[b.value()];
+                                cols += (b.value(),cd.defaultValue);
+                                if (co != null)
+                                    names += (co.name, b.value());
+                            }
+                            b = rowType.First();
+                            bool namedOk = true;
+                            bool unnamedOk = true;
+                            lx.White();
+                            while (lx.ch == comma)
+                            {
+                                if (b == null)
+                                    throw new DBException("22207");
+                                lx.Advance();
+                                lx.White();
+                                var n = lx.GetName();
+                                long p = b.value();
+                                if (n == null) // no name supplied
+                                {
+                                    if (b==null || !unnamedOk)
+                                        throw new DBException("22208").Mix();
+                                    namedOk = false;
+                                    b = b.Next();
+                                }
+                                else // column name supplied
+                                {
+                                    if (lx.ch != ':')
+                                        throw new DBException("42124").Mix();
+                                    else
+                                        lx.Advance();
+                                    if (!namedOk)
+                                        throw new DBException("22208").Mix()
+                                            .Add(Sqlx.COLUMN_NAME, new TChar(n));
+                                    unnamedOk = false;
+                                    if (names[n]!=p)
+                                        p = names[n];
+                                }
+                                lx.White();
+                                cols += (p, representation[p].Parse(lx));
+                                comma = ',';
+                                lx.White();
+                            }
+                            if (lx.ch != end)
+                                break;
+                            lx.Advance();
+                            return new TRow(this, cols);
+                        }
                     }
                 case Sqlx.ARRAY:
-                    {
-                        return elType.ParseList(lx);
-                    }
+                    return elType.ParseList(lx);
                 case Sqlx.UNION:
                     {
                         int st = lx.pos;
@@ -1739,6 +1931,7 @@ namespace Pyrrho.Level3
                     lx.Advance();
                 return TNull.Value;
             }
+            bad:
             var xs = new string(lx.input, start, lx.pos - start);
             throw new DBException("22005E", ToString(), xs).ISO()
                 .AddType(this).AddValue(new TChar(xs));
@@ -1748,39 +1941,28 @@ namespace Pyrrho.Level3
             if (kind == Sqlx.SENSITIVE)
                 return new TSensitive(this, elType.ParseList(lx));
             var vs = BList<TypedValue>.Empty;
-            /*            if (lx.mime == "text/xml")
-                        {
-                            var xd = new XmlDocument();
-                            xd.LoadXml(new string(lx.input));
-                            for (int i = 0; i < xd.ChildNodes.Count; i++)
-                                rv[j++] = Parse(lx.tr, xd.ChildNodes[i].InnerXml);
-                        }
-                        else
-            */
+            var end = ')';
+            switch(lx.ch)
             {
-                char delim = lx.ch, end = ')';
-                if (delim == '[')
-                    end = ']';
-                if (delim != '(' && delim != '[')
-                {
-                    var xs = new string(lx.input, 0, lx.len);
-                    throw new DBException("22005F", ToString(), xs).ISO()
-                        .AddType(this).AddValue(new TChar(xs));
-                }
-                lx.Advance();
-                for (; ; )
-                {
-                    lx.White();
-                    if (lx.ch == end)
-                        break;
-                    vs += Parse(lx);
-                    if (lx.ch == ',')
-                        lx.Advance();
-                    lx.White();
-                }
-                lx.Advance();
+                case '[': end = ']'; lx.Advance(); break;
+                case '{': end = ')'; lx.Advance(); break;
+                case '(': end = ')'; lx.Advance(); break;
             }
-            return new TArray(this,vs);
+            for (; ; )
+            {
+                lx.White();
+                vs += Parse(lx);
+                lx.White();
+                if (lx.ch == ',')
+                    lx.Advance();
+                else
+                    break;
+                lx.White();
+            }
+            if (lx.ch == end)
+                lx.Advance();
+            lx.Advance();
+            return new TArray(this, vs);
         }
         /// <summary>
         /// Helper for parsing Interval values
@@ -2977,14 +3159,6 @@ namespace Pyrrho.Level3
         {
             return new Domain(defpos,m);
         }
-        internal override void Scan(Context cx)
-        {
-            cx.Scan(constraints);
-            elType?.Scan(cx);
-            orderFunc?.Scan(cx);
-            cx.Scan(representation);
-            cx.Scan(rowType);
-        }
         internal override Basis _Relocate(Writer wr)
         {
             var r = this;
@@ -3000,7 +3174,7 @@ namespace Pyrrho.Level3
                 r += (RowType, wr.Fix(rowType));
             if (structure > 0)
                 r += (Structure, wr.Fix(structure));
-            if (defaultString!="")
+            if (r.mem.Contains(Default))
                 r += (Default, r.Parse(0, defaultString));
             var db = wr.cx.db;
             var ts = db.types;
@@ -3112,52 +3286,6 @@ namespace Pyrrho.Level3
                 r += (RowType, rt);
             return r;
         }
-        // Helper for updatable Views
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            // NB We can't use cx.done for Domains (or ObInfos)
-            var r = this;
-            var ch = false;
-            var cs = BTree<long, bool>.Empty;
-            for (var b = r.constraints?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var ck = fx[p]??p;
-                ch = ch || p != ck;
-                cs += (ck, true);
-            }
-            if (ch)
-                r += (Constraints, cs);
-            var e = r.elType?.Fix(fx);
-            if (e != elType)
-                r += (Element, e);
-            var rs = CTree<long, Domain>.Empty;
-            ch = false;
-            for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var od = b.value();
-                var p = b.key();
-                var nk = fx[p]??p;
-                var rr = (Domain)od.Fix(fx);
-                if (rr != od || nk != p)
-                    ch = true;
-                rs += (nk, rr);
-            }
-            if (ch)
-                r += (Representation, rs);
-            var rt = CList<long>.Empty;
-            ch = false;
-            for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var np = fx[p]??p;
-                ch = ch || np != p;
-                rt += np;
-            }
-            if (ch)
-                r += (RowType, rt);
-            return r;
-        }
         public string NameFor(Context cx, long p, int i)
         {
             var sv = cx.obs[p];
@@ -3262,8 +3390,8 @@ namespace Pyrrho.Level3
                                 continue;
                             var kn = b.key();
                             var p = tv.dataType;
-                            var m = (cx.db.objects[kn] as DBObject).Meta();
-                            if (tv != null && !tv.IsNull && m != null && m.Has(Sqlx.ATTRIBUTE))
+                            var m = (cx.db.role.infos[kn] as ObInfo).metadata;
+                            if (tv != null && !tv.IsNull && m != null && m.Contains(Sqlx.ATTRIBUTE))
                                 sb.Append(" " + kn + "=\"" + tv.ToString() + "\"");
                             else if (tv != null && !tv.IsNull)
                             {
@@ -3532,6 +3660,7 @@ namespace Pyrrho.Level3
         /// Whether to use XML conventions
         /// </summary>
         internal string mime = "text/plain";
+        internal Role role = null;
         /// <summary>
         /// Constructor: prepare the scanner
         /// Invariant: ch==input[pos]
@@ -3552,13 +3681,14 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="s">the input array</param>
         /// <param name="p">the starting position</param>
-        internal Scanner(long t,char[] s, int p, string m)
+        internal Scanner(long t,char[] s, int p, string m,Role ro)
         {
             tid = t;
             input = s;
             mime = m;
             len = input.Length;
             pos = p;
+            role = ro;
             ch = (p < len) ? input[p] : '\0';
         }
         internal long Position => tid + pos;
@@ -3843,23 +3973,11 @@ namespace Pyrrho.Level3
                 r += (Under, und);
             return New(cx,r.mem);
         }
-        internal override void Scan(Context cx)
-        {
-            base.Scan(cx);
-            super?.Scan(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
             if (super != null)
                 r += (Under, super.Fix(cx));
-            return r;
-        }
-        internal override Basis _Relocate(Context cx, Context nc)
-        {
-            var r = (UDType)base._Relocate(cx, nc);
-            if (super != null)
-                r += (Under, super._Relocate(cx,nc));
             if (defaultString == "")
                 r += (Default, NullValue());
             return r;
@@ -3871,13 +3989,6 @@ namespace Pyrrho.Level3
                 r += (Under, super._Relocate(wr));
             if (defaultString == "")
                 r += (Default, NullValue());
-            return r;
-        }
-        internal override Basis Fix(BTree<long, long?> fx)
-        {
-            var r = (UDType)base.Fix(fx);
-            if (super != null)
-                r += (Under, super.Fix(fx));
             return r;
         }
         public override void PutDataType(Domain nt, Writer wr)
