@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTransaction(Reader rdr) : this(Type.PTransaction,rdr)
+		public PTransaction(ReaderBase rdr) : this(Type.PTransaction,rdr)
 		{}
         /// <summary>
         /// Constructor: a Transaction record from the buffer
@@ -78,7 +78,7 @@ namespace Pyrrho.Level2
         /// <param name="tp">The PTransaction or PTransaction2 type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected PTransaction(Type tp, Reader rdr)
+        protected PTransaction(Type tp, ReaderBase rdr)
             : base(tp, rdr)
         { }
         protected PTransaction(PTransaction x, Writer wr) : base(x, wr)
@@ -121,13 +121,14 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			nrecs = rdr.GetInt();
 			ptrole = rdr.GetLong();
 			ptuser = rdr.GetLong();
 			pttime = rdr.GetLong();
-            rdr.context.Add(this);
+            if (rdr is Reader rr)
+                rr.context.Add(this);
 			// no base.Deserialise() for PTransaction
 		}
         /// <summary>
@@ -161,7 +162,7 @@ namespace Pyrrho.Level2
         {
             uri = ur;
         }
-        public PImportTransaction(Reader rdr)
+        public PImportTransaction(ReaderBase rdr)
             : base(Type.PImportTransaction, rdr)
         {}
         public override void Serialise(Writer wr)
@@ -169,7 +170,7 @@ namespace Pyrrho.Level2
             wr.PutString(uri);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             uri = rdr.GetString();
             base.Deserialise(rdr);
@@ -193,7 +194,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refPhys)) return refPhys;
             return -1;
         }
-        internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
+        internal TriggeredAction(ReaderBase rdr) : base(Type.TriggeredAction,rdr)
         { }
         internal TriggeredAction(long tg,long pp, Context cx)
             : base(Type.TriggeredAction,pp,cx)
@@ -213,7 +214,7 @@ namespace Pyrrho.Level2
             wr.PutLong(trigger);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             trigger = rdr.GetLong();
             base.Deserialise(rdr);
@@ -236,6 +237,7 @@ namespace Pyrrho.Level2
     internal class Audit : Physical,IComparable
     {
         internal User user;
+        internal long _user;
         internal long table;
         internal BTree<long, string> match; 
         internal long timestamp;
@@ -259,11 +261,13 @@ namespace Pyrrho.Level2
             user = us; table = ta; 
             timestamp = ts; match = ma;
         }
-        internal Audit(Reader rdr) : this(Type.Audit, rdr) { }
-        protected Audit(Type t, Reader rdr) : base(t, rdr) { }
-        public override void Deserialise(Reader rdr)
+        internal Audit(ReaderBase rdr) : this(Type.Audit, rdr) { }
+        protected Audit(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public override void Deserialise(ReaderBase rdr)
         {
-            user = (User)rdr.context.db.objects[rdr.GetLong()];
+            _user = rdr.GetLong();
+            if (rdr is Reader rr)
+                user = (User)rr.context.db.objects[rdr.GetLong()];
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
@@ -314,7 +318,7 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            // nothing 
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
 
         protected override Physical Relocate(Writer wr)

@@ -573,8 +573,6 @@ namespace Pyrrho.Level4
         /// <param name="now"></param>
         internal DBObject Replace(DBObject was, DBObject now)
         {
-            if (was.defpos == 0x7000000000000006)
-                Console.WriteLine("Here");
             if (dbformat<51)
                 Add(now);
             if (was == now)
@@ -587,7 +585,7 @@ namespace Pyrrho.Level4
             for (var b = depths.First(); b != null; b = b.Next())
             {
                 var bv = b.value();
-                for (var c = bv.PositionAt(Transaction.TransPos); c != null; c = c.Next())
+                for (var c = bv.PositionAt(0); c != null; c = c.Next())
                 {
                     var p = c.value();
                     var cv = p.Replace(this, was, now); // may update done

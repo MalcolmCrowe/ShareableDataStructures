@@ -43,7 +43,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PType(Reader rdr) : base(Type.PType,rdr) 
+		public PType(ReaderBase rdr) : base(Type.PType,rdr) 
         { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
@@ -51,7 +51,7 @@ namespace Pyrrho.Level2
         /// <param name="t">The PType type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PType(Type t, Reader rdr) : base(t,rdr) {}
+		protected PType(Type t, ReaderBase rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
         {
             if (x.under!=null)
@@ -74,14 +74,17 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rd)
         {
-            var sp = rdr.GetLong();
-            if (sp!=-1)
-                under = (UDType)rdr.context.db.objects[sp];
-            base.Deserialise(rdr);
+            underdefpos = rd.GetLong();
+            base.Deserialise(rd);
+            if (rd is Reader rdr)
+            {
+                if (underdefpos != -1)
+                    under = (UDType)rdr.context.db.objects[underdefpos];
+                rdr.context.db += (ppos, domain);
+            }
             domain += (Domain.Default, new TRow(domain));
-            rdr.context.db += (ppos, domain);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -142,7 +145,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PType1(Reader rdr) : base(Type.PType1,rdr) {}
+		public PType1(ReaderBase rdr) : base(Type.PType1,rdr) {}
         protected PType1(PType1 x, Writer wr) : base(x, wr)
         { }
         protected override Physical Relocate(Writer wr)
@@ -154,7 +157,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             string withuri = rdr.GetString();
             base.Deserialise(rdr);

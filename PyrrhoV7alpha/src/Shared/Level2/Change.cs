@@ -69,7 +69,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public Change(Reader rdr) :base(Type.Change,rdr)
+		public Change(ReaderBase rdr) :base(Type.Change,rdr)
         {
             prev = rdr.GetLong();
             name = rdr.GetString();
@@ -107,10 +107,10 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{ 
 			prev = rdr.GetLong();
-            affects = (long)(rdr.context.db.mem[prev]??ppos);
+            affects = rdr.Prev(prev)??ppos;
 			name = rdr.GetString();
 			base.Deserialise(rdr);
 		}

@@ -1,4 +1,5 @@
 using Pyrrho.Level3;
+using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2020
@@ -23,11 +24,15 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The position in the buffer</param>
-        public Checkpoint(Reader rdr) : base(Type.Checkpoint, rdr) { }
+        public Checkpoint(ReaderBase rdr) : base(Type.Checkpoint, rdr) { }
         protected Checkpoint(Checkpoint x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)
         {
             return new Checkpoint(this, wr);
+        }
+        internal override void Install(Context cx, long p)
+        {
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         /// <summary>
         /// A readable version of the Checkpoint
@@ -40,10 +45,6 @@ namespace Pyrrho.Level2
         public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
-        }
-        internal override void Install(Level4.Context cx, long p)
-        {
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

@@ -428,14 +428,14 @@ namespace Pyrrho.Level4
                 case "Log$": return LogBookmark.New(_cx, res);
                 case "Log$Alter": return LogAlterBookmark.New(_cx, res);
                 case "Log$Change": return LogChangeBookmark.New(_cx, res);
-                case "Log$DateType": return LogDateTypeBookmark.New(_cx, res);
-                case "Log$Delete": return LogDeleteBookmark.New(_cx, res);
-                case "Log$Drop": return LogDropBookmark.New(_cx, res);
                 case "Log$Check": return LogCheckBookmark.New(_cx, res);
                 case "Log$Classification": return LogClassificationBookmark.New(_cx, res);
                 case "Log$Clearance": return LogClearanceBookmark.New(_cx, res);
                 case "Log$Column": return LogColumnBookmark.New(_cx, res);
+                case "Log$DateType": return LogDateTypeBookmark.New(_cx, res);
+                case "Log$Delete": return LogDeleteBookmark.New(_cx, res);
                 case "Log$Domain": return LogDomainBookmark.New(_cx, res);
+                case "Log$Drop": return LogDropBookmark.New(_cx, res);
                 case "Log$Edit": return LogEditBookmark.New(_cx, res);
                 case "Log$Enforcement": return LogEnforcementBookmark.New(_cx, res);
                 case "Log$Grant": return LogGrantBookmark.New(_cx, res);
@@ -445,22 +445,22 @@ namespace Pyrrho.Level4
                 case "Log$Modify": return LogModifyBookmark.New(_cx, res);
                 case "Log$Ordering": return LogOrderingBookmark.New(_cx, res);
                 case "Log$Procedure": return LogProcedureBookmark.New(_cx, res);
+                case "Log$Record": return LogRecordBookmark.New(_cx, res);
+                case "Log$RecordField": return LogRecordFieldBookmark.New(_cx, res);
+                case "Log$Revoke": return LogRevokeBookmark.New(_cx, res);
+                case "Log$Role": return LogRoleBookmark.New(_cx, res);
                 case "Log$Table": return LogTableBookmark.New(_cx, res);
                 case "Log$TablePeriod": return LogTablePeriodBookmark.New(_cx, res);
+                case "Log$Transaction": return LogTransactionBookmark.New(_cx, res);
                 case "Log$Trigger": return LogTriggerBookmark.New(_cx, res);
                 case "Log$TriggerUpdateColumn": return LogTriggerUpdateColumnBookmark.New(_cx, res);
                 case "Log$TriggeredAction": return LogTriggeredActionBookmark.New(_cx, res);
                 case "Log$Type": return LogTypeBookmark.New(_cx, res);
                 case "Log$TypeMethod": return LogTypeMethodBookmark.New(_cx, res);
                 //            case "Log$TypeUnion": return new LogTypeUnionEnumerator(r,matches);
-                case "Log$View": return LogViewBookmark.New(_cx, res);
-                case "Log$Record": return LogRecordBookmark.New(_cx, res);
-                case "Log$RecordField": return LogRecordFieldBookmark.New(_cx, res);
-                case "Log$Revoke": return LogRevokeBookmark.New(_cx, res);
-                case "Log$Transaction": return LogTransactionBookmark.New(_cx, res);
                 case "Log$Update": return LogUpdateBookmark.New(_cx, res);
                 case "Log$User": return LogUserBookmark.New(_cx, res);
-                case "Log$Role": return LogRoleBookmark.New(_cx, res);
+                case "Log$View": return LogViewBookmark.New(_cx, res);
                 // level 3 stuff
                 case "Role$Class": return RoleClassBookmark.New(_cx, res);
                 case "Role$Column": return RoleColumnBookmark.New(_cx, res);
@@ -1346,7 +1346,7 @@ namespace Pyrrho.Level4
         internal class LogClearanceBookmark : LogSystemBookmark
         {
             LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph)
-                : base(_cx,rs, pos, ph, _Value(rs, ph.Item1))
+                : base(_cx,rs, pos, ph, _Value(rs, ph.Item1,_cx.db._user))
             {
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
@@ -1384,12 +1384,12 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,User,Clearance,Transaction)
             /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph)
+            static TRow _Value(SystemRowSet res, Physical ph,long u)
             {
                 Clearance c = (Clearance)ph;
                 return new TRow(res,
                     Pos(c.ppos),
-                    Pos(c.database.user.defpos),
+                    Pos(u),
                     new TChar(c.clearance.ToString()),
                     Pos(c.trans));
             }
@@ -1430,28 +1430,44 @@ namespace Pyrrho.Level4
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PColumn || lb.value() == Physical.Type.PColumn2
-                        || lb.value() == Physical.Type.PColumn3)
+                    switch (lb.value())
                     {
-                        var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.Alter:
+                        case Physical.Type.Alter2:
+                        case Physical.Type.Alter3:
+                        case Physical.Type.PColumn:
+                        case Physical.Type.PColumn2:
+                        case Physical.Type.PColumn3:
+                            {
+                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PColumn || lb.value() == Physical.Type.PColumn2
-                        || lb.value() == Physical.Type.PColumn3)
+                    switch (lb.value())
                     {
-                        var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.Alter:
+                        case Physical.Type.Alter2:
+                        case Physical.Type.Alter3:
+                        case Physical.Type.PColumn:
+                        case Physical.Type.PColumn2:
+                        case Physical.Type.PColumn3:
+                            {
+                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
@@ -1467,7 +1483,7 @@ namespace Pyrrho.Level4
                         Pos(c.table.defpos),
                         new TChar(c.name),
                         new TInt(c.seq),
-                        Pos(ph.database.types[c.domain]),
+                        Pos(c.domdefpos),
                         Display(c.dfs.ToString()),
                         TBool.For(c.notNull),
                         new TChar(c.generated.ToString()),
@@ -1651,30 +1667,46 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-            internal static LogDomainBookmark New(Context _cx,SystemRowSet res)
+            internal static LogDomainBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PDomain||lb.value()==Physical.Type.PDomain1)
+                    switch (lb.value())
                     {
-                        var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.PDomain:
+                        case Physical.Type.PDomain1:
+                        case Physical.Type.Edit:
+                        case Physical.Type.PType:
+                        case Physical.Type.PType1:
+                            {
+                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PDomain||lb.value()==Physical.Type.PDomain1)
+                    switch (lb.value())
                     {
-                        var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.PDomain:
+                        case Physical.Type.PDomain1:
+                        case Physical.Type.Edit:
+                        case Physical.Type.PType:
+                        case Physical.Type.PType1:
+                            {
+                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
@@ -1694,7 +1726,7 @@ namespace Pyrrho.Level4
                     new TChar(d.charSet.ToString()),
                     new TChar(d.culture.Name),
                     Display(d.defaultString),
-                    new TInt(ph.database.types[d.elType]),
+                    new TInt(d.elType?.defpos??-1L),
                     Pos(ph.trans));
             }
          }
@@ -1715,9 +1747,11 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogEditBookmark : LogSystemBookmark
         {
+            Database db;
             LogEditBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
+                db = _cx?.db;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -1758,7 +1792,7 @@ namespace Pyrrho.Level4
                 Edit d = (Edit)ph;
                 return new TRow(res,
                     Pos(d.ppos),
-                    Pos(ph.database.types[d.prev]),
+                    Pos(d._prev),
                     Pos(d.trans));
             }
          }
@@ -2142,26 +2176,40 @@ namespace Pyrrho.Level4
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PProcedure||lb.value()==Physical.Type.PProcedure2)
+                    switch (lb.value())
                     {
-                        var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.PProcedure:
+                        case Physical.Type.PProcedure2:
+                        case Physical.Type.PMethod:
+                        case Physical.Type.PMethod2:
+                            {
+                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PProcedure||lb.value()==Physical.Type.PProcedure2)
+                    switch (lb.value())
                     {
-                        var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.PProcedure:
+                        case Physical.Type.PProcedure2:
+                        case Physical.Type.PMethod:
+                        case Physical.Type.PMethod2:
+                            {
+                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
@@ -2778,28 +2826,44 @@ namespace Pyrrho.Level4
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Record || lb.value()==Physical.Type.Record1
-                        ||lb.value() == Physical.Type.Record2 || lb.value()==Physical.Type.Record3)
+                    switch (lb.value())
                     {
-                        var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.Record:
+                        case Physical.Type.Record1:
+                        case Physical.Type.Record2:
+                        case Physical.Type.Record3:
+                        case Physical.Type.Update:
+                        case Physical.Type.Update1:
+                            {
+                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Record || lb.value()==Physical.Type.Record1
-                        ||lb.value() == Physical.Type.Record2 || lb.value()==Physical.Type.Record3)
+                    switch (lb.value())
                     {
-                        var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (Query.Eval(res.where, _cx))
-                            return rb;
+                        case Physical.Type.Record:
+                        case Physical.Type.Record1:
+                        case Physical.Type.Record2:
+                        case Physical.Type.Record3:
+                        case Physical.Type.Update:
+                        case Physical.Type.Update1:
+                            {
+                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                if (!rb.Match(res))
+                                    return null;
+                                if (Query.Eval(res.where, _cx))
+                                    return rb;
+                                continue;
+                            }
                     }
                 return null;
             }

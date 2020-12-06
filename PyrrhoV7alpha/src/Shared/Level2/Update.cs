@@ -44,8 +44,8 @@ namespace Pyrrho.Level2
                 _classification = old.classification;
             prev = old.prev;
         }
-        public Update(Reader rdr) : base(Type.Update, rdr) { }
-        protected Update(Type t, Reader rdr) : base(t, rdr) 
+        public Update(ReaderBase rdr) : base(Type.Update, rdr) { }
+        protected Update(Type t, ReaderBase rdr) : base(t, rdr) 
         {  }
         protected Update(Update x, Writer wr) : base(x, wr)
         {
@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             prev = rdr.GetLong();
             _defpos = rdr.GetLong();
@@ -164,8 +164,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var fl = AddRow(cx);
-            cx.Install((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
@@ -184,7 +184,7 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             _classification = lv;
         }
-        public Update1(Reader rdr) : base(Type.Update1, rdr)
+        public Update1(ReaderBase rdr) : base(Type.Update1, rdr)
         {  }
         protected Update1(Update1 x, Writer wr) : base(x, wr)
         {
@@ -194,7 +194,7 @@ namespace Pyrrho.Level2
         {
             return new Update1(this, wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);

@@ -59,8 +59,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a new empty table
         /// </summary>
-        internal Table(PTable pt) :base(pt.ppos, BTree<long,object>.Empty
-            +(Name,pt.name)+(Definer,pt.database.role.defpos)
+        internal Table(PTable pt,Role ro) :base(pt.ppos, BTree<long,object>.Empty
+            +(Name,pt.name)+(Definer,ro.defpos)
             +(Indexes,BTree<CList<long>,long>.Empty) + (LastChange, pt.ppos)
             + (_Domain,Domain.TableType)+(LastChange,pt.ppos)
             +(Triggers, BTree<PTrigger.TrigType, BTree<long, bool>>.Empty)

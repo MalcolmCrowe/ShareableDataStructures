@@ -65,8 +65,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PView(Reader rdr) : base(Type.PView, rdr) { }
-        protected PView(Type tp, Reader rdr) : base(tp, rdr) { }
+        public PView(ReaderBase rdr) : base(Type.PView, rdr) { }
+        protected PView(Type tp, ReaderBase rdr) : base(tp, rdr) { }
         protected PView(PView x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -93,7 +93,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             name = rdr.GetString();
             viewdef = rdr.GetString();
@@ -176,8 +176,8 @@ namespace Pyrrho.Level2
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
-            cx.Install(vw, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(vw, p);
         }
         public override (Transaction, Physical) Commit(Writer wr, Transaction t)
         {
@@ -199,8 +199,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr, usingtbpos)) return usingtbpos;
             return -1;
         }
-        public PRestView(Reader rdr) : this(Type.RestView, rdr) { }
-        protected PRestView(Type t, Reader rdr) : base(t,rdr) { }
+        public PRestView(ReaderBase rdr) : this(Type.RestView, rdr) { }
+        protected PRestView(Type t, ReaderBase rdr) : base(t,rdr) { }
         public PRestView(string nm, long tp, long pp, Context cx)
             : this(Type.RestView, nm, tp, pp, cx) { }
         protected PRestView(Type t,string nm,long tp,long pp, Context cx)
@@ -222,7 +222,7 @@ namespace Pyrrho.Level2
             wr.PutLong(structpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             structpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -263,7 +263,6 @@ namespace Pyrrho.Level2
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro, p) + (vw, p);
             cx.Install(vw, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
         {
@@ -290,7 +289,7 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PRestView1 : PRestView
     {
-        public PRestView1(Reader rdr) : base(Type.RestView1, rdr) { }
+        public PRestView1(ReaderBase rdr) : base(Type.RestView1, rdr) { }
         public PRestView1(string nm, long tp, string rnm, string rpw, long pp, 
             Context cx) : base(Type.RestView1, nm, tp, pp, cx)
         {
@@ -313,7 +312,7 @@ namespace Pyrrho.Level2
             wr.PutString(rpass);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             rname = rdr.GetString();
             rpass = rdr.GetString();
@@ -326,7 +325,7 @@ namespace Pyrrho.Level2
     }
     internal class PRestView2 : PRestView
     {
-        public PRestView2(Reader rdr) : base(Type.RestView1, rdr) { }
+        public PRestView2(ReaderBase rdr) : base(Type.RestView1, rdr) { }
         public PRestView2(string nm, long tp, long utp, long pp, Context cx)
             : base(Type.RestView2, nm, tp, pp, cx)
         {
@@ -346,7 +345,7 @@ namespace Pyrrho.Level2
             wr.PutLong(usingtbpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             usingtbpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -373,7 +372,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PView1(Reader rdr) : base(Type.PView1,rdr) { }
+        public PView1(ReaderBase rdr) : base(Type.PView1,rdr) { }
         protected PView1(PView1 x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)
         {
@@ -384,7 +383,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             rdr.GetString();
             rdr.GetString();

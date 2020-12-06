@@ -30,6 +30,7 @@ namespace Pyrrho.Level2
         /// The Table
         /// </summary>
 		public Table table;
+        public long tabledefpos;
         /// <summary>
         /// The name of the TableColumn
         /// </summary>
@@ -77,17 +78,18 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PColumn(Reader rdr) : base (Type.PColumn,rdr){}
+		public PColumn(ReaderBase rdr) : base (Type.PColumn,rdr){}
         /// <summary>
         /// Constructor: a new Column definition from the buffer
         /// </summary>
         /// <param name="t">The PColumn type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PColumn(Type t,Reader rdr) : base(t,rdr) {}
+		protected PColumn(Type t,ReaderBase rdr) : base(t,rdr) {}
         protected PColumn(PColumn x, Writer wr) : base(x, wr)
         {
             table = (Table)x.table._Relocate(wr);
+            tabledefpos = table.defpos;
             name = x.name;
             seq = x.seq;
             domain = (Domain)x.domain._Relocate(wr);
@@ -103,6 +105,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
 			table = (Table)table._Relocate(wr);
+            tabledefpos = table.defpos;
 			domain = wr.cx.db.Find(domain);
             wr.PutLong(table.defpos);
             wr.PutString(name.ToString());
@@ -114,13 +117,14 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
-            table = (Table)rdr.context.db.objects[rdr.GetLong()];
+            tabledefpos = rdr.GetLong();
+            table = (Table)rdr.GetObject(tabledefpos);
             name = rdr.GetString();
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
-            domain = (Domain)rdr.context.db.objects[domdefpos];
+            domain = (Domain)rdr.GetObject(domdefpos);
             base.Deserialise(rdr);
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -181,7 +185,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder(GetType().Name);
             sb.Append(" "); sb.Append(name); sb.Append(" for ");
-            sb.Append(Pos(table.defpos));
+            sb.Append(Pos(tabledefpos));
             sb.Append("("); sb.Append(seq); sb.Append(")[");
             if (domdefpos >= 0)
                 sb.Append(DBObject.Uid(domdefpos));
@@ -195,7 +199,7 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
             var ti = (ObInfo)ro.infos[table.defpos];
-            var tc = new TableColumn(table, this, domain);
+            var tc = new TableColumn(table, this, domain,cx.role);
             ti += (DBObject._Domain, ti.domain + (tc.defpos,tc.domain));
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
@@ -206,9 +210,9 @@ namespace Pyrrho.Level2
             table += tc; 
             table += (DBObject._Domain,ti.domain);
             cx.db += (ro, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>
@@ -258,14 +262,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PColumn2(Reader rdr) : this(Type.PColumn2,rdr){}
+		public PColumn2(ReaderBase rdr) : this(Type.PColumn2,rdr){}
         /// <summary>
         /// Constructor: A new Column definition from the buffer
         /// </summary>
         /// <param name="t">The PColumn2 type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected PColumn2(Type t, Reader rdr) : base(t, rdr) { }
+        protected PColumn2(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected PColumn2(PColumn2 x, Writer wr) : base(x, wr)
         {
             dfs = x.dfs;
@@ -293,7 +297,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{
             var dfsrc = new Ident(rdr.GetString(), ppos+1);
             dfs = dfsrc.ident;
@@ -303,7 +307,10 @@ namespace Pyrrho.Level2
             if (dfs != "")
             {
                 if (gn != Generation.Expression)
-                    dv = domain.Parse(rdr.Position, dfs);
+                {
+                    var dm = rdr.GetDomain(domdefpos);
+                    dv = dm.Parse(rdr.Position, dfs);
+                }
                 else
                     generated = new GenerationRule(Generation.Expression,
                         dfs, SqlNull.Value);
@@ -378,14 +385,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PColumn3(Reader rdr) : this(Type.PColumn3, rdr) { }
+        public PColumn3(ReaderBase rdr) : this(Type.PColumn3, rdr) { }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
         /// </summary>
         /// <param name="t">The PColumn2 type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected PColumn3(Type t, Reader rdr) : base(t, rdr) { }
+        protected PColumn3(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected PColumn3(PColumn3 x, Writer wr) : base(x, wr)
         {
             upd = x.upd;
@@ -411,18 +418,10 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             ups = rdr.GetString();
-            if (ups != "")
-                try
-                {
-                    upd = new Parser(rdr.context).ParseAssignments(ups, table.domain);
-                } 
-                catch(Exception)
-                {
-                    upd = BTree<UpdateAssignment,bool>.Empty;
-                }
+            rdr.Upd(this);
             rdr.GetLong();
             rdr.GetLong();
             rdr.GetLong();
@@ -483,7 +482,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PColumnPath(Reader rdr) : base(Type.ColumnPath, rdr) { }
+        public PColumnPath(ReaderBase rdr) : base(Type.ColumnPath, rdr) { }
         public override void Serialise(Writer wr)
         {
             coldefpos = wr.Fix(coldefpos);
@@ -493,7 +492,7 @@ namespace Pyrrho.Level2
             wr.PutLong(domdefpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             coldefpos = rdr.GetLong();
             path = rdr.GetString();

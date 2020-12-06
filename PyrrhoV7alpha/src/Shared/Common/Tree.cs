@@ -543,11 +543,11 @@ namespace Pyrrho.Common
                 d = stk._bucket.Slot(stkPos);
                 b = d.Value as Bucket<K, V>;
             }
-            while (b != null) // now ensure we are at a leaf
+            while (d.Value is Bucket<K, V>)
             {
                 stk = new ABookmark<K, V>(b, b.EndPos, stk);
                 d = b.Slot(b.count - 1);
-                b = (d.Value as Bucket<K, V>)?.Gtr();
+                b = b.Gtr();
             }
             return stk;
         }

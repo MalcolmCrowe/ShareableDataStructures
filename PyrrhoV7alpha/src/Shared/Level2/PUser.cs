@@ -51,7 +51,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position in the buffer</param>
-        public PUser(Reader rdr) : base(Type.PUser, rdr) { }
+        public PUser(ReaderBase rdr) : base(Type.PUser, rdr) { }
         protected PUser(PUser x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -74,7 +74,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             name = rdr.GetString();
             base.Deserialise(rdr);
@@ -104,6 +104,7 @@ namespace Pyrrho.Level2
             var ui = new ObInfo(nu.defpos, nu.name, Domain.Null, pr);
             ro += (ui,false);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
             {
                 cx.db = cx.db + (Database.Owner, nu.defpos);
@@ -111,7 +112,6 @@ namespace Pyrrho.Level2
                     cx.db = cx.db + (Database.User, nu) + (Database.Role, ro)
                         + (Database._User, nu.defpos) + (Database._Role, ro.defpos);
             }
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Clearance : Physical
@@ -123,7 +123,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,_user)) return _user;
             return -1;
         }
-        public Clearance(Reader rdr) : base(Type.Clearance, rdr)
+        public Clearance(ReaderBase rdr) : base(Type.Clearance, rdr)
         { }
         public Clearance(long us, Level cl, long pp, Context cx)
             : base(Type.Clearance, pp, cx)
@@ -147,7 +147,7 @@ namespace Pyrrho.Level2
             wr.PutLong(_user);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             clearance = Level.DeserialiseLevel(rdr);
             _user = rdr.GetLong();
@@ -165,6 +165,7 @@ namespace Pyrrho.Level2
             var us = cx.db.objects[_user] as User;
             us += (User.Clearance, clearance);
             cx.db += (us, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(us);
         }
     }

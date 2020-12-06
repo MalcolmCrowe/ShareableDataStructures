@@ -73,7 +73,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Modify(Reader rdr) : base(Type.Modify,rdr) {}
+		public Modify(ReaderBase rdr) : base(Type.Modify,rdr) {}
         protected Modify(Modify x, Writer wr) : base(x, wr)
         {
             modifydefpos = wr.Fix(x.modifydefpos);
@@ -106,51 +106,14 @@ namespace Pyrrho.Level2
         /// Desrialise this physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			modifydefpos = rdr.GetLong();
 			name = rdr.GetString();
 			body = rdr.GetString();
 			base.Deserialise(rdr);
-            switch (name)
-            {
-                default:
-                    {
-                        var mi = (ObInfo)rdr.context.role.infos[modifydefpos];
-                        var mt = (Method)rdr.context.db.objects[modifydefpos];
-                        if (mi.domain is UDType udt)
-                        {
-                            var psr = new Parser(rdr.context, new Ident(body, ppos + 2));
-                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(name, ppos + 1));
-                            for (var b = udt.representation.First(); b != null; b = b.Next())
-                            {
-                                var p = b.key();
-                                var ic = new Ident(psr.cx.Inf(p).name, p);
-                                psr.cx.defs += (ic, p);
-                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
-                            }
-                            now = psr.ParseProcedureStatement(xp);
-                            framing = new Framing(psr.cx);
-                            Frame(psr.cx);
-                            framing += (Framing.Obs, 
-                                framing.obs + (mt.defpos, mt + (Procedure.Body, now.defpos)));
-                            bodydefpos = now.defpos;
-                            parms = pps;
-                        }
-                        break;
-                    }
-                case "Source":
-                    {
-                        var ps = rdr.context.db.objects[modifydefpos] as Procedure;
-                        now = new Parser(rdr.context).ParseQueryExpression(new Ident(body,ppos+1), ps.domain);
-                        break;
-                    }
-                case "Insert": // we ignore all of these (PView1)
-                case "Update":
-                case "Delete":
-                    now = null;
-                    break;
-            }
+            rdr.Setup(this);
+ 
 		}
         internal override void OnLoad(Reader rdr)
         {
@@ -202,7 +165,7 @@ namespace Pyrrho.Level2
             ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, this, p);
             var ob = ((DBObject)cx.db.objects[modifydefpos])??now;
             cx.obs += (modifydefpos,ob);
-            cx.db = cx.db + (ob,p) + (Database.Log, cx.db.log + (ppos, type));
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

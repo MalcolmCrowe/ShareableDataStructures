@@ -47,7 +47,7 @@ namespace Pyrrho.Level2
             name = nm;
             details = dt;
         }
-        public PRole(Reader rdr) : base(Type.PRole, rdr) { }
+        public PRole(ReaderBase rdr) : base(Type.PRole, rdr) { }
         protected PRole(PRole x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -72,7 +72,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{
             name = rdr.GetString();
             if (type == Type.PRole)
@@ -112,9 +112,9 @@ namespace Pyrrho.Level2
             nr += (ri, true);
             var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
             cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
                 cx.db = cx.db+(DBObject.Definer, nr.defpos)+(Database._Role,nr.defpos);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
      internal class PMetadata : Physical
@@ -165,8 +165,8 @@ namespace Pyrrho.Level2
             refpos = rf;
             flags = Flags(md);
         }
-        public PMetadata(Reader rdr) : this(Type.Metadata, rdr) { }
-        protected PMetadata(Type t, Reader rdr) : base(t, rdr) { }
+        public PMetadata(ReaderBase rdr) : this(Type.Metadata, rdr) { }
+        protected PMetadata(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected PMetadata(PMetadata x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -200,7 +200,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{
 			name =rdr.GetString();
             detail = rdr.GetString();
@@ -330,7 +330,8 @@ namespace Pyrrho.Level2
                 cx.db = cx.db+(ro, p);
             }
             cx.db = ((DBObject)cx.db.objects[defpos]).Add(cx.db,this, p);
-       }
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
+        }
     }
      internal class PMetadata2 : PMetadata
      {
@@ -346,8 +347,8 @@ namespace Pyrrho.Level2
          : base(tp, nm, sq, ob, md, pp, cx)
         {
         }
-        public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
-        public PMetadata2(Type pt,Reader rdr) : base(pt, rdr) {}
+        public PMetadata2(ReaderBase rdr) : base (Type.Metadata2,rdr){}
+        public PMetadata2(Type pt,ReaderBase rdr) : base(pt, rdr) {}
         protected PMetadata2(PMetadata2 x, Writer wr) : base(x, wr)
         {
         }
@@ -367,7 +368,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{
             rdr.GetInt();
             rdr.GetLong();
@@ -399,7 +400,7 @@ namespace Pyrrho.Level2
             : base(Type.Metadata3, nm, sq, ob, md, pp, cx)
         {
         }
-        public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
+        public PMetadata3(ReaderBase rdr) : base(Type.Metadata3, rdr) { }
         protected PMetadata3(PMetadata3 x, Writer wr) : base(x, wr)
         {
         }
@@ -420,7 +421,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             refpos = rdr.GetLong();
             base.Deserialise(rdr);

@@ -69,7 +69,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PPeriodDef(Reader rdr)
+        public PPeriodDef(ReaderBase rdr)
             : base(Type.PeriodDef, rdr)
         { }
         protected PPeriodDef(PPeriodDef x, Writer wr) : base(x, wr)
@@ -102,7 +102,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             tabledefpos = rdr.GetLong();
             periodname = rdr.GetString();
@@ -168,8 +168,8 @@ namespace Pyrrho.Level2
             var oi = (ObInfo)ro.infos[tabledefpos];
             ro = ro + (oc,false) + (oi + (ppos,oc.domain),false);
             cx.db += (ro, p);
-            cx.Install(pd, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(pd, p);
         }
     }
 }

@@ -63,7 +63,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTable(Reader rdr) : base (Type.PTable,rdr)
+		public PTable(ReaderBase rdr) : base (Type.PTable,rdr)
 		{}
         /// <summary>
         /// Constructor: a Table definition from the buffer
@@ -71,7 +71,7 @@ namespace Pyrrho.Level2
         /// <param name="t">The PTable type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
+		protected PTable(Type t, ReaderBase rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -94,7 +94,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             name = rdr.GetString();
 			base.Deserialise(rdr);
@@ -138,14 +138,14 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
-            var tb = new Table(this);
+            var tb = new Table(this,ro);
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
-            cx.Install(tb, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(tb, p);
         }
     }
     internal class PTable1 : PTable
@@ -160,8 +160,8 @@ namespace Pyrrho.Level2
         {
             rowiri = ir;
         }
-        public PTable1(Reader rdr) : base(Type.PTable1, rdr) { }
-        protected PTable1(Type tp, Reader rdr) : base(tp, rdr) { }
+        public PTable1(ReaderBase rdr) : base(Type.PTable1, rdr) { }
+        protected PTable1(Type tp, ReaderBase rdr) : base(tp, rdr) { }
         protected PTable1(PTable1 x, Writer wr) : base(x, wr)
         {
             rowiri = x.rowiri;
@@ -175,7 +175,7 @@ namespace Pyrrho.Level2
             wr.PutString(rowiri);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             rowiri = rdr.GetString();
             base.Deserialise(rdr);
@@ -196,7 +196,7 @@ namespace Pyrrho.Level2
         {
             rowpos = pr;
         }
-        public AlterRowIri(Reader rdr) : base(Type.AlterRowIri, rdr) { }
+        public AlterRowIri(ReaderBase rdr) : base(Type.AlterRowIri, rdr) { }
         protected AlterRowIri(AlterRowIri x, Writer wr) : base(x, wr)
         {
             rowpos = wr.Fix(rowpos);
@@ -210,7 +210,7 @@ namespace Pyrrho.Level2
             wr.PutLong(rowpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             var prev = rdr.GetLong(); // defpos is clobbered by base.Deserialise
             base.Deserialise(rdr);
@@ -232,7 +232,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             return -1;
         }
-        public Enforcement(Reader rdr) : base(Type.Enforcement, rdr)
+        public Enforcement(ReaderBase rdr) : base(Type.Enforcement, rdr)
         {
         }
 
@@ -268,7 +268,7 @@ namespace Pyrrho.Level2
             wr.PutLong((long)enforcement);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             tabledefpos = rdr.GetLong();
             enforcement = (Grant.Privilege)rdr.GetLong();
@@ -300,6 +300,7 @@ namespace Pyrrho.Level2
             var tb = (Table)cx.db.objects[tabledefpos];
             tb += (Table.Enforcement, enforcement);
             cx.db += (tb, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(tb);
         }
     }

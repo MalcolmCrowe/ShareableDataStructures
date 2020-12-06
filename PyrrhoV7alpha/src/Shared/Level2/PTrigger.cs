@@ -126,7 +126,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTrigger(Reader rdr) : base(Type.PTrigger,rdr) {}
+		public PTrigger(ReaderBase rdr) : base(Type.PTrigger,rdr) {}
         protected PTrigger(PTrigger x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -180,7 +180,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			name = rdr.GetString();
             target = rdr.GetLong();
@@ -267,13 +267,13 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[target];
-            var tg = new Trigger(this); // complete version of trigger with def, but framing not quite right
+            var tg = new Trigger(this,cx.db.role); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg, cx.db);
             ro = ro + (new ObInfo(defpos, name, Domain.Null,Grant.Privilege.Execute),true);
             cx.db += (ro, p);
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
             cx.Install(tg, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override (Transaction,Physical) Commit(Writer wr, Transaction t)
         {

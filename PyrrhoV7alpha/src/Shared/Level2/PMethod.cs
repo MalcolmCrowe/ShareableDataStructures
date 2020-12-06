@@ -25,6 +25,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public enum MethodType { Instance,Overriding, Static,Constructor };
 		public UDType udt;
+        public long _udt;
         /// <summary>
         /// The type of this method
         /// </summary>
@@ -42,7 +43,7 @@ namespace Pyrrho.Level2
         public PMethod(string nm, BList<long> ar, Domain rt, 
             MethodType mt, UDType td, Method md, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
-		{}
+		{ }
         /// <summary>
         /// Constructor: a new Method definition from the Parser
         /// </summary>
@@ -61,6 +62,7 @@ namespace Pyrrho.Level2
             : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
 			udt = td;
+            _udt = td.defpos;
 			methodType = mt;
             if (mt == MethodType.Constructor)
                 retType = td;
@@ -70,7 +72,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the ReadBuffer</param>
         /// <param name="pos">The defining position</param>
-		public PMethod(Type tp, Reader rdr) : base(tp,rdr){}
+		public PMethod(Type tp, ReaderBase rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
             udt = (UDType)x.udt._Relocate(wr);
@@ -94,12 +96,16 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rd)
 		{
-			udt = (UDType)rdr.context.db.objects[rdr.GetLong()];
-            udt.Defs(rdr.context);
-			methodType = (MethodType)rdr.GetInt();
-            base.Deserialise(rdr);
+            _udt = rd.GetLong();
+            if (rd is Reader rdr)
+            {
+                udt = (UDType)rdr.context.db.objects[_udt];
+                udt.Defs(rdr.context);
+            }
+			methodType = (MethodType)rd.GetInt();
+            base.Deserialise(rd);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -149,9 +155,9 @@ namespace Pyrrho.Level2
                 throw new PEException("PE918");
             oi += (mt,name);
             ro = ro + mt + (oi,true) + (mi,false);
-            cx.db = cx.db + (ro, p);
-            cx.Install(mt,p);
+            cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(mt,p);
         }
     }
 }

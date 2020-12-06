@@ -471,10 +471,244 @@ namespace Pyrrho.Level2
         }
     }
 
-    public abstract class ReaderBase : IOBase
+    public class ReaderBase : IOBase
     {
-        internal Context context; 
+        internal Database database;
+        FileStream file;
+        public long limit; 
+        internal BTree<long, Physical.Type> log;
+        public bool locked = false;
+        internal ReaderBase(Database db, long p)
+        {
+            database = db;
+            file = db._File();
+            log = db.log;
+            limit = file.Length;
+            GetBuf(p);
+        }
+        public override int GetBuf(long s)
+        {
+            int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
+            bool taken = false;
+            try
+            {
+                if (!locked)
+                    Monitor.Enter(file, ref taken);
+                file.Seek(s, SeekOrigin.Begin);
+                buf.len = file.Read(buf.buf, 0, m);
+                buf.pos = 0;
+            }
+            finally
+            {
+                if (taken)
+                {
+                    Monitor.Exit(file);
+                    locked = false;
+                }
+            }
+            buf.start = s;
+            return buf.len;
+        }
+        public override int ReadByte()
+        {
+            if (Position >= limit)
+                return -1;
+            if (buf.pos == buf.len)
+            {
+                int n = GetBuf(buf.start + buf.len);
+                if (n < 0)
+                    return -1;
+                buf.pos = 0;
+            }
+            return buf.buf[buf.pos++];
+        }
         public virtual long Position => buf.start + buf.pos;
+        internal virtual void Set(Physical ph) 
+        {
+        }
+        internal virtual void Segment(Physical ph) 
+        {
+            ph.trans = GetLong();
+        }
+        internal virtual DBObject GetObject(long pp)
+        {
+            return null;
+        }
+        internal virtual void Upd(PColumn3 pc) { }
+        internal virtual long? Prev(long pv)
+        {
+            if (pv < 0)
+                return null;
+            return GetPhysical(pv).Affects;
+        }
+        internal virtual void Setup(PDomain pd)
+        {
+            TypedValue dv = TNull.Value;
+            var ds = pd.domain.defaultString;
+            var domain = pd.domain;
+            if (ds.Length > 0
+                && pd.domain.kind == Sqlx.CHAR && ds[0] != '\'')
+                ds = "'" + ds + "'";
+            if (ds != "")
+                try
+                {
+                    dv = Domain.For(domain.kind).Parse(database.uid, ds);
+                }
+                catch (Exception) { }
+            domain += (Domain.Default, dv);
+            if (pd.eldefpos >= 0)
+            {
+                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET
+                    || domain.kind == Sqlx.SENSITIVE)
+                    domain += (Domain.Element, GetDomain(pd.eldefpos));
+                else
+                    domain = GetUDType(pd);
+            }
+            pd.domain = domain;
+        }
+        internal virtual void Setup(Modify pd)
+        { }
+        internal virtual void Setup(Ordering od)
+        { }
+        /// <summary>
+        /// Get the Domain for a given TableColumn defpos
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal virtual Domain GetColumnDomain(long p)
+        {
+            // This implementation is SLOW and only used for Log$ files
+            // first find the correct PColumn
+            for (var b = log.PositionAt(buf.start); b != null && b.key() >= p;
+                b = b.Previous())
+            {
+                var k = b.key();
+                switch (b.value())
+                {
+                    case Physical.Type.PColumn:
+                    case Physical.Type.PColumn2:
+                    case Physical.Type.PColumn3:
+                    case Physical.Type.Alter:
+                    case Physical.Type.Alter2:
+                    case Physical.Type.Alter3:
+                        {
+                            var pc = (PColumn)GetPhysical(k);
+                            if (pc.defpos == p) // now find the domain
+                                return GetDomain(pc.domdefpos);
+                            continue;
+                        }
+                }
+            }
+            return null;
+        }
+        internal UDType GetUDType(PDomain pd)
+        {
+            var cs = CList<long>.Empty;
+            var rp = CTree<long, Domain>.Empty;
+            for (var b=log.PositionAt(pd.eldefpos);b!=null && b.key()<pd.defpos;
+                b=b.Next())
+            {
+                var k = b.key();
+                switch (b.value())
+                {
+                    case Physical.Type.PColumn:
+                    case Physical.Type.PColumn2:
+                    case Physical.Type.PColumn3:
+                    case Physical.Type.Alter:
+                    case Physical.Type.Alter2:
+                    case Physical.Type.Alter3:
+                        {
+                            var pc = (PColumn)GetPhysical(k);
+                            if (pc.tabledefpos == pd.eldefpos) // now find the domain
+                            {
+                                var dm = GetDomain(pc.domdefpos);
+                                if (!rp.Contains(pc.defpos))
+                                    cs += pc.defpos;
+                                rp += (pc.defpos, dm);
+                            }
+                            continue;
+                        }
+                }
+            }
+            return new UDType(new Domain(Sqlx.TYPE,rp,cs)+(Basis.Name,pd.name));
+        }
+        /// <summary>
+        /// Get the Domain for a given table defpos and column name
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="tb"></param>
+        /// <param name="cn"></param>
+        /// <returns></returns>
+        internal virtual (long,Domain) GetDomain(long tb,string cn)
+        {
+            // This implementation is SLOW and only used for Log$ files
+            // first find the correct PColumn
+            PColumn pc = null;
+            for (var b = log.PositionAt(buf.start); b != null && b.key() >= tb;
+                b = b.Previous())
+                switch (b.value())
+                {
+                    case Physical.Type.PColumn:
+                    case Physical.Type.PColumn2:
+                    case Physical.Type.PColumn3:
+                    case Physical.Type.Alter:
+                    case Physical.Type.Alter2:
+                    case Physical.Type.Alter3:
+                        {
+                            pc = (PColumn)GetPhysical(b.key());
+                            if (pc.tabledefpos == tb && pc.name == cn)
+                                return (pc.defpos, GetDomain(pc.domdefpos));
+                            continue;
+                        }
+                }
+            return (-1L,Domain.Content);
+        }
+        /// <summary>
+        /// Get the Domain for a given PColumn
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="pc"></param>
+        /// <returns></returns>
+        internal virtual Domain GetDomain(long p)
+        { 
+            PDomain pd = null;
+            // Now find the right Domain
+            for (var b = log.PositionAt(p); b != null && b.key() >= 0;
+                b = b.Previous())
+            {
+                var k = b.key();
+                switch (b.value())
+                {
+                    case Physical.Type.PDomain:
+                    case Physical.Type.PDomain1:
+                    case Physical.Type.Edit: // ??
+                        {
+                            pd = (PDomain)GetPhysical(b.key());
+                            if (pd.defpos == p)
+                                return (Domain)new Domain(pd).Relocate(p);
+                            continue;
+                        }
+                    case Physical.Type.PType:
+                    case Physical.Type.PType1:
+                        {
+                            var pt = (PType)GetPhysical(b.key());
+                            pt.domain = new Domain(pt);
+                            if (pt.defpos == p)
+                                return (UDType)new UDType(pt).Relocate(p);
+                            continue;
+                        }
+
+                }
+            }
+            return Domain.Content;
+        }
+        internal Physical GetPhysical(long pv)
+        {
+            if (pv < 0)
+                return null;
+            return new ReaderBase(database, pv).Create();
+        }
         internal Integer GetInteger()
         {
             var n = ReadByte();
@@ -486,6 +720,13 @@ namespace Pyrrho.Level2
         public int GetInt()
         {
             return GetInteger();
+        }
+        internal int GetInt32()
+        {
+            var r = 0;
+            for (var i = 0; i < 4; i++)
+                r = (r << 8) + ReadByte();
+            return r;
         }
         public long GetLong()
         {
@@ -572,80 +813,6 @@ namespace Pyrrho.Level2
                 b[j] = (byte)ReadByte();
             return b;
         }
-
-    }
-    public class Reader : ReaderBase
-    {
-        public Stream file;
-        internal Role role;
-        internal User user;
-        internal PTransaction trans = null;
-        public long segment;
-        public long limit;
-        public bool locked = false;
-        public override int GetBuf(long s)
-        {
-            int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
-            bool taken = false;
-            try {
-                if (!locked)
-                    Monitor.Enter(file, ref taken);
-                file.Seek(s, SeekOrigin.Begin);
-                buf.len = file.Read(buf.buf, 0, m);
-                buf.pos = 0;
-            }
-            finally
-            {
-                if (taken)
-                {
-                    Monitor.Exit(file);
-                    locked = false;
-                }
-            }
-            buf.start = s;
-            return buf.len;
-        }
-        public override int ReadByte()
-        {
-            if (Position >= limit)
-                return -1;
-            if (buf.pos == buf.len)
-            {
-                int n = GetBuf(buf.start + buf.len);
-                if (n < 0)
-                    return -1;
-                buf.pos = 0;
-            }
-            return buf.buf[buf.pos++];
-        }
-        internal Reader(Context cx)
-        {
-            var db = cx.db;
-            context = new Context(cx.db);
-            role = db.role;
-            user = (User)db.objects[db.owner];
-            file = db.df;
-            limit = file.Length;
-            GetBuf(db.loadpos);
-        }
-        internal Reader(Context cx, long p, PTransaction pt=null)
-        {
-            var db = cx.db;
-            context = new Context(db);
-            role = db.role;
-            user = (User)db.objects[db.owner];
-            file = db._File();
-            limit = file.Length;
-            trans = pt;
-            GetBuf(p);
-        }
-        internal int GetInt32()
-        {
-            var r = 0;
-            for (var i = 0;i<4;i++)
-                r = (r<<8)+ ReadByte();
-            return r; 
-        }
         protected bool EoF()
         {
             return Position >= limit;
@@ -700,7 +867,7 @@ namespace Pyrrho.Level2
                 case Physical.Type.PTable: p = new PTable(this); break;
                 case Physical.Type.PTable1: p = new PTable1(this); break;
                 case Physical.Type.PTransaction: p = new PTransaction(this); break;
-      //         case Physical.Type.PTransaction2: p = new PTransaction2(this); break;
+                //         case Physical.Type.PTransaction2: p = new PTransaction2(this); break;
                 case Physical.Type.PTrigger: p = new PTrigger(this); break;
                 case Physical.Type.PType: p = new PType(this); break;
                 case Physical.Type.PType1: p = new PType1(this); break;
@@ -709,18 +876,18 @@ namespace Pyrrho.Level2
                 case Physical.Type.PView1: p = new PView1(this); break; //obsolete
                 case Physical.Type.RestView: p = new PRestView(this); break;
                 case Physical.Type.RestView1: p = new PRestView1(this); break;
-                case Physical.Type.Record: p = new Record(this); break; 
-                case Physical.Type.Record1: p = new Record1(this); break; 
+                case Physical.Type.Record: p = new Record(this); break;
+                case Physical.Type.Record1: p = new Record1(this); break;
                 case Physical.Type.Record2: p = new Record2(this); break;
-      //          case Physical.Type.Reference: p = new Reference(this); break;
+                //          case Physical.Type.Reference: p = new Reference(this); break;
                 case Physical.Type.Revoke: p = new Revoke(this); break;
                 case Physical.Type.Update: p = new Update(this); break;
                 case Physical.Type.Versioning: p = new Versioning(this); break;
-      //          case Physical.Type.Reference1: p = new Reference1(this); break;
+                //          case Physical.Type.Reference1: p = new Reference1(this); break;
                 case Physical.Type.ColumnPath: p = new PColumnPath(this); break;
                 case Physical.Type.Metadata2: p = new PMetadata2(this); break;
                 case Physical.Type.PIndex2: p = new PIndex2(this); break;
-      //          case Physical.Type.DeleteReference1: p = new DeleteReference1(this); break;
+                //          case Physical.Type.DeleteReference1: p = new DeleteReference1(this); break;
                 case Physical.Type.Authenticate: p = new Authenticate(this); break;
                 case Physical.Type.TriggeredAction: p = new TriggeredAction(this); break;
                 case Physical.Type.Metadata3: p = new PMetadata3(this); break;
@@ -737,6 +904,174 @@ namespace Pyrrho.Level2
             }
             p.Deserialise(this);
             return p;
+        }
+    }
+    public class Reader : ReaderBase
+    {
+        internal Context context;
+        internal Role role;
+        internal User user;
+        internal PTransaction trans = null;
+        public long segment;
+        public override int ReadByte()
+        {
+            if (Position >= limit)
+                return -1;
+            if (buf.pos == buf.len)
+            {
+                int n = GetBuf(buf.start + buf.len);
+                if (n < 0)
+                    return -1;
+                buf.pos = 0;
+            }
+            return buf.buf[buf.pos++];
+        }
+        internal Reader(Context cx) : base(cx.db,cx.db.loadpos)
+        {
+            var db = cx.db;
+            context = new Context(cx.db);
+            role = db.role;
+            user = (User)db.objects[db.owner];
+        }
+        internal Reader(Context cx, long p, PTransaction pt=null)
+            :base(cx.db,p)
+        {
+            var db = cx.db;
+            context = new Context(db);
+            role = db.role;
+            user = (User)db.objects[db.owner];
+            trans = pt;
+        }
+        internal override void Set(Physical ph)
+        {
+            ph.trans = trans?.ppos ?? 0;
+            ph.time = trans?.pttime ?? 0;
+        }
+        internal override void Segment(Physical ph)
+        {
+            segment = GetLong();
+            ph.trans = segment;
+        }
+        internal override DBObject GetObject(long pp)
+        {
+            return (DBObject)context.db.objects[pp];
+        }
+        internal override void Upd(PColumn3 pc)
+        {
+            if (pc.ups != "")
+                try
+                {
+                    pc.upd = new Parser(context).ParseAssignments(pc.ups, pc.table.domain);
+                }
+                catch (Exception)
+                {
+                    pc.upd = BTree<UpdateAssignment, bool>.Empty;
+                }
+        }
+        internal override long? Prev(long pv)
+        {
+            return (long?)context.db.objects[pv];
+        }
+        internal override void Setup(PDomain pd)
+        {
+            TypedValue dv = TNull.Value;
+            var ds = pd.domain.defaultString;
+            var domain = pd.domain;
+            if (ds.Length > 0
+                && pd.domain.kind == Sqlx.CHAR && ds[0] != '\'')
+                ds = "'" + ds + "'";
+            if (ds != "")
+                try
+                {
+                    dv = Domain.For(domain.kind).Parse(context.db.uid, ds);
+                }
+                catch (Exception) { }
+            domain += (Domain.Default, dv);
+            if (pd.eldefpos >= 0)
+            {
+                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET 
+                    || domain.kind == Sqlx.SENSITIVE)
+                    domain += (Domain.Element, context.db.objects[pd.eldefpos]);
+                else
+                {
+                    var tb = (Table)context.db.objects[pd.eldefpos];
+                    var rs = CTree<long, Domain>.Empty;
+                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    {
+                        var tc = (TableColumn)context.db.objects[b.value()];
+                        rs += (b.value(), tc.domain);
+                    }
+                    domain = domain + (Domain.Structure, pd.eldefpos)
+                        + (Domain.RowType, tb.domain.rowType)
+                        + (Domain.Representation, rs);
+                }
+            }
+            pd.domain = domain;
+            context.db += (pd.domdefpos, pd.domain, Position);
+        }
+        internal override void Setup(Ordering od)
+        {
+            od.domain = (Domain)context.db.objects[od.domdefpos];
+        }
+        internal override void Setup(Modify pm)
+        {
+            switch (pm.name)
+            {
+                default:
+                    {
+                        var mi = (ObInfo)context.role.infos[pm.modifydefpos];
+                        var mt = (Method)context.db.objects[pm.modifydefpos];
+                        if (mi.domain is UDType udt)
+                        {
+                            var psr = new Parser(context, new Ident(pm.body, pm.ppos + 2));
+                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(pm.name, pm.ppos + 1));
+                            for (var b = udt.representation.First(); b != null; b = b.Next())
+                            {
+                                var p = b.key();
+                                var ic = new Ident(psr.cx.Inf(p).name, p);
+                                psr.cx.defs += (ic, p);
+                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
+                            }
+                            pm.now = psr.ParseProcedureStatement(xp);
+                            pm.framing = new Framing(psr.cx);
+                            pm.Frame(psr.cx);
+                            pm.framing += (Framing.Obs,
+                                pm.framing.obs + (mt.defpos, mt + (Procedure.Body, pm.now.defpos)));
+                            pm.bodydefpos = pm.now.defpos;
+                            pm.parms = pps;
+                        }
+                        break;
+                    }
+                case "Source":
+                    {
+                        var ps = context.db.objects[pm.modifydefpos] as Procedure;
+                        pm.now = new Parser(context).ParseQueryExpression(new Ident(pm.body,pm. ppos + 1), ps.domain);
+                        break;
+                    }
+                case "Insert": // we ignore all of these (PView1)
+                case "Update":
+                case "Delete":
+                    pm.now = null;
+                    break;
+            }
+        }
+        // get nominal data type for a column
+        internal override Domain GetColumnDomain(long p)
+        {
+            var tc = (TableColumn)context.db.objects[p]
+               ?? throw new DBException("22003");
+            return tc.domain;
+        }
+        internal override Domain GetDomain(long p)
+        {
+            return (Domain)context.db.objects[p];
+        }
+        internal override (long,Domain) GetDomain(long t, string cn)
+        {
+            var tb = (Table)context.db.objects[t];
+            var cp = tb.domain.ColFor(context, cn);
+            var tc = (TableColumn)context.db.objects[cp];
+            return (tc.defpos,tc.domain);
         }
         internal void Add(Physical ph)
         {

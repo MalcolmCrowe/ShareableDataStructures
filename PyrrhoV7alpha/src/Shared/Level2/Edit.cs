@@ -23,6 +23,7 @@ namespace Pyrrho.Level2
 	{
         internal long _defpos;
         public Domain prev;
+        internal long _prev;
         public override long defpos => _defpos;
         /// <summary>
         /// Constructor: an Edit request from the Parser
@@ -39,17 +40,19 @@ namespace Pyrrho.Level2
         {
             _defpos = cx.db.types[old];
             prev = old;
+            _prev = prev.defpos;
         }
         /// <summary>
         /// Constructor: an Edit request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Edit(Reader rdr) : base(Type.Edit,rdr) {}
+		public Edit(ReaderBase rdr) : base(Type.Edit,rdr) {}
         protected Edit(Edit x, Writer wr) : base(x, wr)
         {
             _defpos = wr.Fix(x._defpos);
             prev = (Domain)x.prev._Relocate(wr);
+            _prev = prev.defpos;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -68,10 +71,10 @@ namespace Pyrrho.Level2
         /// Deserialise from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			_defpos = rdr.GetLong();
-            prev = (Domain)rdr.context.db.objects[_defpos];
+            _prev = rdr.Prev(_defpos)??_defpos;
 			base.Deserialise(rdr);
 		}
         /// <summary>

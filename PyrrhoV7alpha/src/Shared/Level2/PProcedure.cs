@@ -47,7 +47,7 @@ namespace Pyrrho.Level2
             wr.cx.db += (Database.Types,wr.cx.db.types+(retType,retTypeDefpos));
             return -1;
         }
-        internal int arity => parameters.Length;
+        internal int arity;
         public PProcedure(string nm, BList<long> ar, Domain rt, Procedure pr,Ident sce, 
             long pp, Context cx) : this(Type.PProcedure2, nm, ar, rt, pr, sce, pp, cx)
         { }
@@ -70,6 +70,7 @@ namespace Pyrrho.Level2
 		{
             source = sce;
             parameters = ps;
+            arity = parameters.Length;
             retType = rt;
             name = nm;
             nameAndArity = nm + "$" + arity;
@@ -80,7 +81,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PProcedure(Type tp, Reader rdr) : base(tp,rdr) {}
+		public PProcedure(Type tp, ReaderBase rdr) : base(tp,rdr) {}
         protected PProcedure(PProcedure x, Writer wr) : base(x, wr)
         {
             source = x.source;
@@ -89,6 +90,7 @@ namespace Pyrrho.Level2
             retTypeDefpos = x.retTypeDefpos;
             parameters = wr.Fix(x.parameters);
             nameAndArity = x.nameAndArity;
+            arity = x.arity;
             name = x.name;
             proc = ((Procedure)framing.obs[defpos])?.body??-1L;//wr.Fix(proc);
         }
@@ -117,25 +119,31 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rb)
 		{
-			nameAndArity=rdr.GetString();
+			nameAndArity=rb.GetString();
             var ss = nameAndArity.Split('$');
             name = ss[0];
-			var n=rdr.GetInt();
-            if (type == Type.PMethod2 || type == Type.PProcedure2)
-                retType = (Domain)rdr.context.db.objects[rdr.GetLong()];
+			arity = rb.GetInt();
+            retTypeDefpos = rb.GetLong();
+            source = new Ident(rb.GetString(), ppos + 1);
+			base.Deserialise(rb);
+            if (rb is Reader rdr)
+            {
+                if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
+                    retType = mt.udt;
+                if (type == Type.PMethod2 || type == Type.PProcedure2)
+                    retType = (Domain)rdr.context.db.objects[retTypeDefpos];
+                else
+                    retType = Domain.Null;
+                var psr = new Parser(rdr.context, source);
+                var (pps, _) = psr.ParseProcedureHeading(new Ident(name, ppos));
+                framing = new Framing(psr.cx);
+                parameters = pps;
+                Compile(rdr);
+            }
             else
-                retType = Domain.Null;
-            if (this is PMethod mt && mt.methodType == PMethod.MethodType.Constructor)
-                retType = mt.udt;
-            source = new Ident(rdr.GetString(), ppos+1);
-            var psr = new Parser(rdr.context, source);
-            var (pps, _) = psr.ParseProcedureHeading(new Ident(name, ppos));
-            framing = new Framing(psr.cx);
-            parameters = pps;
-			base.Deserialise(rdr);
-            Compile(rdr);
+                retType = rb.GetDomain(retTypeDefpos);
         }
         protected void Compile(Reader rdr)
         {
@@ -194,8 +202,8 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + (ro, p) + (pr, p);
-            cx.Install(pr, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(pr, p);
         }
     }
 }

@@ -23,6 +23,7 @@ namespace Pyrrho.Level2
         /// The type being ordered
         /// </summary>
         public Domain domain;
+        public long domdefpos;
         /// <summary>
         /// the ordering function
         /// </summary>
@@ -33,8 +34,11 @@ namespace Pyrrho.Level2
         public OrderCategory flags;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (domain!=null && !wr.cx.db.types.Contains(domain)) 
-                return domain.Create(wr,tr);
+            if (domain != null && !wr.cx.db.types.Contains(domain))
+            {
+                domdefpos = domain.Create(wr, tr);
+                return domdefpos;
+            }
             if (!Committed(wr,funcdefpos)) return funcdefpos;
             return -1;
         }
@@ -49,6 +53,7 @@ namespace Pyrrho.Level2
             : base(Type.Ordering,pp,cx)
         {
             domain = tp;
+            domdefpos = tp.defpos;
             funcdefpos = fn;
             flags = fl;
         }
@@ -57,12 +62,13 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Ordering(Reader rdr)
+        public Ordering(ReaderBase rdr)
             : base(Type.Ordering, rdr)
         { }
         protected Ordering(Ordering x, Writer wr) : base(x, wr)
         {
             domain = (Domain)x.domain._Relocate(wr);
+            domdefpos = domain.defpos;
             funcdefpos = wr.Fix(x.funcdefpos);
             flags = x.flags;
         }
@@ -86,12 +92,13 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
-            domain = (Domain)rdr.context.db.objects[rdr.GetLong()];
+            domdefpos = rdr.GetLong();
             funcdefpos = rdr.GetLong();
             flags = (OrderCategory)rdr.GetInt();
             base.Deserialise(rdr);
+            rdr.Setup(this);
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {

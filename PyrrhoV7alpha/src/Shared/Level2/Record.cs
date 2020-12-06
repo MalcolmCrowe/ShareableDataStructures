@@ -87,7 +87,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record(Reader rdr) : base(Type.Record, rdr) 
+        public Record(ReaderBase rdr) : base(Type.Record, rdr) 
         { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
@@ -95,7 +95,7 @@ namespace Pyrrho.Level2
         /// <param name="t">The Record or UpdatePost type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected Record(Type t, Reader rdr) : base(t, rdr) { }
+		protected Record(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected Record(Record x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
@@ -123,7 +123,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-		public override void Deserialise(Reader rdr)
+		public override void Deserialise(ReaderBase rdr)
         {
             tabledefpos = rdr.GetLong();
             GetFields(rdr);
@@ -134,21 +134,18 @@ namespace Pyrrho.Level2
         /// Deserialise a list of field values
         /// </summary>
         /// <param name="buf">The buffer</param>
-        internal virtual void GetFields(Reader rdr)
+        internal virtual void GetFields(ReaderBase rdr)
         {
             fields = BTree<long, TypedValue>.Empty;
             long n = rdr.GetLong();
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var tc = (TableColumn)rdr.context.db.objects[c];
-                // If the column has been dropped we will show a simplified version of the Domain
-                // (The TableRow if still current has the historically correct domain)
-                var cdt = tc?.domain??Domain.Content; 
-                cdt = cdt.GetDataType(rdr);
+                var cdt = rdr.GetColumnDomain(c); // nominal data type from log
+                cdt = cdt.GetDataType(rdr); // actual data type from buffer
                 if (cdt != null)
                 {
-                    var tv = cdt.Get(rdr);
+                    var tv = cdt.Get(rdr.log, rdr);
                     fields += (c, tv);
                 }
             }
@@ -306,8 +303,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record1(Reader rdr) : base(Type.Record1, rdr) { }
-        protected Record1(Type t,Reader rdr) : base(t, rdr) { }
+        public Record1(ReaderBase rdr) : base(Type.Record1, rdr) { }
+        protected Record1(Type t,ReaderBase rdr) : base(t, rdr) { }
         /// <summary>
         /// A new Record1 from the parser
         /// </summary>
@@ -356,7 +353,7 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             provenance = rdr.GetString();
             base.Deserialise(rdr);
@@ -372,8 +369,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record2(Reader rdr) : base(Type.Record2, rdr) { }
-        protected Record2(Type t, Reader rdr) : base(t, rdr) { }
+        public Record2(ReaderBase rdr) : base(Type.Record2, rdr) { }
+        protected Record2(Type t, ReaderBase rdr) : base(t, rdr) { }
         /// <summary>
         /// A new Record2 from the parser
         /// </summary>
@@ -408,7 +405,7 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             subType = rdr.GetLong();
             base.Deserialise(rdr);
@@ -424,7 +421,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record3(Reader rdr) : base(Type.Record3, rdr) 
+        public Record3(ReaderBase rdr) : base(Type.Record3, rdr) 
         { }
         /// <summary>
         /// A new Record1 from the parser
@@ -460,14 +457,10 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
-        }
-        internal override void Install(Context cx, long p)
-        {
-            base.Install(cx, p);
         }
     }
 }

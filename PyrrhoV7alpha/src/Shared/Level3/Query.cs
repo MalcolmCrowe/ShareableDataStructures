@@ -94,8 +94,6 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            if (defpos < Transaction.Analysing)
-                Console.WriteLine("Here"); // consider using New(cx,m)
             return new Query(defpos,m);
         }
         /// <summary>
@@ -1066,8 +1064,6 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            if (target == 425)
-                Console.WriteLine("Here");
             var r = (TableExpression)base._Replace(cx, was, now);
             var fm = cx.Replace(r.target, was, now);
             if (fm != r.target)

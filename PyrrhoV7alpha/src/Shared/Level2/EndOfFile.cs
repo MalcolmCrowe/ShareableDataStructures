@@ -30,12 +30,12 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public EndOfFile(Reader rdr) : base(Type.EndOfFile,rdr) {}
+		public EndOfFile(ReaderBase rdr) : base(Type.EndOfFile,rdr) {}
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             rdr.GetInt32();
         }

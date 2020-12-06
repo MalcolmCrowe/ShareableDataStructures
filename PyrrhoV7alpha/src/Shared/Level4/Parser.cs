@@ -3419,7 +3419,7 @@ namespace Pyrrho.Level4
             var fm = new From(fn, cx, tb);
             fm = (From)cx.Add(fm);
             cx.AddDefs(fn, fm.rowType);
-            var tg = new Trigger(trig);
+            var tg = new Trigger(trig,cx.role);
             cx.Add(tg); // incomplete version for parsing
             if (trig.oldTable != null)
             {

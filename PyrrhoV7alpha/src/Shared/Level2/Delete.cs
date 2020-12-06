@@ -52,8 +52,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
-		public Delete(Reader rdr) : base(Type.Delete, rdr) { }
-        protected Delete(Type t,Reader rdr) : base(t, rdr) { }
+		public Delete(ReaderBase rdr) : base(Type.Delete, rdr) { }
+        protected Delete(Type t,ReaderBase rdr) : base(t, rdr) { }
         protected Delete(Delete x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
@@ -87,7 +87,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
   //          var tb = rdr.GetLong();
             var dp = rdr.GetLong();
@@ -174,7 +174,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
-		public Delete1(Reader rdr) : base(Type.Delete1, rdr) { }
+		public Delete1(ReaderBase rdr) : base(Type.Delete1, rdr) { }
         protected Delete1(Delete1 x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
@@ -197,7 +197,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             var tb = rdr.GetLong();
             base.Deserialise(rdr);

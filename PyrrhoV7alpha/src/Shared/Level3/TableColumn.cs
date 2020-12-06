@@ -51,8 +51,8 @@ namespace Pyrrho.Level3
         /// <param name="tb">The Table</param>
         /// <param name="c">The PColumn def</param>
         /// <param name="dt">the data type</param>
-        public TableColumn(Table tb, PColumn c, Domain dt)
-            : base(c.defpos, _TableColumn(c,dt)+(Table, tb.defpos) + (LastChange, c.ppos)) {}
+        public TableColumn(Table tb, PColumn c, Domain dt,Role ro)
+            : base(c.defpos, _TableColumn(c,dt,ro)+(Table, tb.defpos) + (LastChange, c.ppos)) {}
         /// <summary>
         /// Ad hoc TableColumn for LogRows, LogRowCol
         /// </summary>
@@ -71,9 +71,9 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(s.defpos, s.mem + x);
         }
-        static BTree<long,object> _TableColumn(PColumn c,Domain dt)
+        static BTree<long,object> _TableColumn(PColumn c,Domain dt,Role ro)
         {
-            var r = BTree<long, object>.Empty + (Definer, c.database.role.defpos) 
+            var r = BTree<long, object>.Empty + (Definer,ro.defpos) 
                 + (_Domain, dt) + (_Framing,c.framing) + (LastChange,c.ppos);
             if (c.notNull)
                 r += (Domain.NotNull, true);

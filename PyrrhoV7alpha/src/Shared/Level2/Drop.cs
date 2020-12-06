@@ -57,8 +57,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public Drop(Reader rdr) : base (Type.Drop,rdr) {}
-        protected Drop(Type t, Reader rdr) : base(t, rdr) { }
+		public Drop(ReaderBase rdr) : base (Type.Drop,rdr) {}
+        protected Drop(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected Drop(Drop x, Writer wr) : base(x, wr)
         {
             delpos = wr.Fix(x.delpos);
@@ -90,7 +90,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
+        public override void Deserialise(ReaderBase rdr) 
 		{ 
 			delpos = rdr.GetLong();
 			base.Deserialise(rdr);
@@ -202,8 +202,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             cx.db = ((DBObject)cx.db.objects[delpos]).Drop(cx.db, cx.db, p);
-            cx.obs -= delpos;
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.obs -= delpos;
         }
     }
     internal class Drop1 : Drop
@@ -213,7 +213,7 @@ namespace Pyrrho.Level2
         {
             dropAction = a;
         }
-        public Drop1(Reader rdr) : base(Type.Drop1, rdr) { }
+        public Drop1(ReaderBase rdr) : base(Type.Drop1, rdr) { }
         public Drop1(Drop1 d, Writer wr) : base(d, wr) 
         {
             dropAction = d.dropAction;
@@ -227,7 +227,7 @@ namespace Pyrrho.Level2
             wr.WriteByte((byte)dropAction);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             dropAction = (DropAction)rdr.ReadByte();
             base.Deserialise(rdr);

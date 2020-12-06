@@ -43,7 +43,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Revoke(Reader rdr) : base(Type.Revoke,rdr)
+		public Revoke(ReaderBase rdr) : base(Type.Revoke,rdr)
 		{}
         protected Revoke(Revoke x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)

@@ -55,7 +55,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PCheck(Reader rdr) : base (Type.PCheck,rdr)
+		public PCheck(ReaderBase rdr) : base (Type.PCheck,rdr)
 		{}
         protected PCheck(PCheck x, Writer wr) : base(x, wr)
         {
@@ -92,7 +92,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			ckobjdefpos = rdr.GetLong();
 			name = rdr.GetString();
@@ -145,9 +145,9 @@ namespace Pyrrho.Level2
                 ro += (new ObInfo(defpos, name,Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro, p);
             }
+            cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             cx.Install(ck,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override (Transaction,Physical) Commit(Writer wr, Transaction t)
         {
@@ -183,7 +183,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PCheck2(Reader rdr) : base(rdr)
+		public PCheck2(ReaderBase rdr) : base(rdr)
 		{}
         protected PCheck2(PCheck2 p, Writer wr) : base(p, wr) 
         {
@@ -215,7 +215,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			subobjdefpos = rdr.GetLong();
 			base.Deserialise(rdr);
@@ -238,8 +238,8 @@ namespace Pyrrho.Level2
                 ro += (new ObInfo(defpos, name, Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro,p);
             }
-            cx.Install(ck,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(ck,p);
         }
     }
 }

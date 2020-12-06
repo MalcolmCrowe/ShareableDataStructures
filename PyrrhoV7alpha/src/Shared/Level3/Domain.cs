@@ -228,7 +228,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="p">The PDomain level 2 definition</param>
         public Domain(PDomain p) 
-            : base(p.ppos,p.domain.mem + (LastChange, p.ppos))
+            : base(p.ppos,_Mem(p) + (LastChange, p.ppos))
         { }
         static BTree<long,object> _Mem(BList<SqlValue> vs,int ds=0)
         {
@@ -266,6 +266,13 @@ namespace Pyrrho.Level3
             var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs);
             if (ds != 0)
                 m += (Display, ds);
+            return m;
+        }
+        static BTree<long,object> _Mem(PDomain pd)
+        {
+            var m = pd.domain.mem;
+            if (pd.domain.kind == Sqlx.TYPE)
+                m += (Structure, pd.eldefpos);
             return m;
         }
         static BTree<long,object> _RdfCheck(Check ck)
@@ -534,10 +541,10 @@ namespace Pyrrho.Level3
             }
             return 0;
         }
-        public TypedValue Get(Reader rdr)
+        public TypedValue Get(BTree<long,Physical.Type>log,ReaderBase rdr)
         {
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.Get(rdr));
+                return new TSensitive(this, elType.Get(log,rdr));
             switch (Equivalent(kind))
             {
                 case Sqlx.NULL: return TNull.Value;
@@ -560,7 +567,7 @@ namespace Pyrrho.Level3
                             var ix = rdr.GetInt();
                             var h = (Common.Delta.Verb)rdr.ReadByte();
                             var nm = rdr.GetString();
-                            r.details.Add(new Delta.Action(ix, h, nm, Get(rdr)));
+                            r.details.Add(new Delta.Action(ix, h, nm, Get(log,rdr)));
                         }
                         return r;
                     }
@@ -582,25 +589,26 @@ namespace Pyrrho.Level3
                 case Sqlx.ARRAY:
                     {
                         var dp = rdr.GetLong();
-                        var el = (Domain)rdr.role.infos[dp];
+                        var el = (Domain)(rdr as Reader)?.role.infos[dp]??Content;
                         var vs = BList<TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                         {
                             var dt = el.GetDataType(rdr);
-                            vs += dt.Get(rdr);
+                            vs += dt.Get(log,rdr);
                         }
                         return new TArray(el,vs);
                     }
                 case Sqlx.MULTISET:
                     {
-                        var el = (Domain)rdr.role.infos[rdr.GetLong()];
+                        var dp = rdr.GetLong();
+                        var el = (Domain)(rdr as Reader)?.role.infos[dp]??Content;
                         var m = new TMultiset(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                         {
                             var dt = el.GetDataType(rdr);
-                            m.Add(dt.Get(rdr));
+                            m.Add(dt.Get(log,rdr));
                         }
                         return m;
                     }
@@ -609,35 +617,38 @@ namespace Pyrrho.Level3
                 case Sqlx.TABLE:
                     {
                         var dp = rdr.GetLong();
-                        var tb = (Table)rdr.context.db.objects[dp];
                         var vs = BTree<long,TypedValue>.Empty;
+                        var dt = CTree<long, Domain>.Empty;
+                        var rt = CList<long>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0; j<n; j++)
                         {
                             var c = rdr.GetString();
-                            var cp = tb.domain.ColFor(rdr.context,c);
-                            var tc = (TableColumn)rdr.context.db.objects[cp];
-                            vs += (cp,tc.domain.Get(rdr));
+                            var (cp,cdt) = rdr.GetDomain(dp, c);
+                            dt += (cp, cdt);
+                            rt += cp;
+                            vs += (cp,cdt.Get(log,rdr));
                         }
-                        return new TRow(tb.domain, vs);
+                        return new TRow(new Domain(Sqlx.ROW,dt,rt), vs);
                     }
                 case Sqlx.TYPE:
                     {
                         var dp = rdr.GetLong();
-                        var ut = (Domain)rdr.context.db.objects[dp];
+                        var ut = rdr.GetDomain(dp);
                         var r = BTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0;j<n;j++)
                         {
                             var c = rdr.GetString();
-                            var cp = ut.ColFor(rdr.context, c);
-                            var tc = (TableColumn)rdr.context.db.objects[cp];
-                            r += (cp,tc.domain.Get(rdr));
+                            var (cp,cdt) = rdr.GetDomain(ut.structure, c);
+                            r += (cp,cdt.Get(log,rdr));
                         }
                         return new TRow(ut,r);
                     }
+                case Sqlx.CONTENT:
+                    return new TChar(rdr.GetString());
             }
-            throw new DBException("3D000", rdr.context.db.name).ISO();
+            throw new DBException("3D000").ISO();
         }
 
         internal long ColFor(Context context, string c)
@@ -660,13 +671,13 @@ namespace Pyrrho.Level3
             }
             return -1;
         }
-        public Domain GetDataType(Reader rdr)
+        public Domain GetDataType(ReaderBase rdr)
         {
             var b = (DataType)rdr.ReadByte();
             if (b == DataType.Null)
                 return null;
             if (b == DataType.DomainRef)
-                return (Domain)rdr.context.db.objects[rdr.GetLong()];
+                return rdr.GetDomain(rdr.GetLong());
             switch (b)
             {
                 case DataType.Null: return Null;
@@ -3154,7 +3165,6 @@ namespace Pyrrho.Level3
         {
             return Constrain(cx,lp,dt) ?? this;
         }
-
         internal override Basis New(BTree<long, object> m)
         {
             return new Domain(defpos,m);
@@ -3420,7 +3430,7 @@ namespace Pyrrho.Level3
 
         internal override DBObject Relocate(long dp)
         {
-            throw new NotImplementedException();
+            return new Domain(dp,mem);
         }
     }
     internal class StandardDataType : Domain
@@ -3485,27 +3495,33 @@ namespace Pyrrho.Level3
                     wr.PutString(b.key());
             }
         }
-        internal static Level DeserialiseLevel(Reader rdr)
+        internal static Level DeserialiseLevel(ReaderBase rd)
         {
             Level lev;
-            var lp = rdr.GetLong();
+            var lp = rd.GetLong();
             if (lp != -1)
-                lev =rdr.context.db.cache[lp];
+            {
+                if (rd is Reader rdr)
+                    return rdr.context.db.cache[lp];
+                else
+                    return DeserialiseLevel(new ReaderBase(rd.database, lp));
+            }
             else
             {
-                lp = rdr.Position;
-                var min = (byte)rdr.ReadByte();
-                var max = (byte)rdr.ReadByte();
+                lp = rd.Position;
+                var min = (byte)rd.ReadByte();
+                var max = (byte)rd.ReadByte();
                 var gps = BTree<string, bool>.Empty;
-                var n = rdr.GetInt();
+                var n = rd.GetInt();
                 for (var i = 0; i < n; i++)
-                    gps += (rdr.GetString(), true);
+                    gps += (rd.GetString(), true);
                 var rfs = BTree<string, bool>.Empty;
-                n = rdr.GetInt();
+                n = rd.GetInt();
                 for (var i = 0; i < n; i++)
-                    rfs += (rdr.GetString(), true);
+                    rfs += (rd.GetString(), true);
                 lev = new Level(min, max, gps, rfs);
-                rdr.context.db += (lev, lp);
+                if (rd is Reader rr)
+                    rr.context.db += (lev, lp);
             }
             return lev;
         }

@@ -57,10 +57,10 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
-		public Trigger(PTrigger p)
+		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
                   _Mem(p) + (Action,p.def) + (Name,p.name)
-                  + (Definer, p.database.role.defpos)
+                  + (Definer, ro.defpos)
                   + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
                   + (UpdateCols, p.cols) + (LastChange, p.ppos))
 		{ }

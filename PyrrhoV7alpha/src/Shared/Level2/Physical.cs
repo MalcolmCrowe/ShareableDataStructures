@@ -61,14 +61,12 @@ namespace Pyrrho.Level2
         /// </summary>
         public readonly long ppos;
         public long trans;
-        public Database database;
         // for format<51 compatibility
         public BTree<long, (string, long)> digested = BTree<long, (string, long)>.Empty;
-        public readonly long time;
+        public long time;
         protected Physical(Type tp, long pp, Context cx)
         {
             type = tp;
-            database = cx?.db; // will be null for ad-hoc PUser
             ppos = pp;
             time = DateTime.Now.Ticks;
         }
@@ -78,13 +76,11 @@ namespace Pyrrho.Level2
         /// <param name="tp">The Type required</param>
         /// <param name="tb">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected Physical(Type tp, Reader rdr)
+        protected Physical(Type tp, ReaderBase rdr)
         {
             type = tp;
             ppos = rdr.Position-1;
-            database = rdr.context.db;
-            trans = rdr.trans?.ppos??0;
-            time = rdr.trans?.pttime??0;
+            rdr.Set(this);
         }
         protected Physical(Physical ph,Writer wr)
         {
@@ -92,7 +88,6 @@ namespace Pyrrho.Level2
             digested = ph.digested;
             ppos = wr.Length;
             wr.uids += (ph.ppos, ppos);
-            database = wr.cx.db;
             time = ph.time;
         }
         internal static int IntLength(long p)
@@ -187,10 +182,9 @@ namespace Pyrrho.Level2
         /// Deserialise ourselves from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public virtual void Deserialise(Reader rdr)
+        public virtual void Deserialise(ReaderBase rdr)
         {
-            rdr.segment = rdr.GetLong();
-            trans = rdr.segment;
+            rdr.Segment(this);
         }
         /// <summary>
         /// The name of the record
@@ -244,7 +238,7 @@ namespace Pyrrho.Level2
     }
     internal class Curated : Physical
     {
-        public Curated(Reader rdr) : base(Type.Curated, rdr) { }
+        public Curated(ReaderBase rdr) : base(Type.Curated, rdr) { }
         public Curated(long pp, Context cx) : base(Type.Curated, pp, cx) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
         public override long Dependent(Writer wr, Transaction tr)
@@ -269,7 +263,7 @@ namespace Pyrrho.Level2
     internal class Versioning : Physical
     {
         public long perioddefpos;
-        public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
+        public Versioning(ReaderBase rdr) : base(Type.Versioning,rdr) { }
         public Versioning(long pd, long pp, Context cx)
             : base(Type.Versioning, pp, cx)
         {
@@ -317,7 +311,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             perioddefpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -341,7 +335,7 @@ namespace Pyrrho.Level2
     {
         public string prefix = "";
         public string uri;
-        public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
+        public Namespace(ReaderBase rdr) : base(Type.Namespace, rdr) 
         {
         }
         public Namespace(string pf, string ur, long pp, Context cx)
@@ -369,7 +363,7 @@ namespace Pyrrho.Level2
             wr.PutString(uri);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             prefix = rdr.GetString();
             uri = rdr.GetString();
@@ -395,7 +389,7 @@ namespace Pyrrho.Level2
     {
         public long obj;
         public Level classification; 
-        public Classify(Reader rdr) : base(Type.Classify,rdr)
+        public Classify(ReaderBase rdr) : base(Type.Classify,rdr)
         { }
         protected Classify(Classify x, Writer wr) : base(x, wr)
         {
@@ -424,7 +418,7 @@ namespace Pyrrho.Level2
             wr.PutLong(obj);
             base.Serialise(wr);
         }
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             classification = Level.DeserialiseLevel(rdr);
             obj = rdr.GetLong();
@@ -468,7 +462,7 @@ namespace Pyrrho.Level2
         {
             Frame(cx);
         }
-        protected Compiled(Type tp, Reader rdr) :base(tp,rdr) 
+        protected Compiled(Type tp, ReaderBase rdr) :base(tp,rdr) 
         {
             framing = Framing.Empty; // fixed in OnLoad
         }

@@ -69,14 +69,14 @@ namespace Pyrrho.Level2
             obj = ob;
             grantee = ge;
         }
-        public Grant(Reader rdr) : base(Type.Grant, rdr) { }
+        public Grant(ReaderBase rdr) : base(Type.Grant, rdr) { }
         /// <summary>
         /// Constructor: a Grant request
         /// </summary>
         /// <param name="tp">The Grant type</param>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		protected Grant(Type tp, Reader rdr) : base(tp,rdr)
+		protected Grant(Type tp, ReaderBase rdr) : base(tp,rdr)
 		{}
         protected Grant(Grant x, Writer wr) : base(x, wr)
         {
@@ -103,7 +103,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
 		{
 			priv = (Privilege)rdr.GetInt();
 			obj = rdr.GetLong();
@@ -225,7 +225,7 @@ namespace Pyrrho.Level2
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }
-        internal Authenticate(Reader rdr) : base(Type.Authenticate, rdr) { }
+        internal Authenticate(ReaderBase rdr) : base(Type.Authenticate, rdr) { }
         protected Authenticate(Authenticate x, Writer wr) : base(x, wr)
         {
             userpos = wr.Fix(x.userpos);
@@ -245,7 +245,7 @@ namespace Pyrrho.Level2
             base.Serialise(wr);
         }
 
-        public override void Deserialise(Reader rdr)
+        public override void Deserialise(ReaderBase rdr)
         {
             userpos = rdr.GetLong();
             pwd = rdr.GetString();

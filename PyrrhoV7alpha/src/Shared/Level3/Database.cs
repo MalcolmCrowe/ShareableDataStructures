@@ -121,7 +121,7 @@ namespace Pyrrho.Level3
         static long _did = 0;
         internal readonly long did = ++_did;
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
-        protected static BTree<string, Database> databases = BTree<string, Database>.Empty;
+        internal static BTree<string, Database> databases = BTree<string, Database>.Empty;
         /// <summary>
         /// The _system database contains primitive domains and system tables and columns.
         /// These objects are inherited by any new database, and the _system._role uid
@@ -324,6 +324,10 @@ namespace Pyrrho.Level3
         {
             return dbfiles[name];
         }
+        internal static FileStream _File(string n)
+        {
+            return dbfiles[n];
+        }
         static int _Format(FileStream f)
         {
             var bs = new byte[5];
@@ -485,6 +489,7 @@ namespace Pyrrho.Level3
                         rdr.role = rdr.context.db.role;
                     }
                     catch (Exception) { }
+                    rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
             var d = rdr.context.db;
@@ -496,13 +501,25 @@ namespace Pyrrho.Level3
         {
             try
             {
-                var rdr = new Reader(new Context(this), pp, trans);
+                var rdr = new ReaderBase(this, pp);
                 var ph = rdr.Create();
                 pp = (int)rdr.Position;
                 if (ph == null)
                     return (null, -1);
                 return (ph, pp);
             } catch(Exception)
+            {
+                throw new DBException("22003");
+            }
+        }
+        internal Physical GetPhysical(long pp)
+        {
+            try
+            {
+                var ph = new ReaderBase(this, pp).Create();
+                return ph;
+            }
+            catch (Exception)
             {
                 throw new DBException("22003");
             }
