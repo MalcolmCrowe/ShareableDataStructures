@@ -172,16 +172,26 @@ namespace Pyrrho.Level3
         }
         internal override Basis Fix(Context cx)
         {
-            var r =(Table) base.Fix(cx);
-            r += (_Domain, domain.Fix(cx));
-            if (applicationPS >= 0)
-                r += (ApplicationPS, cx.obuids[applicationPS]??applicationPS);
-            r += (Indexes, cx.Fix(indexes));
+            var r = (Table) base.Fix(cx);
+            var nd = domain.Fix(cx);
+            if (nd!=domain)
+                r += (_Domain, nd);
+            var na = cx.obuids[applicationPS]??applicationPS;
+            if (na!=applicationPS)
+                r += (ApplicationPS, na);
+            var ni = cx.Fix(indexes);
+            if (ni!=indexes)
+                r += (Indexes, ni);
             r += (TableCols, cx.Fix(tblCols));
-            if (systemPS >= 0)
-                r += (SystemPS, cx.obuids[systemPS]??systemPS);
-            r += (TableChecks, cx.Fix(tableChecks));
-            r += (Triggers, cx.Fix(triggers));
+            var ns = cx.obuids[systemPS] ?? systemPS;
+            if (ns!=systemPS)
+                r += (SystemPS, ns);
+            var nc = cx.Fix(tableChecks);
+            if (nc!=tableChecks)
+                r += (TableChecks, nc);
+            var nt = cx.Fix(triggers);
+            if (nt!=triggers)
+                r += (Triggers, nt);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -527,8 +537,8 @@ namespace Pyrrho.Level3
                         for (var b=updates.First();b!=null;b=b.Next())
                         {
                             var ua = b.value();
-                            var tv = cx.obs[ua.val].Eval(cx).NotNull();
-                            if (tv == TNull.Value && cx.obs[ua.vbl] is TableColumn tc
+                            var tv = cx.obs[ua.val].Eval(cx);
+                            if (tv.IsNull && cx.obs[ua.vbl] is TableColumn tc
                                 && tc.notNull)
                                 throw new DBException("0U000", cx.Inf(ua.vbl).name);
                             trb += (cx, ua.vbl, tv);

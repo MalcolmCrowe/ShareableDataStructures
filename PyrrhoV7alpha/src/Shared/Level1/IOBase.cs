@@ -562,7 +562,7 @@ namespace Pyrrho.Level2
                     || domain.kind == Sqlx.SENSITIVE)
                     domain += (Domain.Element, GetDomain(pd.eldefpos));
                 else
-                    domain = GetUDType(pd);
+                    domain = new UDType(pd.ppos,pd.domain);
             }
             pd.domain = domain;
         }
@@ -602,7 +602,7 @@ namespace Pyrrho.Level2
             }
             return null;
         }
-        internal UDType GetUDType(PDomain pd)
+/*        internal UDType GetUDType(PDomain pd)
         {
             var cs = CList<long>.Empty;
             var rp = CTree<long, Domain>.Empty;
@@ -632,7 +632,7 @@ namespace Pyrrho.Level2
                 }
             }
             return new UDType(new Domain(Sqlx.TYPE,rp,cs)+(Basis.Name,pd.name));
-        }
+        } */
         /// <summary>
         /// Get the Domain for a given table defpos and column name
         /// </summary>
@@ -984,9 +984,9 @@ namespace Pyrrho.Level2
                 try
                 {
                     dv = Domain.For(domain.kind).Parse(context.db.uid, ds);
+                    domain += (Domain.Default, dv);
                 }
                 catch (Exception) { }
-            domain += (Domain.Default, dv);
             if (pd.eldefpos >= 0)
             {
                 if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET 

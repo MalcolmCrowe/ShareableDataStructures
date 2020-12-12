@@ -167,11 +167,21 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (WindowSpecification)base.Fix(cx);
-            r += (High, high?.Fix(cx));
-            r += (Low, low?.Fix(cx));
-            r += (Order, cx.Fix(order));
-            r += (PartitionType, cx.Fix(partitionType));
-            r += (WQuery, cx.obuids[query]??query);
+            var nh = high?.Fix(cx);
+            if (nh != high)
+                r += (High, nh);
+            var nl = low?.Fix(cx);
+            if (nl != low)
+                r += (Low, nl);
+            var no = cx.Fix(order);
+            if (no != order)
+                r += (Order, no);
+            var np = cx.Fix(partitionType);
+            if (np != partitionType)
+                r += (PartitionType, np);
+            var nq = cx.obuids[query] ?? query;
+            if (nq != query)
+                r += (WQuery, nq);
             return r;
         }
         /// <summary>
@@ -278,8 +288,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Grouping)base.Fix(cx);
-            r += (Groups, cx.Fix(groups));
-            r += (Members, cx.Fix(members));
+            var ng = cx.Fix(groups);
+            if (ng!=groups)
+            r += (Groups, ng);
+            var nm = cx.Fix(members);
+            if (nm!=members)
+            r += (Members, nm);
             return r;
         }
     }
@@ -355,7 +369,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (GroupSpecification)base.Fix(cx);
-            r += (Sets, cx.Fix(sets));
+            var ns = cx.Fix(sets);
+            if (ns != sets)
+                r += (Sets, ns);
             return r;
         }
         internal void Grouped(Context cx,BList<long> vals)
@@ -417,8 +433,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
-            r += (Val, cx.obuids[val]??val);
-            r += (Vbl, cx.obuids[vbl]??vbl);
+            var na = cx.obuids[val] ?? val;
+            if (na!=val)
+            r += (Val, na);
+            var nb = cx.obuids[vbl] ?? vbl;
+            if (nb!=vbl)
+            r += (Vbl, nb);
             return r;
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)

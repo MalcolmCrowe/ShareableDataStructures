@@ -153,18 +153,6 @@ namespace Pyrrho.Level2
             refpos = Inv(md);
             flags = Flags(md);
         }
-        protected PMetadata(Type t, string nm, long sq, long ob, string ds, 
-            string ir,long rf,BTree<Sqlx,object> md,long pp, Context cx)
-          : base(t, pp, cx)
-        {
-            name = nm;
-            seq = sq;
-            defpos = ob;
-            detail = ds;
-            iri = ir;
-            refpos = rf;
-            flags = Flags(md);
-        }
         public PMetadata(ReaderBase rdr) : this(Type.Metadata, rdr) { }
         protected PMetadata(Type t, ReaderBase rdr) : base(t, rdr) { }
         protected PMetadata(PMetadata x, Writer wr) : base(x, wr)
@@ -188,11 +176,11 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(name.ToString());
-            wr.PutString(detail);
-            wr.PutString(iri);
-            defpos = wr.Fix(defpos);
+            wr.PutString(detail??"");
+            wr.PutString(iri??"");
             wr.PutLong(seq+1); 
-            wr.PutLong(wr.Fix(refpos));
+            defpos = wr.Fix(defpos);
+            wr.PutLong(defpos);
             wr.PutLong(flags);
 			base.Serialise(wr);
 		}
@@ -261,15 +249,15 @@ namespace Pyrrho.Level2
         }
         long Inv(BTree<Sqlx,object> md)
         {
-            return (long)(md[Sqlx.INVERTS] ?? -1L);
+            return (long)(md[Sqlx.REF] ?? -1L);
         }
         string Iri(BTree<Sqlx, object> md)
         {
-            return (string)md[Sqlx.NO];
+            return (string)md[Sqlx.IRI];
         }
         string Detail(BTree<Sqlx,object> md)
         {
-            return (string)md[Sqlx.NO];
+            return (string)md[Sqlx.DESC];
         }
         /// <summary>
         /// A readable version of this Physical

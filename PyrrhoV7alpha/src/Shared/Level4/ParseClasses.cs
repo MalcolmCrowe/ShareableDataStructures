@@ -30,9 +30,18 @@ namespace Pyrrho.Level4
         {
             prefix = pf;
         }
+        protected SqlStar(long dp,BTree<long,object> m):base(dp,m) { }
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlStar(defpos,prefix,m);
+        }
+        public static SqlStar operator+(SqlStar s,(long,object)x)
+        {
+            return (SqlStar)s.New(s.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new SqlStar(dp,mem);
         }
     }
     /// <summary>

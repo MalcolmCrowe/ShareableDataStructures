@@ -217,20 +217,23 @@ namespace Pyrrho.Level3
             return r;
         }
         /// <summary>
-        /// Scan and Fix do the work of the relocation for sharing.
-        /// obuids and rsuids are prepared by Basis.Scan.
+        /// Fix does the work of relocation for sharing - see Compiled.Relocate(cx)
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
         internal override Basis Fix(Context cx)
         {
-            var r = Relocate(cx.obuids[defpos]??defpos);
-            if (definer > 0)
+            var r = this;
+            var np = cx.obuids[defpos]??defpos;
+            if (np != defpos)
             {
-                var df = cx.obuids[definer]??definer;
-                if (df != definer)
-                    r += (Definer, df);
+                r = cx.obs[np];
+                if (r==null || r  is SqlNull)
+                    r = Relocate(np);
             }
+            var nd = cx.obuids[definer] ?? definer;
+            if (definer !=nd)
+                    r += (Definer, nd);
             var ds = cx.Fix(dependents);
             if (ds != dependents)
                 r += (Dependents, ds);

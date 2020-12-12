@@ -179,6 +179,21 @@ namespace Pyrrho.Level4
         {
             return (RowSet)rs.New(rs.mem+x);
         }
+        /// <summary>
+        /// We watch out for rowsets from before st that are affected by instancing at st
+        /// </summary>
+        /// <param name="st"></param>
+        /// <returns></returns>
+        internal bool DoInstance(long st)
+        {
+            for (var b=finder.First();b!=null;b=b.Next())
+            {
+                var f = b.value();
+                if (f.col > st || f.rowSet > st)
+                    return true;
+            }
+            return false;
+        }
         internal virtual RowSet Build(Context cx)
         {
             if (needed == null)
@@ -266,19 +281,31 @@ namespace Pyrrho.Level4
         }
         internal override Basis Fix(Context cx)
         {
-            var r = (RowSet)Relocate(cx.rsuids[defpos]??defpos);
-            var dm = (Domain)domain.Fix(cx);
-            var gs = (GroupSpecification)
-                cx.obs[cx.obuids[groupSpec]??groupSpec]?.Fix(cx);
-            r += (_Domain,dm);
-            r += (_Finder, cx.Fix(finder));
-            r += (Index.Keys, cx.Fix(keys));
-            r += (RowOrder, cx.Fix(rowOrder));
-            r += (Query.Where, cx.Fix(where));
-            r += (Query._Matches, cx.Fix(matches));
-            r += (Query.Matching, cx.Fix(matching));
-            if (gs!=null)
+            var r = (RowSet)Relocate(cx.rsuids[defpos] ?? defpos);
+            var nd = domain.Fix(cx);
+            if (nd != domain)
+                r += (_Domain, nd);
+            var gs = (GroupSpecification)cx.obs[cx.obuids[groupSpec] ?? groupSpec]?.Fix(cx);
+            if (gs != null && gs.defpos != groupSpec)
                 r += (TableExpression.Group, gs.defpos);
+            var nf = cx.Fix(finder);
+            if (nf != finder)
+                r += (_Finder, nf);
+            var nk = cx.Fix(keys);
+            if (nk != keys)
+                r += (Index.Keys, nk);
+            var no = cx.Fix(rowOrder);
+            if (no != rowOrder)
+                r += (RowOrder, no);
+            var nw = cx.Fix(where);
+            if (nw != where)
+                r += (Query.Where, nw);
+            var nm = cx.Fix(matches);
+            if (nm != matches)
+                r += (Query._Matches, nm);
+            var ne = cx.Fix(matching);
+            if (ne != matching)
+                r += (Query.Matching, ne);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -667,8 +694,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (TrivialRowSet)base.Fix(cx);
-            if (row!=null)
-                r += (Singleton, row.Fix(cx));
+            var nr = row.Fix(cx);
+            if (row!=nr)
+                r += (Singleton, nr);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
@@ -805,8 +833,12 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (SelectedRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
-            r += (SQMap, cx.Fix(sQMap));
+            var ns = cx.rsuids[source] ?? source;
+            if (ns != source)
+                r += (From.Source, ns);
+            var nm = cx.Fix(sQMap);
+            if (nm != sQMap)
+                r += (SQMap, nm);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -943,7 +975,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (SelectRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
+            var ns = cx.rsuids[source] ?? source;
+            if (ns != source)
+                r += (From.Source, ns);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1007,8 +1041,8 @@ namespace Pyrrho.Level4
                 {
                     var s = cx.obs[b.value()]; 
                     var v = s?.Eval(cx)??TNull.Value;
-                    if (v == TNull.Value && bmk[b.value()] is TypedValue tv
-                        && tv != TNull.Value)
+                    if (v.IsNull && bmk[b.value()] is TypedValue tv
+                        && !tv.IsNull)
                         v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
                     vs += (b.value(),v);
                 }
@@ -1122,7 +1156,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (EvalRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
+            var ns = cx.rsuids[source] ?? source;
+            if (ns!=source)
+            r += (From.Source, ns);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1267,7 +1303,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (TableRowSet)base.Fix(cx);
-            r += (SqlInsert._Table, cx.obuids[tabledefpos]??tabledefpos);
+            var nt = cx.obuids[tabledefpos] ?? tabledefpos;
+            if (nt != tabledefpos)
+                r += (SqlInsert._Table, nt);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1425,11 +1463,12 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (IndexRowSet)base.Fix(cx);
-            var ch = r != this;
-            r += (_Index, cx.obuids[index]??index);
-            r += (IxTable, cx.obuids[table]??table);
-            if ((!ch) && r.index == index && r.table == table)
-                r = this;
+            var ni = cx.obuids[index] ?? index;
+            if (ni != index)
+                r += (_Index, ni);
+            var nt = cx.obuids[table] ?? table;
+            if (nt != table)
+                r += (IxTable, nt);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1771,7 +1810,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (DistinctRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
+            var ns = cx.rsuids[source] ?? source;
+            if (ns!=source)
+                r += (From.Source, ns);
             if (mtree!=null)
                r += (Index.Tree, new MTree(mtree.info.Fix(cx)));
             return r;
@@ -1931,9 +1972,12 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (OrderedRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
-            if (tree != null)
-                r += (_RTree, tree.Fix(cx));
+            var ns = cx.rsuids[source] ?? source;
+            if (ns!=source)
+                r += (From.Source, ns);
+            var nt = tree?.Fix(cx);
+            if (nt!=tree)
+                r += (_RTree, nt);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -2125,7 +2169,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (SqlRowSet)base.Fix(cx);
-            r += (SqlRows, cx.Fix(sqlRows));
+            var nw = cx.Fix(sqlRows);
+            if (nw!=sqlRows)
+            r += (SqlRows, nw);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -2259,7 +2305,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (TableExpRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
+            var ns = cx.rsuids[source] ?? source;
+            if (ns != source)
+                r += (From.Source, ns);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -2704,7 +2752,7 @@ namespace Pyrrho.Level4
                     cx.from += (p, new Finder(p,defpos));
                     var tc = (TableColumn)tr.objects[p];
                     var tv = tc.defaultValue ?? tc.domain.defaultValue;
-                    if (tv != TNull.Value)
+                    if (!tv.IsNull)
                     {
                         dfs += (tc.defpos, tv);
                         cx.values += (tc.defpos, tv);
@@ -2807,12 +2855,12 @@ namespace Pyrrho.Level4
             {
                 var tc = (TableColumn)cx.obs[b.value()];
                 var v = tgc[tc.defpos];
-                if (v == null || v == TNull.Value)
+                if (v == null || v.IsNull)
                 {
                     if (tc.domain.kind != Sqlx.INTEGER)
                         throw new DBException("22004");
                     v = ix.rows.NextKey(k, 0, b.key());
-                    if (v == TNull.Value)
+                    if (v.IsNull)
                         v = new TInt(0);
                     tgc += (cx, tc.defpos, v);
                     cx.values += (tc.defpos, v);
@@ -3029,7 +3077,7 @@ namespace Pyrrho.Level4
                         switch (tc.generated.gen)
                         {
                             case Generation.Expression:
-                                if (tgc[tc.defpos] != TNull.Value)
+                                if (tgc[tc.defpos] is TypedValue vt && !vt.IsNull)
                                     throw new DBException("0U000", cx.Inf(tc.defpos).name);
                                 cx.from = oc;
                                 cx.cursors = od;   
@@ -3039,10 +3087,10 @@ namespace Pyrrho.Level4
                                 cx.cursors += (trs.defpos, trc);
                                 break;
                         }
-                        if (tc.defaultValue != TNull.Value && tgc[tc.defpos] == TNull.Value)
+                        if ((!tc.defaultValue.IsNull) && tgc[tc.defpos].IsNull)
                             tgc += (cx, tc.defpos, tc.defaultValue);
                         if (tc.notNull 
-                            && (tgc[tc.defpos]==null || tgc[tc.defpos] == TNull.Value))
+                            && (tgc[tc.defpos]==null || tgc[tc.defpos].IsNull))
                             throw new DBException("22206", cx.Inf(tc.defpos).name);
                         for (var cb = tc.constraints?.First(); cb != null; cb = cb.Next())
                         {
@@ -3581,7 +3629,9 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (ValueRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
+            var ns = cx.rsuids[source] ?? source;
+            if (ns!=source)
+            r += (From.Source, ns);
             return r;
         }
         public override string ToString()
@@ -3837,7 +3887,7 @@ namespace Pyrrho.Level4
         {
             var r = (RestRowSet)base._Replace(cx, so, sv);
             r += (RestView, cx.Replace(restView, so, sv));
-            var rg = remoteGroups._Replace(cx, so, sv);
+            var rg = remoteGroups?._Replace(cx, so, sv);
             if (rg != remoteGroups)
                 r += (RemoteGroups, rg);
             if (usingTable >= 0)
@@ -3857,15 +3907,18 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (RestRowSet)base.Fix(cx);
-            r += (RestView, cx.Fix(restView));
-            var rg = remoteGroups?.Fix(cx);
-            if (rg != remoteGroups)
-                r += (RemoteGroups, rg);
-            if (usingTable>=0)
-            {
-                r += (UsingTable, cx.Fix(usingTable));
-                r += (UsingCols, cx.Fix(usingCols));
-            }
+            var nv = cx.Fix(restView);
+            if (nv!=restView)
+            r += (RestView, nv);
+            var ng = remoteGroups?.Fix(cx);
+            if (ng!=remoteGroups)
+                r += (RemoteGroups, ng);
+            var nu = cx.Fix(usingTable);
+            if (nu!=usingTable)
+                r += (UsingTable, nu);
+            var nc = cx.Fix(usingCols);
+            if (nc!=usingCols)
+                r += (UsingCols, nc);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

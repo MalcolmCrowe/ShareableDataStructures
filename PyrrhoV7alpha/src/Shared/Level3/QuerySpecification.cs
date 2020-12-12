@@ -343,9 +343,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (QueryExpression)base.Fix(cx);
-            r += (_Left, cx.obuids[left]??left);
-            if (right>=0)
-            r += (_Right, cx.obuids[right]??right);
+            var nl = cx.obuids[left] ?? left;
+            if (nl!=left)
+            r += (_Left, nl);
+            var nr = cx.obuids[right] ?? right;
+            if (right!=nr)
+            r += (_Right, nr);
             return r;
         }
         internal override bool aggregates(Context cx)

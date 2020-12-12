@@ -105,9 +105,15 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (JoinRowSet)base.Fix(cx);
-            r += (_Join, join.Fix(cx));
-            r += (JFirst, cx.rsuids[first]??first);
-            r += (JSecond, cx.rsuids[second]??second);
+            var nj = join.Fix(cx);
+            if (nj != join)
+                r += (_Join, nj);
+            var nf = cx.rsuids[first] ?? first;
+            if (nf != first)
+                r += (JFirst, nf);
+            var ns = cx.rsuids[second] ?? second;
+            if (ns != second)
+                r += (JSecond, ns);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

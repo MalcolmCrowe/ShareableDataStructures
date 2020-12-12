@@ -261,9 +261,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (From)base.Fix(cx);
-            if (assig.Count>0)
-                r += (Assig, cx.Fix(assig));
-            r += (Target, cx.obuids[target]??target);
+            var na = cx.Fix(assig);
+            if (assig != na)
+                r += (Assig, na);
+            var nt = cx.obuids[target] ?? target;
+            if (nt != target)
+                r += (Target, nt);
             return r;
         }
         internal override SqlValue ToSql(Ident id,Database db)
@@ -402,9 +405,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (SqlInsert)base.Fix(cx);
-            r += (_Table, cx.obuids[target]??target);
-            if (cx.rsuids.Contains(value))
-                r += (Value, cx.rsuids[value]??value);
+            var nt = cx.obuids[target] ?? target;
+            if (nt != target)
+                r += (_Table, nt);
+            var nv = cx.rsuids[value] ?? value;
+            if (nv != value)
+                r += (Value, nv);
             return r;
         }
         public override Context Obey(Context cx)
@@ -494,7 +500,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (QuerySearch)base.Fix(cx);
-            r += (SqlInsert._Table, cx.obuids[table]??table);
+            var nt = cx.obuids[table] ?? table;
+            if (nt != table)
+                r += (SqlInsert._Table, nt);
             return r;
         }
         /// <summary>

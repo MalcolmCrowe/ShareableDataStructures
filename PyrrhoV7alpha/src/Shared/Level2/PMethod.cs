@@ -75,7 +75,8 @@ namespace Pyrrho.Level2
 		public PMethod(Type tp, ReaderBase rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
-            udt = (UDType)x.udt._Relocate(wr);
+            _udt = wr.Fix(x._udt);
+            udt = (UDType)wr.cx.db.objects[_udt];
             methodType = x.methodType;
         }
         protected override Physical Relocate(Writer wr)

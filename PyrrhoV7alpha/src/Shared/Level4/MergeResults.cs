@@ -102,8 +102,12 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (MergeRowSet)base.Fix(cx);
-            r += (QueryExpression._Left, cx.rsuids[left] ??left);
-            r += (QueryExpression._Right, cx.rsuids[right]??right);
+            var nl = cx.rsuids[left] ?? left;
+            if (nl!=left)
+            r += (QueryExpression._Left, nl);
+            var nr = cx.rsuids[right] ?? right;
+            if (nr!=right)
+            r += (QueryExpression._Right, nr);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

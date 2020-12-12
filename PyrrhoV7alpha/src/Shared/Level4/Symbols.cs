@@ -403,7 +403,7 @@ namespace Pyrrho.Level4
 				h = (h+1)&0x7ff;
 			}
 		}
-        internal object Diag { get { if (val == TNull.Value) return tok; return val; } }
+        internal object Diag { get { if (val.IsNull) return tok; return val; } }
        /// <summary>
         /// Constructor: Start a new lexer
         /// </summary>

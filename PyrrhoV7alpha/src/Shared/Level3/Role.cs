@@ -373,8 +373,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
-            if (mem.Contains(Inverts))
-                r += (Inverts, cx.Fix(inverts));
+            var ni = cx.Fix(inverts);
+            if (ni!=inverts)
+                r += (Inverts, ni);
             return r;
         }
     }

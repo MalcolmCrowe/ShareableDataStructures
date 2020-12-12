@@ -35,7 +35,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public BTree<long, bool> constraints => 
             (BTree<long, bool>)mem[Checks] ?? BTree<long,bool>.Empty;
-        public TypedValue defaultValue => (TypedValue)mem[Domain.Default];
+        public TypedValue defaultValue => (TypedValue)mem[Domain.Default]??TNull.Value.New(domain);
         public GenerationRule generated =>
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
@@ -84,7 +84,7 @@ namespace Pyrrho.Level3
                   + (Domain.Default, dt.defaultValue);
             if (dt.IsSensitive())
                 r += (Sensitive, true);
-            if (c.dv != null)
+            if (!c.dv.IsNull)
                 r += (Domain.Default, c.dv);
             if (c.ups!="")
                 r = r + (UpdateString, c.ups) + (UpdateAssignments, c.upd);
@@ -117,11 +117,21 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (TableColumn)base.Fix(cx);
-            r += (_Domain, domain.Fix(cx));
-            r += (Table, cx.obuids[tabledefpos]??tabledefpos);
-            r += (Generated, generated.Fix(cx));
-            r += (Checks, cx.Fix(constraints));
-            r += (UpdateAssignments, cx.Fix(update));
+            var nd = domain.Fix(cx);
+            if (nd != domain)
+                r += (_Domain, nd);
+            var nt = cx.obuids[tabledefpos] ?? tabledefpos;
+            if (nt != tabledefpos)
+                r += (Table, nt);
+            var ng = generated.Fix(cx);
+            if (ng != generated)
+                r += (Generated, ng);
+            var nc = cx.Fix(constraints);
+            if (nc != constraints)
+                r += (Checks, nc);
+            var nu = cx.Fix(update);
+            if (nu != update)
+                r += (UpdateAssignments, nu);
             return r;
         }
         internal override DBObject Add(Check ck, Database db)
@@ -311,8 +321,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = this;
-            if (exp >= 0)
-                r += (GenExp, cx.obuids[exp]??exp);
+            var ne = cx.obuids[exp] ?? exp;
+            if (exp !=ne)
+                r += (GenExp, ne);
             return r;
         }
         internal TypedValue Eval(Context cx)
@@ -419,7 +430,7 @@ namespace Pyrrho.Level3
             prev = up.prev;
             var v = old.vals;
             for (var b = up.fields.First(); b != null; b = b.Next())
-                if (b.value() == TNull.Value)
+                if (b.value().IsNull)
                     v -= b.key();
                 else
                     v += (b.key(), b.value());

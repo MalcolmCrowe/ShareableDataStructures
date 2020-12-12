@@ -158,7 +158,7 @@ namespace Pyrrho.Level3
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
         public Domain elType => (Domain)mem[Element];
-        public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value;
+        public TypedValue defaultValue => (TypedValue)mem[Default]??TNull.Value.New(this);
         public string defaultString => (string)mem[DefaultString]??"";
         public int display => (int)(mem[Display] ?? rowType.Length);
         public string abbrev => (string)mem[Abbreviation]??"";
@@ -439,8 +439,8 @@ namespace Pyrrho.Level3
             { sb.Append(" CharSet="); sb.Append(charSet); }
             if (mem.Contains(Culture) && culture != CultureInfo.InvariantCulture)
             { sb.Append(" Culture="); sb.Append(culture.Name); }
-      //      if (defaultValue!=null && defaultValue!=TNull.Value)
-      //      { sb.Append(" Default="); sb.Append(defaultValue); }
+            if (!defaultValue.IsNull)
+            { sb.Append(" Default="); sb.Append(defaultValue); }
             if (mem.Contains(Element))
             { sb.Append(" elType="); sb.Append(elType); }
             if (mem.Contains(End)) { sb.Append(" End="); sb.Append(end); }
@@ -1084,8 +1084,8 @@ namespace Pyrrho.Level3
         /// <returns>-1,0,1 according as a LT,EQ,GT b</returns>
         public virtual int Compare(TypedValue a, TypedValue b)
         {
-            var an = a == null || a == TNull.Value;
-            var bn = b == null || b == TNull.Value;
+            var an = a == null || a.IsNull;
+            var bn = b == null || b.IsNull;
             if (an && bn)
                 return 0;
             if (an)
@@ -1401,6 +1401,8 @@ namespace Pyrrho.Level3
         }
         public virtual bool HasValue(Context cx,TypedValue v)
         {
+            if (v is TNull)
+                return true;
             if (v is TSensitive st)
             {
                 if (kind == Sqlx.SENSITIVE)
@@ -3153,9 +3155,9 @@ namespace Pyrrho.Level3
                     m += (Culture, dt.culture);
                 else if (culture != CultureInfo.InvariantCulture && culture != r.culture)
                     m += (Culture, r.culture);
-                if (dt.defaultValue != TNull.Value && dt.defaultValue != r.defaultValue)
+                if (!dt.defaultValue.IsNull && dt.defaultValue != r.defaultValue)
                     m += (Default, dt.defaultValue);
-                else if (defaultValue != TNull.Value && defaultValue != r.defaultValue)
+                else if (!defaultValue.IsNull && defaultValue != r.defaultValue)
                     m += (Default, r.defaultValue);
                 r = new Domain(lp,r.kind, m);
             }
@@ -3185,7 +3187,7 @@ namespace Pyrrho.Level3
             if (structure > 0)
                 r += (Structure, wr.Fix(structure));
             if (r.mem.Contains(Default))
-                r += (Default, r.Parse(0, defaultString));
+                r += (Default, r.defaultValue.Relocate(wr));
             var db = wr.cx.db;
             var ts = db.types;
             if (ts.Contains(r))
@@ -3198,16 +3200,20 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = this;
-            if (constraints.Count > 0)
-                r += (Constraints, cx.Fix(constraints));
-            if (orderFunc != null)
-                r += (OrderFunc, orderFunc.Fix(cx));
-            if (representation.Count > 0)
-                r += (Representation, cx.Fix(representation));
-            if (rowType.Count > 0)
-                r += (RowType, cx.Fix(rowType));
-            if (defaultString != "")
-                r += (Default, r.Parse(0, defaultString));
+            var nc = cx.Fix(constraints);
+            if (constraints!=nc)
+                r += (Constraints, nc);
+            var no = orderFunc?.Fix(cx);
+            if (orderFunc != no)
+                r += (OrderFunc, no);
+            var nr = cx.Fix(representation);
+            if (representation !=nr)
+                r += (Representation, nr);
+            var nt = cx.Fix(rowType);
+            if (rowType!=nt)
+                r += (RowType, nt);
+            if (mem.Contains(Default))
+                r += (Default, defaultValue.Fix(cx));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -3336,7 +3342,7 @@ namespace Pyrrho.Level3
                 sb.Append("," + charSet);
             if (culture != null)
                 sb.Append("," + culture.Name);
-            if (defaultValue != TNull.Value)
+            if (!defaultValue.IsNull)
                 sb.Append(",D=" + defaultValue);
             if (abbrev != null)
                 sb.Append(",A=" + abbrev);
@@ -3900,8 +3906,8 @@ namespace Pyrrho.Level3
             Under = -90; // Domain
         public UDType super => (UDType)mem[Under];
         public UDType(PType pt) : base(pt) { }
-        internal UDType(Domain dm) 
-            : base(dm.defpos, dm.mem + (Default,new TRow(dm)) + (Kind, Sqlx.TYPE)) 
+        internal UDType(long dp,Domain dm) 
+            : base(dp, dm.mem + (Kind, Sqlx.TYPE)) 
         { }
         internal UDType(long dp, Sqlx k, BTree<long, object> m) : base(dp, k, m) { }
         protected UDType(long dp,BTree<long,object>m) :base(dp,m)
@@ -3991,11 +3997,12 @@ namespace Pyrrho.Level3
         }
         internal override Basis Fix(Context cx)
         {
-            var r = base.Fix(cx);
-            if (super != null)
-                r += (Under, super.Fix(cx));
+            var r = (UDType)base.Fix(cx);
+            var ns = super?.Fix(cx);
+            if (super != ns)
+                r += (Under, ns);
             if (defaultString == "")
-                r += (Default, NullValue());
+                r -= Default;
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -4004,7 +4011,7 @@ namespace Pyrrho.Level3
             if (super != null)
                 r += (Under, super._Relocate(wr));
             if (defaultString == "")
-                r += (Default, NullValue());
+                r -= Default;
             return r;
         }
         public override void PutDataType(Domain nt, Writer wr)

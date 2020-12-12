@@ -103,7 +103,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Check)base.Fix(cx);
-            r += (Condition, cx.obuids[search]??search);
+            var ns = cx.obuids[search] ?? search;
+            if (ns!=search)
+                r += (Condition, ns);
             return r;
         }
         internal override Database Drop(Database d, Database nd, long p)

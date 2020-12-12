@@ -1300,6 +1300,10 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// create maps taking heap uids to a shared range.
+        /// (1) after Commit to move objects out of the heap:
+        ///   obuids and rsuids are prepared by Context.ObUnheap() and RsUnheap()
+        /// (2) in View Instancing to move referenced framing objects into the heap
+        ///   obuids and rsuids are prepared in View.Instance()
         /// Fix(cx) uses the maps.
         /// </summary>
         /// <param name="cx"></param>

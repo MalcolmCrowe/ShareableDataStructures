@@ -110,23 +110,25 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal TypedValue NotNull()
-        {
-            return IsNull ? TNull.Value : this;
-        }
         public int CompareTo(object obj)
         {
             return dataType.Compare(this,(TypedValue)obj);
         }
     }
+    /// <summary>
+    /// Dec 11th 2020: let us allow TNUll to have a configurable Domain field.
+    /// Then the rules for assignment compatibility are that TNulls are strongly typed.
+    /// However any TNull value can be coerced to any other TNull value.
+    /// </summary>
     internal class TNull : TypedValue
     {
         static TNull _Value;
         TNull() : base(Domain.Null) { _Value = this; }
+        TNull(Domain d) : base(d) { }
         internal static TNull Value => _Value??new TNull();
         internal override TypedValue New(Domain t)
         {
-            return _Value;
+            return new TNull(t);
         }
         internal override object Val()
         {
@@ -134,12 +136,11 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return "Null";
+            return base.ToString() + " Null";
         }
         public override int _CompareTo(object obj)
         {
-            // other cases dealt with in Compare
-            return -1;
+            return (obj is TNull || obj==null)?0: -1;
         }
         public override bool IsNull
         {
@@ -1245,7 +1246,7 @@ namespace Pyrrho.Common
             for (var r = this; r != null && r._head!=null; r = r._tail)
             {
                 sb.Append(cm); cm = ",";
-                if (r._head != TNull.Value)
+                if (!r._head.IsNull)
                     sb.Append(r._head.ToString());
             }
             sb.Append(")");

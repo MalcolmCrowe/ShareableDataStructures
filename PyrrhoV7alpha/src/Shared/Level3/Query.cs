@@ -134,19 +134,27 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Query)base.Fix(cx);
-            r += (_Domain, domain.Fix(cx));
-            if (filter!=null)
-                r += (Filter, cx.Fix(filter));
-            if (matches.Count>0)
-                r += (_Matches, cx.Fix(matches));
-            if (matching.Count>0)
-                r += (Matching, cx.Fix(matching));
-            if (ordSpec.Count>0)
-                r += (OrdSpec, cx.Fix(ordSpec));
-            if (where.Count>0)
-                r += (Where, cx.Fix(where));
-            if (assig.Count>0)
-                r += (Assig, cx.Fix(assig)); 
+            var nd = domain.Fix(cx);
+            if (nd!=domain)
+            r += (_Domain, nd);
+            var nf = cx.Fix(filter);
+            if (filter!=nf)
+                r += (Filter, nf);
+            var nm = cx.Fix(matches);
+            if (matches!=nm)
+                r += (_Matches, nm);
+            var na = cx.Fix(matching);
+            if (matching!=na)
+                r += (Matching, na);
+            var no = cx.Fix(ordSpec);
+            if (ordSpec!=no)
+                r += (OrdSpec, no);
+            var nw = cx.Fix(where);
+            if (where!=nw)
+                r += (Where, nw);
+            var ne = cx.Fix(assig);
+            if (assig!=ne)
+                r += (Assig, ne); 
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -839,11 +847,18 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (CursorSpecification)base.Fix(cx);
-            r += (RVQSpecs, cx.Fix(rVqSpecs));
-            r += (RestViews, cx.Fix(restViews));
-            r += (Union,cx.obuids[union]??union);
-            if (usingFrom>=0)
-                r += (UsingFrom, cx.obuids[usingFrom]??usingFrom); 
+            var nr = cx.Fix(rVqSpecs);
+            if (nr!=rVqSpecs)
+            r += (RVQSpecs, nr);
+            var nv = cx.Fix(restViews);
+            if (nv!=restViews)
+            r += (RestViews, nv);
+            var nu = cx.obuids[union] ?? union;
+            if (nu!=union)
+            r += (Union,nu);
+            var nf = cx.obuids[usingFrom] ?? usingFrom;
+            if (usingFrom!=nf)
+                r += (UsingFrom, nf); 
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1055,9 +1070,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (TableExpression)base.Fix(cx);
-            r += (Target, cx.obuids[target]??target);
-            r += (Having, cx.Fix(having));
-            r += (Windows, cx.Fix(window));
+            var nt = cx.obuids[target] ?? target;
+            if (nt != target)
+                r += (Target, nt);
+            var nh = cx.Fix(having);
+            if (nh != having)
+                r += (Having, nh);
+            var nw = cx.Fix(window);
+            if (nw != window)
+                r += (Windows, nw);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
@@ -1327,12 +1348,24 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (JoinPart)base.Fix(cx);
-            r += (JoinCond, cx.Fix(joinCond));
-            r += (LeftOrder, cx.Fix(leftOrder));
-            r += (RightOrder, cx.Fix(rightOrder));
-            r += (NamedCols, cx.Fix(namedCols));
-            r += (LeftOperand, cx.obuids[left]??left);
-            r += (RightOperand, cx.obuids[right]??right);
+            var nc = cx.Fix(joinCond);
+            if (nc != joinCond)
+                r += (JoinCond, nc);
+            var nl = cx.Fix(leftOrder);
+            if (nl != leftOrder)
+                r += (LeftOrder, nl);
+            var nr = cx.Fix(rightOrder);
+            if (nr != rightOrder)
+                r += (RightOrder, nr);
+            var nn = cx.Fix(namedCols);
+            if (nn != namedCols)
+                r += (NamedCols, nn);
+            var nf = cx.obuids[left] ?? left;
+            if (nf != left)
+                r += (LeftOperand, nf);
+            var ns = cx.obuids[right] ?? right;
+            if (ns != right)
+                r += (RightOperand, ns);
             return r;
         }
         internal override Query ReviewJoins(Context cx)
@@ -1922,11 +1955,21 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = this;
-            r += (FDConds, cx.Fix(conds));
-            r += (FDIndex, index.Fix(cx));
-            r += (FDTable, table.Fix(cx));
-            r += (FDRefIndex, rindex?.Fix(cx));
-            r += (FDRefTable, rtable?.Fix(cx));
+            var nc = cx.Fix(conds);
+            if (nc != conds)
+                r += (FDConds, nc);
+            var ni = index.Fix(cx);
+            if (ni != index)
+                r += (FDIndex, ni);
+            var nt = table.Fix(cx);
+            if (nt != table)
+                r += (FDTable, nt);
+            var nr = rindex?.Fix(cx);
+            if (nr != rindex)
+                r += (FDRefIndex, nr);
+            var nu = rtable?.Fix(cx);
+            if (nu != rtable)
+                r += (FDRefTable, nu);
             return r;
         }
     }

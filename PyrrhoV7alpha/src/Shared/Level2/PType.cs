@@ -34,7 +34,7 @@ namespace Pyrrho.Level2
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
         protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
-            : base(t, nm.ident, new UDType(dm), pp, cx)
+            : base(t, nm.ident, new UDType(pp,dm), pp, cx)
         { }
         public PType(Ident nm, Domain dm, long pp, Context cx)
             : this(Type.PType, nm, dm, pp, cx) { }
@@ -56,6 +56,9 @@ namespace Pyrrho.Level2
         {
             if (x.under!=null)
                 under = (UDType)wr.Fixed(under.defpos);
+            domain = new UDType(this);
+            wr.cx._Add(domain);
+            wr.cx.db += (Database.Types, wr.cx.db.types + (domain, defpos));
         }
         protected override PDomain New(Writer wr)
         {
@@ -78,13 +81,13 @@ namespace Pyrrho.Level2
         {
             underdefpos = rd.GetLong();
             base.Deserialise(rd);
+            domain = new UDType(this);
             if (rd is Reader rdr)
             {
                 if (underdefpos != -1)
                     under = (UDType)rdr.context.db.objects[underdefpos];
                 rdr.context.db += (ppos, domain);
             }
-            domain += (Domain.Default, new TRow(domain));
         }
         /// <summary>
         /// A readable version of the Physical
@@ -114,8 +117,7 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var udt = new UDType(this);
-            domain = udt;
+            var udt = (UDType)domain;
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(ppos, domain.name, domain, priv);
             ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));

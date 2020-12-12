@@ -1,6 +1,4 @@
 using System;
-using System.Configuration;
-using System.Runtime.InteropServices;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -245,7 +243,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (SelectStatement)base.Fix(cx);
-            r += (CS, cx.obuids[cs]??cs);
+            var nc = cx.obuids[cs] ?? cs;
+            if (nc != cs)
+                r += (CS, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -313,7 +313,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (CompoundStatement)base.Fix(cx);
-            r += (Stms, cx.Fix(stms));
+            var nc = cx.Fix(stms);
+            if (nc != stms)
+                r += (Stms, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -440,9 +442,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (LocalVariableDec)base.Fix(cx);
-            r += (AssignmentStatement.Vbl, cx.obuids[vbl]??vbl);
-            if (init >= 0)
-                r += (Init, cx.obuids[init]??init);
+            var nb = cx.obuids[vbl] ?? vbl;
+            if (nb != vbl)
+                r += (AssignmentStatement.Vbl, nb);
+            var ni = cx.obuids[init] ?? init;
+            if (init != ni)
+                r += (Init, ni);
             return r;
         }
         internal override TypedValue Eval(Context cx)
@@ -523,7 +528,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (FormalParameter)base.Fix(cx);
-            r += (AssignmentStatement.Val, cx.obuids[val]??val);
+            var nv = cx.obuids[val] ?? val;
+            if (nv != val)
+                r += (AssignmentStatement.Val, nv);
             return r;
         }
         internal override TypedValue Eval(Context cx)
@@ -592,7 +599,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (CursorDeclaration)base.Fix(cx);
-            r += (CS, cx.obuids[cs]??cs);
+            var nc = cx.obuids[cs] ?? cs;
+            if (nc!=cs)
+                r += (CS, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -669,7 +678,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (HandlerStatement)base.Fix(cx);
-            r += (Action, cx.obuids[action]??action);
+            var na = cx.obuids[action] ?? action;
+            if (na!=action)
+            r += (Action, na);
             return r;
         }
         /// <summary>
@@ -750,7 +761,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Handler)base.Fix(cx);
-            r += (Hdlr, hdlr.Fix(cx));
+            var nh = hdlr.Fix(cx);
+            if (hdlr!=nh)
+            r += (Hdlr, nh);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -883,8 +896,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (AssignmentStatement)base.Fix(cx);
-            r += (Val, cx.obuids[val]??val);
-            r += (Vbl, cx.obuids[vbl]??vbl);
+            var na = cx.obuids[val] ?? val;
+            if (na!=val)
+                r += (Val, na);
+            var nb = cx.obuids[vbl] ?? vbl;
+            if (nb!=vbl)
+                r += (Vbl, nb);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -898,7 +915,7 @@ namespace Pyrrho.Level3
             var t = vb.domain;
             if (val != -1L)
             {
-                var v = t.Coerce(cx,cx.obs[val].Eval(cx)?.NotNull());
+                var v = t.Coerce(cx,cx.obs[val].Eval(cx));
                 cx.AddValue(vb, v);
             }
             return cx;
@@ -968,9 +985,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (MultipleAssignment)base.Fix(cx);
-            r += (LhsType, cx.obuids[lhsType]??lhsType);
-            r += (List, cx.Fix(list));
-            r += (Rhs, cx.obuids[rhs]??rhs);
+            var nt = cx.obuids[lhsType] ?? lhsType;
+            if (nt != lhsType)
+                r += (LhsType, nt);
+            var nl = cx.Fix(list);
+            if (nl != list)
+                r += (List, nl);
+            var nr = cx.obuids[rhs] ?? rhs;
+            if (nr != rhs)
+                r += (Rhs, nr);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1014,24 +1037,24 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The return value
         /// </summary>
-		public long ret => (long)(mem[Ret]??-1L);
+		public long ret => (long)(mem[Ret] ?? -1L);
         /// <summary>
         /// Constructor: a return statement from the parser
         /// </summary>
-        public ReturnStatement(long dp) : base (dp,BTree<long,object>.Empty)
+        public ReturnStatement(long dp) : base(dp, BTree<long, object>.Empty)
         { }
         protected ReturnStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static ReturnStatement operator+(ReturnStatement s,(long,object)x)
+        public static ReturnStatement operator +(ReturnStatement s, (long, object) x)
         {
             return new ReturnStatement(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new ReturnStatement(defpos,m);
+            return new ReturnStatement(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new ReturnStatement(dp,mem);
+            return new ReturnStatement(dp, mem);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -1044,7 +1067,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (ReturnStatement)base.Fix(cx);
-            r += (Ret, cx.obuids[ret]??ret);
+            var nr = cx.obuids[ret] ?? ret;
+            if (nr != ret)
+                r += (Ret, nr);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1122,9 +1147,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (SimpleCaseStatement)base.Fix(cx);
-            r += (Else, cx.Fix(els));
-            r += (Operand, cx.obuids[operand]??operand);
-            r += (Whens, cx.Fix(whens));
+            var ne = cx.Fix(els);
+            if (ne!=els)
+            r += (Else, ne);
+            var no = cx.obuids[operand] ?? operand;
+            if (no!=operand)
+            r += (Operand, no);
+            var nw = cx.Fix(whens);
+            if (nw!=whens)
+            r += (Whens, nw);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1209,8 +1240,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (SearchedCaseStatement)base.Fix(cx);
-            r += (SimpleCaseStatement.Else, cx.Fix(els));
-            r += (SimpleCaseStatement.Whens, cx.Fix(whens));
+            var ne = cx.Fix(els);
+            if (ne != els)
+                r += (SimpleCaseStatement.Else, ne);
+            var nw = cx.Fix(whens);
+            if (nw != whens)
+                r += (SimpleCaseStatement.Whens, nw);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1304,9 +1339,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (WhenPart)base.Fix(cx);
-            if (cond>=0)
-                r += (Cond, cx.obuids[cond]??cond);
-            r += (Stms, cx.Fix(stms));
+            var nc = cx.obuids[cond] ?? cond;
+            if (cond != nc)
+                r += (Cond, nc);
+            var ns = cx.Fix(stms);
+            if (ns != stms)
+                r += (Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1398,10 +1436,18 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (IfThenElse)base.Fix(cx);
-            r += (Search, cx.obuids[search]??search);
-            r += (Then, cx.Fix(then));
-            r += (Else, cx.Fix(els));
-            r += (Elsif, cx.Fix(elsif));
+            var ns = cx.obuids[search] ?? search;
+            if (ns != search)
+                r += (Search, ns);
+            var nt = cx.Fix(then);
+            if (nt != then)
+                r += (Then, nt);
+            var ne = cx.Fix(els);
+            if (els != ne)
+                r += (Else, ne);
+            var ni = cx.Fix(elsif);
+            if (ni != elsif)
+                r += (Elsif, ni);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1547,9 +1593,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (WhileStatement)base.Fix(cx);
-            r += (Loop, cx.obuids[loop]??loop);
-            r += (Search, cx.obuids[search]??search);
-            r += (What, cx.Fix(what));
+            var nl = cx.obuids[loop] ?? loop;
+            if (nl != loop)
+                r += (Loop, nl);
+            var ns = cx.obuids[search] ?? search;
+            if (ns != search)
+                r += (Search, ns);
+            var nw = cx.Fix(what);
+            if (nw != what)
+                r += (What, nw);
             return r;
         }
         /// <summary>
@@ -1639,10 +1691,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (RepeatStatement)base.Fix(cx);
-            if (loop >= 0)
-                r += (WhileStatement.Loop, cx.obuids[loop]??loop);
-            r += (WhileStatement.Search, cx.obuids[search]??search);
-            r += (WhileStatement.What, cx.Fix(what));
+            var nl = cx.obuids[loop] ?? loop;
+            if (loop != nl)
+                r += (WhileStatement.Loop, nl);
+            var ns = cx.obuids[search] ?? search;
+            if (ns != search)
+                r += (WhileStatement.Search, ns);
+            var nw = cx.Fix(what);
+            if (nw != what)
+                r += (WhileStatement.What, nw);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1764,8 +1821,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (LoopStatement)base.Fix(cx);
-            r += (WhileStatement.Loop, cx.obuids[loop]??loop);
-            r += (WhenPart.Stms, cx.Fix(stms));
+            var nl = cx.obuids[loop] ?? loop;
+            if (nl != loop)
+                r += (WhileStatement.Loop, nl);
+            var ns = cx.Fix(stms);
+            if (ns != stms)
+                r += (WhenPart.Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1877,10 +1938,18 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (ForSelectStatement)base.Fix(cx);
-            r += (WhileStatement.Loop, cx.obuids[loop]??loop);
-            r += (Cursor, cx.obuids[cursor]??cursor);
-            r += (Sel, cx.obuids[sel]??sel);
-            r += (Stms, cx.Fix(stms));
+            var nl = cx.obuids[loop] ?? loop;
+            if (nl != loop)
+                r += (WhileStatement.Loop, nl);
+            var nc = cx.obuids[cursor] ?? cursor;
+            if (nc != cursor)
+                r += (Cursor, nc);
+            var ns = cx.obuids[sel] ?? sel;
+            if (ns != sel)
+                r += (Sel, ns);
+            var nn = cx.Fix(stms);
+            if (nn != stms)
+                r += (Stms, nn);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1970,7 +2039,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (OpenStatement)base.Fix(cx);
-            r += (FetchStatement.Cursor, cx.obuids[cursor]??cursor);
+            var nc = cx.obuids[cursor] ?? cursor;
+            if (nc != cursor)
+                r += (FetchStatement.Cursor, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2034,7 +2105,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (CloseStatement)base.Fix(cx);
-            r += (FetchStatement.Cursor, cx.obuids[cursor]??cursor);
+            var nc = cx.obuids[cursor] ?? cursor;
+            if (nc!=cursor)
+                r += (FetchStatement.Cursor, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2115,9 +2188,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (FetchStatement)base.Fix(cx);
-            r += (Cursor, cx.obuids[cursor]??cursor);
-            r += (Outs, cx.Fix(outs));
-            r += (Where, cx.obuids[where]??where);
+            var nc = cx.obuids[cursor] ?? cursor;
+            if (nc != cursor)
+                r += (Cursor, nc);
+            var no = cx.Fix(outs);
+            if (outs != no)
+                r += (Outs, no);
+            var nw = cx.obuids[where] ?? where;
+            if (where != nw)
+                r += (Where, nw);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2263,10 +2342,15 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (CallStatement)base.Fix(cx);
-            r += (ProcDefPos, cx.obuids[procdefpos]??procdefpos);
-            r += (Parms, cx.Fix(parms));
-            if (var>=0)
-                r += (Var, cx.obuids[var]??var);
+            var np = cx.obuids[procdefpos] ?? procdefpos;
+            if (np!=procdefpos)
+                r += (ProcDefPos, np);
+            var ns = cx.Fix(parms);
+            if (parms!=ns)
+                r += (Parms, ns);
+            var va = cx.obuids[var] ?? var;
+            if (var!=va)
+                r += (Var, va);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2393,7 +2477,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Signal)base.Fix(cx);
-            r += (SetList, cx.Fix(setlist));
+            var ns = cx.Fix(setlist);
+            if (ns != setlist)
+                r += (SetList, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2530,7 +2616,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Executable)base.Fix(cx);
-            r += (List, cx.Fix(list));
+            var nl = cx.Fix(list);
+            if (nl != list)
+                r += (List, nl);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2612,8 +2700,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (SelectSingle)base.Fix(cx);
-            r += (ForSelectStatement.Sel, cx.obuids[sel]??sel);
-            r += (Outs, cx.Fix(outs));
+            var ns = cx.obuids[sel] ?? sel;
+            if (ns != sel)
+                r += (ForSelectStatement.Sel, ns);
+            var no = cx.Fix(outs);
+            if (no != outs)
+                r += (Outs, no);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)

@@ -174,17 +174,25 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Trigger)base.Fix(cx);
-            r += (Action, cx.obuids[action]??action);
-            if (newRow>=0)
-                r += (NewRow, cx.obuids[newRow]??newRow);
-            if (newTable >= 0)
-                r += (NewTable, cx.obuids[newTable]??newTable);
-            if (oldRow >= 0)
-                r += (OldRow, cx.obuids[oldRow]??oldRow);
-            if (oldTable >= 0)
-                r += (OldTable, cx.obuids[oldTable]??oldTable);
-            r += (UpdateCols, cx.Fix(cols));
-            return r; 
+            var na = cx.obuids[action] ?? action;
+            if (na != action)
+                r += (Action, na);
+            var nr = cx.obuids[newRow] ?? newRow;
+            if (newRow != nr)
+                r += (NewRow, nr);
+            var nt = cx.obuids[newTable] ?? newTable;
+            if (newTable != nt)
+                r += (NewTable, nt);
+            var no = cx.obuids[oldRow] ?? oldRow;
+            if (oldRow != no)
+                r += (OldRow, no);
+            var nu = cx.obuids[oldTable] ?? oldTable;
+            if (oldTable != nu)
+                r += (OldTable, nu);
+            var nc = cx.Fix(cols);
+            if (nc != cols)
+                r += (UpdateCols, nc);
+            return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -262,8 +270,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (TransitionTable)base.Fix(cx);
-            r += (Trig, cx.obuids[trig]??trig);
-            r += (SqlValue._Columns, cx.Fix(columns));
+            var nt = cx.obuids[trig] ?? trig;
+            if (nt != trig)
+                r += (Trig, nt);
+            var nc = cx.Fix(columns);
+            if (nc != columns)
+                r += (SqlValue._Columns, nc);
             return r;
         }
         internal override void _Add(Context cx)

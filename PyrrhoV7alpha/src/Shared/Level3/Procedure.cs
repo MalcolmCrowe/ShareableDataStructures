@@ -150,9 +150,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Procedure)base.Fix(cx);
-            r += (Params, cx.Fix(ins));
-            if (body>=0)
-                r += (Body, cx.obuids[body]??body);
+            var np = cx.Fix(ins);
+            if (np!=ins)
+            r += (Params, np);
+            var nb = cx.obuids[body] ?? body;
+            if (nb>=0)
+                r += (Body, nb);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)

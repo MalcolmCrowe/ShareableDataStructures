@@ -104,8 +104,12 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (GroupingRowSet)base.Fix(cx);
-            r += (From.Source, cx.rsuids[source]??source);
-            r += (Groupings, cx.Fix(groupings));
+            var ns = cx.rsuids[source] ?? source;
+            if (ns != source)
+                r += (From.Source, ns);
+            var ng = cx.Fix(groupings);
+            if (ng != groupings)
+                r += (Groupings, ng);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

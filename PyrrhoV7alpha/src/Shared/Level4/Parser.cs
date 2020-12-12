@@ -930,9 +930,9 @@ namespace Pyrrho.Level4
                 if (rest)
                 {
                     if (ut == null)
-                        pv = new PRestView(id, t.defpos, np, cx);
+                        pv = new PRestView(id, t.structure, np, cx);
                     else
-                        pv = new PRestView2(id, t.defpos, ut.defpos, np, cx);
+                        pv = new PRestView2(id, t.structure, ut.defpos, np, cx);
                 }
                 else
                     pv = new PView(id, new string(lxr.input,st,lxr.pos-st),
@@ -1246,7 +1246,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 int st = lxr.start;
-                var dv = lxr.val;
+                var dv = ParseSqlValue(type);
                 Next();
                 var ds = new string(lxr.input, st, lxr.start - st);
                 type = type + (Domain.Default, dv) + (Domain.DefaultString, ds);
@@ -1524,8 +1524,10 @@ namespace Pyrrho.Level4
                             Next();
                             int st = lxr.start;
                             var se = (TableColumn)cx.obs[c];
-                            var dfv = se.domain.Parse(lxr.Position,new string(lxr.input, st, lxr.start - st));
-                            cx.db += (se + (DBObject._Domain, se.domain + (Domain.Default, dfv)),
+                            var dv = ParseSqlValue(se.domain);
+                            var ds = new string(lxr.input, st, lxr.start - st);
+                            cx.db += (se + (DBObject._Domain, se.domain + (Domain.Default, dv)
+                                +(Domain.DefaultString, ds)),
                                 cx.db.loadpos);
                             break;
                         }
@@ -1772,6 +1774,7 @@ namespace Pyrrho.Level4
         {
             var m = BTree<Sqlx,object>.Empty;
             string ds = null;
+            string iri = null;
             long iv = -1;
             var checkedRole = 0;
             var pr = ((ObInfo)tr.role.infos[ob?.defpos??-1L])?.priv??Grant.Privilege.NoPrivilege;
@@ -1787,7 +1790,7 @@ namespace Pyrrho.Level4
                     case Sqlx.RDFLITERAL:
                         if (!pr.HasFlag(Grant.Privilege.Owner))
                             throw new DBException("42105");
-                        ds = drop ? "" : o.ToString();
+                        iri = drop ? "" : o.ToString();
                         break;
                     case Sqlx.ID:
                         {
@@ -1798,11 +1801,20 @@ namespace Pyrrho.Level4
                             break;
                         }
                     default:
-                        m += (tok,ds);
+                        m += (tok,(object)ds??(object)iri??(object)iv);
+                        ds = null;
+                        iri = null;
+                        iv = -1L;
                         break;
                 }
                 Next();
             }
+            if (ds != null)
+                m += (Sqlx.DESC, ds);
+            if (iv != -1L)
+                m += (Sqlx.REF, iv);
+            if (iri != null)
+                m += (Sqlx.IRI, iri);
             return m;
         }
         BTree<Sqlx,object> ParseMetadata(Database tr, Domain dm, int seq, Sqlx kind, bool drop)
@@ -5041,8 +5053,9 @@ namespace Pyrrho.Level4
 			{
 				int st = lxr.start;
                 long lp = lxr.Position;
-				ParseSqlValue(dm);
-				dm += (Domain.Default,dm.Parse(new Scanner(lp,lxr.input,st)));
+				var dv = ParseSqlValue(dm);
+                var ds = new string(lxr.input, st, lxr.start - st);
+				dm = dm + (Domain.Default,dv) + (Domain.DefaultString,ds);
 			}
             if (tok == Sqlx.COLLATE)
                 dm+= (Domain.Culture,ParseCollate());

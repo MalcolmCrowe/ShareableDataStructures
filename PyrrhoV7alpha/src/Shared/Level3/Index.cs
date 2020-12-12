@@ -297,13 +297,21 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Index)base.Fix(cx);
-            r += (Adapter, cx.obuids[adapter]??adapter);
-            r += (Keys, cx.Fix(keys));
-            r += (References, cx.Fix(references));
-            if (refindexdefpos>=0)
-                r += (RefIndex, cx.obuids[refindexdefpos]??refindexdefpos);
-            if (reftabledefpos>=0)
-                r += (RefTable, cx.obuids[reftabledefpos]??reftabledefpos);
+            var na = cx.obuids[adapter] ?? adapter;
+            if (na!=adapter)
+            r += (Adapter, na);
+            var nk = cx.Fix(keys);
+            if (nk!=keys)
+            r += (Keys, nk);
+            var nr = cx.Fix(references);
+            if (nr!=references)
+            r += (References, nr);
+            var ni = cx.obuids[refindexdefpos] ?? refindexdefpos;
+            if (refindexdefpos!=ni)
+                r += (RefIndex, ni);
+            var nt = cx.obuids[reftabledefpos] ?? reftabledefpos;
+            if (reftabledefpos!=nt)
+                r += (RefTable, nt);
             return r;
         }
     }

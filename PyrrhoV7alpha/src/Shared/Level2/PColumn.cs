@@ -45,7 +45,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public Domain domain;
         public long domdefpos = -1L;
-		public TypedValue dv = null; // see PColumn2
+		public TypedValue dv => domain?.defaultValue??TNull.Value; 
         public string dfs,ups;
         public BTree<UpdateAssignment,bool> upd = BTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool notNull = false;    // ditto
@@ -250,10 +250,9 @@ namespace Pyrrho.Level2
         /// <param name="db">The database</param>
         protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ds,
             TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
-            : base(t,pr,nm,sq,dm,pp,cx,ge.framing)
+            : base(t,pr,nm,sq,dm+(Domain.Default,v),pp,cx,ge.framing)
 		{
 			dfs = ds;
-            dv = v;
 			notNull = nn;
 			generated = ge;
 		}
@@ -273,7 +272,6 @@ namespace Pyrrho.Level2
         protected PColumn2(PColumn2 x, Writer wr) : base(x, wr)
         {
             dfs = x.dfs;
-            dv = x.dv;
             notNull = x.notNull;
             wr.srcPos = wr.Length + 1;
             generated = (GenerationRule)x.generated._Relocate(wr);
@@ -309,7 +307,8 @@ namespace Pyrrho.Level2
                 if (gn != Generation.Expression)
                 {
                     var dm = rdr.GetDomain(domdefpos);
-                    dv = dm.Parse(rdr.Position, dfs);
+                    domain = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs))
+                        +(Domain.DefaultString,dfs);
                 }
                 else
                     generated = new GenerationRule(Generation.Expression,

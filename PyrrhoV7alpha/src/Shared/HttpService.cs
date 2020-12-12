@@ -565,7 +565,7 @@ namespace Pyrrho
             for (var b=rt.First();b!=null;b=b.Next())
             {
                 var ci = (SqlValue)_cx.obs[b.value()];
-                if (e[ci.defpos].NotNull() is TypedValue tv)
+                if (e[ci.defpos] is TypedValue tv)
                     doc.Add(ci.name, tv);
             }
             sbuild.Append(doc.ToString());

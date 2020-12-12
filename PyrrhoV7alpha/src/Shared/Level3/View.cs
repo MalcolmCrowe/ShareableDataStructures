@@ -52,7 +52,7 @@ namespace Pyrrho.Level3
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
         public static View operator+(View v,(long,object)x)
         {
-            return new View(v.defpos, v.mem + x);
+            return (View)v.New(v.mem + x);
         }
         internal override ObInfo Inf(Context cx)
         {
@@ -84,11 +84,14 @@ namespace Pyrrho.Level3
                 cx._Add(ob.Relocate(np));
                 cx.obuids += (ob.defpos, np); 
             }
-            for (var b = framing.data.PositionAt(st); b != null; b = b.Next())
+            for (var b = framing.data.First(); b != null; b = b.Next())
             {
                 var rb = b.value();
-                var np = cx.obuids[rb.defpos]??cx.nextHeap++;
-                cx._Add(rb.Relocate(np));
+                var np = cx.obuids[rb.defpos] ?? rb.defpos;
+                if (np<st && rb.DoInstance(st))
+                    np = cx.nextHeap++;
+                if (np!=rb.defpos)
+                    cx.data += (np,(RowSet)rb.Relocate(np));
                 cx.rsuids += (rb.defpos, np);
             }
             var ro = cx.role;
@@ -361,7 +364,14 @@ namespace Pyrrho.Level3
         }
         internal override Basis Fix(Context cx)
         {
-            return base.Fix(cx)+(ViewCols,cx.Fix(viewCols))+(ViewQry,cx.Fix(viewQry));
+            var r = base.Fix(cx);
+            var nv = cx.Fix(viewCols);
+            if (nv != viewCols)
+                r += (ViewCols, nv);
+            var nq = cx.Fix(viewQry);
+            if (nq != viewQry)
+                r += (ViewQry, nq);
+            return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -406,7 +416,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Query "); sb.Append(viewDef);
-            sb.Append(" Ppos: "); sb.Append(viewPpos);
+            sb.Append(" Ppos: "); sb.Append(Uid(viewPpos));
             sb.Append(" Cols (");
             var cm = "";
             for (var b=viewCols.First();b!=null;b=b.Next())
@@ -531,8 +541,12 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (RestView)base.Fix(cx);
-            r += (ViewStruct, viewStruct.Fix(cx));
-            r += (UsingTablePos, cx.obuids[usingTable]??usingTable);
+            var nv = viewStruct.Fix(cx);
+            if (nv != viewStruct)
+                r += (ViewStruct, nv);
+            var nt = cx.obuids[usingTable] ?? usingTable;
+            if (nt != usingTable)
+                r += (UsingTablePos, nt);
             return r;
         }
         internal override void RowSets(Context cx, From gf, BTree<long, RowSet.Finder> fi)
