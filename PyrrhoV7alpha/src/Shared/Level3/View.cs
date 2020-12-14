@@ -35,7 +35,7 @@ namespace Pyrrho.Level3
             ViewCols = -378, // BTree<string,long> SqlValue
             ViewDef = -379, // string
             ViewPpos = -377,// long
-            ViewQry = -380; // long QueryExpression
+            ViewQry = -380; // long CursorSpecification
         public string name => (string)mem[Name];
         public string viewDef => (string)mem[ViewDef];
         public BTree<string, long> viewCols =>
@@ -75,7 +75,8 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal virtual View Instance(Context cx,QuerySpecification qs)
         {
-            var fx = cx.nextHeap;
+            var fx = cx.nextHeap++;
+            cx.obuids += (defpos, fx);
             var st = viewPpos;
             for (var b = framing.obs.PositionAt(st); b != null; b = b.Next())
             {
@@ -83,16 +84,6 @@ namespace Pyrrho.Level3
                 var np = cx.nextHeap++;
                 cx._Add(ob.Relocate(np));
                 cx.obuids += (ob.defpos, np); 
-            }
-            for (var b = framing.data.First(); b != null; b = b.Next())
-            {
-                var rb = b.value();
-                var np = cx.obuids[rb.defpos] ?? rb.defpos;
-                if (np<st && rb.DoInstance(st))
-                    np = cx.nextHeap++;
-                if (np!=rb.defpos)
-                    cx.data += (np,(RowSet)rb.Relocate(np));
-                cx.rsuids += (rb.defpos, np);
             }
             var ro = cx.role;
             for (var p = fx; p<cx.nextHeap; p++)
@@ -103,10 +94,8 @@ namespace Pyrrho.Level3
             var nf = (Framing)framing.Fix(cx);
             cx.Install1(nf);
             cx.Install2(nf);
-            var ns = BTree<string, long>.Empty;
-            var r = (View)Fix(cx)+ (_Framing, nf) + (CallerQS, qs);
+            var r = (View)Fix(cx)+ (_Framing, nf) + (CallerQS, qs.defpos);
             cx._Add(r);
-            r.ReviewRowSets(cx);
             return r;
         }
         /// <summary>
@@ -365,12 +354,16 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
+            var dm = domain.Fix(cx);
+            if (domain != dm)
+                r += (_Domain, dm);
             var nv = cx.Fix(viewCols);
             if (nv != viewCols)
                 r += (ViewCols, nv);
-            var nq = cx.Fix(viewQry);
-            if (nq != viewQry)
-                r += (ViewQry, nq);
+            var q = (CursorSpecification)cx.obs[viewQry];
+            var nq = (CursorSpecification)q.Fix(cx);
+            if (nq.defpos != viewQry)
+                r += (ViewQry, nq.defpos);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

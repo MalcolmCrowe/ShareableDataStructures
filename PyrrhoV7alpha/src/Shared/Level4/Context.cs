@@ -1116,11 +1116,6 @@ namespace Pyrrho.Level4
             }
             return ch? r : mu;
         }
-        internal void Scan(BTree<string, long> cs)
-        {
-            for (var b = cs?.First(); b != null; b = b.Next())
-                ObUnheap(b.value());
-        }
         internal BTree<string,long> Fix(BTree<string,long>cs)
         {
             var r = BTree<string, long>.Empty;

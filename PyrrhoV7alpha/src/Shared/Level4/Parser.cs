@@ -5859,9 +5859,6 @@ namespace Pyrrho.Level4
             else if (tok == Sqlx.LPAREN) // subquery
             {
                 Next();
-                var qs = BList<SqlValue>.Empty;
-                for (var b = q?.rowType.First(); b != null; b = b.Next())
-                    qs += (SqlValue)cx.obs[b.value()];
                 var cs = new CursorSpecification(lp)+(DBObject._From,q.defpos);
                 QueryExpression qe = ParseQueryExpression(Domain.TableType)
                     + (DBObject._From, cs.defpos);
@@ -5871,10 +5868,8 @@ namespace Pyrrho.Level4
                     cs = cs + (DBObject._Domain, qe.domain);
                 else
                     cs = cs + (Basis.Name, r.name) + (DBObject._Domain, r.domain);
-                for (var b = cs.rowType.First(); b != null; b = b.Next())
-                    qs += (SqlValue)cx.obs[b.value()];
                 cs = (CursorSpecification)Resolve(q, r?.alias??r?.name, cs);
-                rf = cs+(CursorSpecification.Union,qe.defpos)+(DBObject._From,qe.from);
+                rf = cs+(CursorSpecification.Union,qe.defpos)+(DBObject._From,q.from);
             }
             else if (tok == Sqlx.STATIC)
             {
@@ -5904,9 +5899,23 @@ namespace Pyrrho.Level4
                 {
                     var ds = cx.defs;
                     if (ob is View vw)
-                        ob = vw.Instance(cx,q);
-                    cx.defs += ds;
-                    rf = _From(ic, ob, a, q);
+                    {
+                        vw = vw.Instance(cx, q);
+                        cx.Install1(vw.framing);
+                        cx.Install2(vw.framing);
+                        var cs = (CursorSpecification)cx.obs[vw.viewQry]
+                            + (DBObject._From, q.defpos);
+                        var qe = (QueryExpression)cx.obs[cs.union];
+                        cx.defs += ds;
+                        var r = ParseCorrelation(qe.domain);
+                        if (r == null)
+                            cs = cs + (DBObject._Domain, qe.domain);
+                        else
+                            cs = cs + (Basis.Name, r.name) + (DBObject._Domain, r.domain);
+                        cs = (CursorSpecification)Resolve(q, r?.alias ?? r?.name, cs);
+                        rf = cs + (CursorSpecification.Union, qe.defpos) + (DBObject._From, q.from);
+                    } else
+                        rf = _From(ic, ob, a, q);
                 }
                 q = (QuerySpecification)cx.obs[q.defpos];
                 if (Match(Sqlx.FOR))
