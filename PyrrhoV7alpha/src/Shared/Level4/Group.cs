@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -56,6 +56,7 @@ namespace Pyrrho.Level4
             for (var b = groups.sets.First(); b != null; b = b.Next())
                 gs = _Info(cx,(Grouping)cx.obs[b.value()],gs);
             m += (Groupings,gs);
+            m += (Table.LastData, rs.lastData);
             return m;
         }
         protected GroupingRowSet(Context cx,GroupingRowSet rs, BTree<long,Finder> nd,
@@ -233,7 +234,7 @@ namespace Pyrrho.Level4
             public readonly ABookmark<TRow, BTree<long, TypedValue>> _ebm;
             GroupingBuilding(Context _cx, GroupingRowSet grs, Cursor bbm,
                 ABookmark<TRow, BTree<long, TypedValue>> ebm, int pos)
-                : base(_cx, grs, pos, (bbm != null) ? bbm._defpos : 0,
+                : base(_cx, grs, pos, bbm?._defpos??0,bbm?._ppos??0,
                       new TRow(grs.domain, bbm.values))
             {
                 _grs = grs;
@@ -278,6 +279,10 @@ namespace Pyrrho.Level4
             {
                 return null;
             }
+            internal override Cursor _Fix(Context cx)
+            {
+                throw new System.NotImplementedException();
+            }
         }
         /// <summary>
         /// An enumerator for a grouping rowset: behaviour is different during building
@@ -288,7 +293,7 @@ namespace Pyrrho.Level4
             public readonly ABookmark<int, TRow> _ebm;
             GroupingBookmark(Context _cx, GroupingRowSet grs,
                 ABookmark<int,TRow> ebm, int pos)
-                : base(_cx, grs, pos, -1L,ebm.value())
+                : base(_cx, grs, pos, -1L,0,ebm.value())
             {
                 _grs = grs;
                 _ebm = ebm;
@@ -299,6 +304,11 @@ namespace Pyrrho.Level4
                 _grs = cu._grs;
                 _ebm = cu._ebm;
                 cx.cursors += (_grs.defpos, this);
+            }
+            GroupingBookmark(Context cx,GroupingBookmark cu): base(cx,cu)
+            {
+                _grs = (GroupingRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
+                _ebm = _grs.rows.PositionAt(cu?._pos ?? 0);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -344,7 +354,10 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-
+            internal override Cursor _Fix(Context cx)
+            {
+                return new GroupingBookmark(cx, this);
+            }
             internal override TableRow Rec()
             {
                 return null;

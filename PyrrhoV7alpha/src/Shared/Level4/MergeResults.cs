@@ -3,7 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -50,9 +50,10 @@ namespace Pyrrho.Level4
         /// <param name="q">true if DISTINCT specified</param>
         internal MergeRowSet(Context cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
             : base(q.defpos,cx,a.domain,a.finder,null,q.where,q.ordSpec,q.matches,
-                  q.matching,null,BTree<long,object>.Empty
+                  q.matching,null,_Last(a,b)
                   +(QuerySpecification.Distinct,d)+(Domain.Kind,op)
-                  +(QueryExpression._Left,a.defpos)+(QueryExpression._Right,b.defpos))
+                  +(QueryExpression._Left,a.defpos)
+                  +(QueryExpression._Right,b.defpos))
         {
             if (q.where.Count==0 && oper!=Sqlx.UNION && a.needed==BTree<long,Finder>.Empty
                 && b.needed==BTree<long,Finder>.Empty)
@@ -62,6 +63,15 @@ namespace Pyrrho.Level4
         :base(cx,rs,nd,bt)
         { }
         protected MergeRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Last(RowSet a,RowSet b)
+        {
+            var r = BTree<long, object>.Empty;
+            var la = a.lastData;
+            var lb = b.lastData;
+            if (la != 0L && lb != 0L)
+                r += (Table.LastData, System.Math.Max(la, lb));
+            return r;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new MergeRowSet(defpos, m);
@@ -178,7 +188,7 @@ namespace Pyrrho.Level4
         /// <param name="r">the rowset</param>
         internal MergeBookmark(Context _cx, MergeRowSet r,int pos,Cursor left=null,
             Cursor right=null,bool ul=false)
-            :base(_cx,r,pos,0,ul?left:right)
+            :base(_cx,r,pos,0,ul?left._ppos:right._ppos,ul?left:right)
         {
             rowSet = r;
             _left = left; _right = right;
@@ -189,6 +199,13 @@ namespace Pyrrho.Level4
             rowSet = cu.rowSet;
             _left = cu._left; 
             _right = cu._right;
+            _useLeft = cu._useLeft;
+        }
+        protected MergeBookmark(Context cx,MergeBookmark cu): base(cx,cu)
+        {
+            rowSet = (MergeRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
+            _left = cu._left?._Fix(cx);
+            _right = cu._right?._Fix(cx);
             _useLeft = cu._useLeft;
         }
         protected static int _compare(RowSet r, Cursor left, Cursor right)
@@ -206,6 +223,10 @@ namespace Pyrrho.Level4
                     return c;
             }
             return 0;
+        }
+        internal override Cursor _Fix(Context cx)
+        {
+            throw new System.NotImplementedException();
         }
     }
     /// <summary>
@@ -272,6 +293,7 @@ namespace Pyrrho.Level4
         {
             cx.values += (_rowsetpos, this);
         }
+        ExceptBookmark(Context cx, ExceptBookmark cu):base(cx,cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new ExceptBookmark(this, cx, p, v);
@@ -311,6 +333,10 @@ namespace Pyrrho.Level4
                 return null;
             return new ExceptBookmark(_cx,rowSet, _pos + 1, left, right);
         }
+        internal override Cursor _Fix(Context cx)
+        {
+            return new ExceptBookmark(cx, this);
+        }
     }
     /// <summary>
     /// An intersect enumerator for the merge row set
@@ -326,6 +352,7 @@ namespace Pyrrho.Level4
         { }
         IntersectBookmark(IntersectBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v) 
         { }
+        IntersectBookmark(Context cx, IntersectBookmark cu) : base(cx, cu) { }
         static void MoveToMatch(Context _cx, MergeRowSet r, ref Cursor left, ref Cursor right)
         {
             for (;;)
@@ -364,6 +391,10 @@ namespace Pyrrho.Level4
             if (left == null)
                 return null;
             return new IntersectBookmark(_cx,rowSet, _pos + 1, left, right);
+        }
+        internal override Cursor _Fix(Context cx)
+        {
+            return new IntersectBookmark(cx, this);
         }
     }
 }

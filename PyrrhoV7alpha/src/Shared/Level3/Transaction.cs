@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System;
 using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -303,6 +303,7 @@ namespace Pyrrho.Level3
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
+                wr.cx.result = -1L;
                 // we install the new version of the database, and then 
                 // add the Connection information for the session
                 return wr.cx.db.Install(wr.Length) + (_Connection,conn);
@@ -345,7 +346,7 @@ namespace Pyrrho.Level3
                     ex.Add(s.key(), cx.obs[s.value()].Eval(null));
                 throw ex;
             }
-            cx.result = null;
+            cx.result = -1L;
             return cx;
         }
         /// <summary>
@@ -368,7 +369,7 @@ namespace Pyrrho.Level3
                               db.CheckRdC(ss[1]);
                       }
           */
-            if (path.Length > 2)
+            if (path.Length > 4)
             {
                 switch (method)
                 {
@@ -377,11 +378,11 @@ namespace Pyrrho.Level3
                         break;
                     case "DELETE":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Delete(cx.result as RowSet);
+                        db.Delete(cx.data[cx.result]);
                         break;
                     case "PUT":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Put(cx.result as RowSet, sdata);
+                        db.Put(cx.data[cx.result], sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
@@ -402,7 +403,7 @@ namespace Pyrrho.Level3
         //                SetResults(f.rowSet);
          //               break;
                     case "POST":
-                        new Parser(tr).ParseProcedureStatement(sdata,Domain.Content);
+                        new Parser(cx).ParseSql(sdata, Domain.Content);
                         break;
                 }
             }
@@ -419,7 +420,7 @@ namespace Pyrrho.Level3
             if (p >= path.Length || path[p] == "")
             {
                 //               f.Validate(etag);
-                cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                 return;
             }
             string cp = path[p];
@@ -492,7 +493,7 @@ namespace Pyrrho.Level3
                                     new SqlLiteral(3,cx,kv,ft),Sqlx.NO);
                                 f = (From)f.AddCondition(cx,Query.Where,cond,false);
                             }
-                            cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                            f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                             break;
                         }
                         string ks = cp.Substring(4 + off);
@@ -551,7 +552,7 @@ namespace Pyrrho.Level3
                         var qout = new CursorSpecification(uid+4+off)
                             +(CursorSpecification.Union,f.defpos)+(DBObject._From,f.from); // ???
                         var qin = f;
-                        cx.result = f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                        f.RowSets(cx, BTree<long, RowSet.Finder>.Empty);
                         for (int j = 0; j < n; j++)
                         {
                             var cn = sk[j];
@@ -565,7 +566,7 @@ namespace Pyrrho.Level3
                     {
                         if (cp.Length < 10)
                         {
-                            cx.val = new DistinctRowSet(cx,cx.result as RowSet).First(cx);
+                            cx.val = new DistinctRowSet(cx,cx.data[cx.result]).First(cx);
                             break;
                         }
                         string[] ss = cp.Substring(9).Split(',');

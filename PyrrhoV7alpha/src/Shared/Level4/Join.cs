@@ -7,7 +7,7 @@ using System.Runtime.ExceptionServices;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -40,7 +40,7 @@ namespace Pyrrho.Level4
         /// <param name="j">The Join part</param>
 		public JoinRowSet(Context _cx, JoinPart j,RowSet lr,RowSet rr) : 
             base(j.defpos,_cx,j.domain,_Fin(lr,rr),null,j.where,j.ordSpec,j.matches,
-                j.matching, null, BTree<long,object>.Empty +(_Join,j)
+                j.matching, null,_Last(lr,rr) +(_Join,j)
                 +(JFirst,lr.defpos)+(JSecond,rr.defpos))
 		{ }
         JoinRowSet(Context cx,JoinRowSet jrs, BTree<long,Finder> nd,bool bt)
@@ -51,6 +51,15 @@ namespace Pyrrho.Level4
             var r = lr.finder;
             for (var b=rr.finder.First();b!=null;b=b.Next())
                 r += (b.key(),b.value());
+            return r;
+        }
+        static BTree<long,object> _Last(RowSet lr,RowSet rr)
+        {
+            var r = BTree<long, object>.Empty;
+            var ld = lr.lastData;
+            var rd = rr.lastData;
+            if (ld != 0 && rd != 0) 
+                r+=(Table.LastData,Math.Max(ld, rd));
             return r;
         }
         internal override bool Knows(Context cx, long rp)
@@ -210,7 +219,7 @@ namespace Pyrrho.Level4
         protected readonly Cursor _left, _right;
         protected readonly bool _useLeft, _useRight;
         internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
-            bool ur, int pos) : base(_cx, jrs, pos, 0, _Vals(jrs, left, ul, right, ur))
+            bool ur, int pos) : base(_cx, jrs, pos, 0, 0, _Vals(jrs, left, ul, right, ur))
         {
             _jrs = jrs;
             _left = left;
@@ -219,7 +228,7 @@ namespace Pyrrho.Level4
             _useRight = ur;
         }
         internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
-    bool ur, int pos,TRow rw) : base(_cx, jrs, pos, 0, rw)
+    bool ur, int pos,TRow rw) : base(_cx, jrs, pos, 0, 0, rw)
         {
             _jrs = jrs;
             _left = left;
@@ -237,9 +246,9 @@ namespace Pyrrho.Level4
             _useRight = cu._useRight;
         }
         protected JoinBookmark(Context cx,JoinBookmark cu) 
-            :base(cx,cx.data[cu._jrs.defpos],cu._pos,0,cu) 
+            :base(cx,cx.data[cu._jrs.defpos],cu._pos,0,0,cu) 
         {
-            _jrs = (JoinRowSet)cx.data[cu._jrs.defpos];
+            _jrs = (JoinRowSet)cx.data[cx.RsUnheap(cu._jrs.defpos)];
             _left = cu._left;
             _useLeft = cu._useLeft;
             _right = cu._right;
@@ -284,6 +293,7 @@ namespace Pyrrho.Level4
         }
         InnerJoinBookmark(InnerJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
+        InnerJoinBookmark(Context cx, InnerJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new InnerJoinBookmark(this, cx, p, v);
@@ -354,7 +364,10 @@ namespace Pyrrho.Level4
                         return null;
             }
         }
-
+        internal override Cursor _Fix(Context cx)
+        {
+            return new InnerJoinBookmark(cx, this);
+        }
         internal override TableRow Rec()
         {
             return null;
@@ -389,6 +402,11 @@ namespace Pyrrho.Level4
         {
             join = cu.join;
             info = cu.info;
+        }
+        FDJoinBookmark(Context cx,FDJoinBookmark cu):base(cx,cu)
+        {
+            info = (FDJoinPart)cu.info.Fix(cx);
+            join = (JoinPart)join.Fix(cx);
         }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
@@ -492,7 +510,10 @@ namespace Pyrrho.Level4
             cx.from = ox;
             return null;
         }
-
+        internal override Cursor _Fix(Context cx)
+        {
+            return new FDJoinBookmark(cx, this);
+        }
         internal override TableRow Rec()
         {
             return null;
@@ -516,6 +537,10 @@ namespace Pyrrho.Level4
         }
         LeftJoinBookmark(LeftJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
+        LeftJoinBookmark(Context cx,LeftJoinBookmark cu):base(cx,cu)
+        {
+            hideRight = cu.hideRight?._Fix(cx);
+        }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new LeftJoinBookmark(this, cx, p, v);
@@ -599,6 +624,10 @@ namespace Pyrrho.Level4
         {
             return null;
         }
+        internal override Cursor _Fix(Context cx)
+        {
+            return new LeftJoinBookmark(cx,this);
+        }
     }
     internal class RightJoinBookmark : JoinBookmark
     {
@@ -613,6 +642,7 @@ namespace Pyrrho.Level4
         }
         RightJoinBookmark(RightJoinBookmark cu,Context cx,long p,TypedValue v):base(cu, cx, p, v) 
         { }
+        RightJoinBookmark(Context cx, RightJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new RightJoinBookmark(this, cx, p, v);
@@ -688,6 +718,10 @@ namespace Pyrrho.Level4
                     return new RightJoinBookmark(_cx,_jrs, left, false, right, _pos + 1);
             }
         }
+        internal override Cursor _Fix(Context cx)
+        {
+            return new RightJoinBookmark(cx, this);
+        }
 
         internal override TableRow Rec()
         {
@@ -709,6 +743,7 @@ namespace Pyrrho.Level4
         { }
         FullJoinBookmark(FullJoinBookmark cu,Context cx, long p, TypedValue v):base(cu,cx,p,v)
         { }
+        FullJoinBookmark(Context cx, FullJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new FullJoinBookmark(this, cx, p, v);
@@ -777,7 +812,10 @@ namespace Pyrrho.Level4
             int c = join.Compare(_cx);
             return new FullJoinBookmark(_cx,_jrs, left, c <= 0, right, c >= 0, _pos + 1);
         }
-
+        internal override Cursor _Fix(Context cx)
+        {
+            return new FullJoinBookmark(cx, this);
+        }
         internal override TableRow Rec()
         {
             return null;
@@ -795,7 +833,10 @@ namespace Pyrrho.Level4
         CrossJoinBookmark(Context _cx,JoinRowSet j, Cursor left = null, Cursor right = null,
             int pos=0) : base(_cx,j,left,true,right,true,pos)
         { }
-        CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v) { }
+        CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v) 
+            : base(cu, cx, p, v) { }
+        CrossJoinBookmark(Context cx,CrossJoinBookmark cu):base(cx,cu)
+        { }
         public static CrossJoinBookmark New(Context cx,JoinRowSet j)
         {
             var f = cx.data[j.first].First(cx);
@@ -851,10 +892,13 @@ namespace Pyrrho.Level4
                 }
             }
         }
-
         internal override TableRow Rec()
         {
-            return null;
+            return _useLeft ? _left.Rec() : _right.Rec();
+        }
+        internal override Cursor _Fix(Context cx)
+        {
+            return new CrossJoinBookmark(cx, this);
         }
     }
     /// <summary>
@@ -873,6 +917,7 @@ namespace Pyrrho.Level4
             : base(cu, cx, p, v) { }
         internal LateralJoinBookmark(Context cx, JoinBookmark cu)
             : base(cx, cu) { }
+        LateralJoinBookmark(Context cx, LateralJoinBookmark cu) : base(cx, cu) { }
         public static LateralJoinBookmark New(Context cx, JoinRowSet j)
         {
             var f = cx.data[j.first].First(cx);
@@ -911,7 +956,10 @@ namespace Pyrrho.Level4
             }
             return new LateralJoinBookmark(cx, _jrs, left, right, _pos + 1);
         }
-
+        internal override Cursor _Fix(Context cx)
+        {
+            return new LateralJoinBookmark(cx, this);
+        }
         internal override TableRow Rec()
         {
             return null;

@@ -9,7 +9,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -607,7 +607,6 @@ namespace Pyrrho.Level1
         internal void PutTable(Context _cx, RowSet r)
         {
             PutString("TABLE");
-            _cx.result = r;
             PutSchema(_cx);
             int n = 0;
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
@@ -660,7 +659,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.result;
+            var result = cx.data[cx.result];
             if (result == null)
             {
 #if EMBEDDED

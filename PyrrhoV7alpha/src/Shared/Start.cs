@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading;
@@ -13,10 +12,9 @@ using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
 using System.Security.Principal;
 using System.Security.AccessControl;
-using System.Diagnostics;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -283,7 +281,7 @@ namespace Pyrrho
                             tcp.PutFileNames(); break;
                         // set the current reader
                         case Protocol.ResetReader:
-                            rb = cx.result.First(cx);
+                            rb = cx.data[cx.result].First(cx);
                             tcp.Write(Responses.Done);
                             tcp.Flush(); break;
                         case Protocol.ReaderData:
@@ -317,7 +315,7 @@ namespace Pyrrho
                                 // Prepared statements get relocated above db.nextPrep>=0x7000000000000000
                                 prepared += (nm, new PreparedStatement(cx));
                                 db += (Database.NextPrep, cx.nextHeap);
-                                cx.result = null;
+                                cx.result = -1L;
                                 db = db.RdrClose(cx);
                                 tcp.Write(Responses.Done);
                                 break;
@@ -341,7 +339,7 @@ namespace Pyrrho
                                 cx.db = (Transaction)db;
                                 tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.result == null)
+                                if (cx.result<0L)
                                 {
                                     db = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
@@ -350,7 +348,7 @@ namespace Pyrrho
                                 else
                                 {
                                     tcp.PutSchema(cx);
-                                    rb = cx.result.First(cx);
+                                    rb = cx.data[cx.result].First(cx);
                                     while (rb != null && rb.IsNull)
                                         rb = rb.Next(cx);
                                     nextCol = 0;
@@ -376,7 +374,7 @@ namespace Pyrrho
                                 db = new Parser(cx).ParseSql(prepared[nm], cmp);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.result == null)
+                                if (cx.result<0L)
                                 {
                                     tr = (Transaction)db;
                                     db = db.RdrClose(cx);
@@ -407,10 +405,10 @@ namespace Pyrrho
                                 //                    Console.WriteLine(""+(tn- t));
                                 tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.db.types);
                                 tcp.PutWarnings(tr);
-                                if (cx.result is RowSet rs)
+                                if (cx.result>=0L)
                                 {
                                     tcp.PutSchema(cx);
-                                    rb = rs.First(cx);
+                                    rb = cx.data[cx.result]?.First(cx);
                                     while (rb != null && rb.IsNull)
                                         rb = rb.Next(cx);
                                 }
@@ -442,10 +440,10 @@ namespace Pyrrho
                                 db.Execute(db.role, "G", path, 1, "");
                                 var tr = (Transaction)db;
                                 tcp.PutWarnings(tr);
-                                if (cx.result is RowSet rs)
+                                if (cx.result>0)
                                 {
                                     tcp.PutSchema(cx);
-                                    rb = rs.First(cx);
+                                    rb = cx.data[cx.result].First(cx);
                                 }
                                 else
                                 {
@@ -463,8 +461,9 @@ namespace Pyrrho
                                 cx = new Context(tr);
                                 db.Execute(tr.role, "G", path, 1, "");
                                 tcp.PutWarnings(tr);
-                                if (cx.result is RowSet rs)
+                                if (cx.result>0)
                                 {
+                                    var rs = cx.data[cx.result];
                                     tcp.PutSchema1(cx, rs);
                                     rb = rs.First(cx);
                                 }
@@ -508,7 +507,7 @@ namespace Pyrrho
                                     Console.WriteLine("POST " + s);
                                 cx = new Parser(tr).ParseSqlInsert(cx, s);
                                 tr = cx.tr;
-                                var trs = cx.result as TransitionRowSet;
+                                var trs = cx.data[cx.result-1];
                                 tcp.PutWarnings(tr);
                                 tr = cx.tr;
                                 tcp.PutSchema(cx);
@@ -532,7 +531,7 @@ namespace Pyrrho
                                     Console.WriteLine("PUT " + s);
                                 cx = new Parser(tr).ParseSqlUpdate(cx, s);
                                 tr = cx.tr;
-                                var rs = cx.result;
+                                var rs = cx.data[cx.result];
                                 if (rs != null)
                                     rb = rs.First(cx);
                                 tcp.PutWarnings(tr);
@@ -1104,8 +1103,7 @@ namespace Pyrrho
         public static string host = "::1";
         public static string hostname = "localhost";
         public static int port = 5433;
-        internal static bool RoleMode = false, TutorialMode = false, FileMode = false, CheckMode = false,
-            DebugMode = false, VerifyMode = false, StrategyMode = false, HTTPFeedbackMode = false;
+        internal static bool RoleMode = false, TutorialMode = false, DebugMode = false, HTTPFeedbackMode = false;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1174,14 +1172,10 @@ namespace Pyrrho
                             path = args[k].Substring(3);
                             FixPath();
                             break;
-                        case 'R': RoleMode = true; break;
-                        case 'T': TutorialMode = true; break;
-                        case 'E': StrategyMode = true; break;
-                        case 'F': FileMode = true; break;
-                        case 'C': CheckMode = true; break;
                         case 'D': DebugMode = true; break;
                         case 'H': HTTPFeedbackMode = true; break;
-                        case 'V': VerifyMode = true; break;
+                        case 'R': RoleMode = true; break;
+                        case 'T': TutorialMode = true; break;
                         default: Usage(); return;
                     }
                 else if (args[k][0] == '+')
@@ -1190,7 +1184,7 @@ namespace Pyrrho
                     if (args[k].Length > 2)
                         p = int.Parse(args[k].Substring(3));
                     if (args[k][1] == 's')
-                        httpport = (p < 0) ? 8080 : p;
+                        httpport = (p < 0) ? 8180 : p;
                     if (args[k][1] == 'S')
                         httpsport = (p < 0) ? 8133 : p;
                 }
@@ -1233,19 +1227,20 @@ namespace Pyrrho
         static void Usage()
 		{
             string serverName = "PyrrhoSvr";
-            Console.WriteLine("Usage: "+serverName+" [-d:path] [-h:host] [-p:port] [-t:nn] [+s[:http]] [+S[:https]] {-flag}");
+            Console.WriteLine("Usage: "+serverName+" [-d:path] [-h:host] [-n:hostname] [-p:port] [-t:nn] [+s[:http]] [+S[:https]] {-flag}");
             Console.WriteLine("Parameters:");
             Console.WriteLine("   -d  Use the given folder for database storage");
-            Console.WriteLine("   -h  Use the given host address. Default is 127.0.0.1.");
+            Console.WriteLine("   -h  Use the given host address. Default is ::1");
+            Console.WriteLine("   -n  Use the given host name. Default is localhost");
 			Console.WriteLine("   -p  Listen on the given port. Default is 5433");
-            Console.WriteLine("   +s[:port]  Start HTTP REST service on the given port (default 8080).");
+            Console.WriteLine("   +s[:port]  Start HTTP REST service on the given port (default 8180).");
             Console.WriteLine("   -t  Limit the number of connections to nnn");
             Console.WriteLine("   +S[:port]  Start HTTPS REST service on the given port (default 8133).");
             Console.WriteLine("Flags:");
-            Console.WriteLine("   -E  Explain strategy for rowset evaluation");
-            Console.WriteLine("   -F  Tutorial mode showing file operations");
+            Console.WriteLine("   -D  Debug mode");
             Console.WriteLine("   -H  Show feedback on HTTP RESTView operations");
-            Console.WriteLine("   -V  Show progress of compiling SQL");
+            Console.WriteLine("   -R  Show information about role setting");
+            Console.WriteLine("   -T  Tutorial mode");
 		}
         /// <summary>
         /// Version information
@@ -1253,7 +1248,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2020 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (14 December 2020)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (2 January 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

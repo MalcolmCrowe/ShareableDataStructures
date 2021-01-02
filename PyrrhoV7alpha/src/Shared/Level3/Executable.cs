@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -260,7 +260,6 @@ namespace Pyrrho.Level3
         {
         //    if (!cx.results.Contains(cs))
         //        ((Query)cx.obs[cs]).RowSets(cx, BTree<long,RowSet.Finder>.Empty);
-            cx.result = cx.data[cx.results[cs]];
             return cx;
         }
         public override string ToString()

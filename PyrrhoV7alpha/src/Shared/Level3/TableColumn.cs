@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using System.Xml.Schema;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -407,6 +407,7 @@ namespace Pyrrho.Level3
         internal readonly long tabledefpos;
         internal readonly long owner;
         internal readonly long user;
+        internal readonly long ppos;
         internal readonly long prev;
         internal readonly string provenance;
         internal readonly Level classification;
@@ -418,6 +419,7 @@ namespace Pyrrho.Level3
             tabledefpos = rc.tabledefpos;
             classification = rc.classification ?? Level.D;
             owner = db.user.defpos;
+            ppos = rc.ppos;
             prev = rc.ppos;
             vals = rc.fields;
         }
@@ -427,6 +429,7 @@ namespace Pyrrho.Level3
             time = up.time; user = db.user.defpos; provenance = up.provenance;
             tabledefpos = up.tabledefpos;
             classification = lv ?? old.classification ?? Level.D;
+            ppos = up.ppos;
             prev = up.prev;
             var v = old.vals;
             for (var b = up.fields.First(); b != null; b = b.Next())
@@ -442,6 +445,7 @@ namespace Pyrrho.Level3
             time = r.time; user = r.user; provenance = r.provenance;
             tabledefpos = r.tabledefpos;
             classification = r.classification;
+            ppos = r.ppos;
             prev = r.prev;
             vals = vs;
         }

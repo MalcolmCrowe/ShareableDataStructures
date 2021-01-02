@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using System;
 using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -171,9 +171,11 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Metadata = -254, // BTree<Sqlx,object>
+            Description = -67, // string
             Inverts = -353, // long SqlProcedure
             MethodInfos = -252, // CTree<string, CTree<int,long>> Method
             Privilege = -253; // Grant.Privilege
+        public string description => (string)mem[Description] ?? "";
         public string name => (string)mem[Name] ?? "";
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
         public long inverts => (long)(mem[Inverts] ?? -1L);

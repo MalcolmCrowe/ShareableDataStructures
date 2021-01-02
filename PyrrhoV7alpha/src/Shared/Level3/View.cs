@@ -9,7 +9,7 @@ using System.Configuration;
 using System.Diagnostics.Eventing.Reader;
 using System.Net.NetworkInformation;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -197,8 +197,8 @@ namespace Pyrrho.Level3
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + mi.name + " from Database " + tr.name + ", Role " + tr.role.name + "\r\n");
-            if (md.description != "")
-                sb.Append("/// " + md.description + "\r\n");
+            if (mi.description != "")
+                sb.Append("/// " + mi.description + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + mi.name + " : Versioned {\r\n");
             mi.DisplayType(tr,sb);
@@ -225,8 +225,8 @@ namespace Pyrrho.Level3
             sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(")");
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(tr.user.name); sb.Append("\r\n */");
             sb.Append("\r\n * from Database " + tr.name + ", Role " + tr.role.name + "\r\n");
-            if (md.description != "")
-                sb.Append(" * " + md.description + "\r\n");
+            if (mi.description != "")
+                sb.Append(" * " + mi.description + "\r\n");
             sb.Append(" */\r\n");
             sb.Append("public class " + mi.name + " extends Versioned {\r\n");
             DisplayJType(tr,mi, sb);
@@ -250,8 +250,8 @@ namespace Pyrrho.Level3
             sb.Append("# "); sb.Append(mi.name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
             sb.Append("\r\n# from Database " + tr.name + ", Role " + tr.role.name + "\r\n");
-            if (md.description != "")
-                sb.Append("# " + md.description + "\r\n");
+            if (mi.description != "")
+                sb.Append("# " + mi.description + "\r\n");
             sb.Append("class " + mi.name + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             DisplayPType(tr,mi, sb);
@@ -360,10 +360,12 @@ namespace Pyrrho.Level3
             var nv = cx.Fix(viewCols);
             if (nv != viewCols)
                 r += (ViewCols, nv);
-            var q = (CursorSpecification)cx.obs[viewQry];
-            var nq = (CursorSpecification)q.Fix(cx);
-            if (nq.defpos != viewQry)
-                r += (ViewQry, nq.defpos);
+            if (cx.obs[viewQry] is CursorSpecification q) // i.e. not for RestView
+            {
+                var nq = (CursorSpecification)q.Fix(cx);
+                if (nq.defpos != viewQry)
+                    r += (ViewQry, nq.defpos);
+            }
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -457,10 +459,12 @@ namespace Pyrrho.Level3
             Mime = -255, // string
             SqlAgent = -256, // string
             UsingTablePos = -385, // long
-            ViewStruct = -386; // Domain
+            ViewStruct = -386,// Domain
+            ViewTable = -371; // Table
         internal string nm => (string)mem[ClientName];
         internal string pw => (string)mem[ClientPassword]; // deprecated
         internal Domain viewStruct => (Domain)mem[ViewStruct];
+        internal long viewTable => (long)(mem[ViewTable] ?? -1L);
         internal string mime => (string)mem[Mime];
         internal string sqlAgent => (string)mem[SqlAgent];
         internal string clientName => (string)mem[ClientName];
@@ -473,25 +477,99 @@ namespace Pyrrho.Level3
         /// <param name="ro">the current (definer's) role</param>
         /// <param name="ow">the owner</param>
         /// <param name="rs">the list of grantees</param>
-        public RestView(PRestView pv,Database db) : base(pv,db,BTree<long,object>.Empty
+        public RestView(PRestView pv,Database db) : base(pv,db,_Mem(pv,db)
             +(ViewStruct,((ObInfo)db.role.infos[pv.structpos]).domain)
-            +(UsingTablePos,pv.usingtbpos)
+            +(UsingTablePos,pv.usingtbpos)+(ViewTable,pv.structpos)
             +(ClientName,pv.rname)+(ClientPassword,pv.rpass))
         { }
-        protected RestView(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected RestView(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
+        static BTree<long,object> _Mem(PRestView pv,Database db)
+        {
+            var r = BTree<long, object>.Empty;
+            var vc = BTree<string, long>.Empty;
+            var d = 2;
+            var tb = (Table)db.objects[pv.structpos];
+            d = Math.Max(d, tb.depth);
+            for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+            {
+                var ci = (ObInfo)db.role.infos[b.value()];
+                vc += (ci.name, b.value());
+            }
+            r += (ViewCols, vc);
+            r += (Depth, d);
+            return r;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new RestView(defpos,m);
         }
-        internal override View Instance(Context cx,QuerySpecification qs)
+        internal override Database Add(Database d, PMetadata pm, long p)
         {
-            var r = this; //  (RestView)base.Instance(cx,qs); does nothing for RestView
-     //       var oi = (ObInfo)cx.db.role.infos[defpos];
-     //       var r = new RestView(r.defpos,r.mem
-     // +(Mime,oi.metadata[Sqlx.MIME])+(SqlAgent,oi.metadata[Sqlx.SQLAGENT])
-    // +(Description, oi.description));
-            if (cx.data!=BTree<long,RowSet>.Empty)
-                r.ReviewRowSets(cx);
+            var oi = ((ObInfo)d.role.infos[defpos])+(ObInfo._Metadata,pm.Metadata());
+            var ro = d.role + (defpos, oi);
+            d += (ro,p); 
+            return base.Add(d, pm, p);
+        }
+        internal override View Instance(Context cx,QuerySpecification q)
+        {
+            var r = (RestView)base.Instance(cx,q);
+            var fm = new From(cx.nextHeap++, cx, r, name);
+            var dm = domain;
+            var vs = BList<SqlValue>.Empty;
+            var ro = cx.db.role;
+            var qn = BTree<string, long>.Empty;
+            for (var b = q.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                var sv = (SqlValue)cx.obs[p];
+                qn += (sv.name, p);
+            }
+            for (var b = viewCols.First();b!=null;b=b.Next())
+            {
+                var cn = b.key();
+                var cp = b.value();
+                var cd = dm.representation[b.value()];
+                var sc = new SqlCopy(cx.nextHeap++, cx, cn, fm.defpos, cp,
+                    new BTree<long,object>(_Domain,cd));
+                var ci = new ObInfo(sc.defpos, cn, cd, Grant.Privilege.Select);
+                ro += (ci,false);
+                cx.Add(sc);
+                q = (QuerySpecification)cx.obs[q.defpos]; // may have changed again
+                if (qn.Contains(cn))
+                {
+                    var od = cx.done;
+                    cx.done = BTree<long, DBObject>.Empty;
+                    var qp = qn[cn];
+                    var qv = (SqlValue)cx.obs[qp];
+                    cx.Replace(qv, sc);
+                    cx.done = od;
+                }
+                vs += sc;
+            }
+            cx.db += (ro,cx.db.loadpos);
+            dm = new Domain(Sqlx.TABLE, vs);
+            r += (_Domain, dm);
+            fm += (_Domain, dm);
+            cx.Add(fm);
+            cx.AddDefs(new Ident(name, fm.defpos), fm.rowType);
+            var te = new TableExpression(cx.nextHeap++, 
+                new BTree<long, object>(TableExpression.Target, fm.defpos)
+                +(_Domain,dm));
+            cx.Add(te);
+            var qs = new QuerySpecification(cx.nextHeap++,cx,dm)+
+                (QuerySpecification.TableExp, te)+(_Domain,dm);
+            cx.Add(qs);
+            var qe = new QueryExpression(cx.nextHeap++, true,
+                new BTree<long,object>(QueryExpression._Left,qs.defpos))
+                +(_Domain,dm);
+            cx.Add(qe);
+            var cs = new CursorSpecification(cx.nextHeap++)
+                + (CursorSpecification.Union, qe.defpos)+(_Domain,dm)
+                + (CursorSpecification._Source,"select * from "+name);
+            cx.Add(cs);
+            r += (ViewQry, cs.defpos);
+            cx.Add(r);
             return r;
         }
         /// <summary>
@@ -545,13 +623,6 @@ namespace Pyrrho.Level3
         internal override void RowSets(Context cx, From gf, BTree<long, RowSet.Finder> fi)
         {
             RowSet r = new RestRowSet(cx, gf, this);
-            var cs = BList<string>.Empty;
-            for (var b=viewStruct._Cols(cx).First();b!=null;b=b.Next())
-            {
-                var ci = (ObInfo)cx.db.role.infos[b.value()];
-                cs += ci.name;
-            }
-            r += (RestRowSet.RemoteCols, cs);
             if (cx.obs[usingTable] is Table ut)
             {
                 var vs = CList<long>.Empty;

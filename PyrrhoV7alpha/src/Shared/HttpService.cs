@@ -8,7 +8,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -113,11 +113,13 @@ namespace Pyrrho
         public virtual void SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
             string rdc)
         {
+            var r = cx.data[cx.result];
+            Cursor e = r?.First(cx);
             Header(rs, tr, cx, rdc);
-            if (cx.result is RowSet r)
+            if (r!=null)
             {
                 BeforeResults();
-                for (var e = r.First(cx);e!=null;e=e.Next(cx))
+                for (;e!=null;e=e.Next(cx))
                     PutRow(cx,e);
                 AfterResults();
             }
@@ -130,8 +132,18 @@ namespace Pyrrho
             Context cx, string rdc)
         {
             rs.StatusCode = 200;
-            string s = (cx.result?._Rvv(cx).ToString() ?? "") + rdc;
-            if (s != null)
+            RowSet r = cx.data[cx.result];
+            if (cx.db.role.infos[r.tabledefpos] is ObInfo oi)
+            {
+                if (oi.description is string ds && ds != "")
+                    rs.AddHeader("Description", ds);
+                if (oi.classification != Level.D)
+                    rs.AddHeader("Classification", oi.classification.ToString());
+                if (cx.obs[r.tabledefpos] is Table tb)
+                    rs.AddHeader("LastData", tb.lastData.ToString());
+            }
+            string s = (r?._Rvv(cx)?.ToString() ?? "") + rdc;
+            if (s != "")
             {
                 rs.AddHeader("ETag", s);
                 if (PyrrhoStart.DebugMode)
@@ -189,7 +201,7 @@ namespace Pyrrho
         {
             var cm = "";
             Header(rs, tr,cx, rdc);
-            if (cx.result is RowSet r)
+            if (cx.data[cx.result] is RowSet r)
             {
                 BeforeResults();
                 for (var e=r.First(cx); e != null; e = e.Next(cx))
@@ -229,7 +241,7 @@ namespace Pyrrho
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
-            var rs = cx.result as RowSet;
+            var rs = cx.data[cx.result];
             var fm = (From)cx.obs[rs.defpos];
             var om = tr.objects[fm.target] as DBObject;
             var mi = (ObInfo)tr.role.infos[om.defpos];
@@ -237,7 +249,7 @@ namespace Pyrrho
             {
                 chartType = mi.metadata;
                 if (mi.description != "" && mi.description[0] == '<')
-                    sbuild.Append(om.description);
+                    sbuild.Append(mi.description);
             }
             var oi = rs.rt;
             if (chartType != BTree<Sqlx,object>.Empty)
@@ -562,12 +574,18 @@ namespace Pyrrho
             //      if (rv == null && db.affected.Count > 0)
             //           rv = Rvvs.New(db.affected[0]);
             //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
-            for (var b=rt.First();b!=null;b=b.Next())
+            for (var b = rt.First(); b != null; b = b.Next())
             {
                 var ci = (SqlValue)_cx.obs[b.value()];
                 if (e[ci.defpos] is TypedValue tv)
                     doc.Add(ci.name, tv);
             }
+            if (e[DBObject.Classification] is TLevel lv)
+                doc.Add("$classification", lv.ToString());
+            if (e[Domain.Provenance] is TChar pv)
+                doc.Add("$provenance", pv.ToString());
+            doc.Add("$pos", new TInt(e._defpos));
+            doc.Add("$check", new TInt(e._ppos));
             sbuild.Append(doc.ToString());
         }
     }
@@ -660,12 +678,15 @@ namespace Pyrrho
                     return;
                 }
                 string role = dbn.ident;
+                if (path.Length > 2)
+                    role = pathbits[2];
                 var h = client.Request.Headers["Authorization"];
                 var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;
                 details+=("User", s[0]);
                 details+=("Password", s[1]);
                 details += ("Files", dbn.ident);
+                details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
                 var d = Database.Get(details);
                 var db = d.Transact(Transaction.Analysing,"");
@@ -690,6 +711,7 @@ namespace Pyrrho
                         Console.WriteLine("If-Match: " + et);
                 }
                 var cx = new Context(db);
+                cx.result = cx.db.lexeroffset;
                 db.Execute(cx,client.Request.HttpMethod,"H",pathbits, client.Request.Headers["Content-Type"],
                     sb, et);
                 woutput.SendResults(client.Response,db,cx,"");

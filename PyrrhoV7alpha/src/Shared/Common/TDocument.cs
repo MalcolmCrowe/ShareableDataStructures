@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -282,7 +282,7 @@ namespace Pyrrho.Common
                 {
                     case ParseState.StartKey:
                         kb = new StringBuilder();
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c == '}' && content.Count == 0)
                             return i;
@@ -311,14 +311,14 @@ namespace Pyrrho.Common
                         kb.Append(c);
                         continue;
                     case ParseState.Colon:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c != ':')
                             throw ParseException("Expected : at " + (i - 1));
                         state = ParseState.StartValue;
                         continue;
                     case ParseState.StartValue:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c == ']' && content.Count == 0)
                             return i;
@@ -546,6 +546,11 @@ namespace Pyrrho.Common
                             Field((""+i,d[i]), sb);
                         }
                         sb.Append("]");
+                        break;
+                    case Sqlx.CHAR:
+                        sb.Append("'");
+                        sb.Append(v.Item2.ToString());
+                        sb.Append("'");
                         break;
                     default:
                         sb.Append(v.Item2.ToString());

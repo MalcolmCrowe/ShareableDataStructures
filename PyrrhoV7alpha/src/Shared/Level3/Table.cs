@@ -6,7 +6,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -29,6 +29,7 @@ namespace Pyrrho.Level3
             Enforcement = -263, // Grant.Privilege (T)
             Indexes = -264, // BTree<CList<long>,long> Index
             KeyCols = -320, // BTree<long,bool> TableColumn (over all indexes)
+            LastData = -258, // long
             TableCols = -332, // BTree<long,bool> TableColumn
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
@@ -56,6 +57,7 @@ namespace Pyrrho.Level3
         internal BTree<PTrigger.TrigType, BTree<long,bool>> triggers =>
             (BTree<PTrigger.TrigType, BTree<long, bool>>)mem[Triggers]
             ??BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
+        internal virtual long lastData => (long)(mem[LastData] ?? 0L);
         /// <summary>
         /// Constructor: a new empty table
         /// </summary>
@@ -291,7 +293,7 @@ namespace Pyrrho.Level3
             }
             // Statement-level after triggers
             trs.InsertSA(cx);
-            cx.result = null;
+            cx.result = -1L;
             return cx;
         }
 
@@ -489,7 +491,7 @@ namespace Pyrrho.Level3
           //          cx.affected += new Rvv(defpos, rec.defpos, tr.loadpos);
                 }
             trs.DeleteSA(cx);
-            cx.result = null;
+            cx.result = -1L;
             return cx;
         }
         /// <summary>
@@ -576,7 +578,7 @@ namespace Pyrrho.Level3
             }
             trs.UpdateSA(cx);
             rs.Add(trs); // just for PUT
-            cx.result = null; //??
+            cx.result = -1L; //??
             return cx;
         }
         public override bool Denied(Context cx, Grant.Privilege priv)
@@ -635,8 +637,8 @@ namespace Pyrrho.Level3
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + tr.name + ", Role " + ro.name + "\r\n");
-            if (md.desc != "")
-                sb.Append("/// " + md.desc + "\r\n");
+            if (md.description != "")
+                sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " : Versioned" : "") + " {\r\n");
             var rt = tr.role.infos[from.defpos] as ObInfo;
@@ -683,8 +685,8 @@ namespace Pyrrho.Level3
             var key = BuildKey(tr,out Index ix);
             sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(")");
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(tr.user.name); sb.Append("\r\n */");
-            if (md.desc != "")
-                sb.Append("/* " + md.desc + "*/\r\n");
+            if (md.description != "")
+                sb.Append("/* " + md.description + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
             var rt = tr.role.infos[from.defpos] as ObInfo;
             for(var b = rt.domain.rowType.First();b!=null;b=b.Next())
@@ -728,8 +730,8 @@ namespace Pyrrho.Level3
             sb.Append(DateTime.Now);
             sb.Append("\r\n# from Database " + tr.name + ", Role " + tr.role.name + "\r\n");
             var key = BuildKey(tr, out Index ix);
-            if (md.desc != "")
-                sb.Append("# " + md.desc + "\r\n");
+            if (md.description != "")
+                sb.Append("# " + md.description + "\r\n");
             sb.Append("class " + md.name + (versioned ? "(Versioned)" : "") + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             if (versioned)

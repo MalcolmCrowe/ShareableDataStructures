@@ -1,15 +1,12 @@
 using System;
-using System.Configuration;
-using System.Data.SqlTypes;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -1452,13 +1449,15 @@ namespace Pyrrho.Level3
                 return new TDocument(s);
             return Parse(new Scanner(off,s.ToCharArray(), 0));
         }
-        public virtual TypedValue Parse(long off,string s, string m, Role r)
+        public virtual TypedValue Parse(long off,string s, string m, Context cx)
         {
+            if (kind==Sqlx.TABLE && m=="application/json")
+                return Coerce(cx,new DocArray(s));
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.Parse(new Scanner(off, s.ToCharArray(), 0, m,r)));
+                return new TSensitive(this, elType.Parse(new Scanner(off, s.ToCharArray(), 0, m,cx)));
             if (kind == Sqlx.DOCUMENT)
                 return new TDocument(s);
-            return Parse(new Scanner(off,s.ToCharArray(), 0, m,r));
+            return Parse(new Scanner(off,s.ToCharArray(), 0, m,cx));
         }
         /// <summary>
         /// Parse a string value for this type. 
@@ -1704,22 +1703,25 @@ namespace Pyrrho.Level3
                             bool blank = true;
                             for (var b=rowType.First(); b!=null; b=b.Next())
                             {
-                                var co = (ObInfo)lx.role.infos[b.value()];
-                                var cd = representation[b.value()];
+                                var p = b.value();
+                                var cn = (lx._cx.db.role.infos[p] is ObInfo co) ? co.name
+                                    : (lx._cx.obs[p] is SqlValue sv) ? sv.name
+                                    : b.key().ToString();
+                                var cd = representation[p];
                                 TypedValue item = null;
                                 if (xc.Attributes != null)
                                 {
-                                    var att = xc.Attributes[co?.name??b.key().ToString()];
+                                    var att = xc.Attributes[cn];
                                     if (att != null)
-                                        item = cd.Parse(0, att.InnerXml, lx.mime,lx.role);
+                                        item = cd.Parse(0, att.InnerXml, lx.mime,lx._cx);
                                 }
                                 if (item == null)
                                     for (int j = 0; j < xc.ChildNodes.Count; j++)
                                     {
                                         var xn = xc.ChildNodes[j];
-                                        if (xn.Name == (co?.name??b.key().ToString()))
+                                        if (xn.Name == (cn))
                                         {
-                                            item = cd.Parse(0, xn.InnerXml, lx.mime,lx.role);
+                                            item = cd.Parse(0, xn.InnerXml, lx.mime,lx._cx);
                                             break;
                                         }
                                     }
@@ -1737,7 +1739,6 @@ namespace Pyrrho.Level3
                             var vs = BTree<long, TypedValue>.Empty;
                             for (var b=rowType.First();b!=null;b=b.Next())
                             {
-                                var co = (ObInfo)lx.role?.infos[b.value()];
                                 var cd = representation[b.value()];
                                 TypedValue vl = null;
                                 try
@@ -1832,7 +1833,7 @@ namespace Pyrrho.Level3
                             for (;b!=null;b=b.Next())
                             {
                                 var cd = representation[b.value()];
-                                var co = (ObInfo)lx.role?.infos[b.value()];
+                                var co = (ObInfo)lx._cx.db.role?.infos[b.value()];
                                 cols += (b.value(),cd.defaultValue);
                                 if (co != null)
                                     names += (co.name, b.value());
@@ -2576,6 +2577,167 @@ namespace Pyrrho.Level3
                         return v;
                 }
             throw new DBException("22005", this, v.ToString()).ISO();
+        }
+        /// <summary>
+        ///  for accepting Json values
+        /// </summary>
+        /// <param name="ro"></param>
+        /// <param name="ob"></param>
+        /// <returns></returns>
+        internal TypedValue Coerce(Context cx,object ob)
+        {
+            var ro = cx.db.role;
+            if (ob==null)
+                return defaultValue;
+            if (abbrev != "" && ob is string && Equivalent(kind) != Sqlx.CHAR)
+                return Parse(new Scanner(-1, ((string)ob).ToCharArray(), 0));
+            switch (Equivalent(kind))
+            {
+                case Sqlx.UNION:
+                    for (var b = unionOf.First(); b != null; b = b.Next())
+                    {
+                        var du = b.key();
+                        if (du.Coerce(cx, ob) is TypedValue t0)
+                            return t0;
+                    }
+                    break;
+                case Sqlx.SENSITIVE:
+                    return elType.Coerce(cx, ob);
+                case Sqlx.INTEGER:
+                    if (ob is long)
+                        return new TInt(this, (long)ob);
+                    return new TInt(this, (int)ob);
+                case Sqlx.NUMERIC:
+                    {
+                        Numeric nm = null;
+                        if (ob is double)
+                            nm = new Numeric((double)ob);
+                        if (ob is decimal)
+                            nm = new Numeric((decimal)ob);
+                        if (ob is int)
+                            nm = new Numeric((int)ob);
+                        return new TNumeric(this, nm);
+                    }
+                case Sqlx.REAL:
+                    if (ob is decimal)
+                        return new TReal(this, (double)(decimal)ob);
+                    if (ob is float)
+                        return new TReal(this, (float)ob);
+                    return new TReal(this, (double)ob);
+                case Sqlx.DATE:
+                    return new TDateTime(this, (DateTime)ob);
+                case Sqlx.TIME:
+                    return new TTimeSpan(this, (TimeSpan)ob);
+                case Sqlx.TIMESTAMP:
+                    if (ob is DateTime)
+                        return new TDateTime(this, (DateTime)ob);
+                    if (ob is Date)
+                        return new TDateTime(this, ((Date)ob).date);
+                    if (ob is string)
+                        return new TDateTime(this,
+                            DateTime.Parse((string)ob, culture));
+                    if (ob is long)
+                        return new TDateTime(this, new DateTime((long)ob));
+                    break;
+                case Sqlx.INTERVAL:
+                    if (ob is Interval)
+                        return new TInterval(this, (Interval)ob);
+                    break;
+                case Sqlx.CHAR:
+                    {
+                        string str = "";
+                        if (ob is DateTime)
+                            str = ((DateTime)ob).ToString(culture);
+                        if (ob is Date)
+                            str = ((Date)ob).ToString();
+                        if (ob is string)
+                            str = (string)ob;
+                        if (prec != 0 && str.Length > prec)
+                            throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
+                                                .AddType(this);
+                        return new TChar(this, str);
+                    }
+                case Sqlx.PERIOD:
+                    {
+                        var pd = ob as Period;
+                        return new TPeriod(this, new Period(elType.Coerce(cx, pd.start),
+                            elType.Coerce(cx, pd.end)));
+                    }
+                case Sqlx.DOCUMENT:
+                    {
+                        if (ob is string vs && vs[0] == '{')
+                            return new TDocument(vs);
+                        int i = 0;
+                        if (ob is byte[] bs)
+                            return new TDocument(bs, ref i);
+                        break;
+                    }
+                case Sqlx.ROW:
+                    if (ob is Document){
+                        var d = (Document)ob;
+                        var vs = BTree<long, TypedValue>.Empty;
+                        for (var b = rowType.First(); b != null; b = b.Next())
+                        {
+                            var p = b.value();
+                            var cn = (cx.obs[p] is SqlValue sv) ? sv.name
+                                : (ro.infos[p] is ObInfo ci) ? ci.name
+                                : null;
+                            if (cn!=null)
+                            {
+                                var cd = representation[p];
+                                var co = d[cn];
+                                var v = cd.Coerce(cx, co);
+                                vs += (p, v);
+                            }
+                        }
+                        if (d.Contains("$check"))
+                        {
+                            vs += (LastChange, new TInt((long)d["$check"]));
+                            vs += (Defpos, new TInt((long)d["$pos"]));
+                        }
+                        if (d["$provenance"] is string ds)
+                            vs += (Provenance, new TChar(ds));
+                        if (d["%classification"] is string cl)
+                            vs += (Classification, TLevel.New(Level.Parse(cl)));
+                        return new TRow(this, vs);
+                    }
+                    break;
+                case Sqlx.TABLE:
+                    if (ob is DocArray da)
+                    {
+                        var dr = this + (Kind, Sqlx.ROW);
+                        var va = BList<TypedValue>.Empty;
+                        foreach (var o in da.items)
+                            va += dr.Coerce(cx, o);
+                        return new TArray(dr, va);
+                    }
+                    break;
+                case Sqlx.ARRAY:
+                    if (ob is DocArray db)
+                    {
+                        var va = BList<TypedValue>.Empty;
+                        foreach (var o in db.items)
+                            va += elType.Coerce(cx, o);
+                        return new TArray(elType, va);
+                    }
+                    break;
+                case Sqlx.MULTISET:
+                    if (ob is DocArray dc)
+                    {
+                        long n = 0;
+                        var va = CTree<TypedValue,long>.Empty;
+                        foreach (var o in dc.items)
+                        {
+                            var v = elType.Coerce(cx, o);
+                            var k = va.Contains(v)?va[v] : 0L;
+                            va += (v, k);
+                            n++;
+                        }
+                        return new TMultiset(elType, va, n);
+                    }
+                    break;
+            }
+            throw new DBException("22005", this, ob.ToString()).ISO();
         }
         /// <summary>
         /// The System.Type corresponding to a SqlDataType
@@ -3608,7 +3770,43 @@ namespace Pyrrho.Level3
             Append(sb);
             return sb.ToString();
         }
-
+        public static Level Parse(string s)
+        {
+            var sc = new Scanner(-1, s.ToCharArray(), 0);
+            byte low=0, high;
+            var gps = BTree<string, bool>.Empty;
+            var rfs = BTree<string, bool>.Empty;
+            var ch = sc.Advance();
+            if (ch >= 'A' && ch <= 'D')
+                low = (byte)('D' - ch);
+            ch = sc.Advance();
+            if (sc.ch == '-')
+            {
+                ch = sc.Advance();
+                high = (byte)('D' - ch);
+            } else
+                high = low;
+            ch = sc.Advance();
+            if (ch=='{')
+            {
+                sc.Advance();
+                do
+                {
+                    var g = sc.GetName();
+                    gps += (g, true);
+                } while (sc.ch == ',');
+            }
+            if (ch == '[')
+            {
+                sc.Advance();
+                do
+                {
+                    var g = sc.GetName();
+                    rfs += (g, true);
+                } while (sc.ch == ',');
+            }
+            return new Level(low, high, gps, rfs);
+        }
         public int CompareTo(object obj)
         {
             Level that = (Level)obj;
@@ -3682,7 +3880,7 @@ namespace Pyrrho.Level3
         /// Whether to use XML conventions
         /// </summary>
         internal string mime = "text/plain";
-        internal Role role = null;
+        internal Context _cx = null;
         /// <summary>
         /// Constructor: prepare the scanner
         /// Invariant: ch==input[pos]
@@ -3703,14 +3901,14 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="s">the input array</param>
         /// <param name="p">the starting position</param>
-        internal Scanner(long t,char[] s, int p, string m,Role ro)
+        internal Scanner(long t,char[] s, int p, string m,Context cx)
         {
             tid = t;
             input = s;
             mime = m;
             len = input.Length;
             pos = p;
-            role = ro;
+            _cx = cx;
             ch = (p < len) ? input[p] : '\0';
         }
         internal long Position => tid + pos;

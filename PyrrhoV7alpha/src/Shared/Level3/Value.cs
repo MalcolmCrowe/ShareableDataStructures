@@ -1,24 +1,12 @@
 using System;
-using System.IO;
-using System.Collections.Generic;
 using System.Text;
 using System.Globalization;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System.Xml;
-using System.Net;
-using System.Runtime.Serialization;
-using System.Diagnostics.Tracing;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Configuration;
-using System.Reflection.Emit;
-using System.Dynamic;
-using System.Diagnostics.Eventing.Reader;
-using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -4502,6 +4490,8 @@ namespace Pyrrho.Level3
                 case Sqlx.FUSION: return domain.Coerce(cx,fc.mset);
                 case Sqlx.INTERSECTION:return domain.Coerce(cx,fc.mset);
                 case Sqlx.LAST: return fc.mset.tree.Last().key();
+                case Sqlx.LAST_DATA:
+                    return new TInt(cx.data[from]?.lastData??0L);
                 case Sqlx.LN:
                     v = vl?.Eval(cx);
                     if (v == null)
@@ -4594,18 +4584,12 @@ namespace Pyrrho.Level3
                         return new TReal(Math.Pow(v.ToDouble(), w.ToDouble()));
                     }
                 case Sqlx.PROVENANCE:
-                    return TNull.Value;
+                    return cx.cursors[from]?[Domain.Provenance]??TNull.Value;
                 case Sqlx.RANK:
                     return new TInt(firstTie._pos + 1);
                 case Sqlx.ROW_NUMBER: return new TInt(fc.wrb._pos+1);
                 case Sqlx.SECURITY:
-                    {
-                        for (var rs = cx.data[from]; rs != null;
-                            rs = cx.data[(long)(rs.mem[From.Source] ?? -1L)])
-                            if (cx.cursors[rs.defpos] is Cursor cu)
-                                return TLevel.New(cu.Rec().classification);
-                        return TLevel.D;
-                    }
+                    return cx.cursors[from]?[Classification]?? TLevel.D;
                 case Sqlx.SET:
                     {
                         v = vl?.Eval(cx);

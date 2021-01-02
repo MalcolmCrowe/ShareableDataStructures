@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -849,6 +849,17 @@ namespace Pyrrho.Common
 			mantissa = a.mantissa;
 			scale = a.scale;
 		}
+        internal Numeric(decimal d)
+        {
+            var bits = decimal.GetBits(d);
+            mantissa = new Integer((long)bits[0]
+                + ((long)bits[1] << 32)
+                + ((long)bits[0] << 64));
+            var u = (uint)bits[3];
+            if ((u & 0x80000000)!=0)
+                mantissa = -mantissa;
+            scale = (int)((u & 0x7fffffff) >> 16);
+        }
         /// <summary>
         /// The constant Decimal 0
         /// </summary>

@@ -6,7 +6,7 @@ using Pyrrho.Level4;
 using System;
 using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -32,9 +32,9 @@ namespace Pyrrho.Level3
             Classification = -63, // Level
             CompareContext = -250, // Context structured types
             Definer = -64, // long
+            Defpos = -257, // long  for Rest service
             Dependents = -65, // BTree<long,bool> Non-obvious objects that need this to exist
             Depth = -66, // int  (max depth of dependents)
-            Description = -67, // string
             _Domain = -176, // Domain 
             _Framing = -167, // BTree<long,DBObject> compiled objects
             _From = -306, // long
@@ -49,7 +49,6 @@ namespace Pyrrho.Level3
         /// The definer of the object.
         /// </summary>
         public long definer => (long)(mem[Definer] ?? -1L);
-        public string description => (string)mem[Description] ?? "";
         //        internal Context compareContext => 
         internal long lastChange => (long)(mem[LastChange] ?? 0L);// compareContext?.db.loadpos ?? 0L;
         /// <summary>
@@ -57,7 +56,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal bool sensitive => (bool)(mem[Sensitive] ?? false);
         internal Level classification => (Level)mem[Classification] ?? Level.D;
-        internal string desc => (string)mem[Description];
         internal Domain domain => (Domain)mem[_Domain];
         internal long from => (long)(mem[_From] ?? -1L);
         /// <summary>
@@ -325,6 +323,8 @@ namespace Pyrrho.Level3
         }
         internal DBObject Replace(Context cx,DBObject was,DBObject now)
         {
+            if (defpos < Transaction.TransPos)
+                return this;
             var r = _Replace(cx, was, now);
             if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
             {
@@ -597,7 +597,8 @@ namespace Pyrrho.Level3
             {
                 var found = false;
                 for (var b = rs.First(cx); (!found) && b != null; b = b.Next(cx))
-                    if (b.Rec().classification.maxLevel > 0)
+                    if (b[Classification]is TLevel lv && lv.Val() is Level vl 
+                        && vl.maxLevel > 0)
                         found = true;
                 if (!found)
                     return;

@@ -7,7 +7,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -82,7 +82,7 @@ namespace Pyrrho.Level4
         internal BTree<long, long?> rsuids = BTree<long, long?>.Empty;
         // Keep track of rowsets for query
         internal BTree<long, long> results = BTree<long, long>.Empty; 
-        internal RowSet result;
+        internal long result;
         internal bool unLex = false;
         internal BTree<long, RowSet.Finder> Needs(BTree<long, RowSet.Finder> nd, 
             RowSet rs,BList<long> rt)
@@ -271,6 +271,7 @@ namespace Pyrrho.Level4
                 else
                     data += (b.key(), b.value());
             }
+            result = fr.result;
             results = fr.results;
         }
         // Sabotaged in order to do GetUid for Trigger, Procedure and Check bodies.
@@ -585,7 +586,7 @@ namespace Pyrrho.Level4
             for (var b = depths.First(); b != null; b = b.Next())
             {
                 var bv = b.value();
-                for (var c = bv.PositionAt(0); c != null; c = c.Next())
+                for (var c = bv.PositionAt(Transaction.TransPos); c != null; c = c.Next())
                 {
                     var p = c.value();
                     var cv = p.Replace(this, was, now); // may update done
@@ -624,6 +625,8 @@ namespace Pyrrho.Level4
         }
         internal long Replace(long dp,DBObject was,DBObject now)
         {
+            if (dp < Transaction.TransPos)
+                return dp;
             if (done.Contains(dp))
                 return done[dp].defpos;
             return obs[dp]?._Replace(this,was, now)?.defpos??-1L;
@@ -745,15 +748,6 @@ namespace Pyrrho.Level4
                     }
             }
             // not reached
-        }
-        internal void AddDefs(Domain ut,Database db)
-        {
-            for (var b = ut.representation.First();b != null; b = b.Next())
-            {
-                var p = b.key();
-                var iv = Inf(p);
-                defs += (iv.name, p, Ident.Idents.For(p,db,this));
-            }
         }
         internal void AddDefs(Ident id, BList<long> s)
         {
@@ -940,6 +934,19 @@ namespace Pyrrho.Level4
                 r += (u,true);
             }
             return ch ? r : us;
+        }
+        internal BList<Cursor> Fix(BList<Cursor> rws)
+        {
+            var r = BList<Cursor>.Empty;
+            var ch = false;
+            for (var b=rws.First();b!=null;b=b.Next())
+            {
+                var rr = b.value();
+                var fr = rr?._Fix(this);
+                ch = ch || fr != rr;
+                r += fr;
+            }
+            return r;
         }
         internal BList<TypedValue> Fix(BList<TypedValue> key)
         {
@@ -1221,7 +1228,7 @@ namespace Pyrrho.Level4
         public Framing(Context cx) 
             : base(BTree<long,object>.Empty+(Obs,cx.obs)+(Data,cx.data)
                   +(Results,cx.results)
-                  +(Defs,cx.defs)+(Result,cx.result?.defpos??-1L))//+(Depths,cx.depths))
+                  +(Defs,cx.defs)+(Result,cx.result))//+(Depths,cx.depths))
         { }
         internal override Basis New(BTree<long, object> m)
         {
@@ -1257,7 +1264,7 @@ namespace Pyrrho.Level4
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                if (p >= Transaction.TransPos)
+  //              if (p >= Transaction.TransPos)
                     wr.cx.obs += (p, b.value());
             }
             for (var b = r.data.First(); b != null; b = b.Next())
@@ -1312,6 +1319,14 @@ namespace Pyrrho.Level4
                 if (p!=np)
                     cx.obuids += (p,np);
             }
+            for (var b = results.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = cx.RsUnheap(p);
+                if (p != np)
+                    cx.rsuids += (p, np);
+            } 
+            // belt and braces
             for (var b = data.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -1326,6 +1341,7 @@ namespace Pyrrho.Level4
             var rs = BTree<long, long>.Empty;
             var os = BTree<long, DBObject>.Empty;
             var da = BTree<long, RowSet>.Empty;
+            r.Install(cx);
             for (var b = obs.First(); b != null; b = b.Next())
             {
                 var k = b.key();
@@ -1355,8 +1371,8 @@ namespace Pyrrho.Level4
   //          cx.depths += depths;
             cx.defs = (Ident.Idents)cx.defs.Add(defs);
             cx.data += data;
+            cx.result = result;
             cx.results += results;
-            cx.result = cx.data[result];
         }
         public override string ToString()
         {

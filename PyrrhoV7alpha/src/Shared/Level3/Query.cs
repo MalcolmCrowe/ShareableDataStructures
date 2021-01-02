@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 using System.Configuration;
 using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -210,6 +210,8 @@ namespace Pyrrho.Level3
                     }
                     de = Math.Max(de, ck.depth);
                 }
+                if (bk.defpos != b.key())
+                    mg -= b.key();
                 if (bk.defpos != b.key() || bv != b.value())
                     mg += (bk.defpos, bv);
                 de = Math.Max(de, bk.depth);
@@ -809,12 +811,6 @@ namespace Pyrrho.Level3
             : base(u, m) 
         { }
         internal CursorSpecification(long u) : base(u) { }
-        internal CursorSpecification(CursorSpecification cs,Query q)
-            : this(cs.defpos, cs.mem + (Union,q.defpos)
-                  + (_Domain,q.domain)
-                  + (Dependents, new BTree<long, bool>(q.defpos, true))
-                  + (Depth, 1 + q.depth))
-        { }
         public static CursorSpecification operator +(CursorSpecification q, (long, object) x)
         {
             return (CursorSpecification)q.New(q.mem + x);
@@ -874,7 +870,10 @@ namespace Pyrrho.Level3
         }
         internal override Query Refresh(Context cx)
         {
-            var u = ((Query)cx.obs[union]).Refresh(cx);
+            var u = ((Query)cx.obs[union]);
+            if (u == null)
+                return this;
+            u = u.Refresh(cx);
             return (Query)New(cx,(u.defpos==union)?mem:(mem+(Union,u.defpos)+(_From,u.from)));
         }
         internal override bool Uses(Context cx,long t)
@@ -885,7 +884,10 @@ namespace Pyrrho.Level3
         {
             var r = (CursorSpecification)base.ReviewJoins(cx);
             var changed = r != this;
-            var u = ((Query)cx.obs[union]).ReviewJoins(cx);
+            var u = ((Query)cx.obs[union]);
+            if (u == null)
+                return r;
+            u = u.ReviewJoins(cx);
             changed = changed ||(u.defpos != union);
             return changed?(Query)New(cx,r.mem + (Union, u.defpos)):this;
         }
@@ -935,9 +937,11 @@ namespace Pyrrho.Level3
         }
         internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
         {
-            var r = ((Query)cx.obs[union]).RowSets(cx, fi);
+            var u = (Query)cx.obs[union];
+            if (u == null)
+                return null;
+            var r = u.RowSets(cx, fi);
             r = Ordering(cx,r,false);
-            cx.result = r;
             cx.results += (defpos, r.defpos);
             cx.data += (defpos, r);
             return r.ComputeNeeds(cx);
@@ -1137,7 +1141,7 @@ namespace Pyrrho.Level3
             var kt = CList<long>.Empty;
             for (var b = r.keys.First(); b != null; b = b.Next())
                 kt += ma[b.value()];
-            var rs = new TableExpRowSet(defpos, cx, rowType, kt, r, where, matches, fi);
+            var rs = new TableExpRowSet(defpos, cx, target, rowType, kt, r, where, matches, fi);
             cx.results += (defpos, rs.defpos);
             return rs.ComputeNeeds(cx);
         }
@@ -1313,6 +1317,12 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(j.defpos, j.mem + x);
         }
+        public static JoinPart operator +(JoinPart j, (long, Query) x)
+        {
+            var (p, q) = x;
+            var d = Math.Max(j.depth,q.depth+1);
+            return new JoinPart(j.defpos, j.mem + (p,q.defpos) + (Depth,d));
+        }
         public static JoinPart operator -(JoinPart j, (Context,SqlValue) x)
         {
             var (cx, v) = x;
@@ -1341,8 +1351,8 @@ namespace Pyrrho.Level3
             r += (LeftOrder,wr.Fix(leftOrder));
             r += (RightOrder, wr.Fix(rightOrder));
             r += (NamedCols, wr.Fix(namedCols));
-            r += (LeftOperand, wr.Fixed(left).defpos);
-            r += (RightOperand, wr.Fixed(right).defpos);
+            r += (LeftOperand, (Query)wr.Fixed(left));
+            r += (RightOperand, (Query)wr.Fixed(right));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1362,7 +1372,7 @@ namespace Pyrrho.Level3
                 r += (NamedCols, nn);
             var nf = cx.obuids[left] ?? left;
             if (nf != left)
-                r += (LeftOperand, nf);
+                r += (LeftOperand, nf); // can't use operator+=(p,Query) here
             var ns = cx.obuids[right] ?? right;
             if (ns != right)
                 r += (RightOperand, ns);
@@ -1370,15 +1380,19 @@ namespace Pyrrho.Level3
         }
         internal override Query ReviewJoins(Context cx)
         {
-            var r = (kind==Sqlx.CROSS)?Conditions(cx):base.ReviewJoins(cx);
+            var r = (JoinPart)((kind==Sqlx.CROSS)?Conditions(cx):base.ReviewJoins(cx));
             var ch = r != this;
             var lf = ((Query)cx.obs[left]).ReviewJoins(cx);
             ch = ch || (lf.defpos != left);
             var rg = ((Query)cx.obs[right]).ReviewJoins(cx);
             ch = ch || (rg.defpos != right);
-            return ch ? (Query)New(cx,r.mem + (LeftOperand, lf.defpos) 
-                    + (RightOperand, rg.defpos))
-                : this;
+            if (ch)
+            {
+                r += (LeftOperand, lf);
+                r += (RightOperand, rg);
+                return (JoinPart)New(cx,r.mem);
+            }
+            return this;
         }
         internal override bool Knows(Context cx,long c)
         {
@@ -1400,19 +1414,22 @@ namespace Pyrrho.Level3
         {
             if (q.matches.Count == 0)
                 return this;
-            var lf = ((Query)cx.obs[left]).AddMatches(cx,q).defpos;
-            var rg = ((Query)cx.obs[right]).AddMatches(cx,q).defpos;
-            var r = base.AddMatches(cx,q);
+            var lf = ((Query)cx.obs[left]).AddMatches(cx,q);
+            var rg = ((Query)cx.obs[right]).AddMatches(cx,q);
+            var r = (JoinPart)base.AddMatches(cx,q);
             for (var b = joinCond.First(); b != null; b = b.Next())
-                r = ((SqlValue)cx.obs[b.key()]).AddMatches(cx,q);
-            return (Query)cx.Replace(this,New(cx,r.mem
-                +(LeftOperand,lf)+(RightOperand,rg)));
+                r = (JoinPart)((SqlValue)cx.obs[b.key()]).AddMatches(cx,q);
+            r += (LeftOperand, lf);
+            r += (RightOperand, rg);
+            return (Query)cx.Replace(this, New(cx, r.mem));
         }
         internal override Query Refresh(Context cx)
         {
-            ((Query)cx.obs[left]).Refresh(cx);
-            ((Query)cx.obs[right]).Refresh(cx);
-            return base.Refresh(cx);
+            var lf = ((Query)cx.obs[left]).Refresh(cx);
+            var rg = ((Query)cx.obs[right]).Refresh(cx);
+            var r = base.Refresh(cx);
+            var d = Math.Max(depth, (Math.Max(lf.depth, rg.depth) + 1));
+            return r+(Depth,d);
         }
         /// <summary>
         /// Analysis stage Selects: call for left and right.
@@ -1428,7 +1445,7 @@ namespace Pyrrho.Level3
                 var c = (SqlValue)cx.obs[p];
                 dm += (p, c.domain);
             }
-            var r = this + (_Domain,dm);
+            var r = (JoinPart)(this + (_Domain,dm));
             var lo = CList<long>.Empty; // left ordering
             var ro = CList<long>.Empty; // right
             if (naturaljoin != Sqlx.NO)
@@ -1466,9 +1483,9 @@ namespace Pyrrho.Level3
                 else
                 {
                     r += (LeftOperand, 
-                        cx.Add(cx.obs[left] + (OrdSpec, lo)).defpos);
+                        (Query)cx.Add(cx.obs[left] + (OrdSpec, lo)));
                     r += (RightOperand, 
-                        cx.Add(cx.obs[right] + (OrdSpec, ro)).defpos);
+                        (Query)cx.Add(cx.obs[right] + (OrdSpec, ro)));
                 }
             }
             else
@@ -1539,8 +1556,8 @@ namespace Pyrrho.Level3
             for (var b = joinCond.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValueExpr se && se.kind==Sqlx.EQL)
                     r = (JoinPart)r.AddMatchedPair(se.left, se.right);
-            r = r +(LeftOperand,((Query)cx.obs[r.left]).AddPairs(r).defpos)
-                +(RightOperand,((Query)cx.obs[r.right]).AddPairs(r).defpos);
+            r = r +(LeftOperand,((Query)cx.obs[r.left]).AddPairs(r))
+                +(RightOperand,((Query)cx.obs[r.right]).AddPairs(r));
             var w = where;
             var jc = joinCond;
             for (var b = where.First(); b != null; b = b.Next())
@@ -1552,10 +1569,9 @@ namespace Pyrrho.Level3
                     r = qq;
                 }
             }
-            var lf = ((Query)cx.obs[r.left]).Conditions(cx).defpos;
-            var rg = ((Query)cx.obs[r.right]).Conditions(cx).defpos;
-            r = (JoinPart)r.New(r.mem + (LeftOperand, lf) + (RightOperand, rg)
-                + (JoinCond, jc) + (JoinKind, k));
+            r += (LeftOperand, ((Query)cx.obs[r.left]).Conditions(cx));
+            r += (RightOperand,((Query)cx.obs[r.right]).Conditions(cx));
+            r = (JoinPart)r.New(r.mem + (JoinCond, jc) + (JoinKind, k));
             r =  (JoinPart)r.AddCondition(cx,Where,w).Orders(cx,r.ordSpec);
             if (r.FDInfo==null)
                 r+= (JoinKind,kind);
@@ -1641,10 +1657,9 @@ namespace Pyrrho.Level3
                         && !cx.HasItem(ro,oi.defpos))
                         rg = rg.Orders(cx,ro + oi.defpos);
                 }
-            cx.Add(lf);
-            cx.Add(rg);
-            return (Query)New(cx,r.mem + (LeftOperand, lf.defpos) + (RightOperand, rg.defpos) 
-                + (JoinKind, k) + (JoinCond, jc));
+            r += (LeftOperand,(Query)cx.Add(lf));
+            r += (RightOperand,(Query)cx.Add(rg));
+            return (Query)New(cx,r.mem + (JoinKind, k) + (JoinCond, jc));
         }
         /// <summary>
         /// See if there is a ForeignKey Index whose foreign key is taken from the one side of joinCond,
@@ -1808,8 +1823,10 @@ namespace Pyrrho.Level3
                     rc -= b.key();
                 }
             }
-            return (Query)New(cx,base.AddConditions(cx,ref cond,ref assigns,data).mem 
-                + (JoinCond,rc)+(LeftOperand,lf.defpos)+(RightOperand,rg.defpos));
+            var r = (JoinPart)base.AddConditions(cx, ref cond, ref assigns, data);
+            r += (LeftOperand, lf);
+            r += (RightOperand, rg);
+            return (Query)New(cx,r.mem + (JoinCond,rc));
         }
         /// <summary>
         /// Analysis stage RowSets: build the join rowset

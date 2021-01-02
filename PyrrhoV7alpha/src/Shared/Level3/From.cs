@@ -6,7 +6,7 @@ using System.Text;
 using System;
 using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -59,6 +59,9 @@ namespace Pyrrho.Level3
         { }
         public From(long dp,Context cx,RowSet rs,string a)
             :base(dp,_Mem(dp,cx,rs,a))
+        { }
+        public From(long dp,Context cx,DBObject ob, string a)
+            : base(dp,_Mem(dp,cx,ob,a))
         { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
         { }
@@ -202,12 +205,16 @@ namespace Pyrrho.Level3
                 + (Target,pc.procdefpos) + (Depth,1+ca.depth)
                 + (_Domain,new Domain(Sqlx.ROW,cx,s,disp)) + (Name, proc.name);
         }
-        static BTree<long, object> _Mem(long dp, Context cx, RowSet rs, string a)
+        static BTree<long,object> _Mem(long dp,Context cx, RowSet rs, string a)
         {
-            cx.data += (dp, rs);
+            cx.data += (dp, rs); 
+            return _Mem(dp, cx, (DBObject)rs, a);
+        }
+        static BTree<long, object> _Mem(long dp, Context cx, DBObject ob, string a)
+        {
             return BTree<long, object>.Empty
-                + (Target, rs.defpos) + (Depth, 1 + rs.depth)
-                + (_Domain, rs.domain) + (Name, a);
+                + (Target, ob.defpos) + (Depth, 1 + ob.depth)
+                + (_Domain, ob.domain) + (Name, a);
         }
         internal override bool Knows(Context cx, long p)
         {
@@ -422,7 +429,7 @@ namespace Pyrrho.Level3
                 && ta.enforcement.HasFlag(Grant.Privilege.Insert)
                 && !cl.ClearanceAllows(fm.classification))
                 throw new DBException("42105");
-            cx.result = null;
+            cx.result = -1L;
             return fm.Insert(cx,provenance, cx.data[value], new Common.Adapters(),
                 new List<RowSet>(), classification);
         }
@@ -518,7 +525,7 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            cx.result = null;
+            cx.result = -1L;
             return ((From)cx.obs[table]).Delete(cx, BTree<string, bool>.Empty, new Adapters());
         }
     }
@@ -556,7 +563,7 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            cx.result = null;
+            cx.result = -1L;
             return ((From)cx.obs[table]).Update(cx, BTree<string, bool>.Empty, new Adapters(),
                 new List<RowSet>());
         }

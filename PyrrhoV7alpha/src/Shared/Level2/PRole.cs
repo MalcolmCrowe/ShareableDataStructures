@@ -7,7 +7,7 @@ using Pyrrho.Level3;
 using System.Security.Principal;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -131,9 +131,9 @@ namespace Pyrrho.Level2
         public long flags;
         public static Sqlx[] keys = { Sqlx.NO, Sqlx.ENTITY, Sqlx.ATTRIBUTE, //0x0-0x2
             Sqlx.PIE, Sqlx.NONE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, //0x4-0x80
-            Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x4000
-            Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x8000-0x80000
-            Sqlx.PASSWORD, Sqlx.IRI}; // 0x100000-0x200000
+            Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x2000
+            Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x4000-0x40000
+            Sqlx.PASSWORD, Sqlx.IRI}; // 0x80000-0x100000
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
@@ -205,7 +205,7 @@ namespace Pyrrho.Level2
             {
                 var m = 1L;
                 for (var i = 0; i < keys.Length; i++, m <<= 1)
-                    if (b.key() == keys[i])
+                    if (b.key() == keys[i-1])
                         r += m;
             }
             return r;
@@ -217,7 +217,7 @@ namespace Pyrrho.Level2
             var m = 1L;
             for (var i=0;i<keys.Length;i++,m<<=1)
                 if ((flags&m)!=0L)
-                { sb.Append(cm); cm = " "; sb.Append(keys[i]); }
+                { sb.Append(cm); cm = " "; sb.Append(keys[i-1]); }
             return sb.ToString();
         }
         internal BTree<Sqlx,object> Metadata()
@@ -228,7 +228,7 @@ namespace Pyrrho.Level2
                 if ((flags & m) != 0L)
                 {
                     object v = "";
-                    var k = keys[i];
+                    var k = keys[i-1];
                     switch (k)
                     {
                         case Sqlx.NO:
@@ -253,7 +253,7 @@ namespace Pyrrho.Level2
         }
         string Iri(BTree<Sqlx, object> md)
         {
-            return (string)md[Sqlx.IRI];
+            return (string)(md[Sqlx.IRI]??md[Sqlx.URL]);
         }
         string Detail(BTree<Sqlx,object> md)
         {
@@ -275,7 +275,7 @@ namespace Pyrrho.Level2
             for (var i = 1; i < keys.Length; i++, m <<= 1)
                 if ((flags&m)!=0L)
                 {
-                    sb.Append(cm); cm = ","; sb.Append(keys[i]);
+                    sb.Append(cm); cm = ","; sb.Append(keys[i-1]);
                 }
             if (detail != "")
             { sb.Append("("); sb.Append(detail); sb.Append(")"); }

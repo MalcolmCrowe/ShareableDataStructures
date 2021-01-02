@@ -6,7 +6,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2020
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -524,9 +524,9 @@ namespace Pyrrho.Level4
             /// base constructor for the system enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            protected SystemBookmark(Context cx, SystemRowSet r, int pos, long dpos,
+            protected SystemBookmark(Context cx, SystemRowSet r, int pos, long dpos,long pp,
                 TRow rw)
-                : base(cx, r, pos, dpos, rw)
+                : base(cx, r, pos, dpos, pp, rw)
             {
                 res = r;
             }
@@ -543,6 +543,10 @@ namespace Pyrrho.Level4
             internal override TableRow Rec()
             {
                 return null;
+            }
+            internal override Cursor _Fix(Context cx)
+            {
+                throw new NotImplementedException();
             }
             protected static TypedValue Display(string d)
             {
@@ -601,7 +605,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             protected LogSystemBookmark(Context _cx,SystemRowSet r, int pos, 
-                (Physical,long) p,TRow rw) : base(_cx,r,pos,p.Item1.ppos,rw)
+                (Physical,long) p,TRow rw) 
+                : base(_cx,r,pos,p.Item1.ppos,p.Item1.ppos,rw)
             {
                 ph = p.Item1;
                 nextpos = p.Item2;
@@ -3146,7 +3151,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             SysRoleBookmark(Context _cx, SystemRowSet res,int pos, ABookmark<long,object> bmk)
-                : base(_cx,res,pos,bmk.key(), _Value(res, (Role)bmk.value()))
+                : base(_cx,res,pos,bmk.key(),
+                      ((Role)bmk.value()).lastChange,_Value(res, (Role)bmk.value()))
             {
                 _bmk = bmk;
             }
@@ -3227,7 +3233,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             SysUserBookmark(Context _cx, SystemRowSet res,int pos, ABookmark<long,object> bmk)
-                : base(_cx,res,pos,bmk.key(), _Value(_cx, res, (User)bmk.value()))
+                : base(_cx,res,pos,bmk.key(), ((User)bmk.value()).lastChange,
+                      _Value(_cx, res, (User)bmk.value()))
             {
                 en = bmk;
             }
@@ -3289,7 +3296,8 @@ namespace Pyrrho.Level4
             readonly SystemRowSet _srs;
             SysRoleUserBookmark(Context _cx, SystemRowSet srs,ABookmark<string,long> rbmk, 
                 ABookmark<string,long> inner,int pos) : base(_cx,srs,pos,inner.value(), 
-                _Value(_cx, srs, rbmk.value(),inner.value()))
+               ((User)_cx.db.objects[inner.value()]).lastChange,  
+               _Value(_cx, srs, rbmk.value(),inner.value()))
             {
                 _srs = srs;
                 _rbmk = rbmk;
@@ -3378,7 +3386,7 @@ namespace Pyrrho.Level4
         {
             public readonly LogBookmark _bmk;
             public SysAuditBookmark(Context _cx, SystemRowSet res, LogBookmark b,int pos)
-                :base(_cx,res,pos,b._defpos,_Value(_cx,res,b.ph))
+                :base(_cx,res,pos,b._defpos,b.ph.ppos,_Value(_cx,res,b.ph))
             {
                 _bmk = b;
             }
@@ -3445,7 +3453,7 @@ namespace Pyrrho.Level4
             public readonly int _ix;
             public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk, 
                 ABookmark<long,string> _in, int ix, int pos) 
-                : base(_cx,res, pos,bmk._defpos,_Value(_cx,res,bmk.ph,_in,ix))
+                : base(_cx,res, pos,bmk._defpos,0,_Value(_cx,res,bmk.ph,_in,ix))
             {
                 _bmk = bmk; _inner = _in; _ix = ix;
             }
@@ -3525,18 +3533,16 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, object> _obm;
             readonly ABookmark<long, TableRow> _tbm;
-            readonly long _ppos;
             readonly Level _classification;
             readonly long _trans;
             readonly string _type;
             SysClassificationBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long,object> obm,
-                ABookmark<long, TableRow> tbm, 
-                long ppos,string type,Level classification)
-                : base(_cx,res, pos, tbm?.key() ?? obm.key(),
-                      _Value(_cx,res,ppos,type,classification))
+                ABookmark<long, TableRow> tbm, long pp, string type,Level classification)
+                : base(_cx,res, pos, tbm?.key() ?? obm.key(),tbm?.value()?.ppos??pp,
+                      _Value(_cx,res,tbm?.value()?.ppos??pp,type,classification))
             {
                 _obm = obm;  _tbm = tbm; _type = type;
-                _ppos = ppos; _classification = classification; _trans = Trans(_cx,res,ppos);
+                _classification = classification; _trans = Trans(_cx,res,_ppos);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -3636,16 +3642,15 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, TableColumn> _cbm;
             readonly ABookmark<long, TableRow> _tbm;
-            readonly long _ppos;
             readonly Level _classification;
             readonly long _trans;
             SysClassifiedColumnDataBookmark(Context _cx, SystemRowSet res, int pos, 
                 ABookmark<long, TableColumn> cbm, ABookmark<long,TableRow> tbm,
                 long ppos,Level classification) 
-                :base(_cx,res,pos,tbm?.key()??cbm.key(),
+                :base(_cx,res,pos,tbm?.key()??cbm.key(),0,
                      _Value(_cx,res,ppos,cbm.key(),classification))
             {
-                _ppos = ppos; _classification = classification;
+                _classification = classification;
                 _cbm = cbm; _tbm = tbm;
                 _trans = Trans(_cx, ppos);
             }
@@ -3730,7 +3735,8 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, object> _en;
             SysEnforcementBookmark(Context _cx, SystemRowSet res, int pos, 
-                ABookmark<long,object> en) :base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
+                ABookmark<long,object> en) :base(_cx,res,pos,en.key(),0,
+                    _Value(_cx,res,en.value()))
             {
                 _en = en;
             }
@@ -3801,7 +3807,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r"></param>
             RoleViewBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> bmk) 
-                : base(_cx,res,pos,bmk.key(),_Value(_cx,res,bmk.key(),bmk.value()))
+                : base(_cx,res,pos,bmk.key(),((View)bmk.value()).lastChange,
+                      _Value(_cx,res,bmk.key(),bmk.value()))
             {
                 _bmk = bmk;
             }
@@ -3891,7 +3898,8 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleDomainCheckBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<long,bool> inner)
-                : base(_cx,res,pos,inner.key(),_Value(_cx,res,outer.value(),inner.value()))
+                : base(_cx,res,pos,inner.key(),((Check)_cx.db.objects[inner.key()]).lastChange,
+                      _Value(_cx,res,outer.value(),_cx.db.objects[inner.key()]))
             {
                 _outer = outer;
                 _inner = inner;
@@ -3999,7 +4007,8 @@ namespace Pyrrho.Level4
             /// <param name="r"></param>
             RoleTableCheckBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long,object>outer,
                ABookmark<long, bool> inner) 
-                : base(_cx,res,pos,inner.key(),_Value(_cx,res,inner.value()))
+                : base(_cx,res,pos,inner.key(),((Check)_cx.db.objects[inner.key()]).lastChange,
+                      _Value(_cx,res, _cx.db.objects[inner.key()]))
             {
                 _outer = outer;
                 _inner = inner;
@@ -4026,8 +4035,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ck)
             {
-                var ch = ck as Check;
-
+                var ch = (Check)ck;
                 return new TRow(rs, Pos(ch.defpos),
                     new TChar(((ObInfo)_cx.db.role.infos[ch.checkobjpos]).name),
                     new TChar(ch.name),
@@ -4099,7 +4107,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r"></param>
             RoleTablePeriodBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                bool sys) : base(_cx,res,pos,outer.key(),_Value(_cx,res,outer.value(),sys))
+                bool sys) : base(_cx,res,pos,outer.key(),((PeriodDef)outer.value()).lastChange,
+                    _Value(_cx,res,outer.value(),sys))
             {
                 _outer = outer; _res = res; _system = sys;
             }
@@ -4217,8 +4226,9 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<long,Domain> inner)
-                : base(_cx,res, pos, inner.key(),
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.key(),inner.value()))
+                : base(_cx,res, pos, inner.key(),((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.key(),
+                          inner.value()))
             {
                 _outer = outer;
                 _inner = inner;
@@ -4307,7 +4317,8 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, object> _enu;
             RoleClassBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> e)
-                    : base(_cx,res, pos, e.key(), _Value(_cx,res,e))
+                    : base(_cx,res, pos, e.key(), ((DBObject)e.value()).lastChange,
+                          _Value(_cx,res,e))
             {
                 _enu = e;
             }
@@ -4382,7 +4393,7 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
                 ABookmark<long,Domain> middle,ABookmark<long,bool> inner)
-                : base(cx,res,pos,inner.key(),
+                : base(cx,res,pos,inner.key(),((DBObject)cx.db.objects[inner.key()]).lastChange,
                       _Value(cx,res,outer.value(),middle.key(),inner.key()))
             {
                 _outer = outer;
@@ -4503,7 +4514,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnPrivilegeBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> middle,ABookmark<long,object> inner)
-                : base(_cx,res,pos,inner.key(),_Value(_cx,res,middle.value(),inner.value()))
+                : base(_cx,res,pos,inner.key(),0,
+                      _Value(_cx,res,middle.value(),inner.value()))
             {
                 _middle = middle;
                 _inner = inner;
@@ -4602,7 +4614,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleDomainBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer)
-                : base(_cx,res,pos,outer.key(),_Value(_cx,res,outer.value()))
+                : base(_cx,res,pos,outer.key(),((Domain)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value()))
             {
                 _en = outer;
             }
@@ -4707,7 +4720,8 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
                 ABookmark<CList<long>,long>inner)
-                : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.value()))
+                : base(_cx,res,pos,inner.value(),((Index)_cx.db.objects[inner.value()]).lastChange,
+                      _Value(_cx,res,inner.value()))
             {
                 _outer = outer;
                 _inner = inner;
@@ -4801,8 +4815,8 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
                 ABookmark<CList<long>,long> middle, ABookmark<int,long> inner)
-                : base(_cx,res,pos,inner.value(),_Value(_cx,res,inner.key(),
-                    (TableColumn)_cx.db.objects[inner.value()]))
+                : base(_cx,res,pos,inner.value(),0,
+                      _Value(_cx,res,inner.key(),(TableColumn)_cx.db.objects[inner.value()]))
             {
                 _outer = outer; _middle = middle; _inner = inner;
             }
@@ -4885,7 +4899,7 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, object> _enu;
             RoleJavaBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> e) 
-                : base(_cx,res, pos,e.key(),_Value(_cx,res,e))
+                : base(_cx,res, pos,e.key(),((DBObject)e.value()).lastChange,_Value(_cx,res,e))
             {
                 _enu = e;
             }
@@ -4937,7 +4951,9 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, object> _enu;
             RolePythonBookmark(Context _cx, SystemRowSet res, int pos, 
-                ABookmark<long, object> e) : base(_cx,res, pos,e.key(), _Value(_cx, res, e))
+                ABookmark<long, object> e) 
+                : base(_cx,res, pos,e.key(), ((DBObject)e.value()).lastChange,
+                      _Value(_cx, res, e))
             {
                 _enu = e;
             }
@@ -5005,7 +5021,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleProcedureBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
+                : base(_cx,res,pos,en.key(),((DBObject)en.value()).lastChange,
+                      _Value(_cx,res,en.value()))
             {
                 _en = en;
             }
@@ -5089,8 +5106,8 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
                 ABookmark<int,long> inner)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.key(),inner.key(),
-                    (FormalParameter)_cx.obs[inner.value()]))
+                : base(_cx,res,pos,en.key(), ((FormalParameter)_cx.obs[inner.value()]).lastChange,
+                      _Value(_cx,res,en.key(),inner.key(),(FormalParameter)_cx.obs[inner.value()]))
             {
                 _outer = en;
                 _inner = inner;
@@ -5174,7 +5191,8 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             RoleSubobjectBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
                 ABookmark<long,bool> ix, int i)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value(),ix.key(),i))
+                : base(_cx,res,pos,en.key(),((DBObject)en.value()).lastChange,
+                      _Value(_cx,res,en.value(),ix.key(),i))
             {
                 _outer = en;
                 _inner = ix;
@@ -5276,7 +5294,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleTableBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
+                : base(_cx,res,pos,en.key(),((Table)en.value()).lastChange,
+                      _Value(_cx,res,en.value()))
             {
                 _en = en;
             }
@@ -5361,8 +5380,8 @@ namespace Pyrrho.Level4
             RoleTriggerBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
                 ABookmark<PTrigger.TrigType,BTree<long,bool>>middle,
                 ABookmark<long,bool>inner)
-                : base(cx,res,pos,inner.key(),_Value(cx,res,outer.value(),
-                    (Trigger)cx.db.objects[inner.key()]))
+                : base(cx,res,pos,inner.key(), ((Trigger)cx.db.objects[inner.key()]).lastChange,
+                      _Value(cx,res,outer.value(),(Trigger)cx.db.objects[inner.key()]))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5460,8 +5479,9 @@ namespace Pyrrho.Level4
             RoleTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<PTrigger.TrigType, BTree<long, bool>> middle, ABookmark<long, bool> inner,
                 ABookmark<int,long> fourth)
-                : base(_cx,res, pos,inner.key(),
-                      _Value(_cx,res,outer.value(),(Trigger)_cx.db.objects[inner.key()],fourth.value()))
+                : base(_cx,res, pos,inner.key(),0,
+                      _Value(_cx,res,outer.value(),(Trigger)_cx.db.objects[inner.key()],
+                          fourth.value()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5581,7 +5601,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleTypeBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> en)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
+                : base(_cx,res,pos,en.key(),((Domain)en.value()).lastChange,
+                      _Value(_cx,res,en.value()))
             {
                 _en = en;
             }
@@ -5667,7 +5688,7 @@ namespace Pyrrho.Level4
             /// <param name="r"></param>
             RoleMethodBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<string, CTree<int,long>> middle, ABookmark<int,long> inner)
-                : base(_cx,res,pos,inner.value(),_Value(_cx,res,outer.value(),inner.value()))
+                : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,outer.value(),inner.value()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5775,9 +5796,9 @@ namespace Pyrrho.Level4
             /// create the Sys$Privilege enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            RolePrivilegeBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<string,long>inner)
-                : base(_cx,res,pos,outer.key(),_Value(_cx,res,outer.value(),inner))
+            RolePrivilegeBookmark(Context _cx, SystemRowSet res,int pos,
+                ABookmark<long,object>outer, ABookmark<string,long>inner)
+                : base(_cx,res,pos,outer.key(),0,_Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
                 _inner = inner;
@@ -5885,7 +5906,8 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleObjectBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en)
-                : base(_cx,res,pos,en.key(),_Value(_cx,res,en.value()))
+                : base(_cx,res,pos,en.key(),((DBObject)en.value()).lastChange,
+                      _Value(_cx,res,en.value()))
             {
                 _en = en; 
             }
@@ -5918,7 +5940,7 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
-                    new TChar(ob.description ?? ""),
+                    new TChar(oi.description ?? ""),
                     new TChar(dm?.iri ?? ""),
                     new TChar(oi.Metadata())); ;
             }
@@ -5968,9 +5990,9 @@ namespace Pyrrho.Level4
             /// create the Sys$PrimaryKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<int,long>inner)
-                : base(_cx,res,pos,inner.value(),
+            RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,
+                ABookmark<long,object> outer, ABookmark<int,long>inner)
+                : base(_cx,res,pos,inner.value(),((Table)outer.value()).lastChange,
                       _Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
