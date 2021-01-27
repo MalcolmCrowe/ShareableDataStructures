@@ -67,7 +67,7 @@ namespace Pyrrho.Level3
             {
                 if (info.onDuplicate == TreeBehaviour.Allow)
                 {
-                    var x = new BTree<long, bool>(v, true);
+                    var x = new CTree<long, bool>(v, true);
                     impl = new SqlTree(info, Sqlx.T, k._head, new TPartial(x));
                 }
                 else
@@ -169,7 +169,7 @@ namespace Pyrrho.Level3
                         }
                     case Sqlx.T:
                         {
-                            var bt = tv.Val() as BTree<long, bool>;
+                            var bt = tv.Val() as CTree<long, bool>;
                             bt +=(v, true);
                             nv = new TPartial(bt); // care: immutable
                             break;
@@ -192,7 +192,7 @@ namespace Pyrrho.Level3
                         }
                     case Sqlx.T:
                         {
-                            var bt = new BTree<long, bool>(v, true);
+                            var bt = new CTree<long, bool>(v, true);
                             nv = new TPartial(bt);
                             break;
                         }
@@ -231,7 +231,11 @@ namespace Pyrrho.Level3
         internal MTreeBookmark First()
         {
             return MTreeBookmark.New(this);
-        } 
+        }
+        internal MTreeBookmark Last()
+        {
+            return MTreeBookmark.Last(this);
+        }
         /// <summary>
         /// Return the tree defined by the off-th key columns, or an empty one
         /// </summary>
@@ -316,7 +320,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.T:
                     {
-                        var bt = tv.Val() as BTree<long, bool>;
+                        var bt = tv.Val() as CTree<long, bool>;
                         nc -= bt.Count;
                         SqlTree.Remove(ref st, k0);
                         break;
@@ -362,7 +366,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.T:
                     {
-                        var bt = tv.Val() as BTree<long, bool>;
+                        var bt = tv.Val() as CTree<long, bool>;
                         if (!bt.Contains(v))
                             return;
                         nc--;
@@ -503,12 +507,35 @@ namespace Pyrrho.Level3
                             return new MTreeBookmark(outer, mt.info, false, inner, null,0);
                         break;
                     case Sqlx.T:
-                        var pmk = (ov.Val() as BTree<long, bool>)?.First();
+                        var pmk = (ov.Val() as CTree<long, bool>)?.First();
                         if (pmk != null)
                             return new MTreeBookmark(outer, mt.info, false, null, pmk,0);
                         break;
                     default:
                         return new MTreeBookmark(outer, mt.info, false, null, null,0);
+                }
+            }
+            return null;
+        }
+        internal static MTreeBookmark Last(MTree mt)
+        {
+            for (var outer = mt.impl?.Last(); outer != null; outer = outer.Previous())
+            {
+                var ov = outer.value();
+                switch (ov.dataType.kind)
+                {
+                    case Sqlx.M:
+                        var inner = (ov.Val() as MTree)?.Last();
+                        if (inner != null)
+                            return new MTreeBookmark(outer, mt.info, false, inner, null, 0);
+                        break;
+                    case Sqlx.T:
+                        var pmk = (ov.Val() as CTree<long, bool>)?.Last();
+                        if (pmk != null)
+                            return new MTreeBookmark(outer, mt.info, false, null, pmk, 0);
+                        break;
+                    default:
+                        return new MTreeBookmark(outer, mt.info, false, null, null, 0);
                 }
             }
             return null;
@@ -554,7 +581,7 @@ namespace Pyrrho.Level3
                             return null;
                         continue;
                     case Sqlx.T:
-                        pmk = (tv.Val() as BTree<long, bool>).First();
+                        pmk = (tv.Val() as CTree<long, bool>).First();
                         if (pmk != null && key._tail == null)
                             goto done;
                         continue;
@@ -632,7 +659,7 @@ namespace Pyrrho.Level3
                             goto done;
                         break;
                     case Sqlx.T:
-                        pmk = ((BTree<long, bool>)oval.Val()).First();
+                        pmk = ((CTree<long, bool>)oval.Val()).First();
                         if (pmk != null)
                             goto done;
                         break;
@@ -642,6 +669,54 @@ namespace Pyrrho.Level3
             }
             done: 
             return new MTreeBookmark(outer, _info, changed, inner, pmk, pos+1,_filter);
+        }
+        public MTreeBookmark Previous()
+        {
+            var inner = _inner;
+            var outer = _outer;
+            var pmk = _pmk;
+            var pos = _pos;
+            var changed = false;
+            for (; ; )
+            {
+                if (inner != null)
+                {
+                    inner = inner.Previous();
+                    if (inner != null)
+                        goto done;
+                }
+                if (pmk != null)
+                {
+                    pmk = pmk.Previous();
+                    if (pmk != null)
+                        goto done;
+                }
+                var h = _filter?._head;
+                if (h != null && !h.IsNull)
+                    return null;
+                outer = ABookmark<TypedValue, TypedValue>.Previous(outer);
+                if (outer == null)
+                    return null;
+                changed = true;
+                var oval = outer.value();
+                switch (oval.dataType.kind)
+                {
+                    case Sqlx.M:
+                        inner = ((MTree)oval.Val()).PositionAt(_filter?._tail);
+                        if (inner != null)
+                            goto done;
+                        break;
+                    case Sqlx.T:
+                        pmk = ((CTree<long, bool>)oval.Val()).Last();
+                        if (pmk != null)
+                            goto done;
+                        break;
+                    default:
+                        goto done;
+                }
+            }
+        done:
+            return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _filter);
         }
         /// <summary>
         /// The position of the bookmark in the tree
@@ -683,7 +758,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.T:
                     {
-                        var t = ov.Val() as BTree<long, bool>;
+                        var t = ov.Val() as CTree<long, bool>;
                         return _pmk.position() < t.Count -1;
                     }
                 default:
@@ -754,7 +829,7 @@ namespace Pyrrho.Level3
             onNullKey = n;
             tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, ds, d, n, off + 1) : null;
         }
-        internal TreeInfo(BList<long> cols, Domain dt, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        internal TreeInfo(CList<long> cols, Domain dt, TreeBehaviour d, TreeBehaviour n, int off = 0)
         {
             if (off < (int)cols.Count)
             {

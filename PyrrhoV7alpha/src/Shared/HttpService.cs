@@ -133,13 +133,13 @@ namespace Pyrrho
         {
             rs.StatusCode = 200;
             RowSet r = cx.data[cx.result];
-            if (cx.db.role.infos[r.tabledefpos] is ObInfo oi)
+            if (cx.db.role.infos[r.target] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
                 if (oi.classification != Level.D)
                     rs.AddHeader("Classification", oi.classification.ToString());
-                if (cx.obs[r.tabledefpos] is Table tb)
+                if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
             string s = (r?._Rvv(cx)?.ToString() ?? "") + rdc;

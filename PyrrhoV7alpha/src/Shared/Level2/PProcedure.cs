@@ -37,7 +37,7 @@ namespace Pyrrho.Level2
         public long retTypeDefpos;
         public Ident source;
         public bool mth = false;
-        public BList<long> parameters;
+        public CList<long> parameters;
         public long proc = -1; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -48,7 +48,7 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal int arity;
-        public PProcedure(string nm, BList<long> ar, Domain rt, Procedure pr,Ident sce, 
+        public PProcedure(string nm, CList<long> ar, Domain rt, Procedure pr,Ident sce, 
             long pp, Context cx) : this(Type.PProcedure2, nm, ar, rt, pr, sce, pp, cx)
         { }
         /// <summary>
@@ -65,7 +65,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, BList<long> ps, Domain rt, Procedure pr,
+        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, Procedure pr,
             Ident sce, long pp, Context cx) : base(tp,pp,cx,Framing.Empty)
 		{
             source = sce;
@@ -92,7 +92,7 @@ namespace Pyrrho.Level2
             nameAndArity = x.nameAndArity;
             arity = x.arity;
             name = x.name;
-            proc = ((Procedure)framing.obs[defpos])?.body??-1L;//wr.Fix(proc);
+            proc = wr.Fix(x.proc);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -143,7 +143,7 @@ namespace Pyrrho.Level2
                 Compile(rdr);
             }
             else
-                retType = rb.GetDomain(retTypeDefpos);
+                retType = rb.GetDomain(retTypeDefpos,ppos);
         }
         protected void Compile(Reader rdr)
         {

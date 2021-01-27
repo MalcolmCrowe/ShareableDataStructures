@@ -171,23 +171,20 @@ namespace Pyrrho.Level4
             if (acts == null)
                 CreateActs(trs);
             trs.targetAc.db = _cx.db;
-            var c = _cx.cursors[trs.defpos];
-            var row = (c as TransitionRowSet.TargetCursor)
-                ?? ((c is TransitionRowSet.TransitionCursor tc) ? 
-                new TransitionRowSet.TargetCursor(trs.targetAc, tc) : null);
+            var c = (TransitionRowSet.TransitionCursor)_cx.cursors[trs.defpos];
             bool skip;
             for (var a = acts?.First(); a != null; a = a.Next())
             {
                 var ta = a.value();
                 ta.db = _cx.db;
-                (row, skip) = ta.Exec(trs.targetAc, row);
+                (c, skip) = ta.Exec(trs.targetAc, c);
                 r = r || skip;
                 trs.targetAc.db = ta.db;
             }
             _cx = trs.targetAc.SlideDown();
             _cx.val = TBool.For(r);
-            var cu = row?._trsCu;
-            _cx.cursors += (trs.defpos, cu); // restore the TransitionCursor
+            if (c!=null)
+                _cx.cursors += (trs.defpos, c); // install the modified TransitionCursor
             return r;
         }
     }
@@ -222,7 +219,7 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             Install1(tg.framing);
             Install2(tg.framing);
-            var tb = (Table)cx.db.objects[trs.from.target];
+            var tb = (Table)cx.db.objects[trs.targetInfo.defpos];
             var oi = cx.Inf(tb.defpos);
             cx.obs += (tb.defpos, tb);
             _trig = tg;
@@ -232,7 +229,8 @@ namespace Pyrrho.Level4
             if (cx.obs[tg.newRow] is SqlRow sn)
                 (newRow,newMap) = _Map(cx,oi,sn);
             if (cx.obs[tg.oldTable] is TransitionTable tt)
-                new TransitionTableRowSet(tt.defpos,cx,trs);
+                new TransitionTableRowSet(tt.defpos,cx,trs,
+                    tg.framing.obs[tt.defpos].domain,true);
             if (deferred)
                 cx.db += (Transaction.Deferred, cx.tr.deferred + this);
         }
@@ -250,28 +248,30 @@ namespace Pyrrho.Level4
         /// We pass in the current transition.targetRow as a TargetCursor just in case.
         /// </summary>
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
-        internal (TransitionRowSet.TargetCursor,bool) Exec(Context cx,TransitionRowSet.TargetCursor row)
+        internal (TransitionRowSet.TransitionCursor,bool) Exec(Context cx,TransitionRowSet.TransitionCursor trc)
         {
+            var row = trc?._targetRow;
             if (deferred)
-                return (row, false);
+                return (trc, false);
             values += (cx.values,false); 
             data += (cx.data,false);
-            from = _trs.finder;
+            finder = _trs.finder;
             cursors = cx.cursors;
             if (row != null)
             {
-                cursors += (_trs.defpos, row);
+                cursors += (_trs.defpos, trc);
                 data -= _trs.defpos; // as it doesn't match the TargetCursor
                 if (oldRow != null)
-                    values += (_trig.oldRow, _Row(oldRow, row._oldVals));
+                    values += (_trig.oldRow, _Row(oldRow, trc._vals));
                 if (newRow != null)
                     values += (_trig.newRow, _Row(newRow, row.values));
             }
-            if (_trig.oldTable!= -1L)
-                data += (_trig.oldTable, new TransitionTableRowSet(_trig.oldTable,cx,_trs));
-            if (_trig.newTable!= -1L)
-                data += (_trig.newTable, 
-                    new TransitionTableRowSet(_trig.newTable, cx,_trs.defpos));
+            if (_trig.oldTable != -1L)
+                data += (_trig.oldTable, new TransitionTableRowSet(_trig.oldTable, cx, _trs,
+                    _trig.framing.obs[_trig.oldTable].domain,true));
+            if (_trig.newTable != -1L)
+                data += (_trig.newTable, new TransitionTableRowSet(_trig.newTable, cx, _trs,
+                    _trig.framing.obs[_trig.newTable].domain,false));
             var ta = (WhenPart)obs[_trig.action];
             var tc = cx.obs[ta.cond]?.Eval(cx);
             if (tc != TBool.False)
@@ -290,19 +290,19 @@ namespace Pyrrho.Level4
                     {
                         var c = obs[b.value()];
                         var p = (c is SqlCopy sc) ? sc.copyFrom : c.defpos;
-                        row += (cx, p, vs[c.defpos]);
+                        trc += (cx, p, vs[c.defpos]);
                     }
                 }
                 cx = SlideDown();
                 cx.db += (Transaction.TriggeredAction, oa);
             }
             if (tc != TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead))
-                return (row, true);
-            return (row, false);
+                return (trc, true);
+            return (trc, false);
         }
         TRow _Row(SqlRow sr,BTree<long,TypedValue>vals)
         {
-            var vs = BTree<long, TypedValue>.Empty;
+            var vs = CTree<long, TypedValue>.Empty;
             for (var b=sr.columns.First();b!=null;b=b.Next())
             {
                 var p = b.value();
@@ -316,7 +316,7 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal override Context SlideDown()
         {
-            if (cursors[_trs.defpos] is TransitionRowSet.TargetCursor cu)
+            if (cursors[_trs.defpos] is TransitionRowSet.TransitionCursor cu)
             {
                 if (values[_trig.newRow] is TRow nr)
                     for (var b = nr.values.First(); b != null; b = b.Next())

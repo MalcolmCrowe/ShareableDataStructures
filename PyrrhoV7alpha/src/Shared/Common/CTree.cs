@@ -31,6 +31,12 @@ namespace Pyrrho.Common
         /// <param name="e">A starting entry for the tree</param>
         public CTree(KeyValuePair<K, V> e) : this(new Leaf<K, V>(e)) { }
         /// <summary>
+        /// Constructor: Build a new non-empty tree 
+        /// </summary>
+        /// <param name="k">The first key for the BTree</param>
+        /// <param name="v">The first value for the BTree</param>
+        public CTree(K k, V v) : this(new KeyValuePair<K, V>(k, v)) { }
+        /// <summary>
         /// Constructor: called when modifying the Tree (hence protected). 
         /// Any modification gives a new Tree(usually sharing most of its Buckets and Slots with the old one)
         /// </summary>
@@ -133,6 +139,24 @@ namespace Pyrrho.Common
         public static CTree<K, V> operator -(CTree<K, V> tree, K k)
         {
             return (CTree<K,V>)tree.Remove(k);
+        }
+        /// <summary>
+        /// Add of trees, optionally non-destructive
+        /// </summary>
+        /// <param name="c"></param>
+        /// <param name="x">bool Item2 true for non-destructive</param>
+        /// <returns></returns>
+        public static CTree<K, V> operator +(CTree<K, V> c, (CTree<K, V>, bool) x)
+        {
+            var (d, nd) = x;
+            for (var b = d.First(); b != null; b = b.Next())
+                if (!(c.Contains(b.key()) && nd))
+                    c += (b.key(), b.value());
+            return c;
+        }
+        public static CTree<K, V> operator +(CTree<K, V> tree, ATree<K, V> a)
+        {
+            return (CTree<K, V>)tree.Add(a);
         }
     }
     /// <summary>

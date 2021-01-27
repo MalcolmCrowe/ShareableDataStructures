@@ -110,6 +110,10 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
+        internal virtual string ToString(Context cx)
+        {
+            return ToString();
+        }
         public int CompareTo(object obj)
         {
             return dataType.Compare(this,(TypedValue)obj);
@@ -136,7 +140,9 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return base.ToString() + " Null";
+            if (PyrrhoStart.VerboseMode)
+                return base.ToString() + " Null";
+            return " Null";
         }
         public override int _CompareTo(object obj)
         {
@@ -366,6 +372,10 @@ namespace Pyrrho.Common
         {
             return value;
         }
+        internal override string ToString(Context cx)
+        {
+            return "'" + base.ToString(cx) + "'";
+        }
         internal override object Val()
         {
             return value;
@@ -555,7 +565,6 @@ namespace Pyrrho.Common
             return new TQParam((Domain)dataType._Relocate(wr), id);
         }
         public override bool IsNull => false;
-
         public override int _CompareTo(object obj)
         {
             throw new NotImplementedException();
@@ -809,8 +818,8 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TPartial : TypedValue
     {
-        internal BTree<long, bool> value;
-        internal TPartial(BTree<long, bool> t) : base(Domain.Partial) { value = t; }
+        internal CTree<long, bool> value;
+        internal TPartial(CTree<long, bool> t) : base(Domain.Partial) { value = t; }
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException(); // use Relocate
@@ -1232,13 +1241,6 @@ namespace Pyrrho.Common
             return (p._tail == null) ? 0 : -1;
         }
         public bool IsNull { get { return false; } }
-        public static PRow Key(BList<long> cols,BTree<long,TypedValue> vals)
-        {
-            PRow r = null;
-            for (var b = cols?.Last(); b != null; b = b.Previous())
-                r = new PRow(vals[b.value()], r);
-            return r;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -1281,11 +1283,11 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TRow : TypedValue
     {
-        internal readonly BTree<long, TypedValue> values;
+        internal readonly CTree<long, TypedValue> values;
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => dataType.Length;
         internal CList<long> columns => dataType.rowType;
-        public TRow(Domain dt,BTree<long,TypedValue> vs)
+        public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
         {
             values = vs;
@@ -1300,27 +1302,74 @@ namespace Pyrrho.Common
         public TRow(Domain dt, BTree<long, RowSet.Finder> map, BTree<long, TypedValue> vs)
             : base(dt)
         {
-            var v = BTree<long, TypedValue>.Empty;
+            var v = CTree<long, TypedValue>.Empty;
             for (var b = map.First(); b != null; b = b.Next())
-                v += (b.key(), vs[b.value().col] ?? TNull.Value);
+                if (dt.representation.Contains(b.key()))
+                    v += (b.key(), vs[b.value().col] ?? TNull.Value);
             values = v;
         }
+        /// <summary>
+        /// Assert1: For each p in rs.rowType, rw.dataType.representation.Contains(p) 
+        /// </summary>
+        /// <param name="dst"></param>
+        /// <param name="sce"></param>
+        /// <returns></returns>
+        public static bool Assert1(Domain dst,Domain sce)
+        {
+            for (var b = dst.rowType.First(); b != null; b = b.Next())
+                if (!sce.representation.Contains(b.value()))
+                    return false;
+            return true;
+        }
+        /// <summary>
+        /// Precondition: Assert1
+        /// </summary>
+        /// <param name="rs"></param>
+        /// <param name="rw"></param>
         public TRow(RowSet rs, TRow rw) : base(rs.domain) 
         {
-            var v = BTree<long, TypedValue>.Empty;
+            if (!Assert1(rs.domain, rw.dataType))
+                throw new PEException("Assert1");
+            var v = CTree<long, TypedValue>.Empty;
+            for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                v += (p, rw[p] ?? TNull.Value);
+            }
+            values = v;
+        }
+        /// <summary>
+        /// Assert2: sce is assignment-compatible to dst
+        /// </summary>
+        /// <param name="dst"></param>
+        /// <param name="sce"></param>
+        /// <returns></returns>
+        public static bool Assert2(Domain dst, Domain sce)
+        {
+            for (var b = dst.rowType.First(); b != null; b = b.Next())
+            {
+                var dm = sce.representation[sce.rowType[b.key()]];
+                if (!dst.representation[b.value()].CanTakeValueOf(dm))
+                    return false;
+            }
+            return true;
+        }
+        /// <summary>
+        /// Precondition: Assert2
+        /// </summary>
+        /// <param name="rw"></param>
+        /// <param name="rs"></param>
+        public TRow(TRow rw,RowSet rs) :base(rs.domain)
+        {
+            if (!Assert2(rs.domain, rw.dataType))
+                throw new PEException("Assert2");
+            var v = CTree<long, TypedValue>.Empty;
             for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
                 v += (b.value(), rw[b.key()] ?? TNull.Value);
             values = v;
         }
-        public TRow(ObInfo oi, TRow rw) : base(oi.domain)
-        {
-            var v = BTree<long, TypedValue>.Empty;
-            for (var b = oi.domain.rowType.First(); b != null; b = b.Next())
-                v += (b.value(), rw[b.key()] ?? TNull.Value);
-            values = v;
-        }
-        public TRow(SqlValue sv, BTree<long, TypedValue> vs) : this(sv.domain, vs) { }
-        public TRow(ObInfo oi, BTree<long, TypedValue> vs) : this(oi.domain, vs) { }
+        public TRow(SqlValue sv, CTree<long, TypedValue> vs) : this(sv.domain, vs) { }
+        public TRow(ObInfo oi, CTree<long, TypedValue> vs) : this(oi.domain, vs) { }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
@@ -1328,7 +1377,7 @@ namespace Pyrrho.Common
         public TRow(Domain dt, params TypedValue[] v) : 
             base(dt)
         {
-            var vals = BTree<long, TypedValue>.Empty;
+            var vals = CTree<long, TypedValue>.Empty;
             var i = 0;
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
             {
@@ -1342,7 +1391,7 @@ namespace Pyrrho.Common
         public TRow(ObInfo oi, params TypedValue[] v) : this(oi.domain, v) { }
         internal TRow(Domain dm, PRow v) : base(dm)
         {
-            var vals = BTree<long, TypedValue>.Empty;
+            var vals = CTree<long, TypedValue>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next(), v=v._tail)
             {
                 var p = b.value();
@@ -1433,7 +1482,8 @@ namespace Pyrrho.Common
         {
             get 
             {
-                for (var b = values.First(); b != null; b = b.Next())
+                var d = dataType.display;
+                for (var b = values.First(); b != null && d>0; b = b.Next(),d--)
                 {
                     var v = b.value();
                     if (v != null && !v.IsNull)
@@ -1769,12 +1819,12 @@ namespace Pyrrho.Common
     internal class TXml : TypedValue
     {
         internal readonly string name;
-        internal readonly BTree<string, TypedValue> attributes = BTree<string, TypedValue>.Empty;
+        internal readonly CTree<string, TypedValue> attributes = CTree<string, TypedValue>.Empty;
         internal readonly string content = "";
-        internal readonly BList<TXml> children = BList<TXml>.Empty;
+        internal readonly CList<TXml> children = CList<TXml>.Empty;
         internal static TXml Null = new TXml(null);
         internal TXml(string n) : base(Domain.XML) { name = n; }
-        TXml(string n,BTree<string,TypedValue>a,string c,BList<TXml> ch)
+        TXml(string n,CTree<string,TypedValue>a,string c,CList<TXml> ch)
             : base(Domain.XML)
         {
             name = n; attributes = a; content = c; children = ch;

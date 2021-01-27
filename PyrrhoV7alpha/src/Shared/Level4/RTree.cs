@@ -94,6 +94,10 @@ namespace Pyrrho.Level4
         {
             return RTreeBookmark.New(cx,this);
         }
+        public RTreeBookmark Last(Context cx)
+        {
+            return RTreeBookmark.New(this, cx);
+        }
         internal RTree Fix(Context cx)
         {
             return new RTree(cx.rsuids[defpos]??defpos, _cx, 
@@ -145,9 +149,9 @@ namespace Pyrrho.Level4
                 }
             return null;
         }
-        internal static RTreeBookmark New(Context cx, RTree rt, PRow key)
+        internal static RTreeBookmark New(RTree rt,Context cx)
         {
-            for (var mb = rt.mt.PositionAt(key); mb != null; mb = mb.Next())
+            for (var mb = rt.mt.Last(); mb != null; mb = mb.Previous())
                 if (mb.Value().HasValue)
                 {
                     //        var rvv = rt.rows[(int)mb.Value().Value].rvv;
@@ -168,6 +172,22 @@ namespace Pyrrho.Level4
            //         var rvv = _rt.rows[(int)mb.Value().Value].rvv;
            //         var d = (rvv != null) ? rvv.def : 0;
                     return new RTreeBookmark(cx,_rt, _pos+1,mb);
+                }
+            }
+        }
+        protected override Cursor _Previous(Context cx)
+        {
+            var mb = _mb;
+            for (; ; )
+            {
+                mb = mb.Previous();
+                if (mb == null)
+                    return null;
+                if (mb.Value().HasValue)
+                {
+                    //         var rvv = _rt.rows[(int)mb.Value().Value].rvv;
+                    //         var d = (rvv != null) ? rvv.def : 0;
+                    return new RTreeBookmark(cx, _rt, _pos + 1, mb);
                 }
             }
         }

@@ -94,7 +94,7 @@ namespace Pyrrho.Level2
         {
             return 1 + new Integer(p).bytes.Length;
         }
-        internal static int ColsLength(BList<long> cols)
+        internal static int ColsLength(CList<long> cols)
         {
             var r = IntLength(cols.Length);
             for (var b = cols.First(); b!=null;b=b.Next())
@@ -473,8 +473,8 @@ namespace Pyrrho.Level2
         internal override void Relocate(Context cx)
         {
             framing.Install(cx);
-            framing.Relocate(cx);
             cx.SrcFix(ppos + 1);
+            framing.Relocate(cx);
             framing = (Framing)framing.Fix(cx);
             framing.Install(cx);
         }

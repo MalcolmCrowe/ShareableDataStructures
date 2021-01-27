@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Remoting.Messaging;
 using System.Net;
 using System.IO;
+using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -53,23 +54,23 @@ namespace Pyrrho.Level4
         internal const long
             Built = -402, // bool
             _Finder = -403, // BTree<long,Finder> SqlValue
-            _Needed = -401, //BTree<long,Finder>  SqlValue
+            _Needed = -401, // BTree<long,Finder>  SqlValue
             RowOrder = -404, //CList<long> SqlValue 
             _Rows = -407; // CList<TRow> 
         internal CList<long> rt => domain.rowType;
         internal CList<long> keys => (CList<long>)mem[Index.Keys] ?? CList<long>.Empty;
         internal CList<long> rowOrder => (CList<long>)mem[RowOrder] ?? CList<long>.Empty;
-        internal BTree<long, bool> where =>
-            (BTree<long, bool>)mem[Query.Where] ?? BTree<long, bool>.Empty;
-        internal BTree<long, TypedValue> matches =>
-            (BTree<long, TypedValue>)mem[Query._Matches] ?? BTree<long, TypedValue>.Empty;
-        internal BTree<long, BTree<long, bool>> matching =>
-            (BTree<long, BTree<long, bool>>)mem[Query.Matching] ?? BTree<long, BTree<long, bool>>.Empty;
+        internal CTree<long, bool> where =>
+            (CTree<long, bool>)mem[Query.Where] ?? CTree<long, bool>.Empty;
+        internal CTree<long, TypedValue> matches =>
+            (CTree<long, TypedValue>)mem[Query._Matches] ?? CTree<long, TypedValue>.Empty;
         internal BTree<long, Finder> needed =>
             (BTree<long, Finder>)mem[_Needed]; // must be initially null
         internal bool built => (bool)(mem[Built]??false);
         internal long groupSpec => (long)(mem[TableExpression.Group]??-1L);
-        internal long tabledefpos => (long)(mem[SqlInsert._Table] ?? 0L);
+        internal long target => (long)(mem[SqlInsert.Target] ?? 0L);
+        internal CTree<UpdateAssignment, bool> assig =>
+    (CTree<UpdateAssignment, bool>)mem[Query.Assig] ?? CTree<UpdateAssignment, bool>.Empty;
         internal BList<TRow> rows =>
             (BList<TRow>)mem[_Rows] ?? BList<TRow>.Empty;
         internal long lastData => (long)(mem[Table.LastData] ?? 0L);
@@ -126,16 +127,14 @@ namespace Pyrrho.Level4
         /// <param name="ma">A filter for row column values</param>
         protected RowSet(long dp, Context cx, Domain dt,
             BTree<long, Finder> fin = null, CList<long> kt = null,
-            BTree<long, bool> wh = null, CList<long> or = null,
-            BTree<long, TypedValue> ma = null,
-            BTree<long, BTree<long, bool>> mg = null,
-            GroupSpecification gp = null,BTree<long,object> m=null) 
-            : base(dp,_Fin(dp,cx,fin,dt.rowType,gp,m)
+            CTree<long, bool> wh = null, CList<long> or = null,
+            CTree<long, TypedValue> ma = null,
+            BTree<long,object> m=null) 
+            : base(dp,_Fin(dp,cx,fin,dt.rowType,m)
                 +(_Domain,dt)+(Index.Keys,kt??dt.rowType)
                 +(RowOrder,or??CList<long>.Empty)
-                +(Query.Where, wh??BTree<long,bool>.Empty)
-                +(Query._Matches,ma??BTree<long, TypedValue>.Empty)
-                + (Query.Matching,mg ?? BTree<long, BTree<long, bool>>.Empty))
+                +(Query.Where, wh??CTree<long,bool>.Empty)
+                +(Query._Matches,ma??CTree<long, TypedValue>.Empty))
         {
             cx.data += (dp, this);
         }
@@ -147,7 +146,7 @@ namespace Pyrrho.Level4
             cx.data += (rs.defpos, this);
         }
         static BTree<long,object> _Fin(long dp,Context cx,BTree<long,Finder> fin,CList<long> rt,
-            GroupSpecification gp,BTree<long,object>m)
+            BTree<long,object>m)
         {
             fin = fin ?? BTree<long, Finder>.Empty;
             for (var b = rt.First(); b != null; b = b.Next())
@@ -158,14 +157,11 @@ namespace Pyrrho.Level4
                     fin += (cx.defs[a].Item1, new Finder(p, dp));
                 fin += (p, new Finder(p, dp));
             }
-            var r = (m??BTree<long,object>.Empty) +(_Finder,fin);
-            if (gp != null)
-                r += (TableExpression.Group, gp.defpos);
-            return r;
+            return (m??BTree<long,object>.Empty) +(_Finder,fin);
         }
-        protected static BTree<long,TypedValue> _Matches(Context cx,BTree<long,bool> wh)
+        protected static CTree<long,TypedValue> _Matches(Context cx,CTree<long,bool> wh)
         {
-            var r = BTree<long, TypedValue>.Empty;
+            var r = CTree<long, TypedValue>.Empty;
             for (var b=wh.First();b!=null;b=b.Next())
                 r = cx.obs[b.key()].AddMatch(cx,r);
             return r;
@@ -176,20 +172,108 @@ namespace Pyrrho.Level4
         {
             return (RowSet)rs.New(rs.mem+x);
         }
-        /// <summary>
-        /// We watch out for rowsets from before st that are affected by instancing at st
-        /// </summary>
-        /// <param name="st"></param>
-        /// <returns></returns>
-        internal bool DoInstance(long st)
+        internal virtual RowSet Instance(Context cx)
         {
-            for (var b=finder.First();b!=null;b=b.Next())
+            var r = this;
+            r += (_Domain, domain.Instance(cx));
+            r += (Index.Keys, Instance(keys, cx));
+            r += (RowOrder, Instance(rowOrder, cx));
+            r += (Query.Where, Instance(where, cx));
+            r += (Query._Matches, Instance(matches, cx));
+            if (needed!=null)
+                r += (_Needed, Instance(needed, cx));
+            r += (Query.Assig, Instance(assig, cx));
+            r += (_Finder, Instance(finder,cx));
+            var s = (long)(mem[From.Source] ?? -1L);
+            r += (From.Source, cx.rsuids[s] ?? s);
+            return r;
+        }
+        protected CList<long> Instance(CList<long> ls, Context cx)
+        {
+            var r = CList<long>.Empty;
+            for (var b = ls.First(); b != null; b = b.Next())
             {
-                var f = b.value();
-                if (f.col > st || f.rowSet > st)
-                    return true;
+                var p = b.value();
+                r += cx.obuids[p] ?? p;
             }
-            return false;
+            return r;
+        }
+        protected CTree<long,V> Instance<V>(CTree<long,V> ls, Context cx) where V:IComparable
+        {
+            var r = CTree<long,V>.Empty;
+            for (var b = ls.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                r += (cx.obuids[k] ?? k, b.value());
+            }
+            return r;
+        }
+        protected CTree<long,CTree<long,bool>> Fix (CTree<long, CTree<long, bool>> ma,Context cx)
+        {
+            var r = CTree<long,CTree<long, bool>>.Empty;
+            for (var b = ma.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                r += (cx.obuids[k] ?? k, Instance(b.value(), cx));
+            }
+            return r;
+        }
+        protected BTree<long,Finder> Instance(BTree<long,Finder> fi,Context cx)
+        {
+            var r = BTree<long, Finder>.Empty;
+            for (var b = fi.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var f = b.value();
+                r += (cx.obuids[k] ?? k, new Finder(cx.obuids[f.col]??f.col, cx.rsuids[f.rowSet]??f.rowSet));
+            }
+            return r;
+        }
+        protected CTree<UpdateAssignment, bool> Instance(CTree<UpdateAssignment,bool> us, Context cx)
+        {
+            var r = CTree<UpdateAssignment, bool>.Empty;
+            for (var b = us.First(); b != null; b = b.Next())
+            {
+                var u = b.key();
+                r += (new UpdateAssignment(cx.obuids[u.vbl]??u.vbl,u.val),true);
+            }
+            return r;
+        }
+        protected FDJoinPart Fix(FDJoinPart fd,BTree<long,long?>obuids)
+        {
+            var r = CTree<long, long>.Empty;
+            for (var b=fd.conds.First();b!=null;b=b.Next())
+            {
+                var k = b.key();
+                var v = b.value();
+                r += (obuids[k] ?? k, obuids[v] ?? v);
+            }
+            return fd + (FDJoinPart.FDConds, r);
+        }
+        internal RowSet AddUpdateAssignment(Context cx,UpdateAssignment ua)
+        {
+            var s = (long)(mem[From.Source] ?? -1L);
+            if (cx.data[s] is RowSet rs && rs.finder.Contains(ua.vbl) 
+                && ((SqlValue)cx.obs[ua.val]).KnownBy(cx,rs))
+                    rs.AddUpdateAssignment(cx, ua);
+            var r = this + (Query.Assig, assig + (ua, true));
+            cx.data += (r.defpos, r);
+            return r;
+        }
+        internal override Context Insert(Context _cx, RowSet fm, string prov, Level cl)
+        {
+            return _cx.obs[target]?.Insert(_cx, fm, prov, cl)
+                ?? base.Insert(_cx, fm, prov, cl);
+        }
+        internal override Context Update(Context cx, RowSet fm)
+        {
+            return cx.obs[target]?.Update(cx, fm)
+                ?? base.Update(cx, fm);
+        }
+        internal override Context Delete(Context cx, RowSet fm)
+        {
+            return cx.obs[target]?.Delete(cx, fm)
+                ?? base.Delete(cx, fm);
         }
         internal virtual RowSet Build(Context cx)
         {
@@ -197,7 +281,7 @@ namespace Pyrrho.Level4
                 throw new PEException("PE422");
             return New(cx,needed,true);
         }
-        internal RowSet ComputeNeeds(Context cx)
+        internal virtual RowSet ComputeNeeds(Context cx)
         {
             if (needed != null)
                 return this;
@@ -225,17 +309,17 @@ namespace Pyrrho.Level4
             // We cannot Build if Needs not met by now.
             if (was == null || this is RestRowSet)
             {
-                var ox = cx.from;
+                var ox = cx.finder;
                 r = ComputeNeeds(cx); // install nd immediately in case Build looks for it
                 var bd = true;
                 for (var b = r.needed.First(); b != null; b = b.Next())
                 {
                     var p = b.key();
-                    cx.from += (p,b.value()); // enable build
+                    cx.finder += (p,b.value()); // enable build
                     if (cx.obs[p].Eval(cx) == null)
                         bd = false;
                 }
-                cx.from = ox;
+                cx.finder = ox;
                 if (bd) // all prerequisites are ok
                     r = r.Build(cx);  // we can Build (will set built to true)
                 return r;
@@ -300,20 +384,24 @@ namespace Pyrrho.Level4
             var nm = cx.Fix(matches);
             if (nm != matches)
                 r += (Query._Matches, nm);
-            var ne = cx.Fix(matching);
-            if (ne != matching)
-                r += (Query.Matching, ne);
-            var nt = cx.obuids[tabledefpos] ?? tabledefpos;
-            if (nt != tabledefpos)
-                r += (SqlInsert._Table, nt);
+            var nt = cx.obuids[target] ?? target;
+            if (nt != target)
+                r += (SqlInsert.Target, nt);
+            var ag = cx.Fix(assig);
+            if (ag != assig)
+                r += (Query.Assig, ag);
+            var s = (long)(mem[From.Source] ?? -1L);
+            var ns = cx.rsuids[s] ?? s;
+            if (ns != s)
+                r += (From.Source, ns);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
-            if (wr.rss.Contains(defpos))
-                return wr.rss[defpos];
+    //        if (wr.rss.Contains(defpos)) If you uncomment: representation will sometimes be incorrect
+    //            return wr.rss[defpos];
             var r = (RowSet)Relocate(wr.Fix(defpos));
             var oc = wr.curs;
             wr.curs = defpos;
@@ -324,9 +412,11 @@ namespace Pyrrho.Level4
             r += (RowOrder, wr.Fix(rowOrder));
             r += (Query.Where, wr.Fix(where));
             r += (Query._Matches, wr.Fix(matches));
-            r += (Query.Matching, wr.Fix(matching));
             r += (TableExpression.Group, wr.Fix(groupSpec));
-            r += (SqlInsert._Table, wr.Fix(tabledefpos));
+            r += (SqlInsert.Target, wr.Fix(target));
+            r += (Query.Assig, wr.Fix(assig));
+            if (mem.Contains(From.Source))
+                r += (From.Source, wr.Fix((long)mem[From.Source]));
             wr.rss += (defpos, r);
             wr.curs = oc;
             return r;
@@ -341,8 +431,9 @@ namespace Pyrrho.Level4
             r += (RowOrder, cx.Replaced(rowOrder));
             r += (Query.Where, cx.Replaced(where));
             r += (Query._Matches, cx.Replaced(matches));
-            r += (Query.Matching, cx.Replaced(matching));
-            r += (SqlInsert._Table, cx.Replace(tabledefpos, so, sv));
+            r += (SqlInsert.Target, cx.Replace(target, so, sv));
+            if (mem.Contains(From.Source))
+                r += (From.Source, cx.Replace((long)mem[From.Source],so,sv));
             if (cx.done.Contains(groupSpec))
                 r += (TableExpression.Group, cx.done[groupSpec].defpos);
             cx.data += (defpos, r);
@@ -363,9 +454,74 @@ namespace Pyrrho.Level4
         {
             return null;
         }
+        internal virtual BList<long?> Sources(Context cx)
+        {
+            var r = BList<long?>.Empty;
+            var p = (long)(mem[From.Source] ?? -1L);
+            if (p >= 0)
+                r += p;
+            return r;
+        }
+        internal RowSet Apply(Context cx,RowSet sc)
+        {
+            for (var b = where.First(); b != null; b = b.Next())
+                if ((!sc.where.Contains(b.key())) && ((SqlValue)cx.obs[b.key()]).KnownBy(cx, sc))
+                    sc = (RowSet)sc.AddCondition(cx, Query.Where, b.key());
+            for (var b = matches.First(); b != null; b = b.Next())
+                if ((!sc.matches.Contains(b.key())) && sc.domain.representation.Contains(b.key()))
+                    sc = sc.AddMatch(b.key(),b.value());
+            for (var b = assig.First(); b != null; b = b.Next())
+            {
+                var ua = b.key();
+                if (sc.finder.Contains(ua.vbl) && ((SqlValue)cx.obs[ua.val]).KnownBy(cx, sc))
+                    sc = sc.AddUpdateAssignment(cx, ua);
+            }
+            cx.data += (sc.defpos, sc);
+            return sc;
+        }
+        /// <summary>
+        /// See if the source can replace this (removal of a pipeline step or condition).
+        /// For step removal to be possible, the rowTypes and finders must match exactly
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal virtual RowSet Review(Context cx)
+        {
+            return this;
+        }
         internal virtual bool Knows(Context cx,long rp)
         {
             return rp == defpos || (Source(cx) is RowSet rs && rs.Knows(cx,rp));
+        }
+        internal override DBObject AddCondition(Context cx, long prop, long cond)
+        {
+            var cs = (CTree<long, bool>)mem[prop] ?? CTree<long, bool>.Empty;
+            if (cs.Contains(cond))
+                return this;
+            var sv = (SqlValue)cx.obs[cond];
+            if (!sv.KnownBy(cx, this))
+                return this;
+            if (mem.Contains(From.Source) && cx.data[(long)mem[From.Source]] is RowSet sc)
+            {
+                if (sc.defpos>Transaction.TransPos && sv.KnownBy(cx, sc))
+                {
+                    var nr = (RowSet)sc.AddCondition(cx, prop, cond);
+                    if (nr != sc)
+                    {
+                        cx.data += (nr.defpos, nr);
+                        return this + (From.Source, nr.defpos);
+                    }
+                    return this;
+                }
+                return this + (prop, cs + (cond, true));
+            }
+            return new SelectRowSet(cx, this, CTree<long,bool>.Empty+(cond, true));
+        }
+        internal virtual RowSet AddMatch(long p,TypedValue v)
+        {
+            if (matches.Contains(p) || !finder.Contains(p))
+                return this;
+            return this + (Query._Matches, matches + (p, v));
         }
         internal virtual BTree<long,Finder> AllWheres(Context cx,BTree<long,Finder> nd)
         {
@@ -389,7 +545,7 @@ namespace Pyrrho.Level4
         {
             if (rowOrder == null || rowOrder.Length == 0)
                 return true;
-            return cx.SameRowType(q,rowOrder,sce?.rowOrder);
+            return rowOrder.CompareTo(sce?.rowOrder)==0;
         }
         /// <summary>
         /// Compute schema information (for the client) for this row set.
@@ -434,13 +590,21 @@ namespace Pyrrho.Level4
         /// Bookmarks are used to traverse rowsets
         /// </summary>
         /// <returns>a bookmark for the first row if any</returns>
-        protected abstract Cursor _First(Context _cx);
+        protected abstract Cursor _First(Context cx);
+        protected abstract Cursor _Last(Context cx);
         public virtual Cursor First(Context cx)
         {
             var rs = MaybeBuild(cx);
             if (!rs.built)
                 throw new PEException("PE198");
             return rs._First(cx);
+        }
+        public virtual Cursor Last(Context cx)
+        {
+            var rs = MaybeBuild(cx);
+            if (!rs.built)
+                throw new PEException("PE198");
+            return rs._Last(cx);
         }
         /// <summary>
         /// Find a bookmark for the given key
@@ -465,9 +629,10 @@ namespace Pyrrho.Level4
             var sb = new StringBuilder(GetType().Name);
             sb.Append(' ');sb.Append(Uid(defpos));
             var cm = "(";
+            var d = display-1;
             for (var b = rt.First(); b != null; b = b.Next())
             {
-                sb.Append(cm); cm = ",";
+                sb.Append(cm); cm = (b.key()==d)?"|":",";
                 sb.Append(Uid(b.value()));
             }
             sb.Append(")"); 
@@ -481,17 +646,56 @@ namespace Pyrrho.Level4
                 }
                 sb.Append(")");
             }
-            cm = "(";
-            sb.Append(" Finder: ");
-            for (var b=finder.First();b!=null;b=b.Next())
+            if (rowOrder !=CList<long>.Empty)
             {
-                sb.Append(cm); cm = "],";
-                sb.Append(Uid(b.key()));
-                var f = b.value();
-                sb.Append("="); sb.Append(Uid(f.rowSet));
-                sb.Append('['); sb.Append(Uid(f.col));
+                cm = " order (";
+                for (var b=rowOrder.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.value()));
+                }
+                sb.Append(")");
             }
-            sb.Append("])");
+            if (where != CTree<long,bool>.Empty)
+            {
+                cm = " where (";
+                for (var b = where.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+                sb.Append(")");
+            }
+            if (matches != CTree<long, TypedValue>.Empty)
+            {
+                cm = " matches (";
+                for (var b = matches.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key())); sb.Append("=");
+                    sb.Append(b.value());
+                }
+                sb.Append(")");
+            }
+            if (groupSpec>=0)
+            { sb.Append(" groupSpec: ");sb.Append(Uid(groupSpec)); }
+            if (target>0)
+            { sb.Append(" target: "); sb.Append(Uid(target)); }
+            if (PyrrhoStart.VerboseMode)
+            {
+                cm = "(";
+                sb.Append(" Finder: ");
+                for (var b = finder.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = "],";
+                    sb.Append(Uid(b.key()));
+                    var f = b.value();
+                    sb.Append("="); sb.Append(Uid(f.rowSet));
+                    sb.Append('['); sb.Append(Uid(f.col));
+                }
+                sb.Append("])");
+            }
+            if (assig.Count > 0) { sb.Append(" Assigs:"); sb.Append(assig); }
             return sb.ToString();
         }
     }
@@ -518,7 +722,7 @@ namespace Pyrrho.Level4
         public readonly long _defpos;
         public readonly long _ppos;
         public readonly int display;
-        public readonly BTree<long, TypedValue> _needed;
+        public readonly CTree<long, TypedValue> _needed;
         public Cursor(Context _cx, RowSet rs, int pos, long defpos, long ppos,
             TRow rw,BTree<long,object>m=null) :base(rs.domain,rw.values)
         {
@@ -527,7 +731,7 @@ namespace Pyrrho.Level4
             _defpos = defpos;
             _ppos = ppos;
             display = rs.display;
-            var nd = BTree<long, TypedValue>.Empty;
+            var nd = CTree<long, TypedValue>.Empty;
             for (var b=rs.needed?.First();b!=null;b=b.Next())
             {
                 var fi = b.value();
@@ -545,7 +749,7 @@ namespace Pyrrho.Level4
             _defpos = defpos;
             _ppos = ppos;
             display = rs.display;
-            var nd = BTree<long, TypedValue>.Empty;
+            var nd = CTree<long, TypedValue>.Empty;
             for (var b = rs.needed.First(); b != null; b = b.Next())
             {
                 var fi = b.value();
@@ -575,15 +779,6 @@ namespace Pyrrho.Level4
             _ppos = ppos;
             cx.cursors += (rd, this);
         }
-        public Cursor(Context _cx, long rp, int pos, long defpos, long ppos, Domain dt, 
-            TRow rw, BTree<long,object>m=null) : base(dt,rw.values)
-        {
-            _rowsetpos = rp;
-            _pos = pos;
-            _defpos = defpos;
-            _ppos = ppos;
-            _cx.cursors += (rp, this);
-        }
         protected Cursor(Cursor cu,Context cx,long p,TypedValue v) 
             :base (cu.dataType,cu.values+(p,v))
         {
@@ -602,16 +797,21 @@ namespace Pyrrho.Level4
         internal abstract Cursor _Fix(Context cx);
         public virtual Cursor Next(Context cx)
         {
-    //        var rs = cx.data[_rowsetpos];
-    //        rs.MaybeBuild(cx,_needed);
             return _Next(cx);
         }
+        public virtual Cursor Previous(Context cx)
+        {
+            return _Previous(cx);
+        }
         protected abstract Cursor _Next(Context cx);
+        protected abstract Cursor _Previous(Context cx);
         internal bool Matches(Context cx)
         {
             var rs = cx.data[_rowsetpos];
+            if (IsNull)
+                return false;
             for (var b = rs.matches.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()].Eval(cx).CompareTo(b.value()) != 0)
+                if (cx.cursors[_rowsetpos][b.key()].CompareTo(b.value()) != 0)
                     return false;
             for (var b = rs.where.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()].Eval(cx) != TBool.True)
@@ -660,11 +860,7 @@ namespace Pyrrho.Level4
         internal TRow row => (TRow)mem[Singleton];
         internal TrivialRowSet(long dp, Context cx, TRow r, long rc=-1L, BTree<long,Finder> fi=null)
             : base(dp, cx, r.dataType,fi,
-                  null,null,null,null,null,null,new BTree<long,object>(Singleton,r))
-        { }
-        internal TrivialRowSet(long dp,Context cx, Record rec) 
-            : this(dp,cx, new TRow(((Table)cx.db.objects[rec.tabledefpos]).domain, rec.fields), 
-                  rec.defpos)
+                  null,null,null,null,new BTree<long,object>(Singleton,r))
         { }
         protected TrivialRowSet(Context cx, RowSet rs, BTree<long, Finder> nd, bool bt)
             : base(cx, rs, nd, bt) { }
@@ -698,6 +894,10 @@ namespace Pyrrho.Level4
         protected override Cursor _First(Context _cx)
         {
             return new TrivialCursor(_cx,this,-1L);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return new TrivialCursor(_cx, this, -1L);
         }
         public override Cursor PositionAt(Context _cx,PRow key)
         {
@@ -743,6 +943,10 @@ namespace Pyrrho.Level4
             {
                 return null;
             }
+            protected override Cursor _Previous(Context _cx)
+            {
+                return null;
+            }
             internal override TableRow Rec()
             {
                 return null;
@@ -767,23 +971,22 @@ namespace Pyrrho.Level4
         /// <summary>
         /// This constructor builds a rowset for the given Table
         /// directly using its defpos, rowType, ordering, where and match info.
-        /// Suggestion here is to use the source keyType. Maybe the source ordering too?
         /// </summary>
-        internal SelectedRowSet(Context cx,Query q,RowSet r,BTree<long,Finder> fi)
+        internal SelectedRowSet(Context cx,Query q,RowSet r,BTree<long,Finder>fi)
             :base(q.defpos,cx,q.domain,fi,null,q.where,
-                 q.ordSpec,q.matches,null,null,
-                 _Fin(cx,q,fi,q.mem+(From.Source,r.defpos)
-                     +(SqlInsert._Table,r.tabledefpos)
-                     +(Table.LastData,r.lastData)))
+                 q.ordSpec,q.matches,
+                 _Fin(cx,q,q.mem+(From.Source,r.defpos)
+                     +(SqlInsert.Target,r.target)
+                     +(Table.LastData,r.lastData)+(Query.Assig,q.assig)))
         { }
         SelectedRowSet(Context cx, SelectedRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
         { }
         protected SelectedRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }
-        static BTree<long, object> _Fin(Context cx, Query q, BTree<long,Finder>fi,
-            BTree<long,object>m)
+        static BTree<long, object> _Fin(Context cx, Query q, BTree<long,object>m)
         {
+            var fi = BTree<long, Finder>.Empty;
             for (var b = q.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
@@ -814,9 +1017,25 @@ namespace Pyrrho.Level4
             Fixup(cx, rs);
             return rs;
         }
+        internal override RowSet Instance(Context cx)
+        {
+            var r = base.Instance(cx);
+            r += (SQMap, Instance(sQMap, cx));
+            return r;
+        }
+        internal override RowSet Review(Context cx)
+        {
+            var sc = cx.data[source];
+            if (rt.CompareTo(sc.rt) == 0)
+            {
+                cx.data += (defpos, sc);
+                return sc;
+            }
+            return this;
+        }
         public override Rvv _Rvv(Context cx)
         {
-            return cx.data[source]._Rvv(cx);
+            return cx.data[source]._Rvv(cx)??Rvv.Empty;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -850,6 +1069,10 @@ namespace Pyrrho.Level4
         {
             return SelectedCursor.New(_cx,this);
         }
+        protected override Cursor _Last(Context _cx)
+        {
+            return SelectedCursor.New(this, _cx);
+        }
         public override Cursor PositionAt(Context cx, PRow key)
         {
             if (cx.data[source] is IndexRowSet irs)
@@ -859,9 +1082,6 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (SelectedRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns != source)
-                r += (From.Source, ns);
             var nm = cx.Fix(sQMap);
             if (nm != sQMap)
                 r += (SQMap, nm);
@@ -872,7 +1092,6 @@ namespace Pyrrho.Level4
             if (defpos < wr.Length)
                 return this;
             var r = (SelectedRowSet)base._Relocate(wr);
-            r += (From.Source, wr.Fix(source));
             r += (SQMap, wr.Fix(sQMap));
             wr.cx.data += (r.defpos, r);
             return r;
@@ -881,7 +1100,10 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Source: "); sb.Append(Uid(source));
-            sb.Append(" SQMap: "); sb.Append(sQMap);
+            if (PyrrhoStart.VerboseMode)
+            {
+                sb.Append(" SQMap: "); sb.Append(sQMap);
+            }
             return sb.ToString();
         }
         internal class SelectedCursor : Cursor
@@ -908,19 +1130,36 @@ namespace Pyrrho.Level4
             }
             internal static SelectedCursor New(Context cx,SelectedRowSet srs)
             {
-                var ox = cx.from;
+                var ox = cx.finder;
                 var sce = srs.Source(cx);
-                cx.from += sce.finder;
+                cx.finder += sce.finder;
                 for (var bmk = sce.First(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new SelectedCursor(cx,srs, bmk, 0);
                     if (rb.Matches(cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
-                cx.from = ox;
+                cx.finder = ox;
+                return null;
+            }
+            internal static SelectedCursor New(SelectedRowSet srs, Context cx)
+            {
+                var ox = cx.finder;
+                var sce = srs.Source(cx);
+                cx.finder += sce.finder;
+                for (var bmk = sce.Last(cx); bmk != null; bmk = bmk.Previous(cx))
+                {
+                    var rb = new SelectedCursor(cx, srs, bmk, 0);
+                    if (rb.Matches(cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                cx.finder = ox;
                 return null;
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
@@ -929,18 +1168,34 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context _cx)
             {
-                var ox = _cx.from;
-                _cx.from += _srs.finder; // just for SelectedRowSet
+                var ox = _cx.finder;
+                _cx.finder += _srs.finder; // just for SelectedRowSet
                 for (var bmk = _bmk.Next(_cx); bmk != null; bmk = bmk.Next(_cx))
                 {
                     var rb = new SelectedCursor(_cx,_srs, bmk, _pos + 1);
                     if (rb.Matches(_cx))
                     {
-                        _cx.from = ox;
+                        _cx.finder = ox;
                         return rb;
                     }
                 }
-                _cx.from = ox;
+                _cx.finder = ox;
+                return null;
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                var ox = _cx.finder;
+                _cx.finder += _srs.finder; // just for SelectedRowSet
+                for (var bmk = _bmk.Previous(_cx); bmk != null; bmk = bmk.Previous(_cx))
+                {
+                    var rb = new SelectedCursor(_cx, _srs, bmk, _pos + 1);
+                    if (rb.Matches(_cx))
+                    {
+                        _cx.finder = ox;
+                        return rb;
+                    }
+                }
+                _cx.finder = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -960,13 +1215,17 @@ namespace Pyrrho.Level4
         /// This constructor builds a rowset for the given QuerySpec
         /// directly using its defpos, rowType, ordering, where and match info.
         /// Note we cannot assume that columns are simple SqlCopy.
+        /// For views we should pass grouping and aggregation to the source...
         /// </summary>
         internal SelectRowSet(Context cx, QuerySpecification q, RowSet r)
             : base(q.defpos, cx, q.domain, r.finder, null, q.where, q.ordSpec, 
-                  q.matches,q.matching,null,
-                  new BTree<long,object>(From.Source,r.defpos)
-                  +(SqlInsert._Table,r.tabledefpos)
+                  q.matches, new BTree<long,object>(From.Source,r.defpos)
+                  +(SqlInsert.Target,r.target)
                   +(Table.LastData,r.lastData))
+        { }
+        internal SelectRowSet(Context cx,RowSet r,CTree<long,bool>conds)
+            :base(cx.nextHeap++,cx,r.domain,r.finder,r.keys,conds,null,r.matches,
+                 r.mem+(From.Source,r.defpos))
         { }
         SelectRowSet(Context cx, SelectRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
@@ -999,33 +1258,11 @@ namespace Pyrrho.Level4
         }
         public override Rvv _Rvv(Context cx)
         {
-            return cx.data[source]?._Rvv(cx);
+            return cx.data[source]?._Rvv(cx)??Rvv.Empty;
         }
         internal override DBObject Relocate(long dp)
         {
             return new SelectRowSet(dp,mem);
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            var r = (SelectRowSet)base._Replace(cx, so, sv);
-            r += (From.Source, cx.Replace(source, so, sv));
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (SelectRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns != source)
-                r += (From.Source, ns);
-            return r;
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SelectRowSet)base._Relocate(wr);
-            r += (From.Source, wr.Fix(source));
-            return r;
         }
         public static SelectRowSet operator +(SelectRowSet rs, (long, object) x)
         {
@@ -1034,6 +1271,16 @@ namespace Pyrrho.Level4
         internal override RowSet Source(Context cx)
         {
             return cx.data[source];
+        }
+        internal override RowSet Review(Context cx)
+        {
+            var sc = cx.data[source];
+            if (where.CompareTo(sc.where)==0)
+            {
+                cx.data += (defpos, sc);
+                return sc;
+            }
+            return this;
         }
         internal override RowSet Build(Context cx)
         {
@@ -1044,6 +1291,10 @@ namespace Pyrrho.Level4
         protected override Cursor _First(Context _cx)
         {
             return SelectCursor.New(_cx, this);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return SelectCursor.New(this, _cx);
         }
         public override string ToString()
         {
@@ -1077,10 +1328,9 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(Context cx, Cursor bmk, SelectRowSet srs)
             {
-                var ox = cx.from;
-                cx.copy = srs.matching;
-                cx.from += cx.data[srs.source].finder;
-                var vs = BTree<long,TypedValue>.Empty;
+                var ox = cx.finder;
+                cx.finder += cx.data[srs.source].finder;
+                var vs = CTree<long,TypedValue>.Empty;
                 for (var b = srs.rt.First(); b != null; b = b.Next())
                 {
                     var s = cx.obs[b.value()]; 
@@ -1090,12 +1340,22 @@ namespace Pyrrho.Level4
                         v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
                     vs += (b.value(),v);
                 }
-                cx.from = ox;
+                cx.finder = ox;
                 return new TRow(srs.domain, vs);
             }
             internal static SelectCursor New(Context cx, SelectRowSet srs)
             {
                 for (var bmk = cx.data[srs.source].First(cx); bmk != null; bmk = bmk.Next(cx))
+                {
+                    var rb = new SelectCursor(cx, srs, bmk, 0);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+            internal static SelectCursor New(SelectRowSet srs, Context cx)
+            {
+                for (var bmk = cx.data[srs.source].Last(cx); bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
@@ -1110,6 +1370,18 @@ namespace Pyrrho.Level4
                     var rb = new SelectCursor(cx, _srs, bmk, _pos + 1);
                     for (var b = _srs.domain.representation.First(); b != null; b = b.Next())
                         ((SqlValue)cx.obs[b.key()]).OnRow(cx,rb);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                for (var bmk = _bmk.Previous(cx); bmk != null; bmk = bmk.Previous(cx))
+                {
+                    var rb = new SelectCursor(cx, _srs, bmk, _pos + 1);
+                    for (var b = _srs.domain.representation.First(); b != null; b = b.Next())
+                        ((SqlValue)cx.obs[b.key()]).OnRow(cx, rb);
                     if (rb.Matches(cx))
                         return rb;
                 }
@@ -1135,21 +1407,22 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The having search condition for the aggregation
         /// </summary>
-		internal BTree<long,bool> having =>
-            (BTree<long,bool>)mem[TableExpression.Having]??BTree<long,bool>.Empty;
+		internal CTree<long,bool> having =>
+            (CTree<long,bool>)mem[TableExpression.Having]??CTree<long,bool>.Empty;
         internal TRow row => (TRow)mem[TrivialRowSet.Singleton];
         internal override RowSet Source(Context cx)
         {
             return cx.data[source];
         }
         /// <summary>
-        /// Constructor: Build a rowSet that aggregates data from a given source
+        /// Constructor: Build a rowSet that aggregates data from a given source.
+        /// For views we should propagate aggregations from q to the source rowset rs
         /// </summary>
         /// <param name="rs">The source data</param>
         /// <param name="h">The having condition</param>
 		public EvalRowSet(Context cx, QuerySpecification q, RowSet rs)
             : base(q.defpos, cx, q.domain, rs.finder, null, null,
-                  q.ordSpec, q.matches, q.matching,null,
+                  q.ordSpec, q.matches,
                   BTree<long,object>.Empty+(From.Source,rs.defpos)
                   +(TableExpression.Having,q.where)
                   +(Table.LastData,rs.lastData))
@@ -1196,42 +1469,22 @@ namespace Pyrrho.Level4
         {
             return new EvalRowSet(dp,mem);
         }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            var r = (EvalRowSet)base._Replace(cx, so, sv);
-            r += (From.Source, cx.Replace(source, so, sv));
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (EvalRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns!=source)
-            r += (From.Source, ns);
-            return r;
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (EvalRowSet)base._Relocate(wr);
-            r += (From.Source, wr.Fix(source));
-            return r;
-        }
         protected override Cursor _First(Context _cx)
         {
             return new EvalBookmark(_cx,this);
         }
-
+        protected override Cursor _Last(Context _cx)
+        {
+            return new EvalBookmark(_cx, this);
+        }
         internal override RowSet Build(Context _cx)
         {
             var tg = BTree<long, Register>.Empty;
             var cx = new Context(_cx);
-            cx.copy = matching;
             var sce = cx.data[source];
-            cx.from += sce.finder;
+            cx.finder += sce.finder;
             var oi = rt;
-            var k = new TRow(domain,BTree<long,TypedValue>.Empty);
+            var k = new TRow(domain,CTree<long,TypedValue>.Empty);
             cx.data += (defpos, this);
             for (var b=rt.First(); b!=null; b=b.Next())
                 tg = ((SqlValue)_cx.obs[b.value()]).StartCounter(cx,this,tg);
@@ -1244,7 +1497,7 @@ namespace Pyrrho.Level4
                             tg = ((SqlValue)_cx.obs[b.value()]).AddIn(cx,ebm,tg);
             }
             var cols = oi;
-            var vs = BTree<long,TypedValue>.Empty;
+            var vs = CTree<long,TypedValue>.Empty;
             cx.funcs = tg;
             for (int i = 0; i < cols.Length; i++)
             {
@@ -1283,6 +1536,10 @@ namespace Pyrrho.Level4
             {
                 return null; // just one row in the rowset
             }
+            protected override Cursor _Previous(Context cx)
+            {
+                return null; // just one row in the rowset
+            }
             internal override Cursor _Fix(Context cx)
             {
                 return new EvalBookmark(cx, this);
@@ -1304,9 +1561,9 @@ namespace Pyrrho.Level4
         /// Independent of role, user, command.
         /// Context must have a suitable tr field
         /// </summary>
-        internal TableRowSet(Context cx, long t,BTree<long,Finder>fi,BTree<long,bool> wh)
-            : base(t, cx, cx.Inf(t).domain,fi,null,null,null,_Matches(cx,wh),null,
-                  null,new BTree<long,object>(SqlInsert._Table,t)
+        internal TableRowSet(Context cx, long t,BTree<long,Finder>fi,CTree<long,bool> wh)
+            : base(t, cx, cx.Inf(t).domain,fi,null,null,null,_Matches(cx,wh),
+                  new BTree<long,object>(SqlInsert.Target,t)
                   +(Table.LastData,((Table)cx.obs[t]).lastData))
         { }
         TableRowSet(Context cx, TableRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -1345,7 +1602,7 @@ namespace Pyrrho.Level4
         internal override bool TableColsOk => true;
         public override Rvv _Rvv(Context cx)
         {
-            return Rvv.Empty+(tabledefpos,cx.cursors[defpos]);
+            return Rvv.Empty+(target,cx.cursors[defpos]);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -1354,15 +1611,15 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (TableRowSet)base._Replace(cx, so, sv);
-            r += (SqlInsert._Table, cx.Replace(tabledefpos, so, sv));
+            r += (SqlInsert.Target, cx.Replace(target, so, sv));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (TableRowSet)base.Fix(cx);
-            var nt = cx.obuids[tabledefpos] ?? tabledefpos;
-            if (nt != tabledefpos)
-                r += (SqlInsert._Table, nt);
+            var nt = cx.obuids[target] ?? target;
+            if (nt != target)
+                r += (SqlInsert.Target, nt);
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -1370,12 +1627,16 @@ namespace Pyrrho.Level4
             if (defpos < wr.Length)
                 return this;
             var r = (TableRowSet)base._Relocate(wr);
-            r += (SqlInsert._Table, wr.Fix(tabledefpos));
+            r += (SqlInsert.Target, wr.Fix(target));
             return r;
         }
         protected override Cursor _First(Context _cx)
         {
             return TableCursor.New(_cx,this);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return TableCursor.New(this, _cx);
         }
         internal class TableCursor : Cursor
         {
@@ -1405,7 +1666,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(TableRowSet trs,TableRow rw)
             {
-                var vs = BTree<long, TypedValue>.Empty;
+                var vs = CTree<long, TypedValue>.Empty;
                 for (var b=trs.domain.representation.First();b!=null;b=b.Next())
                 {
                     var p = b.key();
@@ -1415,8 +1676,23 @@ namespace Pyrrho.Level4
             }
             internal static TableCursor New(Context _cx, TableRowSet trs)
             {
-                var table = _cx.db.objects[trs.tabledefpos] as Table;
+                var table = _cx.db.objects[trs.target] as Table;
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
+                {
+                    var rec = b.value();
+                    if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
+                        _cx.db.user != null && _cx.db.user.defpos != table.definer
+                         && _cx.db._user != _cx.db.owner
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                        continue;
+                    return new TableCursor(_cx, trs, table, 0, b);
+                }
+                return null;
+            }
+            internal static TableCursor New(TableRowSet trs, Context _cx)
+            {
+                var table = _cx.db.objects[trs.target] as Table;
+                for (var b = table.tableRows.Last(); b != null; b = b.Previous())
                 {
                     var rec = b.value();
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
@@ -1446,6 +1722,24 @@ namespace Pyrrho.Level4
                     return new TableCursor(_cx,_trs,_table, _pos + 1, bmk);
                 }
             }
+            protected override Cursor _Previous(Context _cx)
+            {
+                var bmk = _bmk;
+                var table = _table;
+                for (; ; )
+                {
+                    if (bmk != null)
+                        bmk = bmk.Previous();
+                    if (bmk == null)
+                        return null;
+                    var rec = bmk.value();
+                    if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
+                        _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                        continue;
+                    return new TableCursor(_cx, _trs, _table, _pos + 1, bmk);
+                }
+            }
             internal override TableRow Rec()
             {
                 return _bmk.value();
@@ -1454,6 +1748,46 @@ namespace Pyrrho.Level4
             {
                 return new TableCursor(cx, this);
             }
+        }
+    }
+    /// <summary>
+    /// VirtualRowSet dummy - will be replaced by Instance()
+    /// </summary>
+    internal class VirtualRowSet : RowSet
+    {
+        /// <summary>
+        /// Constructor: a rowset defined by a base table without a primary key.
+        /// Independent of role, user, command.
+        /// Context must have a suitable tr field
+        /// </summary>
+        internal VirtualRowSet(Context cx, From f, BTree<long, Finder> fi)
+            : base(f.defpos, cx, f.domain, fi, null, f.where, f.ordSpec,f.matches,
+                  new BTree<long, object>(SqlInsert.Target, f.target)
+                  +(_Needed,BTree<long,Finder>.Empty)+(Query.Filter,f.filter)
+                  +(Query.Assig,f.assig))
+        { }
+        protected VirtualRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected override Cursor _First(Context _cx)
+        {
+            throw new NotImplementedException();
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            throw new NotImplementedException();
+        }
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        {
+            return this;
+        }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new VirtualRowSet(defpos,m);
+        }
+
+        internal override DBObject Relocate(long dp)
+        {
+            return new VirtualRowSet(dp,mem);
         }
     }
     /// <summary>
@@ -1475,11 +1809,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal IndexRowSet(Context cx, Table tb, Index x, BTree<long,Finder>fi, 
-            BTree<long,TypedValue> fl,long? dp=null, BTree<long,object>m=null) 
-            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,fi,null,null,null,
-                  fl,null,null,
-                  (m??BTree<long,object>.Empty)+(SqlInsert._Table,tb.defpos)
+        internal IndexRowSet(Context cx, Table tb, Index x, 
+            CTree<long,TypedValue> fl,long? dp=null, BTree<long,object>m=null) 
+            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,null,null,null,null,
+                  fl,(m??BTree<long,object>.Empty)+(SqlInsert.Target,tb.defpos)
                   +(_Index,x.defpos)+(Table.LastData,tb.lastData))
         { }
         protected IndexRowSet(Context cx, IndexRowSet irs, BTree<long, Finder> nd, bool bt)
@@ -1518,7 +1851,7 @@ namespace Pyrrho.Level4
         internal override bool TableColsOk => true;
         public override Rvv _Rvv(Context cx)
         {
-            return Rvv.Empty+(tabledefpos,cx.cursors[defpos]);
+            return Rvv.Empty+(target,cx.cursors[defpos]);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -1554,6 +1887,10 @@ namespace Pyrrho.Level4
         {
             return IndexCursor.New(_cx,this);
         }
+        protected override Cursor _Last(Context cx)
+        {
+            return IndexCursor.New(this, cx);
+        }
         /// <summary>
         /// We assume the key matches our key type, and that the filter is null
         /// </summary>
@@ -1587,7 +1924,7 @@ namespace Pyrrho.Level4
                 _bmk = nx.rows.PositionAt(_key);
                 var iq = _bmk?.Value();
                 _rec = (iq == null) ? null 
-                    : ((Table)((DBObject)cx.db.objects[cx.ObUnheap(_irs.tabledefpos)]).Fix(cx))
+                    : ((Table)((DBObject)cx.db.objects[cx.ObUnheap(_irs.target)]).Fix(cx))
                     .tableRows[iq.Value];
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
@@ -1604,13 +1941,13 @@ namespace Pyrrho.Level4
             }
             public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
             {
-                var tb = (Table)_cx.db.objects[_irs.tabledefpos];
+                var tb = (Table)_cx.db.objects[_irs.target];
                 return new IndexCursor(_cx,_irs, _pos + 1, mb, tb.tableRows[mb.Value().Value]);
             }
             internal static IndexCursor New(Context _cx,IndexRowSet irs, PRow key = null)
             {
                 var _irs = irs;
-                var table = (Table)_cx.db.objects[_irs.tabledefpos];
+                var table = (Table)_cx.db.objects[_irs.target];
                 var index = (Index)_cx.db.objects[_irs.index];
                 for (var bmk = index.rows.PositionAt(key); bmk != null;
                     bmk = bmk.Next())
@@ -1628,13 +1965,54 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
+            internal static IndexCursor New(IndexRowSet irs, Context _cx, PRow key = null)
+            {
+                var _irs = irs;
+                var table = (Table)_cx.db.objects[_irs.target];
+                var index = (Index)_cx.db.objects[_irs.index];
+                for (var bmk = index.rows.PositionAt(key); bmk != null;
+                    bmk = bmk.Previous())
+                {
+                    var iq = bmk.Value();
+                    if (!iq.HasValue)
+                        continue;
+                    var rec = table.tableRows[iq.Value];
+                    if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
+                        && _cx.db._user != table.definer
+                         && _cx.db._user != _cx.db.owner
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
+                        continue;
+                    return new IndexCursor(_cx, _irs, 0, bmk, rec, key);
+                }
+                return null;
+            }
             protected override Cursor _Next(Context _cx)
             {
                 var bmk = _bmk;
-                var _table = (Table)_cx.db.objects[_irs.tabledefpos];
+                var _table = (Table)_cx.db.objects[_irs.target];
                 for (; ; )
                 {
                     bmk = bmk.Next();
+                    if (bmk == null)
+                        return null;
+                    if (!bmk.Value().HasValue)
+                        continue;
+                    var rec = _table.tableRows[bmk.Value().Value];
+                    if (_table.enforcement.HasFlag(Grant.Privilege.Select)
+                        && _cx.db._user != _table.definer
+                         && _cx.db._user != _cx.db.owner
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                        continue;
+                    return new IndexCursor(_cx, _irs, _pos + 1, bmk, rec);
+                }
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                var bmk = _bmk;
+                var _table = (Table)_cx.db.objects[_irs.target];
+                for (; ; )
+                {
+                    bmk = bmk.Previous();
                     if (bmk == null)
                         return null;
                     if (!bmk.Value().HasValue)
@@ -1655,7 +2033,7 @@ namespace Pyrrho.Level4
         }
     }
     /// <summary>
-    /// A RowSet defined by an Index (e.g. the primary key for a table)
+    /// A RowSet defined by an Index (e.g. the primary key for a table) with a constant filter
     /// </summary>
     internal class FilterRowSet : IndexRowSet
     {
@@ -1670,9 +2048,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
-        internal FilterRowSet(Context cx, Table tb, Index x, PRow filt, BTree<long, Finder> fi)
-            : base(cx, tb, x, fi, null, cx.nextHeap++,BTree<long, object>.Empty 
-                  + (IxFilter, filt) + (SqlInsert._Table,tb.defpos)
+        internal FilterRowSet(Context cx, Table tb, Index x, PRow filt)
+            : base(cx, tb, x, null, cx.nextHeap++,BTree<long, object>.Empty 
+                  + (IxFilter, filt) + (SqlInsert.Target,tb.defpos)
                   +(Table.LastData,tb.lastData))
         { }
         FilterRowSet(Context cx, FilterRowSet irs, BTree<long, Finder> nd, bool bt)
@@ -1774,13 +2152,13 @@ namespace Pyrrho.Level4
             }
             public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
             {
-                var tb = (Table)_cx.db.objects[_frs.tabledefpos];
+                var tb = (Table)_cx.db.objects[_frs.target];
                 return new FilterCursor(_cx, _frs, _pos + 1, mb, tb.tableRows[mb.Value().Value]);
             }
             internal static FilterCursor New(Context _cx, FilterRowSet irs, PRow key = null)
             {
                 var _irs = irs;
-                var table = (Table)_cx.db.objects[_irs.tabledefpos];
+                var table = (Table)_cx.db.objects[_irs.target];
                 var index = (Index)_cx.db.objects[_irs.index];
                 for (var bmk = index.rows.PositionAt(key ?? irs.filter); bmk != null;
                     bmk = bmk.Next())
@@ -1800,7 +2178,7 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 var bmk = _bmk;
-                var _table = (Table)_cx.db.objects[_frs.tabledefpos];
+                var _table = (Table)_cx.db.objects[_frs.target];
                 for (; ; )
                 {
                     bmk = bmk.Next();
@@ -1831,7 +2209,7 @@ namespace Pyrrho.Level4
         /// <param name="r">a source rowset</param>
         internal DistinctRowSet(Context _cx,RowSet r) 
             : base(_cx.GetUid(),_cx,r.domain,r.finder,r.keys,
-                  r.where,null,null,null,null,
+                  r.where,null,null,
                   new BTree<long,object>(From.Source,r.defpos)
                   +(Table.LastData,r.lastData))
         { }
@@ -1883,15 +2261,11 @@ namespace Pyrrho.Level4
         {
             var r = (DistinctRowSet)base._Replace(cx, so, sv);
             r += (Index.Tree, mtree.Replaced(cx,so,sv));
-            r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (DistinctRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns!=source)
-                r += (From.Source, ns);
             if (mtree!=null)
                r += (Index.Tree, new MTree(mtree.info.Fix(cx)));
             return r;
@@ -1901,8 +2275,7 @@ namespace Pyrrho.Level4
             if (defpos < wr.Length)
                 return this;
             var r = (DistinctRowSet)base._Relocate(wr);
-            r += (From.Source, wr.Fix(source));
-            if (mtree != null)
+              if (mtree != null)
                 r += (Index.Tree, new MTree(mtree.info.Relocate(wr)));
             return r;
         }
@@ -1928,9 +2301,13 @@ namespace Pyrrho.Level4
             return new DistinctRowSet(cx,this,needed,mt);
         }
 
-        protected override Cursor _First(Context _cx)
+        protected override Cursor _First(Context cx)
         {
-            return DistinctCursor.New(_cx,this);
+            return DistinctCursor.New(cx,this);
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            return DistinctCursor.New(this, cx);
         }
         public override string ToString()
         {
@@ -1956,20 +2333,38 @@ namespace Pyrrho.Level4
             }
             internal static DistinctCursor New(Context cx,DistinctRowSet drs)
             {
-                var ox = cx.from;
-                cx.from += cx.data[drs.source].finder;
+                var ox = cx.finder;
+                cx.finder += cx.data[drs.source].finder;
                 if (drs.mtree == null)
                     throw new DBException("20000", "Distinct RowSet not built?");
-                for (var bmk = drs.mtree.First(); bmk != null; bmk = bmk.Next() as MTreeBookmark)
-                {
+                for (var bmk = drs.mtree.First(); bmk != null; bmk = bmk.Next()) 
+                { 
                     var rb = new DistinctCursor(cx,drs,0, bmk);
-                    if (rb.Matches(cx) && Query.Eval(drs.where, cx))
+                    if (rb.Matches(cx) && Eval(drs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
-                cx.from = ox;
+                cx.finder = ox;
+                return null;
+            }
+            internal static DistinctCursor New(DistinctRowSet drs,Context cx)
+            {
+                var ox = cx.finder;
+                cx.finder += cx.data[drs.source].finder;
+                if (drs.mtree == null)
+                    throw new DBException("20000", "Distinct RowSet not built?");
+                for (var bmk = drs.mtree.Last(); bmk != null; bmk = bmk.Previous())
+                {
+                    var rb = new DistinctCursor(cx, drs, 0, bmk);
+                    if (rb.Matches(cx) && Eval(drs.where, cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                cx.finder = ox;
                 return null;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
@@ -1982,18 +2377,34 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.from;
-                cx.from += cx.data[_drs.source].finder;
+                var ox = cx.finder;
+                cx.finder += cx.data[_drs.source].finder;
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
                     var rb = new DistinctCursor(cx, _drs,_pos + 1, bmk);
-                    if (rb.Matches(cx) && Query.Eval(_drs.where, cx))
+                    if (rb.Matches(cx) && Eval(_drs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
-                cx.from = ox;
+                cx.finder = ox;
+                return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                var ox = cx.finder;
+                cx.finder += cx.data[_drs.source].finder;
+                for (var bmk = _bmk.Previous(); bmk != null; bmk = bmk.Previous())
+                {
+                    var rb = new DistinctCursor(cx, _drs, _pos + 1, bmk);
+                    if (rb.Matches(cx) && Eval(_drs.where, cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                cx.finder = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -2015,8 +2426,8 @@ namespace Pyrrho.Level4
         }
         public OrderedRowSet(Context _cx,RowSet r,CList<long> os,bool dct)
             :base(_cx.nextHeap++, _cx, r.domain,r.finder,os,r.where,
-                 os,r.matches,null,null,new BTree<long,object>(From.Source,r.defpos)
-                 +(SqlInsert._Table,r.tabledefpos)
+                 os,r.matches,new BTree<long,object>(From.Source,r.defpos)
+                 +(SqlInsert.Target,r.target)
                  +(Table.LastData, r.lastData)
                  +(QuerySpecification.Distinct,dct))
         { }
@@ -2056,6 +2467,17 @@ namespace Pyrrho.Level4
         {
             return (OrderedRowSet)rs.New(rs.mem + x);
         }
+        internal override RowSet Review(Context cx)
+        {
+            var sc = cx.data[source];
+            if (rowOrder.CompareTo(sc.rowOrder) == 0
+                    || (sc is IndexRowSet irs && rowOrder.CompareTo(irs.keys) == 0))
+            {
+                cx.data += (defpos, sc);
+                return sc;
+            }
+            return this;
+        }
         internal override DBObject Relocate(long dp)
         {
             return new OrderedRowSet(dp, mem);
@@ -2063,9 +2485,6 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (OrderedRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns!=source)
-                r += (From.Source, ns);
             var nt = tree?.Fix(cx);
             if (nt!=tree)
                 r += (_RTree, nt);
@@ -2076,7 +2495,6 @@ namespace Pyrrho.Level4
             if (defpos < wr.Length)
                 return this;
             var r = (OrderedRowSet)base._Relocate(wr);
-            r += (From.Source, wr.Fix(source));
             if (tree != null)
                 r += (_RTree, tree.Relocate(wr));
             return r;
@@ -2086,20 +2504,19 @@ namespace Pyrrho.Level4
             var r = (OrderedRowSet)base._Replace(cx, so, sv);
             if (tree != null)
                 r += (_RTree, tree.Replace(cx, so, sv));
-            r += (From.Source, cx.Replace(source, so, sv));
             return r;
         }
         internal override RowSet Build(Context cx)
         {
             var _cx = new Context(cx);
             var sce = cx.data[source];
-            _cx.from += sce.finder;
+            _cx.finder += sce.finder;
             var dm = new Domain(Sqlx.ROW,cx, keys);
             var tree = new RTree(defpos,cx, keys, dm, 
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
             for (var e = sce.First(_cx); e != null; e = e.Next(_cx))
             {
-                var vs = BTree<long,TypedValue>.Empty;
+                var vs = CTree<long,TypedValue>.Empty;
                 for (var b = rowOrder.First(); b != null; b = b.Next())
                 {
                     var s = cx.obs[b.value()];
@@ -2113,9 +2530,13 @@ namespace Pyrrho.Level4
         {
             return OrderedCursor.New(_cx, this, RTreeBookmark.New(_cx, tree));
         }
+        protected override Cursor _Last(Context _cx)
+        {
+            return OrderedCursor.New(_cx, this, RTreeBookmark.New(tree, _cx));
+        }
         public override Rvv _Rvv(Context cx)
         {
-            return Rvv.Empty+(tabledefpos,cx.cursors[defpos]);
+            return Rvv.Empty+(target,cx.cursors[defpos]);
         }
         public override string ToString()
         {
@@ -2151,6 +2572,10 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 return New(_cx, _ors, _rb.Next(_cx));
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                return New(_cx, _ors, _rb.Previous(_cx));
             }
             internal override TableRow Rec()
             {
@@ -2209,6 +2634,10 @@ namespace Pyrrho.Level4
         {
             return null;
         }
+        protected override Cursor _Last(Context _cx)
+        {
+            return null;
+        }
     }
     /// <summary>
     /// A rowset for SqlRows
@@ -2216,11 +2645,11 @@ namespace Pyrrho.Level4
     internal class SqlRowSet : RowSet
     {
         internal const long
-            SqlRows = -413; // BList<long>  SqlRow
-        internal BList<long> sqlRows =>
-            (BList<long>)mem[SqlRows]??BList<long>.Empty;
-        internal SqlRowSet(long dp,Context cx,Domain xp, BList<long> rs) 
-            : base(dp, cx, xp,null, null,null,null,null,null,null,
+            SqlRows = -413; // CList<long>  SqlRow
+        internal CList<long> sqlRows =>
+            (CList<long>)mem[SqlRows]??CList<long>.Empty;
+        internal SqlRowSet(long dp,Context cx,Domain xp, CList<long> rs) 
+            : base(dp, cx, xp,null, null,null,null,null,
                   new BTree<long,object>(SqlRows,rs))
         { }
         SqlRowSet(Context cx, SqlRowSet rs, BTree<long, Finder> nd, bool bt) 
@@ -2286,6 +2715,10 @@ namespace Pyrrho.Level4
         {
             return SqlCursor.New(_cx,this);
         }
+        protected override Cursor _Last(Context _cx)
+        {
+            return SqlCursor.New(this, _cx);
+        }
         internal class SqlCursor : Cursor
         {
             readonly SqlRowSet _srs;
@@ -2299,11 +2732,12 @@ namespace Pyrrho.Level4
             SqlCursor(SqlCursor cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
             {
                 _srs = cu._srs;
+                _bmk = cu._bmk;
             }
             static TRow _Row(Context cx,SqlRowSet rs,int p)
             {
-                var rw = (TRow)cx.obs[rs.sqlRows[p]].Eval(cx);
-                return new TRow(rs, rw);
+                var rowType = new Domain(Sqlx.ROW, rs.domain.mem);
+                return (TRow)rowType.Coerce(cx,cx.obs[rs.sqlRows[p]].Eval(cx));
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
             {
@@ -2314,7 +2748,17 @@ namespace Pyrrho.Level4
                 for (var b=rs.sqlRows.First();b!=null;b=b.Next())
                 {
                     var rb = new SqlCursor(_cx,rs, 0, b);
-                    if (rb.Matches(_cx) && Query.Eval(rs.where, _cx))
+                    if (rb.Matches(_cx) && Eval(rs.where, _cx))
+                        return rb;
+                }
+                return null;
+            }
+            internal static SqlCursor New(SqlRowSet rs, Context _cx)
+            {
+                for (var b = rs.sqlRows.Last(); b != null; b = b.Previous())
+                {
+                    var rb = new SqlCursor(_cx, rs, 0, b);
+                    if (rb.Matches(_cx) && Eval(rs.where, _cx))
                         return rb;
                 }
                 return null;
@@ -2324,7 +2768,17 @@ namespace Pyrrho.Level4
                 for (var b=_bmk.Next();b!=null;b=b.Next())
                 {
                     var rb = new SqlCursor(_cx,_srs, _pos+1,b);
-                    if (rb.Matches(_cx) && Query.Eval(_srs.where, _cx))
+                    if (rb.Matches(_cx) && Eval(_srs.where, _cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                for (var b = _bmk.Previous(); b != null; b = b.Previous())
+                {
+                    var rb = new SqlCursor(_cx, _srs, _pos + 1, b);
+                    if (rb.Matches(_cx) && Eval(_srs.where, _cx))
                         return rb;
                 }
                 return null;
@@ -2341,19 +2795,22 @@ namespace Pyrrho.Level4
     }
     internal class TableExpRowSet : RowSet
     {
-        internal long source => (long)(mem[_From]??-1L);
+        internal long source => (long)(mem[From.Source]??-1L);
         internal override RowSet Source(Context cx)
         {
             return cx.data[source];
         }
-        internal TableExpRowSet(long dp, Context cx, long tgt, CList<long> cs, CList<long> ks, 
-            RowSet sc,BTree<long, bool> wh, BTree<long, TypedValue> ma,BTree<long,Finder> fi)
-            : base(dp, cx, new Domain(Sqlx.ROW,cx,cs), _Fin(fi,sc), ks, 
-                  wh, sc.rowOrder, ma,null,null,
-                  new BTree<long,object>(_From,tgt)
-                  +(SqlInsert._Table,sc.tabledefpos)
+        internal TableExpRowSet(long dp, Context cx, long tgt,Domain dm, CList<long> ks, 
+            RowSet sc,CTree<long, bool> wh, CTree<long, TypedValue> ma,BTree<long,Finder> fi)
+            : base(dp, cx, dm, _Fin(fi,sc), ks, 
+                  wh, sc.rowOrder, ma,
+                  new BTree<long,object>(From.Source,tgt)
+                  +(SqlInsert.Target,sc.target)
                   +(Table.LastData,sc.lastData)) 
-        { }
+        {
+            if (!TRow.Assert1(dm, sc.domain))
+                throw new PEException("Assert1");
+        }
         TableExpRowSet(Context cx, TableExpRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
         { }
@@ -2381,7 +2838,7 @@ namespace Pyrrho.Level4
         }
         public override Rvv _Rvv(Context cx)
         {
-            return cx.data[from]?._Rvv(cx);
+            return cx.data[source]?._Rvv(cx)??Rvv.Empty;
         }
         static BTree<long,Finder> _Fin(BTree<long,Finder> fi,RowSet sc)
         {
@@ -2402,31 +2859,13 @@ namespace Pyrrho.Level4
         {
             return new TableExpRowSet(dp,mem);
         }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            var r = (TableExpRowSet)base._Replace(cx, so, sv);
-            r += (_From, cx.Replace(source, so, sv));
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (TableExpRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns != source)
-                r += (_From, ns);
-            return r;
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            var r = (TableExpRowSet)base._Relocate(wr);
-            r += (_From, wr.Fix(source));
-            return r;
-        }
         protected override Cursor _First(Context _cx)
         {
             return TableExpCursor.New(_cx,this);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return TableExpCursor.New(this, _cx);
         }
         public override string ToString()
         {
@@ -2460,35 +2899,68 @@ namespace Pyrrho.Level4
             }
             public static TableExpCursor New(Context cx,TableExpRowSet trs)
             {
-                var ox = cx.from;
+                var ox = cx.finder;
                 var sce = cx.data[trs.source];
-                cx.from += sce.finder;
+                cx.finder += sce.finder;
                 for (var bmk=sce.First(cx);bmk!=null;bmk=bmk.Next(cx))
                 {
                     var rb = new TableExpCursor(cx, trs, bmk, 0);
-                    if (rb.Matches(cx) && Query.Eval(trs.where, cx))
+                    if (rb.Matches(cx) && Eval(trs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
-                cx.from = ox;
+                cx.finder = ox;
+                return null;
+            }
+            public static TableExpCursor New(TableExpRowSet trs, Context cx)
+            {
+                var ox = cx.finder;
+                var sce = cx.data[trs.source];
+                cx.finder += sce.finder;
+                for (var bmk = sce.Last(cx); bmk != null; bmk = bmk.Previous(cx))
+                {
+                    var rb = new TableExpCursor(cx, trs, bmk, 0);
+                    if (rb.Matches(cx) && Eval(trs.where, cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.from;
-                cx.from += cx.data[_trs.source].finder;
+                var ox = cx.finder;
+                cx.finder += cx.data[_trs.source].finder;
                 for (var bmk = _bmk.Next(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new TableExpCursor(cx, _trs, bmk, _pos+1);
-                    if (rb.Matches(cx) && Query.Eval(_trs.where, cx))
+                    if (rb.Matches(cx) && Eval(_trs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
-                cx.from = ox;
+                cx.finder = ox;
+                return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                var ox = cx.finder;
+                cx.finder += cx.data[_trs.source].finder;
+                for (var bmk = _bmk.Previous(cx); bmk != null; bmk = bmk.Previous(cx))
+                {
+                    var rb = new TableExpCursor(cx, _trs, bmk, _pos + 1);
+                    if (rb.Matches(cx) && Eval(_trs.where, cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                cx.finder = ox;
                 return null;
             }
             internal override TableRow Rec()
@@ -2516,9 +2988,8 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
-        internal ExplicitRowSet(long dp,Context cx,Domain dt,BList<(long,TRow)>r)
-            : base(dp,cx,dt,null,null,null,null,null,null,null,
-                  new BTree<long,object>(ExplRows,r))
+        internal ExplicitRowSet(long dp,Domain dt,BList<(long,TRow)>r)
+            : base(dp, new BTree<long,object>(ExplRows,r)+(_Domain,dt))
         { }
         ExplicitRowSet(Context cx, ExplicitRowSet rs, BTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
@@ -2573,6 +3044,10 @@ namespace Pyrrho.Level4
         {
             return ExplicitCursor.New(_cx,this,0);
         }
+        protected override Cursor _Last(Context _cx)
+        {
+            return ExplicitCursor.New(_cx, this, (int)explRows.Count-1);
+        }
         public override string ToString()
         {
             var r = base.ToString();
@@ -2621,34 +3096,50 @@ namespace Pyrrho.Level4
             }
             internal static ExplicitCursor New(Context _cx,ExplicitRowSet ers,int i)
             {
-                var ox = _cx.from;
-                _cx.from += ers.finder;
+                var ox = _cx.finder;
+                _cx.finder += ers.finder;
                 for (var b=ers.explRows.First();b!=null;b=b.Next())
                 {
                     var rb = new ExplicitCursor(_cx,ers, b, 0);
-                    if (rb.Matches(_cx) && Query.Eval(ers.where, _cx))
+                    if (rb.Matches(_cx) && Eval(ers.where, _cx))
                     {
-                        _cx.from = ox;
+                        _cx.finder = ox;
                         return rb;
                     }
                 }
-                _cx.from = ox;
+                _cx.finder = ox;
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
-                var ox = _cx.from;
-                _cx.from += _ers.finder;
+                var ox = _cx.finder;
+                _cx.finder += _ers.finder;
                 for (var prb = _prb.Next(); prb!=null; prb=prb.Next())
                 {
                     var rb = new ExplicitCursor(_cx,_ers, prb, _pos+1);
-                    if (rb.Matches(_cx) && Query.Eval(_ers.where, _cx))
+                    if (rb.Matches(_cx) && Eval(_ers.where, _cx))
                     {
-                        _cx.from = ox;
+                        _cx.finder = ox;
                         return rb;
                     }
                 }
-                _cx.from = ox;
+                _cx.finder = ox;
+                return null;
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                var ox = _cx.finder;
+                _cx.finder += _ers.finder;
+                for (var prb = _prb.Previous(); prb != null; prb = prb.Previous())
+                {
+                    var rb = new ExplicitCursor(_cx, _ers, prb, _pos + 1);
+                    if (rb.Matches(_cx) && Eval(_ers.where, _cx))
+                    {
+                        _cx.finder = ox;
+                        return rb;
+                    }
+                }
+                _cx.finder = ox;
                 return null;
             }
             internal override Cursor _Fix(Context cx)
@@ -2665,7 +3156,7 @@ namespace Pyrrho.Level4
     {
         internal SqlCall call => (SqlCall)mem[SqlCall.Call];
         internal ProcRowSet(long dp, SqlCall ca, Context cx) :base(dp,cx,ca.domain,null,null,
-            null,null,null,null,null,BTree<long,object>.Empty+(_Needed,BTree<long,Finder>.Empty)
+            null,null,null,BTree<long,object>.Empty+(_Needed,BTree<long,Finder>.Empty)
             +(Built,true)+(SqlCall.Call,ca))
         { }
         protected ProcRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2685,7 +3176,11 @@ namespace Pyrrho.Level4
             var v = cx.values[defpos];
             return (v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TArray)v);
         }
-
+        protected override Cursor _Last(Context cx)
+        {
+            var v = cx.values[defpos];
+            return (v == TNull.Value) ? null : ProcRowSetCursor.New(this, cx, (TArray)v);
+        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new ProcRowSet(cx, this, nd, bt);
@@ -2734,13 +3229,23 @@ namespace Pyrrho.Level4
             readonly ABookmark<int, TypedValue> _bmk;
             ProcRowSetCursor(Context cx,ProcRowSet prs,int pos,
                 ABookmark<int,TypedValue>bmk, TRow rw) 
-                : base(cx,prs,bmk.key(),-1,0,new TRow(prs,rw)) 
+                : base(cx,prs,bmk.key(),-1,0,new TRow(rw,prs)) 
             { 
                 _prs = prs; _bmk = bmk;
             }
             internal static ProcRowSetCursor New(Context cx,ProcRowSet prs,TArray ta)
             {
                 for (var b = ta.list.First();b!=null;b=b.Next())
+                {
+                    var r = new ProcRowSetCursor(cx, prs, 0, b, (TRow)b.value());
+                    if (r.Matches(cx))
+                        return r;
+                }
+                return null;
+            }
+            internal static ProcRowSetCursor New(ProcRowSet prs, Context cx, TArray ta)
+            {
+                for (var b = ta.list.Last(); b != null; b = b.Previous())
                 {
                     var r = new ProcRowSetCursor(cx, prs, 0, b, (TRow)b.value());
                     if (r.Matches(cx))
@@ -2759,6 +3264,16 @@ namespace Pyrrho.Level4
                 for (var b = _bmk.Next(); b != null; b = b.Next())
                 {
                     var r = new ProcRowSetCursor(cx, _prs, _pos+1, b, (TRow)b.value());
+                    if (r.Matches(cx))
+                        return r;
+                }
+                return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                for (var b = _bmk.Previous(); b != null; b = b.Previous())
+                {
+                    var r = new ProcRowSetCursor(cx, _prs, _pos + 1, b, (TRow)b.value());
                     if (r.Matches(cx))
                         return r;
                 }
@@ -2809,19 +3324,17 @@ namespace Pyrrho.Level4
             Td = -428,  // TriggerContext
             Ti = -426,  // TriggerContext
             TransTarget = -419, // BTree<long,Finder>   SqlValue
-            TriggerType = -421, // PTrigger.TrigType
-            TrsFrom = -416; // From (SqlInsert, QuerySearch or UpdateSearch)
+            TriggerType = -421; // PTrigger.TrigType
         internal BTree<long, TypedValue> defaults =>
-            (BTree<long,TypedValue>)mem[Defaults]??BTree<long, TypedValue>.Empty; 
-        internal new From from => (From)mem[TrsFrom]; // will be a SqlInsert, QuerySearch or UpdateSearch
+            (BTree<long, TypedValue>)mem[Defaults] ?? BTree<long, TypedValue>.Empty;
         internal RowSet data => (RowSet)mem[_Data];
         internal ObInfo targetInfo => (ObInfo)mem[TargetInfo];
         internal Activation targetAc => (Activation)mem[TargetAc];
-        internal BTree<long, Finder> targetTrans => 
+        internal BTree<long, Finder> targetTrans =>
             (BTree<long, Finder>)mem[TargetTrans];
         internal BTree<long, Finder> transTarget =>
             (BTree<long, Finder>)mem[TransTarget];
-        internal long indexdefpos => (long)(mem[IxDefPos]?? -1L);
+        internal long indexdefpos => (long)(mem[IxDefPos] ?? -1L);
         internal PTrigger.TrigType _tgt => (PTrigger.TrigType)mem[TriggerType];
         /// <summary>
         /// There may be several triggers of any type, so we manage a set of transition activations for each.
@@ -2835,52 +3348,55 @@ namespace Pyrrho.Level4
         internal TriggerContext ta => (TriggerContext)mem[Ta];
         internal TriggerContext td => (TriggerContext)mem[Td];
         internal Adapters _eqs => (Adapters)mem[_Adapters];
-        internal TransitionRowSet(Context cx, From q, RowSet data, PTrigger.TrigType tg, Adapters eqs)
-            : base(cx.nextHeap++, cx, q.domain,
-                  data?.finder ?? BTree<long, Finder>.Empty, 
-                  null, q.where, null, null, null, null, 
-                  _Mem(cx.nextHeap-1,cx, q, tg, eqs)+(_Data,data)
-                  +(SqlInsert._Table,q.target))
+        internal TransitionRowSet(Context cx, RowSet fm, PTrigger.TrigType tg)
+            : base(cx.nextHeap++, cx, fm.domain,
+                  fm?.finder,
+                  null, fm?.where, null, null, 
+                  _Mem(cx.nextHeap - 1, cx, fm, tg)
+                  + (SqlInsert.Target, fm.target))
         {
             cx.data += (defpos, this);
             targetAc.data = cx.data;
         }
-        static BTree<long,object> _Mem(long defpos,Context cx,From from,
-            PTrigger.TrigType tg, Adapters eqs)
+        static BTree<long, object> _Mem(long defpos, Context cx, RowSet fm,
+            PTrigger.TrigType tg)
         {
             var m = BTree<long, object>.Empty;
-            m += (TrsFrom, from);
-            m += (_Adapters,eqs);
+            m += (_Data, fm);
             var tr = cx.db;
-            var t = tr.objects[from.target] as Table;
+            var target = fm.target;
+            var t = tr.objects[target] as Table;
             m += (IxDefPos, t.FindPrimaryIndex(tr)?.defpos ?? -1L);
+            var targetInfo = (ObInfo)tr.schema.infos[target];
             // check now about conflict with generated columns
             if (t.Denied(cx, Grant.Privilege.Insert))
-                throw new DBException("42105", from);
-            var rt = from.rowType; // data rowType
-            var targetInfo = (ObInfo)tr.schema.infos[t.defpos];
+                throw new DBException("42105", targetInfo.name);
+            var rt = fm.rt;
             var tt = targetInfo.domain.rowType;
-            m += (TargetInfo,targetInfo);
+            m += (TargetInfo, targetInfo);
             var tgTn = BTree<long, Finder>.Empty;
             var tnTg = BTree<long, Finder>.Empty;
-            for (var b = rt.First(); b != null; b = b.Next()) 
+            for (var b = rt.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 var s = cx.obs[p];
-                var c = (s is SqlCopy sc) ? sc.copyFrom : s.defpos;
-                tgTn += (c,new Finder(p,defpos));
-                tnTg += (p,new Finder(c,from.defpos));
+                var c = p;
+                while (cx.obs[c] is SqlCopy sc)
+                    c = sc.copyFrom;
+                tgTn += (c, new Finder(p, defpos));
+                tnTg += (p, new Finder(c, target));
             }
-            m += (TargetTrans,tgTn);
-            m += (TransTarget,tnTg);
-            m += (TargetAc,new Activation(cx, from.name));
+            for (var b = tt.First(); b != null; b = b.Next())
+                m += (TargetTrans, tgTn);
+            m += (TransTarget, tnTg);
+            m += (TargetAc, new Activation(cx, targetInfo.name));
             var dfs = BTree<long, TypedValue>.Empty;
             if (tg != PTrigger.TrigType.Delete)
             {
                 for (var b = targetInfo.domain.rowType.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
-                    cx.from += (p, new Finder(p,defpos));
+                    cx.finder += (p, new Finder(p, defpos));
                     var tc = (TableColumn)tr.objects[p];
                     var tv = tc.defaultValue ?? tc.domain.defaultValue;
                     if (!tv.IsNull)
@@ -2894,18 +3410,18 @@ namespace Pyrrho.Level4
                         for (var d = tc.domain.constraints.First(); d != null; d = d.Next())
                             cx.Frame(d.key());
                     }
-                    cx.Frame(tc.generated.exp,tc.defpos);
+                    cx.Frame(tc.generated.exp, tc.defpos);
                 }
             }
             m += (Defaults, dfs);
-            m += (TriggerType,tg);
+            m += (TriggerType, tg);
             // Get the trigger sets 
             if (t.triggers[tg | PTrigger.TrigType.EachStatement
-                    | PTrigger.TrigType.Before] is BTree<long,bool> ttb)
-                m+=(Tb,Setup(cx, t, defpos, ttb));
+                    | PTrigger.TrigType.Before] is BTree<long, bool> ttb)
+                m += (Tb, Setup(cx, t, defpos, ttb));
             if (t.triggers[tg | PTrigger.TrigType.EachStatement
                     | PTrigger.TrigType.Instead] is BTree<long, bool> tti)
-                m += (Ti, Setup(cx, t, defpos, tti)); 
+                m += (Ti, Setup(cx, t, defpos, tti));
             if (t.triggers[tg | PTrigger.TrigType.EachStatement
                     | PTrigger.TrigType.After] is BTree<long, bool> tta)
                 m += (Tb, Setup(cx, t, defpos, tta));
@@ -2923,17 +3439,17 @@ namespace Pyrrho.Level4
                 m += (Ra, Setup(cx, t, defpos, tra));
             return m;
         }
-        protected TransitionRowSet(Context cx,TransitionRowSet rs,BTree<long,Finder> nd,
-            bool bt) :base(cx,rs,nd,bt)
+        protected TransitionRowSet(Context cx, TransitionRowSet rs, BTree<long, Finder> nd,
+            bool bt) : base(cx, rs, nd, bt)
         { }
         protected TransitionRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
         {
             return new TransitionRowSet(defpos, m);
         }
-        internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
+        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
-            return new TransitionRowSet(cx,this,nd,bt);
+            return new TransitionRowSet(cx, this, nd, bt);
         }
         /// <summary>
         /// We need to change some properties, but if it has come from a framing
@@ -2953,17 +3469,17 @@ namespace Pyrrho.Level4
             return rs;
         }
         internal override bool TableColsOk => true;
-        internal override RowSet Source(Context cx)
-        {
-            return cx.data[from.defpos];
-        }
         internal override DBObject Relocate(long dp)
         {
             return new TransitionRowSet(dp, mem);
         }
         protected override Cursor _First(Context _cx)
         {
-            return TransitionCursor.New(_cx,this);
+            return CheckPrimaryKey(_cx, TransitionCursor.New(_cx, this));
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException(); // never
         }
         /// <summary>
         /// Implement the autokey feature: if a key column is an integer type,
@@ -2975,17 +3491,18 @@ namespace Pyrrho.Level4
         /// <param name="fl"></param>
         /// <param name="ix"></param>
         /// <returns></returns>
-        TargetCursor CheckPrimaryKey(Context cx,TargetCursor tgc,TransitionCursor trc)
+        TransitionCursor CheckPrimaryKey(Context cx, TransitionCursor trc)
         {
-            // cx is an Activation
-            var ix = (Index)cx.next.db.objects[indexdefpos];
-            if (ix == null)
-                return tgc;
+            if (trc == null)
+                return null;
+            if (indexdefpos<0)
+                return trc;
+            var ix = (Index)cx.db.objects[indexdefpos];
             var k = BList<TypedValue>.Empty;
-            for (var b=ix.keys.First(); b!=null; b=b.Next())
+            for (var b = ix.keys.First(); b != null; b = b.Next())
             {
                 var tc = (TableColumn)cx.obs[b.value()];
-                var v = tgc[tc.defpos];
+                var v = trc._targetRow[tc.defpos];
                 if (v == null || v.IsNull)
                 {
                     if (tc.domain.kind != Sqlx.INTEGER)
@@ -2993,16 +3510,13 @@ namespace Pyrrho.Level4
                     v = ix.rows.NextKey(k, 0, b.key());
                     if (v.IsNull)
                         v = new TInt(0);
-                    tgc += (cx, tc.defpos, v);
                     cx.values += (tc.defpos, v);
-                    var c = targetTrans[tc.defpos].col;
-                    trc += (cx.next,c,v);
-                    cx.next.cursors += (from.defpos, trc);
-                    cx.next.values += (c, v);
+                    trc += (cx, tc.defpos, v);
+                    cx.cursors += (targetInfo.defpos, trc);
                 }
                 k += v;
             }
-            return tgc;
+            return trc;
         }
         /// <summary>
         /// Set up activations for executing a set of triggers
@@ -3010,82 +3524,99 @@ namespace Pyrrho.Level4
         /// <param name="q"></param>
         /// <param name="tgs"></param>
         /// <returns></returns>
-        static TriggerContext Setup(Context _cx,Table tb,long trs,
+        static TriggerContext Setup(Context _cx, Table tb, long trs,
             BTree<long, bool> tgs)
         {
-            var cx = new TriggerContext(_cx,trs,tgs);
+            var cx = new TriggerContext(_cx, trs, tgs);
             cx.nextHeap = _cx.nextHeap;
             cx.obs = _cx.obs;
             cx.data = _cx.data;
-            cx.obs += (tb.defpos,tb);
+            cx.obs += (tb.defpos, tb);
             for (var b = tb.tblCols.First(); b != null; b = b.Next())
             {
                 var tc = (DBObject)_cx.tr.objects[b.key()];
-                cx.obs += (tc.defpos,tc);
+                cx.obs += (tc.defpos, tc);
             }
             return cx;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" From: "); sb.Append(Uid(from.defpos));
-            if (data!=null)
-            { sb.Append(" Data: ");sb.Append(Uid(data.defpos)); }
+            sb.Append(" From: "); sb.Append(Uid(targetInfo.defpos));
+            if (data != null)
+            { sb.Append(" Data: "); sb.Append(Uid(data.defpos)); }
             return sb.ToString();
         }
         internal bool? InsertSA(Context _cx)
-        { return ta?.Exec(_cx,this); }
+        { return ta?.Exec(_cx, this); }
         internal bool? InsertSB(Context _cx)
         { return tb?.Exec(_cx, this); }
         internal bool? UpdateSA(Context _cx)
-        { return ta?.Exec(_cx,this); }
+        { return ta?.Exec(_cx, this); }
         internal bool? UpdateSB(Context _cx)
-        { return tb?.Exec(_cx, this)==true || ti?.Exec(_cx, this)==true; }
+        { return tb?.Exec(_cx, this) == true || ti?.Exec(_cx, this) == true; }
         internal bool? DeleteSB(Context _cx)
-        { return tb?.Exec(_cx,this) == true || ti?.Exec(_cx,this)==true; }
+        { return tb?.Exec(_cx, this) == true || ti?.Exec(_cx, this) == true; }
         internal bool? DeleteSA(Context _cx)
         { return td?.Exec(_cx, this); }
         internal class TransitionCursor : Cursor
         {
             internal readonly TransitionRowSet _trs;
             internal readonly Cursor _fbm; // transition source cursor
-            internal readonly TRow targetRow; // for physical record construction, triggers, constraints
-            internal readonly BTree<long,TypedValue> _oldVals;
+            internal readonly CTree<long, TypedValue> _vals;
+            internal readonly TRow _targetRow;
             internal TransitionCursor(Context cx, TransitionRowSet trs, Cursor fbm, int pos)
-                : base(cx, trs, pos, fbm._defpos, fbm._ppos, new TRow(trs,fbm))
+                : base(cx, trs, pos, fbm._defpos, fbm._ppos, new TRow(trs, fbm))
             {
                 _trs = trs;
                 _fbm = fbm;
-                _oldVals = values;
-                targetRow = new TRow(_trs.targetInfo.domain,_trs.targetTrans, values);
-                cx.values += (targetRow.values,false);
+                _vals = values;
+                _targetRow = _Value(trs, fbm);
+                cx.values += (values, false);
             }
-            TransitionCursor(TransitionCursor cu,Context cx,long p,TypedValue v)
-                :base(cu,cx,cu._trs.finder[p].col,v)
+            TransitionCursor(TransitionCursor cu, Context cx, long p, TypedValue v)
+                : base(cu, cx,
+                     cu._trs.targetTrans.Contains(p) ?
+                        cu._trs.targetTrans[p].col
+                        : p,
+                     v)
             {
                 _trs = cu._trs;
                 _fbm = cu._fbm;
-                _oldVals = cu._oldVals;
-                targetRow = new TRow(_trs.targetInfo.domain,_trs.targetTrans, values);
-                cx.values += (targetRow.values,false);
-            }
-            protected override Cursor New(Context cx,long p, TypedValue v)
-            {
+                _vals = cu._vals; // NB not changed
+                var np = cu._trs.transTarget.Contains(p) ?
+                        cu._trs.transTarget[p].col
+                        : p;
+                _targetRow = cu._targetRow + (np, v);
                 cx.values += (p, v);
+            }
+            static TRow _Value(TransitionRowSet trs, Cursor fbm)
+            {
+                var vals = CTree<long, TypedValue>.Empty;
+                var ma = trs.transTarget;
+                for (var b = trs.domain.rowType.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var v = fbm[p] ?? TNull.Value;
+                    vals += (ma[p].col, v);
+                }
+                return new TRow(trs.targetInfo.domain, vals);
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
                 return new TransitionCursor(this, cx, p, v);
             }
-            public static TransitionCursor operator+(TransitionCursor cu,
-                (Context,long,TypedValue)x)
+            public static TransitionCursor operator +(TransitionCursor cu,
+                (Context, long, TypedValue) x)
             {
                 var (cx, p, tv) = x;
-                cx.values += (p, tv);
                 return new TransitionCursor(cu, cx, p, tv);
             }
-            static TransitionCursor New(Context cx,TransitionRowSet trs, int pos,
+            static TransitionCursor New(Context cx, TransitionRowSet trs, int pos,
                  Cursor fbm)
-            { 
+            {
                 var trc = new TransitionCursor(cx, trs, fbm, pos);
-                for (var b=fbm.columns.First(); b!=null;b=b.Next())
+                for (var b = fbm.columns.First(); b != null; b = b.Next())
                 {
                     var cp = b.value();
                     var sl = cx.obs[cp];
@@ -3109,46 +3640,89 @@ namespace Pyrrho.Level4
                         trc += (cx, b.value(), tv);
                     }
                 }
-                trc = TargetCursor.New(trs.targetAc, trc, pos)._trsCu;
+                var oc = cx.finder;
+                var od = cx.cursors;
+                cx.finder = trs.finder;
+                cx.cursors += (trs.defpos, trc);
+                for (var b = trs.targetInfo.domain.rowType.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value()] is TableColumn tc)
+                    {
+                        switch (tc.generated.gen)
+                        {
+                            case Generation.Expression:
+                                if (trc._targetRow[tc.defpos] is TypedValue vt && !vt.IsNull)
+                                    throw new DBException("0U000", cx.Inf(tc.defpos).name);
+                                cx.finder = oc;
+                                cx.cursors = od;
+                                cx.Frame(tc.generated.exp, tc.defpos);
+                                cx.values += trc._targetRow.values;
+                                trc += (cx,tc.defpos, cx.obs[tc.generated.exp].Eval(cx));
+                                cx.finder = trs.finder;
+                                cx.cursors += (trs.defpos, trc);
+                                break;
+                        }
+                        var cv = trc._targetRow[tc.defpos];
+                        if ((!tc.defaultValue.IsNull) && (cv==null || cv.IsNull))
+                            trc += (cx,tc.defpos, tc.defaultValue);
+                        cv = trc._targetRow[tc.defpos];
+                        if (tc.notNull && (cv == null || cv.IsNull))
+                            throw new DBException("22206", cx.Inf(tc.defpos).name);
+                        for (var cb = tc.constraints?.First(); cb != null; cb = cb.Next())
+                        {
+                            var cp = cb.key();
+                            var ck = (Check)cx.db.objects[cp];
+                            cx.obs += (ck.defpos, ck);
+                            cx.Frame(ck.search, ck.defpos);
+                            cx.finder += trs.targetTrans;
+                            var se = (SqlValue)cx.obs[ck.search];
+                            if (se.Eval(cx) != TBool.True)
+                                throw new DBException("22212", cx.Inf(tc.defpos).name);
+                        }
+                    }
+                cx.finder = oc;
+                cx.cursors = od;
                 return trc;
             }
-            internal static TransitionCursor New(Context _cx,TransitionRowSet trs)
+            internal static TransitionCursor New(Context _cx, TransitionRowSet trs)
             {
-                var ox = _cx.from;
+                var ox = _cx.finder;
                 var sce = trs.data; //_cx.data[trs.from.defpos];
-                _cx.from += sce?.finder;
+                _cx.finder += sce?.finder;
                 for (var fbm = sce?.First(_cx); fbm != null;
                     fbm = fbm.Next(_cx))
-                    if (fbm.Matches(_cx) && Query.Eval(trs.from.where, _cx))
+                    if (fbm.Matches(_cx) && Eval(trs.where, _cx))
                     {
                         var r = New(_cx, trs, 0, fbm);
-                        _cx.from = ox;
+                        _cx.finder = ox;
                         _cx.cursors += (r._rowsetpos, r);
                         return r;
                     }
-                _cx.from = ox;
-               return null;
+                _cx.finder = ox;
+                return null;
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.from;
-                cx.from += cx.data[_fbm._rowsetpos].finder;
-                var from = _trs.from;
-                if(cx.obs[from.where.First()?.key()??-1L] is SqlValue sv && sv.domain.kind == Sqlx.CURRENT)
-                        return null;
-                var t = cx.db.objects[_trs.from.target] as Table;
+                var ox = cx.finder;
+                cx.finder += cx.data[_fbm._rowsetpos].finder;
+                if (cx.obs[_trs.where.First()?.key() ?? -1L] is SqlValue sv && sv.domain.kind == Sqlx.CURRENT)
+                    return null;
+                var t = cx.db.objects[_trs.targetInfo.defpos] as Table;
                 for (var fbm = _fbm.Next(cx); fbm != null; fbm = fbm.Next(cx))
                 {
-                    var ret = New(cx,_trs, 0, fbm);
-                    for (var b = from.where.First(); b != null; b = b.Next())
+                    var ret = New(cx, _trs, 0, fbm);
+                    for (var b = _trs.where.First(); b != null; b = b.Next())
                         if (cx.obs[b.key()].Eval(cx) != TBool.True)
                             goto skip;
-                    cx.from = ox;
-                    return ret;
-                    skip:;
+                    cx.finder = ox;
+                    return _trs.CheckPrimaryKey(cx, ret);
+                skip:;
                 }
-                cx.from = ox;
+                cx.finder = ox;
                 return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                throw new NotImplementedException(); // never
             }
             internal override TableRow Rec()
             {
@@ -3162,121 +3736,19 @@ namespace Pyrrho.Level4
             /// Some convenience functions for calling from Transaction.Execute(..)
             /// </summary>
             internal bool? InsertRA(Context _cx)
-            { return _trs.ra?.Exec(_cx,_trs); }
+            { return _trs.ra?.Exec(_cx, _trs); }
             internal bool? InsertRB(Context _cx)
-            { return _trs.rb?.Exec(_cx, _trs)==true ||
-                    _trs.ri?.Exec(_cx,_trs)==true; }
+            {
+                return _trs.rb?.Exec(_cx, _trs) == true ||
+                      _trs.ri?.Exec(_cx, _trs) == true;
+            }
             internal bool? UpdateRA(Context _cx)
-            { return _trs.ra?.Exec(_cx,_trs); }
+            { return _trs.ra?.Exec(_cx, _trs); }
             internal bool? UpdateRB(Context _cx)
-            { return _trs.rb?.Exec(_cx,_trs) ==true || _trs.ri?.Exec(_cx,_trs)==true; }
+            { return _trs.rb?.Exec(_cx, _trs) == true || _trs.ri?.Exec(_cx, _trs) == true; }
             internal bool? DeleteRB(Context _cx)
-            { return _trs.rb?.Exec(_cx, _trs)==true|| _trs.ri?.Exec(_cx,_trs)==true; }
+            { return _trs.rb?.Exec(_cx, _trs) == true || _trs.ri?.Exec(_cx, _trs) == true; }
 
-        }
-        internal class TargetCursor : Cursor
-        {
-            internal readonly BTree<long, Finder> _map;
-            internal readonly TransitionCursor _trsCu;
-            internal readonly BTree<long, TypedValue> _oldVals;
-            internal TargetCursor(Context cx, TransitionCursor cu)
-                : base(cx, cu._trs.defpos, cu._pos, cu._defpos, cu._ppos,
-                     cu._trs.targetInfo.domain, cu.targetRow)
-            {
-                _trsCu = cu;
-                var ov = BTree<long, TypedValue>.Empty;
-                var ti = cu._trs.targetInfo;
-                for (var b = ti.domain.rowType.First(); b != null; b = b.Next())
-                    ov += (b.value(), cu._oldVals[cu._trs.targetTrans[b.value()].col]);
-                _oldVals = ov;
-                _map = cu._trs.targetTrans;
-            }
-            internal static TargetCursor New(Context cx, TransitionCursor trc,int pos)
-            {
-                var tgc = new TargetCursor(cx, trc);
-                var trs = trc._trs;
-                var ti = trs.targetInfo;
-                var j = 0;
-                var fi = BTree<long, Finder>.Empty;
-                var tb = ti.domain.rowType.First();
-                for (var b=trs.rt.First();b!=null&&tb!=null;b=b.Next(),tb=tb.Next())
-                    fi += (tb.value(), new Finder(b.value(),trs.defpos));
-                var oc = cx.from;
-                var od = cx.cursors;
-                cx.from = fi;
-                cx.cursors += (trs.defpos, trc);
-                for (var b = ti.domain.rowType.First();b!=null;b=b.Next(), j++)
-                    if (cx.db.objects[b.value()] is TableColumn tc)
-                    {
-
-                        switch (tc.generated.gen)
-                        {
-                            case Generation.Expression:
-                                if (tgc[tc.defpos] is TypedValue vt && !vt.IsNull)
-                                    throw new DBException("0U000", cx.Inf(tc.defpos).name);
-                                cx.from = oc;
-                                cx.cursors = od;   
-                                cx.Frame(tc.generated.exp,tc.defpos);
-                                tgc += (cx, tc.defpos, cx.obs[tc.generated.exp].Eval(cx));
-                                cx.from = fi;
-                                cx.cursors += (trs.defpos, trc);
-                                break;
-                        }
-                        if ((!tc.defaultValue.IsNull) && tgc[tc.defpos].IsNull)
-                            tgc += (cx, tc.defpos, tc.defaultValue);
-                        if (tc.notNull 
-                            && (tgc[tc.defpos]==null || tgc[tc.defpos].IsNull))
-                            throw new DBException("22206", cx.Inf(tc.defpos).name);
-                        for (var cb = tc.constraints?.First(); cb != null; cb = cb.Next())
-                        {
-                            var cp = cb.key();
-                            var ck = (Check)cx.db.objects[cp];
-                            cx.obs += (ck.defpos, ck);
-                            cx.Frame(ck.search,ck.defpos);
-                            var se = (SqlValue)cx.obs[ck.search];
-                            if (se.Eval(cx) != TBool.True)
-                                throw new DBException("22212", cx.Inf(tc.defpos).name);
-                        }
-                    }
-                cx.from = oc;
-                cx.cursors = od;
-                if (trs.indexdefpos > 0)
-                    tgc = trs.CheckPrimaryKey(cx, tgc, trc);
-                return tgc;
-            }
-            TargetCursor(TargetCursor cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
-            {
-                _map = cu._map;
-                _trsCu = cu._trsCu+(cx,_map[p].col,v);
-                cx.values += (p,v);
-                cx.cursors += (cu._trsCu._trs.defpos, this);
-            }
-            public static TargetCursor operator +(TargetCursor cu,(Context, long, TypedValue) x)
-            {
-                var (cx, p, tv) = x;
-                return new TargetCursor(cu, cx, p, tv);
-            }
-            protected override Cursor _Next(Context _cx)
-            {
-                var cu = (TransitionCursor)_trsCu.Next(_cx);
-                if (cu == null)
-                    return null;
-                return new TargetCursor(_cx, cu);
-            }
-
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                return new TargetCursor(cx,_trsCu+(cx,_map[p].col,v));
-            }
-
-            internal override TableRow Rec()
-            {
-                return _trsCu.Rec();
-            }
-            internal override Cursor _Fix(Context cx)
-            {
-                throw new NotImplementedException();
-            }
         }
     }
     /// <summary>
@@ -3297,52 +3769,48 @@ namespace Pyrrho.Level4
             (BTree<long, Finder>)mem[Map];
         internal BTree<long,Finder> rmap =>
             (BTree<long, Finder>)mem[RMap];
+        internal bool old => (bool)(mem[TransitionTable.Old] ?? true);
         /// <summary>
         /// Old table: compute the rows that will be in the update/delete
+        /// New table: get the rows from the context
         /// </summary>
         /// <param name="dp"></param>
         /// <param name="cx"></param>
         /// <param name="trs"></param>
-        internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs)
-            : base(dp, cx, trs.domain,trs.finder,null,null,null,
-                  null,null,null, _Mem(cx,trs)+(SqlInsert._Table,trs.tabledefpos))
+        internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs, 
+            Domain dm,bool old)
+            : base(dp, cx, dm, null, null,null,null,null,_Mem(cx, dp,trs, dm, old)
+                  + (SqlInsert.Target, trs.target))
         { }
-        /// <summary>
-        /// New table: Get the new rows from the context
-        /// </summary>
-        /// <param name="dp"></param>
-        /// <param name="cx"></param>
-        /// <param name="trs"></param>
-        internal TransitionTableRowSet(long dp, Context cx, long trs)
-            : base(dp, cx, cx.data[trs].domain,null,null,null,null,
-                  null,null,null, _Mem(cx, trs))
-        { }
-        static BTree<long,object> _Mem(Context cx,TransitionRowSet trs)
-        {
-            var dat = BTree<long, TableRow>.Empty;
-            for (var b = trs.First(cx); b != null; b = b.Next(cx))
-                 dat += (b._defpos, b.Rec());
-            return BTree<long, object>.Empty
-                + (Trs, trs) + (Data, dat) + (Map, trs.targetTrans)
-                + (RMap, trs.transTarget);
-        }
-        static BTree<long,object> _Mem(Context cx,long t)
-        {
-            var trs = (TransitionRowSet)cx.data[t];
-            var dat = BTree<long, TableRow>.Empty;
-            if (cx.newTables.Contains(t))
-                dat = cx.newTables[t];
-            else
-                for (var b = trs.First(cx); b != null; b = b.Next(cx))
-                    dat += (b._defpos, b.Rec());
-            return BTree<long,object>.Empty
-                + (Trs,trs) + (Data,dat) + (Map,trs.targetTrans)
-                +(RMap,trs.transTarget);
-        }
         internal TransitionTableRowSet(Context cx,TransitionTableRowSet rs,
             BTree<long,Finder>nd,bool bt) :base(cx,rs,nd,bt)
         { }
         protected TransitionTableRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,long dp,TransitionRowSet trs,Domain dm,bool old)
+        {
+            var dat = BTree<long, TableRow>.Empty;
+            if ((!old) && cx.newTables.Contains(trs.defpos))
+                dat = cx.newTables[trs.defpos];
+            else
+                for (var b = trs.First(cx); b != null; b = b.Next(cx))
+                    dat += (b._defpos, b.Rec());
+            var fi = BTree<long, Finder>.Empty;
+            var ma = BTree<long, Finder>.Empty;
+            var rm = BTree<long, Finder>.Empty;
+            var rb = trs.rt.First();
+            for (var b=dm.rowType.First();b!=null&&rb!=null;b=b.Next(),rb=rb.Next())
+            {
+                var p = b.value();
+                var q = rb.value();
+                var f = trs.transTarget[q];
+                ma += (f.col, new Finder(p,dp));
+                rm += (p, f);
+                fi += (p, new Finder(trs.finder[q].col,trs.defpos));
+            }
+            return BTree<long,object>.Empty + (TransitionTable.Old,old)
+                + (Trs,trs) + (Data,dat) + (Map,ma)
+                +(RMap,rm) + (_Finder,fi);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new TransitionTableRowSet(defpos,m);
@@ -3384,6 +3852,10 @@ namespace Pyrrho.Level4
         {
             return TransitionTableCursor.New(_cx,this);
         }
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException(); // never
+        }
         internal class TransitionTableCursor : Cursor
         {
             internal readonly ABookmark<long, TableRow> _bmk;
@@ -3395,6 +3867,8 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk; _tt = tt;
             }
+            TransitionTableCursor(TransitionTableCursor cu, Context cx, long p, TypedValue v)
+                : base(cu, cx, p, v) { }
             internal static TransitionTableCursor New(Context cx,TransitionTableRowSet tt)
             {
                 var bmk = tt.data.First();
@@ -3405,10 +3879,15 @@ namespace Pyrrho.Level4
                 var bmk = _bmk.Next();
                 return (bmk != null) ? new TransitionTableCursor(_cx, _tt, bmk, _pos + 1):null;
             }
-
+            protected override Cursor _Previous(Context cx)
+            {
+                throw new NotImplementedException(); // never
+            }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
-                throw new NotImplementedException();
+                if (_tt.old)
+                    throw new DBException("23103","OLD TABLE");
+                return new TransitionTableCursor(this,cx,p,v);
             }
 
             internal override TableRow Rec()
@@ -3427,14 +3906,14 @@ namespace Pyrrho.Level4
     internal class RoutineCallRowSet : RowSet
     {
         internal const long
-            Actuals = -435, // BList<long>  SqlValue
+            Actuals = -435, // CList<long>  SqlValue
             Proc = -436,    // Procedure
             Result = -437;  // RowSet
         internal Procedure proc => (Procedure)mem[Proc];
-        internal BList<long> actuals => (BList<long>)mem[Actuals];
+        internal CList<long> actuals => (CList<long>)mem[Actuals];
         internal RowSet result => (RowSet)mem[Result];
         internal RoutineCallRowSet(Context cx,From f,Procedure p, BList<long> r) 
-            :base(cx.GetUid(),cx,f.domain,null,null,f.where,null,null,null,null,
+            :base(cx.GetUid(),cx,f.domain,null,null,f.where,null,null,
                  BTree<long,object>.Empty+(Proc,p)+(Actuals,r))
         { }
         protected RoutineCallRowSet(Context cx,RoutineCallRowSet rs,
@@ -3493,6 +3972,10 @@ namespace Pyrrho.Level4
         {
             return result.First(cx);
         }
+        protected override Cursor _Last(Context cx)
+        {
+            return result.Last(cx);
+        }
     }
     internal class RowSetSection : RowSet
     {
@@ -3504,7 +3987,7 @@ namespace Pyrrho.Level4
         internal int size => (int)(mem[Size] ?? 0);
         internal RowSetSection(Context _cx,RowSet s, int o, int c)
             : base(_cx.nextHeap++,s.mem+(Offset,o)+(Size,c)+(From.Source,s.defpos)
-                  +(SqlInsert._Table,s.tabledefpos)
+                  +(SqlInsert.Target,s.target)
                   +(Table.LastData,s.lastData))
         {
             _cx.data += (defpos, this);
@@ -3557,6 +4040,13 @@ namespace Pyrrho.Level4
                 b = b.Next(cx);
             return RowSetSectionCursor.New(cx,this,b);
         }
+        protected override Cursor _Last(Context cx)
+        {
+            var b = cx.data[source].Last(cx);
+            for (int i = 0; b != null && i < offset; i++)
+                b = b.Previous(cx);
+            return RowSetSectionCursor.New(cx, this, b);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -3591,7 +4081,14 @@ namespace Pyrrho.Level4
                     return new RowSetSectionCursor(cx, _rss, rb);
                 return null;
             }
-
+            protected override Cursor _Previous(Context cx)
+            {
+                if (_pos + 1 >= _rss.size)
+                    return null;
+                if (_rb.Previous(cx) is Cursor rb)
+                    return new RowSetSectionCursor(cx, _rss, rb);
+                return null;
+            }
             internal override TableRow Rec()
             {
                 throw new NotImplementedException();
@@ -3607,9 +4104,8 @@ namespace Pyrrho.Level4
         internal const long
             Docs = -440; // BList<SqlValue>
         internal BList<SqlValue> vals => (BList<SqlValue>)mem[Docs];
-        internal DocArrayRowSet(Context cx, Query q, SqlRowArray d)
-            : base(cx.GetUid(), cx, q.domain, null, null, q.where,
-                  null, null, null, null, _Mem(cx, d))
+        internal DocArrayRowSet(Context cx, SqlRowArray d)
+            : base(cx.GetUid(), _Mem(cx, d)+(_Domain,Domain.TableType))
         { }
         static BTree<long,object> _Mem(Context cx,SqlRowArray d)
         {
@@ -3669,7 +4165,10 @@ namespace Pyrrho.Level4
         {
             return DocArrayBookmark.New(_cx,this);
         }
-
+        protected override Cursor _Last(Context cx)
+        {
+            return DocArrayBookmark.New(this, cx);
+        }
         internal class DocArrayBookmark : Cursor
         {
             readonly DocArrayRowSet _drs;
@@ -3688,7 +4187,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(Context cx,SqlValue sv)
             {
-                return new TRow(sv,new BTree<long,TypedValue>(sv.defpos,(TDocument)sv.Eval(cx)));
+                return new TRow(sv,new CTree<long,TypedValue>(sv.defpos,(TDocument)sv.Eval(cx)));
             }
             internal static DocArrayBookmark New(Context _cx,DocArrayRowSet drs)
             {
@@ -3696,6 +4195,13 @@ namespace Pyrrho.Level4
                 if (bmk == null)
                     return null;
                 return new DocArrayBookmark(_cx,drs, bmk);
+            }
+            internal static DocArrayBookmark New(DocArrayRowSet drs, Context cx)
+            {
+                var bmk = drs.vals.Last();
+                if (bmk == null)
+                    return null;
+                return new DocArrayBookmark(cx, drs, bmk);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -3707,6 +4213,13 @@ namespace Pyrrho.Level4
                 if (bmk == null)
                     return null;
                 return new DocArrayBookmark(_cx,_drs, bmk);
+            }
+            protected override Cursor _Previous(Context _cx)
+            {
+                var bmk = ABookmark<int, SqlValue>.Previous(_bmk, _drs.vals);
+                if (bmk == null)
+                    return null;
+                return new DocArrayBookmark(_cx, _drs, bmk);
             }
             internal override Cursor _Fix(Context cx)
             {
@@ -3721,21 +4234,20 @@ namespace Pyrrho.Level4
     internal class ValueRowSet : RowSet
     {
         internal long source => (long)(mem[From.Source] ?? -1L);
-        public ValueRowSet(long dp, Context cx, Domain dm, From f, RowSet r)
+        public ValueRowSet(long dp, Context cx, Domain dm, RowSet r)
             : base(dp, BTree<long,object>.Empty+(From.Source,r.defpos)
-                  +(_Domain,dm)+ (_Finder,_Fin(cx, f, r))
-                  +(Query.Where, r.where) +(SqlInsert._Table,r.tabledefpos)
-                  +(RowOrder,r.rowOrder)+(Query._Matches, r.matches)
-                  + (Query.Matching,r.matching))
+                  +(_Domain,dm)+ (_Finder,_Fin(cx, dm, r))
+                  +(Query.Where, r.where) +(SqlInsert.Target,r.target)
+                  +(RowOrder,r.rowOrder)+(Query._Matches, r.matches))
         { }
         protected ValueRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         protected ValueRowSet(Context cx, RowSet rs, BTree<long, Finder> nd,bool bt)
             : base(cx, rs, nd, bt) { }
-        static BTree<long,Finder> _Fin(Context cx,From f,RowSet s)
+        static BTree<long,Finder> _Fin(Context cx,Domain dm,RowSet s)
         {
             var fi = BTree<long,Finder>.Empty;
             var sb = s.rt.First();
-            for (var b = f.rowType.First(); b != null && sb != null;
+            for (var b = dm.rowType.First(); b != null && sb != null;
                 b = b.Next(), sb = sb.Next())
                 fi += (b.value(), s.finder[sb.value()]);
             return fi;
@@ -3756,7 +4268,14 @@ namespace Pyrrho.Level4
         {
             throw new NotImplementedException();
         }
-
+        public override Cursor Last(Context cx)
+        {
+            return ValueCursor.New(this, cx, 0);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            throw new NotImplementedException();
+        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new ValueRowSet(cx,this,nd,bt);
@@ -3770,28 +4289,6 @@ namespace Pyrrho.Level4
         internal override DBObject Relocate(long dp)
         {
             return new ValueRowSet(dp,mem);
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            var r = (ValueRowSet)base._Replace(cx, so, sv);
-            r += (From.Source, cx.Replace(source, so, sv));
-            return r;
-        }
-        internal override Basis _Relocate(Writer wr)
-        {
-            var r = (ValueRowSet)base._Relocate(wr);
-            var s = (RowSet)wr.cx.data[source]._Relocate(wr);
-            if (s.defpos != source)
-                r += (From.Source, s.defpos);
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = (ValueRowSet)base.Fix(cx);
-            var ns = cx.rsuids[source] ?? source;
-            if (ns!=source)
-            r += (From.Source, ns);
-            return r;
         }
         public override string ToString()
         {
@@ -3818,7 +4315,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(ValueRowSet rs,Cursor sc)
             {
-                var vs = BTree<long, TypedValue>.Empty;
+                var vs = CTree<long, TypedValue>.Empty;
                 for (var b = rs.rt.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
@@ -3834,14 +4331,30 @@ namespace Pyrrho.Level4
             internal static ValueCursor New(Context cx,ValueRowSet vrs,int pos)
             {
                 var sce = vrs.Source(cx);
-                var ox = cx.from;
-                cx.from += sce.finder;
+                var ox = cx.finder;
+                cx.finder += sce.finder;
                 for (var b = sce.First(cx);b!=null;b=b.Next(cx))
                 {
                     var rb = new ValueCursor(cx, vrs, pos, b._defpos, b);
-                    if (rb.Matches(cx) && Query.Eval(vrs.where, cx))
+                    if (rb.Matches(cx) && Eval(vrs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                return null;
+            }
+            internal static ValueCursor New(ValueRowSet vrs, Context cx, int pos)
+            {
+                var sce = vrs.Source(cx);
+                var ox = cx.finder;
+                cx.finder += sce.finder;
+                for (var b = sce.Last(cx); b != null; b = b.Previous(cx))
+                {
+                    var rb = new ValueCursor(cx, vrs, pos, b._defpos, b);
+                    if (rb.Matches(cx) && Eval(vrs.where, cx))
+                    {
+                        cx.finder = ox;
                         return rb;
                     }
                 }
@@ -3850,20 +4363,35 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context cx)
             {
                 var sce = _vrs.Source(cx);
-                var ox = cx.from;
-                cx.from += sce.finder;
+                var ox = cx.finder;
+                cx.finder += sce.finder;
                 for (var b = _sc.Next(cx); b != null; b = b.Next(cx))
                 {
                     var rb = new ValueCursor(cx, _vrs, _pos+1, b._defpos, b);
-                    if (rb.Matches(cx) && Query.Eval(_vrs.where, cx))
+                    if (rb.Matches(cx) && Eval(_vrs.where, cx))
                     {
-                        cx.from = ox;
+                        cx.finder = ox;
                         return rb;
                     }
                 }
                 return null;
             }
-
+            protected override Cursor _Previous(Context cx)
+            {
+                var sce = _vrs.Source(cx);
+                var ox = cx.finder;
+                cx.finder += sce.finder;
+                for (var b = _sc.Previous(cx); b != null; b = b.Previous(cx))
+                {
+                    var rb = new ValueCursor(cx, _vrs, _pos + 1, b._defpos, b);
+                    if (rb.Matches(cx) && Eval(_vrs.where, cx))
+                    {
+                        cx.finder = ox;
+                        return rb;
+                    }
+                }
+                return null;
+            }
             internal override TableRow Rec()
             {
                 return _sc.Rec();
@@ -3887,8 +4415,8 @@ namespace Pyrrho.Level4
         internal long source => (long)(mem[From.Source]??-1L);
         internal SqlFunction wf=> (SqlFunction)mem[Window];
         internal WindowRowSet(Context cx,RowSet sc, SqlFunction f)
-            :base(cx.nextHeap++,cx,sc.domain,null,null,sc.where,null,
-                 null,null,null,BTree<long,object>.Empty+(From.Source,sc.defpos)
+            :base(cx.nextHeap++,cx,sc.domain,null,null,sc.where,
+                 null,null,BTree<long,object>.Empty+(From.Source,sc.defpos)
                  +(Window,f)+(Table.LastData,sc.lastData))
         { }
         protected WindowRowSet(Context cx,WindowRowSet rs,BTree<long,Finder> nd,
@@ -3919,6 +4447,10 @@ namespace Pyrrho.Level4
         protected override Cursor _First(Context _cx)
         {
             return WindowCursor.New(_cx,this);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return WindowCursor.New(this, _cx);
         }
         public static WindowRowSet operator+(WindowRowSet rs,(long,object)x)
         {
@@ -3982,6 +4514,13 @@ namespace Pyrrho.Level4
                 return (bmk == null) ? null 
                     : new WindowCursor(cx,ws.defpos,0,bmk._defpos,bmk._key);
             }
+            internal static Cursor New(WindowRowSet ws, Context cx)
+            {
+                ws = (WindowRowSet)ws.MaybeBuild(cx);
+                var bmk = ws?.tree.Last(cx);
+                return (bmk == null) ? null
+                    : new WindowCursor(cx, ws.defpos, 0, bmk._defpos, bmk._key);
+            }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
                 throw new NotImplementedException();
@@ -3991,7 +4530,10 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-
+            protected override Cursor _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
             internal override TableRow Rec()
             {
                 throw new NotImplementedException();
@@ -4009,32 +4551,33 @@ namespace Pyrrho.Level4
     internal class RestRowSet : RowSet
     {
         internal const long
-            JoinCols = -383, // BTree<string,int>
+            JoinCols = -383, // CTree<string,int>
             RemoteAggregates = -384, // bool
-            RemoteCols = -373, // BTree<string,long>
+            RemoteCols = -373, // CTree<string,long>
             RemoteGroups = -374, // GroupSpecification
             RestView = -459,    // long
             RestValue = -457,   // TArray
             DefaultUrl = -370,  // string 
-            UsingCols = -259, // BTree<string,long> TableColumns
+            UsingCols = -259, // CTree<string,long> TableColumns
             UsingTable = -260; // long Table
         internal TArray aVal => (TArray)mem[RestValue];
         internal long restView => (long)(mem[RestView] ?? -1L);
    //     internal long globalFrom => (long)(mem[GlobalFrom] ?? -1L);
-        internal BTree<string,long> remoteCols => 
-            (BTree<string,long>)mem[RemoteCols] ?? BTree<string,long>.Empty;
+        internal CTree<string,long> remoteCols => 
+            (CTree<string,long>)mem[RemoteCols] ?? CTree<string,long>.Empty;
         internal string defaultUrl => (string)mem[DefaultUrl] ?? "";
-        internal BTree<string, long> usingCols =>
-            (BTree<string, long>)mem[UsingCols] ?? BTree<string, long>.Empty;
+        internal CTree<string, long> usingCols =>
+            (CTree<string, long>)mem[UsingCols] ?? CTree<string, long>.Empty;
         internal long usingTable => (long)(mem[UsingTable] ?? -1L);
-        internal BTree<string, int> joinCols =>
-            (BTree<string, int>)mem[JoinCols] ?? BTree<string, int>.Empty;
+        internal CTree<string, int> joinCols =>
+            (CTree<string, int>)mem[JoinCols] ?? CTree<string, int>.Empty;
         internal bool remoteAggregates => (bool)(mem[RemoteAggregates] ?? false);
         internal GroupSpecification remoteGroups =>(GroupSpecification)mem[RemoteGroups];
         public RestRowSet(Context cx, From f, RestView vw)
-            : base(f.defpos, cx, f.domain, null, null, null, null, null, null, null,
+            : base(f.defpos, cx, f.domain, null, null, f.where, f.ordSpec, 
+                  f.matches, 
                  _Mem(cx,vw) +(RestView,vw.defpos)+(RemoteCols,vw.viewCols)
-                  +(SqlInsert._Table,vw.viewPpos))
+                  +(SqlInsert.Target,vw.viewPpos))
         { }
         protected RestRowSet(Context cx, RestRowSet rs, BTree<long, Finder> nd, bool bt)
             : base(cx, rs, nd, bt) { } 
@@ -4055,7 +4598,10 @@ namespace Pyrrho.Level4
         {
             return RestCursor.New(_cx, this);
         }
-
+        protected override Cursor _Last(Context _cx)
+        {
+            return RestCursor.New(this, _cx);
+        }
         internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
         {
             return new RestRowSet(cx, this, nd, bt);
@@ -4094,13 +4640,13 @@ namespace Pyrrho.Level4
         internal override Basis Fix(Context cx)
         {
             var r = (RestRowSet)base.Fix(cx);
-            var nv = cx.Fix(restView);
+            var nv = cx.ObUnheap(restView);
             if (nv!=restView)
             r += (RestView, nv);
             var ng = remoteGroups?.Fix(cx);
             if (ng!=remoteGroups)
                 r += (RemoteGroups, ng);
-            var nu = cx.Fix(usingTable);
+            var nu = cx.ObUnheap(usingTable);
             if (nu!=usingTable)
                 r += (UsingTable, nu);
             var nc = cx.Fix(usingCols);
@@ -4179,28 +4725,34 @@ namespace Pyrrho.Level4
             var u = ut?.domain.rowType.Last().value() ?? -1L;
             var vw = (RestView)cx.obs[restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
-            var url = (string)(((SqlValue)cx.obs[vw.viewPpos])?.Eval(cx).Val()
+            var url = (string)(cx.obs[vw.viewPpos]?.Eval(cx)?.Val()
                 ?? vi.metadata[Sqlx.URL]
                 ?? vi.description);
-            var rx = url.LastIndexOf("/");
-            var globalFrom = (From)cx.obs[defpos];
-            string targetName = "";
-            if (globalFrom != null)
-            {
-                targetName = url.Substring(rx + 1);
-                url = url.Substring(0, rx);
-            }
             var sql = new StringBuilder();
+            string targetName = "";
             if (vi.metadata.Contains(Sqlx.URL))
             {
                 sql.Append(url);
-                for (var b = globalFrom.matches.First(); b != null; b = b.Next())
+                for (var b = matches.First(); b != null; b = b.Next())
                 {
                     var kn = ((SqlValue)cx.obs[b.key()]).name;
                     sql.Append("/"); sql.Append(kn);
                     sql.Append("="); sql.Append(b.value());
                 }
                 url = sql.ToString();
+            }
+            else
+            {
+                var ss = url.Split('/');
+                if (ss.Length > 5)
+                    targetName = ss[5];
+                var ub = new StringBuilder(ss[0]);
+                for (var i=1;i<ss.Length && i<5;i++)
+                {
+                    ub.Append('/');
+                    ub.Append(ss[i]);
+                }
+                url = ub.ToString();
             }
             var rq = GetRequest(cx,url);
             rq.Accept = vw.mime ?? "application/json";
@@ -4217,10 +4769,10 @@ namespace Pyrrho.Level4
                     sql.Append(b.key());
                 }
                 sql.Append(" from "); sql.Append(targetName);
-                var cs = cx.obs[globalFrom.source] as CursorSpecification;
+                var cs = cx.obs[From.Source] as CursorSpecification;
                 var cm = " group by ";
                 if ((remoteGroups != null && remoteGroups.sets.Count > 0)
-                    || globalFrom.aggregates(cx))
+                    || aggregates(cx))
                 {
                     var ids = BTree<long, bool>.Empty;
                     for (var b = cs.restGroups.First(); b != null; b = b.Next())
@@ -4237,7 +4789,7 @@ namespace Pyrrho.Level4
                         for (var b = remoteGroups.sets.First(); b != null; b = b.Next())
                         {
                             var gs = (Grouping)cx.obs[b.value()];
-                            Grouped(cx, gs, sql, ref cm, ids, globalFrom);
+                            Grouped(cx, gs, sql, ref cm, ids);
                         }
                     for (var b = needed.First(); b != null; b = b.Next())
                         if (!ids.Contains(b.key()))
@@ -4248,7 +4800,7 @@ namespace Pyrrho.Level4
                         }
                     if (cs?.where.Count > 0 || cs?.matches.Count > 0)
                     {
-                        var sw = globalFrom.WhereString(cs.where, cs.matches, null);
+                        var sw = WhereString(cx,cs.where, cs.matches, null);
                         if (sw.Length > 0)
                         {
                             sql.Append((ids.Count > 0) ? " having " : " where ");
@@ -4257,9 +4809,9 @@ namespace Pyrrho.Level4
                     }
                 }
                 else
-                if (cs?.where.Count > 0 || cs?.matches.Count > 0)
+                if (where.Count > 0 || matches.Count > 0)
                 {
-                    var sw = globalFrom.WhereString(cs.where, cs.matches, null);
+                    var sw = WhereString(cx, where, matches, null);
                     if (sw.Length > 0)
                     {
                         sql.Append(" where ");
@@ -4269,7 +4821,7 @@ namespace Pyrrho.Level4
             }
             if (PyrrhoStart.HTTPFeedbackMode)
                 Console.WriteLine(url + " " + sql.ToString());
-            if (globalFrom != null && rq.Method=="POST")
+            if (rq.Method=="POST")
             {
                 var bs = Encoding.UTF8.GetBytes(sql.ToString());
                 rq.ContentType = "text/plain";
@@ -4322,12 +4874,12 @@ namespace Pyrrho.Level4
             return r;
         }
         BTree<long,bool> Grouped(Context cx, Grouping gs, StringBuilder sql, ref string cm, 
-            BTree<long,bool> ids, Query gf)
+            BTree<long,bool> ids)
         {
             for (var b = gs.members.First(); b!=null; b=b.Next())
             {
                 var gi = (Grouping)cx.obs[b.key()];
-                if (gf.Knows(cx,gi.defpos) && !ids.Contains(gi.defpos))
+                if (Knows(cx,gi.defpos) && !ids.Contains(gi.defpos))
                 {
                     ids+=(gi.defpos,true);
                     sql.Append(cm); cm = ",";
@@ -4335,12 +4887,41 @@ namespace Pyrrho.Level4
                 }
             }
             for (var b=gs.groups.First();b!=null;b=b.Next())
-                ids = Grouped(cx, b.value(), sql, ref cm, ids, gf);
+                ids = Grouped(cx, b.value(), sql, ref cm, ids);
             return ids;
+        }
+        public string WhereString(Context cx, CTree<long, bool> svs, CTree<long, TypedValue> mts,
+    TRow pre)
+        {
+            var sb = new StringBuilder();
+            var cm = "";
+            for (var b = svs?.First(); b != null; b = b.Next())
+            {
+                var sw = cx.obs[b.key()].ToString(cx);
+                if (sw.Length > 1)
+                {
+                    sb.Append(cm); cm = " and ";
+                    sb.Append(sw);
+                }
+            }
+            for (var b = mts?.First(); b != null; b = b.Next())
+            {
+                var nm = cx.obs[b.key()].ToString(cx);
+                sb.Append(cm); cm = " and ";
+                sb.Append(nm);
+                sb.Append("=");
+                var tv = b.value();
+                if (tv.dataType.kind == Sqlx.CHAR)
+                    sb.Append("'" + tv.ToString() + "'");
+                else
+                    sb.Append(tv.ToString());
+            }
+            return sb.ToString();
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" ");  sb.Append(Uid(restView));
             sb.Append(remoteCols);
             if (defaultUrl!="")
                 sb.Append(defaultUrl);
@@ -4381,6 +4962,16 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
+            internal static RestCursor New(RestRowSet rrs, Context cx)
+            {
+                for (var i = rrs.aVal.Length-1; i>=0; i--)
+                {
+                    var rb = new RestCursor(cx, rrs, 0, i);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
                 return new RestCursor(cx, this, p, v);
@@ -4391,6 +4982,16 @@ namespace Pyrrho.Level4
                 for (var i = _ix+1; i < _rrs.aVal.Length; i++)
                 {
                     var rb = new RestCursor(cx, _rrs, _pos+1, i);
+                    if (rb.Matches(cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                for (var i = _ix - 1; i >0; i--)
+                {
+                    var rb = new RestCursor(cx, _rrs, _pos + 1, i);
                     if (rb.Matches(cx))
                         return rb;
                 }
@@ -4472,7 +5073,10 @@ namespace Pyrrho.Level4
         {
             return LogRowsCursor.New(_cx, this,0,targetTable);
         }
-
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException(); // someday maybe
+        }
         internal override DBObject Relocate(long dp)
         {
             return new LogRowsRowSet(dp,mem);
@@ -4512,7 +5116,7 @@ namespace Pyrrho.Level4
                 PTransaction pt = null;
                 for (var b = cx.db.log.PositionAt(p); b != null; b = b.Next())
                 {
-                    var vs = BTree<long, TypedValue>.Empty;
+                    var vs = CTree<long, TypedValue>.Empty;
                     p = b.key();
                     switch (b.value())
                     {
@@ -4605,6 +5209,10 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context cx)
             {
                 return New(cx,_lrs,_pos+1,_defpos+1);
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                throw new NotImplementedException(); // someday maybe
             }
             internal override TableRow Rec()
             {
@@ -4703,7 +5311,10 @@ namespace Pyrrho.Level4
         {
             return LogRowColCursor.New(_cx,this,0,(null,logRow));
         }
-
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException(); // someday maybe
+        }
         internal override DBObject Relocate(long dp)
         {
             return new LogRowColRowSet(dp,mem);
@@ -4733,7 +5344,7 @@ namespace Pyrrho.Level4
             internal static LogRowColCursor New(Context cx,LogRowColRowSet lrs,int pos,
                 (Physical,long) nx,PTransaction trans=null)
             {
-                var vs = BTree<long, TypedValue>.Empty;
+                var vs = CTree<long, TypedValue>.Empty;
                 var tb = lrs.targetTable;
                 var tc = lrs.logCol;
                 var rp = nx.Item2;
@@ -4803,6 +5414,10 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context cx)
             {
                 return New(cx,_lrs,_pos+1,_next);
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                throw new NotImplementedException(); // someday maybe
             }
             internal override Cursor _Fix(Context cx)
             {

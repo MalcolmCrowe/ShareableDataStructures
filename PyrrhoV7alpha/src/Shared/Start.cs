@@ -102,7 +102,7 @@ namespace Pyrrho
                     }
                     db = new Database(fn, new FileStream(fp,
                         FileMode.Open, FileAccess.ReadWrite, FileShare.None));
-                    if (PyrrhoStart.RoleMode)
+                    if (PyrrhoStart.VerboseMode)
                         Console.WriteLine("Server " + cid + " " + user
                             + " " + fn + " " + db.role.name);
                     // db.Load() is saved in the databases[] list
@@ -405,7 +405,7 @@ namespace Pyrrho
                                 //                    Console.WriteLine(""+(tn- t));
                                 tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.db.types);
                                 tcp.PutWarnings(tr);
-                                if (cx.result>=0L)
+                                if (cx.result>0L)
                                 {
                                     tcp.PutSchema(cx);
                                     rb = cx.data[cx.result]?.First(cx);
@@ -854,7 +854,7 @@ namespace Pyrrho
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is BList<long> co)
+            if (rb.columns is CList<long> co)
                 for (var b = co.First(); b != null; b = b.Next(), i++)
                     domains += (i, rb.dataType.representation[b.value()]);
             else
@@ -862,7 +862,7 @@ namespace Pyrrho
                     domains += (i, b.value());
             var dc = domains[nextCol];
             nextCell = rb[nextCol++];
-            if (nextCol == rb.Length)
+            if (nextCol == rb.display)
                 lookAheadDone = false;
             //      tcp.PutCheck(db);
             tcp.PutCell(cx, dc, nextCell);
@@ -1103,7 +1103,7 @@ namespace Pyrrho
         public static string host = "::1";
         public static string hostname = "localhost";
         public static int port = 5433;
-        internal static bool RoleMode = false, TutorialMode = false, DebugMode = false, HTTPFeedbackMode = false;
+        internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, HTTPFeedbackMode = false;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1174,7 +1174,7 @@ namespace Pyrrho
                             break;
                         case 'D': DebugMode = true; break;
                         case 'H': HTTPFeedbackMode = true; break;
-                        case 'R': RoleMode = true; break;
+                        case 'V': VerboseMode = true; break;
                         case 'T': TutorialMode = true; break;
                         default: Usage(); return;
                     }
@@ -1239,7 +1239,7 @@ namespace Pyrrho
             Console.WriteLine("Flags:");
             Console.WriteLine("   -D  Debug mode");
             Console.WriteLine("   -H  Show feedback on HTTP RESTView operations");
-            Console.WriteLine("   -R  Show information about role setting");
+            Console.WriteLine("   -V  Verbose mode");
             Console.WriteLine("   -T  Tutorial mode");
 		}
         /// <summary>
@@ -1248,7 +1248,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (2 January 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (27 January 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

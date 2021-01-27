@@ -25,24 +25,24 @@ namespace Pyrrho.Level3
     internal class TableColumn : DBObject
     {
         internal const long
-            Checks = -268,  // BTree<long,bool> Check
+            Checks = -268,  // CTree<long,bool> Check
             Generated = -269, // GenerationRule (C)
             Table = -270, // long
-            UpdateAssignments = -271, // BTree<UpdateAssignment,bool>
+            UpdateAssignments = -271, // CTree<UpdateAssignment,bool>
             UpdateString = -272; // string
         /// <summary>
         /// A set of column constraints
         /// </summary>
-        public BTree<long, bool> constraints => 
-            (BTree<long, bool>)mem[Checks] ?? BTree<long,bool>.Empty;
+        public CTree<long, bool> constraints => 
+            (CTree<long, bool>)mem[Checks] ?? CTree<long,bool>.Empty;
         public TypedValue defaultValue => (TypedValue)mem[Domain.Default]??TNull.Value.New(domain);
         public GenerationRule generated =>
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
         public long tabledefpos => (long)(mem[Table] ?? -1L);
-        public BTree<UpdateAssignment,bool> update =>
-            (BTree<UpdateAssignment,bool>)mem[UpdateAssignments] 
-            ?? BTree<UpdateAssignment,bool>.Empty;
+        public CTree<UpdateAssignment,bool> update =>
+            (CTree<UpdateAssignment,bool>)mem[UpdateAssignments] 
+            ?? CTree<UpdateAssignment,bool>.Empty;
         public string updateString => (string)mem[UpdateString];
         public readonly static TableColumn Doc = new TableColumn(-1, BTree<long, object>.Empty);
         /// <summary>
@@ -153,7 +153,7 @@ namespace Pyrrho.Level3
                 if (ge != cx._Ob(go))
                     tc += (Generated, new GenerationRule(tc.generated.gen, tc.generated.gfs, ge));
             }
-            var ua = BTree<UpdateAssignment,bool>.Empty;
+            var ua = CTree<UpdateAssignment,bool>.Empty;
             for (var b = tc.update.First(); b != null; b = b.Next())
                 ua += (b.key().Replace(cx, so, sv),true);
             if (ua != tc.update)
@@ -204,7 +204,7 @@ namespace Pyrrho.Level3
             cx.Install1(c.framing);
             cx.Install2(c.framing);
             var sch = (SqlValue)cx.obs[c.search];
-            Query nf = new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
+            var nf = (Query)new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
             nf = sch.Conditions(cx, nf, false, out _);
             if (nf.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx) != null)
             {
@@ -271,7 +271,8 @@ namespace Pyrrho.Level3
             if (mem.Contains(Generated) && generated != GenerationRule.None)
             { sb.Append(" Generated="); sb.Append(generated); }
             if (mem.Contains(Domain.NotNull) && notNull) sb.Append(" Not Null");
-            if (defaultValue!=null && defaultValue!=TNull.Value) 
+            if (defaultValue!=null && 
+              ((!defaultValue.IsNull) || PyrrhoStart.VerboseMode))
             { sb.Append(" colDefault "); sb.Append(defaultValue); }
             if (mem.Contains(UpdateString))
             {
@@ -411,7 +412,7 @@ namespace Pyrrho.Level3
         internal readonly long prev;
         internal readonly string provenance;
         internal readonly Level classification;
-        internal readonly BTree<long, TypedValue> vals;
+        internal readonly CTree<long, TypedValue> vals;
         public TableRow(Record rc, Database db)
         {
             defpos = rc.defpos;
@@ -439,7 +440,7 @@ namespace Pyrrho.Level3
                     v += (b.key(), b.value());
             vals = v;
         }
-        protected TableRow(TableRow r,BTree<long,TypedValue> vs)
+        protected TableRow(TableRow r,CTree<long,TypedValue> vs)
         {
             defpos = r.defpos;
             time = r.time; user = r.user; provenance = r.provenance;

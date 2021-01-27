@@ -239,7 +239,7 @@ namespace Pyrrho.Level2
         internal User user;
         internal long _user;
         internal long table;
-        internal BTree<long, string> match; 
+        internal CTree<long, string> match; 
         internal long timestamp;
         public override long Dependent(Writer wr,Transaction tr)
         {
@@ -251,11 +251,11 @@ namespace Pyrrho.Level2
                     throw new DBException("0000"); // audit of uncommitted object ???
             return -1;
         }
-        internal Audit(User us,long ta, BTree<long,string> ma, long ts,long pp, Context cx)
+        internal Audit(User us,long ta, CTree<long,string> ma, long ts,long pp, Context cx)
             : this(Type.Audit,us,ta,ma,ts,pp,cx)
         {
         }
-        protected Audit(Type t, User us, long ta, BTree<long,string> ma, long ts, long pp, Context cx)
+        protected Audit(Type t, User us, long ta, CTree<long,string> ma, long ts, long pp, Context cx)
             : base(t,pp,cx)
         {
             user = us; table = ta; 
@@ -274,7 +274,7 @@ namespace Pyrrho.Level2
             var cols = new long[n];
             for (var i = 0; i < n; i++)
                 cols[i] = rdr.GetLong();
-            var ma = BTree<long, string>.Empty;
+            var ma = CTree<long, string>.Empty;
             for (var i = 0; i < n; i++)
                 ma += (cols[i],rdr.GetString());
             match = ma;

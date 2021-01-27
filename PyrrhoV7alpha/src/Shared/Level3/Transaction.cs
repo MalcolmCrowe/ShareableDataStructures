@@ -108,8 +108,12 @@ namespace Pyrrho.Level3
         }
         public override Database RdrClose(Context cx)
         {
-            cx.values = BTree<long, TypedValue>.Empty;
+            cx.values = CTree<long, TypedValue>.Empty;
             cx.cursors = BTree<long, Cursor>.Empty;
+            cx.data = BTree<long, RowSet>.Empty;
+            cx.results = BTree<long, long>.Empty;
+            cx.obs = BTree<long, DBObject>.Empty;
+            cx.result = -1L;
             if (!autoCommit)
                 return Unheap(cx);
             return cx.db.Commit(cx)+(NextPrep,nextPrep);
@@ -174,7 +178,7 @@ namespace Pyrrho.Level3
         /// Ensure that TriggeredAction effects get serialised after the event that triggers them. 
         /// </summary>
         /// <param name="rp">The triggering record</param>
-        internal void FixTriggeredActions(BTree<PTrigger.TrigType,BTree<long,bool>> trigs,
+        internal void FixTriggeredActions(CTree<PTrigger.TrigType,CTree<long,bool>> trigs,
             PTrigger.TrigType tgt, long rp)
         {
             for (var t = trigs.First(); t != null; t = t.Next())

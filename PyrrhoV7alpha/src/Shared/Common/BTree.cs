@@ -809,6 +809,10 @@ namespace Pyrrho.Common
         {
             return (BList<V>)b.Add((int)b.Count, v);
         }
+        public static BList<V> operator +(BList<V> b, ATree<int,V> c)
+        {
+            return (BList<V>)(((BTree<int,V>)b)+c);
+        }
         public static BList<V> operator -(BList<V> b, int i)
         {
             return (BList<V>)b.Remove(i);

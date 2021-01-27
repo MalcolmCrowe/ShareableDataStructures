@@ -166,7 +166,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Read constraint information for this profile (for checkUpdate)
         /// </summary>
-        public BTree<long, bool> read = BTree<long, bool>.Empty; 
+        public CTree<long, bool> read = CTree<long, bool>.Empty; 
         /// <summary>
         /// Read constraint information for this profile (the checkSpecific Index)
         /// </summary>

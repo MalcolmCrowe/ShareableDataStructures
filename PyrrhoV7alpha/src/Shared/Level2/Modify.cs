@@ -38,7 +38,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public string body;
         public long bodydefpos;
-        public BList<long> parms;
+        public CList<long> parms;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>

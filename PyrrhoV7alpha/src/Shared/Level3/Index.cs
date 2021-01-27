@@ -65,8 +65,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The references as computed by the adapter function if any
         /// </summary>
-        public BTree<long, BList<TypedValue>> references =>
-            (BTree<long, BList<TypedValue>>)mem[References];
+        public CTree<long, CList<TypedValue>> references =>
+            (CTree<long, CList<TypedValue>>)mem[References];
         public Index(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// Constructor: a new Index 
@@ -236,8 +236,8 @@ namespace Pyrrho.Level3
             var tb = (Table)nd.objects[tabledefpos];
             if (tb != null)
             {
-                var xs = BTree<CList<long>, long>.Empty;
-                var ks = BTree<long, bool>.Empty;
+                var xs = CTree<CList<long>, long>.Empty;
+                var ks = CTree<long, bool>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                     {

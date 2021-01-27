@@ -80,7 +80,7 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
-        public Context Exec(Context cx, long var, BList<long> actIns)
+        public Context Exec(Context cx, long var, CList<long> actIns)
         {
             var oi = (ObInfo)cx.db.role.infos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -136,7 +136,7 @@ namespace Pyrrho.Level3
             }
             if (methodType == PMethod.MethodType.Constructor)
             {
-                var ks = BTree<long,TypedValue>.Empty;
+                var ks = CTree<long,TypedValue>.Empty;
                 for (var b = ut.representation.First(); b != null; b = b.Next())
                 {
                     var p = b.key();

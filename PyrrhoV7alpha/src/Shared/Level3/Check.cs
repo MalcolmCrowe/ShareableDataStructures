@@ -80,7 +80,7 @@ namespace Pyrrho.Level3
             sb.Append(" Source="); sb.Append(source);
             return sb.ToString();
         }
-        internal override BTree<long, bool> Needs(Context cx)
+        internal override CTree<long, bool> Needs(Context cx)
         {
             return cx.obs[search].Needs(cx);
         }

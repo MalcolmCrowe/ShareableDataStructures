@@ -538,10 +538,10 @@ namespace Pyrrho.Level3
             }
             return 0;
         }
-        public TypedValue Get(BTree<long,Physical.Type>log,ReaderBase rdr)
+        public TypedValue Get(BTree<long,Physical.Type>log,ReaderBase rdr,long pp)
         {
             if (kind == Sqlx.SENSITIVE)
-                return new TSensitive(this, elType.Get(log,rdr));
+                return new TSensitive(this, elType.Get(log,rdr,pp));
             switch (Equivalent(kind))
             {
                 case Sqlx.NULL: return TNull.Value;
@@ -564,7 +564,7 @@ namespace Pyrrho.Level3
                             var ix = rdr.GetInt();
                             var h = (Common.Delta.Verb)rdr.ReadByte();
                             var nm = rdr.GetString();
-                            r.details.Add(new Delta.Action(ix, h, nm, Get(log,rdr)));
+                            r.details.Add(new Delta.Action(ix, h, nm, Get(log,rdr,pp)));
                         }
                         return r;
                     }
@@ -592,7 +592,7 @@ namespace Pyrrho.Level3
                         for (int j = 0; j < n; j++)
                         {
                             var dt = el.GetDataType(rdr);
-                            vs += dt.Get(log,rdr);
+                            vs += dt.Get(log,rdr,pp);
                         }
                         return new TArray(el,vs);
                     }
@@ -605,7 +605,7 @@ namespace Pyrrho.Level3
                         for (int j = 0; j < n; j++)
                         {
                             var dt = el.GetDataType(rdr);
-                            m.Add(dt.Get(log,rdr));
+                            m.Add(dt.Get(log,rdr,pp));
                         }
                         return m;
                     }
@@ -614,31 +614,31 @@ namespace Pyrrho.Level3
                 case Sqlx.TABLE:
                     {
                         var dp = rdr.GetLong();
-                        var vs = BTree<long,TypedValue>.Empty;
+                        var vs = CTree<long,TypedValue>.Empty;
                         var dt = CTree<long, Domain>.Empty;
                         var rt = CList<long>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0; j<n; j++)
                         {
                             var c = rdr.GetString();
-                            var (cp,cdt) = rdr.GetDomain(dp, c);
+                            var (cp,cdt) = rdr.GetDomain(dp, c, pp);
                             dt += (cp, cdt);
                             rt += cp;
-                            vs += (cp,cdt.Get(log,rdr));
+                            vs += (cp,cdt.Get(log,rdr,pp));
                         }
                         return new TRow(new Domain(Sqlx.ROW,dt,rt), vs);
                     }
                 case Sqlx.TYPE:
                     {
                         var dp = rdr.GetLong();
-                        var ut = rdr.GetDomain(dp);
-                        var r = BTree<long, TypedValue>.Empty;
+                        var ut = rdr.GetDomain(dp,pp);
+                        var r = CTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (var j=0;j<n;j++)
                         {
                             var c = rdr.GetString();
-                            var (cp,cdt) = rdr.GetDomain(ut.structure, c);
-                            r += (cp,cdt.Get(log,rdr));
+                            var (cp,cdt) = rdr.GetDomain(ut.structure, c, pp);
+                            r += (cp,cdt.Get(log,rdr,pp));
                         }
                         return new TRow(ut,r);
                     }
@@ -674,7 +674,7 @@ namespace Pyrrho.Level3
             if (b == DataType.Null)
                 return null;
             if (b == DataType.DomainRef)
-                return rdr.GetDomain(rdr.GetLong());
+                return rdr.GetDomain(rdr.GetLong(),rdr.Position);
             switch (b)
             {
                 case DataType.Null: return Null;
@@ -1106,13 +1106,13 @@ namespace Pyrrho.Level3
                 cx.Add(sb);
                 if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
                 {
-                    orderFunc.Exec(cx, new BList<long>(sa.defpos) + sb.defpos);
+                    orderFunc.Exec(cx, new CList<long>(sa.defpos) + sb.defpos);
                     c = cx.val.ToInt().Value;
                     goto ret;
                 }
-                orderFunc.Exec(cx,new BList<long>(sa.defpos));
+                orderFunc.Exec(cx,new CList<long>(sa.defpos));
                 a = cx.val;
-                orderFunc.Exec(cx,new BList<long>(sb.defpos));
+                orderFunc.Exec(cx,new CList<long>(sb.defpos));
                 b = cx.val;
                 c = a.dataType.Compare(a, b);
                 goto ret;
@@ -1692,7 +1692,7 @@ namespace Pyrrho.Level3
                         if (lx.mime == "text/xml")
                         {
                             // tolerate missing values and use of attributes
-                            var cols = BTree<long,TypedValue>.Empty;
+                            var cols = CTree<long,TypedValue>.Empty;
                             var xd = new XmlDocument();
                             xd.LoadXml(new string(lx.input));
                             var xc = xd.FirstChild;
@@ -1736,7 +1736,7 @@ namespace Pyrrho.Level3
                             if (lx.mime == "text/csv")
                         {
                             // we expect all columns, separated by commas, without string quotes
-                            var vs = BTree<long, TypedValue>.Empty;
+                            var vs = CTree<long, TypedValue>.Empty;
                             for (var b=rowType.First();b!=null;b=b.Next())
                             {
                                 var cd = representation[b.value()];
@@ -1827,8 +1827,8 @@ namespace Pyrrho.Level3
                             }
                             if (lx.ch == '[')
                                 goto case Sqlx.TABLE;
-                            var cols = BTree<long,TypedValue>.Empty;
-                            var names = BTree<string, long>.Empty;
+                            var cols = CTree<long,TypedValue>.Empty;
+                            var names = CTree<string, long>.Empty;
                             var b = rowType.First();
                             for (;b!=null;b=b.Next())
                             {
@@ -1918,8 +1918,8 @@ namespace Pyrrho.Level3
                             max = 'D' - lx.ch;
                         }
                         lx.White();
-                        var gps = BTree<string, bool>.Empty;
-                        var rfs = BTree<string, bool>.Empty;
+                        var gps = CTree<string, bool>.Empty;
+                        var rfs = CTree<string, bool>.Empty;
                         var rfseen = false;
                         if (lx.MatchNC("groups"))
                         {
@@ -2347,7 +2347,7 @@ namespace Pyrrho.Level3
             if (CompareTo(v.dataType) == 0)
                 return v;
             var vk = Equivalent(v.dataType.kind);
-            if ((vk == Sqlx.ROW || vk==Sqlx.TABLE) && v is TRow rw && rw.Length == 1)
+            if (Equivalent(kind)!=Sqlx.ROW && (vk == Sqlx.ROW || vk==Sqlx.TABLE) && v is TRow rw && rw.Length == 1)
             {
                 var b = rw.dataType.representation.First();
                 return b.value().Coerce(cx,rw.values[b.key()]);
@@ -2562,21 +2562,26 @@ namespace Pyrrho.Level3
                     case Sqlx.CONTENT: return v;
                     case Sqlx.PASSWORD: return v;
                     case Sqlx.DOCARRAY: goto case Sqlx.DOCUMENT;
-#if SIMILAR
-                    case Sqlx.REGULAR_EXPRESSION:
+                    case Sqlx.ROW:
                         {
-                            switch (v.DataType.kind)
+                            var vs = CTree<long, TypedValue>.Empty;
+                            var vb = v.dataType.rowType.First();
+                            for (var b = rowType.First(); b != null; b = b.Next(),vb=vb.Next())
                             {
-                                case Sqlx.CHAR: return new TChar(v.ToString());
+                                if (vb == null)
+                                    goto bad;
+                                var p = b.value();
+                                vs += (p, representation[p].Coerce(cx,v[vb.value()]));
                             }
-                            break;
+                            if (vb != null)
+                                goto bad;
+                            return new TRow(this, vs);
                         }
-#endif
                     case Sqlx.VALUE:
                     case Sqlx.NULL:
                         return v;
                 }
-            throw new DBException("22005", this, v.ToString()).ISO();
+            bad:  throw new DBException("22005", this, v.ToString()).ISO();
         }
         /// <summary>
         ///  for accepting Json values
@@ -2675,7 +2680,7 @@ namespace Pyrrho.Level3
                 case Sqlx.ROW:
                     if (ob is Document){
                         var d = (Document)ob;
-                        var vs = BTree<long, TypedValue>.Empty;
+                        var vs = CTree<long, TypedValue>.Empty;
                         for (var b = rowType.First(); b != null; b = b.Next())
                         {
                             var p = b.value();
@@ -3378,12 +3383,38 @@ namespace Pyrrho.Level3
                 r += (Default, defaultValue.Fix(cx));
             return r;
         }
+        internal Domain Instance(Context cx)
+        {
+            var r = this;
+            var co = CTree<long, bool>.Empty;
+            for (var b = constraints.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                co += (cx.obuids[k] ?? k, true);
+            }
+            r += (Constraints, co);
+            var rp = CTree<long, Domain>.Empty;
+            for (var b = representation.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                rp += (cx.obuids[k] ?? k, b.value());
+            }
+            r += (Representation, rp);
+            var nt = CList<long>.Empty;
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                nt += cx.obuids[p] ?? p;
+            }
+            r += (RowType, nt);
+            return r;
+        }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
             // NB We can't use cx.done for Domains (or ObInfos)
             var r = this;
             var ch = false;
-            var cs = BTree<long, bool>.Empty;
+            var cs = CTree<long, bool>.Empty;
             for (var b = r.constraints?.First(); b != null; b = b.Next())
             {
                 var ck = (Check)cx._Replace(b.key(), was, now);
@@ -4103,9 +4134,9 @@ namespace Pyrrho.Level3
         internal const long
             Under = -90; // Domain
         public UDType super => (UDType)mem[Under];
-        public UDType(PType pt) : base(pt) { }
+        public UDType(PType pt) : this(pt.ppos,pt.domain) { }
         internal UDType(long dp,Domain dm) 
-            : base(dp, dm.mem + (Kind, Sqlx.TYPE)) 
+            : base(dp, dm.mem + (Kind, Sqlx.TYPE) + (_Domain,dm)) 
         { }
         internal UDType(long dp, Sqlx k, BTree<long, object> m) : base(dp, k, m) { }
         protected UDType(long dp,BTree<long,object>m) :base(dp,m)
@@ -4125,13 +4156,6 @@ namespace Pyrrho.Level3
         internal override DBObject Relocate(long dp)
         {
             return new UDType(dp,mem);
-        }
-        TypedValue NullValue()
-        {
-            var vs = BTree<long, TypedValue>.Empty;
-            for (var b = representation.First(); b != null; b = b.Next())
-                vs += (b.key(), b.value().defaultValue);
-            return new TRow(this, vs);
         }
         internal void Defs(Context cx)
         {

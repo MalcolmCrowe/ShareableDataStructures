@@ -80,7 +80,7 @@ namespace Pyrrho.Level3
                 return (m == mem) ? this : (Query)New(m);
             return (Query)cx.Add(new QuerySpecification(cx.nextHeap++, m));
         }
-        internal override Query ReviewJoins(Context cx)
+        internal override DBObject ReviewJoins(Context cx)
         {
             var r = (QuerySpecification)base.ReviewJoins(cx);
             var ch = r != this;
@@ -159,7 +159,7 @@ namespace Pyrrho.Level3
                 else
                     r = new EvalRowSet(cx, this, r); // r.where becomes evalrowset.having
             }
-            else
+            else if (where.Count>0 || rowType.CompareTo(r.rt)!=0)
                 r = new SelectRowSet(cx, this, r);
             var cols = rowType;
             for (int i = 0; i < Size(cx); i++)
@@ -176,7 +176,7 @@ namespace Pyrrho.Level3
         /// Check having in the tableexpression
         /// Remember that conditions in the TE are ineffective (TE has no rowsets)
         /// </summary>
-        internal override Query Conditions(Context cx)
+        internal override DBObject Conditions(Context cx)
         {
             var r = this;
             var cols = rowType;
@@ -186,9 +186,9 @@ namespace Pyrrho.Level3
             r = (QuerySpecification)r.MoveConditions(cx, tableExp);
             r += (TableExp,tableExp.Conditions(cx));
             r += (Depth, _Max(r.depth, 1 + r.tableExp.depth));
-            return ((Query)New(cx,r.mem)).AddPairs(r.tableExp);
+            return (Query)New(cx,r.mem);
         }
-        internal override Query Orders(Context cx,CList<long> ord)
+        internal override DBObject Orders(Context cx,CList<long> ord)
         {
             var r = (QuerySpecification)base.Orders(cx, ord);
             var ch = r != this;
@@ -199,54 +199,6 @@ namespace Pyrrho.Level3
             var te = tableExp.Orders(cx, ord);
             ch = ch || te != tableExp;
             return ch?(Query)New(cx,r.mem+(TableExp,te) + (Depth, _Max(depth, 1 + d))):this;
-        }
-        /// <summary>
-        /// propagate an update operation
-        /// </summary>
-        /// <param name="ur">a set of versions</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">affected rowsets</param>
-        internal override Context Update(Context cx,BTree<string, bool> ur, 
-            Adapters eqs,List<RowSet>rs)
-        {
-            return tableExp.Update(cx,ur,eqs,rs);
-        }
-        /// <summary>
-        /// propagate an insert operation
-        /// </summary>
-        /// <param name="prov">the provenance</param>
-        /// <param name="data">some data to insert</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">affected rowsets</param>
-        internal override Context Insert(Context _cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl)
-        {
-            for (var b=rowType.First();b!=null;b=b.Next())
-                ((SqlValue)_cx.obs[b.value()]).Eqs(_cx,ref eqs);
-            return tableExp.Insert(_cx,prov, data, eqs, rs, cl);
-        }
-        /// <summary>
-        /// propagate a delete operation
-        /// </summary>
-        /// <param name="dr">a set of versions</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Context Delete(Context cx,BTree<string, bool> dr, Adapters eqs)
-        {
-            return tableExp.Delete(cx,dr,eqs);
-        }
-        /// <summary>
-        /// Add a cond and/or data to this
-        /// </summary>
-        /// <param name="cond">the condition</param>
-        /// <param name="assigns">some update assignments</param>
-        /// <param name="data">some insert data</param>
-        /// <returns>an updated querywhere</returns>
-        internal override Query AddConditions(Context cx,ref BTree<long,bool> cond,
-            ref BTree<UpdateAssignment,bool> assigns, RowSet data)
-        {
-            var te = tableExp.AddConditions(cx, ref cond, ref assigns, data);
-            return (QuerySpecification)New(cx,base.AddConditions(cx,ref cond,ref assigns, data).mem
-                +(TableExp,te));
         }
         /// <summary>
         public override string ToString()
@@ -305,10 +257,18 @@ namespace Pyrrho.Level3
             : base(u, (m??BTree<long,object>.Empty) + (SimpleTableQuery,stq)
                   +(_Domain,Domain.TableType)) 
         { }
+        /// <summary>
+        /// For views we should pass properties from a to b..
+        /// </summary>
+        /// <param name="u"></param>
+        /// <param name="cx"></param>
+        /// <param name="a"></param>
+        /// <param name="o"></param>
+        /// <param name="b"></param>
         internal QueryExpression(long u, Context cx, Query a, Sqlx o, QueryExpression b)
             : base(u,BTree<long,object>.Empty+(_Left,a.defpos)+(Op,o)+(_Right,b.defpos)
                   +(_Domain,a.domain)
-                  +(Dependents,new BTree<long,bool>(a.defpos,true)+(b.defpos,true))
+                  +(Dependents,new CTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(Depth,1+_Max(a.depth,b.depth)))
         { }
         internal QueryExpression(long u) : base(u) { }
@@ -401,50 +361,14 @@ namespace Pyrrho.Level3
             if (right!=-1L) tg = cx.obs[right].AddIn(cx,rs,tg);
             return base.AddIn(cx,rs,tg);
         }
-        /// <summary>
-        /// propagate a delete operation
-        /// </summary>
-        /// <param name="dr">a set of versions</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Context Delete(Context cx,
-            BTree<string, bool> dr, Adapters eqs)
-        {
-            cx = ((Query)cx.obs[left]).Delete(cx, dr, eqs);
-            return ((Query)cx.obs[right])?.Delete(cx, dr, eqs)??cx;
-        }
-        /// <summary>
-        ///  propagate an insert operation
-        /// </summary>
-        /// <param name="prov">provenance</param>
-        /// <param name="data">a set of insert data</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">affected rowsets</param>
-        internal override Context Insert(Context cx, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl)
-        {
-            cx = ((Query)cx.obs[left]).Insert(cx, prov, data, eqs, rs, cl);
-            return ((Query)cx.obs[right])?.Insert(cx,prov, data, eqs, rs,cl)??cx;
-        }
-        /// <summary>
-        /// propagate an update operation
-        /// </summary>
-        /// <param name="ur">a set of versions</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">affected rowsets</param>
-        internal override Context Update(Context cx, 
-            BTree<string, bool> ur, Adapters eqs, List<RowSet> rs)
-        {
-            cx = ((Query)cx.obs[left]).Update(cx, ur, eqs, rs);
-            return ((Query)cx.obs[right])?.Update(cx, ur, eqs, rs)??cx;
-        }
-        internal override Query AddMatches(Context cx,Query q)
+        internal override DBObject AddMatches(Context cx,Query q)
         {
             var r = this;
             if (right == -1L)
                 r += (_Left,cx.Add(((Query)cx.obs[left]).AddMatches(cx,q)).defpos);
             return (Query)New(cx,r.mem);
         }
-        internal override Query ReviewJoins(Context cx)
+        internal override DBObject ReviewJoins(Context cx)
         {
             var r = (QueryExpression)base.ReviewJoins(cx);
             var ch = r != this;
@@ -465,7 +389,7 @@ namespace Pyrrho.Level3
         /// Analysis stage Conditions().
         /// Check left and right
         /// </summary>
-        internal override Query Conditions(Context cx)
+        internal override DBObject Conditions(Context cx)
         {
             var r = (QueryExpression)base.Conditions(cx);
             var m = r.mem;
@@ -475,29 +399,6 @@ namespace Pyrrho.Level3
                 m+=(_Right,((Query)cx.obs[r.right]).Conditions(cx)
                     .AddCondition(cx, where).defpos);
             return ((QueryExpression)New(cx, m)).MoveConditions(cx, (Query)cx.obs[left]);
-        }
-        /// <summary>
-        /// Add cond and/or data for modification operations. 
-        /// See what can be moved down and add any remaining to the base.
-        /// </summary>
-        /// <param name="cond">a condition</param>
-        /// <param name="assigns">update assignments</param>
-        /// <param name="data">insert data</param>
-        /// <returns>an updated querywhere</returns>
-        internal override Query AddConditions(Context cx,ref BTree<long,bool> cond,
-            ref BTree<UpdateAssignment,bool> assigns, RowSet data)
-        {
-            var lf = ((Query)cx.obs[left]).AddConditions(cx,ref cond, ref assigns, data);
-            var ch = lf.defpos != left;
-            var rg = ((Query)cx.obs[right])?.AddConditions(cx,ref cond, ref assigns, data);
-            if ( ch && rg != null)
-                ch = ch && rg.defpos != right;
-            var q = (ch)?this:(QueryExpression)base.AddConditions(cx, ref cond, ref assigns, data);
-            if (lf.defpos != left)
-                q += (_Left, lf.defpos);
-            if ((rg?.defpos ?? -1L) != right)
-                q += (_Right, rg.defpos);
-            return (Query)New(cx,q.mem);
         }
         /// <summary>
         /// look to see if we have this column
@@ -517,7 +418,7 @@ namespace Pyrrho.Level3
         /// Check left and right.
         /// </summary>
         /// <param name="ord">the default orderitems</param>
-        internal override Query Orders(Context cx,CList<long> ord)
+        internal override DBObject Orders(Context cx,CList<long> ord)
         {
             if (ordSpec != null)
                 ord = ordSpec;

@@ -26,8 +26,8 @@ namespace Pyrrho.Common
     internal class TDocument : TypedValue
     {
         private enum ParseState { StartKey, Key, Colon, StartValue, Comma }
-        BList<(string, TypedValue)> content = BList<(string, TypedValue)>.Empty;
-        BTree<string, int> names = BTree<string, int>.Empty;
+        CList<(string, TypedValue)> content = CList<(string, TypedValue)>.Empty;
+        CTree<string, int> names = CTree<string, int>.Empty;
         int nbytes = 0;
         internal static TDocument Null = new TDocument();
         public static string _id = "_id";

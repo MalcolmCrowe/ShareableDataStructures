@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
             Clause = -169,// string
             Inverse = -170, // long
             Monotonic = -171, // bool
-            Params = -172; // BList<long>  FormalParameter
+            Params = -172; // CList<long>  FormalParameter
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -42,8 +42,8 @@ namespace Pyrrho.Level3
         /// These fields are filled in during Install.
         /// </summary>
         public long body => (long)(mem[Body]??-1L);
-		public BList<long> ins => 
-            (BList<long>)mem[Params]?? BList<long>.Empty;
+		public CList<long> ins => 
+            (CList<long>)mem[Params]?? CList<long>.Empty;
         public string clause => (string)mem[Clause];
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
@@ -63,7 +63,7 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,BList<long> ps, Domain dt, 
+        public Procedure(long defpos,CList<long> ps, Domain dt, 
             BTree<long, object> m=null) : base(defpos, (m??BTree<long,object>.Empty)
                 +(Params,ps)+(_Domain,dt)) { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -76,7 +76,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="actIns">The actual parameters</param>
         /// <returns>The possibily modified Transaction</returns>
-        public Context Exec(Context cx, BList<long> actIns)
+        public Context Exec(Context cx, CList<long> actIns)
         {
             var oi = (ObInfo)cx.db.role.infos[defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -167,7 +167,7 @@ namespace Pyrrho.Level3
             var ch = (bd?.defpos ?? -1L) != body;
             if (ch)
                 r += (Body, bd.defpos);
-            var fs = BList<long>.Empty;
+            var fs = CList<long>.Empty;
             ch = false;
             for (var b=ins.First();b!=null;b=b.Next())
             {

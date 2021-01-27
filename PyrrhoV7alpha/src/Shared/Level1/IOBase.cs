@@ -200,6 +200,20 @@ namespace Pyrrho.Level2
             }
             return ob;
         }
+        internal BList<long> Fix(BList<long> ord)
+        {
+            var r = BList<long>.Empty;
+            var ch = false;
+            for (var b = ord?.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var f = Fix(p);
+                if (p != f)
+                    ch = true;
+                r += f;
+            }
+            return ch ? r : ord;
+        }
         internal CList<long> Fix(CList<long> ord)
         {
             var r = CList<long>.Empty;
@@ -235,23 +249,9 @@ namespace Pyrrho.Level2
                 r += (b.key().Relocate(this),b.value());
             return r;
         }
-        internal BList<long> Fix(BList<long> ord)
+        internal CTree<K,long> Fix<K>(CTree<K,long> us) where K:IComparable
         {
-            var r = BList<long>.Empty;
-            var ch = false;
-            for (var b = ord?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var f = Fix(p);
-                if (p != f)
-                    ch = true;
-                r += f;
-            }
-            return ch ? r : ord;
-        }
-        internal BTree<K,long> Fix<K>(BTree<K,long> us) where K:IComparable
-        {
-            var r = BTree<K,long>.Empty;
+            var r = CTree<K,long>.Empty;
             var ch = false;
             for (var b = us?.First(); b != null; b = b.Next())
             {
@@ -263,9 +263,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : us;
         }
-        internal BTree<string, TypedValue> Fix(BTree<string, TypedValue> a)
+        internal CTree<string, TypedValue> Fix(CTree<string, TypedValue> a)
         {
-            var r = BTree<string, TypedValue>.Empty;
+            var r = CTree<string, TypedValue>.Empty;
             for (var b = a?.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -273,9 +273,9 @@ namespace Pyrrho.Level2
             }
             return r;
         }
-        internal BTree<PTrigger.TrigType,BTree<long,bool>> Fix(BTree<PTrigger.TrigType,BTree<long,bool>> t)
+        internal CTree<PTrigger.TrigType,CTree<long,bool>> Fix(CTree<PTrigger.TrigType,CTree<long,bool>> t)
         {
-            var r = BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
+            var r = CTree<PTrigger.TrigType, CTree<long, bool>>.Empty;
             for (var b = t.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -283,9 +283,9 @@ namespace Pyrrho.Level2
             }
             return r;
         }
-        internal BTree<long, BList<TypedValue>> Fix(BTree<long, BList<TypedValue>> refs, Context nc)
+        internal CTree<long, CList<TypedValue>> Fix(CTree<long, CList<TypedValue>> refs, Context nc)
         {
-            var r = BTree<long, BList<TypedValue>>.Empty;
+            var r = CTree<long, CList<TypedValue>>.Empty;
             var ch = false;
             for (var b = refs?.First(); b != null; b = b.Next())
             {
@@ -296,9 +296,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : refs;
         }
-        internal BList<K> Fix<K>(BList<K> key) where K:TypedValue
+        internal CList<K> Fix<K>(CList<K> key) where K:TypedValue
         {
-            var r = BList<K>.Empty;
+            var r = CList<K>.Empty;
             var ch = false;
             for (var b = key?.First(); b != null; b = b.Next())
             {
@@ -360,9 +360,25 @@ namespace Pyrrho.Level2
             }
             return r;
         }
-        internal BTree<long, V> Fix<V>(BTree<long, V> fi)
+        internal CTree<long,long> Fix(CTree<long,long> fd)
         {
-            var r = BTree<long, V>.Empty;
+            var r = CTree<long, long>.Empty;
+            var ch = false;
+            for (var b = fd?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var v = b.value();
+                var np = Fix(p);
+                var nv = Fix(v);
+                if (p != np || v!=nv)
+                    ch = true;
+                r += (np, nv);
+            }
+            return ch ? r : fd;
+        }
+        internal CTree<long, V> Fix<V>(CTree<long, V> fi) where V:IComparable
+        {
+            var r = CTree<long, V>.Empty;
             var ch = false;
             for (var b = fi?.First(); b != null; b = b.Next())
             {
@@ -374,9 +390,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : fi;
         }
-        internal BTree<long, BTree<long, bool>> Fix(BTree<long, BTree<long, bool>> fi)
+        internal CTree<long, CTree<long, bool>> Fix(CTree<long, CTree<long, bool>> fi)
         {
-            var r = BTree<long, BTree<long, bool>>.Empty;
+            var r = CTree<long, CTree<long, bool>>.Empty;
             var ch = false;
             for (var b = fi?.First(); b != null; b = b.Next())
             {
@@ -404,9 +420,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : rs;
         }
-        internal BList<UpdateAssignment> Fix(BList<UpdateAssignment> us)
+        internal CList<UpdateAssignment> Fix(CList<UpdateAssignment> us)
         {
-            var r = BList<UpdateAssignment>.Empty;
+            var r = CList<UpdateAssignment>.Empty;
             var ch = false;
             for (var b = us?.First(); b != null; b = b.Next())
             {
@@ -416,9 +432,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : us;
         }
-        internal BTree<UpdateAssignment,bool> Fix(BTree<UpdateAssignment,bool> us)
+        internal CTree<UpdateAssignment,bool> Fix(CTree<UpdateAssignment,bool> us)
         {
-            var r = BTree<UpdateAssignment,bool>.Empty;
+            var r = CTree<UpdateAssignment,bool>.Empty;
             var ch = false;
             for (var b = us?.First(); b != null; b = b.Next())
             {
@@ -428,9 +444,9 @@ namespace Pyrrho.Level2
             }
             return ch ? r : us;
         }
-        internal BTree<long, TypedValue> Fix(BTree<long, TypedValue> fi)
+        internal CTree<long, TypedValue> Fix(CTree<long, TypedValue> fi)
         {
-            var r = BTree<long, TypedValue>.Empty;
+            var r = CTree<long, TypedValue>.Empty;
             var ch = false;
             for (var b = fi?.First(); b != null; b = b.Next())
             {
@@ -560,7 +576,7 @@ namespace Pyrrho.Level2
             {
                 if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET
                     || domain.kind == Sqlx.SENSITIVE)
-                    domain += (Domain.Element, GetDomain(pd.eldefpos));
+                    domain += (Domain.Element, GetDomain(pd.eldefpos,pd.ppos));
                 else
                     domain = new UDType(pd.ppos,pd.domain);
             }
@@ -576,63 +592,31 @@ namespace Pyrrho.Level2
         /// <param name="log"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal virtual Domain GetColumnDomain(long p)
+        internal virtual Domain GetColumnDomain(long cp,long p)
         {
-            // This implementation is SLOW and only used for Log$ files
-            // first find the correct PColumn
-            for (var b = log.PositionAt(buf.start); b != null && b.key() >= p;
-                b = b.Previous())
+            // This implementation is only used for Log$ files
+            var tp = -1L;
+            for (var cb = database.colTracker[cp].First(); cb != null; cb = cb.Next())
             {
-                var k = b.key();
-                switch (b.value())
-                {
-                    case Physical.Type.PColumn:
-                    case Physical.Type.PColumn2:
-                    case Physical.Type.PColumn3:
-                    case Physical.Type.Alter:
-                    case Physical.Type.Alter2:
-                    case Physical.Type.Alter3:
-                        {
-                            var pc = (PColumn)GetPhysical(k);
-                            if (pc.defpos == p) // now find the domain
-                                return GetDomain(pc.domdefpos);
-                            continue;
-                        }
-                }
+                var pp = cb.key();
+                if (pp > p)
+                    break;
+                tp = cb.value();
             }
-            return null;
+            return GetDomain(tp,p);
         }
-/*        internal UDType GetUDType(PDomain pd)
-        {
-            var cs = CList<long>.Empty;
-            var rp = CTree<long, Domain>.Empty;
-            for (var b=log.PositionAt(pd.eldefpos);b!=null && b.key()<pd.defpos;
-                b=b.Next())
+        internal virtual Domain GetDomain(long tp,long p)
+        { 
+            var r = Domain.Null;
+            for (var b = database.typeTracker[tp].First();b!=null;b=b.Next())
             {
-                var k = b.key();
-                switch (b.value())
-                {
-                    case Physical.Type.PColumn:
-                    case Physical.Type.PColumn2:
-                    case Physical.Type.PColumn3:
-                    case Physical.Type.Alter:
-                    case Physical.Type.Alter2:
-                    case Physical.Type.Alter3:
-                        {
-                            var pc = (PColumn)GetPhysical(k);
-                            if (pc.tabledefpos == pd.eldefpos) // now find the domain
-                            {
-                                var dm = GetDomain(pc.domdefpos);
-                                if (!rp.Contains(pc.defpos))
-                                    cs += pc.defpos;
-                                rp += (pc.defpos, dm);
-                            }
-                            continue;
-                        }
-                }
+                var dp = b.key();
+                if (dp > p)
+                    break;
+                r = b.value();
             }
-            return new UDType(new Domain(Sqlx.TYPE,rp,cs)+(Basis.Name,pd.name));
-        } */
+            return r;
+        }
         /// <summary>
         /// Get the Domain for a given table defpos and column name
         /// </summary>
@@ -640,7 +624,7 @@ namespace Pyrrho.Level2
         /// <param name="tb"></param>
         /// <param name="cn"></param>
         /// <returns></returns>
-        internal virtual (long,Domain) GetDomain(long tb,string cn)
+        internal virtual (long, Domain) GetDomain(long tb, string cn, long pp)
         {
             // This implementation is SLOW and only used for Log$ files
             // first find the correct PColumn
@@ -658,50 +642,11 @@ namespace Pyrrho.Level2
                         {
                             pc = (PColumn)GetPhysical(b.key());
                             if (pc.tabledefpos == tb && pc.name == cn)
-                                return (pc.defpos, GetDomain(pc.domdefpos));
+                                return (pc.defpos, GetColumnDomain(pc.defpos,pp));
                             continue;
                         }
                 }
-            return (-1L,Domain.Content);
-        }
-        /// <summary>
-        /// Get the Domain for a given PColumn
-        /// </summary>
-        /// <param name="log"></param>
-        /// <param name="pc"></param>
-        /// <returns></returns>
-        internal virtual Domain GetDomain(long p)
-        { 
-            PDomain pd = null;
-            // Now find the right Domain
-            for (var b = log.PositionAt(p); b != null && b.key() >= 0;
-                b = b.Previous())
-            {
-                var k = b.key();
-                switch (b.value())
-                {
-                    case Physical.Type.PDomain:
-                    case Physical.Type.PDomain1:
-                    case Physical.Type.Edit: // ??
-                        {
-                            pd = (PDomain)GetPhysical(b.key());
-                            if (pd.defpos == p)
-                                return (Domain)new Domain(pd).Relocate(p);
-                            continue;
-                        }
-                    case Physical.Type.PType:
-                    case Physical.Type.PType1:
-                        {
-                            var pt = (PType)GetPhysical(b.key());
-                            pt.domain = new Domain(pt);
-                            if (pt.defpos == p)
-                                return (UDType)new UDType(pt).Relocate(p);
-                            continue;
-                        }
-
-                }
-            }
-            return Domain.Content;
+            return (-1L, Domain.Content);
         }
         internal Physical GetPhysical(long pv)
         {
@@ -965,7 +910,7 @@ namespace Pyrrho.Level2
                 }
                 catch (Exception)
                 {
-                    pc.upd = BTree<UpdateAssignment, bool>.Empty;
+                    pc.upd = CTree<UpdateAssignment, bool>.Empty;
                 }
         }
         internal override long? Prev(long pv)
@@ -998,13 +943,25 @@ namespace Pyrrho.Level2
                     var rs = CTree<long, Domain>.Empty;
                     for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
                     {
-                        var tc = (TableColumn)context.db.objects[b.value()];
+                        var tc = (DBObject)context.db.objects[b.value()];
                         rs += (b.value(), tc.domain);
                     }
                     domain = domain + (Domain.Structure, pd.eldefpos)
                         + (Domain.RowType, tb.domain.rowType)
                         + (Domain.Representation, rs);
                 }
+            }
+            if (pd is PType) // the structure may have just been defined
+            {
+                for (var b=context.db.objects.Last();b!=null;b=b.Previous())
+                    if (b.value() is Table st)
+                    {
+                        if (st.mem[Basis.Name] is string n && n.Length>0 && n[0]=='(')
+                            domain = domain + (Domain.Structure, st.defpos)
+                                + (Domain.RowType, st.domain.rowType)
+                                + (Domain.Representation, st.domain.representation);
+                        break;
+                    }
             }
             pd.domain = domain;
             context.db += (pd.domdefpos, pd.domain, Position);
@@ -1056,21 +1013,21 @@ namespace Pyrrho.Level2
             }
         }
         // get nominal data type for a column
-        internal override Domain GetColumnDomain(long p)
+        internal override Domain GetColumnDomain(long cp,long p)
         {
-            var tc = (TableColumn)context.db.objects[p]
+            var tc = (TableColumn)context.db.objects[cp]
                ?? throw new DBException("22003");
             return tc.domain;
         }
-        internal override Domain GetDomain(long p)
+        internal override Domain GetDomain(long tp,long p)
         {
-            return (Domain)context.db.objects[p];
+            return (Domain)context.db.objects[tp];
         }
-        internal override (long,Domain) GetDomain(long t, string cn)
+        internal override (long,Domain) GetDomain(long t, string cn, long pp)
         {
             var tb = (Table)context.db.objects[t];
             var cp = tb.domain.ColFor(context, cn);
-            var tc = (TableColumn)context.db.objects[cp];
+            var tc = (DBObject)context.db.objects[cp];
             return (tc.defpos,tc.domain);
         }
         internal void Add(Physical ph)

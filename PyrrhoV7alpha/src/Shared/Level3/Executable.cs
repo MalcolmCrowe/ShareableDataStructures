@@ -178,7 +178,19 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            return ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
+            if (mem.Contains(TableExpression.Nuid))
+            { 
+                var nu = (long)mem[TableExpression.Nuid];
+                var nn = nu;
+                if (wr.rss.Contains(nu))
+                    nn = wr.rss[nu].defpos;
+                else if (wr.uids.Contains(nu))
+                    nn = wr.uids[nu];
+                if (nn != nu)
+                    r += (TableExpression.Nuid, nn);
+            }
+            return r;
         }
         internal static bool Calls(BList<long> ss,long defpos,Context cx)
         {
@@ -192,6 +204,8 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(GetType().Name);
             if (mem.Contains(Label)) { sb.Append(" "); sb.Append(label); }
             sb.Append(" ");sb.Append(Uid(defpos));
+            if (mem.Contains(TableExpression.Nuid))
+            { sb.Append(" Nuid="); sb.Append(Uid((long)mem[TableExpression.Nuid])); }
             if (mem.Contains(Stmt)) { sb.Append(" Stmt:"); sb.Append(stmt); }
             return sb.ToString();
         }
@@ -868,7 +882,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public AssignmentStatement(long dp,SqlValue vb,SqlValue va) 
             : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
-                  +(Dependents,BTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
+                  +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static AssignmentStatement operator+(AssignmentStatement s,(long,object)x)
@@ -1497,11 +1511,11 @@ namespace Pyrrho.Level3
     internal class XmlNameSpaces : Executable
     {
         internal const long
-            Nsps = -120; // BTree<string,string>
+            Nsps = -120; // CTree<string,string>
         /// <summary>
         /// A list of namespaces to be added
         /// </summary>
-        public BTree<string, string> nsps => (BTree<string,string>)mem[Nsps];
+        public CTree<string, string> nsps => (CTree<string,string>)mem[Nsps];
         /// <summary>
         /// Constructor
         /// </summary>
@@ -1973,7 +1987,7 @@ namespace Pyrrho.Level3
             for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
             {
                 ac.Add(qs);
-                ac.from = cx.data[qs.defpos].finder;
+                ac.finder = cx.data[qs.defpos].finder;
                 ac.brk = cx as Activation;
                 ac.cont = ac;
                 ac = (Activation)ObeyList(stms, ac);
@@ -2286,7 +2300,7 @@ namespace Pyrrho.Level3
 	internal class CallStatement : Executable
 	{
         internal const long
-            Parms = -133, // BList<long> SqlValue
+            Parms = -133, // CList<long> SqlValue
             ProcDefPos = -134, // long
             Var = -135; // long SqlValue
         /// <summary>
@@ -2300,15 +2314,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of actual parameters
         /// </summary>
-		public BList<long> parms =>
-            (BList<long>)mem[Parms]?? BList<long>.Empty;
+		public CList<long> parms =>
+            (CList<long>)mem[Parms]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, BList<long> acts, SqlValue tg=null)
+        public CallStatement(long dp, Procedure pr, string pn, CList<long> acts, SqlValue tg=null)
          : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg.defpos))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, BList<long> acts, BTree<long,object> m=null)
+        protected CallStatement(long dp, Procedure pr, string pn, CList<long> acts, BTree<long,object> m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
                +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
         {
@@ -2424,7 +2438,7 @@ namespace Pyrrho.Level3
             Exception = -136, // Exception
             Objects = -137, // BList<object>
             _Signal = -138, // string
-            SetList = -139, // BTree<Sqlx,long>
+            SetList = -139, // CTree<Sqlx,long>
             SType = -140; // Sqlx RAISE or RESIGNAL
         /// <summary>
         /// The signal to raise
@@ -2433,8 +2447,8 @@ namespace Pyrrho.Level3
         internal string signal => (string)mem[_Signal];
         internal BList<object> objects => (BList<object>)mem[Objects];
         internal Exception exception => (Exception)mem[Exception];
-        internal BTree<Sqlx, long> setlist =>
-            (BTree<Sqlx, long>)mem[SetList] ?? BTree<Sqlx, long>.Empty;
+        internal CTree<Sqlx, long> setlist =>
+            (CTree<Sqlx, long>)mem[SetList] ?? CTree<Sqlx, long>.Empty;
         /// <summary>
         /// Constructor: a signal statement from the parser
         /// </summary>
@@ -2587,9 +2601,9 @@ namespace Pyrrho.Level3
     internal class GetDiagnostics : Executable
     {
         internal const long
-            List = -141; // BTree<long,Sqlx>
-        internal BTree<long, Sqlx> list =>
-            (BTree<long, Sqlx>)mem[List] ?? BTree<long, Sqlx>.Empty;
+            List = -141; // CTree<long,Sqlx>
+        internal CTree<long, Sqlx> list =>
+            (CTree<long, Sqlx>)mem[List] ?? CTree<long, Sqlx>.Empty;
         internal GetDiagnostics(long dp) : base(dp, BTree<long, object>.Empty) { }
         protected GetDiagnostics(long dp, BTree<long, object> m) : base(dp, m) { }
         public static GetDiagnostics operator +(GetDiagnostics s, (long, object) x)

@@ -35,7 +35,7 @@ namespace Pyrrho.Level2
         /// The tree of field ids and values for this record
         /// PColumn.defpos->val: but use Field method instead of fields[] to access
         /// </summary>
-		public BTree<long, TypedValue> fields = BTree<long, TypedValue>.Empty;
+		public CTree<long, TypedValue> fields = CTree<long, TypedValue>.Empty;
         /// <summary>
         /// Referential Integrity checking
         /// serialised only for transaction master: to check against conflicting delete/keyUpdate
@@ -58,7 +58,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr, triggeredAction)) return triggeredAction;
             return -1;
         }
-        public Record(Table tb, BTree<long, TypedValue> fl, long pp, Context cx)
+        public Record(Table tb, CTree<long, TypedValue> fl, long pp, Context cx)
             : this(Type.Record, tb, fl, pp, cx) 
         {
             if (cx.tr.triggeredAction > 0)
@@ -72,7 +72,7 @@ namespace Pyrrho.Level2
         /// <param name="fl">The field values</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record(Type t, Table tb, BTree<long, TypedValue> fl, long pp, 
+        protected Record(Type t, Table tb, CTree<long, TypedValue> fl, long pp, 
             Context cx)  : base(t, pp, cx)
         {
             tabledefpos = tb.defpos;
@@ -99,7 +99,7 @@ namespace Pyrrho.Level2
         protected Record(Record x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.Fix(x.tabledefpos);
-            fields = BTree<long, TypedValue>.Empty;
+            fields = CTree<long, TypedValue>.Empty;
             for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
                 fields += (wr.Fix(b.key()), b.value());
         }
@@ -136,16 +136,16 @@ namespace Pyrrho.Level2
         /// <param name="buf">The buffer</param>
         internal virtual void GetFields(ReaderBase rdr)
         {
-            fields = BTree<long, TypedValue>.Empty;
+            fields = CTree<long, TypedValue>.Empty;
             long n = rdr.GetLong();
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var cdt = rdr.GetColumnDomain(c); // nominal data type from log
+                var cdt = rdr.GetColumnDomain(c,ppos); // nominal data type from log
                 cdt = cdt.GetDataType(rdr); // actual data type from buffer
                 if (cdt != null)
                 {
-                    var tv = cdt.Get(rdr.log, rdr);
+                    var tv = cdt.Get(rdr.log, rdr, ppos);
                     fields += (c, tv);
                 }
             }
@@ -169,32 +169,11 @@ namespace Pyrrho.Level2
                 dt.Put(o,wr);
             }
         }
-        public PRow MakeKey(long[] cols)
-        {
-            PRow r = null;
-            for (var i = cols.Length - 1; i >= 0; i--)
-                r = new PRow(fields[cols[i]], r);
-            return r;
-        }
-        public PRow MakeKey(BList<long> cols)
+        public PRow MakeKey(CList<long> cols)
         {
             PRow r = null;
             for (var i = (int)cols.Count - 1; i >= 0; i--)
                 r = new PRow(fields[cols[i]], r);
-            return r;
-        }
-        public PRow MakeKey(BList<SqlValue> cols)
-        {
-            PRow r = null;
-            for (var i = (int)cols.Count - 1; i >= 0; i--)
-                r = new PRow(fields[cols[i].defpos], r);
-            return r;
-        }
-        public PRow MakeKey(BList<TableColumn> cols)
-        {
-            PRow r = null;
-            for (var i = (int)cols.Count - 1; i >= 0; i--)
-                r = new PRow(fields[cols[i].defpos], r);
             return r;
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -314,7 +293,7 @@ namespace Pyrrho.Level2
         /// <param name="fl">The field values</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record1(Type t, Table tb, BTree<long,  TypedValue> fl, string p,
+        protected Record1(Type t, Table tb, CTree<long,  TypedValue> fl, string p,
             long pp, Context cx)
             : base(t, tb, fl, pp, cx)
         {
@@ -328,7 +307,7 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record1(Table tb, BTree<long, TypedValue> fl, string prov, long pp, Context cx)
+        public Record1(Table tb, CTree<long, TypedValue> fl, string prov, long pp, Context cx)
             : this(Type.Record1, tb, fl, prov, pp, cx)
         {
         }
@@ -380,7 +359,7 @@ namespace Pyrrho.Level2
         /// <param name="st">The subtype defpos</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record2(Type t, Table tb, BTree<long,  TypedValue> fl, long st, 
+        protected Record2(Type t, Table tb, CTree<long,  TypedValue> fl, long st, 
             long pp, Context cx) : base(t, tb, fl, pp, cx)
         {
             subType = st;
@@ -432,7 +411,7 @@ namespace Pyrrho.Level2
         /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public Record3(Table tb, BTree<long, TypedValue> fl, long st, Level lv, long pp, Context cx)
+        public Record3(Table tb, CTree<long, TypedValue> fl, long st, Level lv, long pp, Context cx)
             : base(Type.Record3, tb, fl, st, pp, cx)
         {
             _classification = lv;

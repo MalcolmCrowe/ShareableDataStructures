@@ -29,7 +29,6 @@ namespace Pyrrho.Level2
         /// The definition of the view
         /// </summary>
         public string viewdef;
-        public long query;
         public override long Dependent(Writer wr, Transaction tr)
         {
             for (var b = framing.obs.First(); b != null; b = b.Next())
@@ -50,15 +49,14 @@ namespace Pyrrho.Level2
         /// <param name="vd">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, string vd, long vq, long pp, Context cx)
-            : this(Type.PView, nm, vd, vq, pp, cx) 
+        internal PView(string nm, string vd, long pp, Context cx)
+            : this(Type.PView, nm, vd, pp, cx) 
         { }
-        protected PView(Type pt,string nm,string vd, long vq,long pp, Context cx) 
+        protected PView(Type pt,string nm,string vd, long pp, Context cx) 
             : base(pt,pp,cx,new Framing(cx))
         {
             name = nm;
             viewdef = vd;
-            query = vq;
         }
         /// <summary>
         /// Constructor: A view definition from the buffer
@@ -72,7 +70,6 @@ namespace Pyrrho.Level2
             name = x.name;
             wr.srcPos = wr.Length + 1;
             viewdef = x.viewdef;
-            query = wr.Fix(x.query);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -104,19 +101,18 @@ namespace Pyrrho.Level2
             if (viewdef!="")
             {
                 var psr = new Parser(rdr, new Ident(viewdef, ppos + 2), null);
-                var cs = psr.ParseCursorSpecification(Domain.TableType);
-                psr.cx.result = -1L;
-                query = cs.cs;
+                psr.ParseCursorSpecification(Domain.TableType);
+                psr.cx.data += (ppos, psr.cx.data[psr.cx.result]);
                 Frame(psr.cx);
             }
         }
         internal virtual BTree<long,object> _Dom(Database db,BTree<long,object>m)
         {
-            var vd = framing.obs[query];
-            var ns = BTree<string, long>.Empty;
+            var vd = framing.data[framing.result];
+            var ns = CTree<string, long>.Empty;
             var d = 2 + (vd?.depth ?? 0);
             var dm = vd?.domain;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
+            for (var b = dm?.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 var c = (SqlValue)framing.obs[p];
@@ -127,7 +123,7 @@ namespace Pyrrho.Level2
             }
             return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm) 
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
-                + (DBObject._Framing, framing) + (View.ViewQry, query)
+                + (DBObject._Framing, framing)
                 + (DBObject.Depth, d);
         }
         /// <summary>
@@ -188,8 +184,7 @@ namespace Pyrrho.Level2
             if (this is PRestView)
                 return (tr, ph);
             var pv = (PView)ph;
-            var vw = (DBObject)tr.objects[ppos] + (View.ViewQry, pv.framing.obs[pv.query])
-                + (DBObject._Framing, pv.framing);
+            var vw = (DBObject)tr.objects[ppos] + (DBObject._Framing, pv.framing);
             return ((Transaction)(tr + (vw, tr.loadpos)), ph);
         }
     }
@@ -207,22 +202,13 @@ namespace Pyrrho.Level2
         public PRestView(string nm, long tp, long pp, Context cx)
             : this(Type.RestView, nm, tp, pp, cx) { }
         protected PRestView(Type t,string nm,long tp,long pp, Context cx)
-            : base(t,nm,"",_Query(cx,cx.nextHeap++,tp),pp,cx)
+            : base(t,nm,"",pp,cx)
         {
             structpos = tp;
         }
         protected PRestView(PRestView x, Writer wr) : base(x, wr)
         {
             structpos = wr.Fix(x.structpos);
-        }
-        static long _Query(Context cx,long vp,long tp)
-        {
-            var cs = new CursorSpecification(vp);
-            var st = (Table)(cx.obs[tp] ?? cx.db.objects[tp]);
-            cs += (DBObject._Domain, st.domain);
-            cs += (DBObject.Depth, st.depth+1);
-            cx.Add(cs);
-            return cs.defpos;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -237,8 +223,6 @@ namespace Pyrrho.Level2
         public override void Deserialise(ReaderBase rdr)
         {
             structpos = rdr.GetLong();
-            if (rdr is Reader r)
-                query = _Query(r.context, ppos+1, structpos);
             base.Deserialise(rdr);
         }
         internal override void OnLoad(Reader rdr)
@@ -255,12 +239,11 @@ namespace Pyrrho.Level2
             {
                 var cp = b.value();
                 var ci = (ObInfo)ro.infos[cp];
-                var tc = (TableColumn)db.objects[cp];
+                var tc = (DBObject)db.objects[cp];
                 cs += (ci.name, cp, Ident.Idents.Empty);
                 ds += (ci.name, cp, Ident.Idents.Empty);
                 os += (cp, tc);
             }
-            query = -1L;
             // fix r.union and lower structures during Instancing
             framing = Framing.Empty + (Framing.Obs, os) + (Framing.Defs, ds);
         }
@@ -281,7 +264,7 @@ namespace Pyrrho.Level2
         }
         internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
         {
-            var ns = BTree<string, long>.Empty;
+            var ns = CTree<string, long>.Empty;
             var dm = ((ObInfo)db.role.infos[structpos]).domain;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
@@ -291,7 +274,7 @@ namespace Pyrrho.Level2
             }
             return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm)
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns)
-                + (DBObject._Framing, framing) + (View.ViewQry, query)
+                + (DBObject._Framing, framing)
                 + (DBObject.Depth, 2);
         }
         public override string ToString()

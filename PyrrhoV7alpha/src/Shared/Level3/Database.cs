@@ -83,7 +83,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append((string)mem[Name]); }
             return sb.ToString();
         }
-        internal virtual string ToString(Context cx,int n)
+        internal virtual string ToString(Context cx)
         {
             return ToString();
         }
@@ -133,6 +133,7 @@ namespace Pyrrho.Level3
         public override long lexeroffset => loadpos;
         internal const long
             Cascade = -227, // bool (only used for Transaction subclass)
+            ColTracker = -318, // BTree<long,BTree<long,long>> colpos, ppos, dompos
             _Connection = -261, // BTree<string,string>: the session details
             Curated = -53, // long
             _ExecuteStatus = -54, // ExecuteStatus
@@ -153,6 +154,7 @@ namespace Pyrrho.Level3
             _Schema = -291, // long: (always the same as _system._role) the owner role for the database
             SchemaKey = -286, // long: highwatermark for schema changes
             Types = -61, // CTree<Domain,long>
+            TypeTracker = -315, // BTree<long,BTree<long,Domain>> colpos,modpos
             User = -277, // User: always the connection user
             _User = -301; // long: user.defpos, always the connection user, maybe uncommitted
         internal virtual long uid => -1;
@@ -187,6 +189,10 @@ namespace Pyrrho.Level3
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
         public BTree<string, string> conn => (BTree<string,string>)mem[_Connection];
+        public BTree<long, BTree<long, Domain>> typeTracker =>
+            (BTree<long, BTree<long, Domain>>)mem[TypeTracker] ?? BTree<long, BTree<long, Domain>>.Empty;
+        public BTree<long, BTree<long, long>> colTracker =>
+            (BTree<long, BTree<long, long>>)mem[ColTracker] ?? BTree<long, BTree<long, long>>.Empty;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 

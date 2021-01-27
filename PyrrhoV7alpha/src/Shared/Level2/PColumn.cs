@@ -47,7 +47,7 @@ namespace Pyrrho.Level2
         public long domdefpos = -1L;
 		public TypedValue dv => domain?.defaultValue??TNull.Value; 
         public string dfs,ups;
-        public BTree<UpdateAssignment,bool> upd = BTree<UpdateAssignment,bool>.Empty; // see PColumn3
+        public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool notNull = false;    // ditto
 		public GenerationRule generated = GenerationRule.None; // ditto
         public override long Dependent(Writer wr, Transaction tr)
@@ -72,6 +72,7 @@ namespace Pyrrho.Level2
 			name = nm;
 			seq = sq;
 			domain = dm;
+            domdefpos = dm.defpos;
 		}
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -93,6 +94,7 @@ namespace Pyrrho.Level2
             name = x.name;
             seq = x.seq;
             domain = (Domain)x.domain._Relocate(wr);
+            domdefpos = domain.defpos; 
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -199,7 +201,9 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
             var ti = (ObInfo)ro.infos[table.defpos];
-            var tc = new TableColumn(table, this, domain,cx.role);
+            var tc = (ti.name!="" && ti.name[0]=='(')?
+                (DBObject)new SqlValue(defpos,name,domain)
+                : new TableColumn(table, this, domain,cx.role);
             ti += (DBObject._Domain, ti.domain + (tc.defpos,tc.domain));
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
@@ -211,6 +215,9 @@ namespace Pyrrho.Level2
             table += (DBObject._Domain,ti.domain);
             cx.db += (ro, p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
+            var tt = cx.db.colTracker[defpos] ?? BTree<long,long>.Empty
+                    + (ppos, domdefpos);
+            cx.db += (Database.ColTracker, cx.db.colTracker + (defpos, tt));
             cx.Install(table,p);
             cx.Install(tc,p);
         }
@@ -306,7 +313,7 @@ namespace Pyrrho.Level2
             {
                 if (gn != Generation.Expression)
                 {
-                    var dm = rdr.GetDomain(domdefpos);
+                    var dm = rdr.GetDomain(domdefpos,ppos);
                     domain = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs))
                         +(Domain.DefaultString,dfs);
                 }
@@ -355,7 +362,7 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, BTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
+            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
             Context cx)
             : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
         { }
@@ -372,7 +379,7 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
-            TypedValue dv, string us, BTree<UpdateAssignment,bool> ua, bool nn, 
+            TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
             GenerationRule ge, long pp, Context cx)
             : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
         {
@@ -429,7 +436,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (upd != BTree<UpdateAssignment,bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
+            if (upd != CTree<UpdateAssignment,bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
             return sb.ToString();
         }
     }

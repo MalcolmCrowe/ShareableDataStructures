@@ -93,7 +93,7 @@ namespace Pyrrho.Level3
             Order = -225, // CList<long>
             OrderWindow = -226, // string
             Partition = -228, // int
-            PartitionType = -229, // BList<long>
+            PartitionType = -229, // CList<long>
             Units = -230, // Sqlx
             WQuery = -231; // long Query
         public string name => (string)mem[Name];
@@ -117,7 +117,7 @@ namespace Pyrrho.Level3
         /// The partitionType is the partition columns for the window/
         /// NB this a Domain, not an ObInfo as we treat the TRow as a single value for once
         /// </summary>
-        internal BList<long> partitionType => (BList<long>)mem[PartitionType];
+        internal CList<long> partitionType => (CList<long>)mem[PartitionType];
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
@@ -199,33 +199,29 @@ namespace Pyrrho.Level3
             {
                 if (order?.Length!=w.order?.Length)
                     return false;
-                var wb = w.order.First();
-                for (var b=order?.First(); b!=null;b=b.Next(),wb=wb.Next())
-                    if (!((SqlValue)cx.obs[b.value()]).MatchExpr(cx,(Query)cx.obs[query], 
-                        (SqlValue)cx.obs[wb.value()]))
-                        return false;
+                return order.CompareTo(w.order) == 0;
             }
             return partition == w.partition;
         }
     }
-    internal class Grouping :DBObject
+    internal class Grouping :DBObject,IComparable
     {
         internal const long
             GroupKind = -232, //Sqlx
-            Groups = -233, // BList<Grouping>
-            Members = -234; // BList<long> SqlValue
+            Groups = -233, // CList<Grouping>
+            Members = -234; // CTree<long,int> SqlValue
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
         public Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
-        internal BList<Grouping> groups => 
-            (BList<Grouping>)mem[Groups]?? BList<Grouping>.Empty;
+        internal CList<Grouping> groups => 
+            (CList<Grouping>)mem[Groups]?? CList<Grouping>.Empty;
         /// <summary>
         /// the names for this grouping.
         /// See SqlValue.IsNeeded for where the ref gp parameter is used.
         /// </summary>
-        internal BTree<long,int> members => 
-            (BTree<long,int>)mem[Members]??BTree<long,int>.Empty;
+        internal CTree<long,int> members => 
+            (CTree<long,int>)mem[Members]??CTree<long,int>.Empty;
         internal Grouping(long dp,BTree<long,object>m=null)
             :base(dp,m??BTree<long,object>.Empty) { }
         public static Grouping operator+(Grouping g,(long,object) x)
@@ -296,6 +292,13 @@ namespace Pyrrho.Level3
             r += (Members, nm);
             return r;
         }
+
+        public int CompareTo(object obj)
+        {
+            var that = (Grouping)obj;
+            var c = groups.CompareTo(that.groups);
+            return (c != 0) ? c : members.CompareTo(that.members);
+        }
     }
     /// <summary>
     /// Implement a GroupSpecfication
@@ -304,7 +307,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DistinctGp = -235, // bool
-            Sets = -236; // BList<long> Grouping
+            Sets = -236; // CList<long> Grouping
         /// <summary>
         /// whether DISTINCT has been specified
         /// </summary>
@@ -312,8 +315,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The specified grouping sets. We translate ROLLUP and CUBE into these
         /// </summary>
-        internal BList<long> sets =>
-            (BList<long>)mem[Sets] ?? BList<long>.Empty;
+        internal CList<long> sets =>
+            (CList<long>)mem[Sets] ?? CList<long>.Empty;
         internal GroupSpecification(long dp,BTree<long, object> m) : base(dp,m) { }
         public static GroupSpecification operator+(GroupSpecification a,GroupSpecification gs)
         {
@@ -333,9 +336,9 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
-        internal bool Has(Context cx,BList<long> ns)
+        internal bool Has(Context cx,CList<long> ns)
         {
-            if (ns == BList<long>.Empty)
+            if (ns == CList<long>.Empty)
                 return true;
             for (var b=sets.First();b!=null;b=b.Next())
             {
@@ -346,9 +349,9 @@ namespace Pyrrho.Level3
             }
             return false;
         }
-        internal override BTree<long, bool> Needs(Context cx)
+        internal override CTree<long, bool> Needs(Context cx)
         {
-            return cx.Needs(BTree<long, bool>.Empty, sets);
+            return cx.Needs(CTree<long, bool>.Empty, sets);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -374,7 +377,7 @@ namespace Pyrrho.Level3
                 r += (Sets, ns);
             return r;
         }
-        internal void Grouped(Context cx,BList<long> vals)
+        internal void Grouped(Context cx,CList<long> vals)
         {
             for (var b = vals?.First(); b != null; b = b.Next())
                 ((SqlValue)cx.obs[b.value()]).Grouped(cx, this);

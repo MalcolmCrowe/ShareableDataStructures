@@ -40,7 +40,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, BList<long> ar, Domain rt, 
+        public PMethod(string nm, CList<long> ar, Domain rt, 
             MethodType mt, UDType td, Method md, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{ }
@@ -56,7 +56,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The procedure clause including body</param>
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, BList<long> ar, 
+        protected PMethod(Type tp, string nm, CList<long> ar, 
             Domain rt, MethodType mt, UDType td, Method md, Ident sce,
             long pp, Context cx)
             : base(tp,nm,ar,rt,md,sce,pp,cx)

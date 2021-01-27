@@ -44,7 +44,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The TableColumns for update
         /// </summary>
-		public BList<long> cols = null;
+		public CList<long> cols = null;
         /// <summary>
         /// The alias for the old row
         /// </summary>
@@ -86,7 +86,7 @@ namespace Pyrrho.Level2
         /// <param name="sce">The source string for the trigger definition</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTrigger(string tc, long tb, int ty, BList<long> cs, Ident or,
+        public PTrigger(string tc, long tb, int ty, CList<long> cs, Ident or,
             Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
             : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, cx, pp)
         { }
@@ -105,7 +105,7 @@ namespace Pyrrho.Level2
         /// <param name="sce">The source code of the trigger</param>
         /// <param name="cx">The context</param>
         /// <param name="pp">The current position in the datafile</param>
-        protected PTrigger(Type tp, string tc, long tb, int ty, BList<long> cs, 
+        protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
             Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
             : base(tp,pp,cx,new Framing(cx))
 		{
@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
             tgtype = x.tgtype;
             target = wr.Fix(x.target);
             def = wr.Fixed(x.def).defpos;
-            var cs = BList<long>.Empty;
+            var cs = CList<long>.Empty;
             if (x.cols != null)
                 for (var b = x.cols.First(); b!=null; b=b.Next())
                     cs += wr.Fix(b.value());
@@ -186,7 +186,7 @@ namespace Pyrrho.Level2
             target = rdr.GetLong();
 			tgtype = (TrigType)rdr.GetInt();
 			int n = rdr.GetInt();
-            var cols = BList<long>.Empty;
+            var cols = CList<long>.Empty;
 			while (n-->0)
                 cols += rdr.GetLong();
 			oldRow = rdr.GetIdent();

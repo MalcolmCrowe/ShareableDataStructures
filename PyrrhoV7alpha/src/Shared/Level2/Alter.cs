@@ -151,7 +151,7 @@ namespace Pyrrho.Level2
         /// <param name="ge">The (new) setting for GENERATED ALWAYS</param>
         /// <param name="db">The local database</param>
         public Alter3(long co, string nm, int sq, Table tb, Domain dm, string ds,
-            TypedValue dv, string us, BTree<UpdateAssignment,bool> ua, bool nn, 
+            TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
             GenerationRule ge, long pp, Context cx) :
             base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
 		{

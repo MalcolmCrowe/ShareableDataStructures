@@ -31,11 +31,11 @@ namespace Pyrrho.Level2
         /// <param name="fl">The changed fields and values</param>
         /// <param name="u">The new record position</param>
         /// <param name="db">The transaction</param>
-        public Update(TableRow old, Table tb, BTree<long, TypedValue> fl, long pp, 
+        public Update(TableRow old, Table tb, CTree<long, TypedValue> fl, long pp, 
             Context cx)
             : this(Type.Update, old, tb, fl, pp, cx)
         { }
-        protected Update(Type t, TableRow old, Table tb,BTree<long,TypedValue> fl, 
+        protected Update(Type t, TableRow old, Table tb,CTree<long,TypedValue> fl, 
             long pp, Context cx)
             : base(t,tb,fl,pp,cx)
         {
@@ -176,7 +176,7 @@ namespace Pyrrho.Level2
     }
     internal class Update1 : Update
     {
-        public Update1(TableRow old, Table tb, BTree<long, TypedValue> fl, Level lv, 
+        public Update1(TableRow old, Table tb, CTree<long, TypedValue> fl, Level lv, 
             long pp, Context cx) 
             : base(Type.Update1,old, tb, fl, pp, cx)
         {

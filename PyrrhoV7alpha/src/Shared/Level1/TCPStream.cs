@@ -553,7 +553,7 @@ namespace Pyrrho.Level1
         /// <param name="r">the row to send</param>
         internal void PutRow(Context _cx, TRow r)
         {
-            var n = (int)r.Length;
+            var n = r.Length;
             PutInt(n);
             var j = 0;
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)

@@ -50,10 +50,8 @@ namespace Pyrrho.Level4
         /// <param name="q">true if DISTINCT specified</param>
         internal MergeRowSet(Context cx, Query q, RowSet a,RowSet b, bool d, Sqlx op)
             : base(q.defpos,cx,a.domain,a.finder,null,q.where,q.ordSpec,q.matches,
-                  q.matching,null,_Last(a,b)
-                  +(QuerySpecification.Distinct,d)+(Domain.Kind,op)
-                  +(QueryExpression._Left,a.defpos)
-                  +(QueryExpression._Right,b.defpos))
+                  _Last(a,b)+(QuerySpecification.Distinct,d)+(Domain.Kind,op)
+                  +(QueryExpression._Left,a.defpos)+(QueryExpression._Right,b.defpos))
         {
             if (q.where.Count==0 && oper!=Sqlx.UNION && a.needed==BTree<long,Finder>.Empty
                 && b.needed==BTree<long,Finder>.Empty)
@@ -158,11 +156,23 @@ namespace Pyrrho.Level4
             }
             throw new PEException("PE899");
         }
+        protected override Cursor _Last(Context cx)
+        {
+            switch (oper)
+            {
+                case Sqlx.UNION:
+                    return UnionBookmark.New(cx, this, 0,
+    cx.data[left].Last(cx), cx.data[right].Last(cx));
+                case Sqlx.INTERSECT: return IntersectBookmark.New(this, cx);
+                case Sqlx.EXCEPT: return ExceptBookmark.New(this, cx);
+            }
+            throw new PEException("PE899");
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Left: "); sb.Append(DBObject.Uid(left));
-            sb.Append(" Right: "); sb.Append(DBObject.Uid(right));
+            sb.Append(" Left: "); sb.Append(Uid(left));
+            sb.Append(" Right: "); sb.Append(Uid(right));
             return sb.ToString();
         }
     }
@@ -273,6 +283,19 @@ namespace Pyrrho.Level4
                 left = left.Next(_cx);
             return New(_cx,rowSet, _pos + 1, left, right);
         }
+        protected override Cursor _Previous(Context _cx)
+        {
+            var left = _left;
+            var right = _right;
+            // Next on left if we've just used it
+            // Next on right if we've just used it OR there is a match && distinct
+            if (right != null && ((!_useLeft) || (rowSet.distinct
+                && _compare(rowSet, left, right) == 0)))
+                right = right.Previous(_cx);
+            if (left != null && _useLeft)
+                left = left.Previous(_cx);
+            return New(_cx, rowSet, _pos + 1, left, right);
+        }
     }
     /// <summary>
     /// An except enumerator for the merge rowset
@@ -311,6 +334,19 @@ namespace Pyrrho.Level4
                     right = right.Next(_cx);
             }
         }
+        static void PrevToNonMatch(Context _cx, MergeRowSet r, ref Cursor left, ref Cursor right)
+        {
+            for (; ; )
+            {
+                if (left == null || right == null)
+                    break;
+                var c = _compare(r, left, right);
+                if (c == 0)
+                    left = left.Previous(_cx);
+                else if (c < 0)
+                    right = right.Previous(_cx);
+            }
+        }
         internal static ExceptBookmark New(Context cx, MergeRowSet r)
         {
             var left = cx.data[r.left].First(cx);
@@ -319,6 +355,15 @@ namespace Pyrrho.Level4
             if (left == null)
                 return null;
             return new ExceptBookmark(cx,r, 0, left, right);
+        }
+        internal static ExceptBookmark New(MergeRowSet r, Context cx)
+        {
+            var left = cx.data[r.left].Last(cx);
+            var right = cx.data[r.right].Last(cx);
+            MoveToNonMatch(cx, r, ref left, ref right);
+            if (left == null)
+                return null;
+            return new ExceptBookmark(cx, r, 0, left, right);
         }
         /// <summary>
         /// Move to the next row of the except rowset
@@ -332,6 +377,15 @@ namespace Pyrrho.Level4
             if (left == null)
                 return null;
             return new ExceptBookmark(_cx,rowSet, _pos + 1, left, right);
+        }
+        protected override Cursor _Previous(Context _cx)
+        {
+            var left = _left.Previous(_cx);
+            var right = _right;
+            PrevToNonMatch(_cx, rowSet, ref left, ref right);
+            if (left == null)
+                return null;
+            return new ExceptBookmark(_cx, rowSet, _pos + 1, left, right);
         }
         internal override Cursor _Fix(Context cx)
         {
@@ -366,6 +420,19 @@ namespace Pyrrho.Level4
                     right = right.Next(_cx);
             }
         }
+        static void PrevToMatch(Context _cx, MergeRowSet r, ref Cursor left, ref Cursor right)
+        {
+            for (; ; )
+            {
+                if (left == null || right == null)
+                    break;
+                var c = _compare(r, left, right);
+                if (c > 0)
+                    left = left.Previous(_cx);
+                else if (c < 0)
+                    right = right.Previous(_cx);
+            }
+        }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new IntersectBookmark(this, cx, p, v);
@@ -379,6 +446,15 @@ namespace Pyrrho.Level4
                 return null;
             return new IntersectBookmark(cx,r, 0, left, right);
         }
+        internal static IntersectBookmark New(MergeRowSet r, Context cx)
+        {
+            var left = cx.data[r.left].Last(cx);
+            var right = cx.data[r.right].Last(cx);
+            PrevToMatch(cx, r, ref left, ref right);
+            if (left == null)
+                return null;
+            return new IntersectBookmark(cx, r, 0, left, right);
+        }
         /// <summary>
         /// Move to the next row of the intersect rowset
         /// </summary>
@@ -391,6 +467,15 @@ namespace Pyrrho.Level4
             if (left == null)
                 return null;
             return new IntersectBookmark(_cx,rowSet, _pos + 1, left, right);
+        }
+        protected override Cursor _Previous(Context _cx)
+        {
+            var left = _left.Previous(_cx);
+            var right = _right;
+            PrevToMatch(_cx, rowSet, ref left, ref right);
+            if (left == null)
+                return null;
+            return new IntersectBookmark(_cx, rowSet, _pos + 1, left, right);
         }
         internal override Cursor _Fix(Context cx)
         {

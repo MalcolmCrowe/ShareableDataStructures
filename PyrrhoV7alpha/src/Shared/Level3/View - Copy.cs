@@ -69,54 +69,49 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="qs"></param>
         /// <returns></returns>
-        internal virtual RowSet Instance(Context cx, RowSet fm)
+        internal virtual RowSet Instance(Context cx,RowSet fm)
         {
-            var fx = fm.defpos;
-            var st = framing.result;
-            if (cx.srcFix == 0)
+            var fx = cx.nextHeap++;
+            var st = viewPpos;
+            if (cx.srcFix==0)
                 cx.srcFix = cx.db.lexeroffset;
-            cx.obuids = BTree<long, long?>.Empty;
-            cx.rsuids = BTree<long, long?>.Empty;
-            for (var b = fm.rt.First(); b != null; b = b.Next())
+            var obuids = BTree<long, long?>.Empty;
+            var rsuids = BTree<long, long?>.Empty;
+            for (var b=fm.rt.First();b!=null;b=b.Next())
             {
                 var p = b.value();
                 var sc = (SqlCopy)cx.obs[p];
-                cx.obuids += (sc.copyFrom, p);
+                obuids += (sc.copyFrom,p);
             }
             var np = fx;
-            var todo = new BList<long?>(st);
-            while (cx.data[todo.First()?.value()??-1L] is RowSet rs && rs.defpos >= defpos)
+            while (cx.data[st] is RowSet rs && rs.defpos>=viewPpos)
             {
-                todo -= 0;
-                cx.rsuids += (rs.defpos, np);
-                cx.data += (np, (RowSet)rs.Relocate(np));
-                todo += rs.Sources(cx);
+                rsuids += (rs.defpos, np);
+                cx.data += (np, ((RowSet)rs.Relocate(np)));
+                st = (long)(rs.mem[From.Source] ?? -1L);
                 np = cx.nextHeap++;
             }
+            fm += (From.Source, fx);
+            fm = fm.Fix(obuids,rsuids);
+            cx.data += (fm.defpos, fm);
             st = fx;
-            todo = new BList<long?>(st);
-            while (cx.data[todo.First()?.value() ?? -1L] is RowSet rs && rs.defpos >= defpos)
+            while (cx.data[st] is RowSet rs && rs.defpos >= viewPpos)
             {
-                todo -= 0;
-                rs = rs.Instance(cx);
-                cx.data += (rs.defpos, rs);
-                todo += rs.Sources(cx);
+                rs = rs.Fix(obuids, rsuids);
+                cx.data += (st,rs);
+                st = (long)(rs.mem[From.Source]??-1L);
             }
-            // At this point, cx.data contains an instance of framing.result
-            // with its sources specialised to the given fm rowset's uids.
-            // We now wish to use fm's filters etc to optimise cx.data.
-            // First apply fm's filters, matches and assigs (adding extra steps if required)
-            fm = fm.Apply(cx, cx.data[fx]);
-            // Now see if there are any rowsets in the stack that can be removed
-            // var r = fm.Review(cx); 
-            return cx.data[fx].ComputeNeeds(cx);
+            fm = fm.Apply(cx);
+            return fm.Review(cx);
         }
         internal override Context Insert(Context _cx, RowSet fm, string prov, Level cl)
         {
+            _cx.Install2(framing);
+            Instance(_cx, fm);
             for (var b = framing.obs.First(); b != null; b = b.Next())
                 if (b.value() is Table tb)
                 {
-                    var cx = tb.Insert(_cx, fm+(SqlInsert.Target,tb.defpos), prov, cl);
+                    var cx = tb.Insert(_cx, fm+(SqlInsert._Table,tb.defpos), prov, cl);
                     if (cx != _cx)
                         return cx;
                 }
@@ -124,10 +119,12 @@ namespace Pyrrho.Level3
         }
         internal override Context Update(Context _cx, RowSet fm)
         {
+            _cx.Install2(framing);
+            Instance(_cx, fm);
             for (var b = framing.obs.First(); b != null; b = b.Next())
                 if (b.value() is Table tb)
                 {
-                    var cx = tb.Update(_cx, fm + (SqlInsert.Target, tb.defpos));
+                    var cx = tb.Update(_cx, fm + (SqlInsert._Table, tb.defpos));
                     if (cx != _cx)
                         return cx;
                 }
@@ -135,10 +132,12 @@ namespace Pyrrho.Level3
         }
         internal override Context Delete(Context _cx, RowSet fm)
         {
+            _cx.Install2(framing);
+            Instance(_cx, fm);
             for (var b = framing.obs.First(); b != null; b = b.Next())
                 if (b.value() is Table tb)
                 {
-                    var cx = tb.Delete(_cx, fm + (SqlInsert.Target, tb.defpos));
+                    var cx = tb.Delete(_cx, fm + (SqlInsert._Table, tb.defpos));
                     if (cx != _cx)
                         return cx;
                 }
@@ -146,7 +145,6 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced in a From.
-        /// The following tasks should get carried out by Instance in Apply/Review
         /// 3.	A view column can be dropped from the request if nobody references it.
         /// 4.	If a view column is used as a simple filter, 
         /// we can pass the filter to the target, 
@@ -161,8 +159,38 @@ namespace Pyrrho.Level3
         internal override void RowSets(Context cx,From f,BTree<long,RowSet.Finder>fi)
         {
             cx.Install2(framing);
-            var rf = Instance(cx,new VirtualRowSet(cx,f,fi));
-            cx.data+=(f.defpos,rf);
+            var fm = cx.data[viewPpos];
+            var fx = cx.nextHeap++;
+            var st = viewPpos;
+            if (cx.srcFix == 0)
+                cx.srcFix = cx.db.lexeroffset;
+            var obuids = BTree<long, long?>.Empty;
+            var rsuids = BTree<long, long?>.Empty;
+            for (var b = f.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var sc = (SqlCopy)cx.obs[p];
+                obuids += (sc.copyFrom, p);
+            }
+            var np = fx;
+            while (cx.data[st] is RowSet rs && rs.defpos >= viewPpos)
+            {
+                rsuids += (rs.defpos, np);
+                cx.data += (np, ((RowSet)rs.Relocate(np)));
+                st = (long)(rs.mem[From.Source] ?? -1L);
+                np = cx.nextHeap++;
+            }
+            st = fx;
+            while (cx.data[st] is RowSet rs && rs.defpos >= viewPpos)
+            {
+                rs = rs.Fix(obuids, rsuids);
+                cx.data += (st, rs);
+                st = (long)(rs.mem[From.Source] ?? -1L);
+            }
+            fm = cx.data[fx];
+            if (f.assig != CTree<UpdateAssignment, bool>.Empty)
+                fm += (Query.Assig, f.assig);
+            cx.data+=(f.defpos,fm);
         }
         /// <summary>
         /// API development support: generate the C# information for a Role$Class description
@@ -525,7 +553,7 @@ namespace Pyrrho.Level3
             cx.Add(fm);
             cx.AddDefs(new Ident(name, fm.defpos), fm.rt);
             var te = new TableExpression(cx.nextHeap++, 
-                new BTree<long, object>(TableExpression.Nuid, fm.defpos)
+                new BTree<long, object>(TableExpression.Target, fm.defpos)
                 +(_Domain,dm));
             cx.Add(te);
             var qs = new QuerySpecification(cx.nextHeap++,cx,dm)+
@@ -539,8 +567,24 @@ namespace Pyrrho.Level3
                 + (CursorSpecification.Union, qe.defpos)+(_Domain,dm)
                 + (CursorSpecification._Source,"select * from "+name);
             cx.Add(cs);
-            return r.ComputeNeeds(cx);
-        } 
+            return r;
+        }
+        /// <summary>
+        /// 1.	The RestRowSet works out the remoteCols from the view.Domain
+        /// 2.	This analysis is triggered on the complete set if a restview is referenced.
+        /// 3.	A remote column can be dropped from the request if nobody references it.
+        /// 4.	If a remote column is used as a simple filter, 
+        ///     we can pass the filter to the remote contributor, and 
+        ///     simplify everything by using its constant value.
+        /// 5.	If a remote column is aggregated, 
+        ///     we can perform some or all of the aggregation in the remote, 
+        ///     but we may need to group by the other visible remote columns.
+        /// 6.	With joins we need to preserve columns referenced in the join condition, 
+        ///     and keep track of keys.
+        ///     But we do not attempt to construct remote joins 
+        ///     (a different restview should be created for this).
+        /// </summary>
+        /// <param name="cx"></param>
         public static RestView operator +(RestView r, (long, object) x)
         {
             return new RestView(r.defpos, r.mem + x);

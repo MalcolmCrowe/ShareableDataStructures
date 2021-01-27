@@ -33,7 +33,7 @@ namespace Pyrrho.Level3
             CompareContext = -250, // Context structured types
             Definer = -64, // long
             Defpos = -257, // long  for Rest service
-            Dependents = -65, // BTree<long,bool> Non-obvious objects that need this to exist
+            Dependents = -65, // CTree<long,bool> Non-obvious objects that need this to exist
             Depth = -66, // int  (max depth of dependents)
             _Domain = -176, // Domain 
             _Framing = -167, // BTree<long,DBObject> compiled objects
@@ -67,8 +67,8 @@ namespace Pyrrho.Level3
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
         /// </summary>
-        internal BTree<long, bool> dependents =>
-            (BTree<long, bool>)mem[Dependents] ?? BTree<long, bool>.Empty;
+        internal CTree<long, bool> dependents =>
+            (CTree<long, bool>)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
         /// <summary>
         /// Constructor
@@ -107,16 +107,16 @@ namespace Pyrrho.Level3
                     r = x[i];
             return r;
         }
-        internal static BTree<long, bool> _Deps(BList<long> vs)
+        internal static CTree<long, bool> _Deps(CList<long> vs)
         {
-            var r = BTree<long, bool>.Empty;
+            var r = CTree<long, bool>.Empty;
             for (var b = vs?.First(); b != null; b = b.Next())
                 r += (b.value(), true);
             return r;
         }
-        internal static BTree<long, bool> _Deps(BList<SqlValue> vs)
+        internal static CTree<long, bool> _Deps(BList<SqlValue> vs)
         {
-            var r = BTree<long, bool>.Empty;
+            var r = CTree<long, bool>.Empty;
             for (var b = vs?.First(); b != null; b = b.Next())
                 r += (b.value().defpos, true);
             return r;
@@ -149,9 +149,9 @@ namespace Pyrrho.Level3
             var oi = (ObInfo)tr.role.infos[defpos];
             return (oi != null) && (oi.priv & priv) == 0;
         }
-        internal virtual BTree<long, bool> Needs(Context cx)
+        internal virtual CTree<long, bool> Needs(Context cx)
         {
-            return BTree<long, bool>.Empty;
+            return CTree<long, bool>.Empty;
         }
         internal virtual ObInfo Inf(Context cx)
         {
@@ -185,7 +185,7 @@ namespace Pyrrho.Level3
             var df = wr.Fix(definer);
             if (df != definer)
                 r += (Definer, df);
-            var ds = BTree<long, bool>.Empty;
+            var ds = CTree<long, bool>.Empty;
             for (var b = dependents.First(); b != null; b = b.Next())
                 ds += (wr.Fix(b.key()), true);
             if (ds != dependents)
@@ -227,7 +227,7 @@ namespace Pyrrho.Level3
             {
                 r = cx.obs[np];
                 if (r==null || r  is SqlNull)
-                    r = Relocate(np);
+                    r = cx._Add(Relocate(np));
             }
             var nd = cx.obuids[definer] ?? definer;
             if (definer !=nd)
@@ -235,6 +235,13 @@ namespace Pyrrho.Level3
             var ds = cx.Fix(dependents);
             if (ds != dependents)
                 r += (Dependents, ds);
+            if (mem.Contains(TableExpression.Nuid))
+            {
+                var nu = (long)mem[TableExpression.Nuid];
+                var nn = cx.rsuids[nu]??cx.obuids[nu]??nu;
+                if (nn != nu)
+                    r += (TableExpression.Nuid, nn);
+            }
             return r;
         }
         /// <summary>
@@ -323,7 +330,10 @@ namespace Pyrrho.Level3
         }
         internal DBObject Replace(Context cx,DBObject was,DBObject now)
         {
-            if (defpos < Transaction.TransPos)
+            var ldpos = cx.db.loadpos;
+            for (var cc = cx.next; cc != null; cc = cc.next)
+                ldpos = cc.db.loadpos;
+            if (defpos < ldpos)
                 return this;
             var r = _Replace(cx, was, now);
             if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
@@ -346,6 +356,143 @@ namespace Pyrrho.Level3
         internal virtual void _Add(Context cx)
         {
             cx.obs += (defpos, this);
+        }
+        /// <summary>
+        /// Add a new column to the query, and update the row type
+        /// (Needed for alter)
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        internal virtual DBObject Add(Context cx, SqlValue v)
+        {
+            if (v == null)
+                return this;
+            var deps = dependents + (v.defpos, true);
+            var dpt = _Max(depth, 1 + v.depth);
+            var r = this + (Dependents, deps) + (Depth, dpt)
+                + (_Domain, domain + (v.defpos, v.domain));
+            return r;
+        }
+        internal virtual DBObject Remove(Context cx, SqlValue v)
+        {
+            if (v == null)
+                return this;
+            var rt = CList<long>.Empty;
+            var rp = BTree<long, Domain>.Empty;
+            var ch = false;
+            var rb = domain.representation.First();
+            for (var b = domain.rowType?.First(); b != null && rb != null; b = b.Next(), rb = rb.Next())
+                if (b.value() == v.defpos)
+                    ch = true;
+                else
+                {
+                    rp += (rb.key(), rb.value());
+                    rt += b.value();
+                }
+            return ch ?
+                New(cx, mem + (_Domain, new Domain(Sqlx.ROW, cx, rt)) + (Dependents, dependents - v.defpos))
+                : this;
+        }
+        internal virtual DBObject Hide(Context cx, SqlValue v)
+        {
+            if (v == null)
+                return this;
+            var rt = CList<long>.Empty;
+            var ch = false;
+            for (var b = domain.rowType?.First(); b != null; b = b.Next())
+                if (b.value() == v.defpos)
+                    ch = true;
+                else
+                    rt += b.value();
+            if (!ch)
+                return this;
+            var d = domain.display -1;
+            rt += v.defpos;
+            return New(cx, mem + (_Domain, new Domain(Sqlx.ROW, domain.representation, rt, d)));
+        }
+        /// <summary>
+        /// Called after a condition is added to a join that could turn it into an FDJoin.
+        /// We can therefore assume that any resulting relocation has already been done.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal virtual DBObject ReviewJoins(Context cx)
+        {
+            return this;
+        }
+        internal virtual DBObject Conditions(Context cx)
+        {
+            return this;
+        }
+        /// <summary>
+        /// </summary>
+        /// <param name="svs">A list of where conditions</param>
+        /// <param name="tr"></param>
+        /// <param name="q">A source query</param>
+        /// <returns></returns>
+        internal virtual DBObject MoveConditions(Context cx, Query q)
+        {
+            return this;
+        }
+        internal CTree<long, bool> Needs(Context cx, CTree<long, bool> s)
+        {
+            for (var b = domain.rowType?.First(); b != null; b = b.Next())
+                s = ((SqlValue)cx.obs[b.value()]).Needs(cx, s);
+            return s;
+        }
+        internal virtual DBObject Orders(Context cx, CList<long> ord)
+        {
+            return this;
+        }
+        public static bool Eval(CTree<long, bool> svs, Context cx)
+        {
+            for (var b = svs?.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()].Eval(cx) != TBool.True)
+                    return false;
+            return true;
+        }
+        /// <summary>
+        /// Bottom up: Add q.matches to this.
+        /// Since it is bottom-up we don't need to worry about sharing.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="q"></param>
+        /// <returns></returns>
+        internal virtual DBObject AddMatches(Context cx, Query q)
+        {
+            return this;
+        }
+        /// <summary>
+        /// The given Sqlvalue is guaranteed to be a constant at this level and context.
+        /// We don't propagate to other levels.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="sv"></param>
+        /// <param name="tv"></param>
+        /// <returns></returns>
+        internal virtual DBObject AddMatch(Context cx, SqlValue sv, TypedValue tv)
+        {
+            return this;
+        }
+        internal virtual DBObject AddCondition(Context cx, long prop, long cond)
+        {
+            return this;
+        }
+        internal virtual DBObject AddCondition(Context cx, CTree<long, bool> conds)
+        {
+            return this;
+        }
+        internal DBObject AddCondition(Context cx, long prop, CTree<long, bool> conds)
+        {
+            var q = this;
+            for (var b = conds.First(); b != null; b = b.Next())
+                q = q.AddCondition(cx, prop, (SqlValue)cx.obs[b.key()], false);
+            return New(cx, q.mem);
+        }
+        internal virtual DBObject AddCondition(Context cx, long prop, SqlValue cond, bool onlyKnown)
+        {
+            return this;
         }
         internal virtual void Set(Context cx, TypedValue v)
         {
@@ -386,7 +533,7 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-        internal virtual BTree<long,TypedValue> AddMatch(Context cx,BTree<long,TypedValue> ma,
+        internal virtual CTree<long,TypedValue> AddMatch(Context cx,CTree<long,TypedValue> ma,
             Table tb=null)
         {
             return ma;
@@ -407,8 +554,8 @@ namespace Pyrrho.Level3
         }
         internal virtual void RowSets(Context cx,From f,BTree<long,RowSet.Finder> fi)
         {
-            if (!cx.data.Contains(defpos))
-                cx.data+=(defpos, new TrivialRowSet(defpos, cx, new TRow(domain, cx.values), -1, fi));
+            if (!cx.data.Contains(f.defpos))
+                cx.data+=(f.defpos, new TrivialRowSet(f.defpos, cx, new TRow(domain, cx.values), -1, fi));
         }
         /// <summary>
         /// Execute an Insert operation for a Table, View, RestView.
@@ -417,38 +564,26 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="f">A query</param>
         /// <param name="prov">The provenance string</param>
-        /// <param name="data">The data to be inserted may be explicit</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">The existing RowSet may be explicit</param>
         /// <param name="cl">The classification sought</param>
-        internal virtual Context Insert(Context _cx, From f, string prov, RowSet data, Adapters eqs, List<RowSet> rs,
-            Level cl)
+        internal virtual Context Insert(Context _cx, RowSet fm, string prov, Level cl)
         {
+            _cx.Install2(framing);
             return _cx;
         }
         /// <summary>
         /// Execute a Delete operation for a Table, View, RestView.
-        /// The set of rows to delete may be explicitly specified.
-        /// Deal with triggers.
         /// </summary>
-        /// <param name="f">A query</param>
-        /// <param name="dr">A possible explicit set of row references</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal virtual Context Delete(Context cx,From f, BTree<string,bool> dr, Adapters eqs)
+        internal virtual Context Delete(Context cx,RowSet fm)
         {
+            cx.Install2(framing);
             return cx;
         }
         /// <summary>
         /// Execute an Update operation for a Table, View or RestView.
-        /// The set of rows to update may be explicitly specified.
-        /// The existing rows may be explicitly specified.
         /// </summary>
-        /// <param name="f">A query</param>
-        /// <param name="ur">The rows to update may be explicit</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">The existing rowset may be explicit</param>
-        internal virtual Context Update(Context cx,From f,BTree<string,bool> ur,Adapters eqs, List<RowSet> rs)
+        internal virtual Context Update(Context cx,RowSet fm)
         {
+            cx.Install2(framing);
             return cx;
         }
         /// <summary>
@@ -603,7 +738,7 @@ namespace Pyrrho.Level3
                 if (!found)
                     return;
             }
-            var match = BTree<long, string>.Empty;
+            var match = CTree<long, string>.Empty;
             for (var b = rs.matches?.First(); b != null; b = b.Next())
                 match += (b.key(), b.value()?.ToString() ?? "null");
             var a = new Audit(cx.tr.user, defpos, match, DateTime.Now.Ticks, cx.db.nextPos, cx);
@@ -635,6 +770,8 @@ namespace Pyrrho.Level3
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" Ppos="); sb.Append(Uid(lastChange)); }
+            if (mem.Contains(TableExpression.Nuid))
+            { sb.Append(" Nuid="); sb.Append(Uid((long)mem[TableExpression.Nuid])); }
             if (sensitive) sb.Append(" Sensitive"); 
             return sb.ToString();
         }

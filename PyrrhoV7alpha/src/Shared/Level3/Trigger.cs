@@ -29,7 +29,7 @@ namespace Pyrrho.Level3
             OldRow = -295, // long Cursor
             OldTable = -296, // long Query
             TrigType = -297, // PTrigger.TrigType
-            UpdateCols = -298; // BList<long> SqlValue
+            UpdateCols = -298; // CList<long> SqlValue
         public string name => (string)mem[Name];
         public long table => (long)mem[From.Target];
         /// <summary>
@@ -39,7 +39,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of update TableColumns
         /// </summary>
-		public BList<long> cols => (BList<long>)mem[UpdateCols]??BList<long>.Empty;
+		public CList<long> cols => (CList<long>)mem[UpdateCols]??CList<long>.Empty;
         /// <summary>
         /// the name of the old row
         /// </summary>
@@ -126,7 +126,7 @@ namespace Pyrrho.Level3
             if (a != action)
                 r += (Action, a);
             var ch = false;
-            var cs = BList<long>.Empty;
+            var cs = CList<long>.Empty;
             for (var b = cols?.First(); b != null; b = b.Next())
             {
                 var c = cx.Replace(b.value(), so, sv);
@@ -235,7 +235,7 @@ namespace Pyrrho.Level3
         {
             var cs = CList<long>.Empty;
             var vs = BList<SqlValue>.Empty;
-            var ds = BTree<long, bool>.Empty;
+            var ds = CTree<long, bool>.Empty;
             var d = 1+fm.depth;
             for (var b = fm.rowType.First(); b != null; b = b.Next())
             {
