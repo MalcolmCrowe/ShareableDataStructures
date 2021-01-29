@@ -29,6 +29,7 @@ namespace Pyrrho.Level2
         /// The definition of the view
         /// </summary>
         public string viewdef;
+        public Domain domain;
         public override long Dependent(Writer wr, Transaction tr)
         {
             for (var b = framing.obs.First(); b != null; b = b.Next())
@@ -49,14 +50,15 @@ namespace Pyrrho.Level2
         /// <param name="vd">The definition of the view</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        internal PView(string nm, string vd, long pp, Context cx)
-            : this(Type.PView, nm, vd, pp, cx) 
+        internal PView(string nm, string vd, Domain dm, long pp, Context cx)
+            : this(Type.PView, nm, vd, dm, pp, cx) 
         { }
-        protected PView(Type pt,string nm,string vd, long pp, Context cx) 
+        protected PView(Type pt,string nm,string vd, Domain dm, long pp, Context cx) 
             : base(pt,pp,cx,new Framing(cx))
         {
             name = nm;
             viewdef = vd;
+            domain = dm;
         }
         /// <summary>
         /// Constructor: A view definition from the buffer
@@ -70,6 +72,7 @@ namespace Pyrrho.Level2
             name = x.name;
             wr.srcPos = wr.Length + 1;
             viewdef = x.viewdef;
+            domain = (Domain)x.domain.Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -104,15 +107,15 @@ namespace Pyrrho.Level2
                 psr.ParseCursorSpecification(Domain.TableType);
                 psr.cx.data += (ppos, psr.cx.data[psr.cx.result]);
                 Frame(psr.cx);
+                domain = psr.cx.data[psr.cx.result].domain;
             }
         }
         internal virtual BTree<long,object> _Dom(Database db,BTree<long,object>m)
         {
-            var vd = framing.data[framing.result];
             var ns = CTree<string, long>.Empty;
-            var d = 2 + (vd?.depth ?? 0);
-            var dm = vd?.domain;
-            for (var b = dm?.rowType.First(); b != null; b = b.Next())
+            var d = 2 + (domain?.depth ?? 0);
+            for (var b = domain?.rowType.First(); b != null && b.key()<domain.display; 
+                b = b.Next())
             {
                 var p = b.value();
                 var c = (SqlValue)framing.obs[p];
@@ -121,11 +124,11 @@ namespace Pyrrho.Level2
                     ns += (c.alias, p);
                 ns += (c.name, p);
             }
-            return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm) 
+            return (m??BTree<long,object>.Empty) + (DBObject._Domain, domain) 
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
                 + (DBObject._Framing, framing)
                 + (DBObject.Depth, d);
-        }
+        } 
         /// <summary>
         /// a readable version of this Physical
         /// </summary>
@@ -172,7 +175,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var vw = new View(this,cx.db);
-            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            var ti = new ObInfo(ppos, name, domain, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -199,10 +202,10 @@ namespace Pyrrho.Level2
         }
         public PRestView(ReaderBase rdr) : this(Type.RestView, rdr) { }
         protected PRestView(Type t, ReaderBase rdr) : base(t,rdr) { }
-        public PRestView(string nm, long tp, long pp, Context cx)
-            : this(Type.RestView, nm, tp, pp, cx) { }
-        protected PRestView(Type t,string nm,long tp,long pp, Context cx)
-            : base(t,nm,"",pp,cx)
+        public PRestView(string nm, long tp, Domain dm, long pp, Context cx)
+            : this(Type.RestView, nm, tp, dm, pp, cx) { }
+        protected PRestView(Type t,string nm,long tp,Domain dm,long pp, Context cx)
+            : base(t,nm,"",dm,pp,cx)
         {
             structpos = tp;
         }
@@ -235,7 +238,8 @@ namespace Pyrrho.Level2
             var ti = (ObInfo)ro.infos[structpos];
             var cs = Ident.Idents.Empty;
             os += (structpos, tb);
-            for (var b=ti.domain.rowType.First();b!=null;b=b.Next())
+            domain = ti.domain;
+            for (var b=domain.rowType.First();b!=null;b=b.Next())
             {
                 var cp = b.value();
                 var ci = (ObInfo)ro.infos[cp];
@@ -265,14 +269,14 @@ namespace Pyrrho.Level2
         internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
         {
             var ns = CTree<string, long>.Empty;
-            var dm = ((ObInfo)db.role.infos[structpos]).domain;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
+            for (var b = domain.rowType.First(); b != null && b.key()<domain.display; 
+                b = b.Next())
             {
                 var p = b.value();
                 var c = (ObInfo)db.role.infos[p];
                 ns += (c.name, p);
-            }
-            return (m??BTree<long,object>.Empty) + (DBObject._Domain, dm)
+            } 
+            return (m??BTree<long,object>.Empty) + (DBObject._Domain, domain)
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns)
                 + (DBObject._Framing, framing)
                 + (DBObject.Depth, 2);
@@ -288,8 +292,8 @@ namespace Pyrrho.Level2
     internal class PRestView1 : PRestView
     {
         public PRestView1(ReaderBase rdr) : base(Type.RestView1, rdr) { }
-        public PRestView1(string nm, long tp, string rnm, string rpw, long pp, 
-            Context cx) : base(Type.RestView1, nm, tp, pp, cx)
+        public PRestView1(string nm, long tp, Domain dm, string rnm, string rpw, long pp, 
+            Context cx) : base(Type.RestView1, nm, tp, dm, pp, cx)
         {
             rname = rnm;
             rpass = rpw;
@@ -324,8 +328,8 @@ namespace Pyrrho.Level2
     internal class PRestView2 : PRestView
     {
         public PRestView2(ReaderBase rdr) : base(Type.RestView1, rdr) { }
-        public PRestView2(string nm, long tp, long utp, long pp, Context cx)
-            : base(Type.RestView2, nm, tp, pp, cx)
+        public PRestView2(string nm, long tp, Domain dm, long utp, long pp, Context cx)
+            : base(Type.RestView2, nm, tp, dm, pp, cx)
         {
             usingtbpos = utp;
         }

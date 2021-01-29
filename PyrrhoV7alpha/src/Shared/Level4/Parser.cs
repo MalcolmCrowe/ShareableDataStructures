@@ -941,15 +941,15 @@ namespace Pyrrho.Level4
                 if (rest)
                 {
                     if (ut == null)
-                        pv = new PRestView(id, t.structure, np, cx);
+                        pv = new PRestView(id, t.structure, t, np, cx);
                     else
-                        pv = new PRestView2(id, t.structure, ut.defpos, np, cx);
+                        pv = new PRestView2(id, t.structure, t, ut.defpos, np, cx);
                 }
                 else
                 {
                     cx.Add(cx.obs[cp] +
                         (CursorSpecification.Union, qe.defpos)+(DBObject._Domain,qe.domain));
-                    pv = new PView(id, new string(lxr.input, st, lxr.pos - st),
+                    pv = new PView(id, new string(lxr.input, st, lxr.pos - st),qe.domain,
                         np, cx);
                 }
                 cx.Add(pv);

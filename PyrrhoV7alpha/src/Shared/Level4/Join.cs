@@ -1401,43 +1401,49 @@ namespace Pyrrho.Level4
         {
             var left = _left;
             var right = _right;
-            var se = cx.data[_jrs.second];
-            var second = se.MaybeBuild(cx,right._needed);
-            if (second != se)
-                right = cx.cursors[second.defpos];
-            else
-                right = right.Next(cx);
+            var was = right._needed;
+            right = right.Next(cx);
             for (; ; )
             {
                 if (right != null)
-                    break;
+                {
+                    var rb = new LateralJoinBookmark(cx, _jrs, left, right, _pos + 1);
+                    if (_jrs.Compare(cx) == 0)
+                        return rb;
+                    right = right.Next(cx);
+                    continue;
+                }
                 left = left.Next(cx);
                 if (left == null)
                     return null;
+                var se = cx.data[_jrs.second];
+                var second = se.MaybeBuild(cx, was);
                 right = second.First(cx);
             }
-            return new LateralJoinBookmark(cx, _jrs, left, right, _pos + 1);
         }
         protected override Cursor _Previous(Context cx)
         {
             var left = _left;
             var right = _right;
-            var se = cx.data[_jrs.second];
-            var second = se.MaybeBuild(cx, right._needed);
-            if (second != se)
-                right = cx.cursors[second.defpos];
-            else
-                right = right.Previous(cx);
+            var was = right._needed;
+            right = right.Previous(cx);
             for (; ; )
             {
                 if (right != null)
-                    break;
-                left = left.Previous(cx);
+                {
+                    var rb = new LateralJoinBookmark(cx, _jrs, left, right, _pos + 1);
+                    if (_jrs.Compare(cx) == 0)
+                        return rb;
+                    right = right.Previous(cx);
+                    continue;
+                }
+                left = left.Next(cx);
                 if (left == null)
                     return null;
+                var se = cx.data[_jrs.second];
+                var second = se.MaybeBuild(cx, was);
                 right = second.Last(cx);
             }
-            return new LateralJoinBookmark(cx, _jrs, left, right, _pos + 1);
         }
         internal override Cursor _Fix(Context cx)
         {

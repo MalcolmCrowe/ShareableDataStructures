@@ -204,7 +204,7 @@ namespace Pyrrho.Level2
             for (var b=md.First();b!=null;b=b.Next())
             {
                 var m = 1L;
-                for (var i = 0; i < keys.Length; i++, m <<= 1)
+                for (var i = 1; i < keys.Length; i++, m <<= 1)
                     if (b.key() == keys[i-1])
                         r += m;
             }
