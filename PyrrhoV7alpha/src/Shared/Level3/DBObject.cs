@@ -454,7 +454,6 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// Bottom up: Add q.matches to this.
-        /// Since it is bottom-up we don't need to worry about sharing.
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="q"></param>

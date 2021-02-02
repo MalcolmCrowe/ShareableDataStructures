@@ -69,7 +69,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="qs"></param>
         /// <returns></returns>
-        internal virtual RowSet Instance(Context cx, RowSet fm)
+        internal RowSet Instance(Context cx, RowSet fm)
         {
             var fx = fm.defpos;
             var st = framing.result;
@@ -84,31 +84,42 @@ namespace Pyrrho.Level3
                 cx.obuids += (sc.copyFrom, p);
             }
             var np = fx;
-            var todo = new BList<long?>(st);
-            while (cx.data[todo.First()?.value()??-1L] is RowSet rs && rs.defpos >= defpos)
+            var todo = new BList<long>(st);
+            while (todo.Count>0)
             {
+                var rs = cx.data[todo.First().value()];
+                if (rs.defpos < defpos)
+                    break;
                 todo -= 0;
                 cx.rsuids += (rs.defpos, np);
-                cx.data += (np, (RowSet)rs.Relocate(np));
+                var wh = CTree<long, bool>.Empty;
+                for (var b = fm.where.First(); b != null; b = b.Next())
+                    if (((SqlValue)cx.obs[b.key()]).KnownBy(cx, rs))
+                        wh += (b.key(), true);
+                var ag = CTree<UpdateAssignment, bool>.Empty;
+                for (var b=fm.assig.First();b!=null;b=b.Next())
+                {
+                    var u = b.key();
+                    if (rs.Knows(cx, u.vbl) && ((SqlValue)cx.obs[u.val]).KnownBy(cx, rs))
+                        ag += (u, true); 
+                }
+                cx.data += (np, (RowSet)rs.Relocate(np) + (Query.Where, wh)
+                    + (Query.Assig, ag));
                 todo += rs.Sources(cx);
                 np = cx.nextHeap++;
             }
             st = fx;
-            todo = new BList<long?>(st);
-            while (cx.data[todo.First()?.value() ?? -1L] is RowSet rs && rs.defpos >= defpos)
+            todo = new BList<long>(st);
+            while (todo.Count > 0)
             {
+                var rs = cx.data[todo.First().value()];
+                if (rs.defpos < defpos)
+                    break;
                 todo -= 0;
                 rs = rs.Instance(cx);
                 cx.data += (rs.defpos, rs);
                 todo += rs.Sources(cx);
             }
-            // At this point, cx.data contains an instance of framing.result
-            // with its sources specialised to the given fm rowset's uids.
-            // We now wish to use fm's filters etc to optimise cx.data.
-            // First apply fm's filters, matches and assigs (adding extra steps if required)
-            fm = fm.Apply(cx, cx.data[fx]);
-            // Now see if there are any rowsets in the stack that can be removed
-            // var r = fm.Review(cx); 
             return cx.data[fx].ComputeNeeds(cx);
         }
         internal override Context Insert(Context _cx, RowSet fm, string prov, Level cl)
@@ -483,64 +494,6 @@ namespace Pyrrho.Level3
             d += (ro,p); 
             return base.Add(d, pm, p);
         }
-        internal override RowSet Instance(Context cx,RowSet fm)
-        {
-            var r = base.Instance(cx,fm);
-            var dm = domain;
-            var vs = BList<SqlValue>.Empty;
-            var ro = cx.db.role;
-            var qn = BTree<string, long>.Empty;
-            var uids = BTree<long, long>.Empty;
-            for (var b = fm.rt.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                var sv = (SqlValue)cx.obs[p];
-                qn += (sv.name, p);
-            }
-            for (var b = viewCols.First();b!=null;b=b.Next())
-            {
-                var cn = b.key();
-                var cp = b.value();
-                var cd = dm.representation[b.value()];
-                var sc = new SqlCopy(cx.nextHeap++, cx, cn, fm.defpos, cp,
-                    new BTree<long,object>(_Domain,cd));
-                var ci = new ObInfo(sc.defpos, cn, cd, Grant.Privilege.Select);
-                ro += (ci,false);
-                cx.Add(sc);
-                if (qn.Contains(cn))
-                {
-                    var od = cx.done;
-                    cx.done = BTree<long, DBObject>.Empty;
-                    var qp = qn[cn];
-                    var qv = (SqlValue)cx.obs[qp];
-                    cx.Replace(qv, sc);
-                    cx.done = od;
-                }
-                vs += sc;
-            }
-            cx.db += (ro,cx.db.loadpos);
-            dm = new Domain(Sqlx.TABLE, vs);
-            r += (_Domain, dm);
-            fm += (_Domain, dm);
-            cx.Add(fm);
-            cx.AddDefs(new Ident(name, fm.defpos), fm.rt);
-            var te = new TableExpression(cx.nextHeap++, 
-                new BTree<long, object>(TableExpression.Nuid, fm.defpos)
-                +(_Domain,dm));
-            cx.Add(te);
-            var qs = new QuerySpecification(cx.nextHeap++,cx,dm)+
-                (QuerySpecification.TableExp, te)+(_Domain,dm);
-            cx.Add(qs);
-            var qe = new QueryExpression(cx.nextHeap++, true,
-                new BTree<long,object>(QueryExpression._Left,qs.defpos))
-                +(_Domain,dm);
-            cx.Add(qe);
-            var cs = new CursorSpecification(cx.nextHeap++)
-                + (CursorSpecification.Union, qe.defpos)+(_Domain,dm)
-                + (CursorSpecification._Source,"select * from "+name);
-            cx.Add(cs);
-            return r.ComputeNeeds(cx);
-        } 
         public static RestView operator +(RestView r, (long, object) x)
         {
             return new RestView(r.defpos, r.mem + x);

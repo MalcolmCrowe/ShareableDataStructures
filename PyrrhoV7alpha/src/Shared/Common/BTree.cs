@@ -799,7 +799,12 @@ namespace Pyrrho.Common
         }
         protected override ATree<int, V> Remove(int k)
         {
-            return new BList<V>(base.Remove(k).root);
+            // alas this is SLOW
+            var r = Empty;
+            for (var b = First(); b != null; b = b.Next())
+                if (b.key() != k)
+                    r += (r.Length,b.value());
+            return r;
         }
         public static BList<V> operator +(BList<V> b, (int, V) v)
         {

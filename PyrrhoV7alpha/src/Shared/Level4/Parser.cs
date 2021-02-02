@@ -5303,17 +5303,17 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="sql">The sql to parse</param>
         /// <returns>A CursorSpecification</returns>
-		public SelectStatement ParseCursorSpecification(string sql,Domain xp)
-		{
+		public SelectStatement ParseCursorSpecification(string sql, Domain xp)
+        {
             var olx = lxr;
-			lxr = new Lexer(sql, cx.db.lexeroffset);
-			tok = lxr.tok;
+            lxr = new Lexer(sql, cx.db.lexeroffset);
+            tok = lxr.tok;
             if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
-                cx.db += (Database.NextId, cx.db.nextId+sql.Length);
-			var r = ParseCursorSpecification(xp);
+                cx.db += (Database.NextId, cx.db.nextId + sql.Length);
+            var r = ParseCursorSpecification(xp);
             lxr = olx;
             return r;
-		}
+        }
         /// <summary>
 		/// CursorSpecification = [ XMLOption ] QueryExpression  .
         /// </summary>
@@ -5342,7 +5342,6 @@ namespace Pyrrho.Level4
             r = (CursorSpecification)cx.Add(r);
             r = (CursorSpecification)r.ReviewJoins(cx);
             var rs = r.RowSets(cx, cx.data[r.from]?.finder ?? BTree<long, RowSet.Finder>.Empty);
-  //          rs = rs.Review(cx);
             cx.result = rs?.defpos ?? -1L;
             return r.defpos;
         }
@@ -5580,13 +5579,18 @@ namespace Pyrrho.Level4
                 var sv = (SqlValue)cx.obs[b.value()];
                 if (sv is SqlStar st)
                 {
-                    var rq = cx.obs[st.prefix]??te;
+                    var rq = cx.obs[st.prefix] ?? te;
                     for (var c = rq.domain.rowType.First(); c != null; c = c.Next())
                         vs += (SqlValue)cx.obs[c.value()];
                     ch = true;
                 }
                 else
+                {
+                    if (r.domain.representation[b.value()] is Domain dv &&
+                        (dv.kind == Sqlx.CONTENT || dv.kind == Sqlx.UNION))
+                        ch = true;
                     vs += sv;
+                }
             }
             if (ch)
             {

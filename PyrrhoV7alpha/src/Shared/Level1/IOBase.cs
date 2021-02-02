@@ -376,6 +376,22 @@ namespace Pyrrho.Level2
             }
             return ch ? r : fd;
         }
+        internal BTree<long, long?> Fix(BTree<long, long?> fd)
+        {
+            var r = BTree<long, long?>.Empty;
+            var ch = false;
+            for (var b = fd?.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var v = b.value();
+                var np = Fix(p);
+                var nv = Fix(v.Value);
+                if (p != np || v != nv)
+                    ch = true;
+                r += (np, nv);
+            }
+            return ch ? r : fd;
+        }
         internal CTree<long, V> Fix<V>(CTree<long, V> fi) where V:IComparable
         {
             var r = CTree<long, V>.Empty;

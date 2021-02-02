@@ -654,6 +654,55 @@ namespace Pyrrho.Level3
             r = Ordering(cx,r,false);
             cx.results += (defpos, r.defpos);
             cx.data += (defpos, r);
+            // Now see if there are any rowsets in the stack that can be removed
+            var todo = new BList<(long,BTree<long,TypedValue>)>((r.defpos,matches));
+            while (todo.Count > 0)
+            {
+                var (rp, ma) = todo.First().value();
+                todo -= 0;
+                var rs = cx.data[rp];
+                if (rp >= Transaction.TransPos)
+                {
+                    ma += rs.matches;
+                    for (var b = ma.First(); b != null; b = b.Next())
+                    {
+                        var p = b.key();
+                        var v = b.value();
+                        if (rs.finder.Contains(p))
+                            ma += (p, v);
+                        else
+                            ma -= p;
+                        for (var c = (rs as JoinRowSet)?.matching[p]?.First();
+                               c != null; c = c.Next())
+                                ma += (c.key(), v);
+                    }
+                    if (ma != rs.matches)
+                    {
+                        rs += (_Matches, ma);
+                        cx.data += (rp, rs);
+                    }
+                    for (var b = rs.Sources(cx).First(); b != null; b = b.Next())
+                        todo += (b.value(), ma);
+                }
+            }
+            var tbd = new BList<long>(r.defpos);
+            var done = BTree<long, bool>.Empty;
+            while (tbd.Count > 0)
+            {
+                var rp = tbd.First().value();
+                tbd -= 0;
+                var rs = cx.data[rp];
+                if (rp >= Transaction.TransPos && !done.Contains(rp))
+                {
+                    done += (rp, true);
+                    rs = rs.Review(cx);
+                    if (rs.defpos != rp)
+                        rs = rs.Relocate1(rp);
+                    cx.data += (rp, rs);
+                    tbd += rs.Sources(cx);
+                }
+            }
+            r = cx.data[r.defpos];
             return r.ComputeNeeds(cx);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
@@ -810,7 +859,7 @@ namespace Pyrrho.Level3
                     ((SqlValue)cx.obs[b.key()]).Grouped(cx, grp);
             var ma = CTree<long, long>.Empty;
             var cb = r.rt.First();
-            for (var b=rowType.First();b!=null&&cb!=null;b=b.Next(),cb=cb.Next())
+            for (var b=rowType.First();b!=null&&cb!=null&&b.key()<domain.display;b=b.Next(),cb=cb.Next())
             {
                 var p = b.value();
                 var c = cb.value();
@@ -818,7 +867,7 @@ namespace Pyrrho.Level3
                 ma += (c, p);
             }
             var kt = CList<long>.Empty;
-            for (var b = r.keys.First(); b != null; b = b.Next())
+            for (var b = r.keys.First(); b != null && b.key()<domain.display; b = b.Next())
                 kt += ma[b.value()];
             var rs = new TableExpRowSet(defpos, cx, nuid, domain, kt, r, where, matches+filter, fi);
             cx.results += (defpos, rs.defpos);
@@ -898,6 +947,7 @@ namespace Pyrrho.Level3
             JoinKind = -204, // Sqlx
             LeftOrder = -205, // CList<long>
             LeftOperand = -206, // long Query
+            Matching = -183, // CTree<long,CTree<long,bool>> SqlValue SqlValue
             Natural = -207, // Sqlx
             NamedCols = -208, // CList<long> SqlValue
             RightOrder = -209, // CList<long>
@@ -922,6 +972,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal CList<long> leftOrder => (CList<long>)mem[LeftOrder]??CList<long>.Empty; // initialised once domain is known
         internal CList<long> rightOrder => (CList<long>)mem[RightOrder]??CList<long>.Empty;
+        internal CTree<long, CTree<long,bool>> matching =>
+            (CTree<long, CTree<long,bool>>)mem[Matching] ?? CTree<long, CTree<long,bool>>.Empty;
         /// <summary>
         /// During analysis, we collect requirements for the join conditions.
         /// </summary>
@@ -951,17 +1003,6 @@ namespace Pyrrho.Level3
         {
             return new JoinPart(j.defpos, j.mem + x);
         }
-        public static JoinPart operator +(JoinPart j, (long, Query) x)
-        {
-            var (p, q) = x;
-            var d = Math.Max(j.depth,q.depth+1);
-            return new JoinPart(j.defpos, j.mem + (p,q.defpos) + (Depth,d));
-        }
-        public static JoinPart operator -(JoinPart j, (Context,SqlValue) x)
-        {
-            var (cx, v) = x;
-            return (JoinPart)j.Remove(cx,v);
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new JoinPart(defpos,m);
@@ -985,6 +1026,7 @@ namespace Pyrrho.Level3
             r += (LeftOrder,wr.Fix(leftOrder));
             r += (RightOrder, wr.Fix(rightOrder));
             r += (NamedCols, wr.Fix(namedCols));
+            r += (Matching, wr.Fix(matching));
             r += (LeftOperand, wr.Fixed(left).defpos);
             r += (RightOperand, wr.Fixed(right).defpos);
             return r;
@@ -1010,6 +1052,9 @@ namespace Pyrrho.Level3
             var ns = cx.obuids[right] ?? right;
             if (ns != right)
                 r += (RightOperand, ns);
+            var ma = cx.Fix(matching);
+            if (ma != matching)
+                r += (Matching, ma);
             return r;
         }
         internal override DBObject ReviewJoins(Context cx)
@@ -1167,6 +1212,7 @@ namespace Pyrrho.Level3
             // if not, move it to where
             var wh = where;
             var jc = r.joinCond;
+            var ma = r.matching;
             for (var b = r.joinCond.First(); b != null; b = b.Next())
             {
                 var fs = (Query)cx.obs[left];
@@ -1175,19 +1221,28 @@ namespace Pyrrho.Level3
                 {
                     var lv = cx.obs[se.left] as SqlValue;
                     var rv = (SqlValue)cx.obs[se.right];
+                    if (se.kind == Sqlx.EQL)
+                    {
+                        var ml = matching[lv.defpos] ?? CTree<long, bool>.Empty;
+                        var mr = matching[rv.defpos] ?? CTree<long, bool>.Empty;
+                        ma = ma + (lv.defpos, ml+(rv.defpos,true)) 
+                            + (rv.defpos, mr+(lv.defpos,true));
+                    }
                     if (lv.isConstant(cx) || rv.isConstant(cx))
                         continue;
                     if (lv.IsFrom(cx, fs, true) && rv.IsFrom(cx, sc, true))
                         continue;
                     if (lv.IsFrom(cx, sc, true) && rv.IsFrom(cx, fs, true))
                     {
-                        cx.Replace(se,new SqlValueExpr(se.defpos,cx,se.kind,rv, lv, se.mod));
+                        cx.Replace(se, new SqlValueExpr(se.defpos, cx, se.kind, rv, lv, se.mod));
                         continue;
                     }
                 }
                 wh += (b.key(), b.value());
                 jc -= b.key();
             }
+            if (ma != CTree<long, CTree<long,bool>>.Empty)
+                r += (Matching, ma);
             if (jc!=r.joinCond)
                 r = (JoinPart)r.AddCondition(cx, wh) + (JoinCond,jc);
             cx.Add(r);
@@ -1413,13 +1468,24 @@ namespace Pyrrho.Level3
         {
             var lf = (Query)cx.obs[left];
             var rg = (Query)cx.obs[right];
-            for (var b = matches.First(); b != null; b = b.Next())
+            var ma = matching;
+            for (var b = (matches+filter).First(); b != null; b = b.Next())
             {
-                var sv = (SqlValue)cx.obs[b.key()];
-                if (lf.HasColumn(cx,sv))
-                    lf.AddMatch(cx, sv, b.value());
-                else
-                    rg.AddMatch(cx, sv, b.value());
+                var p = b.key();
+                var v = b.value();
+                var sv = (SqlValue)cx.obs[p];
+                if (lf.HasColumn(cx, sv))
+                {
+                    lf = (Query)lf.AddMatch(cx, sv, v);
+                    for (var c=ma[p]?.First();c!=null;c=c.Next())
+                        rg = (Query)rg.AddMatch(cx, (SqlValue)cx.obs[c.key()], v);
+                }
+                else if (rg.HasColumn(cx,sv))
+                {
+                    rg = (Query)rg.AddMatch(cx, sv, b.value());
+                    for (var c = ma[p]?.First(); c != null; c = c.Next())
+                        lf = (Query)lf.AddMatch(cx, (SqlValue)cx.obs[c.key()], v);
+                }
             }
             if (FDInfo is FDJoinPart fd)
             {
@@ -1472,11 +1538,18 @@ namespace Pyrrho.Level3
                 for(var ic = namedCols.First();ic!=null;ic=ic.Next())
                 {
                     sb.Append(comma);
-                    sb.Append(ic.value());
+                    sb.Append(Uid(ic.value()));
                     comma = ",";
                 }
             }
             CondString(sb, joinCond, " on ");
+            sb.Append(" matching");
+            for(var b=matching.First();b!=null;b=b.Next())
+                for (var c=b.value().First();c!=null;c=c.Next())
+                {
+                    sb.Append(" ");sb.Append(Uid(b.key()));
+                    sb.Append("=");sb.Append(Uid(c.key()));
+                }
             return sb.ToString();
         }
     }

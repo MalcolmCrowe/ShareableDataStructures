@@ -525,8 +525,9 @@ namespace Pyrrho.Level3
                         else
                             sk = ks.Split(',');
                         var n = sk.Length;
+                        var psr = new Parser(cx);
                         f = (From)f.AddCondition(cx,Query.Where,
-                            new Parser(this).ParseSqlValue(sk[0],Domain.Bool).Disjoin(cx));
+                            psr.ParseSqlValue(sk[0], Domain.Bool).Disjoin(cx));
                         //           if (f.target.SafeName(this) == "User")
                         //           {
                         TypedValue[] wh = new TypedValue[n];

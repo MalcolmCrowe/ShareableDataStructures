@@ -250,7 +250,7 @@ namespace Pyrrho.Level4
             obs += (fr.obs,true);
             for (var b = fr.obs.First(); b != null; b = b.Next())
                 Add(b.value());
-            defs += fr.defs;
+      //      defs += fr.defs;
         }
         internal void Install2(Framing fr)
         {

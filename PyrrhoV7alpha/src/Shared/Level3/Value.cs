@@ -615,7 +615,7 @@ namespace Pyrrho.Level3
         }
         internal override bool KnownBy(Context cx, RowSet r)
         {
-            if (r.finder.Contains(copyFrom))
+            if (r.domain.representation.Contains(copyFrom))
                 return true;
             return r.finder.Contains(defpos);
         }
@@ -671,8 +671,11 @@ namespace Pyrrho.Level3
         }
         internal override BTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
         {
-            if (copyFrom<0 || (copyFrom>=Transaction.Analysing
-                && cx.obs[copyFrom].Needs(cx, rs) == BTree<long, RowSet.Finder>.Empty))
+            var cf = copyFrom;
+            while (cx.obs[cf] is SqlCopy sc)
+                cf = sc.copyFrom;
+            if (cf<0 || (cf>=Transaction.Analysing
+                && cx.obs[cf].Needs(cx, rs) == BTree<long, RowSet.Finder>.Empty))
                 return BTree<long, RowSet.Finder>.Empty;
             return base.Needs(cx, rs);
         }

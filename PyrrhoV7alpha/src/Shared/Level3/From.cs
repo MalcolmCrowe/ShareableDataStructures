@@ -113,7 +113,7 @@ namespace Pyrrho.Level3
             if (cr == null)
             {
                 var ma = BTree<string, DBObject>.Empty;
-                for (var b = rt.First(); b != null; b = b.Next())
+                for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
                 {
                     var p = b.value();
                     var tc = (DBObject)cx.db.objects[p]??cx.obs[p];
@@ -174,7 +174,7 @@ namespace Pyrrho.Level3
                 }
             }
             var d = vs.Length;
-            for (var b = rt.First(); b != null; b = b.Next())
+            for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
             {
                 var p = b.value();
                 if (mp.Contains(p))

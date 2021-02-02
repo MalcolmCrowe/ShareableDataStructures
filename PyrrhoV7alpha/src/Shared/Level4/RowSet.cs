@@ -172,6 +172,18 @@ namespace Pyrrho.Level4
         {
             return (RowSet)rs.New(rs.mem+x);
         }
+        internal virtual RowSet Relocate1(long dp)
+        {
+            var fi = finder;
+            for (var b = fi.First(); b != null; b = b.Next())
+            {
+                var f = b.value();
+                if (f.rowSet == defpos)
+                    fi += (b.key(), new Finder(f.col, dp));
+            }
+            var r = this+(_Finder,fi);
+            return (RowSet)r.Relocate(dp);
+        }
         internal virtual RowSet Instance(Context cx)
         {
             var r = this;
@@ -281,7 +293,7 @@ namespace Pyrrho.Level4
                 throw new PEException("PE422");
             return New(cx,needed,true);
         }
-        internal virtual RowSet ComputeNeeds(Context cx)
+        internal RowSet ComputeNeeds(Context cx)
         {
             if (needed != null)
                 return this;
@@ -454,34 +466,17 @@ namespace Pyrrho.Level4
         {
             return null;
         }
-        internal virtual BList<long?> Sources(Context cx)
+        internal virtual BList<long> Sources(Context cx)
         {
-            var r = BList<long?>.Empty;
+            var r = BList<long>.Empty;
             var p = (long)(mem[From.Source] ?? -1L);
             if (p >= 0)
                 r += p;
             return r;
         }
-        internal RowSet Apply(Context cx,RowSet sc)
-        {
-            for (var b = where.First(); b != null; b = b.Next())
-                if ((!sc.where.Contains(b.key())) && ((SqlValue)cx.obs[b.key()]).KnownBy(cx, sc))
-                    sc = (RowSet)sc.AddCondition(cx, Query.Where, b.key());
-            for (var b = matches.First(); b != null; b = b.Next())
-                if ((!sc.matches.Contains(b.key())) && sc.domain.representation.Contains(b.key()))
-                    sc = sc.AddMatch(b.key(),b.value());
-            for (var b = assig.First(); b != null; b = b.Next())
-            {
-                var ua = b.key();
-                if (sc.finder.Contains(ua.vbl) && ((SqlValue)cx.obs[ua.val]).KnownBy(cx, sc))
-                    sc = sc.AddUpdateAssignment(cx, ua);
-            }
-            cx.data += (sc.defpos, sc);
-            return sc;
-        }
         /// <summary>
         /// See if the source can replace this (removal of a pipeline step or condition).
-        /// For step removal to be possible, the rowTypes and finders must match exactly
+        /// For step removal to be possible, the rowTypes must match exactly
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
@@ -517,11 +512,11 @@ namespace Pyrrho.Level4
             }
             return new SelectRowSet(cx, this, CTree<long,bool>.Empty+(cond, true));
         }
-        internal virtual RowSet AddMatch(long p,TypedValue v)
+        internal override DBObject AddMatch(Context cx,SqlValue sv,TypedValue v)
         {
-            if (matches.Contains(p) || !finder.Contains(p))
+            if (matches.Contains(sv.defpos) || !finder.Contains(sv.defpos))
                 return this;
-            return this + (Query._Matches, matches + (p, v));
+            return this + (Query._Matches, matches + (sv.defpos, v));
         }
         internal virtual BTree<long,Finder> AllWheres(Context cx,BTree<long,Finder> nd)
         {
@@ -811,8 +806,12 @@ namespace Pyrrho.Level4
             if (IsNull)
                 return false;
             for (var b = rs.matches.First(); b != null; b = b.Next())
-                if (cx.cursors[_rowsetpos][b.key()].CompareTo(b.value()) != 0)
-                    return false;
+                if (rs.finder.Contains(b.key()))
+                {
+                    var fi = rs.finder[b.key()];
+                    if (cx.cursors[fi.rowSet][fi.col].CompareTo(b.value()) != 0)
+                        return false;
+                }
             for (var b = rs.where.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()].Eval(cx) != TBool.True)
                     return false;
@@ -969,12 +968,12 @@ namespace Pyrrho.Level4
         internal BTree<long, Finder> sQMap =>
             (BTree<long, Finder>)mem[SQMap];
         /// <summary>
-        /// This constructor builds a rowset for the given Table
-        /// directly using its defpos, rowType, ordering, where and match info.
+        /// This constructor builds a rowset for the given Query
+        /// directly using its defpos, rowType, where and match info.
+        /// q.ordSpec though is only a requested ordering, not the actual order
         /// </summary>
         internal SelectedRowSet(Context cx,Query q,RowSet r,BTree<long,Finder>fi)
-            :base(q.defpos,cx,q.domain,fi,null,q.where,
-                 q.ordSpec,q.matches,
+            :base(q.defpos,cx,q.domain,fi,null,q.where,null,q.matches, // NB: NOT q.ordSpec
                  _Fin(cx,q,q.mem+(From.Source,r.defpos)
                      +(SqlInsert.Target,r.target)
                      +(Table.LastData,r.lastData)+(Query.Assig,q.assig)))
@@ -1040,6 +1039,18 @@ namespace Pyrrho.Level4
         internal override DBObject Relocate(long dp)
         {
             return new SelectedRowSet(dp,mem);
+        }
+        internal override RowSet Relocate1(long dp)
+        {
+            var sq = sQMap;
+            for (var b=sq.First();b!=null;b=b.Next())
+            {
+                var f = b.value();
+                if (f.rowSet == defpos)
+                    sq += (b.key(), new Finder(f.col, dp));
+            }
+            var r = base.Relocate1(dp);
+            return r + (SQMap, sq);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -1275,7 +1286,7 @@ namespace Pyrrho.Level4
         internal override RowSet Review(Context cx)
         {
             var sc = cx.data[source];
-            if (where.CompareTo(sc.where)==0)
+            if (rt.CompareTo(sc.rt)==0 && where.CompareTo(sc.where)==0)
             {
                 cx.data += (defpos, sc);
                 return sc;
@@ -1761,9 +1772,9 @@ namespace Pyrrho.Level4
         /// Context must have a suitable tr field
         /// </summary>
         internal VirtualRowSet(Context cx, From f, BTree<long, Finder> fi)
-            : base(f.defpos, cx, f.domain, fi, null, f.where, f.ordSpec,f.matches,
+            : base(f.defpos, cx, f.domain, fi, null, f.where, f.ordSpec,f.filter,
                   new BTree<long, object>(SqlInsert.Target, f.target)
-                  +(_Needed,BTree<long,Finder>.Empty)+(Query.Filter,f.filter)
+                  +(_Needed,BTree<long,Finder>.Empty)
                   +(Query.Assig,f.assig))
         { }
         protected VirtualRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2470,7 +2481,11 @@ namespace Pyrrho.Level4
         internal override RowSet Review(Context cx)
         {
             var sc = cx.data[source];
-            if (rowOrder.CompareTo(sc.rowOrder) == 0
+            var match = true; // if true, all of the ordering columns are constant
+            for (var b = rowOrder.First(); match && b != null; b = b.Next())
+                if (!matches.Contains(b.value()))
+                    match = false;
+            if (match || (sc is SelectedRowSet && rowOrder.CompareTo(sc.rowOrder) == 0)
                     || (sc is IndexRowSet irs && rowOrder.CompareTo(irs.keys) == 0))
             {
                 cx.data += (defpos, sc);
@@ -4551,6 +4566,7 @@ namespace Pyrrho.Level4
     internal class RestRowSet : RowSet
     {
         internal const long
+            ETag = -416, // string
             JoinCols = -383, // CTree<string,int>
             RemoteAggregates = -384, // bool
             RemoteCols = -373, // CTree<string,long>
@@ -4566,6 +4582,7 @@ namespace Pyrrho.Level4
         internal CTree<string,long> remoteCols => 
             (CTree<string,long>)mem[RemoteCols] ?? CTree<string,long>.Empty;
         internal string defaultUrl => (string)mem[DefaultUrl] ?? "";
+        internal string etag => (string)mem[ETag] ?? "";
         internal CTree<string, long> usingCols =>
             (CTree<string, long>)mem[UsingCols] ?? CTree<string, long>.Empty;
         internal long usingTable => (long)(mem[UsingTable] ?? -1L);
@@ -4846,12 +4863,6 @@ namespace Pyrrho.Level4
             var ld = wr.GetResponseHeader("LastData");
             var lv = (cl != "") ? Level.Parse(cl) : Level.D;
             var mime = wr.GetResponseHeader("Content-Type")??"text/plain";
-            if (et != null)
-            {
-                //              cx.etags.Add(et);
-                if (PyrrhoStart.DebugMode)
-                    Console.WriteLine("Response ETag: " + et);
-            }
             var s = wr.GetResponseStream();
             TypedValue a = null;
             if (s != null)
@@ -4865,6 +4876,12 @@ namespace Pyrrho.Level4
             }
             s.Close();
             var r = this+(RestValue,a)+(Built,true);
+            if (et != null)
+            {
+                r += (ETag, et);
+                if (PyrrhoStart.DebugMode)
+                    Console.WriteLine("Response ETag: " + et);
+            }
             if (ds != null)
                 r += (ObInfo.Description, ds);
             if (lv!=Level.D)
@@ -4890,6 +4907,10 @@ namespace Pyrrho.Level4
                 ids = Grouped(cx, b.value(), sql, ref cm, ids);
             return ids;
         }
+        public override Rvv _Rvv(Context cx)
+        {
+            return Rvv.Empty + (target, cx.cursors[defpos]);
+        }
         public string WhereString(Context cx, CTree<long, bool> svs, CTree<long, TypedValue> mts,
     TRow pre)
         {
@@ -4904,17 +4925,22 @@ namespace Pyrrho.Level4
                     sb.Append(sw);
                 }
             }
+            var ms = BTree<string, string>.Empty;
             for (var b = mts?.First(); b != null; b = b.Next())
             {
                 var nm = cx.obs[b.key()].ToString(cx);
-                sb.Append(cm); cm = " and ";
-                sb.Append(nm);
-                sb.Append("=");
                 var tv = b.value();
                 if (tv.dataType.kind == Sqlx.CHAR)
-                    sb.Append("'" + tv.ToString() + "'");
+                    ms += (nm,"'" + tv.ToString() + "'");
                 else
-                    sb.Append(tv.ToString());
+                    ms += (nm,tv.ToString());   
+            }
+            for (var b=ms.First();b!=null;b=b.Next())
+            { 
+                sb.Append(cm); cm = " and ";
+                sb.Append(b.key());
+                sb.Append("=");
+                sb.Append(b.value());
             }
             return sb.ToString();
         }
@@ -4954,12 +4980,18 @@ namespace Pyrrho.Level4
             { }
             internal static RestCursor New(Context cx,RestRowSet rrs)
             {
+                var ox = cx.finder;
+                cx.finder += rrs.finder;
                 for (var i = 0; i < rrs.aVal.Length; i++)
                 {
                     var rb = new RestCursor(cx, rrs, 0, i);
                     if (rb.Matches(cx))
+                    {
+                        cx.finder = ox;
                         return rb;
+                    }
                 }
+                cx.finder = ox;
                 return null;
             }
             internal static RestCursor New(RestRowSet rrs, Context cx)

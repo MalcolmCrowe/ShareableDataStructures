@@ -35,6 +35,8 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> joinCond =>
             (CTree<long, bool>)mem[JoinPart.JoinCond] ?? CTree<long, bool>.Empty;
         internal FDJoinPart fdInfo => (FDJoinPart)mem[JoinPart._FDInfo];
+        internal CTree<long, CTree<long,bool>> matching =>
+            (CTree<long, CTree<long,bool>>)mem[JoinPart.Matching]??CTree<long,CTree<long,bool>>.Empty;
         /// <summary>
         /// Constructor: build the rowset for the Join
         /// </summary>
@@ -42,7 +44,7 @@ namespace Pyrrho.Level4
 		public JoinRowSet(Context _cx, JoinPart j, RowSet lr, RowSet rr) :
             base(j.defpos, _cx, j.domain, lr.finder+rr.finder, null, j.where, j.ordSpec, j.matches,
                 _Last(lr, rr) + (JFirst, lr.defpos) + (JSecond, rr.defpos)
-                + (JoinPart._FDInfo, j.FDInfo)
+                + (JoinPart._FDInfo, j.FDInfo) + (JoinPart.Matching,j.matching)
                 +(JoinPart.JoinCond,j.joinCond) + (JoinPart.JoinKind,j.kind))
 		{ }
         JoinRowSet(Context cx,JoinRowSet jrs, BTree<long,Finder> nd,bool bt)
@@ -133,11 +135,14 @@ namespace Pyrrho.Level4
             var ns = cx.rsuids[second] ?? second;
             if (ns != second)
                 r += (JSecond, ns);
+            var ma = cx.Fix(matching);
+            if (ma != matching)
+                r += (JoinPart.Matching, ma);
             return r;
         }
-        internal override BList<long?> Sources(Context cx)
+        internal override BList<long> Sources(Context cx)
         {
-            return new BList<long?>(first) + second;
+            return new BList<long>(first) + second;
         }
         internal override RowSet Instance(Context cx)
         {
@@ -174,6 +179,7 @@ namespace Pyrrho.Level4
             r += (JoinPart.JoinCond, wr.Fix(joinCond));
             r += (JFirst, wr.Fix(first));
             r += (JSecond, wr.Fix(second));
+            r += (JoinPart.Matching, wr.Fix(matching));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -196,6 +202,22 @@ namespace Pyrrho.Level4
             nd = cx.Needs(nd,this,cx.data[first].AllMatches(cx,nd));
             nd = cx.Needs(nd,this,cx.data[second].AllMatches(cx,nd));
             return nd;
+        }
+        internal override DBObject AddMatch(Context cx, SqlValue sv, TypedValue v)
+        {
+            var r = (RowSet)base.AddMatch(cx, sv, v);
+            if (r.matches.Contains(sv.defpos))
+                return this;
+            if (sv is SqlCopy sc)
+                for (var b = joinCond.First(); b != null; b = b.Next())
+                    if (cx.obs[b.key()] is SqlValueExpr se && se.kind == Sqlx.EQL)
+                    {
+                        if (se.left == sc.defpos && cx.obs[se.right] is SqlCopy sm)
+                            r = (RowSet)r.AddMatch(cx, sm, v);
+                        if (se.right == sc.defpos && cx.obs[se.left] is SqlCopy sl)
+                            r = (RowSet)r.AddMatch(cx, sl, v);
+                    }
+            return r;
         }
         internal override DBObject AddCondition(Context cx, long prop, long cond)
         {
@@ -314,6 +336,13 @@ namespace Pyrrho.Level4
                 }
                 sb.Append(")");
             }
+            sb.Append(" matching");
+            for (var b = matching.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                {
+                    sb.Append(" "); sb.Append(Uid(b.key()));
+                    sb.Append("="); sb.Append(Uid(c.key()));
+                }
             sb.Append(" First: ");sb.Append(Uid(first));
             sb.Append(" Second: "); sb.Append(Uid(second));
             return sb.ToString();
