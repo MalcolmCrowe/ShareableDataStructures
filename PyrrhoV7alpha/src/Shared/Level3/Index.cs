@@ -82,7 +82,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, cx.db.GetProcedure(c.adapter, 1));
+                r += (Adapter, cx.db.GetProcedure(c.adapter, 1).defpos);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)
@@ -134,11 +134,11 @@ namespace Pyrrho.Level3
         {
             return x + (Tree, x.rows - y);
         }
-        internal PRow MakeKey(TableRow rw)
+        internal PRow MakeKey(CTree<long,TypedValue> vs)
         {
             PRow r = null;
             for (var b = keys.Last(); b != null; b = b.Previous())
-                r = new PRow(rw.vals[b.value()], r);
+                r = new PRow(vs[b.value()], r);
             return r;
         }
         /// <summary>

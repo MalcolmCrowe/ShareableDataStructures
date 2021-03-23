@@ -31,10 +31,8 @@ namespace Pyrrho.Level3
     internal class From : Query
     {
         internal const long
-            Source = -151, // long 
             Static = -152, // From (defpos for STATIC)
             Target = -153; // long (a table or view)
-        internal long source => (long)(mem[Source]??-1L);
         internal long target => (long)(mem[Target]??-1L);
         internal readonly static From _static = new From();
         From() : base(Static) { }
@@ -60,9 +58,6 @@ namespace Pyrrho.Level3
         public From(long dp,Context cx,RowSet rs,string a)
             :base(dp,_Mem(dp,cx,rs,a))
         { }
-        public From(long dp,Context cx,DBObject ob, string a)
-            : base(dp,_Mem(dp,cx,ob,a))
-        { }
         protected From(long defpos, BTree<long, object> m) : base(defpos, m)
         { }
         public static From operator+(From f,(long,object) x)
@@ -75,9 +70,9 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(Context cx,BTree<long, object> m)
         {
-            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+            if (defpos >= Transaction.Analysing || cx.parse == ExecuteStatus.Parse)
                 return (m == mem) ? this : (Query)New(m);
-            return (Query)cx.Add(new From(cx.nextHeap++, m));
+            return (Query)cx.Add(new From(cx.GetUid(), m));
         }
         /// <summary>
         /// The main task here is to compute the rowType for the new From. 
@@ -147,7 +142,7 @@ namespace Pyrrho.Level3
                         }
                     }
                     if (q.HasStar(cx))
-                        for (var b = rt.First(); b != null; b = b.Next())
+                        for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
                         {
                             var p = b.value();
                             var ci = cx.Inf(p); // for Table
@@ -212,9 +207,9 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(long dp,Context cx, RowSet rs, string a)
         {
             cx.data += (dp, rs); 
-            return _Mem(dp, cx, (DBObject)rs, a);
+            return _Mem(rs, a);
         }
-        static BTree<long, object> _Mem(long dp, Context cx, DBObject ob, string a)
+        static BTree<long, object> _Mem(DBObject ob, string a)
         {
             return BTree<long, object>.Empty
                 + (Target, ob.defpos) + (Depth, 1 + ob.depth)
@@ -237,10 +232,10 @@ namespace Pyrrho.Level3
                 return cx.done[defpos];
             var r = (From)base._Replace(cx,was,now);
             var ch = (r!=this);
-            if (cx._Replace(r.source,was,now) is Query so && so.defpos != r.source)
+            if (cx._Replace(target,was,now) is Query so && so.defpos != r.target)
             {
                 ch = true;
-                r += (Source, so);
+                r += (Target, so);
             }
             var ua = CTree<UpdateAssignment,bool>.Empty;
             for (var b = assig?.First(); b != null; b = b.Next())
@@ -263,7 +258,6 @@ namespace Pyrrho.Level3
                 return this;
             var r = (From)base._Relocate(wr);
             r += (Assig, wr.Fix(assig));
-            r += (Source, wr.Fix(source));
             var tg = wr.Fix(target);
             if (tg != target)
                 r += (Target, tg);
@@ -288,24 +282,7 @@ namespace Pyrrho.Level3
         {
             return target==t;
         }
-        /// <summary>
-        /// Optimise retrievals
-        /// </summary>
-        /// <param name="rec"></param>
-        /// <returns></returns>
-        internal bool CheckMatch(Context cx, TableRow rec)
-        {
-            if (rec != null)
-                for (var e = matches?.First(); e != null; e = e.Next())
-                {
-                    var v = rec.vals[e.key()];
-                    var m = e.value();
-                    if (v != null && m != null && m.dataType.Compare(m, v) != 0)
-                        return false;
-                }
-            return true;
-        }
-        internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
+        internal override RowSet RowSets(Context cx, CTree<long, RowSet.Finder> fi)
         {
             if (defpos == Static)
                 return new TrivialRowSet(defpos,cx,new TRow(domain, cx.values),-1,fi);
@@ -322,17 +299,20 @@ namespace Pyrrho.Level3
         internal void TableCheck(Transaction tr, PCheck c)
         {
             var cx = new Context(tr);
-            var trs = new TableRowSet(cx,target,BTree<long,RowSet.Finder>.Empty,where);
+            var trs = new TableRowSet(cx,target,CTree<long,RowSet.Finder>.Empty,where);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
+        }
+        internal override BTree<long,VIC?> Scan(BTree<long,VIC?> t)
+        {
+            t = Scan(t, target, VIC.OK | VIC.OV);
+            return base.Scan(t);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             if (defpos == _static.defpos) sb.Append(" STATIC");
             if (mem.Contains(_Alias)) { sb.Append(" Alias "); sb.Append(alias); }
-            if (mem.Contains(Assig)){ sb.Append(" Assigns:"); sb.Append(assig); }
-            if (mem.Contains(Source)) { sb.Append(" Source:"); sb.Append(source); }
             if (mem.Contains(Target)) { sb.Append(" Target="); sb.Append(Uid(target)); }
             return sb.ToString();
         }
@@ -350,11 +330,10 @@ namespace Pyrrho.Level3
     internal class SqlInsert : Executable
     {
         internal const long
-            Target = -154, // long Table or View
             Provenance = -155, //string
             Value = -156; // long RowSet
-        internal long target => (long)(mem[Target]??-1L);
         internal long nuid => (long)(mem[TableExpression.Nuid] ?? -1L);
+        internal long target => (long)(mem[From.Target] ?? -1L);
         /// <summary>
         /// Provenance information if supplied
         /// </summary>
@@ -366,7 +345,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The parsing context</param>
         /// <param name="name">The name of the table to insert into</param>
         public SqlInsert(long dp,From fm,string prov, RowSet v) 
-           : base(dp,BTree<long,object>.Empty + (Target,fm.target) 
+           : base(dp,BTree<long,object>.Empty + (From.Target,fm.target) 
                  +(TableExpression.Nuid,fm.defpos) + (Provenance, prov)+(Value,v.defpos))
         { }
         protected SqlInsert(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -383,9 +362,9 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = base._Replace(cx,so,sv);
-            var fm = cx.Replace(target, so, sv);
-            if (fm != target)
-                r += (Target, fm);
+            var tg = cx.Replace(target, so, sv);
+            if (tg!=target)
+                r += (From.Target, tg);
             r = (SqlInsert)New(cx,r.mem);
             cx.done += (defpos, r);
             return cx.Add(New(cx,r.mem));
@@ -399,16 +378,16 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r =  (SqlInsert)base._Relocate(wr);
-            r += (Target, wr.Fixed(target).defpos);
+            r += (From.Target, wr.Fix(target));
             r += (Value, ((RowSet)wr.cx.data[value]._Relocate(wr)).defpos);
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlInsert)base.Fix(cx);
-            var nt = cx.obuids[target] ?? target;
-            if (nt != target)
-                r += (Target, nt);
+            var tg = cx.obuids[target] ?? target;
+            if (tg!=target)
+                r += (From.Target, tg);
             var nv = cx.rsuids[value] ?? value;
             if (nv != value)
                 r += (Value, nv);
@@ -416,19 +395,15 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            var fm = (From)cx.obs[nuid];
-            Level cl = cx.db.user?.clearance??Level.D;
-            var ob = cx.obs[fm.target];
-            if (ob is Table ta && cx.db.user!=null && cx.db.user.defpos != cx.db.owner 
-                && ta.enforcement.HasFlag(Grant.Privilege.Insert)
-                && !cl.ClearanceAllows(fm.classification))
-                throw new DBException("42105");
-            return ob.Insert(cx,cx.data[value],provenance, classification);
+            var tg = cx.data[nuid];
+            cx = tg.Insert(cx,cx.data[value],provenance, classification);
+            return cx;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Table: "); sb.Append(Uid(target));
+            sb.Append(" Target: ");
+            sb.Append(Uid(target));
             sb.Append(" Value: "); sb.Append(Uid(value));
             if (provenance != null)
             { sb.Append(" Provenance: "); sb.Append(provenance); }
@@ -440,7 +415,7 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QuerySearch : Executable
     {
-        internal long table => (long)(mem[SqlInsert.Target]??-1L);
+        internal long target => (long)(mem[From.Target]??-1L);
         internal long nuid => (long)(mem[TableExpression.Nuid] ?? -1L);
         internal QuerySearch(long dp,Context cx,Ident ic,DBObject tb,Grant.Privilege how) 
             : this(Type.DeleteWhere,dp,cx,ic,tb,how)
@@ -458,7 +433,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The parsing context</param>
         protected QuerySearch(Type et,long dp,Context cx,From f,DBObject tb,
             Grant.Privilege how, CTree<UpdateAssignment,bool> ua=null)
-            : base(dp,BTree<long, object>.Empty + (SqlInsert.Target,f.target)
+            : base(dp,BTree<long, object>.Empty + (From.Target,f.target)
                   +(TableExpression.Nuid,f.defpos)
                   +(Depth,f.depth+1)+(_Type,et)+(Query.Assig,ua))
         {
@@ -479,9 +454,9 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QuerySearch)base._Replace(cx, so, sv);
-            var tb = cx.Replace(r.table, so, sv);
-            if (tb != r.table)
-                r += (SqlInsert.Target, tb);
+            var tg = cx.Replace(target, so, sv);
+            if (tg!=target)
+                r += (From.Target, tg);
             r = (QuerySearch)New(cx, r.mem);
             cx.done += (defpos, r);
             return New(cx,r.mem);
@@ -495,27 +470,22 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r = (QuerySearch)base._Relocate(wr);
-            r += (SqlInsert.Target, wr.Fixed(table).defpos);
+            r += (From.Target, wr.Fix(target));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (QuerySearch)base.Fix(cx);
-            var nt = cx.obuids[table] ?? table;
-            if (nt != table)
-                r += (SqlInsert.Target, nt);
+            var tg = cx.Fix(target);
+            if (tg != target)
+                r += (From.Target, tg);
             return r;
         }
         public override Context Obey(Context cx)
         {
-            var fm = (From)cx.obs[nuid];
-            Level cl = cx.db.user?.clearance ?? Level.D;
-            var ob = cx.obs[fm.target];
-            if (ob is Table ta && cx.db.user != null && cx.db.user.defpos != cx.db.owner
-                && ta.enforcement.HasFlag(Grant.Privilege.Delete)
-                && !cl.ClearanceAllows(fm.classification))
-                throw new DBException("42105");
-            return ob.Delete(cx, cx.data[nuid]);
+            var rs = cx.data[nuid];
+            cx = rs.Delete(cx, rs);
+            return cx;
         }
         /// <summary>
         /// A readable version of the delete statement
@@ -524,8 +494,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (table != -1L)
-            { sb.Append(' '); sb.Append(Uid(table)); }
+            sb.Append(" Target: "); sb.Append(Uid(target));
             return sb.ToString();
         }
     }
@@ -553,14 +522,9 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            var fm = (From)cx.obs[nuid];
-            Level cl = cx.db.user?.clearance ?? Level.D;
-            var ob = cx.obs[fm.target];
-            if (ob is Table ta && cx.db.user != null && cx.db.user.defpos != cx.db.owner
-                && ta.enforcement.HasFlag(Grant.Privilege.Update)
-                && !cl.ClearanceAllows(fm.classification))
-                throw new DBException("42105");
-            return ob.Update(cx, cx.data[nuid]);
+            var rs = cx.data[nuid];
+            rs.Update(cx, rs);
+            return cx;
         }
         internal override DBObject Relocate(long dp)
         {

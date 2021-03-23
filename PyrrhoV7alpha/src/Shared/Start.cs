@@ -74,6 +74,7 @@ namespace Pyrrho
             // process the connection string
             var fn = conn["Files"];
             int p = -1;
+            bool recovering = false;
             try
             {
                 db = Database.Get(conn);
@@ -153,6 +154,8 @@ namespace Pyrrho
                 try
                 {
                     p = tcp.ReadByte();
+                    if ((Protocol)p != Protocol.ReaderData)
+                        recovering = false;
                     //              lock (PyrrhoStart.path)
                     //                  Console.WriteLine("Connection " + cid + " " + (Protocol)p);
                 }
@@ -188,7 +191,7 @@ namespace Pyrrho
                                 tr = db;
                                 db = db.RdrClose(cx);
                                 tcp.Write(Responses.Done);
-                                tcp.PutInt(db.AffCount(tr.Affected()));
+                                tcp.PutInt(db.AffCount(cx));
                                 break;
                             }
                         case Protocol.ExecuteNonQueryTrace: //  SQL service with trace
@@ -215,7 +218,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.DoneTrace);
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
-                                tcp.PutInt(db.AffCount(tr.Affected()));
+                                tcp.PutInt(db.AffCount(cx));
                                 break;
                             }
                         // close the reader
@@ -259,7 +262,7 @@ namespace Pyrrho
                                     Console.WriteLine("Commit Transaction " + tr.uid);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.DoneTrace);
-                                tcp.PutInt(db.AffCount(tr.Affected()));
+                                tcp.PutInt(db.AffCount(cx));
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
                                 tcp.Flush();
@@ -285,6 +288,8 @@ namespace Pyrrho
                             tcp.Write(Responses.Done);
                             tcp.Flush(); break;
                         case Protocol.ReaderData:
+                            if (recovering)
+                                continue;
                             ReaderData();
                             tcp.Flush(); break;
                         case Protocol.TypeInfo:
@@ -306,8 +311,8 @@ namespace Pyrrho
                                 var nm = tcp.GetString();
                                 var sql = tcp.GetString();
                                 var tr = db.Transact(db.nextId, sql);
-                                tr += (Database._ExecuteStatus, ExecuteStatus.Prepare);
                                 cx = new Context(tr);
+                                cx.parse = ExecuteStatus.Prepare;
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(tr);
@@ -343,7 +348,7 @@ namespace Pyrrho
                                 {
                                     db = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
-                                    tcp.PutInt(db.AffCount(tr.Affected()));
+                                    tcp.PutInt(db.AffCount(cx));
                                 }
                                 else
                                 {
@@ -381,7 +386,7 @@ namespace Pyrrho
                                     tcp.Write(Responses.DoneTrace);
                                     tcp.PutLong(ts);
                                     tcp.PutLong(db.loadpos);
-                                    tcp.PutInt(db.AffCount(tr.Affected()));
+                                    tcp.PutInt(db.AffCount(cx));
                                 }
                                 else
                                     tcp.PutSchema(cx);
@@ -417,7 +422,7 @@ namespace Pyrrho
                                     //                 Console.WriteLine("no data");
                                     db = db.RdrClose(cx);
                                     tcp.Write(Responses.Done);
-                                    tcp.PutInt(db.AffCount(tr.Affected()));
+                                    tcp.PutInt(db.AffCount(cx));
                                 }
                                 break;
                             }
@@ -511,11 +516,12 @@ namespace Pyrrho
                                 tcp.PutWarnings(tr);
                                 tr = cx.tr;
                                 tcp.PutSchema(cx);
-                                var rec = rb.Rec();
+                                var recs = rb.Rec();
                                 var dt = rb.dataType;
                                 rb = null;
                                 db = tr.RdrClose(cx);
-                                PutCur(rec, dt);
+                                for (var rb=recs.First();rb!=null;rb=rb.Next())
+                                    PutCur(rb.value(), dt);
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
                                 break;
@@ -536,10 +542,11 @@ namespace Pyrrho
                                     rb = rs.First(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.PutSchema(cx);
-                                var rec = rb.Rec();
+                                var recs = rb.Rec();
                                 var dt = rb.dataType;
                                 db = tr.RdrClose(cx);
-                                PutCur(rec, dt);
+                                for (var rb=recs.First();rb!=null;rb=rb.Next())
+                                    PutCur(rb.value(), dt);
                                 rb = null;
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
@@ -592,7 +599,7 @@ namespace Pyrrho
                                 db = db.Commit(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.TransactionReport);
-                                PutReport(tr);
+                                PutReport(cx);
                                 break;
                             }
                         case Protocol.CommitAndReport1:
@@ -609,8 +616,8 @@ namespace Pyrrho
                                 db = db.Commit(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.TransactionReport);
-                                tcp.PutInt(db.AffCount(tr.Affected()));
-                                PutReport(tr);
+                                tcp.PutInt(db.AffCount(cx));
+                                PutReport(cx);
                                 break;
                             }
                         case Protocol.CommitAndReportTrace:
@@ -630,7 +637,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.TransactionReportTrace);
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
-                                PutReport(tr);
+                                PutReport(cx);
                                 break;
                             }
                         case Protocol.CommitAndReportTrace1:
@@ -649,10 +656,10 @@ namespace Pyrrho
                                 db = db.Commit(cx);
                                 tcp.PutWarnings(tr);
                                 tcp.Write(Responses.TransactionReportTrace);
-                                tcp.PutInt(db.AffCount(tr.Affected()));
+                                tcp.PutInt(db.AffCount(cx));
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
-                                PutReport(tr);
+                                PutReport(cx);
                                 break;
                             }
                         case Protocol.Authority:
@@ -704,6 +711,7 @@ namespace Pyrrho
                             tcp.PutString(ii.value().ToString());
                         }
                         tcp.Flush();
+                        recovering = true;
                         if (PyrrhoStart.DebugMode || PyrrhoStart.TutorialMode)
                         {
                             Console.Write("Exception " + e.Message);
@@ -1036,13 +1044,10 @@ namespace Pyrrho
         }
         /// <summary>
         /// Send a row of POST results to the client
-        /// Here we use the fact that db.affected is a mutable List!
         /// </summary>
         internal void PutCur(TableRow rec, Domain dt)
         {
-            var tr = (Transaction)db;
             tcp.Write(Responses.CellData);
-            // TBD
             for (var b = dt.representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -1058,13 +1063,13 @@ namespace Pyrrho
         /// Send the transaction report to the client
         /// </summary>
         /// <param name="tr"></param>
-        internal void PutReport(Transaction tr)
+        internal void PutReport(Context cx)
         {
+            var tr = cx.db;
             tcp.PutLong(tr.schemaKey);
-            var aff = tr.Affected();
-            tcp.PutInt((int)aff.Count);
+            tcp.PutInt((cx.affected==null)?0:(int)cx.affected.Count);
             var dl = tr.name;
-            for (var tb = aff.First(); tb != null; tb = tb.Next())
+            for (var tb = cx.affected?.First(); tb != null; tb = tb.Next())
                 for (var b = tb.value().First(); b != null; b = b.Next())
                 {
                     tcp.PutLong(b.key());
@@ -1248,7 +1253,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (2 February 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (23 March 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

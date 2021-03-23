@@ -142,7 +142,8 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
-            var tb = new Table(this,ro);
+        //    var tb = (name[0]=='(')?new VirtTable(this,ro):new Table(this,ro);
+            var tb = new Table(this, ro);
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)

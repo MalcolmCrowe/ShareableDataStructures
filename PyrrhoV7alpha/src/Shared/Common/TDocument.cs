@@ -26,29 +26,52 @@ namespace Pyrrho.Common
     internal class TDocument : TypedValue
     {
         private enum ParseState { StartKey, Key, Colon, StartValue, Comma }
-        CList<(string, TypedValue)> content = CList<(string, TypedValue)>.Empty;
-        CTree<string, int> names = CTree<string, int>.Empty;
-        int nbytes = 0;
+        readonly CList<(string, TypedValue)> content = CList<(string, TypedValue)>.Empty;
+        readonly CTree<string, int> names = CTree<string, int>.Empty;
         internal static TDocument Null = new TDocument();
         public static string _id = "_id";
         internal TDocument() : base(Domain.Document)
         {
         }
+        TDocument(CList<(string,TypedValue)> c,CTree<string,int> n) :base(Domain.Document)
+        {
+            content = c; names = n;
+        }
         internal TDocument(Context cx,TRow r, string id = null) :this()
         {
+            var c = CList<(string, TypedValue)>.Empty;
+            var n = CTree<string, int>.Empty;
             if (id != null)
-                Add(_id, id);
+            {
+                c += (_id, new TChar(id));
+                n += (_id, 0);
+            }
             for (var b=r.dataType.rowType.First();b!=null;b=b.Next())
             {
                 var v = (SqlValue)cx.obs[b.value()];
-                Add(v.name, r[b.value()]);
+                n += (v.name, (int)n.Count);
+                c += (v.name, r[b.value()]);
             }
+            content = c;
+            names = n;
         }
         internal TDocument(TDocument d, params (string, TypedValue)[] vs) : base(Domain.Document)
         {
-            content = d.content;
+            var c = d.content;
+            var ns = d.names;
             foreach (var v in vs)
-                Add(v.Item1, v.Item2);
+            {
+                var (n, tv) = v;
+                if (ns.Contains(n))
+                    c = new CList<(string, TypedValue)>(c, ns[n], v);
+                else
+                {
+                    ns += (n, (int)ns.Count);
+                    c += (n, tv);
+                }
+            }
+            content = c;
+            names = ns;
         }
         internal override TypedValue New(Domain t)
         {
@@ -118,7 +141,7 @@ namespace Pyrrho.Common
                 if (c == '{')
                 {
                     var d = new TDocument();
-                    i = d.Fields(s, i, n);
+                    i = Fields(ref d,s, i, n);
 #if MONGO
                     if (d.Contains("$regex"))
                     {
@@ -138,7 +161,7 @@ namespace Pyrrho.Common
                 if (c == '[')
                 {
                     var d = new TDocArray();
-                    i = d.Fields(s, i, n);
+                    i = TDocArray.Fields(ref d, s, i, n);
                     return (nm, d);
                 }
 #if MONGO
@@ -224,19 +247,19 @@ namespace Pyrrho.Common
             int n = s.Length;
             if (s.Length == 0 || (s[0] != '{' && s[0] != '<'))
                 throw ParseException("{ or < expected");
-            var i = Fields(s, 1, n);
+            var d = new TDocument();
+            var i = Fields(ref d,s, 1, n);
             if (i != n)
                 throw ParseException("unparsed input at " + (i - 1));
+            content = d.content;
+            names = d.names;
         }
-        internal void Add(string n, TypedValue tv)
+        internal TDocument Add(string n, TypedValue tv)
         {
-            var i = names.Contains(n) ? names[n] : (int)content.Count;
-            content +=(i, (n, tv));
-            names+=(n, i);
-        }
-        internal void Add((string, TypedValue) v)
-        {
-            Add(v.Item1, v.Item2);
+            if (names.Contains(n))
+                return new TDocument(new CList<(string,TypedValue)>(content,names[n],(n,tv)),
+                    names);
+            return new TDocument(content + (n, tv), names+(n,(int)names.Count));
         }
         internal override TypedValue this[string n]
         {
@@ -259,18 +282,22 @@ namespace Pyrrho.Common
                 return this;
             var r = new TDocument();
             for (int i = 0; i < content.Count; i++)
-                if (content[i].Item1.CompareTo(n)!=0)
-                    r.Add(content[i]);
+            {
+                var (nm, tv) = content[i];
+                if (nm.CompareTo(n) != 0)
+                    r = r.Add(nm,tv);
+            }
             return r;
         }
         /// <summary>
         /// Parse the contents of {} or []
         /// </summary>
+        /// <param name="doc">The document so far</param>
         /// <param name="s">the string</param>
         /// <param name="i">the start of the fields</param>
         /// <param name="n">the end of the string</param>
         /// <returns>the position just after the } or ]</returns>
-        int Fields(string s, int i, int n)
+        static int Fields(ref TDocument doc, string s, int i, int n)
         {
             ParseState state = ParseState.StartKey;
             StringBuilder kb = null;
@@ -284,7 +311,7 @@ namespace Pyrrho.Common
                         kb = new StringBuilder();
                         if (char.IsWhiteSpace(c))
                             continue;
-                        if (c == '}' && content.Count == 0)
+                        if (c == '}' && doc.content.Count == 0)
                             return i;
                         qu = '\0';
                         if (c == '"' || c == '\'')
@@ -320,14 +347,14 @@ namespace Pyrrho.Common
                     case ParseState.StartValue:
                         if (char.IsWhiteSpace(c))
                             continue;
-                        if (c == ']' && content.Count == 0)
+                        if (c == ']' && doc.content.Count == 0)
                             return i;
                         var key = kb.ToString();
-                        Add(key, GetValue(key, s, n, ref i).Item2);
+                        doc = doc.Add(key, GetValue(key, s, n, ref i).Item2);
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c == '}')
                             return i;
@@ -414,8 +441,9 @@ namespace Pyrrho.Common
         /// <param name="b"></param>
         internal TDocument(byte[] b, ref int off) :base(Domain.Document)
         {
-            nbytes = GetLength(b, off);
+            var nbytes = GetLength(b, off);
             var i = off + 4;
+            var d = new TDocument();
             while (i < off + nbytes - 1) // ignoring the final \0
             {
                 var t = b[i++];
@@ -424,9 +452,11 @@ namespace Pyrrho.Common
                 while (i < off + nbytes && b[i++] != 0)
                     c++;
                 var key = Encoding.UTF8.GetString(b, s, c);
-                Add(key, GetValue(key, t, b, ref i).Item2);
+                d=d.Add(key, GetValue(key, t, b, ref i).Item2);
             }
             off += nbytes;
+            content = d.content;
+            names = d.names;
         }
         internal static (string,TypedValue) GetValue(string nm, byte t, byte[] b, ref int i)
         {
@@ -703,8 +733,6 @@ namespace Pyrrho.Common
             }
             r.Add(0);
             SetLength(r);
-            if (nbytes == 0)
-                nbytes = r.Count;
             return r.ToArray();
         }
         bool IsZero((string,TypedValue) fv)
@@ -734,9 +762,12 @@ namespace Pyrrho.Common
         {
             var d = new TDocument();
             d.Add(_id, this[_id]);
-            for (var cf = b.content.First();cf!=null;cf=cf.Next())
-                if (cf.value().Item1 != "_id")
-                    d.Add(cf.value());
+            for (var cf = b.content.First(); cf != null; cf = cf.Next())
+            {
+                var (n, tv) = cf.value();
+                if (n != "_id")
+                    d = d.Add(n,tv);
+            }
             return d;
         }
         /// <summary>
@@ -779,25 +810,25 @@ namespace Pyrrho.Common
             }
             return 0;
         }
-        internal void Add(string k, Transaction tr, SqlValue c)
+        internal TDocument Add(string k, Transaction tr, SqlValue c)
         {
-            Add(k, c.Eval(null));
+            return Add(k, c.Eval(null));
         }
-        internal void Add(string n, int v)
+        internal TDocument Add(string n, int v)
         {
-            Add(n, new TInt(v));
+            return Add(n, new TInt(v));
         }
-        internal void Add(string n, string v)
+        internal TDocument Add(string n, string v)
         {
-            Add(n, new TChar(v));
+            return Add(n, new TChar(v));
         }
-        internal void Add(string n, bool v)
+        internal TDocument Add(string n, bool v)
         {
-            Add(n, v?TBool.True:TBool.False);
+            return Add(n, v?TBool.True:TBool.False);
         }
-        internal void Add(string n, double v)
+        internal TDocument Add(string n, double v)
         {
-            Add(n, new TReal(v));
+            return Add(n, new TReal(v));
         }
         /// <summary>
         /// When comparing two documents we only consider fields with matching names
@@ -839,8 +870,9 @@ namespace Pyrrho.Common
             public Action(int i, string n) 
             { ix = i; how = Verb.Remove; name = n; what = TNull.Value; }
         }
-        internal List<Action> details = new List<Action>();
+        internal readonly BList<Action> details = BList<Action>.Empty;
         internal Delta() : base(Domain.Delta) { }
+        internal Delta(BList<Action> d) :base(Domain.Delta) { details = d; }
         internal Delta(TDocument was, TDocument now)
             : base(Domain.Delta)
         {
@@ -859,11 +891,11 @@ namespace Pyrrho.Common
                         if (n == "_id") // _id field mismatch
                             goto all;
                         if (v.dataType.kind==Sqlx.DOCUMENT)
-                            details.Add(new Action(m, Verb.Delta, n,
+                            details+=new Action(m, Verb.Delta, n,
                                 new Delta(v as TDocument,
-                                    ne.value().Item2 as TDocument)));
+                                    ne.value().Item2 as TDocument));
                         else 
-                            details.Add(new Action(m, Verb.Change, n, ne.value().Item2));
+                            details+=new Action(m, Verb.Change, n, ne.value().Item2);
                     }
                     we = we.Next();
                     ne = ne.Next();
@@ -872,13 +904,13 @@ namespace Pyrrho.Common
                 if (!now.Contains(n))
                 {
                     // current field is not in new version
-                    details.Add(new Action(m,n));
+                    details+=new Action(m,n);
                     we = we.Next();
                 }
                 else if (!was.Contains(ne.value().Item1))
                 {
                     // new field is not in current version
-                    details.Add(new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2));
+                    details+=new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2);
                     ne = ne.Next();
                 }
                 else // we can't merge the list of names
@@ -887,7 +919,7 @@ namespace Pyrrho.Common
             while (we!=null)
             {
                 m = we.key();
-                details.Add(new Action(m, Verb.Remove, we.value().Item1, TNull.Value));
+                details+=new Action(m, Verb.Remove, we.value().Item1, TNull.Value);
                 we = we.Next();
             }
             while (ne!=null)
@@ -895,11 +927,10 @@ namespace Pyrrho.Common
                 if (was.Contains(ne.value().Item1))
                     goto all;
                 m = m + 1;
-                details.Add(new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2));
+                details+=new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2);
             }
             return;
-        all: details = new List<Action>();
-            details.Add(new Action(0, Verb.All, null, now));
+        all: details = new BList<Action>(new Action(0, Verb.All, null, now));
         }
         internal override TypedValue New(Domain t)
         {
@@ -914,43 +945,6 @@ namespace Pyrrho.Common
             throw new NotImplementedException();
         }
         public override bool IsNull => throw new NotImplementedException();
-        internal TDocument Apply(TDocument w)
-        {
-            var r = new TDocument();
-            var we = w.First();
-            int i = 0;
-            while (we!=null && i<details.Count)
-            {
-                var a = details[i];
-                if (a.ix>we.key())
-                {
-                    r.Add(we.value());
-                    we = we.Next();
-                    continue;
-                }
-                while (a.ix<=we.key())
-                {
-                    switch(a.how)
-                    {
-                        case Verb.Remove: i++; we = we.Next(); goto next;
-                        case Verb.Change: r.Add(we.value().Item1, a.what); 
-                            i++; we = we.Next(); goto next;
-                        case Verb.Delta: r.Add(we.value().Item1,
-                            ((Delta)a.what).Apply(we.value().Item2 as TDocument));
-                            i++; we = we.Next(); goto next;
-                        case Verb.Add: r.Add(a.name,a.what); i++; break;
-                        case Verb.All: return a.what as TDocument;
-                    }
-                }
-            next: ;
-            }
-            while (i<details.Count)
-            {
-                var a = details[i++];
-                r.Add(a.name, a.what);
-            }
-            return r;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -973,12 +967,16 @@ namespace Pyrrho.Common
     }
     internal class TDocArray :TypedValue
     {
-        BList<TypedValue> content = BList<TypedValue>.Empty;
+        readonly BList<TypedValue> content = BList<TypedValue>.Empty;
         internal long Count => content.Count;
         int nbytes = 0;
         internal static TDocArray Null = new TDocArray();
         internal TDocArray() : base(Domain.DocArray)
         {
+        }
+        TDocArray(BList<TypedValue> c) :base(Domain.DocArray)
+        {
+            content = c;
         }
         internal TDocArray(Context _cx, RowSet rs) :base(Domain.DocArray)
         {
@@ -1024,7 +1022,6 @@ namespace Pyrrho.Common
         internal TypedValue this[int i]
         {
             get { return content[i]; }
-            set { content +=(i, value); }
         }
         internal override TypedValue this[string n]
         {
@@ -1035,7 +1032,7 @@ namespace Pyrrho.Common
                 var r = new TDocArray();
                 for(var e=content.First();e!= null;e=e.Next())
                     if (e.value() is TDocument d && d.Contains(n))
-                            r.Add(d[n]);
+                            r = r.Add(d[n]);
                 if (r.Count == 1) // yuk
                     return r.content[0];
                 return r;
@@ -1048,16 +1045,16 @@ namespace Pyrrho.Common
         /// <param name="i">the start of the fields</param>
         /// <param name="n">the end of the string</param>
         /// <returns>the position just after the } or ]</returns>
-        internal int Fields(string s, int i, int n)
+        internal static int Fields(ref TDocArray da,string s, int i, int n)
         {
             while (i < n)
             {
                 var c = s[i++];
-                if (Char.IsWhiteSpace(c))
+                if (char.IsWhiteSpace(c))
                     continue;
-                if (c == ']' && content.Count == 0)
+                if (c == ']' && da.content.Count == 0)
                     return i;
-                Add(TDocument.GetValue("" + Count, s, n, ref i).Item2);
+                da = da.Add(TDocument.GetValue("" + da.Count, s, n, ref i).Item2);
                 if (i>=n)
                     break;
                 c = s[i++];
@@ -1070,19 +1067,9 @@ namespace Pyrrho.Common
             }
             throw new DBException("22300", "Incomplete syntax at " + (i - 1)).Pyrrho();
         }
-        internal void Add(TypedValue c)
+        internal TDocArray Add(TypedValue c)
         {
-            content +=c;
-        }
-        internal void Add(int k,TypedValue v)
-        {
-            content +=(k, v);
-        }
-        internal void AddToSet((string,TypedValue) v)
-        {
-            if (!int.TryParse(v.ToString(), out int k))
-                k = (int)content.Count;
-            Add(k,v.Item2);
+            return new TDocArray(new BList<TypedValue>(content, c));
         }
         public override string ToString()
         {

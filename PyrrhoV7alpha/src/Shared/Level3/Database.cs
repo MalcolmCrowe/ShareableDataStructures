@@ -83,7 +83,8 @@ namespace Pyrrho.Level3
             if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append((string)mem[Name]); }
             return sb.ToString();
         }
-        internal virtual string ToString(Context cx)
+        // Tailor REST string for differnt remote DBMS
+        internal virtual string ToString(string sg, CTree<string,long> cs, Context cx)
         {
             return ToString();
         }
@@ -136,8 +137,7 @@ namespace Pyrrho.Level3
             ColTracker = -318, // BTree<long,BTree<long,long>> colpos, ppos, dompos
             _Connection = -261, // BTree<string,string>: the session details
             Curated = -53, // long
-            _ExecuteStatus = -54, // ExecuteStatus
-            Format = -392,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
+            Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
             Public = -311, // long: always -1L, a dummy user ID
             Levels = -56, // BTree<Level,long>
@@ -184,7 +184,6 @@ namespace Pyrrho.Level3
         public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
-        public ExecuteStatus parse => (ExecuteStatus)(mem[_ExecuteStatus]??ExecuteStatus.Obey);
         public BTree<long, Physical.Type> log =>
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
@@ -530,21 +529,12 @@ namespace Pyrrho.Level3
                 throw new DBException("22003");
             }
         }
-        /// <summary>
-        /// Accessor: determine if there is anything to commit
-        /// </summary>
-        public virtual bool WorkToCommit { get { return false; } }
-        /// <summary>
-        /// Accessor: get the start of the work to be committed
-        /// </summary>
-        public virtual long WorkPos { get { return long.MaxValue; } }
         public virtual void Audit(Audit a,Context cx) { }
-        internal virtual BTree<long,BTree<long,long>> Affected()
+        internal virtual int AffCount(Context cx)
         {
-            return BTree<long, BTree<long, long>>.Empty;
-        }
-        internal virtual int AffCount(BTree<long,BTree<long,long>> aff)
-        {
+            var aff = cx.affected;
+            if (aff == null)
+                return 0;
             var r = 0L;
             for (var b = aff.First(); b != null; b = b.Next())
                 r += b.value().Count;

@@ -107,9 +107,12 @@ namespace Pyrrho.Level2
         public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
         internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
         internal BTree<long, RowSet> rss = BTree<long, RowSet>.Empty; // ditto RowSets
+        // fixups: unknownolduid -> referer -> how->bool
+        internal BTree<long,BTree<long,BTree<long,bool>>> fixup 
+            = BTree<long, BTree<long, BTree<long, bool>>>.Empty;
         internal long curs = -1;
         public long segment;  // the most recent PTransaction/PTriggeredAction written
-        public long srcPos; // for Fixing iids
+        public long srcPos,oldStmt,stmtPos; // for Fixing uids
         internal BList<Rvv> rvv= BList<Rvv>.Empty;
         internal Context cx; // access the database we are writing to
         internal Writer(Context c,Stream f)
@@ -148,14 +151,19 @@ namespace Pyrrho.Level2
         {
             if (uids.Contains(pos)) 
                 return uids[pos];
-            if (cx.db.parse==ExecuteStatus.Prepare && pos>PyrrhoServer.Preparing)
+            if (cx.parse==ExecuteStatus.Prepare && pos>PyrrhoServer.Preparing)
             {
                 var r = cx.db.nextStmt;
                 cx.db += (Database.NextStmt, r+1);
                 uids += (pos, r);
                 return r;
             }
-            if (pos>Transaction.Analysing)
+            if (pos>=Transaction.Executables && pos<oldStmt)
+            {
+                uids += (pos, ++stmtPos);
+                return stmtPos;
+            }
+            if (pos>Transaction.Analysing && pos<Transaction.Executables)
             {
                 uids += (pos, ++srcPos);
                 return srcPos;
@@ -186,11 +194,12 @@ namespace Pyrrho.Level2
             if (p <= Length && cx.db.objects[p] is DBObject nb)
                 return nb;
             if (p == pos)
-                return cx.obs[p];
+                return (DBObject)cx.obs[p]?._Relocate(this);
             if (cx.obs[p] is DBObject x)
                 return x;
             var ob = cx.obs[pos];
-            if (pos>=Transaction.TransPos)
+            if ((pos>=Transaction.TransPos && pos<Transaction.Executables)
+                || pos>=Transaction.HeapStart)
             {
                 ob = ob.Relocate(p).Relocate(this);
                 p = ob.defpos;
@@ -480,9 +489,9 @@ namespace Pyrrho.Level2
                 return null;
             return new PRow(rw._head?.Relocate(this), Fix(rw._tail));
         }
-        internal BTree<long, RowSet.Finder> Fix(BTree<long, RowSet.Finder> fi)
+        internal CTree<long, RowSet.Finder> Fix(CTree<long, RowSet.Finder> fi)
         {
-            var r = BTree<long, RowSet.Finder>.Empty;
+            var r = CTree<long, RowSet.Finder>.Empty;
             for (var b = fi.First(); b != null; b = b.Next())
                 r += (Fix(b.key()), b.value().Relocate(this));
             return r;

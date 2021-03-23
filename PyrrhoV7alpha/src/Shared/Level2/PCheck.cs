@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
         public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
             : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
         protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx,new Framing(cx))
+            long pp, Context cx) : base(tp,pp,cx,new Framing(cx),Domain.Bool)
 		{
 			ckobjdefpos = dm;
             defpos = ppos;

@@ -133,7 +133,11 @@ namespace Pyrrho
         {
             rs.StatusCode = 200;
             RowSet r = cx.data[cx.result];
-            if (cx.db.role.infos[r.target] is ObInfo oi)
+            if (r == null && cx.exec is QuerySearch us)
+                r = cx.data[us.nuid];
+            if (r == null && cx.exec is SqlInsert si)
+                r = cx.data[si.nuid];
+            if (cx.db.role.infos[r.rsTargets.First().key()] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
@@ -570,22 +574,18 @@ namespace Pyrrho
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = new TDocument();
-            //       var rv = e._Rvv();
-            //      if (rv == null && db.affected.Count > 0)
-            //           rv = Rvvs.New(db.affected[0]);
-            //       doc.Add(TDocument._id, new TChar(rv?.ToString()??""));
             for (var b = rt.First(); b != null; b = b.Next())
             {
                 var ci = (SqlValue)_cx.obs[b.value()];
                 if (e[ci.defpos] is TypedValue tv)
-                    doc.Add(ci.name, tv);
+                    doc=doc.Add(ci.name, tv);
             }
             if (e[DBObject.Classification] is TLevel lv)
-                doc.Add("$classification", lv.ToString());
+                doc=doc.Add("$classification", lv.ToString());
             if (e[Domain.Provenance] is TChar pv)
-                doc.Add("$provenance", pv.ToString());
-            doc.Add("$pos", new TInt(e._defpos));
-            doc.Add("$check", new TInt(e._ppos));
+                doc=doc.Add("$provenance", pv.ToString());
+            doc=doc.Add("$pos", new TInt(e._defpos));
+            doc=doc.Add("$check", new TInt(e._ppos));
             sbuild.Append(doc.ToString());
         }
     }

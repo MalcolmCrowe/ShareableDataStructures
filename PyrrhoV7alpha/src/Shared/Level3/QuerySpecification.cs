@@ -76,9 +76,9 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(Context cx, BTree<long, object> m)
         {
-            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+            if (defpos >= Transaction.Analysing || cx.parse == ExecuteStatus.Parse)
                 return (m == mem) ? this : (Query)New(m);
-            return (Query)cx.Add(new QuerySpecification(cx.nextHeap++, m));
+            return (Query)cx.Add(new QuerySpecification(cx.GetUid(), m));
         }
         internal override DBObject ReviewJoins(Context cx)
         {
@@ -106,6 +106,10 @@ namespace Pyrrho.Level3
                     return true;
             }
             return false;
+        }
+        internal override CTree<long, bool> _RestViews(Context cx)
+        {
+            return tableExp._RestViews(cx);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -147,13 +151,14 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
-        internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
+        internal override RowSet RowSets(Context cx, CTree<long, RowSet.Finder> fi)
         {
             var r = tableExp?.RowSets(cx,fi);
             if (r==null)
                 r = new TrivialRowSet(defpos,cx,new TRow(domain),-1L,fi);
             if (aggregates(cx))
             {
+                r += (Aggregates, aggs);
                 if (tableExp?.group != -1L)
                     r = new GroupingRowSet(cx,this, r, tableExp.group, tableExp.having);
                 else
@@ -198,7 +203,12 @@ namespace Pyrrho.Level3
             ch = ch || d != depth;
             var te = tableExp.Orders(cx, ord);
             ch = ch || te != tableExp;
-            return ch?(Query)New(cx,r.mem+(TableExp,te) + (Depth, _Max(depth, 1 + d))):this;
+            return ch?New(cx,r.mem+(TableExp,te) + (Depth, _Max(depth, 1 + d))):this;
+        }
+        internal override BTree<long,VIC?> Scan(BTree<long,VIC?>t)
+        {
+            t = Scan(t, tableExp.defpos, VIC.OK | VIC.OV);
+            return base.Scan(t);
         }
         /// <summary>
         public override string ToString()
@@ -283,9 +293,17 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(Context cx, BTree<long, object> m)
         {
-            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+            if (defpos >= Transaction.Analysing || cx.parse == ExecuteStatus.Parse)
                 return (m == mem) ? this : (Query)New(m);
-            return (Query)cx.Add(new QueryExpression(cx.nextHeap++, m));
+            return (Query)cx.Add(new QueryExpression(cx.GetUid(), m));
+        }
+        internal override CTree<long,bool> _RestViews(Context cx)
+        {
+            var lf = (QuerySpecification)cx.obs[left];
+            var rg = (QueryExpression)cx.obs[right];
+            var r = rg?._RestViews(cx) ?? CTree<long, bool>.Empty;
+            r += lf._RestViews(cx);
+            return r;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -444,7 +462,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Analysis stage RowSets(). Implement UNION, INTERSECT and EXCEPT.
         /// </summary>
-        internal override RowSet RowSets(Context cx, BTree<long, RowSet.Finder> fi)
+        internal override RowSet RowSets(Context cx, CTree<long, RowSet.Finder> fi)
         {
             var lr = ((Query)cx.obs[left]).RowSets(cx,fi);
             if (right != -1L)
@@ -458,7 +476,13 @@ namespace Pyrrho.Level3
             cx.results += (defpos, r.defpos);
             return r.ComputeNeeds(cx);
         }
-         public override string ToString()
+        internal override BTree<long,VIC?> Scan(BTree<long,VIC?> t)
+        {
+            t = Scan(t, left, VIC.OK | VIC.OV);
+            t = Scan(t, right, VIC.OK | VIC.OV);
+            return base.Scan(t);
+        }
+        public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Left: "); sb.Append(Uid(left));

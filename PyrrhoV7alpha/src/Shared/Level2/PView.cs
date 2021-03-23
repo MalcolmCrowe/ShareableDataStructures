@@ -29,7 +29,6 @@ namespace Pyrrho.Level2
         /// The definition of the view
         /// </summary>
         public string viewdef;
-        public Domain domain;
         public override long Dependent(Writer wr, Transaction tr)
         {
             for (var b = framing.obs.First(); b != null; b = b.Next())
@@ -54,11 +53,10 @@ namespace Pyrrho.Level2
             : this(Type.PView, nm, vd, dm, pp, cx) 
         { }
         protected PView(Type pt,string nm,string vd, Domain dm, long pp, Context cx) 
-            : base(pt,pp,cx,new Framing(cx))
+            : base(pt,pp,cx,new Framing(cx),dm)
         {
             name = nm;
             viewdef = vd;
-            domain = dm;
         }
         /// <summary>
         /// Constructor: A view definition from the buffer
@@ -104,7 +102,9 @@ namespace Pyrrho.Level2
             if (viewdef!="")
             {
                 var psr = new Parser(rdr, new Ident(viewdef, ppos + 2), null);
-                psr.ParseCursorSpecification(Domain.TableType);
+                var ss = psr.ParseCursorSpecification(Domain.TableType);
+                var cs = (CursorSpecification)psr.cx.obs[ss.cs];
+                psr.cx._Add(cs);
                 psr.cx.data += (ppos, psr.cx.data[psr.cx.result]);
                 Frame(psr.cx);
                 domain = psr.cx.data[psr.cx.result].domain;
@@ -124,8 +124,14 @@ namespace Pyrrho.Level2
                     ns += (c.alias, p);
                 ns += (c.name, p);
             }
-            return (m??BTree<long,object>.Empty) + (DBObject._Domain, domain) 
+            var rs = framing.data[framing.result];
+            var ts = CList<long>.Empty;
+            for (var b = rs.rsTargets.First(); b != null; b = b.Next())
+                ts += b.key();
+            return (m??BTree<long,object>.Empty) 
+                + (DBObject._Domain, domain + (Domain.Display,(int)ns.Count)) 
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
+                + (View.Targets,ts) 
                 + (DBObject._Framing, framing)
                 + (DBObject.Depth, d);
         } 
@@ -193,7 +199,7 @@ namespace Pyrrho.Level2
     }
     internal class PRestView : PView
     {
-        internal long structpos,usingtbpos;
+        internal long structpos,usingtbpos = -1L;
         internal string rname = null, rpass = null;
         public override long Dependent(Writer wr, Transaction tr)
         {

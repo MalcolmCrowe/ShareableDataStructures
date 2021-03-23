@@ -1,6 +1,6 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
-using System.Runtime.CompilerServices;
+using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -69,23 +69,42 @@ namespace Pyrrho.Level4
         }
         internal override Context SlideDown()
         {
-            for (var b = values.First(); b != null; b = b.Next())
+            for (var b = values.PositionAt(0); b != null; b = b.Next())
             {
                 var k = b.key();
                 if (!locals.Contains(k))
                     next.values += (k, values[k]);
-   /*             if (next.from.Contains(k))
-                {
-                    var rs = from[k];
-                    next.cursors += (rs,next.cursors[rs]+(next,k,b.value()));
-                } */
             }
             next.val = val;
             next.nextHeap = nextHeap;
             next.nextStmt = nextStmt;
-            next.cursors = cursors;
+            if (PyrrhoStart.DebugMode && next.db!=db)
+            {
+                var ps = ((Transaction)db).physicals;
+                var ns = ((Transaction)next.db).physicals;
+                var sb = new System.Text.StringBuilder("SD: "+GetType().Name+" "+cxid);
+                Debug(sb);
+                var nb = ns.First();
+                for (var b = ps.First(); b != null; b = b.Next(), nb = nb?.Next())
+                {
+                    var p = b.key();
+                    for (; nb != null && nb.key() < p; nb = nb.Next())
+                        nb = nb.Next();
+                    if (nb != null && nb.key() == p)
+                    {
+                        nb = nb.Next();
+                        continue;
+                    }
+                    sb.Append(" " + b.value().ToString());
+                }
+                System.Console.WriteLine(sb.ToString());
+            }
             next.db = db; // adopt the transaction changes done by this
             return next;
+        }
+        protected virtual void Debug(System.Text.StringBuilder sb)
+        {
+            sb.Append(" " + cxid);
         }
         /// <summary>
         /// flag NOT_FOUND if there is a handler for it
@@ -139,53 +158,114 @@ namespace Pyrrho.Level4
                 return new TRow(udi,values);
             return base.Ret();
         }
-    }
-    internal class TriggerContext : Context
-    {
-        internal long trspos;
-        internal BTree<long, bool> tgs;
-        internal BTree<long, TriggerActivation> acts = null;
-        internal TriggerContext(Context _cx,long trs,BTree<long,bool> ts): base(_cx,trs)
+        protected override void Debug(System.Text.StringBuilder sb)
         {
-            trspos = trs;
-            tgs = ts;
+            sb.Append(" " + proc.name);
         }
-        internal void CreateActs(TransitionRowSet trs)
+    }
+    internal class TargetActivation : Activation
+    {
+        internal readonly TransitionRowSet _trs;
+        internal readonly RowSet _fm;
+        internal readonly ObInfo _ti;
+        internal readonly long _tgt;
+        internal readonly CTree<long, RowSet.Finder> _finder;
+        internal PTrigger.TrigType _tty; // may be Insert
+        internal TargetActivation(Context _cx, RowSet fm, PTrigger.TrigType tt)
+            : base(_cx, "")
         {
-            acts = BTree<long, TriggerActivation>.Empty;
-            for (var tg = tgs?.First(); tg != null; tg = tg.Next())
+            _tty = tt; // guaranteed to be Insert, Update or Delete
+            _trs = new TransitionRowSet(this,fm);
+            _fm = fm;
+            _tgt = fm.target;
+            var ob = (DBObject)_cx.db.objects[_tgt];
+            var ro = (Role)_cx.db.objects[ob.definer];
+            _ti = (ObInfo)ro.infos[_tgt];
+            var fi = CTree<long, RowSet.Finder>.Empty;
+            var fb = fm.rt.First();
+            for (var b = _ti.domain.rowType.First(); b != null&&fb!=null; b = b.Next(),fb=fb.Next())
             {
-                var t = tg.key();
-                Frame(t);
-                // NB at the cx.obs[t] version of the trigger has the wrong action field
-                acts += (t, new TriggerActivation(this, trs, (Trigger)db.objects[t]));
+                var fp = fb.value();
+                var f = new RowSet.Finder(fp, _trs.defpos);
+                fi += (fp, f);
+                fi += (b.value(), f);
             }
+            _finder = fi;
+        }
+        protected override void Debug(System.Text.StringBuilder sb)
+        {
+            sb.Append(" " + _ti.name);
+        }
+    }
+    internal class TableActivation : TargetActivation
+    {
+        /// <summary>
+        /// There may be several triggers of any type, so we manage a set of transition activations for each.
+        /// These are for table before, table instead, table after, row before, row instead, row after.
+        /// </summary>
+        internal BTree<long, TriggerActivation> acts = null;
+        internal readonly CTree<PTrigger.TrigType,CTree<long, bool>> _tgs;
+        internal Index index = null; // for autokey
+        internal TableActivation(Context _cx,RowSet fm,PTrigger.TrigType tt)
+            : base(_cx,fm,tt)
+        {
+            var tb = (Table)_cx.obs[_tgt];
+            _tgs = tb.triggers;
+            acts = BTree<long, TriggerActivation>.Empty;
+            for (var b = _tgs.First(); b != null; b = b.Next())
+                if (b.key().HasFlag(tt))
+                    for (var tg = b.value().First(); tg != null; tg = tg.Next())
+                    {
+                        var t = tg.key();
+                        // NB at this point obs[t] version of the trigger has the wrong action field
+                        var td = (Trigger)db.objects[t];
+                        var ta = new TriggerActivation(this, _trs, td);
+                        acts += (t, ta);
+                        ta.Frame(t);  
+                        ta.obs += (t, td);
+                    }
+            if (_trs.indexdefpos >= 0)
+                index =  (Index)_cx.db.objects[_trs.indexdefpos];
+        }
+        internal bool? Triggers(PTrigger.TrigType fg) // flags to add
+        {
+            bool? r = null;
+            fg |= _tty;
+            for (var a=acts.First();r!=true && a!=null;a=a.Next())
+            {
+                var ta = a.value();
+                ta.finder = finder + ta._finder;
+                ta.cursors += cursors;
+                ta.db = db;
+                if (ta._trig.tgType.HasFlag(fg))
+                    r = ta.Exec();
+            }
+            SlideDown(); // get next to adopt our changes
+            return r;
         }
         /// <summary>
         /// Perform the triggers in a set. 
         /// </summary>
         /// <param name="acts"></param>
-        internal bool Exec(Context _cx, TransitionRowSet trs)
+        internal bool Exec()
         {
             var r = false;
-            if (acts == null)
-                CreateActs(trs);
-            trs.targetAc.db = _cx.db;
-            var c = (TransitionRowSet.TransitionCursor)_cx.cursors[trs.defpos];
+            db = next.db;
+            nextHeap = next.nextHeap;
             bool skip;
             for (var a = acts?.First(); a != null; a = a.Next())
             {
                 var ta = a.value();
-                ta.db = _cx.db;
-                (c, skip) = ta.Exec(trs.targetAc, c);
+                ta.db = db;
+                ta.nextHeap = nextHeap;
+                skip = ta.Exec();
                 r = r || skip;
-                trs.targetAc.db = ta.db;
             }
-            _cx = trs.targetAc.SlideDown();
-            _cx.val = TBool.For(r);
-            if (c!=null)
-                _cx.cursors += (trs.defpos, c); // install the modified TransitionCursor
             return r;
+        }
+        protected override void Debug(System.Text.StringBuilder sb)
+        {
+            sb.Append(" " + _ti.name);
         }
     }
     /// <summary>
@@ -203,8 +283,8 @@ namespace Pyrrho.Level4
         /// The trigger definition
         /// </summary>
         internal readonly Trigger _trig;
-        internal readonly SqlRow oldRow, newRow;
-        internal readonly BTree<long, long> oldMap, newMap;
+        internal readonly CTree<long, RowSet.Finder> _finder;
+        internal readonly BTree<long, long> trigTarget, targetTrig; // trigger->target, target->trigger
         /// <summary>
         /// Prepare for multiple executions of this trigger
         /// </summary>
@@ -219,86 +299,111 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             Install1(tg.framing);
             Install2(tg.framing);
-            var tb = (Table)cx.db.objects[trs.targetInfo.defpos];
-            var oi = cx.Inf(tb.defpos);
+            var tb = (Table)cx.db.objects[trs.target];
+            var ro = (Role)cx.db.objects[tg.definer];
+            var ti = (ObInfo)ro.infos[tb.defpos];
             cx.obs += (tb.defpos, tb);
             _trig = tg;
+            (trigTarget,targetTrig) = _Map(ti, tg);
             deferred = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
-            if (cx.obs[tg.oldRow] is SqlRow so)
-                (oldRow,oldMap) = _Map(cx,oi,so);
-            if (cx.obs[tg.newRow] is SqlRow sn)
-                (newRow,newMap) = _Map(cx,oi,sn);
             if (cx.obs[tg.oldTable] is TransitionTable tt)
                 new TransitionTableRowSet(tt.defpos,cx,trs,
                     tg.framing.obs[tt.defpos].domain,true);
             if (deferred)
                 cx.db += (Transaction.Deferred, cx.tr.deferred + this);
+            var fi = CTree<long, RowSet.Finder>.Empty;
+            for (var b = trigTarget.First(); b != null; b = b.Next())
+            {
+                var f = new RowSet.Finder(b.key(), _trs.defpos);
+                fi += (b.value(), f);
+                fi += (b.key(), f);
+            }
+            var o = _trig.oldRow;
+            var n = _trig.newRow;
+            if (o != -1L)
+                fi += (o, new RowSet.Finder(o, _trs.defpos));
+            if (n != -1L)
+                fi += (n, new RowSet.Finder(n, _trs.defpos));
+            _finder = fi;
         }
-        static (SqlRow,BTree<long,long>) _Map(Context cx,ObInfo oi,SqlValue sv)
+        static (BTree<long,long>,BTree<long,long>) _Map(ObInfo oi,Trigger tg)
+        {
+            var ma = BTree<long, long>.Empty;
+            var rm = BTree<long, long>.Empty;
+            var sb = tg.domain.rowType.First();
+            for (var b = oi.domain.rowType.First(); b != null && sb != null; b = b.Next(),
+                sb = sb.Next())
+            {
+                var tp = sb.value();
+                var p = b.value();
+                ma += (tp, p);
+                rm += (p, tp);
+            }
+            return (ma,rm);
+        }
+        static (SqlRow,BTree<long,long>) _Map(ObInfo oi,SqlValue sv)
         {
             var ma = BTree<long, long>.Empty;
             var sb = sv.columns.First();
             for (var b = oi.domain.rowType.First(); b != null && sb != null; b = b.Next(), 
                 sb = sb.Next())
-                ma += (b.value(), sb.value());
+                ma += (sb.value(), b.value());
             return ((SqlRow)sv, ma);
         }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's role.
-        /// We pass in the current transition.targetRow as a TargetCursor just in case.
         /// </summary>
         /// <returns>whether the trigger was fired (i.e. WHEN condition if any matched)</returns>
-        internal (TransitionRowSet.TransitionCursor,bool) Exec(Context cx,TransitionRowSet.TransitionCursor trc)
+        internal bool Exec()
         {
-            var row = trc?._targetRow;
+            var rp = _trs.defpos;
+            var trc = (TransitionRowSet.TransitionCursor)next.next.cursors[rp];
+            if (trc!=null) // row=level trigger
+                new TransitionRowSet.TriggerCursor(this, trc._tgc);
             if (deferred)
-                return (trc, false);
-            values += (cx.values,false); 
-            data += (cx.data,false);
-            finder = _trs.finder;
-            cursors = cx.cursors;
-            if (row != null)
-            {
-                cursors += (_trs.defpos, trc);
-                data -= _trs.defpos; // as it doesn't match the TargetCursor
-                if (oldRow != null)
-                    values += (_trig.oldRow, _Row(oldRow, trc._vals));
-                if (newRow != null)
-                    values += (_trig.newRow, _Row(newRow, row.values));
-            }
+                return false;
+            if (_trig.oldRow != -1L)
+                values += (_trig.oldRow, new TRow(_trig.domain, trigTarget,
+                    ((TRow)next.values[Trigger.OldRow]).values));
+            if (_trig.newRow != -1L)
+                values += (_trig.newRow, new TRow(_trig.domain, trigTarget,
+                    ((TRow)next.values[Trigger.NewRow]).values));
             if (_trig.oldTable != -1L)
-                data += (_trig.oldTable, new TransitionTableRowSet(_trig.oldTable, cx, _trs,
-                    _trig.framing.obs[_trig.oldTable].domain,true));
+            {
+                var ot = (TransitionTable)obs[_trig.oldTable];
+                data += (ot.defpos, new TransitionTableRowSet(ot.defpos, next, _trs,
+                    ot.domain, true));
+            }
             if (_trig.newTable != -1L)
-                data += (_trig.newTable, new TransitionTableRowSet(_trig.newTable, cx, _trs,
-                    _trig.framing.obs[_trig.newTable].domain,false));
+            {
+                var nt = (TransitionTable)obs[_trig.newTable];
+                data += (nt.defpos, new TransitionTableRowSet(nt.defpos, next, _trs,
+                    nt.domain, false));
+            }
             var ta = (WhenPart)obs[_trig.action];
-            var tc = cx.obs[ta.cond]?.Eval(cx);
+            var tc = obs[ta.cond]?.Eval(this);
             if (tc != TBool.False)
             {
-                var oa = cx.tr.triggeredAction;
-                cx.db += (Transaction.TriggeredAction, cx.db.nextPos);
-                cx.Add(new Level2.TriggeredAction(_trig.defpos, cx.db.nextPos, cx));
+                db += (Transaction.TriggeredAction, db.nextPos);
+                Add(new Level2.TriggeredAction(_trig.defpos, db.nextPos, this));
                 var nx = ((Executable)obs[ta.stms.First().value()]).Obey(this);
                 if (nx != this)
                     throw new PEException("PE677");
-                if (row != null && _trig.newRow > 0)
+                if (trc != null) // row-level trigger
                 {
-                    var v = (SqlNewRow)obs[_trig.newRow];
-                    var vs = values[_trig.newRow];
-                    for (var b = v.columns.First(); b != null; b = b.Next())
+                    for (var b = _trig.domain.rowType.First(); b != null; b = b.Next())
                     {
-                        var c = obs[b.value()];
-                        var p = (c is SqlCopy sc) ? sc.copyFrom : c.defpos;
-                        trc += (cx, p, vs[c.defpos]);
+                        var cp = b.value();
+                        var np = trigTarget[cp];
+                        trc += ((TargetActivation)next, np, values[cp]);
                     }
+                    next.next.cursors += (_trs.defpos, trc);
                 }
-                cx = SlideDown();
-                cx.db += (Transaction.TriggeredAction, oa);
             }
+            SlideDown();
             if (tc != TBool.False && _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Instead))
-                return (trc, true);
-            return (trc, false);
+                return true;
+            return false;
         }
         TRow _Row(SqlRow sr,BTree<long,TypedValue>vals)
         {
@@ -310,31 +415,29 @@ namespace Pyrrho.Level4
             }
             return new TRow(sr, vs);
         }
-        /// <summary>
-        /// next is targetAc, with targetCursor. Update it using newRow if defined
-        /// </summary>
-        /// <returns></returns>
-        internal override Context SlideDown()
-        {
-            if (cursors[_trs.defpos] is TransitionRowSet.TransitionCursor cu)
-            {
-                if (values[_trig.newRow] is TRow nr)
-                    for (var b = nr.values.First(); b != null; b = b.Next())
-                    {
-                        var k = b.key();
-                        var v = b.value();
-                        if (cu[k]!=v)
-                            cu += (this, k, v);
-                    }
-                next.cursors += (_trs.defpos, cu);
-            }
-            return base.SlideDown();
-        }
         internal override TriggerActivation FindTriggerActivation(long tabledefpos)
         {
             var fm = (From)obs[data[_trs.defpos].from];
             var t = tr.objects[fm.target] as Table;
             return (t.defpos == tabledefpos) ? this : base.FindTriggerActivation(tabledefpos);
+        }
+        protected override void Debug(System.Text.StringBuilder sb)
+        { }
+        internal override Context SlideDown()
+        {
+            var ta = (TableActivation)next;
+            var tac = ta.cursors[ta._trs.defpos]; //TargetCursor 
+            for (var b =_trs.domain.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                if (values[p] is TypedValue v)
+                {
+                    var tp = trigTarget[p];
+                    ta.values += (tp,v);
+                    tac += (ta, tp, v);
+                }
+            }
+            return base.SlideDown();
         }
     }
 }

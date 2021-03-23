@@ -66,7 +66,7 @@ namespace Pyrrho.Level2
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, Procedure pr,
-            Ident sce, long pp, Context cx) : base(tp,pp,cx,Framing.Empty)
+            Ident sce, long pp, Context cx) : base(tp,pp,cx,Framing.Empty,rt)
 		{
             source = sce;
             parameters = ps;

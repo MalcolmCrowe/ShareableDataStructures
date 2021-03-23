@@ -43,7 +43,6 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The defining position of the domain
         /// </summary>
-		public Domain domain;
         public long domdefpos = -1L;
 		public TypedValue dv => domain?.defaultValue??TNull.Value; 
         public string dfs,ups;
@@ -66,12 +65,11 @@ namespace Pyrrho.Level2
         /// <param name="dm">The domain</param>
         /// <param name="tb">The local database</param>
         public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
-            Context cx,Framing fr) : base(t,pp,cx,fr)
+            Context cx,Framing fr) : base(t,pp,cx,fr,dm)
 		{
 			table = pr;
 			name = nm;
 			seq = sq;
-			domain = dm;
             domdefpos = dm.defpos;
 		}
         /// <summary>

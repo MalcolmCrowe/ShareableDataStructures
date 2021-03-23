@@ -24,8 +24,8 @@ namespace Pyrrho.Level4
 	internal class JoinRowSet : RowSet
 	{
         internal const long
-            JFirst = -447, // long
-            JSecond = -448; // long
+            JFirst = -447, // long RowSet
+            JSecond = -448; // long RowSet
         /// <summary>
         /// The two row sets being joined
         /// </summary>
@@ -42,14 +42,24 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(Context _cx, JoinPart j, RowSet lr, RowSet rr) :
-            base(j.defpos, _cx, j.domain, lr.finder+rr.finder, null, j.where, j.ordSpec, j.matches,
+            base(j.defpos, _cx, j.domain, _Fin(j,lr,rr), null, j.where, j.ordSpec, j.matches,
                 _Last(lr, rr) + (JFirst, lr.defpos) + (JSecond, rr.defpos)
+                +(RSTargets,lr.rsTargets+rr.rsTargets)
                 + (JoinPart._FDInfo, j.FDInfo) + (JoinPart.Matching,j.matching)
                 +(JoinPart.JoinCond,j.joinCond) + (JoinPart.JoinKind,j.kind))
 		{ }
-        JoinRowSet(Context cx,JoinRowSet jrs, BTree<long,Finder> nd,bool bt)
+        JoinRowSet(Context cx,JoinRowSet jrs, CTree<long,Finder> nd,bool bt)
             :base(cx,jrs,nd,bt)
         { }
+        static CTree<long,Finder> _Fin(JoinPart j,RowSet lr,RowSet rr)
+        {
+            var r = lr.finder + rr.finder;
+            if (j.joinUsing == BTree<long,long>.Empty)
+                return r;
+            for (var b = j.joinUsing.First(); b != null; b = b.Next())
+                r += (b.value(), new Finder(b.key(), lr.defpos));
+            return r;
+        }
         static BTree<long,object> _Last(RowSet lr,RowSet rr)
         {
             var r = BTree<long, object>.Empty;
@@ -89,22 +99,28 @@ namespace Pyrrho.Level4
                 return this;
             if (defpos >= Transaction.Analysing)
                 return (RowSet)New(m);
-            var rs = new JoinRowSet(cx.nextHeap++, m);
+            var rs = new JoinRowSet(cx.GetUid(), m);
             cx.data += (rs.defpos, rs);
             return rs;
         }
         internal int Compare(Context cx)
         {
+            var oc = cx.finder;
+            cx.finder += finder;
             for (var b = joinCond.First(); b != null; b = b.Next())
             {
                 var se = cx.obs[b.key()] as SqlValueExpr;
                 var c = cx.obs[se.left].Eval(cx)?.CompareTo(cx.obs[se.right].Eval(cx)) ?? -1;
                 if (c != 0)
+                {
+                    cx.finder = oc;
                     return c;
+                }
             }
+            cx.finder = oc;
             return 0;
         }
-        internal override RowSet New(Context cx, BTree<long, Finder> nd,bool bt)
+        internal override RowSet New(Context cx, CTree<long, Finder> nd,bool bt)
         {
             return new JoinRowSet(cx, this, nd, bt);
         }
@@ -144,32 +160,11 @@ namespace Pyrrho.Level4
         {
             return new BList<long>(first) + second;
         }
-        internal override RowSet Instance(Context cx)
+        internal override BTree<long,VIC?> Scan(BTree<long,VIC?> t)
         {
-            var r = base.Instance(cx);
-            var j = CTree<long, bool>.Empty;
-            for (var b = joinCond.First(); b != null; b = b.Next())
-            {
-                var sv = (SqlValue)cx.obs[b.key()];
-                var n = sv.Sources(cx);
-                if (n != sv)
-                    j += (n.defpos, true);
-            }
-            if (j.CompareTo(joinCond) != 0)
-                r += (JoinPart.JoinCond, j);
-            if (fdInfo != null)
-            {
-                var ni = Fix(fdInfo, cx.obuids);
-                if (ni != fdInfo)
-                    r += (JoinPart._FDInfo, ni);
-            } 
-            var nf = cx.rsuids[first] ?? first;
-            if (nf != first)
-                r += (JFirst, nf);
-            var ns = cx.rsuids[second] ?? second;
-            if (ns != second)
-                r += (JSecond, ns);
-            return r;
+            t = Scan(t, first, VIC.RK|VIC.RV);
+            t = Scan(t, second, VIC.RK|VIC.RV);
+            return base.Scan(t);
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -189,14 +184,14 @@ namespace Pyrrho.Level4
             r += (JSecond, cx.Replace(second, so, sv));
             return r;
         }
-        internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder> nd)
+        internal override CTree<long, Finder> AllWheres(Context cx,CTree<long,Finder> nd)
         {
             nd = cx.Needs(nd,this,where);
             nd = cx.Needs(nd,this,cx.data[first].AllWheres(cx, nd));
             nd = cx.Needs(nd,this,cx.data[second].AllWheres(cx, nd));
             return nd;
         }
-        internal override BTree<long, Finder> AllMatches(Context cx,BTree<long,Finder> nd)
+        internal override CTree<long, Finder> AllMatches(Context cx,CTree<long,Finder> nd)
         {
             nd = cx.Needs(nd,this,matches);
             nd = cx.Needs(nd,this,cx.data[first].AllMatches(cx,nd));
@@ -301,7 +296,7 @@ namespace Pyrrho.Level4
             var r = ((JoinBookmark)base.First(cx))?.MoveToMatch(cx);
             if (r == null)
                 return null;
-            if (cx.data[second].needed != BTree<long, Finder>.Empty)
+            if (cx.data[second].needed != CTree<long, Finder>.Empty)
             {
                 var jrs = (JoinRowSet)cx.data[defpos];
                 cx.data += (defpos, jrs.New(cx, Sqlx.LATERAL));
@@ -314,13 +309,50 @@ namespace Pyrrho.Level4
             var r = ((JoinBookmark)base.Last(cx))?.PrevToMatch(cx);
             if (r == null)
                 return null;
-            if (cx.data[second].needed != BTree<long, Finder>.Empty)
+            if (cx.data[second].needed != CTree<long, Finder>.Empty)
             {
                 var jrs = (JoinRowSet)cx.data[defpos];
                 cx.data += (defpos, jrs.New(cx, Sqlx.LATERAL));
                 r = new LateralJoinBookmark(cx,(JoinBookmark)r);
             }
             return r;
+        }
+        (RowSet,RowSet) Split(Context cx,RowSet fm)
+        {
+            var f = cx.data[first];
+            var a = BList<(long, TRow)>.Empty;
+            var s = cx.data[second];
+            var b = BList<(long, TRow)>.Empty;
+            for (var c = First(cx);c!=null;c=c.Next(cx))
+            {
+                var fc = cx.cursors[f.defpos];
+                a += (fc._defpos, fc);
+                var sc = cx.cursors[s.defpos];
+                b += (sc._defpos, sc);
+            }
+            return (f + (ExplicitRowSet.ExplRows, a),
+                s + (ExplicitRowSet.ExplRows, b));
+        }
+        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        {
+            var (a, b) = Split(cx, fm);
+            cx.data[first].Insert(cx, a, prov, cl);
+            cx.data[second].Insert(cx, b, prov, cl);
+            return cx;
+        }
+        internal override Context Delete(Context cx, RowSet fm)
+        {
+            var (a, b) = Split(cx, fm);
+            cx = cx.data[first].Delete(cx, a);
+            cx = cx.data[second].Delete(cx, b);
+            return cx;
+        }
+        internal override Context Update(Context cx, RowSet fm)
+        {
+            var (a, b) = Split(cx, fm);
+            cx = cx.data[first].Update(cx, a);
+            cx = cx.data[second].Update(cx, b);
+            return cx;
         }
         public override string ToString()
         {
@@ -336,13 +368,16 @@ namespace Pyrrho.Level4
                 }
                 sb.Append(")");
             }
-            sb.Append(" matching");
-            for (var b = matching.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                {
-                    sb.Append(" "); sb.Append(Uid(b.key()));
-                    sb.Append("="); sb.Append(Uid(c.key()));
-                }
+            if (matching != CTree<long, CTree<long, bool>>.Empty)
+            {
+                sb.Append(" matching");
+                for (var b = matching.First(); b != null; b = b.Next())
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        sb.Append(" "); sb.Append(Uid(b.key()));
+                        sb.Append("="); sb.Append(Uid(c.key()));
+                    }
+            }
             sb.Append(" First: ");sb.Append(Uid(first));
             sb.Append(" Second: "); sb.Append(Uid(second));
             return sb.ToString();
@@ -430,6 +465,15 @@ namespace Pyrrho.Level4
             JoinBookmark r = this;
             while (r != null && !DBObject.Eval(_jrs.where, _cx))
                 r = (JoinBookmark)r.Previous(_cx);
+            return r;
+        }
+        internal override BList<TableRow> Rec()
+        {
+            var r = BList<TableRow>.Empty;
+            if (_useLeft)
+                r += _left.Rec();
+            if (_useRight)
+                r += _right.Rec();
             return r;
         }
     }
@@ -582,10 +626,6 @@ namespace Pyrrho.Level4
         internal override Cursor _Fix(Context cx)
         {
             return new InnerJoinBookmark(cx, this);
-        }
-        internal override TableRow Rec()
-        {
-            return null;
         }
     }
     /// <summary>
@@ -778,10 +818,6 @@ namespace Pyrrho.Level4
         {
             return new FDJoinBookmark(cx, this);
         }
-        internal override TableRow Rec()
-        {
-            return null;
-        }
     }
     /// <summary>
     /// Enumerator for a left join
@@ -944,10 +980,6 @@ namespace Pyrrho.Level4
                     right = right.Previous(_cx);
             }
         }
-        internal override TableRow Rec()
-        {
-            return null;
-        }
         internal override Cursor _Fix(Context cx)
         {
             return new LeftJoinBookmark(cx,this);
@@ -1104,11 +1136,6 @@ namespace Pyrrho.Level4
         {
             return new RightJoinBookmark(cx, this);
         }
-
-        internal override TableRow Rec()
-        {
-            return null;
-        }
     }
     /// <summary>
     /// A full join bookmark for a join row set
@@ -1251,10 +1278,6 @@ namespace Pyrrho.Level4
         {
             return new FullJoinBookmark(cx, this);
         }
-        internal override TableRow Rec()
-        {
-            return null;
-        }
     }
     /// <summary>
     /// A cross join bookmark for a join row set
@@ -1276,7 +1299,7 @@ namespace Pyrrho.Level4
         {
             var f = cx.data[j.first].First(cx);
             var s = cx.data[j.second].First(cx);
-            if (f == null || s == null)
+            if (f == null) // don't test s (possible lateral dependency)
                 return null;
             for (;; )
             {
@@ -1373,10 +1396,6 @@ namespace Pyrrho.Level4
                     right = cx.data[_jrs.second].Last(cx);
                 }
             }
-        }
-        internal override TableRow Rec()
-        {
-            return _useLeft ? _left.Rec() : _right.Rec();
         }
         internal override Cursor _Fix(Context cx)
         {
@@ -1477,10 +1496,6 @@ namespace Pyrrho.Level4
         internal override Cursor _Fix(Context cx)
         {
             return new LateralJoinBookmark(cx, this);
-        }
-        internal override TableRow Rec()
-        {
-            return null;
         }
     }
 

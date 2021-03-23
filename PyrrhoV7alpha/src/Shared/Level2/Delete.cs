@@ -79,8 +79,10 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
 		{
-  //          wr.PutLong(wr.Fix(tabledefpos));
-            wr.PutLong(wr.Fix(delpos));
+            var dp = wr.Fix(delpos);
+            wr.PutLong(dp);
+            wr.cx.affected = (wr.cx.affected ?? Rvv.Empty) 
+                + (wr.Fix(tabledefpos), (dp, ppos));
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -89,10 +91,8 @@ namespace Pyrrho.Level2
         /// <param name="buf">The buffer</param>
         public override void Deserialise(ReaderBase rdr)
         {
-  //          var tb = rdr.GetLong();
             var dp = rdr.GetLong();
             base.Deserialise(rdr);
-  //          tabledefpos = tb;
             delpos= dp;
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)

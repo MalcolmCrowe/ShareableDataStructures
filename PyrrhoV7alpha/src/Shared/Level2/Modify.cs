@@ -56,7 +56,7 @@ namespace Pyrrho.Level2
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
         public Modify(string nm, long dp, string pc, DBObject nw, long pp, Context cx)
-            : base(Type.Modify,pp,cx)
+            : base(Type.Modify,pp,cx,nw.domain)
 		{
             modifydefpos = dp;
             name = nm;

@@ -31,6 +31,7 @@ namespace Pyrrho.Level3
 	internal class View : DBObject
 	{
         internal const long
+            Targets = -154, // CList<long>  Table/View
             ViewCols = -378, // CTree<string,long> SqlValue
             ViewDef = -379, // string
             ViewPpos = -377;// long View
@@ -38,6 +39,8 @@ namespace Pyrrho.Level3
         public string viewDef => (string)mem[ViewDef];
         public CTree<string, long> viewCols =>
             (CTree<string, long>)mem[ViewCols] ?? CTree<string, long>.Empty;
+        public CList<long> targets =>
+            (CList<long>)mem[Targets] ?? CList<long>.Empty;
         public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
         public View(PView pv,Database db,BTree<long,object>m=null) 
             : base(pv.ppos, pv._Dom(db,m)
@@ -64,96 +67,166 @@ namespace Pyrrho.Level3
             return domain.rowType;
         }
         /// <summary>
-        /// This routine prepares a fresh copy of a View reference and optimises the RowSets
+        /// This routine prepares a fresh copy of a View reference, first
+        /// injecting assignments and filters into the View structure.
+        /// Views are compiled objects, but queries containing them
+        /// provide filters, build them into joins, use them in aggregations
+        /// and subqueries etc, and in order to optimise the resulting
+        /// rowsets we need to ensure that we have fresh uids for exposed
+        /// data (because we may have several independent references to the view).
+        /// Once we have decided which obuids and rsuids need instancing
+        /// the Fix(cx) routines will create the transformed versions of the
+        /// compiled pieces. We avoid recursion using the following method:
+        /// We begin by discovering the dependencies of the pieces D(K,V,F)
+        /// (called obrefs in the code) such that in D, K refers to V, and 
+        /// F (enum VIC): OK=K is an object, RK=K a rowset,and same for OV, RV.
+        /// Once built we invert the tree to D'(V,K,F) (called refobs).
+        /// We start to Instance the references we know about, but
+        /// every time we add a V to obuids/rsuids we cascade to instance K's 
+        /// in method OnInstance. Once obuids and rsuids are built we call Fix.
         /// </summary>
         /// <param name="cx"></param>
-        /// <param name="qs"></param>
+        /// <param name="f"></param>
         /// <returns></returns>
-        internal RowSet Instance(Context cx, RowSet fm)
+        internal RowSet Instance(Context cx,RowSet rv)
         {
-            var fx = fm.defpos;
+            var oob = cx.obuids;
+            var oor = cx.rsuids;
+            var oof = cx.obrefs;
             var st = framing.result;
+            cx.affected = framing.withRvv;
             if (cx.srcFix == 0)
                 cx.srcFix = cx.db.lexeroffset;
             cx.obuids = BTree<long, long?>.Empty;
             cx.rsuids = BTree<long, long?>.Empty;
-            for (var b = fm.rt.First(); b != null; b = b.Next())
+            // start to build the dependency tree: begin with the View and rowType
+            var t = BTree<long, VIC?>.Empty;
+            t = Scan(t);
+            t = Scan(t, rv.rt, VIC.OK | VIC.OV);
+            cx.obrefs = new BTree<long,BTree<long,VIC?>>(defpos,t);
+            // scan the compiled rowsets
+            for (var rb = framing.data.First();rb!=null;rb=rb.Next())
             {
-                var p = b.value();
-                var sc = (SqlCopy)cx.obs[p];
-                cx.obuids += (sc.copyFrom, p);
-            }
-            var np = fx;
-            var todo = new BList<long>(st);
-            while (todo.Count>0)
-            {
-                var rs = cx.data[todo.First().value()];
-                if (rs.defpos < defpos)
-                    break;
-                todo -= 0;
-                cx.rsuids += (rs.defpos, np);
-                var wh = CTree<long, bool>.Empty;
-                for (var b = fm.where.First(); b != null; b = b.Next())
+                var rs = rb.value();
+                t = cx.obrefs[rb.key()] ?? BTree<long, VIC?>.Empty;
+                // for rowsets add dependencies for ambient wheres and assignments
+                for (var b = rv.where.First(); b != null; b = b.Next())
                     if (((SqlValue)cx.obs[b.key()]).KnownBy(cx, rs))
-                        wh += (b.key(), true);
-                var ag = CTree<UpdateAssignment, bool>.Empty;
-                for (var b=fm.assig.First();b!=null;b=b.Next())
+                        t += (b.key(), VIC.RK|VIC.OV);
+                for (var b=rv.assig.First();b!=null;b=b.Next())
                 {
                     var u = b.key();
                     if (rs.Knows(cx, u.vbl) && ((SqlValue)cx.obs[u.val]).KnownBy(cx, rs))
-                        ag += (u, true); 
+                    {
+                        t += (u.vbl, VIC.RK | VIC.OV);
+                        t += (u.val, VIC.RK | VIC.OV);
+                    } 
                 }
-                cx.data += (np, (RowSet)rs.Relocate(np) + (Query.Where, wh)
-                    + (Query.Assig, ag));
-                todo += rs.Sources(cx);
-                np = cx.nextHeap++;
+                // now add all internal dependencies: helper methods are in DBObject
+                cx.obrefs += (rs.defpos,rs.Scan(t));
             }
-            st = fx;
-            todo = new BList<long>(st);
-            while (todo.Count > 0)
+            // scan the compiled objects
+            for (var rb = framing.obs.First(); rb != null; rb = rb.Next())
             {
-                var rs = cx.data[todo.First().value()];
-                if (rs.defpos < defpos)
-                    break;
-                todo -= 0;
-                rs = rs.Instance(cx);
-                cx.data += (rs.defpos, rs);
-                todo += rs.Sources(cx);
+                var ob = rb.value();
+                t = cx.obrefs[ob.defpos] ?? BTree<long, VIC?>.Empty;
+                // add all internal dependencies
+                cx.obrefs += (ob.defpos, ob.Scan(t));
             }
-            return cx.data[fx].ComputeNeeds(cx);
-        }
-        internal override Context Insert(Context _cx, RowSet fm, string prov, Level cl)
-        {
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-                if (b.value() is Table tb)
+            // now invert the tree to prepare for the cascade
+            var refobs = BTree<long,BTree<long,VIC?>>.Empty;
+            for (var b = cx.obrefs.First(); b != null; b = b.Next())
+                for (var c = b.value()?.First(); c != null; c = c.Next())
                 {
-                    var cx = tb.Insert(_cx, fm+(SqlInsert.Target,tb.defpos), prov, cl);
-                    if (cx != _cx)
-                        return cx;
+                    var ck = c.key();
+                    t = refobs[ck] ?? BTree<long, VIC?>.Empty;
+                    t += (b.key(), c.value());
+                    refobs += (ck, t);
                 }
-            return _cx;
-        }
-        internal override Context Update(Context _cx, RowSet fm)
-        {
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-                if (b.value() is Table tb)
+            InstanceOb(cx, defpos, refobs);
+            InstanceRS(cx, st, refobs);
+            // Now consider the ambient rowtype
+            var fb = rv.rt.First();
+            var rf = cx.data[st];
+            for (var vb = rf.rt.First(); vb != null; vb = vb.Next()) 
+            {
+                var p = vb.value();
+                if (fb != null) // instance for the display items
                 {
-                    var cx = tb.Update(_cx, fm + (SqlInsert.Target, tb.defpos));
-                    if (cx != _cx)
-                        return cx;
+                    cx.obuids += (p, fb.value());
+                    fb = fb.Next();
                 }
-            return _cx;
-        }
-        internal override Context Delete(Context _cx, RowSet fm)
-        {
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-                if (b.value() is Table tb)
+                else // make new SqlCopys for the non-display items
                 {
-                    var cx = tb.Delete(_cx, fm + (SqlInsert.Target, tb.defpos));
-                    if (cx != _cx)
-                        return cx;
+                    var cp = cx.Next(p);
+                    var sv = (SqlValue)cx.obs[p];
+                    cx.obuids += (p, cp);
+                    cx._Add(new SqlCopy(cp, cx, sv.name, rf.defpos, p));
                 }
-            return _cx;
+                OnInstance(cx, p, refobs);
+            }
+            // Cascade to build obuids, rsuids has finished. Fix() everything.
+            for (var b = cx.obs.PositionAt(defpos); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = cx.obuids[p] ?? p;
+                var nb = (DBObject)b.value().Fix(cx);
+                if (nb != b.value() && p == nb.defpos && cx.parse==ExecuteStatus.Obey
+                    && (p<Transaction.TransPos 
+                    || (p>=Transaction.Executables && p<Transaction.HeapStart)))
+                    throw new PEException("PE588");
+                cx.obs += (np, nb);
+            }
+            for (var b = cx.data.PositionAt(defpos+1); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = cx.rsuids[p] ?? p;
+                var nr = (RowSet)b.value().Fix(cx);
+                if (nr != b.value() && p == nr.defpos && cx.parse==ExecuteStatus.Obey
+                    && (p < Transaction.TransPos
+                    || (p >= Transaction.Executables && p < Transaction.HeapStart)))
+                    throw new PEException("PE589");
+                cx.data += (np, nr);
+            }
+            // All done, so finish up
+            var vp = cx.rsuids[rf.defpos].Value;
+            cx.obuids = oob;
+            cx.rsuids = oor;
+            cx.obrefs = oof;
+            var r = cx.data[vp];
+            r += (_Domain, r.domain + (Domain.Display, rv.display));
+            cx.data += (rv.defpos, r);
+            return r;
+        }
+        void OnInstance(Context cx,long dp, BTree<long, BTree<long, VIC?>> ro)
+        {
+            for (var b = ro[dp]?.First(); b != null; b = b.Next())
+            {
+                var k = b.key(); // K of original D(K,V,F) table
+                var f = b.value() ?? VIC.None;
+                if (f.HasFlag(VIC.OK))
+                    InstanceOb(cx, k, ro);
+                if (f.HasFlag(VIC.RK))
+                    InstanceRS(cx, k, ro);
+            }
+        }
+        void InstanceOb(Context cx,long dp,BTree<long,BTree<long,VIC?>> ro)
+        {
+            if (cx.obuids.Contains(dp))
+                return;
+            var np = cx.Next(dp);
+            cx.obuids += (dp, np);
+            cx._Add(cx.obs[dp].Relocate(np));
+            OnInstance(cx, dp, ro);
+        }
+        void InstanceRS(Context cx,long dp, BTree<long,BTree<long,VIC?>> ro)
+        {
+            if (cx.rsuids.Contains(dp))
+                return;
+            var np = cx.Next(dp);
+            cx.rsuids += (dp, np);
+            cx.data +=(np, (RowSet)cx.data[dp].Relocate(np));
+            OnInstance(cx, dp, ro);
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced in a From.
@@ -169,11 +242,11 @@ namespace Pyrrho.Level3
         /// and keep track of keys. Then perform the join with the target instead.
         /// </summary>
         /// <param name="cx"></param>
-        internal override void RowSets(Context cx,From f,BTree<long,RowSet.Finder>fi)
+        internal override void RowSets(Context cx,From f,CTree<long,RowSet.Finder>fi)
         {
             cx.Install2(framing);
-            var rf = Instance(cx,new VirtualRowSet(cx,f,fi));
-            cx.data+=(f.defpos,rf);
+            var rf = Instance(cx, new VirtualRowSet(cx, f, fi));
+            cx.data += (f.defpos, rf);
         }
         /// <summary>
         /// API development support: generate the C# information for a Role$Class description
@@ -336,9 +409,9 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(Context cx, BTree<long, object> m)
         {
-            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+            if (defpos >= Transaction.Analysing || cx.parse == ExecuteStatus.Parse)
                 return (m == mem) ? this : (View)New(m);
-            return cx.Add(new View(cx.nextHeap++, m));
+            return cx.Add(new View(cx.GetUid(), m));
         }
         internal override DBObject Relocate(long dp)
         {
@@ -347,6 +420,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = base.Fix(cx);
+            var ts = cx.Fix(targets);
+            if (ts!=targets)
+                r += (Targets, ts);
             var dm = domain.Fix(cx);
             if (domain != dm)
                 r += (_Domain, dm);
@@ -358,6 +434,9 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Writer wr)
         {
             var r = (View)base._Relocate(wr);
+            var ts = wr.Fix(targets);
+            if (ts != targets)
+                r += (Targets, ts);
             var cs = wr.Fix(viewCols);
             if (cs != viewCols)
                 r += (ViewCols, cs);
@@ -369,6 +448,16 @@ namespace Pyrrho.Level3
                 return cx.done[defpos];
             var r = (View)base._Replace(cx, so, sv);
             var ch = false;
+            var ts = CList<long>.Empty;
+            for (var b=targets.First();b!=null;b=b.Next())
+            {
+                var tg = b.value();
+                var nt = cx.Replace(tg, so, sv);
+                ch = nt != tg;
+                ts += nt;
+            }
+            if (ch)
+                r += (Targets, ts);
             var cs = BTree<string, long>.Empty;
             for (var b=viewCols?.First();b!=null;b=b.Next())
             {
@@ -383,6 +472,12 @@ namespace Pyrrho.Level3
                 r += (_Domain, domain._Replace(cx,so, sv));
             cx.done+=(defpos,r);
             return r;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, targets, VIC.OK | VIC.OV);
+            t = Scan(t, viewCols, VIC.OK | VIC.OV);
+            return t;
         }
         /// <summary>
         /// a readable version of the View
@@ -401,7 +496,10 @@ namespace Pyrrho.Level3
                 sb.Append(b.key()); sb.Append("=");
                 sb.Append(Uid(b.value()));
             }
-            sb.Append(") "); sb.Append(domain); 
+            sb.Append(") "); sb.Append(domain);
+            cm = " Targets: ";
+            for (var b=targets.First();b!=null;b=b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(Uid(b.value())); }
             return sb.ToString();
         }
     }
@@ -435,9 +533,9 @@ namespace Pyrrho.Level3
             ClientPassword = -382, // string, deprecated
             Mime = -255, // string
             SqlAgent = -256, // string
-            UsingTablePos = -385, // long
+            UsingTablePos = -385, // long Table
             ViewStruct = -386,// Domain
-            ViewTable = -371; // Table
+            ViewTable = -371; // long   Table
         internal string nm => (string)mem[ClientName];
         internal string pw => (string)mem[ClientPassword]; // deprecated
         internal Domain viewStruct => (Domain)mem[ViewStruct];
@@ -483,9 +581,9 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(Context cx, BTree<long, object> m)
         {
-            if (defpos >= Transaction.Analysing || cx.db.parse == ExecuteStatus.Parse)
+            if (defpos >= Transaction.Analysing || cx.parse == ExecuteStatus.Parse)
                 return (m == mem) ? this : (RestView)New(m);
-            return cx.Add(new RestView(cx.nextHeap++, m));
+            return cx.Add(new RestView(cx.GetUid(), m));
         }
         internal override Database Add(Database d, PMetadata pm, long p)
         {
@@ -522,30 +620,67 @@ namespace Pyrrho.Level3
                 r += (UsingTablePos, nt);
             return r;
         }
-        internal override void RowSets(Context cx, From gf, BTree<long, RowSet.Finder> fi)
+        internal override void RowSets(Context cx, From gf, CTree<long, RowSet.Finder> fi)
         {
-            RowSet r = new RestRowSet(cx, gf, this);
-            if (cx.obs[usingTable] is Table ut)
+            RestRowSet r = new RestRowSet(cx, gf, this);
+            var dp = r.defpos;
+            if (cx.db.objects[usingTable] is Table tb)
             {
-                var vs = CList<long>.Empty;
-                var ps = BTree<long, bool>.Empty;
-                for (var b=ut.domain.rowType.First();name!=null;b=b.Next())
+                cx._Add(tb);
+                var n = tb.domain.Length - 1; // usingCols length
+                var np = cx.GetUid(); // restrowset new position
+                var a = ((ObInfo)cx.db.role.infos[tb.defpos]).name; // tb.name
+                var uf = new From(new Ident(a,cx.GetUid()), cx, tb).RowSets(cx, fi); // SelectedRowSet
+                var rc = CTree<string, long>.Empty; // remotecols
+                var us = CTree<string,long>.Empty; // catalogue of using columns
+                // usingcols are all columns from tb except the last
+                for (var b=uf.rt.First();b!=null && b.key()<n;b=b.Next())
                 {
-                    vs += b.value();
-                    ps += (b.value(), true);
+                    var p = b.value();
+                    var sc = (SqlCopy)cx.obs[p];
+                    us += (sc.name,p);
                 }
+                var ju = CTree<long,long>.Empty; // joinUsing
+                var uc = CTree<string, long>.Empty; // usingCols
+                // scan gf rowType to get remote columns and match up using cols
                 for (var b = r.rt.First(); b != null; b = b.Next())
-                    if (!ps.Contains(b.value()))
-                        vs += b.value();
-                var dm = new Domain(Sqlx.TABLE, cx, vs);
-                r = new JoinRowSet(cx,
-                    new JoinPart(cx.nextHeap++) + (JoinPart.Natural, Sqlx.USING)
-                        +(_Domain,dm)+(JoinPart.NamedCols,vs),
-                    new TableRowSet(cx, ut.defpos,
-                        BTree<long, RowSet.Finder>.Empty, CTree<long, bool>.Empty),
-                    r);
+                {
+                    var p = b.value();
+                    var sv = (SqlValue)cx.obs[p];
+                    if (us.Contains(sv.name))
+                    {
+                        var q = us[sv.name]; // match and translate uids
+                        ju += (q, p);
+                        uc += (sv.name, p);
+                        fi += (p, new RowSet.Finder(q, uf.defpos));
+                        fi += (q, new RowSet.Finder(q, uf.defpos));
+                    }
+                    else
+                    {
+                        rc += (sv.name, p); // column is remote
+                        fi += (p, new RowSet.Finder(p, np));
+                    }
+                }
+                var ul = uf.rt.Last().value();
+                var nr = (RowSet)(r+(RestRowSet.UrlCol,ul)
+                    +(RestRowSet.RemoteCols,rc)+(Index.Keys,r.rt)
+                    +(RestRowSet.UsingCols,uc)+(RowSet._Finder,fi)
+                    +(JoinPart.JoinUsing,ju)
+                    +(RestRowSet.UsingTable,uf.defpos)).Relocate(np);
+                cx.withViews -= r.defpos;
+                cx.withViews += (np,true);
+                var jp = new JoinPart(r.defpos) + (_Domain, r.domain)
+                    + (JoinPart.LeftOperand, uf.defpos)
+                    + (JoinPart.RightOperand, nr.defpos)
+                    + (JoinPart.Natural, Sqlx.USING)
+                    + (JoinPart.JoinUsing, ju);
+                var jr = new JoinRowSet(cx,jp,uf, nr);
+                cx.data += (nr.defpos, nr);
+                cx.data += (dp, jr);
+                return;
             }
-            cx.data += (r.defpos, r);
+            cx.withViews += (dp, true);
+            cx.data += (dp, r);
         }
     }
 }

@@ -62,6 +62,7 @@ namespace Pyrrho.Level2
         /// The alias for the new table: consists of the new rows  
         /// </summary>
 		public Ident newTable = null;
+        public long from;
         public Ident src; // the ident is the source code of the action!
         public long def; // the compiled version (in Compiled.framing)
         public override long Dependent(Writer wr, Transaction tr)
@@ -107,7 +108,7 @@ namespace Pyrrho.Level2
         /// <param name="pp">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
             Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
-            : base(tp,pp,cx,new Framing(cx))
+            : base(tp,pp,cx,new Framing(cx),Domain.TableType)
 		{
             name = tc;
             target = tb;
@@ -133,6 +134,7 @@ namespace Pyrrho.Level2
             src = x.src;
             tgtype = x.tgtype;
             target = wr.Fix(x.target);
+            from = wr.Fixed(x.from).defpos;
             def = wr.Fixed(x.def).defpos;
             var cs = CList<long>.Empty;
             if (x.cols != null)
@@ -147,6 +149,12 @@ namespace Pyrrho.Level2
         protected override Physical Relocate(Writer wr)
         {
             return new PTrigger(this, wr);
+        }
+        internal override void Relocate(Context cx)
+        {
+            base.Relocate(cx);
+            from = cx.obuids[from]??from;
+            domain = (Domain)domain.Fix(cx);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase

@@ -540,132 +540,133 @@ namespace Pyrrho.Common
         MESSAGE_LENGTH = 500,
         MESSAGE_OCTET_LENGTH = 501,
         MESSAGE_TEXT = 502,
-        MIME = 503, // Pyrrho 7
-        MINVALUE = 504,
-        MONOTONIC = 505, // Pyrrho 5.7
-        MORE = 506,
-        MUMPS = 507,
-        NAME = 508,
-        NAMES = 509,
-        NESTING = 510,
-        NEXT = 511,
-        NFC = 512,
-        NFD = 513,
-        NFKC = 514,
-        NFKD = 515,
-        NORMALIZED = 516,
-        NULLABLE = 517,
-        NULLS = 518,
-        NUMBER = 519,
-        OCCURRENCE = 520,
-        OCTETS = 521,
-        OPTION = 522,
-        OPTIONS = 523,
-        ORDERING = 524,
-        ORDINALITY = 525,
-        OTHERS = 526,
-        OUTPUT = 527,
-        OVERRIDING = 528,
-        OWNER = 529, // Pyrrho
-        P = 530,
-        PAD = 531,
-        PARAMETER_MODE = 532,
-        PARAMETER_NAME = 533,
-        PARAMETER_ORDINAL_POSITION = 534,
-        PARAMETER_SPECIFIC_CATALOG = 535,
-        PARAMETER_SPECIFIC_NAME = 536,
-        PARAMETER_SPECIFIC_SCHEMA = 537,
-        PARTIAL = 538,
-        PASCAL = 539,
-        PATH = 540,
-        PIE = 541, // Pyrrho 4.5
-        PLACING = 542,
-        PL1 = 543,
-        POINTS = 544, // Pyrrho 4.5
-        PRECEDING = 545,
-        PRESERVE = 546,
-        PRIOR = 547,
-        PRIVILEGES = 548,
-        PROFILING = 549, // Pyrrho
-        PROVENANCE = 550, // Pyrrho
-        PUBLIC = 551,
-        READ = 552,
-        REFERRED = 553, // 5.2
-        REFERS = 554, // 5.2
-        RELATIVE = 555,
-        REPEATABLE = 556,
-        RESPECT = 557,
-        RESTART = 558,
-        RESTRICT = 559,
-        RETURNED_CARDINALITY = 560,
-        RETURNED_LENGTH = 561,
-        RETURNED_OCTET_LENGTH = 562,
-        RETURNED_SQLSTATE = 563,
-        ROLE = 564,
-        ROUTINE = 565,
-        ROUTINE_CATALOG = 566,
-        ROUTINE_NAME = 567,
-        ROUTINE_SCHEMA = 568,
-        ROW_COUNT = 569,
-        SCALE = 570,
-        SCHEMA = 571,
-        SCHEMA_NAME = 572,
-        SCOPE_CATALOG = 573,
-        SCOPE_NAME = 574,
-        SCOPE_SCHEMA = 575,
-        SECTION = 576,
-        SECURITY = 577,
-        SELF = 578,
-        SEQUENCE = 579,
-        SERIALIZABLE = 580,
-        SERVER_NAME = 581,
-        SESSION = 582,
-        SETS = 583,
-        SIMPLE = 584,
-        SIZE = 585,
-        SOURCE = 586,
-        SPACE = 587,
-        SPECIFIC_NAME = 588,
-        SQLAGENT = 589, // Pyrrho 7
-        STANDALONE = 590, // vol 14
-        STATE = 591,
-        STATEMENT = 592,
-        STRUCTURE = 593,
-        STYLE = 594,
-        SUBCLASS_ORIGIN = 595,
-        T = 596,
-        TABLE_NAME = 597,
-        TEMPORARY = 598,
-        TIES = 599,
-        TIMEOUT = 600, // Pyrrho
-        TOP_LEVEL_COUNT = 601,
-        TRANSACTION = 602,
-        TRANSACTION_ACTIVE = 603,
-        TRANSACTIONS_COMMITTED = 604,
-        TRANSACTIONS_ROLLED_BACK = 605,
-        TRANSFORM = 606,
-        TRANSFORMS = 607,
-        TRIGGER_CATALOG = 608,
-        TRIGGER_NAME = 609,
-        TRIGGER_SCHEMA = 610, // TYPE  is 267 but is not a reserved word
-        TYPE_URI = 611, // Pyrrho
-        UNBOUNDED = 612,
-        UNCOMMITTED = 613,
-        UNDER = 614,
-        UNDO = 615,
-        UNNAMED = 616,
-        URL = 617,  // Pyrrho 7
-        USAGE = 618,
-        USER_DEFINED_TYPE_CATALOG = 619,
-        USER_DEFINED_TYPE_CODE = 620,
-        USER_DEFINED_TYPE_NAME = 621,
-        USER_DEFINED_TYPE_SCHEMA = 622,
-        VIEW = 623,
-        WORK = 624,
-        WRITE = 625,
-        X = 626, // Pyrrho 4.5
-        Y = 627, // Pyrrho 4.5
-        ZONE = 628
+        METADATA = 503, // Pyrrho 7
+        MIME = 504, // Pyrrho 7
+        MINVALUE = 505,
+        MONOTONIC = 506, // Pyrrho 5.7
+        MORE = 507,
+        MUMPS = 508,
+        NAME = 509,
+        NAMES = 510,
+        NESTING = 511,
+        NEXT = 512,
+        NFC = 513,
+        NFD = 514,
+        NFKC = 515,
+        NFKD = 516,
+        NORMALIZED = 517,
+        NULLABLE = 518,
+        NULLS = 519,
+        NUMBER = 530,
+        OCCURRENCE = 521,
+        OCTETS = 522,
+        OPTION = 523,
+        OPTIONS = 524,
+        ORDERING = 525,
+        ORDINALITY = 526,
+        OTHERS = 527,
+        OUTPUT = 528,
+        OVERRIDING = 529,
+        OWNER = 530, // Pyrrho
+        P = 531,
+        PAD = 532,
+        PARAMETER_MODE = 533,
+        PARAMETER_NAME = 534,
+        PARAMETER_ORDINAL_POSITION = 535,
+        PARAMETER_SPECIFIC_CATALOG = 536,
+        PARAMETER_SPECIFIC_NAME = 537,
+        PARAMETER_SPECIFIC_SCHEMA = 538,
+        PARTIAL = 539,
+        PASCAL = 540,
+        PATH = 541,
+        PIE = 542, // Pyrrho 4.5
+        PLACING = 543,
+        PL1 = 544,
+        POINTS = 545, // Pyrrho 4.5
+        PRECEDING = 546,
+        PRESERVE = 547,
+        PRIOR = 548,
+        PRIVILEGES = 549,
+        PROFILING = 550, // Pyrrho
+        PROVENANCE = 551, // Pyrrho
+        PUBLIC = 552,
+        READ = 553,
+        REFERRED = 554, // 5.2
+        REFERS = 555, // 5.2
+        RELATIVE = 556,
+        REPEATABLE = 557,
+        RESPECT = 558,
+        RESTART = 559,
+        RESTRICT = 560,
+        RETURNED_CARDINALITY = 561,
+        RETURNED_LENGTH = 562,
+        RETURNED_OCTET_LENGTH = 563,
+        RETURNED_SQLSTATE = 564,
+        ROLE = 565,
+        ROUTINE = 566,
+        ROUTINE_CATALOG = 567,
+        ROUTINE_NAME = 568,
+        ROUTINE_SCHEMA = 569,
+        ROW_COUNT = 570,
+        SCALE = 571,
+        SCHEMA = 572,
+        SCHEMA_NAME = 573,
+        SCOPE_CATALOG = 574,
+        SCOPE_NAME = 575,
+        SCOPE_SCHEMA = 576,
+        SECTION = 577,
+        SECURITY = 578,
+        SELF = 579,
+        SEQUENCE = 580,
+        SERIALIZABLE = 581,
+        SERVER_NAME = 582,
+        SESSION = 583,
+        SETS = 584,
+        SIMPLE = 585,
+        SIZE = 586,
+        SOURCE = 587,
+        SPACE = 588,
+        SPECIFIC_NAME = 589,
+        SQLAGENT = 590, // Pyrrho 7
+        STANDALONE = 591, // vol 14
+        STATE = 592,
+        STATEMENT = 593,
+        STRUCTURE = 594,
+        STYLE = 595,
+        SUBCLASS_ORIGIN = 596,
+        T = 597,
+        TABLE_NAME = 598,
+        TEMPORARY = 599,
+        TIES = 600,
+        TIMEOUT = 601, // Pyrrho
+        TOP_LEVEL_COUNT = 602,
+        TRANSACTION = 603,
+        TRANSACTION_ACTIVE = 604,
+        TRANSACTIONS_COMMITTED = 605,
+        TRANSACTIONS_ROLLED_BACK = 606,
+        TRANSFORM = 607,
+        TRANSFORMS = 608,
+        TRIGGER_CATALOG = 609,
+        TRIGGER_NAME = 610,
+        TRIGGER_SCHEMA = 611, // TYPE  is 267 but is not a reserved word
+        TYPE_URI = 612, // Pyrrho
+        UNBOUNDED = 613,
+        UNCOMMITTED = 614,
+        UNDER = 615,
+        UNDO = 616,
+        UNNAMED = 617,
+        URL = 618,  // Pyrrho 7
+        USAGE = 619,
+        USER_DEFINED_TYPE_CATALOG = 620,
+        USER_DEFINED_TYPE_CODE = 621,
+        USER_DEFINED_TYPE_NAME = 622,
+        USER_DEFINED_TYPE_SCHEMA = 623,
+        VIEW = 624,
+        WORK = 625,
+        WRITE = 626,
+        X = 627, // Pyrrho 4.5
+        Y = 628, // Pyrrho 4.5
+        ZONE = 629
     }
     /// <summary>
     /// These are the underlying (physical) datatypes used  for values in the database
@@ -810,42 +811,57 @@ namespace Pyrrho.Common
 	}
     /// <summary>
     /// Row Version cookie (Sqlx.CHECK). See Laiho/Laux 2010.
-    /// Row Versions are about durable data; but experimentally we extend this notion for incomplete transactions.
     /// Check allows transactions to find out if another transaction has overritten the row.
-    /// Fields are modified only during commit serialisation
+    /// RVV is calculated only when required: see affected in Context
     /// </summary>
-    internal class Rvv : BTree<long,(long,long?)>,IComparable
+    internal class Rvv : CTree<long,CTree<long,long>>
     {
+        internal const long
+            RVV = -193; // Rvv
         internal new static Rvv Empty = new Rvv();
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="d">the local database if any</param>
-        /// <param name="t">the table defpos if local</param>
-        /// <param name="r">remote database if any</param>
-        /// <param name="df">the row defpos</param>
         Rvv() :base()
         { }
-        protected Rvv(BTree<long,(long,long?)> t) : base(t.root) { }
+        protected Rvv(CTree<long,CTree<long,long>> t) : base(t.root) { }
         public static Rvv operator+(Rvv r,(long,Level4.Cursor) x)
         {
             var (rp, cu) = x;
             return new Rvv(r + (rp, (cu._defpos, cu._ppos)));
         }
-        public static Rvv operator+(Rvv r,(long,long,long)x)
+        public static Rvv operator+(Rvv r,(long,(long,long))x)
         {
-            var (t, d, o) = x;
-            return new Rvv(r + (t, (d, o)));
+            var (t, p) = x;
+            var (d, o) = p;
+            return new Rvv(r + (t, (r[t]??CTree<long,long>.Empty)+(d, o)));
         }
         public static Rvv operator+(Rvv r,Rvv s)
         {
-            if (r == Empty)
+            if (r==null || r == Empty)
                 return s;
-            if (s == Empty)
+            if (s==null ||s == Empty)
                 return r;
-            var a = (BTree<long, (long, long?)>)r;
-            var b = (BTree<long, (long, long?)>)s;
-            return new Rvv(a + b); 
+            var a = (CTree<long, CTree<long, long>>)r;
+            var b = (CTree<long, CTree<long, long>>)s;
+            for (var bb=b.First();bb!=null;bb=bb.Next())
+            {
+                var k = bb.key();
+                var bt = bb.value();
+                if (a[k] is CTree<long, long> at)
+                {
+                    for (var cb = bt.First(); cb != null; cb = cb.Next())
+                    {
+                        var bk = cb.key();
+                        var bv = cb.value();
+                        if (at.Contains(bk))
+                            at += (bk, Math.Max(at[bk], bv));
+                        else
+                            at += (bk, bv);
+                    }
+                    a += (k, at); 
+                }
+                else
+                    a += (k, bt);
+            }
+            return new Rvv(a); 
         }
         /// <summary>
         /// Validate an RVV string
@@ -857,8 +873,8 @@ namespace Pyrrho.Common
             for (var b=First();b!=null;b=b.Next())
             {
                 var t = (Table)db.objects[b.key()];
-                var (d, o) = b.value();
-                if (t.tableRows[d]?.time != o)
+                for (var c=b.value().First();c!=null;c=c.Next())
+                if (t.tableRows[c.key()]?.ppos != c.value())
                     return false;
             }
             return true;
@@ -870,7 +886,7 @@ namespace Pyrrho.Common
             foreach(var t in ss)
             {
                 var tt = t.Split(',');
-                r += (long.Parse(tt[0]), long.Parse(tt[1]), long.Parse(tt[2]));
+                r += (long.Parse(tt[0]), (long.Parse(tt[1]), long.Parse(tt[2])));
             }
             return r;
         }
@@ -886,39 +902,14 @@ namespace Pyrrho.Common
             {
                 sb.Append(sc); sc = ";";
                 sb.Append(b.key()); sb.Append(",");
-                var (d, o) = b.value();
-                sb.Append(d); sb.Append(","); sb.Append(o);
+                for (var c = b.value().First(); c != null; c = c.Next())
+                {
+                    sb.Append(c.key()); sb.Append(","); 
+                    sb.Append(c.value());
+                }
             }
             return sb.ToString();
         }
-        /// <summary>
-        /// IComparable implementation
-        /// </summary>
-        /// <param name="obj"></param>
-        /// <returns></returns>
-        public int CompareTo(object obj)
-        {
-            var that = obj as Rvv;
-            if (that == null)
-                return 1;
-            int c = 0;
-            var tb = that.First();
-            var b = First();
-            for (; c==0 && b != null && tb!=null; b = b.Next(),tb=tb.Next())
-            {
-                c = b.key().CompareTo(tb.key());
-                if (c == 0)
-                    c = b.value().Item1.CompareTo(tb.value().Item1);
-                if (c == 0)
-                    c = b.value().Item2.Value.CompareTo(tb.value().Item2.Value);
-            }
-            if (b != null)
-                return 1;
-            if (tb != null)
-                return -1;
-            return c;
-        }
-
     }
     /// <summary>
     /// Supports the SQL2003 Date data type

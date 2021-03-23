@@ -101,8 +101,6 @@ namespace Pyrrho
             dict.Add("2D000", "Invalid transaction termination");
             dict.Add("2E104", "Database is read-only");
             dict.Add("2E105", "Invalid user for database {1}");
-            dict.Add("2E106", "This operation requires a single-database session");
-            dict.Add("2E108", "Stop time was specified, so database is read-only");
             dict.Add("2E111", "User {0} can access no columns of table {1}");
             dict.Add("2E201", "Transaction is not open");
             dict.Add("2E202", "A reader is already open");
@@ -266,6 +264,7 @@ namespace Pyrrho
             dict.Add("42171", "A table cannot be placed in a column");
             dict.Add("42172", "Identifier {0} already declared in this block");
             dict.Add("42173", "Method {0} has not been defined");
+            dict.Add("42174", "Unsupported rowset modification attempt");
             dict.Add("44000", "Check condition {0} fails");
             dict.Add("44001", "Domain check {0} fails for column {1} in table {2}");
             dict.Add("44002", "Table check {0} fails for table {1}");

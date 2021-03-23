@@ -178,19 +178,7 @@ namespace Pyrrho.Level3
         {
             if (defpos < wr.Length)
                 return this;
-            var r = ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
-            if (mem.Contains(TableExpression.Nuid))
-            { 
-                var nu = (long)mem[TableExpression.Nuid];
-                var nn = nu;
-                if (wr.rss.Contains(nu))
-                    nn = wr.rss[nu].defpos;
-                else if (wr.uids.Contains(nu))
-                    nn = wr.uids[nu];
-                if (nn != nu)
-                    r += (TableExpression.Nuid, nn);
-            }
-            return r;
+            return ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
         }
         internal static bool Calls(BList<long> ss,long defpos,Context cx)
         {
@@ -273,8 +261,12 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
         //    if (!cx.results.Contains(cs))
-        //        ((Query)cx.obs[cs]).RowSets(cx, BTree<long,RowSet.Finder>.Empty);
+        //        ((Query)cx.obs[cs]).RowSets(cx, CTree<long,RowSet.Finder>.Empty);
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, cs, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -352,6 +344,10 @@ namespace Pyrrho.Level3
             catch (Exception e) { throw e; }
             return act.SlideDown();
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, stms, VIC.OK | VIC.OV);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -384,7 +380,7 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(Context cx)
         {
             if (cx.exec is SelectStatement ss)
-                ((Query)cx.obs[ss.cs]).RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+                ((Query)cx.obs[ss.cs]).RowSets(cx, CTree<long, RowSet.Finder>.Empty);
             cx.unLex = true;
             var f = new Framing(cx);
             f.Relocate(cx);
@@ -403,6 +399,10 @@ namespace Pyrrho.Level3
         {
             cx.Install2(framing);
             return target.Obey(cx);
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            throw new DBException("2F003");
         }
         public override string ToString()
         {
@@ -481,9 +481,19 @@ namespace Pyrrho.Level3
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
         }
-        internal override BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        internal override CTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
         {
-            return BTree<long, RowSet.Finder>.Empty;
+            return CTree<long, RowSet.Finder>.Empty;
+        }
+        internal override bool LocallyConstant(Context cx, RowSet rs)
+        {
+            return false;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, init, VIC.OK | VIC.OV);
+            t = Scan(t, AssignmentStatement.Vbl, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -550,9 +560,17 @@ namespace Pyrrho.Level3
         {
             return cx.FindCx(defpos).values[defpos];
         }
-        internal override BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        internal override CTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
         {
-            return BTree<long, RowSet.Finder>.Empty;
+            return CTree<long, RowSet.Finder>.Empty;
+        }
+        internal override bool LocallyConstant(Context cx, RowSet rs)
+        {
+            return false; // might be the target of an assignment in the method body
+        }
+        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        {
+            return Eval(cx).ToString();
         }
         /// <summary>
         /// A readable version of the ProcParameter
@@ -630,6 +648,10 @@ namespace Pyrrho.Level3
             var cu = cx.obs[cs];
             cx.AddValue(cu, cu.Eval(cx));
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, cs, VIC.OK | VIC.OV);
         }
         public override string ToString()
         {
@@ -712,6 +734,10 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             return cx.obs[action].Calls(defpos, cx);
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t,action, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -811,6 +837,10 @@ namespace Pyrrho.Level3
             }
             catch (Exception e) { throw e; }
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t,hdlr.defpos,VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -933,6 +963,12 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, val, VIC.OK | VIC.OV);
+            t = Scan(t, vbl, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1026,6 +1062,13 @@ namespace Pyrrho.Level3
                 cx.values+=(list[j],r[j]);
             return cx;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, lhsType, VIC.OK | VIC.OV);
+            t = Scan(t, list, VIC.OK | VIC.OV);
+            t = Scan(t, rhs, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1101,6 +1144,10 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             return cx;
 		}
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t,ret,VIC.OK|VIC.OV);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1115,12 +1162,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             Else = -111, // BList<long> Executable
-            Operand = -112, // long SqlValue
+            _Operand = -112, // long SqlValue
             Whens = -113; // BList<long> WhenPart
         /// <summary>
         /// The test expression
         /// </summary>
-        public long operand => (long)(mem[Operand]??-1L);
+        public long operand => (long)(mem[_Operand]??-1L);
         /// <summary>
         /// A list of when parts
         /// </summary>
@@ -1153,7 +1200,7 @@ namespace Pyrrho.Level3
                 return this;
             var r = (SimpleCaseStatement)base._Relocate(wr);
             r += (Else, wr.Fix(els));
-            r += (Operand, wr.Fixed(operand).defpos);
+            r += (_Operand, wr.Fixed(operand).defpos);
             r += (Whens, wr.Fix(whens));
             return r;
         }
@@ -1165,7 +1212,7 @@ namespace Pyrrho.Level3
             r += (Else, ne);
             var no = cx.obuids[operand] ?? operand;
             if (no!=operand)
-            r += (Operand, no);
+            r += (_Operand, no);
             var nw = cx.Fix(whens);
             if (nw!=whens)
             r += (Whens, nw);
@@ -1190,6 +1237,13 @@ namespace Pyrrho.Level3
                 if (((SqlValue)cx.obs[operand]).Matches(cx)==true)
                     return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, els, VIC.OK | VIC.OV);
+            t = Scan(t, operand, VIC.OK | VIC.OV);
+            t = Scan(t, whens, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -1285,6 +1339,12 @@ namespace Pyrrho.Level3
             }
 			return ObeyList(els,cx);
 		}
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, whens, VIC.OK | VIC.OV);
+            t = Scan(t, els, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1374,6 +1434,12 @@ namespace Pyrrho.Level3
             }
             a.val = TBool.False;
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, cond, VIC.OK | VIC.OV);
+            t = Scan(t, stms, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -1482,6 +1548,14 @@ namespace Pyrrho.Level3
                     && ((SqlValue)cx.obs[f.search]).Matches(cx)==true)
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, search, VIC.OK | VIC.OV);
+            t = Scan(t, then, VIC.OK | VIC.OV);
+            t = Scan(t, elsif, VIC.OK | VIC.OV);
+            t = Scan(t, els, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -1643,6 +1717,13 @@ namespace Pyrrho.Level3
         {
             return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, loop, VIC.OK | VIC.OV);
+            t = Scan(t, search, VIC.OK | VIC.OV);
+            t = Scan(t, what, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1740,6 +1821,12 @@ namespace Pyrrho.Level3
             }
             cx = act.SlideDown(); 
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, loop, VIC.OK | VIC.OV);
+            t = Scan(t, what, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -1872,6 +1959,12 @@ namespace Pyrrho.Level3
             }
             return act.SlideDown();
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, loop, VIC.OK | VIC.OV);
+            t = Scan(t, stms, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1976,7 +2069,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var da = ((Query)cx.obs[sel]).RowSets(cx,BTree<long,RowSet.Finder>.Empty);
+            var da = ((Query)cx.obs[sel]).RowSets(cx,CTree<long,RowSet.Finder>.Empty);
             if (da == null)
                 return cx;
             cx.data += (sel, da);
@@ -1995,6 +2088,14 @@ namespace Pyrrho.Level3
                     ac.signal.Throw(cx);
             }
             return ac.SlideDown();
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, cursor, VIC.OK | VIC.OV);
+            t = Scan(t, loop, VIC.OK | VIC.OV);
+            t = Scan(t, sel, VIC.OK | VIC.OV);
+            t = Scan(t, stms, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -2069,10 +2170,15 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var c = (SqlCursor)cx.obs[cursor];
-            var rs = ((Query)cx.obs[c.spec]).RowSets(cx,BTree<long, RowSet.Finder>.Empty);
+            var rs = ((Query)cx.obs[c.spec]).RowSets(cx,CTree<long, RowSet.Finder>.Empty);
             cx.data += (c.spec, rs);
             return cx;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, cursor, VIC.OK | VIC.OV);
+        }
+
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2135,6 +2241,10 @@ namespace Pyrrho.Level3
         {
             cx.data += (defpos,new EmptyRowSet(defpos,cx,cx.data[defpos]?.domain));
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, cursor, VIC.OK | VIC.OV);
         }
         public override string ToString()
         {
@@ -2276,6 +2386,13 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, cursor, VIC.OK | VIC.OV);
+            t = Scan(t, outs, VIC.OK | VIC.OV);
+            t = Scan(t, where, VIC.OK | VIC.OV);
+            return t;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2407,6 +2524,13 @@ namespace Pyrrho.Level3
             r = (CallStatement)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, parms, VIC.OK | VIC.OV);
+            t = Scan(t, procdefpos, VIC.OK | VIC.OV);
+            t = Scan(t, var, VIC.OK | VIC.OV);
+            return t;
         }
         public override string ToString()
         {
@@ -2569,6 +2693,10 @@ namespace Pyrrho.Level3
             }
             throw e;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, setlist, VIC.OK|VIC.OV);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2652,6 +2780,10 @@ namespace Pyrrho.Level3
                 cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
             return cx;
         }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t,List,VIC.OK|VIC.OV);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2733,7 +2865,7 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            var sr = ((Query)cx.obs[sel]).RowSets(cx, BTree<long, RowSet.Finder>.Empty);
+            var sr = ((Query)cx.obs[sel]).RowSets(cx, CTree<long, RowSet.Finder>.Empty);
             var rb = sr.First(cx);
             a.AddValue(this, rb);
             if (rb != null)
@@ -2742,6 +2874,10 @@ namespace Pyrrho.Level3
             else
                 a.NoData();
             return cx;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, outs, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {

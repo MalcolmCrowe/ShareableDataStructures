@@ -42,22 +42,6 @@ namespace Pyrrho.Level4
             mt = new MTree(new TreeInfo(ks,dt,d,n));
             rows = BList<Cursor>.Empty;
         }
-        internal RTree(long dp,Context cx,CList<long>ks,Domain dt,BList<Cursor> rs, TreeBehaviour d= TreeBehaviour.Disallow,
-            TreeBehaviour n = TreeBehaviour.Allow)
-        {
-            defpos = dp;
-            domain = dt + (Domain.RowType, ks);
-            _cx = cx;
-            var m = new MTree(new TreeInfo(ks, dt, d, n));
-            var i = 0;
-            for (var b=rs.First();b!=null;b=b.Next(),i++)
-            {
-                var rw = b.value();
-                MTree.Add(ref m, new PRow(new TRow(dt+(Domain.RowType,ks), rw.values)), i);
-            }
-            mt = m;
-            rows = rs;
-        }
         internal RTree(long dp, Context cx, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
              TreeBehaviour n = TreeBehaviour.Allow)
         {
@@ -84,11 +68,6 @@ namespace Pyrrho.Level4
             if (tb == TreeBehaviour.Allow)
                 t = new RTree(t.defpos,t._cx,t.keyType, t.domain, m, t.rows + v);
             return tb;
-        }
-        public static RTree operator+(RTree t,(TRow,Cursor)x)
-        {
-            Add(ref t, x.Item1, x.Item2);
-            return t;
         }
         public RTreeBookmark First(Context cx)
         {
@@ -121,7 +100,7 @@ namespace Pyrrho.Level4
         internal readonly MTreeBookmark _mb;
         internal readonly TRow _key;
         RTreeBookmark(Context cx,RTree rt,int pos,MTreeBookmark mb,Cursor rr)
-            :base(cx,rt.defpos,pos,rr._defpos,rr._ppos,rr)
+            :base(cx,rt.defpos,rt.domain,pos,rr._defpos,rr._ppos,rr)
         { 
             _rt = rt; _mb = mb; 
             _key = new TRow(new Domain(Sqlx.ROW,cx,_rt.keyType), mb.key());
@@ -129,10 +108,6 @@ namespace Pyrrho.Level4
         RTreeBookmark(Context cx,RTree rt, int pos, MTreeBookmark mb) 
             :this(cx,rt,pos,mb,rt.rows[(int)(mb.Value()??-1L)])
         { }
-        protected override Cursor New(Context cx, long p, TypedValue v)
-        {
-            throw new NotImplementedException();
-        }
         public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
         {
             if (mb!=null && mb.Value().HasValue)
@@ -143,20 +118,14 @@ namespace Pyrrho.Level4
         {
             for (var mb = rt.mt.First(); mb != null; mb = mb.Next())
                 if (mb.Value().HasValue)
-                {
-            //        var rvv = rt.rows[(int)mb.Value().Value].rvv;
                     return new RTreeBookmark(cx,rt, 0, mb);
-                }
             return null;
         }
         internal static RTreeBookmark New(RTree rt,Context cx)
         {
             for (var mb = rt.mt.Last(); mb != null; mb = mb.Previous())
                 if (mb.Value().HasValue)
-                {
-                    //        var rvv = rt.rows[(int)mb.Value().Value].rvv;
                     return new RTreeBookmark(cx, rt, 0, mb);
-                }
             return null;
         }
         protected override Cursor _Next(Context cx)
@@ -168,11 +137,7 @@ namespace Pyrrho.Level4
                 if (mb == null)
                     return null;
                 if (mb.Value().HasValue)
-                {
-           //         var rvv = _rt.rows[(int)mb.Value().Value].rvv;
-           //         var d = (rvv != null) ? rvv.def : 0;
                     return new RTreeBookmark(cx,_rt, _pos+1,mb);
-                }
             }
         }
         protected override Cursor _Previous(Context cx)
@@ -191,7 +156,7 @@ namespace Pyrrho.Level4
                 }
             }
         }
-        internal override TableRow Rec()
+        internal override BList<TableRow> Rec()
         {
             throw new NotImplementedException();
         }

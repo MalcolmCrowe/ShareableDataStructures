@@ -31,10 +31,11 @@ namespace Pyrrho.Level3
     UnionDateNumeric,Exception,Period,
     Document,DocArray,ObjectId,JavaScript,ArgList, // Pyrrho 5.1
     TableType,Row,Delta,Position,Role,
+    Metadata, // Pyrrho v7
     RdfString,RdfBool,RdfInteger,RdfInt,RdfLong,RdfShort,RdfByte,RdfUnsignedInt,
     RdfUnsignedLong,RdfUnsignedShort,RdfUnsignedByte,RdfNonPositiveInteger,
     RdfNonNegativeInteger,RdfPositiveInteger,RdfNegativeInteger,RdfDecimal,
-    RdfDouble, RdfFloat,RdfDate,RdfDateTime;
+    RdfDouble, RdfFloat,RdfDate,RdfDateTime,Rvv; // Rvv is V7 validator type
         /// <summary>
         /// A new system Union type
         /// </summary>
@@ -61,7 +62,6 @@ namespace Pyrrho.Level3
             DefaultString = -75, // string
             Descending = -76, // Sqlx
             Display = -177, // int
-            DomDefPos = -189, // long
             Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Iri = -79, // string
@@ -118,7 +118,9 @@ namespace Pyrrho.Level3
             Row = new StandardDataType(Sqlx.ROW);
             Delta = new StandardDataType(Sqlx.INCREMENT);
             Role = new StandardDataType(Sqlx.ROLE);
+            Rvv = new StandardDataType(Sqlx.CHECK);
             Position = new StandardDataType(Sqlx.POSITION);
+            Metadata = new StandardDataType(Sqlx.METADATA);
         }
         internal static void RdfTypes()
         {
@@ -258,7 +260,7 @@ namespace Pyrrho.Level3
             for (var b = cs.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                rs += (p, cx.obs[p].domain);
+                rs += (p, (cx.obs[p]??(DBObject)cx.db.objects[p]).domain);
             }
             var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs);
             if (ds != 0)
@@ -294,19 +296,10 @@ namespace Pyrrho.Level3
                 m += (RowType, rt + x.Item1);
             return (Domain)d.New(m + (Representation, d.representation + x));
         }
-        public static Domain operator+(Domain d,BTree<long,long>cm)
+        public static Domain operator+(Domain d,Domain a)
         {
-            var rs = d.representation;
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                var cp = b.key();
-                if (cm.Contains(cp))
-                {
-                    var np = cm[cp];
-                    rs = rs - cp + (np, b.value());
-                }
-            }
-            return d + (Representation, rs);
+            return d + (Representation, d.representation+a.representation)
+                + (RowType, d.rowType + a.rowType);
         }
         public static Domain operator-(Domain d,long x)
         {
@@ -434,7 +427,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(Abbreviation)) { sb.Append(' '); sb.Append(abbrev); }
             if (mem.Contains(Charset) && charSet != CharSet.UCS)
             { sb.Append(" CharSet="); sb.Append(charSet); }
-            if (mem.Contains(Culture) && culture != CultureInfo.InvariantCulture)
+            if (mem.Contains(Culture) && culture.Name != "")
             { sb.Append(" Culture="); sb.Append(culture.Name); }
             if (!defaultValue.IsNull)
             { sb.Append(" Default="); sb.Append(defaultValue); }
@@ -564,7 +557,7 @@ namespace Pyrrho.Level3
                             var ix = rdr.GetInt();
                             var h = (Common.Delta.Verb)rdr.ReadByte();
                             var nm = rdr.GetString();
-                            r.details.Add(new Delta.Action(ix, h, nm, Get(log,rdr,pp)));
+                            r=new Delta(r.details+new Delta.Action(ix, h, nm, Get(log,rdr,pp)));
                         }
                         return r;
                     }
@@ -647,14 +640,26 @@ namespace Pyrrho.Level3
             }
             throw new DBException("3D000").ISO();
         }
-
+        internal DBObject ObjFor(Context cx,string c)
+        {
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                if (p >= Transaction.TransPos && cx.obs[p] is SqlValue ob && ob.name == c)
+                    return ob;
+                if (cx.db.role.infos[p] is ObInfo oi && oi.name == c)
+                    return (DBObject)cx.db.objects[p];
+            }
+            return null;
+        }
         internal long ColFor(Context context, string c)
         {
             for (var b=rowType.First();b!=null;b=b.Next())
             {
-                var oi = (ObInfo)context.db.role.infos[b.value()];
-                if (oi.name == c)
-                    return b.value();
+                var p = b.value();
+                if ((p >= Transaction.TransPos && context.obs[p] is SqlValue ob && ob.name == c)
+                    || (context.db.role.infos[p] is ObInfo oi && oi.name==c))
+                        return p;
             }
             return -1L;
         }
@@ -785,6 +790,7 @@ namespace Pyrrho.Level3
                     case Sqlx.BLOB: wr.WriteByte((byte)DataType.Blob); break;
                     case Sqlx.BOOLEAN: wr.WriteByte((byte)DataType.Boolean); break;
                     case Sqlx.LEVEL:
+                    case Sqlx.METADATA:
                     case Sqlx.CHAR: wr.WriteByte((byte)DataType.String); break;
                     case Sqlx.DOCUMENT: goto case Sqlx.BLOB;
                     case Sqlx.DOCARRAY: goto case Sqlx.BLOB;
@@ -827,9 +833,10 @@ namespace Pyrrho.Level3
                 case Sqlx.INCREMENT:
                     {
                         var d = tv as Delta;
-                        wr.PutInt(d.details.Count);
-                        foreach (var de in d.details)
+                        wr.PutInt((int)d.details.Count);
+                        for (var b=d.details.First();b!=null;b=b.Next())
                         {
+                            var de = b.value();
                             wr.PutInt(de.ix);
                             wr.WriteByte((byte)de.how);
                             wr.PutString(de.name.ToString());
@@ -968,6 +975,12 @@ namespace Pyrrho.Level3
                                 et.Put(a.key(), wr);
                         break;
                     }
+                case Sqlx.METADATA:
+                    {
+                        var m = (TMetadata)tv;
+                        wr.PutString(ObInfo.Metadata(m.md));
+                        break;
+                    }
             }
         }
         protected static int Comp(IComparable a,IComparable b)
@@ -1100,9 +1113,9 @@ namespace Pyrrho.Level3
             if (orderflags != Common.OrderCategory.None)
             {
                 var cx = new Context(Context._system);
-                var sa = new SqlLiteral(cx.nextHeap++,cx,a);
+                var sa = new SqlLiteral(cx.GetUid(),cx,a);
                 cx.Add(sa);
-                var sb = new SqlLiteral(cx.nextHeap++,cx,b);
+                var sb = new SqlLiteral(cx.GetUid(),cx,b);
                 cx.Add(sb);
                 if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
                 {
@@ -1447,6 +1460,9 @@ namespace Pyrrho.Level3
                 return new TSensitive(this, elType.Parse(new Scanner(off,s.ToCharArray(),0)));
             if (kind == Sqlx.DOCUMENT)
                 return new TDocument(s);
+            if (kind== Sqlx.METADATA)
+                return new TMetadata(new Parser(Database._system)
+                    .ParseMetadata(s,(int)off,Sqlx.VIEW));
             return Parse(new Scanner(off,s.ToCharArray(), 0));
         }
         public virtual TypedValue Parse(long off,string s, string m, Context cx)
@@ -2526,6 +2542,7 @@ namespace Pyrrho.Level3
                                 case Sqlx.TIMESTAMP: str = ((DateTime)(v.Val())).ToString(culture); break;
                                 case Sqlx.DATE: str = ((Date)v.Val()).date.ToString(culture); break;
                                 case Sqlx.CHAR: str = (string)v.Val(); break;
+                                case Sqlx.CHECK: str = ((Rvv)v.Val()).ToString(); break;
                                 default: //str = v.ToString(); break;
                                     throw new DBException("22005", vt.kind, vk);
                             }
@@ -2687,7 +2704,7 @@ namespace Pyrrho.Level3
                             var cn = (cx.obs[p] is SqlValue sv) ? sv.name
                                 : (ro.infos[p] is ObInfo ci) ? ci.name
                                 : null;
-                            if (cn!=null)
+                            if (cn!=null && d.Contains(cn))
                             {
                                 var cd = representation[p];
                                 var co = d[cn];
@@ -2704,7 +2721,10 @@ namespace Pyrrho.Level3
                             vs += (Provenance, new TChar(ds));
                         if (d["%classification"] is string cl)
                             vs += (Classification, TLevel.New(Level.Parse(cl)));
-                        return new TRow(this, vs);
+                        var r = new TRow(this, vs);
+                        if (d.Contains("$check"))
+                            r += (Common.Rvv.RVV, new TRvv(cx, vs));
+                        return r;
                     }
                     break;
                 case Sqlx.TABLE:
@@ -3381,32 +3401,6 @@ namespace Pyrrho.Level3
                 r += (RowType, nt);
             if (mem.Contains(Default))
                 r += (Default, defaultValue.Fix(cx));
-            return r;
-        }
-        internal Domain Instance(Context cx)
-        {
-            var r = this;
-            var co = CTree<long, bool>.Empty;
-            for (var b = constraints.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                co += (cx.obuids[k] ?? k, true);
-            }
-            r += (Constraints, co);
-            var rp = CTree<long, Domain>.Empty;
-            for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                rp += (cx.obuids[k] ?? k, b.value());
-            }
-            r += (Representation, rp);
-            var nt = CList<long>.Empty;
-            for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                nt += cx.obuids[p] ?? p;
-            }
-            r += (RowType, nt);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)

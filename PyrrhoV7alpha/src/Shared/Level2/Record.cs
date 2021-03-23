@@ -55,7 +55,6 @@ namespace Pyrrho.Level2
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
                 if (!Committed(wr,b.key())) return b.key();
             if (!Committed(wr,subType)) return subType;
-            if (!Committed(wr, triggeredAction)) return triggeredAction;
             return -1;
         }
         public Record(Table tb, CTree<long, TypedValue> fl, long pp, Context cx)
@@ -116,7 +115,7 @@ namespace Pyrrho.Level2
         {
             wr.PutLong(tabledefpos);
             PutFields(wr);
-            //         database.SerialiseIndexConstraint(indC,refC,ppos,r);
+            wr.cx.affected = (wr.cx.affected ?? Rvv.Empty) + (tabledefpos, (defpos, ppos));
             base.Serialise(wr);
         }
         /// <summary>
@@ -127,7 +126,6 @@ namespace Pyrrho.Level2
         {
             tabledefpos = rdr.GetLong();
             GetFields(rdr);
-            //         buf.DeserialiseIndexConstraint(ref indC, ref refC);
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -210,7 +208,7 @@ namespace Pyrrho.Level2
             for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
             {
                 var x = (Index)cx.db.objects[xb.value()];
-                var k = x.MakeKey(now);
+                var k = x.MakeKey(now.vals);
                 if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                     x.flags.HasFlag(PIndex.ConstraintType.Unique))
                     && (x.rows?.Contains(k)==true))

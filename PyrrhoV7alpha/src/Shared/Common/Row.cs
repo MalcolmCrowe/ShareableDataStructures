@@ -110,7 +110,7 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal virtual string ToString(Context cx)
+        internal virtual string ToString(CTree<string, long> cs, Context cx)
         {
             return ToString();
         }
@@ -372,9 +372,9 @@ namespace Pyrrho.Common
         {
             return value;
         }
-        internal override string ToString(Context cx)
+        internal override string ToString(CTree<string,long> cs,Context cx)
         {
-            return "'" + base.ToString(cx) + "'";
+            return "'" + base.ToString() + "'";
         }
         internal override object Val()
         {
@@ -1118,10 +1118,23 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TRvv : TypedValue
     {
-        internal Rvv rvv;
-        internal TRvv(Context cx) : base (Domain.Char)
+        internal readonly Rvv rvv;
+        internal TRvv(Context cx) : base (Domain.Rvv)
         {
             rvv = cx.data[cx.result]._Rvv(cx);
+        }
+        internal TRvv(Rvv r) : base(Domain.Rvv)
+        {
+            rvv = r;
+        }
+        internal TRvv(Context cx,CTree<long,TypedValue>vs) : base(Domain.Rvv)
+        {
+            var r = Rvv.Empty;
+            var dp = vs[DBObject.Defpos]?.ToLong() ?? -1L;
+            var pp = vs[DBObject.LastChange]?.ToLong() ?? -1L;
+            if (dp>=0 && pp>=0)
+                r += (cx.result,(dp,pp));
+            rvv = r;
         }
         internal override TypedValue New(Domain t)
         {
@@ -1143,6 +1156,35 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             return rvv.ToString();
+        }
+    }
+    internal class TMetadata : TypedValue
+    {
+        public readonly BTree<Sqlx, object> md;
+        public TMetadata(BTree<Sqlx,object> m) : base(Domain.Metadata)
+        {
+            md = m;
+        }
+
+        public override bool IsNull => md==BTree<Sqlx,object>.Empty;
+
+        public override int _CompareTo(object obj)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal override object Val()
+        {
+            return md;
+        }
+        public override string ToString()
+        {
+            return ObInfo.Metadata(md);
         }
     }
     /// <summary>
@@ -1292,6 +1334,15 @@ namespace Pyrrho.Common
         {
             values = vs;
         }
+        public TRow(Domain dt, BTree<long, long> map, BTree<long, TypedValue> vs)
+            : base(dt)
+        {
+            var v = CTree<long, TypedValue>.Empty;
+            for (var b = map.First(); b != null; b = b.Next())
+                if (dt.representation.Contains(b.key()))
+                    v += (b.key(), vs[b.value()] ?? TNull.Value);
+            values = v;
+        }
         /// <summary>
         /// The following two methods assume that the given value list is from a RowSet source,
         /// and delivers the corresponding TRow for the rowSet.
@@ -1299,7 +1350,7 @@ namespace Pyrrho.Common
         /// <param name="oi"></param>
         /// <param name="map"></param>
         /// <param name="vs"></param>
-        public TRow(Domain dt, BTree<long, RowSet.Finder> map, BTree<long, TypedValue> vs)
+        public TRow(Domain dt, CTree<long, RowSet.Finder> map, BTree<long, TypedValue> vs)
             : base(dt)
         {
             var v = CTree<long, TypedValue>.Empty;
@@ -1347,11 +1398,11 @@ namespace Pyrrho.Common
         public static bool Assert2(Domain dst, Domain sce)
         {
             for (var b = dst.rowType.First(); b != null; b = b.Next())
-            {
-                var dm = sce.representation[sce.rowType[b.key()]];
-                if (!dst.representation[b.value()].CanTakeValueOf(dm))
-                    return false;
-            }
+                if (sce.representation[sce.rowType[b.key()]] is Domain dm)
+                {
+                    if (!dst.representation[b.value()].CanTakeValueOf(dm))
+                        return false;
+                }
             return true;
         }
         /// <summary>

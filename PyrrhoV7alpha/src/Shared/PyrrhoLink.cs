@@ -172,7 +172,7 @@ namespace Pyrrho
         {
             if (!isOpen)
                 Open();
-            var cmd = (PyrrhoCommand)CreateCommand();
+            var cmd = CreateCommand();
             cmd.CommandText = sql;
             return cmd.ExecuteNonQuery(ob);
         }
@@ -180,7 +180,7 @@ namespace Pyrrho
         {
             if (!isOpen)
                 Open();
-            var cmd = (PyrrhoCommand)CreateCommand();
+            var cmd = CreateCommand();
             cmd.CommandText = sql;
             return cmd.ExecuteNonQueryTrace(ob);
         }

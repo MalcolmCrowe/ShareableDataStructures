@@ -53,11 +53,11 @@ namespace Pyrrho.Level4
                   _Last(a,b)+(QuerySpecification.Distinct,d)+(Domain.Kind,op)
                   +(QueryExpression._Left,a.defpos)+(QueryExpression._Right,b.defpos))
         {
-            if (q.where.Count==0 && oper!=Sqlx.UNION && a.needed==BTree<long,Finder>.Empty
-                && b.needed==BTree<long,Finder>.Empty)
+            if (q.where.Count==0 && oper!=Sqlx.UNION && a.needed==CTree<long,Finder>.Empty
+                && b.needed==CTree<long,Finder>.Empty)
                 Build(cx);
         }
-        protected MergeRowSet(Context cx, MergeRowSet rs, BTree<long, Finder> nd, bool bt) 
+        protected MergeRowSet(Context cx, MergeRowSet rs, CTree<long, Finder> nd, bool bt) 
         :base(cx,rs,nd,bt)
         { }
         protected MergeRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -74,7 +74,7 @@ namespace Pyrrho.Level4
         {
             return new MergeRowSet(defpos, m);
         }
-        internal override RowSet New(Context cx,BTree<long,Finder> nd,bool bt)
+        internal override RowSet New(Context cx,CTree<long,Finder> nd,bool bt)
         {
             return new MergeRowSet(cx, this, nd, bt);
         }
@@ -91,7 +91,7 @@ namespace Pyrrho.Level4
                 return this;
             if (defpos >= Transaction.Analysing)
                 return (RowSet)New(m);
-            var rs = new MergeRowSet(cx.nextHeap++, m);
+            var rs = new MergeRowSet(cx.GetUid(), m);
             Fixup(cx, rs);
             return rs;
         }
@@ -127,14 +127,14 @@ namespace Pyrrho.Level4
             r += (QueryExpression._Right, wr.Fix(right));
             return r;
         }
-        internal override BTree<long, Finder> AllWheres(Context cx,BTree<long,Finder>nd)
+        internal override CTree<long, Finder> AllWheres(Context cx,CTree<long,Finder>nd)
         {
             nd = cx.Needs(nd,this,where);
             nd = cx.Needs(nd,this,cx.data[left].AllWheres(cx,nd));
             nd = cx.Needs(nd,this,cx.data[right].AllWheres(cx,nd));
             return nd;
         }
-        internal override BTree<long, Finder> AllMatches(Context cx,BTree<long,Finder>nd)
+        internal override CTree<long, Finder> AllMatches(Context cx,CTree<long,Finder>nd)
         {
             nd = cx.Needs(nd, this, matches);
             nd = cx.data[left].AllMatches(cx,nd);
@@ -188,7 +188,7 @@ namespace Pyrrho.Level4
         internal readonly MergeRowSet rowSet;
         internal readonly Cursor _left, _right;
         internal readonly bool _useLeft;
-        internal override TableRow Rec()
+        internal override BList<TableRow> Rec()
         {
             return _useLeft ? _left.Rec() : _right.Rec();
         }

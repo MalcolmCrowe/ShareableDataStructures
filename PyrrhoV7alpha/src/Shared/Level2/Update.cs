@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
             _defpos = old.defpos;
             if (t!=Type.Update1)
                 _classification = old.classification;
-            prev = old.prev;
+            prev = old.ppos;
         }
         public Update(ReaderBase rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, ReaderBase rdr) : base(t, rdr) 
@@ -100,14 +100,7 @@ namespace Pyrrho.Level2
                         var u = (Update)that;
                         if (defpos != u.defpos)
                             break;
-/*  Correction Aug 24 2020                     var ub = u.fields.PositionAt(0);
-                        var b = fields.PositionAt(0);
-                        for (; b != null && ub != null; b = b.Next(), ub = ub.Next())
-                            if (ub.key() != b.key() || b.value().CompareTo(ub.value()) != 0)
-                                return new DBException("40029", ppos, that, ct);
-                        if (ub != null || b != null) */
-                            return new DBException("40029", ppos, that, ct);
-/*                        break; */
+                        return new DBException("40029", ppos, that, ct);
                     }
                 case Type.Alter3:
                 case Type.Alter2:
@@ -141,8 +134,8 @@ namespace Pyrrho.Level2
             for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
             {
                 var x = (Index)cx.db.objects[xb.value()];
-                var ok = x.MakeKey(was);
-                var nk = x.MakeKey(now);
+                var ok = x.MakeKey(was.vals);
+                var nk = x.MakeKey(now.vals);
                 if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
                     && x.rows.Contains(nk))
                     throw new DBException("23000", "duplicate key", nk);

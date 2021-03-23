@@ -60,7 +60,7 @@ namespace Pyrrho.Level3
 		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
                   _Mem(p) + (Action,p.def) + (Name,p.name)
-                  + (Definer, ro.defpos)
+                  + (Definer, ro.defpos) + (_From, p.from)
                   + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
                   + (UpdateCols, p.cols) + (LastChange, p.ppos))
 		{ }
@@ -68,7 +68,7 @@ namespace Pyrrho.Level3
         { }
         static BTree<long,object> _Mem(PTrigger p)
         {
-            var r = BTree<long, object>.Empty;
+            var r = new BTree<long, object>(_Domain, p.domain);
             if (p.oldTable != null)
                 r += (OldTable, p.oldTable.iix);
             if (p.newTable != null)
@@ -92,6 +92,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" TrigType=");sb.Append(tgType);
             sb.Append(" On=");sb.Append(Uid(table));
+            sb.Append(" From: ");sb.Append(Uid(from));
             sb.Append(" Action:");sb.Append(Uid(action));
             if (cols != null)
             {
@@ -174,6 +175,9 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (Trigger)base.Fix(cx);
+            var dm = domain.Fix(cx);
+            if (dm != domain)
+                r += (_Domain, dm);
             var na = cx.obuids[action] ?? action;
             if (na != action)
                 r += (Action, na);

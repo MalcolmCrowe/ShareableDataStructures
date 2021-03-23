@@ -30,7 +30,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("2 November 2020 Repeatable tests");
+                Console.WriteLine("22 March 2021 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Ensure testdb not present in database folder for any of");
@@ -100,7 +100,8 @@ namespace Test
             CheckResults(1,2, "select * from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             conn.Act("delete from A where C=19");
             CheckResults(1, 3, "select * from A", "[{B:2,C:3,D:'TwentyThree'}]");
-            CheckExceptionNonQuery(1, 4, "insert into A values(2,3,'What?')","Integrity constraint: duplicate key A(2,3)");
+            conn.Act("insert into A(B,D) (select E.B,upper(E.D) from A E)");
+            CheckResults(1, 5, "table A", "[{B:2,C:3,D:'TwentyThree'},{B:2,C:4,D:'TWENTYTHREE'}]");
             Rollback();
         }
         void Test2(int t)
@@ -354,21 +355,21 @@ namespace Test
                 return;
             testing = 12;
             Begin();
- //           conn.Act("create table sce(a int,b char)");
-  //          conn.Act("insert into sce values(12,'Zodiac')");
- //         conn.Act("insert into sce values(13,'Bakers')");
- //          conn.Act("insert into sce values(14,'Fortnight')");
- //           conn.Act("create table dst(c int)");
- //           conn.Act("insert into dst (select a from sce where b<'H')");
- //          CheckResults(12, 1, "select * from dst", "[{C:13},{C:14}]");
- //           CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
- //              "[{A:12},{A:14}]");
- //           CheckResults(12, 3, "select * from dst where c in (select a from sce where b='Bakers')",
- //               "[{C:13}]");
- //           conn.Act("insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
-  //          CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
- //           conn.Act("insert into dst (select min(x.c)-3 from dst x)");
- //           CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
+            conn.Act("create table sce(a int,b char)");
+            conn.Act("insert into sce values(12,'Zodiac')");
+            conn.Act("insert into sce values(13,'Bakers')");
+            conn.Act("insert into sce values(14,'Fortnight')");
+            conn.Act("create table dst(c int)");
+            conn.Act("insert into dst (select a from sce where b<'H')");
+            CheckResults(12, 1, "select * from dst", "[{C:13},{C:14}]");
+            CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
+               "[{A:12},{A:14}]");
+            CheckResults(12, 3, "select * from dst where c in (select a from sce where b='Bakers')",
+                "[{C:13}]");
+            conn.Act("insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
+            CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
+            conn.Act("insert into dst (select min(x.c)-3 from dst x)");
+            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
             if (commit)
             {
                 conn.Prepare("Ins1", "insert into sce values(?,?)");
@@ -376,18 +377,25 @@ namespace Test
                 conn.Prepare("Del1", "delete from dst where c>?");
                 conn.Prepare("Ins2", "insert into dst (select char_length(b) from sce where a=?)");
                 conn.Prepare("Sel1", "select * from dst where c<?");
-              //  conn.Execute("Ins1", "" + 5, "'HalfDozen'");
-              //  conn.Execute("Upd1", "" + 6, "'HalfDozen'");
-             //   conn.Execute("Del1", "" + 10);
-              //  conn.Execute("Ins2", "" + 6);
+                conn.Execute("Ins1", "" + 5, "'HalfDozen'");
+                conn.Execute("Upd1", "" + 6, "'HalfDozen'");
+                conn.Execute("Del1", "" + 10);
+                conn.Execute("Ins2", "" + 6);
                 CheckExecuteResults(12, 6, "[{C:9}]", "Sel1", "" + 10);
             }
-            conn.Act("create table p(q int primary key,r char)");
-            conn.Act("create view v as select q,r as s from p");
+            conn.Act("create table p(q int primary key,r char,a int)");
+            conn.Act("create view v as select q,r as s,a from p");
             conn.Act("insert into v(s) values('Twenty'),('Thirty')");
             conn.Act("update v set s='Forty two' where q=1");
             CheckResults(12, 7, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
-            // tbd: update view of join 
+            conn.Act("delete from v where s='Thirty'");
+            conn.Act("insert into p(r) values('Fifty')");
+            conn.Act("create table t(s char,u int)");
+            conn.Act("insert into t values('Forty two',42),('Fifty',48)");
+            conn.Act("create view w as select * from t natural join v");
+            conn.Act("update w set u=50,a=21 where q=2");
+            CheckResults(12,8,"table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
+            CheckResults(12,9, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
             Rollback();
         }
         void Test13(int t)
@@ -540,9 +548,9 @@ namespace Test
             conn.Act("insert into xb values (0)");
             conn.Act("create trigger ruab before update on xa referencing old as mr new as nr " +
             "for each row begin atomic update xb set tot=tot-mr.b+nr.b; " +
-            "set nr.d='changed' end");
-            conn.Act("create trigger riab before insert on xa referencing new as nr " +
-            "for each row begin atomic set nr.c=nr.b+3; update xb set tot=tot+nr.b end");
+            "set d='changed' end");
+            conn.Act("create trigger riab before insert on xa " +
+            "for each row begin atomic set c=b+3; update xb set tot=tot+b end");
             conn.Act("insert into xa(b,d) values (7,'inserted')");
             conn.Act("insert into xa(b, d) values(9, 'Nine')");
             CheckResults(16,1,"table xa", "[{B:7,C:10,D:'inserted'},{B:9,C:12,D:'Nine'}]");

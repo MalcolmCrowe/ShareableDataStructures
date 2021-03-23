@@ -7,6 +7,7 @@ using System.Configuration;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using System.Xml.Schema;
+using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -61,7 +62,7 @@ namespace Pyrrho.Level3
         /// <param name="nm"></param>
         /// <param name="dt"></param>
         internal TableColumn(Context cx,Table tb,string nm,Domain dt)
-            :base(cx.nextHeap++,BTree<long,object>.Empty+(Name,nm)+(Table,tb.defpos)
+            :base(cx.GetUid(),BTree<long,object>.Empty+(Name,nm)+(Table,tb.defpos)
                  + (_Domain,dt))
         {
             cx.Add(this);
@@ -117,8 +118,8 @@ namespace Pyrrho.Level3
         internal override Basis Fix(Context cx)
         {
             var r = (TableColumn)base.Fix(cx);
-            var nd = domain.Fix(cx);
-            if (nd != domain)
+            var nd = (Domain)domain.Fix(cx);
+            if (nd.CompareTo(domain)!=0)
                 r += (_Domain, nd);
             var nt = cx.obuids[tabledefpos] ?? tabledefpos;
             if (nt != tabledefpos)
@@ -175,7 +176,7 @@ namespace Pyrrho.Level3
             if (tb == null)
                 return;
             var fm = new From(new Ident("",tr.uid), new Context(tr),tb);
-            for (var rb = fm.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx); 
+            for (var rb = fm.RowSets(cx, CTree<long, RowSet.Finder>.Empty).First(cx); 
                 rb != null; rb = rb.Next(cx))
             {
                 var v = rb[defpos];
@@ -206,7 +207,7 @@ namespace Pyrrho.Level3
             var sch = (SqlValue)cx.obs[c.search];
             var nf = (Query)new From(new Ident("", tr.uid), cx, tb).AddCondition(cx, sch.Disjoin(cx));
             nf = sch.Conditions(cx, nf, false, out _);
-            if (nf.RowSets(cx, BTree<long, RowSet.Finder>.Empty).First(cx) != null)
+            if (nf.RowSets(cx, CTree<long, RowSet.Finder>.Empty).First(cx) != null)
             {
                 var ti = cx.Inf(tabledefpos);
                 var ci = cx.Inf(defpos);
@@ -256,6 +257,10 @@ namespace Pyrrho.Level3
         internal override Database DropCheck(long ck, Database nd,long p)
         {
             return nd + (this + (Checks, constraints - ck),p);
+        }
+        internal override void Set(Context cx, TypedValue v)
+        {
+            cx.values += (defpos, v);
         }
         /// <summary>
         /// a readable version of the table column
@@ -411,6 +416,7 @@ namespace Pyrrho.Level3
         internal readonly long ppos;
         internal readonly long prev;
         internal readonly string provenance;
+        internal readonly long subType;
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
         public TableRow(Record rc, Database db)
@@ -418,6 +424,7 @@ namespace Pyrrho.Level3
             defpos = rc.defpos;
             time = rc.time; user = db.user.defpos; provenance = rc.provenance;
             tabledefpos = rc.tabledefpos;
+            subType = rc.subType;
             classification = rc.classification ?? Level.D;
             owner = db.user.defpos;
             ppos = rc.ppos;
@@ -430,6 +437,7 @@ namespace Pyrrho.Level3
             time = up.time; user = db.user.defpos; provenance = up.provenance;
             tabledefpos = up.tabledefpos;
             classification = lv ?? old.classification ?? Level.D;
+            subType = up.subType;
             ppos = up.ppos;
             prev = up.prev;
             var v = old.vals;
@@ -447,7 +455,32 @@ namespace Pyrrho.Level3
             tabledefpos = r.tabledefpos;
             classification = r.classification;
             ppos = r.ppos;
+            subType = r.subType;
             prev = r.prev;
+            vals = vs;
+        }
+        internal TableRow(Table tb,Cursor c)
+        {
+            defpos = c._defpos;
+            prev = c._defpos;
+            subType = c.dataType.defpos;
+            classification = tb.classification;
+            tabledefpos = tb.defpos;
+            vals = c.values;
+        }
+        protected TableRow(long vp,CTree<long,TypedValue> vs)
+        {
+            var dp = (long)vs[DBObject.Defpos].ToLong();
+            var pp = vs[DBObject.LastChange]?.ToLong() ?? 01L;
+            defpos = dp;
+            time = DateTime.Now.Ticks;
+            user = -1L;
+            provenance = "";
+            tabledefpos = vp;
+            subType = -1L;
+            classification = Level.D;
+            ppos = dp;
+            prev = pp;
             vals = vs;
         }
         public static TableRow operator+(TableRow r,(long,TypedValue)x)
@@ -457,6 +490,37 @@ namespace Pyrrho.Level3
         public static TableRow operator-(TableRow r,long p)
         {
             return new TableRow(r, r.vals -p);
+        }
+        internal virtual TableRow _Insert(Context cx, long np,
+            CTree<long,TypedValue> vs, long st, string prov, Level cl)
+        {
+            var tb = (Table)cx.obs[tabledefpos];
+            Record r;
+            if (cl != Level.D)
+                r = new Record3(tb, vs, st, cl, np, cx);
+            else if (prov != null)
+                r = new Record1(tb, vs, prov, np, cx);
+            else
+                r = new Record(tb, vs, np, cx);
+            cx.Add(r);
+            return new TableRow(r, cx.db);
+        }
+        internal virtual TableRow _Update(Context cx, long np, 
+            CTree<long,TypedValue> vs, SqlValue level)
+        {
+            var tb = (Table)cx.db.objects[tabledefpos];
+            var u = (level == null) ?
+                new Update(this, tb, vs, np, cx) :
+                new Update1(this, tb, vs,
+                    (Level)level.Eval(cx).Val(), np, cx);
+            cx.Add(u);
+            return new TableRow(u, cx.db);
+        }
+        internal virtual bool _Delete(Context cx)
+        {
+            var np = cx.db.nextPos;
+            cx.Add(new Delete1(this, np, cx));
+            return true;
         }
         //Handle restrict/cascade for Delete and Update
         internal Role Cascade(Database db, Context cx, Role ro, long p,
@@ -585,6 +649,293 @@ namespace Pyrrho.Level3
             sb.Append(" Prev=");sb.Append(DBObject.Uid(prev));
             sb.Append(" Time=");sb.Append(new DateTime(time));
             return sb.ToString();
+        }
+    }
+    internal class RemoteTableRow : TableRow 
+    {
+        internal readonly string url;
+        internal readonly RestRowSet rrs;
+        public RemoteTableRow(long dp,CTree<long,TypedValue> v,string u,RestRowSet r) 
+            : base(r.target,v+(DBObject.Defpos,new TInt(dp)))
+        {
+            url = u;
+            rrs = r;
+        }
+        internal override TableRow _Insert(Context cx, long np, CTree<long, TypedValue> vs, long st, string prov, Level cl)
+        {
+            var vw = (RestView)cx.obs[rrs.restView];
+            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
+                ?? vi.metadata[Sqlx.URL]
+                ?? vi.description);
+            string targetName = "";
+            var sql = new StringBuilder();
+            if (vi.metadata.Contains(Sqlx.URL))
+                url = sql.ToString();
+            else
+            {
+                var ss = url.Split('/');
+                if (ss.Length > 5)
+                    targetName = ss[5];
+                var ub = new StringBuilder(ss[0]);
+                for (var i = 1; i < ss.Length && i < 5; i++)
+                {
+                    ub.Append('/');
+                    ub.Append(ss[i]);
+                }
+                url = ub.ToString();
+            }
+            var rq = rrs.GetRequest(cx, url);
+            rq.Method = "POST";
+            if (vi.metadata.Contains(Sqlx.URL))
+            {
+                rq.Accept = vw.mime ?? "application/json";
+                var cm = "[{";
+                vs += vals;
+                for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
+                {
+                    sql.Append(cm); cm = ",";
+                    sql.Append('"'); sql.Append(b.key());
+                    sql.Append("\":"); sql.Append(vs[b.value()]);
+                }
+                sql.Append("}]");
+            }
+            else
+            {
+                rq.ContentType = "text/plain";
+                sql.Append("insert into "); sql.Append(targetName);
+                var cm = " values(";
+                for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
+                    if (vs[b.value()] is TypedValue tv)
+                    {
+                        sql.Append(cm); cm = ",";
+                        if (tv.dataType.kind == Sqlx.CHAR)
+                        {
+                            sql.Append("'");
+                            sql.Append(tv.ToString().Replace("'", "'''"));
+                            sql.Append("'");
+                        }
+                        else
+                            sql.Append(tv);
+                    }
+            }
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine(url + " " + sql.ToString());
+            var bs = Encoding.UTF8.GetBytes(sql.ToString());
+            rq.ContentLength = bs.Length;
+            try
+            {
+                var rqs = rq.GetRequestStream();
+                rqs.Write(bs, 0, bs.Length);
+                rqs.Close();
+            }
+            catch (WebException)
+            {
+                throw new DBException("3D002", url);
+            }
+            var rp = RestRowSet.GetResponse(rq);
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine("--> " + rp.StatusCode);
+            if (rp == null || rp.StatusCode != HttpStatusCode.OK)
+                throw new DBException("2E201");
+            var ld = rp.GetResponseHeader("LastData");
+            if (ld != null)
+                cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
+            var et = rp.GetResponseHeader("ETag");
+            var es = et.Split(',');
+            if (es.Length == 3)
+                cx.affected = (cx.affected ?? Rvv.Empty) 
+                    + (rrs.target, (long.Parse(es[1]), long.Parse(es[2])));
+            return new RemoteTableRow(np, vs, url, rrs);
+        }
+        internal override TableRow _Update(Context cx, long np, CTree<long, TypedValue> vs, SqlValue level)
+        {
+            var vw = (RestView)cx.obs[rrs.restView];
+            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
+                ?? vi.metadata[Sqlx.URL]
+                ?? vi.description);
+            string targetName = "";
+            var sql = new StringBuilder();
+            if (vi.metadata.Contains(Sqlx.URL))
+            {
+                sql.Append(url);
+                for (var b = rrs.matches.First(); b != null; b = b.Next())
+                {
+                    var kn = ((SqlValue)cx.obs[b.key()]).name;
+                    sql.Append("/"); sql.Append(kn);
+                    sql.Append("="); sql.Append(b.value());
+                }
+                url = sql.ToString();
+
+            }
+            else 
+            {
+                var ss = url.Split('/');
+                if (ss.Length > 5)
+                    targetName = ss[5];
+                var ub = new StringBuilder(ss[0]);
+                for (var i = 1; i < ss.Length && i < 5; i++)
+                {
+                    ub.Append('/');
+                    ub.Append(ss[i]);
+                }
+                url = ub.ToString();
+            }
+            var rq = rrs.GetRequest(cx, url);
+            if (vi.metadata.Contains(Sqlx.URL))
+            {
+                rq.Accept = vw.mime ?? "application/json";
+                rq.Method = "PUT";
+                var cm = "[{";
+                vs += vals;
+                for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
+                {
+                    sql.Append(cm); cm = ",";
+                    sql.Append('"'); sql.Append(b.key());
+                    sql.Append("\":"); sql.Append(vs[b.value()]);
+                }
+                sql.Append("}]");
+            }
+            else
+            {
+                rq.ContentType = "text/plain";
+                rq.Method = "POST";
+                sql.Append("update "); sql.Append(targetName);
+                var cm = " set ";
+                for (var b = rrs.assig.First(); b != null; b = b.Next())
+                {
+                    var ua = b.key();
+                    sql.Append(cm); cm = ",";
+                    sql.Append(((SqlValue)cx.obs[ua.vbl]).name); sql.Append("=");
+                    var tv = ((SqlValue)cx.obs[ua.val]).Eval(cx);
+                    if (tv.dataType.kind == Sqlx.CHAR)
+                    {
+                        sql.Append("'");
+                        sql.Append(tv.ToString().Replace("'", "'''"));
+                        sql.Append("'");
+                    }
+                    else
+                        sql.Append(tv);
+                }
+                if (rrs.where.Count > 0 || rrs.matches.Count > 0)
+                {
+                    var sw = rrs.WhereString(cx);
+                    if (sw.Length > 0)
+                    {
+                        sql.Append(" where ");
+                        sql.Append(sw);
+                    }
+                }
+            }
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine(url + " " + sql.ToString());
+            var bs = Encoding.UTF8.GetBytes(sql.ToString());
+            rq.ContentLength = bs.Length;
+            try
+            {
+                var rqs = rq.GetRequestStream();
+                rqs.Write(bs, 0, bs.Length);
+                rqs.Close();
+            }
+            catch (WebException)
+            {
+                throw new DBException("3D002", url);
+            }
+            var rp = RestRowSet.GetResponse(rq);
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine("--> " + rp.StatusCode);
+            if (rp == null || rp.StatusCode != HttpStatusCode.OK)
+                throw new DBException("2E201");
+            var ld = rp.GetResponseHeader("LastData");
+            if (ld != null)
+                cx.data += (rrs.defpos,rrs+ (Table.LastData, long.Parse(ld)));
+            var et = rp.GetResponseHeader("ETag");
+            var es = et.Split(',');
+            if (es.Length == 3)
+                cx.affected = (cx.affected ?? Rvv.Empty) 
+                    + (rrs.target, (long.Parse(es[1]), long.Parse(es[2])));
+            return new RemoteTableRow(np, vs, url, rrs);
+        }
+        internal override bool _Delete(Context cx)
+        {
+            var vw = (RestView)cx.obs[rrs.restView];
+            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
+                ?? vi.metadata[Sqlx.URL]
+                ?? vi.description);
+            string targetName = "";
+            var sql = new StringBuilder();
+            if (vi.metadata.Contains(Sqlx.URL))
+            {
+                sql.Append(url);
+                for (var b = rrs.matches.First(); b != null; b = b.Next())
+                {
+                    var kn = ((SqlValue)cx.obs[b.key()]).name;
+                    sql.Append("/"); sql.Append(kn);
+                    sql.Append("="); sql.Append(b.value());
+                }
+                url = sql.ToString();
+            }
+            else
+            {
+                var ss = url.Split('/');
+                if (ss.Length > 5)
+                    targetName = ss[5];
+                var ub = new StringBuilder(ss[0]);
+                for (var i = 1; i < ss.Length && i < 5; i++)
+                {
+                    ub.Append('/');
+                    ub.Append(ss[i]);
+                }
+                url = ub.ToString();
+            }
+            var rq = rrs.GetRequest(cx, url);
+            if (vi.metadata.Contains(Sqlx.URL))
+                rq.Method = "DELETE";
+            else
+            {
+                rq.ContentType = "text/plain";
+                rq.Method = "POST";
+                sql.Append("delete from "); sql.Append(targetName);
+                if (rrs.where.Count > 0 || rrs.matches.Count > 0)
+                {
+                    var sw = rrs.WhereString(cx);
+                    if (sw.Length > 0)
+                    {
+                        sql.Append(" where ");
+                        sql.Append(sw);
+                    }
+                }
+            }
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine(url + " " + sql.ToString());
+            var bs = Encoding.UTF8.GetBytes(sql.ToString());
+            rq.ContentLength = bs.Length;
+            try
+            {
+                var rqs = rq.GetRequestStream();
+                rqs.Write(bs, 0, bs.Length);
+                rqs.Close();
+            }
+            catch (WebException)
+            {
+                throw new DBException("3D002", url);
+            }
+            var rp = RestRowSet.GetResponse(rq);
+            if (PyrrhoStart.HTTPFeedbackMode)
+               Console.WriteLine("--> " + rp.StatusCode);
+            if (rp == null || rp.StatusCode != HttpStatusCode.OK)
+                throw new DBException("2E201");
+            var ld = rp.GetResponseHeader("LastData");
+            if (ld != null)
+                cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
+            var et = rp.GetResponseHeader("ETag");
+            var es = et.Split(',');
+            if (es.Length == 3)
+                cx.affected = (cx.affected ?? Rvv.Empty) 
+                    + (rrs.target, (long.Parse(es[1]), long.Parse(es[2])));
+            return true;
         }
     }
     internal class PeriodDef : TableColumn

@@ -309,11 +309,11 @@ namespace Pyrrho.Level3
                 sb.Append("  }\r\n");
             }
         }
-        internal string Metadata()
+        internal static string Metadata(BTree<Sqlx,object> md,string description="")
         {
             var sb = new StringBuilder();
             var cm = "";
-            for (var b = metadata.First(); b != null; b = b.Next())
+            for (var b = md.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = " "; 
                 switch (b.key())
@@ -358,7 +358,7 @@ namespace Pyrrho.Level3
             }
             if (mem.Contains(_Metadata))
             { 
-                sb.Append(" "); sb.Append(Metadata()); 
+                sb.Append(" "); sb.Append(Metadata(metadata,description)); 
             }
             if (mem.Contains(Domain.Iri))
             {

@@ -452,31 +452,40 @@ namespace Pyrrho.Level2
     internal abstract class Compiled : Physical
     {
         internal Framing framing;
-        protected Compiled(Type tp, long pp, Context cx,Framing frame) 
+        internal Domain domain;
+        protected Compiled(Type tp, long pp, Context cx,Framing frame,Domain dom) 
             : base(tp, pp, cx) 
         {
             framing = frame;
+            domain = dom;
         }
-        protected Compiled(Type tp, long pp, Context cx)
+        protected Compiled(Type tp, long pp, Context cx,Domain dm)
             : base(tp, pp, cx)
         {
+            domain = dm;
             Frame(cx);
         }
         protected Compiled(Type tp, ReaderBase rdr) :base(tp,rdr) 
         {
             framing = Framing.Empty; // fixed in OnLoad
+            domain = Domain.Content;
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
         {
             framing = (Framing)ph.framing._Relocate(wr);
+            domain = (Domain)ph.domain._Relocate(wr);
         }
         internal override void Relocate(Context cx)
         {
             framing.Install(cx);
             cx.SrcFix(ppos + 1);
             framing.Relocate(cx);
+            var of = framing;
             framing = (Framing)framing.Fix(cx);
+            domain = (Domain)domain.Fix(cx);
             framing.Install(cx);
+            if (of != framing)
+                Install(cx,cx.db.loadpos);
         }
         /// <summary>
         /// Fix heap uids and install compiled DBObjects from the context

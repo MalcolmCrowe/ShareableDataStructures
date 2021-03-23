@@ -25,7 +25,7 @@ namespace Pyrrho.Level4
         /// The source rowset for the grouping operation. 
         /// See section 6.2.1 of SourceIntro.doc for explanations of terms
         /// </summary>
-        internal long source => (long)(mem[From.Source]??-1L);
+        internal long source => (long)(mem[_Source]??-1L);
         internal CTree<long, bool> having =>
             (CTree<long, bool>)mem[TableExpression.Having]??CTree<long,bool>.Empty;
         internal CList<long> groupings =>
@@ -56,7 +56,7 @@ namespace Pyrrho.Level4
         static BTree<long,object> _Mem(Context cx,RowSet rs,long gr,BTree<long,bool>h)
         {
             var m = BTree<long, object>.Empty;
-            m += (From.Source,rs.defpos);
+            m += (_Source,rs.defpos);
             m += (TableExpression.Having,h);
             m += (TableExpression.Group, gr);
             var groups = (GroupSpecification)cx.obs[gr];
@@ -67,7 +67,7 @@ namespace Pyrrho.Level4
             m += (Table.LastData, rs.lastData);
             return m;
         }
-        protected GroupingRowSet(Context cx,GroupingRowSet rs, BTree<long,Finder> nd,
+        protected GroupingRowSet(Context cx,GroupingRowSet rs, CTree<long,Finder> nd,
             BList<TRow> rws,bool bt) :base(cx,rs+(_Rows,rws),nd,bt)
         { }
         protected GroupingRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -75,7 +75,7 @@ namespace Pyrrho.Level4
         {
             return new GroupingRowSet(defpos,m);
         }
-        internal override RowSet New(Context cx,BTree<long, Finder> nd, bool bt)
+        internal override RowSet New(Context cx,CTree<long, Finder> nd, bool bt)
         {
             return new GroupingRowSet(cx,this,nd,rows,bt);
         }
@@ -92,7 +92,7 @@ namespace Pyrrho.Level4
                 return this;
             if (defpos >= Transaction.Analysing)
                 return (RowSet)New(m);
-            var rs = new GroupingRowSet(cx.nextHeap++, m);
+            var rs = new GroupingRowSet(cx.GetUid(), m);
             Fixup(cx, rs);
             return rs;
         }
@@ -212,6 +212,18 @@ namespace Pyrrho.Level4
             }
             return new GroupingRowSet(cx,this,needed,rows,true).ComputeNeeds(cx);
         }
+        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        {
+            throw new DBException("42174");
+        }
+        internal override Context Update(Context cx, RowSet fm)
+        {
+            throw new DBException("42174");
+        }
+        internal override Context Delete(Context cx, RowSet fm)
+        {
+            throw new DBException("42174");
+        }
         /// <summary>
         /// Bookmark implementation
         /// </summary>
@@ -267,10 +279,6 @@ namespace Pyrrho.Level4
                 cx.finder = oc;
                 return null;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new System.NotImplementedException();
-            }
             protected override Cursor _Next(Context _cx)
             {
                 var bbm = _bbm;
@@ -286,9 +294,9 @@ namespace Pyrrho.Level4
             {
                 throw new System.NotImplementedException(); // never
             }
-            internal override TableRow Rec()
+            internal override BList<TableRow> Rec()
             {
-                return null;
+                return BList<TableRow>.Empty;
             }
             internal override Cursor _Fix(Context cx)
             {
@@ -405,9 +413,9 @@ namespace Pyrrho.Level4
             {
                 return new GroupingBookmark(cx, this);
             }
-            internal override TableRow Rec()
+            internal override BList<TableRow> Rec()
             {
-                return null;
+                return BList<TableRow>.Empty;
             }
         }
     }

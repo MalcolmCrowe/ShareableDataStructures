@@ -94,7 +94,7 @@ namespace Pyrrho.Level4
         {
             return new SystemTable(defpos,m);
         }
-        internal override void RowSets(Context cx, From f, BTree<long, RowSet.Finder> fi)
+        internal override void RowSets(Context cx, From f, CTree<long, RowSet.Finder> fi)
         {
             var sr = new SystemRowSet(cx, this, f.where);
             cx.data += (defpos, sr);
@@ -250,7 +250,7 @@ namespace Pyrrho.Level4
             : base(f.defpos, cx, f.domain, null, null, w, null,
                   null, _Mem(cx, f, w))
         { }
-        protected SystemRowSet(Context cx, SystemRowSet rs, BTree<long, Finder> nd, bool bt)
+        protected SystemRowSet(Context cx, SystemRowSet rs, CTree<long, Finder> nd, bool bt)
             : base(cx, rs, nd, bt)
         { }
         protected SystemRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -301,11 +301,11 @@ namespace Pyrrho.Level4
                 return this;
             if (defpos >= Transaction.TransPos)
                 return (RowSet)New(m);
-            var rs = new SystemRowSet(cx.nextHeap++, m);
+            var rs = new SystemRowSet(cx.GetUid(), m);
             Fixup(cx, rs);
             return rs;
         }
-        internal override RowSet New(Context cx, BTree<long, Finder> nd, bool bt)
+        internal override RowSet New(Context cx, CTree<long, Finder> nd, bool bt)
         {
             return new SystemRowSet(cx, this, nd, bt);
         }
@@ -590,9 +590,9 @@ namespace Pyrrho.Level4
                 return new TChar("'" + (p - Transaction.TransPos));
       */
             }
-            internal override TableRow Rec()
+            internal override BList<TableRow> Rec()
             {
-                return null;
+                return BList<TableRow>.Empty;
             }
             internal override Cursor _Fix(Context cx)
             {
@@ -688,10 +688,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, p,_Value(r,p.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -781,10 +777,6 @@ namespace Pyrrho.Level4
             LogAlterBookmark(Context _cx,SystemRowSet r,int pos,(Physical,long)p)
                 : base(_cx,r,pos,p, _Value(r, p.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogAlterBookmark New(Context _cx, SystemRowSet res)
             {
@@ -880,10 +872,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogChangeBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -969,10 +957,6 @@ namespace Pyrrho.Level4
             LogDeleteBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogDeleteBookmark New(Context _cx,SystemRowSet res)
             {
@@ -1060,10 +1044,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogDropBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -1150,10 +1130,6 @@ namespace Pyrrho.Level4
             LogMetadataBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogMetadataBookmark New(Context _cx, SystemRowSet res)
             {
@@ -1253,10 +1229,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogModifyBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -1344,10 +1316,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogUserBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -1433,10 +1401,6 @@ namespace Pyrrho.Level4
             LogRoleBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogRoleBookmark New(Context _cx,SystemRowSet res)
             {
@@ -1527,10 +1491,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogCheckBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -1615,10 +1575,6 @@ namespace Pyrrho.Level4
                 : base(_cx,rs, pos, ph, _Value(rs, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogClassificationBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -1702,10 +1658,6 @@ namespace Pyrrho.Level4
             LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph)
                 : base(_cx,rs, pos, ph, _Value(rs, ph.Item1,_cx.db._user))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogClearanceBookmark New(Context _cx,SystemRowSet res)
             {
@@ -1801,10 +1753,6 @@ namespace Pyrrho.Level4
             LogColumnBookmark(Context _cx,SystemRowSet rs,int pos,(Physical,long) ph)
                 : base(_cx,rs,pos,ph, _Value(rs, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogColumnBookmark New(Context _cx, SystemRowSet res)
             {
@@ -1941,10 +1889,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogTablePeriodBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -2038,10 +1982,6 @@ namespace Pyrrho.Level4
             LogDateTypeBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogDateTypeBookmark New(Context _cx,SystemRowSet res)
             {
@@ -2140,10 +2080,6 @@ namespace Pyrrho.Level4
             LogDomainBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogDomainBookmark New(Context _cx, SystemRowSet res)
             {
@@ -2274,10 +2210,6 @@ namespace Pyrrho.Level4
             {
                 db = _cx?.db;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogEditBookmark New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -2359,10 +2291,6 @@ namespace Pyrrho.Level4
             LogEnforcementBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph)
                 :base(_cx,rs,pos,ph, _Value(rs, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogEnforcementBookmark New(Context _cx,SystemRowSet res)
             {
@@ -2447,10 +2375,6 @@ namespace Pyrrho.Level4
             LogGrantBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogGrantBookmark New(Context _cx, SystemRowSet res)
             {
@@ -2545,10 +2469,6 @@ namespace Pyrrho.Level4
             LogIndexBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogIndexBookmark New(Context _cx, SystemRowSet res)
             {
@@ -2654,10 +2574,6 @@ namespace Pyrrho.Level4
                  : base(_cx,rs, pos,ph, _Value(rs, ph.Item1,i))
             {
                 _ix = i;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogIndexKeyBookmark New(Context _cx, SystemRowSet res)
             {
@@ -2768,10 +2684,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogOrderingBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -2863,10 +2775,6 @@ namespace Pyrrho.Level4
             LogProcedureBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogProcedureBookmark New(Context _cx, SystemRowSet res)
             {
@@ -2988,10 +2896,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogRevokeBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -3077,10 +2981,6 @@ namespace Pyrrho.Level4
             LogTableBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTableBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3176,10 +3076,6 @@ namespace Pyrrho.Level4
             LogTriggerBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTriggerBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3285,10 +3181,6 @@ namespace Pyrrho.Level4
             {
                 _sub = s;
                 _ix = i;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTriggerUpdateColumnBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3407,10 +3299,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogTriggeredActionBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -3497,10 +3385,6 @@ namespace Pyrrho.Level4
             LogTypeBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTypeBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3589,10 +3473,6 @@ namespace Pyrrho.Level4
             LogTypeMethodBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTypeMethodBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3684,10 +3564,6 @@ namespace Pyrrho.Level4
             LogViewBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogViewBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3786,10 +3662,6 @@ namespace Pyrrho.Level4
             LogRecordBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogRecordBookmark New(Context _cx, SystemRowSet res)
             {
@@ -3930,10 +3802,6 @@ namespace Pyrrho.Level4
                 _rec = rec;
                 _fld = fld;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogRecordFieldBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var lb = LogRecordBookmark.New(_cx,res); lb != null; 
@@ -4045,10 +3913,6 @@ namespace Pyrrho.Level4
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static LogUpdateBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
@@ -4143,10 +4007,6 @@ namespace Pyrrho.Level4
             LogTransactionBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
                 : base(_cx,r, pos, ph, _Value(r, ph.Item1))
             {
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static LogTransactionBookmark New(Context _cx, SystemRowSet res)
             {
@@ -4253,10 +4113,6 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static SysRoleBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
@@ -4338,10 +4194,6 @@ namespace Pyrrho.Level4
             {
                 en = bmk;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static SysUserBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
@@ -4407,10 +4259,6 @@ namespace Pyrrho.Level4
                 _rbmk = rbmk;
                 _inner = inner;
                 _user = (User)_cx.db.objects[inner.value()];
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static SysRoleUserBookmark New(Context _cx, SystemRowSet res)
             {
@@ -4497,10 +4345,6 @@ namespace Pyrrho.Level4
                 :base(_cx,res,pos,b._defpos,b.ph.ppos,_Value(_cx,res,b.ph))
             {
                 _bmk = b;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static SysAuditBookmark New(Context _cx, SystemRowSet res)
             {
@@ -4591,10 +4435,6 @@ namespace Pyrrho.Level4
                 : base(_cx,res, pos,bmk._defpos,0,_Value(_cx,res,bmk.ph,_in,ix))
             {
                 _bmk = bmk; _inner = _in; _ix = ix;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static SysAuditKeyBookmark New(Context _cx, SystemRowSet res)
             {
@@ -4726,10 +4566,6 @@ namespace Pyrrho.Level4
                 _obm = obm;  _tbm = tbm; _type = type;
                 _classification = classification; _trans = Trans(_cx,res,_ppos);
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             static long Trans(Context _cx,SystemRowSet res,long pp)
             {
                 var ph = _cx.db.GetD(pp);
@@ -4840,10 +4676,6 @@ namespace Pyrrho.Level4
                 _cbm = cbm; _tbm = tbm;
                 _trans = Trans(_cx, ppos);
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             static long Trans(Context _cx, long pp)
             {
                 var ph = _cx.db.GetD(pp);
@@ -4930,10 +4762,6 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static SysEnforcementBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
@@ -5005,10 +4833,6 @@ namespace Pyrrho.Level4
                       _Value(_cx,res,bmk.key(),bmk.value()))
             {
                 _bmk = bmk;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleViewBookmark New(Context _cx, SystemRowSet res)
             {
@@ -5101,10 +4925,6 @@ namespace Pyrrho.Level4
             {
                 _outer = outer;
                 _inner = inner;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleDomainCheckBookmark New(Context cx, SystemRowSet res)
             {
@@ -5215,10 +5035,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleTableCheckBookmark New(Context cx, SystemRowSet res)
             {
                 for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -5317,10 +5133,6 @@ namespace Pyrrho.Level4
                     _Value(_cx,res,outer.value(),sys))
             {
                 _outer = outer; _res = res; _system = sys;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleTablePeriodBookmark New(Context _cx, SystemRowSet res)
             {
@@ -5443,10 +5255,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleColumnBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null;
@@ -5536,10 +5344,6 @@ namespace Pyrrho.Level4
             {
                 _enu = e;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleClassBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -5617,10 +5421,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleColumnCheckBookmark New(Context cx, SystemRowSet res)
             {
@@ -5742,10 +5542,6 @@ namespace Pyrrho.Level4
                 _middle = middle;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleColumnPrivilegeBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var middle = _cx.db.objects.PositionAt(0); middle != null; middle = middle.Next())
@@ -5844,10 +5640,6 @@ namespace Pyrrho.Level4
                       _Value(_cx,res,outer.value()))
             {
                 _en = outer;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleDomainBookmark New(Context _cx, SystemRowSet res)
             {
@@ -5956,10 +5748,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleIndexBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -6054,10 +5842,6 @@ namespace Pyrrho.Level4
             {
                 _outer = outer; _middle = middle; _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleIndexKeyBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -6141,10 +5925,6 @@ namespace Pyrrho.Level4
             {
                 _enu = e;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleJavaBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -6198,10 +5978,6 @@ namespace Pyrrho.Level4
                       _Value(_cx, res, e))
             {
                 _enu = e;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RolePythonBookmark New(Context _cx, SystemRowSet res)
             {
@@ -6271,10 +6047,6 @@ namespace Pyrrho.Level4
                       _Value(_cx,res,en.value()))
             {
                 _en = en;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleProcedureBookmark New(Context _cx, SystemRowSet res)
             {
@@ -6362,10 +6134,6 @@ namespace Pyrrho.Level4
                 _outer = en;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleParameterBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
@@ -6451,10 +6219,6 @@ namespace Pyrrho.Level4
                 _outer = en;
                 _inner = ix;
                 _sq = i;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleSubobjectBookmark New(Context _cx, SystemRowSet res)
             {
@@ -6557,10 +6321,6 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleTableBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
@@ -6648,10 +6408,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleTriggerBookmark New(Context cx, SystemRowSet res)
             {
@@ -6753,10 +6509,6 @@ namespace Pyrrho.Level4
                 _middle = middle;
                 _inner = inner;
                 _fourth = fourth;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleTriggerUpdateColumnBookmark New(Context _cx, SystemRowSet res)
             {
@@ -6876,10 +6628,6 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleTypeBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
@@ -6966,10 +6714,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RoleMethodBookmark New(Context _cx, SystemRowSet res)
             {
@@ -7080,10 +6824,6 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RolePrivilegeBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
@@ -7192,10 +6932,6 @@ namespace Pyrrho.Level4
             {
                 _en = en; 
             }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
-            }
             internal static RoleObjectBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var bm = _cx.db.objects.PositionAt(0); bm != null; bm = bm.Next())
@@ -7223,7 +6959,7 @@ namespace Pyrrho.Level4
                     new TChar(oi.name),
                     new TChar(oi.description ?? ""),
                     new TChar(dm?.iri ?? ""),
-                    new TChar(oi.Metadata())); ;
+                    new TChar(ObInfo.Metadata(oi.metadata,oi.description))); ;
             }
             /// <summary>
             /// Move to the next object
@@ -7238,7 +6974,7 @@ namespace Pyrrho.Level4
                     var oi = _cx.db.role.infos[ob.defpos] as ObInfo;
                     if (oi == null)
                         continue;
-                    var ou = oi.Metadata();
+                    var ou = ObInfo.Metadata(oi.metadata,oi.description);
                     if (ou=="")
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, _pos+1, en);
@@ -7282,10 +7018,6 @@ namespace Pyrrho.Level4
             {
                 _outer = outer;
                 _inner = inner;
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                throw new NotImplementedException();
             }
             internal static RolePrimaryKeyBookmark New(Context _cx, SystemRowSet res)
             {

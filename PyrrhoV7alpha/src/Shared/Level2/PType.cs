@@ -124,7 +124,7 @@ namespace Pyrrho.Level2
             ro += (oi, true);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
-            cx.db = cx.db + (ro,p) + (ppos, udt, p);
+            cx.db = cx.db + (ro, p) + (ppos, udt, p);
             cx.db += (Database.Types, cx.db.types + (udt-Domain.Representation, ppos));
             var tt = cx.db.typeTracker[defpos] ?? BTree<long, Domain>.Empty
     + (ppos, udt);

@@ -31,8 +31,8 @@ namespace Pyrrho.Level3
             _Alias = -62, // string        
             Classification = -63, // Level
             CompareContext = -250, // Context structured types
-            Definer = -64, // long
-            Defpos = -257, // long  for Rest service
+            Definer = -64, // long Role
+            Defpos = -257, // long for Rest service
             Dependents = -65, // CTree<long,bool> Non-obvious objects that need this to exist
             Depth = -66, // int  (max depth of dependents)
             _Domain = -176, // Domain 
@@ -46,7 +46,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string alias => (string)mem[_Alias];
         /// <summary>
-        /// The definer of the object.
+        /// The definer of the object (a Role)
         /// </summary>
         public long definer => (long)(mem[Definer] ?? -1L);
         //        internal Context compareContext => 
@@ -70,6 +70,8 @@ namespace Pyrrho.Level3
         internal CTree<long, bool> dependents =>
             (CTree<long, bool>)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
+        // for view instancing: Ok = ob key, RK rs key, OV ob value, RV rs value
+        [Flags] internal enum VIC { None = 0, OK = 1, RK = 2, OV = 4, RV = 8 }
         /// <summary>
         /// Constructor
         /// </summary>
@@ -157,9 +159,13 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-        internal virtual BTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        internal virtual CTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
         {
-            return BTree<long, RowSet.Finder>.Empty;
+            return CTree<long, RowSet.Finder>.Empty;
+        }
+        internal virtual bool LocallyConstant(Context cx,RowSet rs)
+        {
+            return false;
         }
         /// <summary>
         /// This one is used mainly in commit to transaction log,
@@ -190,6 +196,15 @@ namespace Pyrrho.Level3
                 ds += (wr.Fix(b.key()), true);
             if (ds != dependents)
                 r += (Dependents, ds);
+            if (mem.Contains(TableExpression.Nuid))
+            {
+                var nu = (long)mem[TableExpression.Nuid];
+                var nn = wr.rss.Contains(nu)? wr.rss[nu].defpos
+                    : wr.uids.Contains(nu)? wr.uids[nu]
+                    : wr.Fixed(nu).defpos;
+                if (nn != nu)
+                    r += (TableExpression.Nuid, nn);
+            }
             wr.cx.obs += (r.defpos, r);
             return r;
         }
@@ -264,6 +279,10 @@ namespace Pyrrho.Level3
         {
             return sf;
         }
+        internal virtual SqlValue Operand(Context cx)
+        {
+            return null;
+        }
         /// <summary>
         /// Drop anything that needs this, directly or indirectly,
         /// and then drop this.
@@ -296,6 +315,35 @@ namespace Pyrrho.Level3
                     ob.Cascade(cx, a, u);
                 }
         }
+        /// <summary>
+        /// Execute an Insert operation for a Table, View, RestView.
+        /// The new or existing Rowsets may be explicit or in the physical database.
+        /// Deal with triggers.
+        /// </summary>
+        /// <param name="f">A query</param>
+        /// <param name="prov">The provenance string</param>
+        /// <param name="cl">The classification sought</param>
+        internal virtual Context Insert(Context _cx, RowSet fm, string prov, Level cl)
+        {
+            _cx.Install2(framing);
+            return _cx;
+        }
+        /// <summary>
+        /// Execute a Delete operation for a Table, View, RestView.
+        /// </summary>
+        internal virtual Context Delete(Context cx, RowSet fm)
+        {
+            cx.Install2(framing);
+            return cx;
+        }
+        /// <summary>
+        /// Execute an Update operation for a Table, View or RestView.
+        /// </summary>
+        internal virtual Context Update(Context cx, RowSet fm)
+        {
+            cx.Install2(framing);
+            return cx;
+        }
         internal virtual Database Drop(Database d, Database nd,long p)
         {
             return nd - defpos;
@@ -326,7 +374,15 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            return this;
+            var r = this;
+            if (mem.Contains(TableExpression.Nuid))
+            {
+                var nu = (long)mem[TableExpression.Nuid];
+                var fm = cx.Replace(nu, so, sv);
+                if (fm != nu)
+                    r += (TableExpression.Nuid, fm);
+            }
+            return r;
         }
         internal DBObject Replace(Context cx,DBObject was,DBObject now)
         {
@@ -551,39 +607,140 @@ namespace Pyrrho.Level3
         {
             throw new PEException("PE481");
         }
-        internal virtual void RowSets(Context cx,From f,BTree<long,RowSet.Finder> fi)
+        internal virtual void RowSets(Context cx,From f,CTree<long,RowSet.Finder> fi)
         {
             if (!cx.data.Contains(f.defpos))
                 cx.data+=(f.defpos, new TrivialRowSet(f.defpos, cx, new TRow(domain, cx.values), -1, fi));
         }
         /// <summary>
-        /// Execute an Insert operation for a Table, View, RestView.
-        /// The new or existing Rowsets may be explicit or in the physical database.
-        /// Deal with triggers.
+        /// Scan makes catalogue cx.obref of dependencies for instancing.
         /// </summary>
-        /// <param name="f">A query</param>
-        /// <param name="prov">The provenance string</param>
-        /// <param name="cl">The classification sought</param>
-        internal virtual Context Insert(Context _cx, RowSet fm, string prov, Level cl)
+        internal virtual BTree<long,VIC?> Scan(BTree<long,VIC?> t)
         {
-            _cx.Install2(framing);
-            return _cx;
+            if (mem.Contains(TableExpression.Nuid))
+                t = Scan(t, (long)mem[TableExpression.Nuid], VIC.OK | VIC.OV | VIC.RV);
+            return t;
+        }
+        internal BTree<long,VIC?> Scan(BTree<long,VIC?> t,long dp,VIC vc)
+        {
+            if (dp>=0)
+                t += (dp, (t[dp] ?? VIC.None) | vc);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<long> ord, VIC vc)
+        {
+            for (var b = ord.First(); b != null; b = b.Next())
+                t += (b.value(), (t[b.value()] ?? VIC.None) | vc);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CList<UpdateAssignment> us)
+        {
+            for (var b = us.First(); b != null; b = b.Next())
+            {
+                var ua = b.value();
+                t += (ua.val, (t[ua.val] ?? VIC.None) | VIC.OK | VIC.OV);
+                t += (ua.vbl, (t[ua.vbl] ?? VIC.None) | VIC.OK | VIC.OV);
+            }
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CTree<UpdateAssignment, bool> us,
+            VIC va)
+        {
+            for (var b = us.First(); b != null; b = b.Next())
+            {
+                var ua = b.key();
+                t += (ua.val, (t[ua.val] ?? VIC.None) | va);
+                t += (ua.vbl, (t[ua.vbl] ?? VIC.None) | va);
+            }
+            return t;
+        }
+        internal BTree<long, VIC?> Scan<V>(BTree<long, VIC?> t, BTree<long, V> ms, VIC va)
+        {
+            for (var b = ms.First(); b != null; b = b.Next())
+                t += (b.key(), (t[b.key()] ?? VIC.None) | va);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan<K>(BTree<long, VIC?> t, BTree<K, long> ms, VIC va) where K : IComparable
+        {
+            for (var b = ms.First(); b != null; b = b.Next())
+                t += (b.value(), (t[b.value()] ?? VIC.None) | va);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan<K>(BTree<long, VIC?> t, BTree<K, object> ms) where K : IComparable
+        {
+            for (var b = ms.First(); b != null; b = b.Next())
+                if (b.value() is DBObject ob)
+                    t += (ob.defpos, (t[ob.defpos] ?? VIC.None) | VIC.OK | VIC.OV);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CTree<long, long> ms, VIC va, VIC vb)
+        {
+            for (var b = ms.First(); b != null; b = b.Next())
+            {
+                t += (b.key(), (t[b.key()] ?? VIC.None) | va);
+                t += (b.value(), (t[b.value()] ?? VIC.None) | vb);
+            }
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CTree<long, RowSet.Finder> fi)
+        {
+            for (var b = fi?.First(); b != null; b = b.Next())
+            {
+                t += (b.key(), (t[b.key()] ?? VIC.None) | VIC.RK | VIC.OV);
+                var f = b.value();
+                t += (f.col, (t[f.col] ?? VIC.None) | VIC.RK | VIC.OV);
+                t += (f.rowSet, (t[f.rowSet] ?? VIC.None) | VIC.RK | VIC.RV);
+            }
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<(long, TRow)> rs, VIC vc)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+                t += (b.key(), (t[b.key()] ?? VIC.None) | vc);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, 
+            CTree<long, CTree<long, bool>> ma, VIC va, VIC vb)
+        {
+            for (var b = ma.First(); b != null; b = b.Next())
+            {
+                t += (b.key(), (t[b.key()] ?? VIC.None) | va);
+                t = Scan(t, b.value(), vb);
+            }
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CTree<long, Domain> rs)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+                t += (b.key(), (t[b.key()] ?? VIC.None) | VIC.OK | VIC.OV);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BTree<long, RowSet> rs, VIC va)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+                t += (b.key(), (t[b.key()] ?? VIC.None) | va);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan<K>(BTree<long, VIC?> t, CTree<K, CTree<long, bool>> ts, VIC va) where K : IComparable
+        {
+            for (var b = ts.First(); b != null; b = b.Next())
+                t = Scan(t, b.value(), va);
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t,BList<(long,TypedValue)> ls,VIC va)
+        {
+            for (var b = ls.First(); b != null; b = b.Next())
+                t = Scan(t, b.value().Item1, va);
+            return t;
         }
         /// <summary>
-        /// Execute a Delete operation for a Table, View, RestView.
+        /// Creates new instances of objects in framing lists
         /// </summary>
-        internal virtual Context Delete(Context cx,RowSet fm)
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal virtual DBObject Instance(Context cx)
         {
-            cx.Install2(framing);
-            return cx;
-        }
-        /// <summary>
-        /// Execute an Update operation for a Table, View or RestView.
-        /// </summary>
-        internal virtual Context Update(Context cx,RowSet fm)
-        {
-            cx.Install2(framing);
-            return cx;
+            return this;
         }
         /// <summary>
         /// Implementation of the Role$Class table: Produce a C# class corresponding to a Table or View

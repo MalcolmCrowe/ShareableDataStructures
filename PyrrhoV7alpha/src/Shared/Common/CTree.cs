@@ -24,7 +24,7 @@ namespace Pyrrho.Common
     where K : IComparable where V : IComparable
     {
         public new static CTree<K, V> Empty = new CTree<K, V>();
-        CTree():base() {}
+        protected CTree():base() {}
         /// <summary>
         /// Constructor
         /// </summary>
@@ -334,33 +334,42 @@ namespace Pyrrho.Common
             return r;
         }
     }
-    internal class CList<K> : BList<K>,IComparable where K : IComparable
+    internal class CList<V> : BList<V>, IComparable where V : IComparable
     {
-        public new static readonly CList<K> Empty = new CList<K>();
+        public new static readonly CList<V> Empty = new CList<V>();
         protected CList() : base() { }
-        public CList(K k) : base(k) { }
-        protected CList(Bucket<int, K> r) : base(r) { }
-        protected override ATree<int, K> Add(int k, K v)
+        public CList(V v) : base(v) { }
+        public CList(CList<V> c, V v) : base(c, v) { }
+        public CList(CList<V> c, int k, V v) : base(c, k, v) { }
+        protected CList(Bucket<int, V> r) : base(r) { }
+        protected override ATree<int, V> Add(int k, V v)
         {
-            return new CList<K>(base.Add(k, v).root);
+            return new CList<V>(base.Add(k, v).root);
         }
-        protected override ATree<int, K> Remove(int k)
+        protected override ATree<int, V> Remove(int k)
         {
-            return new CList<K>(base.Remove(k).root);
+            return new CList<V>(base.Remove(k).root);
         }
-        public static CList<K> operator +(CList<K> b, (int, K) x)
+        public static CList<V> operator +(CList<V> b, (int, V) x)
         {
-            return (CList<K>)b.Add(x.Item1, x.Item2);
+            return (CList<V>)b.Add(x.Item1, x.Item2);
         }
-        public static CList<K> operator +(CList<K> b, K k)
+        public static CList<V> operator +(CList<V> b, V k)
         {
-            return (CList<K>)b.Add((int)b.Count, k);
+            return (CList<V>)b.Add((int)b.Count, k);
         }
-        public static CList<K> operator -(CList<K> b, int i)
+        public static CList<V> operator -(CList<V> b, int i)
         {
-            return (CList<K>)b.Remove(i);
+            return (CList<V>)b.Remove(i);
         }
-        public CList<K> Without(K k)
+        public static CList<V> operator +(CList<V> a,CList<V> b)
+        {
+            var r = a;
+            for (var x = b.First(); x != null; x = x.Next())
+                r += x.value();
+            return r;
+        }
+        public CList<V> Without(V k)
         {
             var r = Empty;
             for (var b = First(); b != null; b = b.Next())
@@ -370,7 +379,7 @@ namespace Pyrrho.Common
         }
         public int CompareTo(object obj)
         {
-            var that = (CList<K>)obj;
+            var that = (CList<V>)obj;
             var b = First();
             var tb = that.First();
             for (;b!=null && tb!=null; b=b.Next(),tb=tb.Next())

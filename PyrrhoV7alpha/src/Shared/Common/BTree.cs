@@ -785,38 +785,90 @@ namespace Pyrrho.Common
             return s;
         }
     }
+    /// <summary>
+    /// Warning: the semantics of BList operations have changed.
+    /// The + and - operators always add or remove and are O(N) 
+    /// The following two alternatives are O(logN)
+    /// To add an entry to the end of a list, use new BList(BList old,V v)
+    /// If you want to replace an item, use new BList(BList old,int k,V v)
+    /// </summary>
+    /// <typeparam name="V"></typeparam>
     internal class BList<V> : BTree<int, V>
     {
         public new static readonly BList<V> Empty = new BList<V>();
         public int Length => (int)Count;
         protected BList() : base() { }
+        BList(BTree<int, V> t) : base(t.root) { }
         public BList(V v) : base(0, v) { }
-        protected BList(BList<V> b) : base(b.root) { }
+        /// <summary>
+        /// Use this constructor for b=b.REPLACE(k,v)
+        /// We don't implement REPLACE itself because people forget the LHS
+        /// </summary>
+        /// <param name="b">The old list</param>
+        /// <param name="k">An index</param>
+        /// <param name="v"></param>
+        public BList(BList<V> b,int k,V v) 
+            :base((((BTree<int,V>)b)+(k,v)).root)
+        {
+            if (k < 0 || k >= b.Length) // b is old version
+                throw new NotSupportedException();
+        }
+        /// <summary>
+        /// Use this constructor for b=b.ADDTOTAIL(v)
+        /// We don't implement ADDTOTAIL itself because people forget the LHS
+        /// </summary>
+        /// <param name="b">The old list</param>
+        /// <param name="v">A value to add at the end</param>
+        public BList(BList<V> b, V v)
+            : base((((BTree<int, V>)b) + (b.Length, v)).root) { }
         protected BList(Bucket<int, V> r) : base(r) { }
         protected override ATree<int, V> Add(int k, V v)
         {
-            return new BList<V>(base.Add(k, v).root);
+            var r = BTree<int,V>.Empty;
+            var done = false;
+            var c = 0;
+            for (var b= First();b!=null;b=b.Next())
+            {
+                if (b.key() == k)
+                {
+                    r += (c++, v);
+                    done = true;
+                }
+                r += (c++, b.value());
+            }
+            if (!done)
+            {
+                while (c < k - 1)
+                    r += (c++, default(V));
+                r += (c++, v);
+            }
+            return new BList<V>(r);
         }
         protected override ATree<int, V> Remove(int k)
         {
-            // alas this is SLOW
             var r = Empty;
             for (var b = First(); b != null; b = b.Next())
                 if (b.key() != k)
-                    r += (r.Length,b.value());
+                    r = new BList<V>(r,b.value());
             return r;
         }
-        public static BList<V> operator +(BList<V> b, (int, V) v)
+        public static BList<V> operator +(BList<V> b, (int, V) x)
         {
-            return (BList<V>)b.Add(v.Item1, v.Item2);
+            var (k, v) = x;
+            if (k == b.Length) // use ADDTOTAIL
+                return new BList<V>(b, v); 
+            // use slow version
+            return (BList<V>)b.Add(k, v);
         }
         public static BList<V> operator +(BList<V> b, V v)
         {
             return (BList<V>)b.Add((int)b.Count, v);
         }
-        public static BList<V> operator +(BList<V> b, ATree<int,V> c)
+        public static BList<V> operator +(BList<V> b, BList<V> c)
         {
-            return (BList<V>)(((BTree<int,V>)b)+c);
+            for (var cb = c.First(); cb != null; cb = cb.Next())
+                b += cb.value();
+            return b;
         }
         public static BList<V> operator -(BList<V> b, int i)
         {

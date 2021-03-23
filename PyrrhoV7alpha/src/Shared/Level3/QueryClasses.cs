@@ -237,6 +237,29 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
+        internal bool Has(Context cx,string s)
+        {
+            for (var b=members.First();b!=null;b=b.Next())
+                if (((SqlValue)cx.obs[b.key()]).name == s)
+                    return true;
+            for (var b = groups.First(); b != null; b = b.Next())
+                if (b.value().Has(cx,s))
+                    return true;
+            return false;
+        }
+        internal bool Known(Context cx,RestRowSet rrs)
+        {
+            var cs = CTree<long, bool>.Empty;
+            for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
+                cs += (b.value(), true);
+            for (var b= groups.First();b!=null;b=b.Next())
+                if (!b.value().Known(cx, rrs))
+                    return false;
+            for (var b = members.First(); b != null; b = b.Next())
+                if (!cs.Contains(b.value()))
+                    return false;
+            return true;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -333,6 +356,13 @@ namespace Pyrrho.Level3
         {
             for (var b = sets.First(); b != null; b = b.Next())
                 if (((Grouping)cx.obs[b.value()]).Has(s))
+                    return true;
+            return false;
+        }
+        public bool Has(Context cx, string s)
+        {
+            for (var b = sets.First(); b != null; b = b.Next())
+                if (((Grouping)cx.obs[b.value()]).Has(cx,s))
                     return true;
             return false;
         }
