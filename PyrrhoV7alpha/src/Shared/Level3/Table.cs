@@ -467,7 +467,7 @@ namespace Pyrrho.Level3
         /// <param name="ur">The update row identifiers may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The target rowset may be explicit</param>
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
             if (fm.assig.Count == 0)
                 return cx;
@@ -584,7 +584,7 @@ namespace Pyrrho.Level3
             var count = 0;
             var targetInfo = (ObInfo)cx.db.role.infos[fm.target];
             if (Denied(cx, Grant.Privilege.Delete) ||
-                (enforcement.HasFlag(Grant.Privilege.Insert) &&
+                (enforcement.HasFlag(Grant.Privilege.Delete) &&
                 cx.db.user.clearance.minLevel > 0 &&
                 (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
                 cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel)))

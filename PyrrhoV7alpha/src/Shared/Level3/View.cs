@@ -88,7 +88,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="f"></param>
         /// <returns></returns>
-        internal RowSet Instance(Context cx,RowSet rv)
+        internal RowSet Instance(Context cx, RowSet rv)
         {
             var oob = cx.obuids;
             var oor = cx.rsuids;
@@ -100,30 +100,37 @@ namespace Pyrrho.Level3
             cx.obuids = BTree<long, long?>.Empty;
             cx.rsuids = BTree<long, long?>.Empty;
             // start to build the dependency tree: begin with the View and rowType
-            var t = BTree<long, VIC?>.Empty;
+            var t = new BTree<long, VIC?>(rv.defpos,VIC.OK|VIC.RK|VIC.OV|VIC.RV);
             t = Scan(t);
-            t = Scan(t, rv.rt, VIC.OK | VIC.OV);
-            cx.obrefs = new BTree<long,BTree<long,VIC?>>(defpos,t);
+            t = Scan(t, rv.rt, VIC.OK |VIC.RK | VIC.OV);
+            cx.obrefs = new BTree<long, BTree<long, VIC?>>(defpos, t);
+            for (var b=rv.rt.First();b!=null;b=b.Next())
+            {
+                var sv = (SqlValue)cx.obs[b.value()];
+                var vm = viewCols[sv.name];
+                var ot = cx.obrefs[sv.defpos]??BTree<long,VIC?>.Empty;
+                cx.obrefs += (vm, ot + (sv.defpos, VIC.OK | VIC.OV));
+            }
             // scan the compiled rowsets
-            for (var rb = framing.data.First();rb!=null;rb=rb.Next())
+            for (var rb = framing.data.First(); rb != null; rb = rb.Next())
             {
                 var rs = rb.value();
                 t = cx.obrefs[rb.key()] ?? BTree<long, VIC?>.Empty;
                 // for rowsets add dependencies for ambient wheres and assignments
-                for (var b = rv.where.First(); b != null; b = b.Next())
+                for (var b = rv?.where.First(); b != null; b = b.Next())
                     if (((SqlValue)cx.obs[b.key()]).KnownBy(cx, rs))
-                        t += (b.key(), VIC.RK|VIC.OV);
-                for (var b=rv.assig.First();b!=null;b=b.Next())
+                        t += (b.key(), VIC.RK | VIC.OV);
+                for (var b = rv?.assig.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
                     if (rs.Knows(cx, u.vbl) && ((SqlValue)cx.obs[u.val]).KnownBy(cx, rs))
                     {
-                        t += (u.vbl, VIC.RK | VIC.OV);
-                        t += (u.val, VIC.RK | VIC.OV);
-                    } 
+                        t += (u.vbl, VIC.RK | VIC.OK | VIC.OV);
+                        t += (u.val, VIC.RK | VIC.OK | VIC.OV);
+                    }
                 }
                 // now add all internal dependencies: helper methods are in DBObject
-                cx.obrefs += (rs.defpos,rs.Scan(t));
+                cx.obrefs += (rs.defpos, rs.Scan(t));
             }
             // scan the compiled objects
             for (var rb = framing.obs.First(); rb != null; rb = rb.Next())
@@ -134,7 +141,7 @@ namespace Pyrrho.Level3
                 cx.obrefs += (ob.defpos, ob.Scan(t));
             }
             // now invert the tree to prepare for the cascade
-            var refobs = BTree<long,BTree<long,VIC?>>.Empty;
+            var refobs = BTree<long, BTree<long, VIC?>>.Empty;
             for (var b = cx.obrefs.First(); b != null; b = b.Next())
                 for (var c = b.value()?.First(); c != null; c = c.Next())
                 {
@@ -143,12 +150,13 @@ namespace Pyrrho.Level3
                     t += (b.key(), c.value());
                     refobs += (ck, t);
                 }
+            // Stop at the top objects
             InstanceOb(cx, defpos, refobs);
             InstanceRS(cx, st, refobs);
             // Now consider the ambient rowtype
             var fb = rv.rt.First();
             var rf = cx.data[st];
-            for (var vb = rf.rt.First(); vb != null; vb = vb.Next()) 
+            for (var vb = rf.rt.First(); vb != null; vb = vb.Next())
             {
                 var p = vb.value();
                 if (fb != null) // instance for the display items
@@ -163,42 +171,46 @@ namespace Pyrrho.Level3
                     cx.obuids += (p, cp);
                     cx._Add(new SqlCopy(cp, cx, sv.name, rf.defpos, p));
                 }
-                OnInstance(cx, p, refobs);
             }
-            // Cascade to build obuids, rsuids has finished. Fix() everything.
-            for (var b = cx.obs.PositionAt(defpos); b != null; b = b.Next())
+            for (var b = framing.data.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var np = cx.obuids[p] ?? p;
-                var nb = (DBObject)b.value().Fix(cx);
-                if (nb != b.value() && p == nb.defpos && cx.parse==ExecuteStatus.Obey
-                    && (p<Transaction.TransPos 
-                    || (p>=Transaction.Executables && p<Transaction.HeapStart)))
-                    throw new PEException("PE588");
-                cx.obs += (np, nb);
+                t = cx.obrefs[p];
+                var e = false;
+                for (var c = t.First(); !(e || c == null); c = c.Next())
+                    if (c.value()?.HasFlag(VIC.RK) == true)
+                        e = !cx.obrefs.Contains(c.key());
+                if (e)
+                    InstanceRS(cx, p, refobs);
             }
-            for (var b = cx.data.PositionAt(defpos+1); b != null; b = b.Next())
+            // Cascade to build cx.obuids
+            for (var b = framing.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var np = cx.rsuids[p] ?? p;
-                var nr = (RowSet)b.value().Fix(cx);
-                if (nr != b.value() && p == nr.defpos && cx.parse==ExecuteStatus.Obey
-                    && (p < Transaction.TransPos
-                    || (p >= Transaction.Executables && p < Transaction.HeapStart)))
-                    throw new PEException("PE589");
-                cx.data += (np, nr);
+                t = cx.obrefs[p];
+                var e = false;
+                for (var c = t.First(); !(e || c == null); c = c.Next())
+                    if (c.value()?.HasFlag(VIC.OK) == true)
+                        e = !cx.obrefs.Contains(c.key());
+                if (e)
+                    InstanceOb(cx, p, refobs);
             }
+            // Cascade has finished. Fix() everything.
+            cx.FixAll(defpos);
             // All done, so finish up
             var vp = cx.rsuids[rf.defpos].Value;
             cx.obuids = oob;
             cx.rsuids = oor;
             cx.obrefs = oof;
             var r = cx.data[vp];
+            r += (Query.Where, rv.where);
+            r += (Query._Matches, rv.matches);
+            r += (Query.Aggregates, rv.aggs);
             r += (_Domain, r.domain + (Domain.Display, rv.display));
             cx.data += (rv.defpos, r);
             return r;
         }
-        void OnInstance(Context cx,long dp, BTree<long, BTree<long, VIC?>> ro)
+        internal void OnInstance(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
         {
             for (var b = ro[dp]?.First(); b != null; b = b.Next())
             {
@@ -210,23 +222,23 @@ namespace Pyrrho.Level3
                     InstanceRS(cx, k, ro);
             }
         }
-        void InstanceOb(Context cx,long dp,BTree<long,BTree<long,VIC?>> ro)
+        internal void InstanceOb(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
         {
             if (cx.obuids.Contains(dp))
                 return;
             var np = cx.Next(dp);
             cx.obuids += (dp, np);
             cx._Add(cx.obs[dp].Relocate(np));
-            OnInstance(cx, dp, ro);
+            OnInstance(cx,dp, ro);
         }
-        void InstanceRS(Context cx,long dp, BTree<long,BTree<long,VIC?>> ro)
+        internal void InstanceRS(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
         {
             if (cx.rsuids.Contains(dp))
                 return;
             var np = cx.Next(dp);
             cx.rsuids += (dp, np);
-            cx.data +=(np, (RowSet)cx.data[dp].Relocate(np));
-            OnInstance(cx, dp, ro);
+            cx.data += (np, (RowSet)cx.data[dp].Relocate(np));
+            OnInstance(cx,dp, ro);
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced in a From.

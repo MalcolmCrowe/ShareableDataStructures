@@ -665,26 +665,7 @@ namespace Pyrrho.Level3
         {
             var vw = (RestView)cx.obs[rrs.restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
-            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
-                ?? vi.metadata[Sqlx.URL]
-                ?? vi.description);
-            string targetName = "";
-            var sql = new StringBuilder();
-            if (vi.metadata.Contains(Sqlx.URL))
-                url = sql.ToString();
-            else
-            {
-                var ss = url.Split('/');
-                if (ss.Length > 5)
-                    targetName = ss[5];
-                var ub = new StringBuilder(ss[0]);
-                for (var i = 1; i < ss.Length && i < 5; i++)
-                {
-                    ub.Append('/');
-                    ub.Append(ss[i]);
-                }
-                url = ub.ToString();
-            }
+            var (url, targetName, sql) = rrs.GetUrl(cx, vi);
             var rq = rrs.GetRequest(cx, url);
             rq.Method = "POST";
             if (vi.metadata.Contains(Sqlx.URL))
@@ -752,36 +733,7 @@ namespace Pyrrho.Level3
         {
             var vw = (RestView)cx.obs[rrs.restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
-            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
-                ?? vi.metadata[Sqlx.URL]
-                ?? vi.description);
-            string targetName = "";
-            var sql = new StringBuilder();
-            if (vi.metadata.Contains(Sqlx.URL))
-            {
-                sql.Append(url);
-                for (var b = rrs.matches.First(); b != null; b = b.Next())
-                {
-                    var kn = ((SqlValue)cx.obs[b.key()]).name;
-                    sql.Append("/"); sql.Append(kn);
-                    sql.Append("="); sql.Append(b.value());
-                }
-                url = sql.ToString();
-
-            }
-            else 
-            {
-                var ss = url.Split('/');
-                if (ss.Length > 5)
-                    targetName = ss[5];
-                var ub = new StringBuilder(ss[0]);
-                for (var i = 1; i < ss.Length && i < 5; i++)
-                {
-                    ub.Append('/');
-                    ub.Append(ss[i]);
-                }
-                url = ub.ToString();
-            }
+            var (url, targetName, sql) = rrs.GetUrl(cx, vi);
             var rq = rrs.GetRequest(cx, url);
             if (vi.metadata.Contains(Sqlx.URL))
             {
@@ -861,35 +813,7 @@ namespace Pyrrho.Level3
         {
             var vw = (RestView)cx.obs[rrs.restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
-            var url = (string)(cx.cursors[rrs.usingTable]?[rrs.urlCol].Val()
-                ?? vi.metadata[Sqlx.URL]
-                ?? vi.description);
-            string targetName = "";
-            var sql = new StringBuilder();
-            if (vi.metadata.Contains(Sqlx.URL))
-            {
-                sql.Append(url);
-                for (var b = rrs.matches.First(); b != null; b = b.Next())
-                {
-                    var kn = ((SqlValue)cx.obs[b.key()]).name;
-                    sql.Append("/"); sql.Append(kn);
-                    sql.Append("="); sql.Append(b.value());
-                }
-                url = sql.ToString();
-            }
-            else
-            {
-                var ss = url.Split('/');
-                if (ss.Length > 5)
-                    targetName = ss[5];
-                var ub = new StringBuilder(ss[0]);
-                for (var i = 1; i < ss.Length && i < 5; i++)
-                {
-                    ub.Append('/');
-                    ub.Append(ss[i]);
-                }
-                url = ub.ToString();
-            }
+            var (url, targetName, sql) = rrs.GetUrl(cx, vi);
             var rq = rrs.GetRequest(cx, url);
             if (vi.metadata.Contains(Sqlx.URL))
                 rq.Method = "DELETE";

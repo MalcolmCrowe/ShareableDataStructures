@@ -153,7 +153,7 @@ namespace Pyrrho.Level3
         }
         internal override RowSet RowSets(Context cx, CTree<long, RowSet.Finder> fi)
         {
-            var r = tableExp?.RowSets(cx,fi);
+            var r = tableExp?.RowSets(cx,fi)+(Matching,matching);
             if (r==null)
                 r = new TrivialRowSet(defpos,cx,new TRow(domain),-1L,fi);
             if (aggregates(cx))
@@ -173,7 +173,8 @@ namespace Pyrrho.Level3
             if (distinct)
                 r = new DistinctRowSet(cx,r);
             cx.results += (defpos, r.defpos);
-            return r.ComputeNeeds(cx);
+            cx.Review(r,aggs, filter + matches, assig); // Review the rowsets in the context
+            return cx.data[r.defpos];
         }
         /// <summary>
         /// Analysis stage Conditions().
@@ -474,7 +475,7 @@ namespace Pyrrho.Level3
             if (fetchFirst != -1L)
                 r = new RowSetSection(cx, r, 0, fetchFirst);
             cx.results += (defpos, r.defpos);
-            return r.ComputeNeeds(cx);
+            return r;
         }
         internal override BTree<long,VIC?> Scan(BTree<long,VIC?> t)
         {

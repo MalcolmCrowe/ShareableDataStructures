@@ -44,6 +44,7 @@ namespace Pyrrho.Level3
             FetchFirst = -179, // int
             Filter = -180, // CTree<long,TypedValue> matches to be imposed by this query
             _Matches = -182, // CTree<long,TypedValue> matches guaranteed elsewhere
+            Matching = -183, // CTree<long,CTree<long,bool>> SqlValue SqlValue (symmetric)
             OrdSpec = -184, // CList<long>
             Periods = -185, // BTree<long,PeriodSpec>
             _Repl = -186, // CTree<string,string> Sql output for remote views
@@ -53,6 +54,8 @@ namespace Pyrrho.Level3
         public string name => (string)mem[Name] ?? "";
         internal CTree<long, TypedValue> matches =>
              (CTree<long, TypedValue>)mem[_Matches] ?? CTree<long, TypedValue>.Empty; // guaranteed constants
+        internal CTree<long, CTree<long, bool>> matching =>
+            (CTree<long, CTree<long, bool>>)mem[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
         internal CTree<string, string> replace =>
             (CTree<string,string>)mem[_Repl]??CTree<string, string>.Empty; // for RestViews
         internal int display => domain.display;
@@ -654,9 +657,7 @@ namespace Pyrrho.Level3
                 return null;
             var r = u.RowSets(cx, fi);
             cx.result = r.defpos;
-            cx.Review(aggs,filter+matches,assig); // Review the rowsets in the context
-            r = cx.data[r.defpos];
-            return r.ComputeNeeds(cx);
+            return cx.data[r.defpos];
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -822,7 +823,7 @@ namespace Pyrrho.Level3
                 kt += ma[b.value()];
             var rs = new TableExpRowSet(defpos, cx, nuid, domain, kt, r, where, matches+filter, fi);
             cx.results += (defpos, rs.defpos);
-            return rs.ComputeNeeds(cx);
+            return cx.data[rs.defpos];
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -906,7 +907,6 @@ namespace Pyrrho.Level3
             JoinUsing = -208, // CTree<long,long> SqlValue SqlValue (right->left)
             LeftOrder = -205, // CList<long>
             LeftOperand = -206, // long Query
-            Matching = -183, // CTree<long,CTree<long,bool>> SqlValue SqlValue (symmetric)
             Natural = -207, // Sqlx
             RightOrder = -209, // CList<long>
             RightOperand = -210; // long Query
@@ -931,8 +931,6 @@ namespace Pyrrho.Level3
         /// </summary>
         internal CList<long> leftOrder => (CList<long>)mem[LeftOrder]??CList<long>.Empty; // initialised once domain is known
         internal CList<long> rightOrder => (CList<long>)mem[RightOrder]??CList<long>.Empty;
-        internal CTree<long, CTree<long,bool>> matching =>
-            (CTree<long, CTree<long,bool>>)mem[Matching] ?? CTree<long, CTree<long,bool>>.Empty;
         /// <summary>
         /// During analysis, we collect requirements for the join conditions.
         /// </summary>
@@ -1507,7 +1505,7 @@ namespace Pyrrho.Level3
                 rr = new OrderedRowSet(cx, rr, ro, false);
             var res = new JoinRowSet(cx, this, lr, rr);
             cx.results += (defpos, res.defpos);
-            return res.ComputeNeeds(cx);
+            return res;
         }
         static RowSet Selected(Context cx,Query q,RowSet r, CTree<long, RowSet.Finder> fi)
         {

@@ -210,17 +210,9 @@ namespace Pyrrho.Level4
                     rows+= new TRow(domain, vs);
                 }
             }
-            return new GroupingRowSet(cx,this,needed,rows,true).ComputeNeeds(cx);
+            return new GroupingRowSet(cx,this,needed,rows,true);
         }
         internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
-        {
-            throw new DBException("42174");
-        }
-        internal override Context Update(Context cx, RowSet fm)
-        {
-            throw new DBException("42174");
-        }
-        internal override Context Delete(Context cx, RowSet fm)
         {
             throw new DBException("42174");
         }

@@ -68,6 +68,9 @@ namespace Pyrrho.Level4
             (CTree<long, bool>)mem[Query.Where] ?? CTree<long, bool>.Empty;
         internal CTree<long, TypedValue> matches =>
             (CTree<long, TypedValue>)mem[Query._Matches] ?? CTree<long, TypedValue>.Empty;
+        internal CTree<long, CTree<long, bool>> matching =>
+            (CTree<long, CTree<long, bool>>)mem[Query.Matching] 
+            ?? CTree<long, CTree<long, bool>>.Empty;
         internal CTree<long, Finder> needed =>
             (CTree<long, Finder>)mem[_Needed]; // must be initially null
         internal bool built => (bool)(mem[Built]??false);
@@ -280,14 +283,6 @@ namespace Pyrrho.Level4
             for (var b = rsTargets.First(); b != null; b = b.Next())
                 cx = cx.data[b.value()]?.Insert(cx, fm, prov, cl);
             return cx;
-        }
-        internal override Context Update(Context cx, RowSet fm)
-        {
-            throw new NotImplementedException();
-        }
-        internal override Context Delete(Context cx, RowSet fm)
-        {
-            throw new NotImplementedException();
         }
         internal virtual RowSet Build(Context cx)
         {
@@ -517,9 +512,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual RowSet Review(Context cx)
+        internal virtual RowSet Review(Context cx,BTree<long,bool> skip)
         {
-            return this;
+            return skip.Contains(defpos)?new EmptyRowSet(cx.nextHeap++,cx,domain)
+                :this;
         }
         internal virtual CTree<long,bool> Review(Context cx,CTree<long,bool> ag)
         {
@@ -537,17 +533,16 @@ namespace Pyrrho.Level4
             }
             return ag;
         }
-        internal virtual CTree<long,TypedValue> Review(Context cx,CTree<long,TypedValue> ma,
-            long p,TypedValue v)
+        internal virtual CTree<long,TypedValue> Review(Context cx,CTree<long,TypedValue> ma)
         {
             var ms = matches;
             for (var b = ma.First(); b != null; b = b.Next())
             {
                 var k = b.key();
-                if (!finder.Contains(k))
+                if (!domain.representation.Contains(k))
                     ma -= k;
-                else if ((!ms.Contains(p)) && finder[k].rowSet == defpos)
-                    ms += (p, v);
+                else if (!ms.Contains(k))
+                    ms += (k, b.value());
             }
             if (ms != matches)
                 cx.data += (defpos, this + (Query._Matches, ms));
@@ -556,11 +551,11 @@ namespace Pyrrho.Level4
         internal virtual CTree<UpdateAssignment,bool> Review(Context cx,
             CTree<UpdateAssignment,bool> sg)
         {
-            var ags = assig;
             for (var b = sg.First(); b != null; b = b.Next())
             {
                 var ua = b.key();
-                if (!finder.Contains(ua.vbl))
+                if (!(finder.Contains(ua.vbl) && finder[ua.vbl] is Finder fi 
+                    && fi.rowSet==defpos))
                     sg -= b.key();
             }
             return sg;
@@ -724,7 +719,16 @@ namespace Pyrrho.Level4
                 sb.Append(cm); cm = (b.key()==d)?"|":",";
                 sb.Append(Uid(b.value()));
             }
-            sb.Append(")"); 
+            sb.Append(")");
+            if (needed != null && needed != CTree<long, Finder>.Empty)
+            {
+                sb.Append(" NEEDED: "); cm = "";
+                for (var b = needed.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+            }
             if (keys!=rt && keys.Count!=0)
             {
                 cm = " key (";
@@ -1193,8 +1197,10 @@ namespace Pyrrho.Level4
             Fixup(cx, rs);
             return rs;
         }
-        internal override RowSet Review(Context cx)
+        internal override RowSet Review(Context cx,BTree<long,bool> skip)
         {
+            if (skip.Contains(defpos))
+                return base.Review(cx, skip);
             var sc = cx.data[source];
             if (rt.CompareTo(sc.rt) == 0 && target>=Transaction.Analysing)
             {
@@ -1299,13 +1305,13 @@ namespace Pyrrho.Level4
         {
             return ((DBObject)cx.db.objects[target]).Insert(cx, fm, prov, cl);
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
-            return ((DBObject)cx.db.objects[target]).Update(cx, fm);
+            return ((Table)cx.db.objects[target]).Update(cx,fm);
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
-            return ((DBObject)cx.db.objects[target]).Delete(cx, fm);
+            return ((Table)cx.db.objects[target]).Delete(cx,fm);
         }
         internal override BTree<long,VIC?> Scan(BTree<long, VIC?> t)
         {
@@ -1492,8 +1498,10 @@ namespace Pyrrho.Level4
         {
             return cx.data[source];
         }
-        internal override RowSet Review(Context cx)
+        internal override RowSet Review(Context cx,BTree<long,bool> skip)
         {
+            if (skip.Contains(defpos))
+                return base.Review(cx, skip);
             var sc = cx.data[source];
             if (rt.CompareTo(sc.rt)==0 && where.CompareTo(sc.where)==0)
             {
@@ -1520,13 +1528,13 @@ namespace Pyrrho.Level4
         {
             return cx.data[source].Insert(cx, fm, prov, cl);
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
-            return cx.data[source].Delete(cx, fm);
+            return cx.data[source].Delete(cx,fm);
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
-            return cx.data[source].Update(cx, fm);
+            return cx.data[source].Update(cx,fm);
         }
         public override string ToString()
         {
@@ -1742,11 +1750,11 @@ namespace Pyrrho.Level4
         {
             throw new DBException("42174");
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
@@ -1883,18 +1891,6 @@ namespace Pyrrho.Level4
             var r = (TableRowSet)base._Relocate(wr);
             r += (RSTargets, wr.Fix(rsTargets));
             return r;
-        }
-        internal override Context Update(Context cx, RowSet fm)
-        {
-            return ((Table)cx.db.objects[target]).Update(cx, fm);
-        }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
-        {
-            return ((Table)cx.db.objects[target]).Insert(cx, fm, prov, cl);
-        }
-        internal override Context Delete(Context cx, RowSet fm)
-        {
-            return ((Table)cx.db.objects[target]).Delete(cx, fm);
         }
         protected override Cursor _First(Context _cx)
         {
@@ -2123,7 +2119,9 @@ namespace Pyrrho.Level4
         internal override bool TableColsOk => true;
         public override Rvv _Rvv(Context cx)
         {
-            return Rvv.Empty+(target,cx.cursors[defpos]);
+            return (cx.cursors[defpos] is Cursor cu)?
+                Rvv.Empty+(target,cu)
+                : cx.affected;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -2155,17 +2153,9 @@ namespace Pyrrho.Level4
                 wr.cx.obs += (r.defpos, r);
             return r;
         }
-        internal override Context Update(Context cx, RowSet fm)
-        {
-            return ((Table)cx.db.objects[target]).Update(cx, fm);
-        }
         internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
         {
             return ((Table)cx.db.objects[target]).Insert(cx, fm, prov, cl);
-        }
-        internal override Context Delete(Context cx, RowSet fm)
-        {
-            return ((Table)cx.db.objects[target]).Delete(cx, fm);
         }
         protected override Cursor _First(Context _cx)
         {
@@ -2610,11 +2600,11 @@ namespace Pyrrho.Level4
         {
             throw new DBException("42174");
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
@@ -2772,8 +2762,10 @@ namespace Pyrrho.Level4
         {
             return (OrderedRowSet)rs.New(rs.mem + x);
         }
-        internal override RowSet Review(Context cx)
+        internal override RowSet Review(Context cx,BTree<long,bool>skip)
         {
+            if (skip.Contains(defpos))
+                return base.Review(cx, skip);
             var sc = cx.data[source];
             var match = true; // if true, all of the ordering columns are constant
             for (var b = rowOrder.First(); match && b != null; b = b.Next())
@@ -2786,17 +2778,6 @@ namespace Pyrrho.Level4
                 return sc;
             }
             return this;
-        }
-        internal override CTree<UpdateAssignment, bool> Review(Context cx, CTree<UpdateAssignment, bool> sg)
-        {
-            var ags = assig;
-            for (var b = sg.First(); b != null; b = b.Next())
-            {
-                var ua = b.key();
-                if (!finder.Contains(ua.vbl))
-                    sg -= b.key();
-            }
-            return sg;
         }
         public override Rvv _Rvv(Context cx)
         {
@@ -2862,13 +2843,13 @@ namespace Pyrrho.Level4
         {
             return OrderedCursor.New(_cx, this, RTreeBookmark.New(tree, _cx));
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
-            return cx.data[source].Update(cx, fm);
+            return cx.data[source].Update(cx,fm);
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
-            return cx.data[source].Delete(cx, fm);
+            return cx.data[source].Delete(cx,fm);
         }
         public override string ToString()
         {
@@ -3203,13 +3184,13 @@ namespace Pyrrho.Level4
         {
             return cx.data[source].Insert(cx, fm, prov, cl);
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
-            return cx.data[source].Delete(cx, fm);
+            return cx.data[source].Delete(cx,fm);
         }
-        internal override Context Update(Context cx, RowSet fm)
+        internal override Context Update(Context cx,RowSet fm)
         {
-            return cx.data[source].Update(cx, fm);
+            return cx.data[source].Update(cx,fm);
         }
         public override string ToString()
         {
@@ -5120,13 +5101,11 @@ namespace Pyrrho.Level4
             }
             return wr;
         }
-        internal override RowSet Build(Context cx)
+        internal (string,string,StringBuilder) GetUrl(Context cx, ObInfo vi)
         {
-            var vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
             var url = (string)(cx.cursors[usingTable]?[urlCol].Val()
-                ?? vi.metadata[Sqlx.URL]
-                ?? vi.description);
+                    ?? vi.metadata[Sqlx.URL]
+                    ?? vi.description);
             var sql = new StringBuilder();
             string targetName = "";
             if (vi.metadata.Contains(Sqlx.URL))
@@ -5139,6 +5118,7 @@ namespace Pyrrho.Level4
                     sql.Append("="); sql.Append(b.value());
                 }
                 url = sql.ToString();
+                sql.Clear();
             }
             else
             {
@@ -5146,13 +5126,20 @@ namespace Pyrrho.Level4
                 if (ss.Length > 5)
                     targetName = ss[5];
                 var ub = new StringBuilder(ss[0]);
-                for (var i=1;i<ss.Length && i<5;i++)
+                for (var i = 1; i < ss.Length && i < 5; i++)
                 {
                     ub.Append('/');
                     ub.Append(ss[i]);
                 }
                 url = ub.ToString();
             }
+            return (url,targetName,sql);
+        }
+        internal override RowSet Build(Context cx)
+        {
+            var vw = (RestView)cx.obs[restView];
+            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var (url,targetName,sql) = GetUrl(cx,vi);
             var rq = GetRequest(cx,url);
             rq.Accept = vw.mime ?? "application/json";
             if (vi.metadata.Contains(Sqlx.URL))
@@ -5271,7 +5258,7 @@ namespace Pyrrho.Level4
                 r += (ObInfo.Description, ds);
             if (lv!=Level.D)
                 r+= (Classification,lv);
-            if (ld != null)
+            if (ld != null && ld!="")
                 r += (Table.LastData, long.Parse(ld));
             return r;
         }
@@ -5299,14 +5286,22 @@ namespace Pyrrho.Level4
                 r += usingTable;
             return r;
         }
-        internal override CTree<long, TypedValue> Review(Context cx, CTree<long, TypedValue> ma, long p, TypedValue v)
+        internal override CTree<long, TypedValue> Review(Context cx, CTree<long, TypedValue> ma)
         {
-            if (joinUsing.Contains(p))
-                ma += (joinUsing[p], v);
-            for (var b = joinUsing.First(); b != null; b = b.Next())
-                if (b.value() == p)
-                    ma += (b.key(), v);
-            return ma;
+            var ms = matches;
+            for (var b = ma.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                if (ms.Contains(p))
+                    continue;
+                var v = b.value();
+                if (joinUsing.Contains(p))
+                    ma += (joinUsing[p], v);
+                for (var c = joinUsing.First(); c != null; c = c.Next())
+                    if (c.value() == p)
+                        ma += (c.key(), v);
+            }
+            return base.Review(cx,ma);
         }
         internal override CTree<long, bool> Review(Context cx, CTree<long, bool> ag)
         {
@@ -5363,6 +5358,81 @@ namespace Pyrrho.Level4
             t = Scan(t, usingCols, VIC.RK | VIC.OV);
             t = Scan(t, usingTable, VIC.RK | VIC.OV);
             return base.Scan(t);
+        }
+        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        {
+            int count = 0;
+            var vw = (RestView)cx.obs[restView];
+            if (vw.Denied(cx, Grant.Privilege.Insert))
+                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+            var cu = (RestCursor)cx.cursors[defpos];
+            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+            {
+                var rc = rb.value(); // probably a RemoteTableRow
+                var st = rc.subType;
+                var np = cx.db.nextPos;
+                if (rc._Insert(cx, np, cu.values, st, prov, cl) is TableRow nr)
+                {
+                    var ns = cx.newTables[vw.defpos] ?? BTree<long, TableRow>.Empty;
+                    cx.newTables += (vw.defpos, ns + (nr.defpos, nr));
+                    count++;
+                }
+            }
+            return cx;
+        }
+        internal override Context Update(Context cx,RowSet fm)
+        {
+            if (assig.Count == 0)
+                return cx;
+            var vw = (RestView)cx.obs[restView];
+            if (vw.Denied(cx, Grant.Privilege.Update))
+                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+            var updates = BTree<long, UpdateAssignment>.Empty;
+            for (var ass = assig.First(); ass != null; ass = ass.Next())
+            {
+                var c = cx.obs[ass.key().vbl] as SqlCopy
+                    ?? throw new DBException("0U000");
+                DBObject oc = c;
+                while (oc is SqlCopy sc) // Views have indirection here
+                    oc = cx.obs[sc.copyFrom];
+                if (oc is TableColumn tc && tc.generated != GenerationRule.None)
+                    throw cx.db.Exception("0U000", c.name).Mix();
+                if (c.Denied(cx, Grant.Privilege.Update))
+                    throw new DBException("42105", c.name);
+                updates += (oc.defpos, ass.key());
+            }
+            var cu = (RestCursor)cx.cursors[defpos];
+            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+            {
+                var rc = rb.value(); // probably a RemoteTableRow
+                var vs = rc.vals;
+                for (var b = updates.First(); b != null; b = b.Next())
+                {
+                    var ua = b.value();
+                    var tv = cx.obs[ua.val].Eval(cx);
+                    vs += (ua.vbl, tv);
+                }
+                var np = cx.db.nextPos;
+                var nr = rc._Update(cx, np, vs, null);
+                var ns = cx.newTables[vw.defpos] ?? BTree<long, TableRow>.Empty;
+                cx.newTables += (vw.defpos, ns + (nr.defpos, nr));
+            }
+            return cx;
+        }
+        internal override Context Delete(Context cx,RowSet fm)
+        {
+            int count = 0;
+            var vw = (RestView)cx.obs[restView];
+            if (vw.Denied(cx, Grant.Privilege.Insert))
+                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+            var cu = (RestCursor)cx.cursors[defpos];
+            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+            {
+                var rc = rb.value(); // probably a RemoteTableRow
+                if (rc._Delete(cx))
+                    count++;
+            }
+            return cx;
         }
         public override string ToString()
         {

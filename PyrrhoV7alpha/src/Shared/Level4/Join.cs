@@ -35,8 +35,6 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> joinCond =>
             (CTree<long, bool>)mem[JoinPart.JoinCond] ?? CTree<long, bool>.Empty;
         internal FDJoinPart fdInfo => (FDJoinPart)mem[JoinPart._FDInfo];
-        internal CTree<long, CTree<long,bool>> matching =>
-            (CTree<long, CTree<long,bool>>)mem[JoinPart.Matching]??CTree<long,CTree<long,bool>>.Empty;
         /// <summary>
         /// Constructor: build the rowset for the Join
         /// </summary>
@@ -45,7 +43,7 @@ namespace Pyrrho.Level4
             base(j.defpos, _cx, j.domain, _Fin(j,lr,rr), null, j.where, j.ordSpec, j.matches,
                 _Last(lr, rr) + (JFirst, lr.defpos) + (JSecond, rr.defpos)
                 +(RSTargets,lr.rsTargets+rr.rsTargets)
-                + (JoinPart._FDInfo, j.FDInfo) + (JoinPart.Matching,j.matching)
+                + (JoinPart._FDInfo, j.FDInfo) + (Query.Matching,j.matching)
                 +(JoinPart.JoinCond,j.joinCond) + (JoinPart.JoinKind,j.kind))
 		{ }
         JoinRowSet(Context cx,JoinRowSet jrs, CTree<long,Finder> nd,bool bt)
@@ -153,7 +151,7 @@ namespace Pyrrho.Level4
                 r += (JSecond, ns);
             var ma = cx.Fix(matching);
             if (ma != matching)
-                r += (JoinPart.Matching, ma);
+                r += (Query.Matching, ma);
             return r;
         }
         internal override BList<long> Sources(Context cx)
@@ -174,7 +172,7 @@ namespace Pyrrho.Level4
             r += (JoinPart.JoinCond, wr.Fix(joinCond));
             r += (JFirst, wr.Fix(first));
             r += (JSecond, wr.Fix(second));
-            r += (JoinPart.Matching, wr.Fix(matching));
+            r += (Query.Matching, wr.Fix(matching));
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -317,6 +315,14 @@ namespace Pyrrho.Level4
             }
             return r;
         }
+        /// <summary>
+        /// Compute the explicit rows of a join and add them to the operands
+        /// to constrain traversal to these rows and an associated 
+        /// Insert, Update or Delete operation.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="fm">ignored</param>
+        /// <returns>local copies of the operands with explicit Rows</returns>
         (RowSet,RowSet) Split(Context cx,RowSet fm)
         {
             var f = cx.data[first];
@@ -340,18 +346,18 @@ namespace Pyrrho.Level4
             cx.data[second].Insert(cx, b, prov, cl);
             return cx;
         }
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm)
         {
             var (a, b) = Split(cx, fm);
-            cx = cx.data[first].Delete(cx, a);
-            cx = cx.data[second].Delete(cx, b);
+            cx.data[first].Delete(cx, a);
+            cx.data[second].Delete(cx, b);
             return cx;
         }
         internal override Context Update(Context cx, RowSet fm)
         {
             var (a, b) = Split(cx, fm);
-            cx = cx.data[first].Update(cx, a);
-            cx = cx.data[second].Update(cx, b);
+            cx.data[first].Update(cx, a);
+            cx.data[second].Update(cx, b);
             return cx;
         }
         public override string ToString()
@@ -456,15 +462,21 @@ namespace Pyrrho.Level4
         internal Cursor MoveToMatch(Context _cx)
         {
             JoinBookmark r = this;
+            var ox = _cx.finder;
+            _cx.finder = _jrs.finder;
             while (r != null && !DBObject.Eval(_jrs.where, _cx))
                 r = (JoinBookmark)r.Next(_cx);
+            _cx.finder = ox;
             return r;
         }
         internal Cursor PrevToMatch(Context _cx)
         {
             JoinBookmark r = this;
+            var ox = _cx.finder;
+            _cx.finder = _jrs.finder;
             while (r != null && !DBObject.Eval(_jrs.where, _cx))
                 r = (JoinBookmark)r.Previous(_cx);
+            _cx.finder = ox;
             return r;
         }
         internal override BList<TableRow> Rec()

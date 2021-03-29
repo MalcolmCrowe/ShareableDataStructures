@@ -378,8 +378,6 @@ namespace Pyrrho.Level3
             string sdata, string etag)
         {
             var db = this;
-            var tr = this;
-            var ro = db.role;
             /*          if (etag != null)
                       {
                           var ss = etag.Split(';');
@@ -387,7 +385,7 @@ namespace Pyrrho.Level3
                               db.CheckRdC(ss[1]);
                       }
           */
-            if (path.Length > 4)
+            if (path.Length >= 4)
             {
                 switch (method)
                 {
@@ -415,11 +413,6 @@ namespace Pyrrho.Level3
             {
                 switch (method)
                 {
-        //            case "GET":
-        //                var f = new From(tr, id + "G", new Ident("Role$Class", 0, Ident.IDType.NoInput), null, Grant.Privilege.Select);
-        //                f.Analyse(tr);
-        //                SetResults(f.rowSet);
-         //               break;
                     case "POST":
                         new Parser(cx).ParseSql(sdata, Domain.Content).Commit(cx);
                         break;

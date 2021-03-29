@@ -869,8 +869,11 @@ namespace Pyrrho
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
                     domains += (i, b.value());
             var dc = domains[nextCol];
+            var ds = rb.display;
+            if (ds == 0)
+                ds = rb.Length;
             nextCell = rb[nextCol++];
-            if (nextCol == rb.display)
+            if (nextCol == ds)
                 lookAheadDone = false;
             //      tcp.PutCheck(db);
             tcp.PutCell(cx, dc, nextCell);
@@ -878,7 +881,7 @@ namespace Pyrrho
             for (; ; )
             {
                 var lc = 0;
-                if (nextCol == rb.display)
+                if (nextCol == ds)
                 {
                     if (!lookAheadDone)
                         for (rb = rb.Next(cx); rb != null && rb.IsNull; rb = rb.Next(cx))
@@ -902,7 +905,7 @@ namespace Pyrrho
                 if (tcp.wcount + len + 1 >= TCPStream.bSize)
                     break;
                 tcp.PutCell(cx, dc, nextCell);
-                if (++nextCol == rb.display)
+                if (++nextCol == ds)
                     lookAheadDone = false;
                 ncells++;
             }
@@ -1253,7 +1256,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (23 March 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (29 March 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

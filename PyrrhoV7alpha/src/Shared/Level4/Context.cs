@@ -81,8 +81,8 @@ namespace Pyrrho.Level4
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> obuids = BTree<long, long?>.Empty;
         internal BTree<long, long?> rsuids = BTree<long, long?>.Empty;
-        internal BTree<long, BTree<long, DBObject.VIC?>> obrefs = 
-            BTree<long, BTree<long, DBObject.VIC?>>.Empty;
+        internal BTree<long, BTree<long, VIC?>> obrefs 
+            = BTree<long, BTree<long, VIC?>>.Empty;
         // Keep track of rowsets for query
         internal BTree<long, long> results = BTree<long, long>.Empty; 
         internal long result;
@@ -244,9 +244,8 @@ namespace Pyrrho.Level4
         internal void Install1(Framing fr)
         {
             obs += (fr.obs,true);
-            for (var b = fr.obs.First(); b != null; b = b.Next())
-                Add(b.value());
-      //      defs += fr.defs;
+     //       for (var b = fr.obs.First(); b != null; b = b.Next())
+     //           Add(b.value());
         }
         internal void Install2(Framing fr)
         {
@@ -639,10 +638,9 @@ namespace Pyrrho.Level4
         /// We review the rowsets adding matches information wherever we can,
         /// and then review each rowset to see if it can be replaced with its source.
         /// </summary>
-        internal void Review(CTree<long,bool> ags, CTree<long,TypedValue> matches,
+        internal void Review(RowSet r, CTree<long,bool> ags, CTree<long,TypedValue> matches,
             CTree<UpdateAssignment,bool> asg)
         {
-            var r = data[result];
             for (var vb = withViews.First(); vb != null; vb = vb.Next())
                 if (data[vb.key()] is RestRowSet rr)
                 {
@@ -657,27 +655,42 @@ namespace Pyrrho.Level4
                         _Add(b.value());
                 }
             var todo = new BList<(long, CTree<long,bool>, CTree<long, TypedValue>,
-                CTree<UpdateAssignment,bool>)>
-                ((result, ags, matches, asg));
+                CTree<UpdateAssignment,bool>,CTree<long,CTree<long,bool>>)>
+                ((r.defpos, ags, matches, asg, r.matching));
+            var skip = BTree<long, bool>.Empty;
             while (todo.Count > 0)
             {
-                var (rp, ag, ma, sg) = todo[0];
+                var (rp, ag, ma, sg, mg) = todo[0];
                 todo -= 0;
                 var rs = data[rp];
-                var rs0 = rs;
                 if (rp >= Transaction.TransPos)
                 {
+                    mg += rs.matching;
                     ma += rs.matches;
-                    for (var b = ma.First(); b != null; b = b.Next())
+                    // if uids x and y eventually have to match, then
+                    // any matches condition on x can become a condition on y
+                    // (and remember the matching tree is symmetric)
+                    for (var b = mg.First(); b != null; b = b.Next())
                     {
-                        var p = b.key();
-                        var v = b.value();
-                        if (rs.finder.Contains(p))
-                            ma += (p, v);
-                        else
-                            ma -= p;
-                        ma = rs.Review(this, ma, p, v);
+                        var x = b.key();
+                        if (ma[x] is TypedValue v)
+                            for (var c = b.value().First(); c != null; c = c.Next())
+                            {
+                                var y = c.key();
+                                if (ma[y] is TypedValue w)
+                                { 
+                                    if (v.CompareTo(w) != 0)
+                                    { // the rowset will be empty
+                                        skip += (rp, true);
+                                        goto skipped;
+                                    }
+                                    // we have it already
+                                }
+                                else
+                                    ma += (y, v);
+                            }
                     }
+                    ma = rs.Review(this, ma);
                     if (ma != rs.matches)
                     {
                         rs += (Query._Matches, ma);
@@ -695,9 +708,9 @@ namespace Pyrrho.Level4
                         rs += (Query.Assig, sg);
                         data += (rp, rs);
                     }
-                    if (rs != rs0)
-                        for (var b = rs.Sources(this).First(); b != null; b = b.Next())
-                            todo += (b.value(), ag, ma, sg);
+                    for (var b = rs.Sources(this).First(); b != null; b = b.Next())
+                         todo += (b.value(), ag, ma, sg, mg);
+                    skipped:;
                 }
             }
             var tbd = new BList<long>(r.defpos);
@@ -710,7 +723,7 @@ namespace Pyrrho.Level4
                 if (rp >= Transaction.TransPos && !done.Contains(rp))
                 {
                     done += (rp, true);
-                    rs = rs.Review(this);
+                    rs = rs.Review(this,skip);
                     if (rs.defpos != rp)
                     {
                         rsuids += (rs.defpos, rp);
@@ -726,8 +739,32 @@ namespace Pyrrho.Level4
                 rs = rs.Relocate1(this);
                 data += (rs.defpos, rs);
             }
+            // problem: if one or more rowsets have been removed
+            // so that two entries in cx.data point to the same thing
+            // we'd better Fix everything
+            FixAll(db.loadpos - 1);
+            // This is the right time to check on Needed uids in rowsets
+            for (var b = data.First(); b != null; b = b.Next())
+                b.value().ComputeNeeds(this);
         }
-
+        // Following View.Instance cascade or Review
+        internal void FixAll(long dp)
+        {
+            for (var b = obs.PositionAt(dp); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = obuids[p] ?? p;
+                var nb = (DBObject)b.value().Fix(this);
+                obs += (np, nb);
+            }
+            for (var b = data.PositionAt(dp + 1); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var np = rsuids[p] ?? p;
+                var nr = (RowSet)b.value().Fix(this);
+                data += (np, nr);
+            }
+        }
         internal DBObject _Replace(long dp, DBObject was, DBObject now)
         {
             if (done.Contains(dp))
@@ -786,9 +823,10 @@ namespace Pyrrho.Level4
             }
             // not reached
         }
-        internal void AddDefs(Ident id, CList<long> s)
+        internal void AddDefs(Ident id, Domain dm)
         {
-            for (var b = s?.First(); b != null; b = b.Next())
+            for (var b = dm?.rowType.First(); b != null;// && b.key() < dm.display; 
+                b = b.Next())
             {
                 var p = b.value();
                 var ob = obs[p] ?? (DBObject)db.objects[p];
@@ -1221,7 +1259,6 @@ namespace Pyrrho.Level4
     {
         internal const long
             Data = -450,    // BTree<long,RowSet>
-            Defs = -451,    // Ident.Idents
             Obs = -449,     // BTree<long,DBObject>
             Result = -452,  // long
             Results = -453; // BTree<long,long> Query RowSet
@@ -1229,8 +1266,6 @@ namespace Pyrrho.Level4
             (BTree<long,DBObject>)mem[Obs]??BTree<long,DBObject>.Empty;
         public BTree<long, RowSet> data =>
             (BTree<long,RowSet>)mem[Data]??BTree<long,RowSet>.Empty;
-        public Ident.Idents defs =>
-            (Ident.Idents)mem[Defs]??Ident.Idents.Empty;
         public long result => (long)(mem[Result]??-1L);
         public BTree<long, long> results =>
             (BTree<long, long>)mem[Results] ?? BTree<long, long>.Empty;
@@ -1244,7 +1279,7 @@ namespace Pyrrho.Level4
         public Framing(Context cx) 
             : base(BTree<long,object>.Empty+(Obs,cx.obs)+(Data,cx.data)
                   +(Results,cx.results)
-                  +(Defs,cx.defs)+(Result,cx.result)
+                  +(Result,cx.result)
                   +(Rvv.RVV,cx.affected))//+(Depths,cx.depths))
         { }
         internal override Basis New(BTree<long, object> m)
@@ -1313,7 +1348,6 @@ namespace Pyrrho.Level4
             var rs = BTree<long, long>.Empty;
             for (var b=results.First();b!=null;b=b.Next())
                 rs += (wr.Fix(b.key()),wr.Fix(b.value()));
-            r += (Defs, r.defs.Relocate(wr));
             r += (Result, wr.Fix(r.result));
             r += (Results, rs);
             return r;
@@ -1329,7 +1363,6 @@ namespace Pyrrho.Level4
         /// <param name="cx"></param>
         internal void Relocate(Context cx)
         {
-            defs.Scan(cx);
             for (var b = obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -1385,7 +1418,6 @@ namespace Pyrrho.Level4
                 if (k != nk)
                     rs -= k;
             }
-            r += (Defs, r.defs.Relocate(cx));
             r += (Obs, os);
             r += (Data, da);
             r += (Result, cx.rsuids[r.result]??r.result);
@@ -1395,8 +1427,6 @@ namespace Pyrrho.Level4
         public void Install(Context cx)
         {
             cx.obs += obs;
-  //          cx.depths += depths;
-            cx.defs = (Ident.Idents)cx.defs.Add(defs);
             cx.data += data;
             cx.result = result;
             cx.results += results;
@@ -1404,8 +1434,7 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(' '); sb.Append(defs);
-            var cm = " Obs: (";
+            var cm = " (";
             for (var b = obs.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key())); 

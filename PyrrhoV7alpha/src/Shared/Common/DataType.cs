@@ -901,9 +901,9 @@ namespace Pyrrho.Common
             for (var b=First();b!=null;b=b.Next())
             {
                 sb.Append(sc); sc = ";";
-                sb.Append(b.key()); sb.Append(",");
                 for (var c = b.value().First(); c != null; c = c.Next())
                 {
+                    sb.Append(b.key()); sb.Append(",");
                     sb.Append(c.key()); sb.Append(","); 
                     sb.Append(c.value());
                 }

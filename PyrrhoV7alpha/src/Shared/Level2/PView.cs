@@ -255,7 +255,7 @@ namespace Pyrrho.Level2
                 os += (cp, tc);
             }
             // fix r.union and lower structures during Instancing
-            framing = Framing.Empty + (Framing.Obs, os) + (Framing.Defs, ds);
+            framing = Framing.Empty + (Framing.Obs, os);
         }
         internal override void Install(Context cx, long p)
         {

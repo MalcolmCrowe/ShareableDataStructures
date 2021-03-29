@@ -137,7 +137,7 @@ namespace Pyrrho
                 r = cx.data[us.nuid];
             if (r == null && cx.exec is SqlInsert si)
                 r = cx.data[si.nuid];
-            if (cx.db.role.infos[r.rsTargets.First().key()] is ObInfo oi)
+            if (r!=null && cx.db.role.infos[r.rsTargets.First().key()] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);

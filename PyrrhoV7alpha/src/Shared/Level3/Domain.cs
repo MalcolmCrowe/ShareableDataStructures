@@ -1467,8 +1467,12 @@ namespace Pyrrho.Level3
         }
         public virtual TypedValue Parse(long off,string s, string m, Context cx)
         {
-            if (kind==Sqlx.TABLE && m=="application/json")
-                return Coerce(cx,new DocArray(s));
+            if (kind == Sqlx.TABLE && m == "application/json")
+            {
+                if (s == "") 
+                    s = "[]";
+                return Coerce(cx, new DocArray(s));
+            }
             if (kind == Sqlx.SENSITIVE)
                 return new TSensitive(this, elType.Parse(new Scanner(off, s.ToCharArray(), 0, m,cx)));
             if (kind == Sqlx.DOCUMENT)

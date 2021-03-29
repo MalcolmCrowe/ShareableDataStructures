@@ -50,7 +50,7 @@ namespace Pyrrho.Level3
                 if (ids[c.name].Item1<Transaction.Executables)
                     ids += (c.name, c.defpos, Ident.Idents.Empty); 
             }
-            cx.defs += (ic.ident, ic.iix, ids);
+            cx.defs += (ic.ident, ic.iix, ids); 
         }
         public From(long dp,Context cx,SqlCall pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
@@ -97,18 +97,19 @@ namespace Pyrrho.Level3
         {
             var vs = BList<SqlValue>.Empty;
             var de = 1; // we almost always have some columns
-            var rt = CList<long>.Empty;
+            Domain dm = null;
             if (ob is Table)
-                rt = ob.Inf(cx).domain.rowType;
+                dm = ob.Inf(cx).domain;
             else if (ob is View)
-                rt = ob.domain.rowType;
+                dm = ob.domain;
             cx._Add(ob);
-            cx.AddDefs(ic, rt);
+            cx.AddDefs(ic, dm);
+            var mg = q?.matching;
             var mp = CTree<long, bool>.Empty;
             if (cr == null)
             {
                 var ma = BTree<string, DBObject>.Empty;
-                for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
+                for (var b = dm.rowType.First(); b != null && b.key()<dm.display; b = b.Next())
                 {
                     var p = b.value();
                     var tc = (DBObject)cx.db.objects[p]??cx.obs[p];
@@ -127,7 +128,7 @@ namespace Pyrrho.Level3
                     for (var b = qn.First(); b != null; b = b.Next())
                     {
                         var p = b.key();
-                        if (q != null && cx.obs[p] is SqlValue uv && uv.domain.kind == Sqlx.CONTENT)
+                        if (cx.obs[p] is SqlValue uv && uv.domain == Domain.Content)
                         {
                             var tc = ma[uv.name];
                             if (tc == null)
@@ -137,12 +138,21 @@ namespace Pyrrho.Level3
                                 nv += (_Alias, uv.alias);
                             cx.Replace(uv, nv);
                             q = (QuerySpecification)cx.obs[q.defpos];
+                            if (nv is SqlCopy su && cx.obs[su.copyFrom] is SqlCopy)
+                            {
+                                var mgu = mg[su.copyFrom] ?? CTree<long, bool>.Empty;
+                                var mgp = mg[p] ?? CTree<long, bool>.Empty;
+                                mg = mg + (uv.defpos, mgu + (p, true))
+                                    + (p, mgp + (su.copyFrom, true));
+                                q += (Matching, mg);
+                                q = (QuerySpecification)cx.Add(q);
+                            }
                             vs += nv;
                             mp += (tc.defpos, true);
                         }
                     }
                     if (q.HasStar(cx))
-                        for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
+                        for (var b = dm.rowType.First(); b != null && b.key()<ob.domain.display; b = b.Next())
                         {
                             var p = b.value();
                             var ci = cx.Inf(p); // for Table
@@ -169,7 +179,7 @@ namespace Pyrrho.Level3
                 }
             }
             var d = vs.Length;
-            for (var b = rt.First(); b != null && b.key()<ob.domain.display; b = b.Next())
+            for (var b = dm.rowType.First(); b != null && b.key()<ob.domain.display; b = b.Next())
             {
                 var p = b.value();
                 if (mp.Contains(p))
@@ -180,7 +190,7 @@ namespace Pyrrho.Level3
                 cx.Add(sc);
                 vs += sc;
             }
-            var dm = new Domain(Sqlx.TABLE,vs,d);
+            dm = new Domain(Sqlx.TABLE,vs,d);
             de = _Max(de, ob.depth);
             return BTree<long, object>.Empty + (Name, ic.ident)
                    + (Target, ob.defpos) + (_Domain, dm)
@@ -289,7 +299,7 @@ namespace Pyrrho.Level3
             if (cx.data.Contains(defpos))
                 return cx.data[defpos];
             cx.obs[target].RowSets(cx, this, fi);
-            return cx.data[defpos].ComputeNeeds(cx);
+            return cx.data[defpos];
         }
         /// <summary>
         /// Accessor: Check a new table check constraint
@@ -484,8 +494,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var rs = cx.data[nuid];
-            cx = rs.Delete(cx, rs);
-            return cx;
+            return rs.Delete(cx,rs);
         }
         /// <summary>
         /// A readable version of the delete statement
@@ -523,8 +532,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var rs = cx.data[nuid];
-            rs.Update(cx, rs);
-            return cx;
+            return rs.Update(cx,rs);
         }
         internal override DBObject Relocate(long dp)
         {

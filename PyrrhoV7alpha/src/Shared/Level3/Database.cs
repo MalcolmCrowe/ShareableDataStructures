@@ -89,6 +89,8 @@ namespace Pyrrho.Level3
             return ToString();
         }
     }
+    // for view instancing and RowSet Review: Ok = ob key, RK rs key, OV ob value, RV rs value
+    [Flags] internal enum VIC { None = 0, OK = 1, RK = 2, OV = 4, RV = 8 }
     public enum ExecuteStatus { Parse, Obey, Prepare }
 
     /// <summary>
@@ -537,7 +539,8 @@ namespace Pyrrho.Level3
                 return 0;
             var r = 0L;
             for (var b = aff.First(); b != null; b = b.Next())
-                r += b.value().Count;
+                if (cx.db.objects[b.key()] is Table)
+                    r += b.value().Count;
             return (int)r;
         }
         /// <summary>

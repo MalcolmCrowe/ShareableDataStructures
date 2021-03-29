@@ -96,7 +96,8 @@ namespace Pyrrho.Common
         }
         internal virtual TypedValue Fix(Context cx)
         {
-            return New((Domain)dataType.Fix(cx));
+            var dm = (Domain)dataType.Fix(cx);
+            return (dm==dataType)?this:New(dm);
         }
         internal virtual TypedValue Replaced(Context cx)
         {

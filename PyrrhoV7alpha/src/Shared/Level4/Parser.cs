@@ -3486,7 +3486,7 @@ namespace Pyrrho.Level4
             fm = (From)cx.Add(fm);
             trig.from = fm.defpos;
             trig.domain = fm.domain;
-            cx.AddDefs(fn, fm.rowType);
+            cx.AddDefs(fn, fm.domain);
             var tg = new Trigger(trig,cx.role);
             cx.Add(tg); // incomplete version for parsing
             if (trig.oldTable != null)
@@ -5375,7 +5375,7 @@ namespace Pyrrho.Level4
             r = (CursorSpecification)cx.Add(r);
             r = (CursorSpecification)r.ReviewJoins(cx);
             var rs = r.RowSets(cx, cx.data[r.from]?.finder ?? CTree<long, RowSet.Finder>.Empty);
-            if (rs is TableExpRowSet te)
+            if (rs is TableExpRowSet te && rs.where==CTree<long,bool>.Empty)
                 rs = cx.data[te.source];
             cx.result = rs?.defpos ?? -1L;
             return r.defpos;
@@ -5994,7 +5994,7 @@ namespace Pyrrho.Level4
                 {
                     var ia = new Ident(a, rf.defpos);
                     cx.defs += (ia, rf.defpos);
-                    cx.AddDefs(ia, rf.rowType);
+                    cx.AddDefs(ia, rf.domain);
                 }
             }
             cx.Add(rf);
@@ -6551,7 +6551,7 @@ namespace Pyrrho.Level4
             cx.Install1(ob.framing);
             var ti = cx.Inf(ob.defpos);
             cx.defs += (ic, ob.defpos);
-            cx.AddDefs(ic, ti.domain.rowType);
+            cx.AddDefs(ic, ti.domain);
             BList<Ident> cs = null;
             // Ambiguous syntax here: (Cols) or (Subquery) or other possibilities
             if (tok == Sqlx.LPAREN)
@@ -6564,7 +6564,7 @@ namespace Pyrrho.Level4
             var fm = new From(ic, cx, ob, null, Grant.Privilege.Insert, null, cs);
             cx.Add(fm);
             cx.defs += (ic, fm.defpos);
-            cx.AddDefs(ic, fm.rowType);
+            cx.AddDefs(ic, fm.domain);
             SqlValue v;
             var vp = lxr.Position;
             if (tok == Sqlx.DEFAULT)
@@ -6603,7 +6603,7 @@ namespace Pyrrho.Level4
             if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
             {
                 cx.result = s.value;
-                cx.Review(CTree<long,bool>.Empty,CTree<long,TypedValue>.Empty,CTree<UpdateAssignment,bool>.Empty);
+                cx.Review(cx.data[cx.result],CTree<long,bool>.Empty,CTree<long,TypedValue>.Empty,CTree<UpdateAssignment,bool>.Empty);
                 cx = tr.Execute(s, cx);
             }
             return (cx,(SqlInsert)cx.Add(s));
@@ -6648,11 +6648,11 @@ namespace Pyrrho.Level4
             cx.Replace(fm,fm.AddCondition(cx, Query.Where, wh));
             r = (QuerySearch)cx.obs[r.defpos];
             fm = (From)cx.obs[fm.defpos];
-            fm.RowSets(cx, cx.data[fm.target]?.finder ?? CTree<long, RowSet.Finder>.Empty);
+            var rf = fm.RowSets(cx, cx.data[fm.target]?.finder ?? CTree<long, RowSet.Finder>.Empty);
             cx.result = fm.defpos;
             if (cx.parse == ExecuteStatus.Obey)
             {
-                cx.Review(CTree<long,bool>.Empty,fm.filter+fm.matches,fm.assig);
+                cx.Review(rf,CTree<long,bool>.Empty,fm.filter+fm.matches,fm.assig);
                 cx = ((Transaction)cx.db).Execute(r, cx);
             }
             cx.result = -1L;
@@ -6711,7 +6711,7 @@ namespace Pyrrho.Level4
             rs += (Query.Assig, q.assig);
             cx.data += (rs.defpos, rs);
             cx.result = rs.defpos;
-            cx.Review(CTree<long,bool>.Empty,q.filter+q.matches,q.assig);
+            cx.Review(rs,CTree<long,bool>.Empty,q.filter+q.matches,q.assig);
             cx.data += (q.defpos, cx.data[rs.defpos]);
             if (cx.parse == ExecuteStatus.Obey)
                 cx = ((Transaction)cx.db).Execute(r, cx);

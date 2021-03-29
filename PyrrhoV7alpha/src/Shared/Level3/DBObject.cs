@@ -70,8 +70,6 @@ namespace Pyrrho.Level3
         internal CTree<long, bool> dependents =>
             (CTree<long, bool>)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
-        // for view instancing: Ok = ob key, RK rs key, OV ob value, RV rs value
-        [Flags] internal enum VIC { None = 0, OK = 1, RK = 2, OV = 4, RV = 8 }
         /// <summary>
         /// Constructor
         /// </summary>
@@ -328,21 +326,13 @@ namespace Pyrrho.Level3
             _cx.Install2(framing);
             return _cx;
         }
-        /// <summary>
-        /// Execute a Delete operation for a Table, View, RestView.
-        /// </summary>
-        internal virtual Context Delete(Context cx, RowSet fm)
+        internal virtual Context Delete(Context cx,RowSet fm)
         {
-            cx.Install2(framing);
-            return cx;
+            throw new NotImplementedException();
         }
-        /// <summary>
-        /// Execute an Update operation for a Table, View or RestView.
-        /// </summary>
         internal virtual Context Update(Context cx, RowSet fm)
         {
-            cx.Install2(framing);
-            return cx;
+            throw new NotImplementedException();
         }
         internal virtual Database Drop(Database d, Database nd,long p)
         {
@@ -629,7 +619,7 @@ namespace Pyrrho.Level3
         }
         internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<long> ord, VIC vc)
         {
-            for (var b = ord.First(); b != null; b = b.Next())
+            for (var b = ord?.First(); b != null; b = b.Next())
                 t += (b.value(), (t[b.value()] ?? VIC.None) | vc);
             return t;
         }
