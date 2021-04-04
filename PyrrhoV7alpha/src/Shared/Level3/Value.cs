@@ -705,7 +705,8 @@ namespace Pyrrho.Level3
             r += (CopyFrom, wr.Fixed(copyFrom).defpos);
             return r;
         }
-        internal override Basis Fix(Context cx)
+   /*     internal override Basis Fix(Context cx) Removed 3 April 2021
+    *     We probably never should modify copyFrom during Fix()
         {
             var r = (SqlCopy)base.Fix(cx);
             var cf = copyFrom;

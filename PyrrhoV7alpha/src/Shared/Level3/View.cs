@@ -32,13 +32,14 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Targets = -154, // CList<long>  Table/View
-            ViewCols = -378, // CTree<string,long> SqlValue
+            ViewCols = -378, // CTree<string,CTree<long,long>> Target SqlValue
             ViewDef = -379, // string
             ViewPpos = -377;// long View
         public string name => (string)mem[Name];
         public string viewDef => (string)mem[ViewDef];
-        public CTree<string, long> viewCols =>
-            (CTree<string, long>)mem[ViewCols] ?? CTree<string, long>.Empty;
+        public CTree<string, CTree<long,long>> viewCols =>
+            (CTree<string, CTree<long,long>>)mem[ViewCols] 
+            ?? CTree<string, CTree<long, long>>.Empty;
         public CList<long> targets =>
             (CList<long>)mem[Targets] ?? CList<long>.Empty;
         public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
@@ -52,6 +53,55 @@ namespace Pyrrho.Level3
         public static View operator+(View v,(long,object)x)
         {
             return (View)v.New(v.mem + x);
+        }
+        internal View _Refs(long dp,Context cx)
+        {
+            var r = framing;
+            var obrefs = BTree<long, BTree<long, VIC?>>.Empty;
+            // Scan the view rowType and targets (in result rowset at this point)
+            obrefs += (defpos, Scan(BTree<long, VIC?>.Empty));
+            // scan the compiled rowsets
+            for (var rb = framing.data.First(); rb != null; rb = rb.Next())
+            {
+                var rs = rb.value();
+                var t = obrefs[rb.key()] ?? BTree<long, VIC?>.Empty;
+                obrefs = Add(obrefs,rs.defpos, rs.Scan(t));
+            }
+            // scan the compiled objects
+            for (var rb = framing.obs.First(); rb != null; rb = rb.Next())
+            {
+                var ob = rb.value();
+                var t = obrefs[ob.defpos] ?? BTree<long, VIC?>.Empty;
+                // add all internal dependencies
+                obrefs = Add(obrefs, ob.defpos, ob.Scan(t));
+            }
+            r += (Framing.ObRefs, obrefs);
+            // now invert the tree 
+            var refobs = BTree<long, BTree<long, VIC?>>.Empty;
+            for (var b = obrefs.First(); b != null; b = b.Next())
+                for (var c = b.value()?.First(); c != null; c = c.Next())
+                {
+                    var ck = c.key();
+                    var t = refobs[ck] ?? BTree<long, VIC?>.Empty;
+                    t += (b.key(), c.value());
+                    refobs += (ck, t);
+                }
+            r += (Framing.RefObs, refobs);
+            return this + (_Framing, r);
+        }
+        BTree<long, BTree<long, VIC?>> Add(BTree<long, BTree<long, VIC?>> x, 
+            long y,BTree<long, VIC?>z)
+        {
+            var t = x[y] ?? BTree<long, VIC?>.Empty;
+            for (var c = z.First(); c != null; c = c.Next())
+            {
+                var v = c.key();
+                var f = t[v] ?? 0;
+                var g = c.value() ?? 0;
+                t += (v, f | g);
+            }
+            x += (y, t);
+            return x;
         }
         internal override ObInfo Inf(Context cx)
         {
@@ -88,157 +138,86 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="f"></param>
         /// <returns></returns>
-        internal RowSet Instance(Context cx, RowSet rv)
+        internal RowSet Instance(Context cx, RowSet f)
         {
             var oob = cx.obuids;
             var oor = cx.rsuids;
-            var oof = cx.obrefs;
+            // For Fix to work, obuids and rsuids are both view->from
+            cx.obuids = BTree<long, long?>.Empty;
+            cx.rsuids = BTree<long, long?>.Empty;
             var st = framing.result;
             cx.affected = framing.withRvv;
             if (cx.srcFix == 0)
                 cx.srcFix = cx.db.lexeroffset;
-            cx.obuids = BTree<long, long?>.Empty;
-            cx.rsuids = BTree<long, long?>.Empty;
-            // start to build the dependency tree: begin with the View and rowType
-            var t = new BTree<long, VIC?>(rv.defpos,VIC.OK|VIC.RK|VIC.OV|VIC.RV);
-            t = Scan(t);
-            t = Scan(t, rv.rt, VIC.OK |VIC.RK | VIC.OV);
-            cx.obrefs = new BTree<long, BTree<long, VIC?>>(defpos, t);
-            for (var b=rv.rt.First();b!=null;b=b.Next())
-            {
-                var sv = (SqlValue)cx.obs[b.value()];
-                var vm = viewCols[sv.name];
-                var ot = cx.obrefs[sv.defpos]??BTree<long,VIC?>.Empty;
-                cx.obrefs += (vm, ot + (sv.defpos, VIC.OK | VIC.OV));
-            }
-            // scan the compiled rowsets
-            for (var rb = framing.data.First(); rb != null; rb = rb.Next())
-            {
-                var rs = rb.value();
-                t = cx.obrefs[rb.key()] ?? BTree<long, VIC?>.Empty;
-                // for rowsets add dependencies for ambient wheres and assignments
-                for (var b = rv?.where.First(); b != null; b = b.Next())
-                    if (((SqlValue)cx.obs[b.key()]).KnownBy(cx, rs))
-                        t += (b.key(), VIC.RK | VIC.OV);
-                for (var b = rv?.assig.First(); b != null; b = b.Next())
-                {
-                    var u = b.key();
-                    if (rs.Knows(cx, u.vbl) && ((SqlValue)cx.obs[u.val]).KnownBy(cx, rs))
-                    {
-                        t += (u.vbl, VIC.RK | VIC.OK | VIC.OV);
-                        t += (u.val, VIC.RK | VIC.OK | VIC.OV);
-                    }
+            var rt = CList<long>.Empty;
+            var ma = BTree<long, bool>.Empty;
+            for (var b = domain.rowType.First(); b != null; b = b.Next())
+                ma += (b.value(), true);
+            for (var b = f.domain.rowType.First(); b != null; b = b.Next())
+            { 
+                var p = b.value();
+                rt += p;
+                if (cx.obs[p] is SqlCopy sc)// if is a VirtualRowSet the rowType entries
+                {                           // copyFrom the view framing objects
+                    cx.obuids += (sc.copyFrom, p);
+                    OnInstance(cx, sc.copyFrom);
+                    ma -= sc.copyFrom;
                 }
-                // now add all internal dependencies: helper methods are in DBObject
-                cx.obrefs += (rs.defpos, rs.Scan(t));
             }
-            // scan the compiled objects
-            for (var rb = framing.obs.First(); rb != null; rb = rb.Next())
-            {
-                var ob = rb.value();
-                t = cx.obrefs[ob.defpos] ?? BTree<long, VIC?>.Empty;
-                // add all internal dependencies
-                cx.obrefs += (ob.defpos, ob.Scan(t));
-            }
-            // now invert the tree to prepare for the cascade
-            var refobs = BTree<long, BTree<long, VIC?>>.Empty;
-            for (var b = cx.obrefs.First(); b != null; b = b.Next())
-                for (var c = b.value()?.First(); c != null; c = c.Next())
-                {
-                    var ck = c.key();
-                    t = refobs[ck] ?? BTree<long, VIC?>.Empty;
-                    t += (b.key(), c.value());
-                    refobs += (ck, t);
-                }
-            // Stop at the top objects
-            InstanceOb(cx, defpos, refobs);
-            InstanceRS(cx, st, refobs);
-            // Now consider the ambient rowtype
-            var fb = rv.rt.First();
+            for (var b = ma.First(); b != null; b = b.Next())
+                rt += b.key();
             var rf = cx.data[st];
-            for (var vb = rf.rt.First(); vb != null; vb = vb.Next())
-            {
-                var p = vb.value();
-                if (fb != null) // instance for the display items
-                {
-                    cx.obuids += (p, fb.value());
-                    fb = fb.Next();
-                }
-                else // make new SqlCopys for the non-display items
-                {
-                    var cp = cx.Next(p);
-                    var sv = (SqlValue)cx.obs[p];
-                    cx.obuids += (p, cp);
-                    cx._Add(new SqlCopy(cp, cx, sv.name, rf.defpos, p));
-                }
-            }
-            for (var b = framing.data.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                t = cx.obrefs[p];
-                var e = false;
-                for (var c = t.First(); !(e || c == null); c = c.Next())
-                    if (c.value()?.HasFlag(VIC.RK) == true)
-                        e = !cx.obrefs.Contains(c.key());
-                if (e)
-                    InstanceRS(cx, p, refobs);
-            }
-            // Cascade to build cx.obuids
-            for (var b = framing.obs.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                t = cx.obrefs[p];
-                var e = false;
-                for (var c = t.First(); !(e || c == null); c = c.Next())
-                    if (c.value()?.HasFlag(VIC.OK) == true)
-                        e = !cx.obrefs.Contains(c.key());
-                if (e)
-                    InstanceOb(cx, p, refobs);
-            }
+            // Cascade: Instance the top objects: 
+            InstanceOb(cx, defpos, 0);
+            InstanceOb(cx, st, 0);
+            InstanceRS(cx, st, 0);
             // Cascade has finished. Fix() everything.
             cx.FixAll(defpos);
             // All done, so finish up
             var vp = cx.rsuids[rf.defpos].Value;
+            var r = cx.data[vp];
+            r += (Query.Where, f.where);
+            r += (Query._Matches, f.matches);
+            r += (Query.Aggregates, f.aggs);
+            r += (_Domain, r.domain+(Domain.RowType,rt));
+            cx.data += (f.defpos, r);
             cx.obuids = oob;
             cx.rsuids = oor;
-            cx.obrefs = oof;
-            var r = cx.data[vp];
-            r += (Query.Where, rv.where);
-            r += (Query._Matches, rv.matches);
-            r += (Query.Aggregates, rv.aggs);
-            r += (_Domain, r.domain + (Domain.Display, rv.display));
-            cx.data += (rv.defpos, r);
             return r;
         }
-        internal void OnInstance(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
+        internal void OnInstance(Context cx, long dp)
         {
-            for (var b = ro[dp]?.First(); b != null; b = b.Next())
+            for (var b = framing.refObs[dp]?.First(); b != null; b = b.Next())
             {
                 var k = b.key(); // K of original D(K,V,F) table
                 var f = b.value() ?? VIC.None;
                 if (f.HasFlag(VIC.OK))
-                    InstanceOb(cx, k, ro);
+                    InstanceOb(cx, k, dp);
                 if (f.HasFlag(VIC.RK))
-                    InstanceRS(cx, k, ro);
+                    InstanceRS(cx, k, dp);
             }
         }
-        internal void InstanceOb(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
+        internal void InstanceOb(Context cx, long dp, long why)
         {
-            if (cx.obuids.Contains(dp))
-                return;
-            var np = cx.Next(dp);
-            cx.obuids += (dp, np);
-            cx._Add(cx.obs[dp].Relocate(np));
-            OnInstance(cx,dp, ro);
+            if ((!cx.obuids.Contains(dp)) && cx.obs[dp] is DBObject ob)
+            {
+                var np = cx.Next(dp);
+   //             Console.WriteLine("On " + Uid(why) + " " + Uid(dp) + "=" + Uid(np));
+                cx.obuids += (dp, np);
+                cx._Add(ob.Relocate(np));
+                OnInstance(cx, dp);
+            }
         }
-        internal void InstanceRS(Context cx, long dp, BTree<long, BTree<long, VIC?>> ro)
+        internal void InstanceRS(Context cx, long dp, long why)
         {
-            if (cx.rsuids.Contains(dp))
-                return;
-            var np = cx.Next(dp);
-            cx.rsuids += (dp, np);
-            cx.data += (np, (RowSet)cx.data[dp].Relocate(np));
-            OnInstance(cx,dp, ro);
+            if ((!cx.rsuids.Contains(dp)) && cx.data[dp] is RowSet rs)
+            {
+                var np = cx.Next(dp);
+    //            Console.WriteLine("On " + Uid(why) + " " + Uid(dp) + "=" + Uid(np));
+                cx.rsuids += (dp, np);
+                cx.data += (np, (RowSet)rs.Relocate(np));
+                OnInstance(cx, dp);
+            }
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced in a From.
@@ -470,10 +449,10 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Targets, ts);
-            var cs = BTree<string, long>.Empty;
+            var cs = CTree<string, CTree<long, long>>.Empty;
             for (var b=viewCols?.First();b!=null;b=b.Next())
             {
-                var p = cx.Replace(b.value(),so,sv);
+                var p = cx.Replaced(b.value());
                 cs += (b.key(), p);
                 if (p != b.value())
                     ch = true;
@@ -488,8 +467,8 @@ namespace Pyrrho.Level3
         internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
         {
             t = Scan(t, targets, VIC.OK | VIC.OV);
-            t = Scan(t, viewCols, VIC.OK | VIC.OV);
-            return t;
+            t = Scan(t, viewCols, VIC.RK | VIC.OK | VIC.OV, VIC.OK | VIC.OV);
+            return base.Scan(t);
         }
         /// <summary>
         /// a readable version of the View
@@ -505,8 +484,12 @@ namespace Pyrrho.Level3
             for (var b=viewCols.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.key()); sb.Append("=");
-                sb.Append(Uid(b.value()));
+                sb.Append(b.key()); sb.Append(":");
+                for (var c = b.value().First(); c != null; c = c.Next())
+                {
+                    sb.Append(Uid(c.value())); sb.Append("["); 
+                    sb.Append(Uid(c.key())); sb.Append("]"); 
+                }
             }
             sb.Append(") "); sb.Append(domain);
             cm = " Targets: ";

@@ -112,7 +112,7 @@ namespace Pyrrho.Level2
         }
         internal virtual BTree<long,object> _Dom(Database db,BTree<long,object>m)
         {
-            var ns = CTree<string, long>.Empty;
+            var ns = CTree<string, CTree<long,long>>.Empty;
             var d = 2 + (domain?.depth ?? 0);
             for (var b = domain?.rowType.First(); b != null && b.key()<domain.display; 
                 b = b.Next())
@@ -120,16 +120,21 @@ namespace Pyrrho.Level2
                 var p = b.value();
                 var c = (SqlValue)framing.obs[p];
                 d = DBObject._Max(d, 1 + c.depth);
+                var r = ns[c.name] ?? CTree<long, long>.Empty;
+                var tg = ((From)framing.obs[c.from]).target; 
+                ns += (c.name, r+(tg,p));
                 if (c.alias != null)
-                    ns += (c.alias, p);
-                ns += (c.name, p);
+                {
+                    r = ns[c.alias] ?? CTree<long, long>.Empty;
+                    ns += (c.alias, r+(tg,p));
+                }
             }
             var rs = framing.data[framing.result];
             var ts = CList<long>.Empty;
             for (var b = rs.rsTargets.First(); b != null; b = b.Next())
                 ts += b.key();
             return (m??BTree<long,object>.Empty) 
-                + (DBObject._Domain, domain + (Domain.Display,(int)ns.Count)) 
+                + (DBObject._Domain, domain) 
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
                 + (View.Targets,ts) 
                 + (DBObject._Framing, framing)
@@ -180,7 +185,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var vw = new View(this,cx.db);
+            var vw = new View(this,cx.db)._Refs(ppos,cx);
             var ti = new ObInfo(ppos, name, domain, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
@@ -193,7 +198,9 @@ namespace Pyrrho.Level2
             if (this is PRestView)
                 return (tr, ph);
             var pv = (PView)ph;
-            var vw = (DBObject)tr.objects[ppos] + (DBObject._Framing, pv.framing);
+            var vw = (DBObject)((DBObject)tr.objects[ppos])._Relocate(wr) 
+                + (DBObject._Framing, pv.framing);
+            vw = ((View)vw)._Refs(ph.ppos,wr.cx);
             return ((Transaction)(tr + (vw, tr.loadpos)), ph);
         }
     }
@@ -266,7 +273,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var vw = new RestView(this, cx.db);
+            var vw = new RestView(this, cx.db)._Refs(ppos,cx);
             var ti = new ObInfo(ppos, name, Domain.TableType, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro, p) + (vw, p);
@@ -274,13 +281,14 @@ namespace Pyrrho.Level2
         }
         internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
         {
-            var ns = CTree<string, long>.Empty;
+            var ns = CTree<string, CTree<long,long>>.Empty;
             for (var b = domain.rowType.First(); b != null && b.key()<domain.display; 
                 b = b.Next())
             {
                 var p = b.value();
                 var c = (ObInfo)db.role.infos[p];
-                ns += (c.name, p);
+                var r = ns[c.name] ?? CTree<long, long>.Empty;
+                ns += (c.name, r + (ppos,p));
             } 
             return (m??BTree<long,object>.Empty) + (DBObject._Domain, domain)
                 + (View.ViewPpos, ppos) + (View.ViewCols, ns)

@@ -1401,7 +1401,7 @@ namespace Pyrrho.Common
             for (var b = dst.rowType.First(); b != null; b = b.Next())
                 if (sce.representation[sce.rowType[b.key()]] is Domain dm)
                 {
-                    if (!dst.representation[b.value()].CanTakeValueOf(dm))
+                    if (dst.representation[b.value()]?.CanTakeValueOf(dm)!=true)
                         return false;
                 }
             return true;

@@ -672,6 +672,13 @@ namespace Pyrrho.Level3
             }
             return t;
         }
+        internal BTree<long,VIC?> Scan(BTree<long,VIC?> t, CTree<string, CTree<long, long>> vc,
+            VIC va, VIC vb)
+        {
+            for (var b = vc.First(); b != null; b = b.Next())
+                t = Scan(t, b.value(), va, vb);
+            return t;
+        }
         internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, CTree<long, RowSet.Finder> fi)
         {
             for (var b = fi?.First(); b != null; b = b.Next())

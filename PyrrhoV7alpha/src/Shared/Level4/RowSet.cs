@@ -229,7 +229,7 @@ namespace Pyrrho.Level4
             t = Scan(t, target, VIC.RK|VIC.OV);
             t = Scan(t, from, VIC.RK|VIC.OV|VIC.RV);
             t = Scan(t, (long)(mem[_Source] ?? -1L), VIC.RK|VIC.RV);
-            return t;
+            return base.Scan(t);
         }
         internal override DBObject Instance(Context cx)
         {
@@ -1144,7 +1144,7 @@ namespace Pyrrho.Level4
     internal class SelectedRowSet : RowSet
     {
         internal const long
-            SQMap = -408; // CTree<long,Finder> TableColumn
+            SQMap = -408; // CTree<long,Finder> SqlValue
         internal long source => (long)(mem[_Source]??-1L);
         internal CTree<long, Finder> sQMap =>
             (CTree<long, Finder>)mem[SQMap];
@@ -1322,7 +1322,7 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Source: "); sb.Append(Uid(source));
-            if (PyrrhoStart.VerboseMode)
+    //        if (PyrrhoStart.VerboseMode)
             {
                 sb.Append(" SQMap: "); sb.Append(sQMap);
             }
@@ -2026,6 +2026,9 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Constructor: a rowset defined by a base table without a primary key.
         /// Independent of role, user, command.
+        /// f.target is a View vw but f.domain is not v.domain 
+        /// So this.domain does not match the View 
+        /// (VirtualRowSet is like SelectedRowSet in this respect)
         /// </summary>
         internal VirtualRowSet(Context cx, From f, CTree<long, Finder> fi)
             : base(f.defpos, cx, f.domain, fi, null, f.where, f.ordSpec, f.filter,
@@ -2811,6 +2814,11 @@ namespace Pyrrho.Level4
             if (tree != null)
                 r += (_RTree, tree.Replace(cx, so, sv));
             return r;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            t = Scan(t, rowOrder, VIC.RK | VIC.OV);
+            return base.Scan(t);
         }
         internal override RowSet Build(Context cx)
         {

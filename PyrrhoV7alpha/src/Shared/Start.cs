@@ -510,7 +510,9 @@ namespace Pyrrho
                                 cx = new Context(tr);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("POST " + s);
-                                cx = new Parser(tr).ParseSqlInsert(cx, s);
+                                var psr = new Parser(tr);
+                                psr.ParseSqlInsert(s);
+                                cx = psr.cx;
                                 tr = cx.tr;
                                 var trs = cx.data[cx.result-1];
                                 tcp.PutWarnings(tr);
@@ -1256,7 +1258,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (29 March 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (4 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

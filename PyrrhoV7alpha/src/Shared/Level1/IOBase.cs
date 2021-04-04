@@ -469,6 +469,14 @@ namespace Pyrrho.Level2
             }
             return ch ? r : us;
         }
+        internal CTree<string,CTree<long,long>> Fix
+            (CTree<string, CTree<long, long>> vc)
+        {
+            var r = CTree<string, CTree<long, long>>.Empty;
+            for (var b = vc.First(); b != null; b = b.Next())
+                r += (b.key(), Fix(b.value()));
+            return r;
+        }
         internal CTree<long, TypedValue> Fix(CTree<long, TypedValue> fi)
         {
             var r = CTree<long, TypedValue>.Empty;

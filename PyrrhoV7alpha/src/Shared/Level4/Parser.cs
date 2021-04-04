@@ -275,7 +275,7 @@ namespace Pyrrho.Level4
                 case Sqlx.DELETE: e = ParseSqlDelete(); break;
                 case Sqlx.DROP: e = ParseDropStatement(); break;
                 case Sqlx.GRANT: e = ParseGrant(); break; 
-                case Sqlx.INSERT: (cx,e) = ParseSqlInsert(); break;
+                case Sqlx.INSERT: e = ParseSqlInsert(); break;
                 case Sqlx.REVOKE: e = ParseRevoke(); break;
                 case Sqlx.ROLLBACK:
                     Next();
@@ -2676,7 +2676,7 @@ namespace Pyrrho.Level4
                 case Sqlx.FOR: r = ParseForStatement(xp, null); break;
                 case Sqlx.GET: r = ParseGetDiagnosticsStatement(); break;
                 case Sqlx.IF: r = ParseIfThenElse(xp); break;
-                case Sqlx.INSERT: (cx,r) = ParseSqlInsert(); break;
+                case Sqlx.INSERT: r = ParseSqlInsert(); break;
                 case Sqlx.ITERATE: r = ParseIterate(); break;
                 case Sqlx.LEAVE: r = ParseBreakLeave(); break;
                 case Sqlx.LOOP: r = ParseLoopStatement(xp, null); break;
@@ -5375,7 +5375,7 @@ namespace Pyrrho.Level4
             r = (CursorSpecification)cx.Add(r);
             r = (CursorSpecification)r.ReviewJoins(cx);
             var rs = r.RowSets(cx, cx.data[r.from]?.finder ?? CTree<long, RowSet.Finder>.Empty);
-            if (rs is TableExpRowSet te && rs.where==CTree<long,bool>.Empty)
+            if (rs is TableExpRowSet te)
                 rs = cx.data[te.source];
             cx.result = rs?.defpos ?? -1L;
             return r.defpos;
@@ -6512,19 +6512,19 @@ namespace Pyrrho.Level4
         /// <param name="cx">the context</param>
         /// <param name="sql">the sql</param>
         /// <returns>the SqlInsert</returns>
-        internal Context ParseSqlInsert(Context cx,string sql)
+        internal void ParseSqlInsert(string sql)
         {
             lxr = new Lexer(sql);
             tok = lxr.tok;
             if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
                 cx.db += (Database.NextId, cx.db.nextId + sql.Length);
-            return ParseSqlInsert().Item1;
+            ParseSqlInsert();
         }
         /// <summary>
 		/// Insert = INSERT [WITH (PROVENANCE|TYPE_URI) string][XMLOption] INTO Table_id [ Cols ]  TypedValue [Classification].
         /// </summary>
         /// <returns>the executable</returns>
-        (Context,SqlInsert) ParseSqlInsert()
+        SqlInsert ParseSqlInsert()
         {
             string prov = null;
             bool with = false;
@@ -6565,21 +6565,21 @@ namespace Pyrrho.Level4
             cx.Add(fm);
             cx.defs += (ic, fm.defpos);
             cx.AddDefs(ic, fm.domain);
-            SqlValue v;
+            SqlValue sv;
             var vp = lxr.Position;
             if (tok == Sqlx.DEFAULT)
             {
                 Next();
                 Mustbe(Sqlx.VALUES);
-                v = SqlNull.Value;
+                sv = SqlNull.Value;
             }
             else
                 // care: we might have e.g. a subquery here
-                v = ParseSqlValue(fm.domain);
-            if (v is SqlRow) // tolerate a single value without the VALUES keyword
-                v = new SqlRowArray(vp, cx, v.domain, new CList<long>(v.defpos));
+                sv = ParseSqlValue(fm.domain);
+            if (sv is SqlRow) // tolerate a single value without the VALUES keyword
+                sv = new SqlRowArray(vp, cx, sv.domain, new CList<long>(sv.defpos));
             var vd = fm.domain.DisplayOnly();
-            var sce = v.RowSet(vp, cx, vd);
+            var sce = sv.RowSet(vp, cx, vd);
             cx.data += (vp, sce);
             var rs = fm.RowSets(cx, CTree<long, RowSet.Finder>.Empty);
             if (rs is TableExpRowSet te)
@@ -6606,7 +6606,7 @@ namespace Pyrrho.Level4
                 cx.Review(cx.data[cx.result],CTree<long,bool>.Empty,CTree<long,TypedValue>.Empty,CTree<UpdateAssignment,bool>.Empty);
                 cx = tr.Execute(s, cx);
             }
-            return (cx,(SqlInsert)cx.Add(s));
+            return (SqlInsert)cx.Add(s);
         }
         /// <summary>
 		/// DeleteSearched = DELETE [XMLOption] FROM Table_id [ WhereClause] .
@@ -6682,15 +6682,7 @@ namespace Pyrrho.Level4
             Next();
             ParseXmlOption(false);
             Ident ic = new Ident(lxr);
-            Ident a = null;
             Mustbe(Sqlx.ID);
-            if (tok != Sqlx.SET)
-            {
-                if (tok == Sqlx.AS)
-                    Next();
-                a = new Ident(lxr);
-                Mustbe(Sqlx.ID);
-            }
             Mustbe(Sqlx.SET);
             var ob = cx.db.GetObject(ic.ident) ?? 
                 throw new DBException("42107", ic.ident);

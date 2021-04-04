@@ -81,8 +81,6 @@ namespace Pyrrho.Level4
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> obuids = BTree<long, long?>.Empty;
         internal BTree<long, long?> rsuids = BTree<long, long?>.Empty;
-        internal BTree<long, BTree<long, VIC?>> obrefs 
-            = BTree<long, BTree<long, VIC?>>.Empty;
         // Keep track of rowsets for query
         internal BTree<long, long> results = BTree<long, long>.Empty; 
         internal long result;
@@ -632,6 +630,14 @@ namespace Pyrrho.Level4
                 r += (done[b.key()]?.defpos ?? b.key(), b.value().Replaced(this));
             return r;
         }
+        internal CTree<string,CTree<long,long>> Replaced
+            (CTree<string, CTree<long, long>> vc)
+        {
+            var r = CTree<string, CTree<long, long>>.Empty;
+            for (var b = vc.First(); b != null; b = b.Next())
+                r += (b.key(), Replaced(b.value()));
+            return r;
+        }
         /// <summary>
         /// This is called at the end of CursorSpecification.RowSets and just before
         /// Obeying SqlInsert, SqlUpdate, and SqlDelete.
@@ -1017,6 +1023,14 @@ namespace Pyrrho.Level4
             }
             return ch ? r : us;
         }
+        internal CTree<string,CTree<long,long>> Fix
+            (CTree<string,CTree<long,long>> vc)
+        {
+            var r = CTree<string, CTree<long, long>>.Empty;
+            for (var b = vc.First(); b != null; b = b.Next())
+                r += (b.key(),Fix(b.value()));
+            return r;
+        }
         internal BList<Cursor> Fix(BList<Cursor> rws)
         {
             var r = BList<Cursor>.Empty;
@@ -1259,7 +1273,9 @@ namespace Pyrrho.Level4
     {
         internal const long
             Data = -450,    // BTree<long,RowSet>
+            ObRefs = -451, // BTree<long,BTree<long,VIC?>> referer references VIC K->V
             Obs = -449,     // BTree<long,DBObject>
+            RefObs = -460, // BTree<long,BTree<long,VIC?>> reference referers VIC V->K
             Result = -452,  // long
             Results = -453; // BTree<long,long> Query RowSet
         public BTree<long, DBObject> obs => 
@@ -1270,9 +1286,13 @@ namespace Pyrrho.Level4
         public BTree<long, long> results =>
             (BTree<long, long>)mem[Results] ?? BTree<long, long>.Empty;
         public Rvv withRvv => (Rvv)mem[Rvv.RVV];
- //       public BTree<int, BTree<long, DBObject>> depths =>
- //           (BTree<int,BTree<long,DBObject>>)mem[Depths]
- //           ??BTree<int,BTree<long,DBObject>>.Empty;
+        public BTree<long, BTree<long, VIC?>> obrefs =>
+            (BTree<long, BTree<long, VIC?>>)mem[ObRefs] ?? BTree<long, BTree<long, VIC?>>.Empty;
+        public BTree<long, BTree<long, VIC?>> refObs =>
+            (BTree<long, BTree<long, VIC?>>)mem[RefObs] ?? BTree<long, BTree<long, VIC?>>.Empty;
+        //       public BTree<int, BTree<long, DBObject>> depths =>
+        //           (BTree<int,BTree<long,DBObject>>)mem[Depths]
+        //           ??BTree<int,BTree<long,DBObject>>.Empty;
         public readonly static Framing Empty = new Framing();
         Framing() { }
         Framing(BTree<long,object> m) :base(m) { }
@@ -1280,7 +1300,7 @@ namespace Pyrrho.Level4
             : base(BTree<long,object>.Empty+(Obs,cx.obs)+(Data,cx.data)
                   +(Results,cx.results)
                   +(Result,cx.result)
-                  +(Rvv.RVV,cx.affected))//+(Depths,cx.depths))
+                  +(Rvv.RVV,cx.affected))
         { }
         internal override Basis New(BTree<long, object> m)
         {
@@ -1447,6 +1467,26 @@ namespace Pyrrho.Level4
                 sb.Append(' '); sb.Append(b.value());
             }
             sb.Append(")");
+            if (obrefs!=BTree<long,BTree<long,VIC?>>.Empty)
+            {
+                sb.Append(" ObRefs: ");
+                cm = "(";
+                for (var b=obrefs.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(DBObject.Uid(b.key()));sb.Append("=");
+                    var cn = "(";
+                    for (var c=b.value().First();c!=null;c=c.Next())
+                    {
+                        sb.Append(cn); cn = ",";
+                        sb.Append(DBObject.Uid(c.key()));sb.Append("=");
+                        sb.Append(c.value().Value);
+                    }
+                    if (cn==",")
+                        sb.Append(")");
+                }
+                sb.Append(")");
+            }
             if (result>=0)
             {
                 sb.Append(" Result ");sb.Append(DBObject.Uid(result));
