@@ -376,7 +376,7 @@ namespace Pyrrho.Level3
                 Audit(cx, sa, f);
                 rowSet = (f.rowType == sa.rt && f.display == sa.display) ? sa
                     : new SelectedRowSet(cx, f, sa, fi);
-                rowSet += (RowSet.RSTargets,new CTree<long,long>(f.target,rowSet.defpos));
+                rowSet += (RowSet.RSTargets,new CTree<long,long>(f.target,f.defpos));
                 if (readC != null)
                     readC.Block();
             }

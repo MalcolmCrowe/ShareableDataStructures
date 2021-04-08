@@ -21,11 +21,6 @@ namespace Pyrrho.Level4
     {
         internal const long
             Groupings = -406;   //CList<long>   Grouping
-        /// <summary>
-        /// The source rowset for the grouping operation. 
-        /// See section 6.2.1 of SourceIntro.doc for explanations of terms
-        /// </summary>
-        internal long source => (long)(mem[_Source]??-1L);
         internal CTree<long, bool> having =>
             (CTree<long, bool>)mem[TableExpression.Having]??CTree<long,bool>.Empty;
         internal CList<long> groupings =>
@@ -231,12 +226,6 @@ namespace Pyrrho.Level4
         Cursor FirstB(Context _cx)
         {
             return GroupingBuilding.New(_cx, this);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" Source: "); sb.Append(DBObject.Uid(source));
-            return sb.ToString();
         }
         internal class GroupingBuilding : Cursor
         {

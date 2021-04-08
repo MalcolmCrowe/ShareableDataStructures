@@ -677,7 +677,7 @@ namespace Pyrrho.Level3
                 {
                     sql.Append(cm); cm = ",";
                     sql.Append('"'); sql.Append(b.key());
-                    sql.Append("\":"); sql.Append(vs[b.value()]);
+                    sql.Append("\":"); sql.Append(vs[b.value()[rrs.defpos]]);
                 }
                 sql.Append("}]");
             }
@@ -687,7 +687,7 @@ namespace Pyrrho.Level3
                 sql.Append("insert into "); sql.Append(targetName);
                 var cm = " values(";
                 for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
-                    if (vs[b.value()] is TypedValue tv)
+                    if (vs[b.value()[rrs.defpos]] is TypedValue tv)
                     {
                         sql.Append(cm); cm = ",";
                         if (tv.dataType.kind == Sqlx.CHAR)
@@ -740,12 +740,27 @@ namespace Pyrrho.Level3
                 rq.Accept = vw.mime ?? "application/json";
                 rq.Method = "PUT";
                 var cm = "[{";
-                vs += vals;
-                for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
+                vs = cx.cursors[rrs.defpos].values;
+                for (var b = rrs.assig.First();b!=null;b=b.Next())
+                {
+                    var ua = b.key();
+                    vs += (ua.vbl, ((SqlValue)cx.obs[ua.val]).Eval(cx));
+                }
+                var rb = rrs.rt.First();
+                for (var b = rrs.remoteCols.First(); b != null; b = b.Next(),rb=rb.Next())
                 {
                     sql.Append(cm); cm = ",";
                     sql.Append('"'); sql.Append(b.key());
-                    sql.Append("\":"); sql.Append(vs[b.value()]);
+                    var tv = vs[rb.value()];
+                    sql.Append("\":"); 
+                    if (tv.dataType.kind == Sqlx.CHAR)
+                    {
+                        sql.Append("'");
+                        sql.Append(tv.ToString().Replace("'", "'''"));
+                        sql.Append("'");
+                    }
+                    else
+                        sql.Append(tv);
                 }
                 sql.Append("}]");
             }
@@ -800,7 +815,7 @@ namespace Pyrrho.Level3
             if (rp == null || rp.StatusCode != HttpStatusCode.OK)
                 throw new DBException("2E201");
             var ld = rp.GetResponseHeader("LastData");
-            if (ld != null)
+            if (ld != null && ld!="")
                 cx.data += (rrs.defpos,rrs+ (Table.LastData, long.Parse(ld)));
             var et = rp.GetResponseHeader("ETag");
             var es = et.Split(',');

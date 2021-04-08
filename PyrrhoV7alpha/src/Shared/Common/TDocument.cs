@@ -254,6 +254,12 @@ namespace Pyrrho.Common
             content = d.content;
             names = d.names;
         }
+        internal static (TDocument,int) New(string s,int off)
+        {
+            var d = new TDocument();
+            var i = Fields(ref d, s, off, s.Length);
+            return (d, i);
+        }
         internal TDocument Add(string n, TypedValue tv)
         {
             if (names.Contains(n))
@@ -973,6 +979,24 @@ namespace Pyrrho.Common
         internal static TDocArray Null = new TDocArray();
         internal TDocArray() : base(Domain.DocArray)
         {
+        }
+        internal TDocArray(string s) : base(Domain.DocArray)
+        {
+            var i = 0;
+            var c = BList<TypedValue>.Empty;
+            if (s.Length > 2 && s[i] == '[')
+                i++;
+            while (i<s.Length-1)
+            {
+                if (s[i++] != '{')
+                    break;
+                var (d,n) = TDocument.New(s, i);
+                c += d;
+                i = n;
+                if (s[i++] != ',')
+                    break;
+            }
+            content = c;
         }
         TDocArray(BList<TypedValue> c) :base(Domain.DocArray)
         {

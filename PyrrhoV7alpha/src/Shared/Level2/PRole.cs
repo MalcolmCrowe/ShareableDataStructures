@@ -235,7 +235,7 @@ namespace Pyrrho.Level2
                         case Sqlx.URL:
                         case Sqlx.MIME:
                         case Sqlx.SQLAGENT:
-                            r += (k, (detail == "") ? iri : detail);
+                            r += (k, (detail==null || detail == "") ? iri : detail);
                             break;
                         case Sqlx.INVERTS:
                             r += (k, refpos);

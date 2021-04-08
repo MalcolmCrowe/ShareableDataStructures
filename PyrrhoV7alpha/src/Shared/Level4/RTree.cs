@@ -29,7 +29,14 @@ namespace Pyrrho.Level4
         internal CList<long> keyType => domain.rowType;
         internal readonly Context _cx;
         internal readonly MTree mt;
-        internal readonly BList<Cursor> rows;
+        /// <summary>
+        /// rows is a set of snapshots of cx.cursors, taken during Build.
+        /// We do this so that we can implement updatable joins:
+        /// it allows us to accommodate sorted operands of the join.
+        /// In previous versions it was just the sorted BList of the rows,
+        /// to get the current row, simply subscript by defpos. 
+        /// </summary>
+        internal readonly BList<BTree<long,Cursor>> rows; // RowSet
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
@@ -40,7 +47,7 @@ namespace Pyrrho.Level4
             domain = dt+(Domain.RowType,ks);
             _cx = cx;
             mt = new MTree(new TreeInfo(ks,dt,d,n));
-            rows = BList<Cursor>.Empty;
+            rows = BList<BTree<long, Cursor>>.Empty;
         }
         internal RTree(long dp, Context cx, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
              TreeBehaviour n = TreeBehaviour.Allow)
@@ -50,9 +57,10 @@ namespace Pyrrho.Level4
             _cx = cx;
             var m = new MTree(new TreeInfo(dt.rowType, dt, d, n));
             mt = m;
-            rows = BList<Cursor>.Empty;
+            rows = BList<BTree<long, Cursor>>.Empty;
         }
-        protected RTree(long dp,Context cx,CList<long> k,Domain d,MTree m,BList<Cursor> rs)
+        protected RTree(long dp,Context cx,CList<long> k,Domain d,MTree m,
+            BList<BTree<long,Cursor>> rs)
         {
             defpos = dp;
             _cx = cx;
@@ -60,13 +68,14 @@ namespace Pyrrho.Level4
             mt = m;
             rows = rs;
         }
-        public static TreeBehaviour Add(ref RTree t, TRow k, Cursor v)
+        public static TreeBehaviour Add(ref RTree t, TRow k, BTree<long,Cursor> v)
         {
             var m = t.mt;
             TreeBehaviour tb = MTree.Add(ref m, 
                 (k.Length==0)?null:new PRow(k), t.rows.Count);
             if (tb == TreeBehaviour.Allow)
-                t = new RTree(t.defpos,t._cx,t.keyType, t.domain, m, t.rows + v);
+                t = new RTree(t.defpos,t._cx,t.keyType, t.domain, m, 
+                    t.rows + v);
             return tb;
         }
         public RTreeBookmark First(Context cx)
@@ -98,13 +107,19 @@ namespace Pyrrho.Level4
     {
         internal readonly RTree _rt;
         internal readonly MTreeBookmark _mb;
+        internal readonly BTree<long, Cursor> _cs; // for updatable joins
         internal readonly TRow _key;
-        RTreeBookmark(Context cx,RTree rt,int pos,MTreeBookmark mb,Cursor rr)
+        RTreeBookmark(Context cx,RTree rt,int pos,MTreeBookmark mb,
+            BTree<long,Cursor> cs, Cursor rr)
             :base(cx,rt.defpos,rt.domain,pos,rr._defpos,rr._ppos,rr)
         { 
-            _rt = rt; _mb = mb; 
+            _rt = rt; _mb = mb; _cs = cs;
             _key = new TRow(new Domain(Sqlx.ROW,cx,_rt.keyType), mb.key());
         }
+        RTreeBookmark(Context cx, RTree rt, int pos, MTreeBookmark mb,
+            BTree<long, Cursor> cs)
+            : this(cx, rt, pos, mb, cs, cs[rt.defpos])
+        { }
         RTreeBookmark(Context cx,RTree rt, int pos, MTreeBookmark mb) 
             :this(cx,rt,pos,mb,rt.rows[(int)(mb.Value()??-1L)])
         { }

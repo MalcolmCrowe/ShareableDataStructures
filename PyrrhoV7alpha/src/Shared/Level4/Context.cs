@@ -602,6 +602,18 @@ namespace Pyrrho.Level4
             }
             return r;
         }
+        internal BTree<long,Cursor> Replaced(BTree<long,Cursor> ec)
+        {
+            var r = BTree<long, Cursor>.Empty;
+            for (var b = ec.First();b!=null;b=b.Next())
+            {
+                var c = b.value();
+                var k = done[b.key()]?.defpos ?? b.key();
+                var nc = (Cursor)c.Replaced(this);
+                r += (k, nc);
+            }
+            return r;
+        }
         internal CList<long> Replaced(CList<long> ks)
         {
             var r = CList<long>.Empty;
@@ -1125,6 +1137,34 @@ namespace Pyrrho.Level4
             }
             return ch ? r : fi;
         }
+        internal BTree<long, Cursor> Fix(BTree<long, Cursor> vt)
+        {
+            var r = BTree<long, Cursor>.Empty;
+            var ch = false;
+            for (var b = vt?.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var p = obuids[k] ?? k;
+                var v = (Cursor)b.value().Fix(this);
+                if (p != b.key() || v != b.value())
+                    ch = true;
+                r += (p, v);
+            }
+            return ch ? r : vt;
+        }
+        internal BList<BTree<long, Cursor>> Fix(BList<BTree<long, Cursor>> vt)
+        {
+            var r = BList<BTree<long, Cursor>>.Empty;
+            var ch = false;
+            for (var b = vt?.First(); b != null; b = b.Next())
+            {
+                var v = Fix(b.value());
+                if (v != b.value())
+                    ch = true;
+                r += v;
+            }
+            return ch ? r : vt;
+        }
         internal CTree<long, TypedValue> Fix(CTree<long, TypedValue> vt)
         {
             var r = CTree<long, TypedValue>.Empty;
@@ -1132,7 +1172,7 @@ namespace Pyrrho.Level4
             for (var b = vt?.First(); b != null; b = b.Next())
             {
                 var k = b.key();
-                var p = obuids[k]??k;
+                var p = obuids[k] ?? k;
                 var v = b.value().Fix(this);
                 if (p != b.key() || v != b.value())
                     ch = true;
@@ -1467,7 +1507,7 @@ namespace Pyrrho.Level4
                 sb.Append(' '); sb.Append(b.value());
             }
             sb.Append(")");
-            if (obrefs!=BTree<long,BTree<long,VIC?>>.Empty)
+            if (PyrrhoStart.VerboseMode && obrefs!=BTree<long,BTree<long,VIC?>>.Empty)
             {
                 sb.Append(" ObRefs: ");
                 cm = "(";

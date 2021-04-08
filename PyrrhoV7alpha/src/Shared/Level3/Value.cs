@@ -519,7 +519,7 @@ namespace Pyrrho.Level3
             if (sub!=-1L) { sb.Append(" Sub:"); sb.Append(Uid(sub)); }
             return sb.ToString();
         }
-        internal override string ToString(string sg,CTree<string,long> cs,Context cx)
+        internal override string ToString(string sg,CTree<string,CTree<long,long>> cs,Context cx)
         {
             return (cs.Contains(name))? name : Eval(cx).ToString(cs,cx);
         }
@@ -791,7 +791,7 @@ namespace Pyrrho.Level3
         {
             return base.ToString() + " copy from "+Uid(copyFrom);
         }
-        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg,CTree<string, CTree<long,long>> cs, Context cx)
         {
             return (cs.Contains(name))? name
                 : Eval(cx)?.ToString() ?? throw new DBException("42000");
@@ -1056,11 +1056,12 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(left.ToString());
             return sb.ToString();
         }
-        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg,CTree<string, CTree<long,long>> cs, Context cx)
         {
             string n = "";
             for (var b = cs.First(); b != null; b = b.Next())
-                if (b.value() == defpos)
+                for (var c=b.value().First();c!=null;c=c.Next())
+                 if (c.value() == defpos)
                     n = b.key();
             var sb = new StringBuilder(cx.obs[from].ToString(sg,cs,cx));
             sb.Append("["); sb.Append(n); sb.Append("]"); 
@@ -2344,7 +2345,7 @@ namespace Pyrrho.Level3
             }
             return sb.ToString();
         }
-        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg,CTree<string, CTree<long, long>> cs, Context cx)
         {
             var sb = new StringBuilder();
             var lp = false;
@@ -2422,7 +2423,7 @@ namespace Pyrrho.Level3
         {
             return "NULL";
         }
-        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg,CTree<string, CTree<long,long>> cs, Context cx)
         {
             return "null";
         }
@@ -2881,7 +2882,7 @@ namespace Pyrrho.Level3
             sb.Append("]");
             return sb.ToString();
         }
-        internal override string ToString(string sg,CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg,CTree<string, CTree<long,long>> cs, Context cx)
         {
             var sb = new StringBuilder();
             var cm = "";
@@ -5969,7 +5970,7 @@ namespace Pyrrho.Level3
             return base.Scan(t);
         }
         // tailor REST call to remote DBMS
-        internal override string ToString(string sg, CTree<string, long> cs, Context cx)
+        internal override string ToString(string sg, CTree<string, CTree<long,long>> cs, Context cx)
         {
             switch (sg)
             {
@@ -7805,7 +7806,7 @@ namespace Pyrrho.Level3
                 .RowSets(cx,cx.data[from]?.finder?? CTree<long, RowSet.Finder>.Empty);
             RTree a = new RTree(rs.defpos,cx,rs.rt,rs.domain,TreeBehaviour.Disallow, TreeBehaviour.Disallow);
             for (var rb=rs.First(cx);rb!= null;rb=rb.Next(cx))
-                if (RTree.Add(ref a, rb, rb) == TreeBehaviour.Disallow)
+                if (RTree.Add(ref a, rb, cx.cursors) == TreeBehaviour.Disallow)
                     return TBool.False;
             return TBool.True;
         }

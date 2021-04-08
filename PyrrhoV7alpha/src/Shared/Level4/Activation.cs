@@ -206,6 +206,7 @@ namespace Pyrrho.Level4
         internal BTree<long, TriggerActivation> acts = null;
         internal readonly CTree<PTrigger.TrigType,CTree<long, bool>> _tgs;
         internal Index index = null; // for autokey
+        internal bool? trigFired = null;
         internal TableActivation(Context _cx,RowSet fm,PTrigger.TrigType tt)
             : base(_cx,fm,tt)
         {

@@ -179,7 +179,7 @@ namespace Pyrrho.Level3
             r += (Query.Where, f.where);
             r += (Query._Matches, f.matches);
             r += (Query.Aggregates, f.aggs);
-            r += (_Domain, r.domain+(Domain.RowType,rt));
+            r += (_Domain, r.domain + (Domain.RowType, cx.Fix(rt)));
             cx.data += (f.defpos, r);
             cx.obuids = oob;
             cx.rsuids = oor;

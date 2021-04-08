@@ -251,7 +251,8 @@ namespace Pyrrho.Level3
         {
             var cs = CTree<long, bool>.Empty;
             for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
-                cs += (b.value(), true);
+                for (var c = b.value().First();c!=null;c=c.Next())
+                cs += (c.value(),true);
             for (var b= groups.First();b!=null;b=b.Next())
                 if (!b.value().Known(cx, rrs))
                     return false;

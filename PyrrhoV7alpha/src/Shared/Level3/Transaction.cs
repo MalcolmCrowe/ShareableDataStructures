@@ -356,7 +356,7 @@ namespace Pyrrho.Level3
                 return cx;
             var a = new Activation(cx,e.label);
             a.exec = e;
-            cx = e.Obey(cx); // Obey must not call the Parser!
+            cx = e.Obey(a); // Obey must not call the Parser!
             if (a.signal != null)
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
@@ -394,11 +394,11 @@ namespace Pyrrho.Level3
                         break;
                     case "DELETE":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Delete(cx.data[cx.result]);
+                        cx = db.Delete(cx, cx.data[cx.result]);
                         break;
                     case "PUT":
                         db.Execute(cx, From._static, id + ".", path, 2, etag);
-                        db.Put(cx.data[cx.result], sdata);
+                        cx = db.Put(cx,cx.data[cx.result], sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
@@ -695,7 +695,49 @@ namespace Pyrrho.Level3
             }
             Execute(cx, f, id + "." + p, path, p + 1, etag);
         }
-
+        internal override Context Put(Context cx, RowSet r, string s)
+        {
+            var rs = (SelectedRowSet)r;
+            var da = new TDocArray(s);
+            var us = r.assig;
+            var d = da[0];
+            for (var c = rs.rt.First(); c != null; c = c.Next())
+            {
+                var n = "";
+                if (cx.obs[c.value()] is SqlValue sc)
+                    n = sc.name;
+                else if (cx.db.role.infos[c.value()] is ObInfo ci)
+                    n = ci.name;
+                var sl = new SqlLiteral(cx.nextHeap++, cx, d[n]);
+                cx._Add(sl);
+                us += (new UpdateAssignment(c.value(), sl.defpos), true);
+            }
+            rs += (Query.Assig, us);
+            return rs.Update(cx, rs);
+        }
+        internal override Context Post(Context cx, RowSet r, string s)
+        {
+            var rs = (SelectedRowSet)r;
+            var da = new TDocArray(s);
+            var rws = BList<(long, TRow)>.Empty;
+            for (var i = 0; i < da.Count; i++)
+            {
+                var d = da[i];
+                var vs = CTree<long, TypedValue>.Empty;
+                for (var c = rs.rt.First(); c != null; c = c.Next())
+                {
+                    var n = "";
+                    if (cx.obs[c.value()] is SqlValue sc)
+                        n = sc.name;
+                    else if (cx.db.role.infos[c.value()] is ObInfo ci)
+                        n = ci.name;
+                    vs += (c.value(), d[n]);
+                }
+                rws += (cx.nextHeap++, new TRow(r.domain,vs));
+            }
+            rs += (RowSet._Source,new ExplicitRowSet(cx.nextHeap++,r.domain,rws));
+            return rs.Insert(cx, rs, "", null);
+        }
         /// <summary>
         /// Implement Grant or Revoke
         /// </summary>

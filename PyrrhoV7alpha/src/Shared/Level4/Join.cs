@@ -315,51 +315,263 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        /// <summary>
-        /// Compute the explicit rows of a join and add them to the operands
-        /// to constrain traversal to these rows and an associated 
-        /// Insert, Update or Delete operation.
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="fm">ignored</param>
-        /// <returns>local copies of the operands with explicit Rows</returns>
-        (RowSet,RowSet) Split(Context cx,RowSet fm)
-        {
-            var f = cx.data[first];
-            var a = BList<(long, TRow)>.Empty;
-            var s = cx.data[second];
-            var b = BList<(long, TRow)>.Empty;
-            for (var c = First(cx);c!=null;c=c.Next(cx))
-            {
-                var fc = cx.cursors[f.defpos];
-                a += (fc._defpos, fc);
-                var sc = cx.cursors[s.defpos];
-                b += (sc._defpos, sc);
-            }
-            return (f + (ExplicitRowSet.ExplRows, a),
-                s + (ExplicitRowSet.ExplRows, b));
-        }
         internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
         {
-            var (a, b) = Split(cx, fm);
-            cx.data[first].Insert(cx, a, prov, cl);
-            cx.data[second].Insert(cx, b, prov, cl);
+            var ts = BTree<long, TableActivation>.Empty;
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var tb = (Table)cx.obs[b.key()];
+                if (tb.Denied(cx, Grant.Privilege.Insert))
+                    throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+                // parameter cl is only supplied when d_User.defpos==d.owner
+                // otherwise check if we should compute it
+                if (cx.db.user != null &&
+                    cx.db.user.defpos != cx.db.owner && tb.enforcement.HasFlag(Grant.Privilege.Insert))
+                {
+                    var uc = cx.db.user.clearance;
+                    if (!uc.ClearanceAllows(tb.classification))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+                    // The new records' classification will have the user’s minimum clearance level:
+                    // if this is above D, the groups will be the subset of the user’s groups 
+                    // that are in the table classification, 
+                    // and the references will be the same as the table 
+                    // (a subset of the user’s references)
+                    cl = uc.ForInsert(tb.classification);
+                }
+                var ta = new TableActivation(cx, cx.data[b.value()], PTrigger.TrigType.Insert);
+                ta.finder = cx.finder + ta._finder;
+                ts += (tb.defpos, ta);
+                ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+            }
+            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
+            {
+                for (var b = rsTargets.First(); b != null; b = b.Next())
+                {
+                    var ta = ts[b.key()];
+                    if (ta.trigFired != true)
+                    {
+                        ta._trs.At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
+                        ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (ta.trigFired == true)
+                            continue;
+                        var tgc = (TransitionRowSet.TargetCursor)ta.cursors[ta._trs.defpos];
+                        var rc = tgc._rec;
+                        var st = rc.subType;
+                        var np = cx.db.nextPos;
+                        if (rc._Insert(cx, np, tgc.values, st, prov, cl) is TableRow nr)
+                        {
+                            var ns = cx.newTables[ta._trs.defpos] ?? BTree<long, TableRow>.Empty;
+                            cx.newTables += (ta._trs.defpos, ns + (nr.defpos, nr));
+                        }
+                        // install the record in the transaction
+                        //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
+                        ta.db = cx.db;
+                        // Row-level after triggers
+                        ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
+                    }
+                }
+            }
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var ta = ts[b.key()];
+                if (ta.trigFired != true)
+                    ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
+            }
             return cx;
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx, RowSet fm)
         {
-            var (a, b) = Split(cx, fm);
-            cx.data[first].Delete(cx, a);
-            cx.data[second].Delete(cx, b);
+            var ts = BTree<long, TableActivation>.Empty;
+            var cl = cx.db.user.clearance;
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var tb = (Table)cx.obs[b.key()];
+                var tf = cx.data[b.value()];
+                var targetInfo = (ObInfo)cx.db.role.infos[tb.defpos];
+                if (tb.Denied(cx, Grant.Privilege.Delete) ||
+                    (tb.enforcement.HasFlag(Grant.Privilege.Delete) &&
+                    cx.db.user.clearance.minLevel > 0 &&
+                    (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
+                    cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel)))
+                    throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
+                var ta = new TableActivation(cx, tf, PTrigger.TrigType.Delete);
+                cx.finder += ta._finder;
+                ts += (tb.defpos, ta);
+                ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+            }
+            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
+            {
+                for (var b = rsTargets.First(); b != null; b = b.Next())
+                {
+                    var ta = ts[b.key()];
+                    var trs = ta._trs;
+                    var tb = (Table)cx.obs[trs.target];
+                    if (ta.trigFired != true)
+                    {
+                        ta._trs.At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
+                        //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
+                        //            continue;
+                        ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (ta.trigFired == true)
+                            continue;
+                        ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
+                        if (ta.trigFired == true)
+                            continue;
+                        ta.db = cx.db;
+                        var tgc = (TransitionRowSet.TargetCursor)ta.cursors[trs.defpos];
+                        var rec = tgc.Rec()[0];
+                        if (cx.db.user.defpos != cx.db.owner && tb.enforcement.HasFlag(Grant.Privilege.Delete) ?
+                            // If Delete is enforced by the table and the user has delete privilege for the table, 
+                            // but the record to be deleted has a classification level different from the user 
+                            // or the clearance does not allow access to the record, throw an Access Denied exception.
+                            ((!cl.ClearanceAllows(rec.classification)) || cl.minLevel > rec.classification.minLevel)
+                            : cl.minLevel > 0)
+                            throw new DBException("42105");
+                        //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
+                        rec._Delete(ta);
+                    }
+                }
+            }
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var ta = ts[b.key()];
+                if (ta.trigFired != true)
+                    ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
+            }
             return cx;
         }
         internal override Context Update(Context cx, RowSet fm)
         {
-            var (a, b) = Split(cx, fm);
-            cx.data[first].Update(cx, a);
-            cx.data[second].Update(cx, b);
+            if (fm.assig.Count == 0)
+                return cx;
+            var ts = BTree<long, TableActivation>.Empty;
+            var db = cx.db;
+            var updates = BTree<long, UpdateAssignment>.Empty;
+            SqlValue level = null; // Only the SA can modify the classification
+            var cl = cx.db.user.clearance ?? Level.D;
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var tb = (Table)cx.obs[b.key()];
+                if (Denied(cx, Grant.Privilege.Update))
+                    throw new DBException("42105", ((ObInfo)cx.db.role.infos[tb.defpos]).name);
+                var tf = cx.data[b.value()];
+                var ta = new TableActivation(cx, tf, PTrigger.TrigType.Update);
+                ts += (tb.defpos, ta);
+                ta.db = db;
+                for (var ass = tf.assig.First(); ass != null; ass = ass.Next())
+                    if (cx.obs[ass.key().vbl] is SqlSecurity)
+                        level = cx.obs[ass.key().val] as SqlValue;
+                    else
+                    {
+                        var c = cx.obs[ass.key().vbl] as SqlCopy
+                            ?? throw new DBException("0U000");
+                        DBObject oc = c;
+                        while (oc is SqlCopy sc) // Views have indirection here
+                            oc = cx.obs[sc.copyFrom];
+                        if (oc is TableColumn tc && tc.generated != GenerationRule.None)
+                            throw cx.db.Exception("0U000", c.name).Mix();
+                        if (c.Denied(cx, Grant.Privilege.Update))
+                            throw new DBException("42105", c.name);
+                        updates += (oc.defpos, ass.key());
+                    }
+                //  Values in a row can be modified in 3 ways:
+                //  1. by one of the UpdateAssignments (i.e. this.updates, will affect vs)
+                //  2. in a row-level trigger by assignment to newrow (will affect ta.NewRow)
+                //  3. in a row-level before trigger by assignment to a column (will affect ta.values)
+                // A. Before before triggers, set ta.newRow to vs
+                // B. Allow before triggers to modify ta.newRow and ta.values progressively.
+                // C. After before triggers, set vs to final value of ta.newRow
+                // D. Compare tgc.rec to ta.values, destructively apply *changes* to vs 
+                // (By Note 116 of ISO 9075 (2016) changes of type 3 override those of type 1,
+                // and are made at this point.)
+                // E. Update tgc from vs.
+                cx.finder += ta._finder;
+                if ((level != null || updates.Count > 0))
+                {
+                    ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+                    if (ta.trigFired != true)
+                        ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
+                }
+                db = ta.db;
+            }
+            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
+            {
+                for (var b = rsTargets.First(); b != null; b = b.Next())
+                {
+                    var ta = ts[b.key()];
+                    ta.db = db;
+                    var trs = ta._trs;
+                    var tb = (Table)cx.obs[trs.target];
+                    if (ta.trigFired != true)
+                    {
+                        ta._trs.At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
+                        var tgc = (TransitionRowSet.TargetCursor)ta.cursors[ta._trs.defpos];
+                        var rc = tgc._rec;  // holds unchanged values of tgc
+                        var vs = rc.vals;
+                        for (var vb = updates.First(); vb != null; vb = vb.Next())
+                        {
+                            var ua = vb.value();
+                            var tv = cx.obs[ua.val].Eval(ta);
+                            var tp = ta._trs.transTarget[ua.vbl].col;
+                            if (tb.domain.representation.Contains(tp))
+                                vs += (tp, tv);
+                        }
+                        // Step A
+                        ta.values += (Trigger.OldRow, tgc);
+                        ta.values += (Trigger.NewRow, new TRow(tgc.dataType, vs));
+                        ta.values += rc.vals;
+                        // Step B
+                        ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (ta.trigFired != true)
+                            ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
+                        if (ta.trigFired == true) // an insteadof trigger has fired
+                            continue;
+                        // Step C
+                        vs = ((TRow)ta.values[Trigger.NewRow]).values;
+                        // If Update is enforced by the table, and a record selected for update 
+                        // is not one to which the user has clearance 
+                        // or does not match the user’s clearance level, 
+                        // throw an Access Denied exception.
+                        if (tb.enforcement.HasFlag(Grant.Privilege.Update)
+                            && cx.db.user != null
+                            && cx.db.user.defpos != cx.db.owner && ((rc != null) ?
+                                 ((!cl.ClearanceAllows(rc.classification))
+                                 || cl.minLevel != rc.classification.minLevel)
+                                 : cl.minLevel > 0))
+                            throw new DBException("42105");
+                        // Step D
+                        var np = cx.db.nextPos;
+                        for (var vb = tgc.dataType.rowType.First(); vb != null; vb = vb.Next())
+                        {
+                            var p = vb.value();
+                            var tv = ta.values[p];
+                            var v = tgc[p];
+                            if (v.CompareTo(tv) != 0)// ISO9075 Note 116
+                                vs += (p, tv);
+                        }
+                        if (vs.CompareTo(rc.vals) == 0)
+                            continue;
+                        var nr = tgc._rec._Update(cx, np, vs, level);
+                        var ns = cx.newTables[ta._trs.defpos] ?? BTree<long, TableRow>.Empty;
+                        cx.newTables += (ta._trs.defpos, ns + (nr.defpos, nr));
+                        ta.db = cx.db;
+                        //      cx.tr.FixTriggeredActions(triggers, ta._tty, np);
+                        ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
+                        db = ta.db;
+                    }
+                }
+            }
+            for (var b = rsTargets.First(); b != null; b = b.Next())
+            {
+                var ta = ts[b.key()];
+                ta.db = db;
+                if (ta.trigFired != true)
+                    ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
+                db = ta.db;
+            }
             return cx;
         }
+
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -404,24 +616,27 @@ namespace Pyrrho.Level4
         /// </summary>
 		internal readonly JoinRowSet _jrs;
         protected readonly Cursor _left, _right;
-        protected readonly bool _useLeft, _useRight;
-        internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
-            bool ur, int pos) : base(_cx, jrs, pos, 0, 0, _Vals(jrs, left, ul, right, ur))
+        internal readonly bool _useLeft, _useRight;
+        internal readonly BTree<long, Cursor> _ts;
+        internal JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+            bool ur, int pos) : base(cx, jrs, pos, 0, 0, _Vals(jrs, left, ul, right, ur))
         {
             _jrs = jrs;
             _left = left;
             _useLeft = ul;
             _right = right;
             _useRight = ur;
+            _ts = cx.cursors;
         }
-        internal JoinBookmark(Context _cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
-    bool ur, int pos,TRow rw) : base(_cx, jrs, pos, 0, 0, rw)
+        internal JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+    bool ur, int pos,TRow rw) : base(cx, jrs, pos, 0, 0, rw)
         {
             _jrs = jrs;
             _left = left;
             _useLeft = ul;
             _right = right;
-            _useRight = ur; 
+            _useRight = ur;
+            _ts = cx.cursors;
         }
         protected JoinBookmark(JoinBookmark cu, Context cx, long p, TypedValue v) 
             : base(cu, cx, p, v)
@@ -431,6 +646,7 @@ namespace Pyrrho.Level4
             _useLeft = cu._useLeft;
             _right = cu._right;
             _useRight = cu._useRight;
+            _ts = cx.cursors;
         }
         protected JoinBookmark(Context cx,JoinBookmark cu) 
             :base(cx,cx.data[cu._jrs.defpos],cu._pos,0,0,cu) 
@@ -440,6 +656,7 @@ namespace Pyrrho.Level4
             _useLeft = cu._useLeft;
             _right = cu._right;
             _useRight = cu._useRight;
+            _ts = cx.cursors;
         }
         static TRow _Vals(JoinRowSet jrs, Cursor left, bool ul, Cursor right, bool ur)
         {

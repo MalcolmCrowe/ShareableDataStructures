@@ -1852,11 +1852,17 @@ namespace Pyrrho.Level3
                             var b = rowType.First();
                             for (;b!=null;b=b.Next())
                             {
-                                var cd = representation[b.value()];
-                                var co = (ObInfo)lx._cx.db.role?.infos[b.value()];
-                                cols += (b.value(),cd.defaultValue);
-                                if (co != null)
-                                    names += (co.name, b.value());
+                                var p = b.value();
+                                var cd = representation[p];
+                                if (lx._cx.obs[b.value()] is SqlValue sv)
+                                    names += (sv.name, p);
+                                else
+                                {
+                                    var co = (ObInfo)lx._cx.db.role?.infos[p];
+                                    cols += (b.value(), cd.defaultValue);
+                                    if (co != null)
+                                        names += (co.name, p);
+                                }
                             }
                             b = rowType.First();
                             bool namedOk = true;

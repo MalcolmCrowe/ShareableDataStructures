@@ -820,7 +820,8 @@ namespace Pyrrho.Level3
             }
             var kt = CList<long>.Empty;
             for (var b = r.keys.First(); b != null && b.key()<domain.display; b = b.Next())
-                kt += ma[b.value()];
+                if (ma.Contains(b.value()))
+                    kt += ma[b.value()];
             var rs = new TableExpRowSet(defpos, cx, nuid, domain, kt, r, where, matches+filter, fi);
             cx.results += (defpos, rs.defpos);
             return cx.data[rs.defpos];

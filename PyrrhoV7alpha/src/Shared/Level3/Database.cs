@@ -84,7 +84,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
         // Tailor REST string for differnt remote DBMS
-        internal virtual string ToString(string sg, CTree<string,long> cs, Context cx)
+        internal virtual string ToString(string sg, CTree<string,CTree<long, long>> cs, Context cx)
         {
             return ToString();
         }
@@ -561,12 +561,12 @@ namespace Pyrrho.Level3
         }
         internal virtual void Execute(Role r, string id,string[] path, int p, string etag)
         { }
-        internal virtual void Post(RowSet r, string s)
-        { }
-        internal virtual void Put(RowSet r, string s)
-        { }
-        internal virtual void Delete(RowSet r)
-        { }
+        internal virtual Context Post(Context cx, RowSet  r, string s)
+        { return cx;  }
+        internal virtual Context Put(Context cx, RowSet r, string s)
+        { return cx;  }
+        internal virtual Context Delete(Context cx, RowSet r)
+        { return cx; }
          /// <summary>
         /// Prepare for a CONTINUE condition handler (implemented in Participant)
         /// </summary>

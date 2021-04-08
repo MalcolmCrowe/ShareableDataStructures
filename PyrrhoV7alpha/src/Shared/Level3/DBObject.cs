@@ -690,7 +690,16 @@ namespace Pyrrho.Level3
             }
             return t;
         }
-        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<(long, TRow)> rs, VIC vc)
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<(long, BTree<long,Cursor>)> rs, 
+            VIC vc)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+                t += (b.key(), (t[b.key()] ?? VIC.None) | vc);
+                // TDO
+            return t;
+        }
+        internal BTree<long, VIC?> Scan(BTree<long, VIC?> t, BList<(long, TRow)> rs,
+    VIC vc)
         {
             for (var b = rs.First(); b != null; b = b.Next())
                 t += (b.key(), (t[b.key()] ?? VIC.None) | vc);
