@@ -207,7 +207,7 @@ namespace Pyrrho.Level4
             }
             return new GroupingRowSet(cx,this,needed,rows,true);
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             throw new DBException("42174");
         }

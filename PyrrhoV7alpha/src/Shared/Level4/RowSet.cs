@@ -276,12 +276,12 @@ namespace Pyrrho.Level4
             cx.data += (r.defpos, r);
             return r;
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             if (rsTargets==CTree<long,long>.Empty)
                 throw new DBException("42174");
             for (var b = rsTargets.First(); b != null; b = b.Next())
-                cx = cx.data[b.value()]?.Insert(cx, fm, prov, cl);
+                cx = cx.data[b.value()]?.Insert(cx, fm, false, prov, cl);
             return cx;
         }
         internal virtual RowSet Build(Context cx)
@@ -1229,17 +1229,32 @@ namespace Pyrrho.Level4
             wr.cx.data += (r.defpos, r);
             return r;
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
-            return ((DBObject)cx.db.objects[target]).Insert(cx, fm, prov, cl);
+            var ta = (TargetActivation)((DBObject)cx.db.objects[target]).Insert(cx, fm, false, prov, cl);
+            if (!iter)
+                return ta;
+            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
+                ta.EachRow();
+            return ta.Finish();
         }
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx,RowSet fm,bool iter)
         {
-            return ((Table)cx.db.objects[target]).Update(cx,fm);
+            var ta = (TargetActivation)((Table)cx.db.objects[target]).Update(cx,fm,false);
+            if (!iter)
+                return ta;
+            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
+                ta.EachRow();
+            return ta.Finish();
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm,bool iter)
         {
-            return ((Table)cx.db.objects[target]).Delete(cx,fm);
+            var ta = (TargetActivation)((Table)cx.db.objects[target]).Delete(cx, fm,false);
+            if (!iter)
+                return ta;
+            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
+                ta.EachRow();
+            return ta.Finish();
         }
         internal override BTree<long,VIC?> Scan(BTree<long, VIC?> t)
         {
@@ -1450,17 +1465,17 @@ namespace Pyrrho.Level4
         {
             return SelectCursor.New(this, _cx);
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
-            return cx.data[source].Insert(cx, fm, prov, cl);
+            return cx.data[source].Insert(cx, fm, iter, prov, cl);
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm, bool iter)
         {
-            return cx.data[source].Delete(cx,fm);
+            return cx.data[source].Delete(cx,fm, iter);
         }
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx,RowSet fm, bool iter)
         {
-            return cx.data[source].Update(cx,fm);
+            return cx.data[source].Update(cx,fm, iter);
         }
         internal class SelectCursor : Cursor
         {
@@ -1662,15 +1677,15 @@ namespace Pyrrho.Level4
             }
             return new EvalRowSet(_cx, this, needed, new TRow(domain, vs));
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             throw new DBException("42174");
         }
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx,RowSet fm, bool iter)
         {
             throw new DBException("42174");
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm, bool iter)
         {
             throw new DBException("42174");
         }
@@ -2058,9 +2073,9 @@ namespace Pyrrho.Level4
                 wr.cx.obs += (r.defpos, r);
             return r;
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
-            return ((Table)cx.db.objects[target]).Insert(cx, fm, prov, cl);
+            return ((Table)cx.db.objects[target]).Insert(cx, fm, iter, prov, cl);
         }
         protected override Cursor _First(Context _cx)
         {
@@ -2500,15 +2515,15 @@ namespace Pyrrho.Level4
         {
             return DistinctCursor.New(this, cx);
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             throw new DBException("42174");
         }
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx,RowSet fm, bool iter)
         {
             throw new DBException("42174");
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm, bool iter)
         {
             throw new DBException("42174");
         }
@@ -3748,7 +3763,7 @@ namespace Pyrrho.Level4
                 : base(cx, cx._trs.defpos, ti.domain, trc._pos, trc._defpos, trc._ppos, 
                       new TRow(ti.domain,vals)) 
             { 
-                _trs=cx._trs; _ti = ti;
+                _trs = (TransitionRowSet)cx._trs; _ti = ti;
                 var t = (Table)cx.db.objects[cx._trs.target];
                 var p = trc._defpos;
                 for (var b = cx.cursors.First(); p == 0L && b != null; b = b.Next())
@@ -4777,7 +4792,7 @@ namespace Pyrrho.Level4
         internal GroupSpecification remoteGroups =>(GroupSpecification)mem[RemoteGroups];
         public RestRowSet(Context cx, From f, RestView vw)
             : base(f.defpos, _Mem(cx,f,vw) +(RestView,vw.defpos)+(RemoteCols,vw.viewCols)
-                  +(RSTargets,new CTree<long,long>(vw.viewTable,vw.defpos))+(UsingTable,vw.usingTable)
+                  +(RSTargets,new CTree<long,long>(vw.viewTable,f.defpos))+(UsingTable,vw.usingTable)
                   +(Query._Matches,f.matches)+(Query.Where,f.where)+(From.Target,f.target)
                   +(Query.OrdSpec,f.ordSpec)+(_Domain,f.domain)
                   +(Index.Keys,f.domain.rowType))
@@ -5225,80 +5240,29 @@ namespace Pyrrho.Level4
             t = Scan(t, usingTable, VIC.RK | VIC.OV);
             return base.Scan(t);
         }
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
-            int count = 0;
-            var vw = (RestView)cx.obs[restView];
-            if (vw.Denied(cx, Grant.Privilege.Insert))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var cu = (RestCursor)cx.cursors[defpos];
-            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
-            {
-                var rc = rb.value(); // probably a RemoteTableRow
-                var st = rc.subType;
-                var np = cx.db.nextPos;
-                if (rc._Insert(cx, np, cu.values, st, prov, cl) is TableRow nr)
-                {
-                    var ns = cx.newTables[vw.defpos] ?? BTree<long, TableRow>.Empty;
-                    cx.newTables += (vw.defpos, ns + (nr.defpos, nr));
-                    count++;
-                }
-            }
-            return cx;
+            var vi = (ObInfo)cx.db.role.infos[restView];
+            if (vi.metadata.Contains(Sqlx.URL))
+                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl);
+            else
+                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl);
         }
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx,RowSet fm, bool iter)
         {
-            if (assig.Count == 0)
-                return cx;
-            var vw = (RestView)cx.obs[restView];
-            if (vw.Denied(cx, Grant.Privilege.Update))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var updates = BTree<long, UpdateAssignment>.Empty;
-            for (var ass = assig.First(); ass != null; ass = ass.Next())
-            {
-                var c = cx.obs[ass.key().vbl] as SqlCopy
-                    ?? throw new DBException("0U000");
-                DBObject oc = c;
-                while (oc is SqlCopy sc) // Views have indirection here
-                    oc = cx.obs[sc.copyFrom];
-                if (oc is TableColumn tc && tc.generated != GenerationRule.None)
-                    throw cx.db.Exception("0U000", c.name).Mix();
-                if (c.Denied(cx, Grant.Privilege.Update))
-                    throw new DBException("42105", c.name);
-                updates += (oc.defpos, ass.key());
-            }
-            var cu = (RestCursor)cx.cursors[defpos];
-            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
-            {
-                var rc = rb.value(); // probably a RemoteTableRow
-                var vs = rc.vals;
-                for (var b = updates.First(); b != null; b = b.Next())
-                {
-                    var ua = b.value();
-                    var tv = cx.obs[ua.val].Eval(cx);
-                    vs += (ua.vbl, tv);
-                }
-                var np = cx.db.nextPos;
-                var nr = rc._Update(cx, np, vs, null);
-                var ns = cx.newTables[vw.defpos] ?? BTree<long, TableRow>.Empty;
-                cx.newTables += (vw.defpos, ns + (nr.defpos, nr));
-            }
-            return cx;
+            var vi = (ObInfo)cx.db.role.infos[restView];
+            if (vi.metadata.Contains(Sqlx.URL))
+                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Update);
+            else
+                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Update);
         }
-        internal override Context Delete(Context cx,RowSet fm)
+        internal override Context Delete(Context cx,RowSet fm, bool iter)
         {
-            int count = 0;
-            var vw = (RestView)cx.obs[restView];
-            if (vw.Denied(cx, Grant.Privilege.Insert))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var cu = (RestCursor)cx.cursors[defpos];
-            for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
-            {
-                var rc = rb.value(); // probably a RemoteTableRow
-                if (rc._Delete(cx))
-                    count++;
-            }
-            return cx;
+            var vi = (ObInfo)cx.db.role.infos[restView];
+            if (vi.metadata.Contains(Sqlx.URL))
+                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Delete);
+            else
+                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Delete);
         }
         public override string ToString()
         {

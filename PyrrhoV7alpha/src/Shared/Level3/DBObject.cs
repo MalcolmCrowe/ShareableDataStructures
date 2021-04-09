@@ -321,16 +321,16 @@ namespace Pyrrho.Level3
         /// <param name="f">A query</param>
         /// <param name="prov">The provenance string</param>
         /// <param name="cl">The classification sought</param>
-        internal virtual Context Insert(Context _cx, RowSet fm, string prov, Level cl)
+        internal virtual Context Insert(Context _cx, RowSet fm, bool iter, string prov, Level cl)
         {
             _cx.Install2(framing);
             return _cx;
         }
-        internal virtual Context Delete(Context cx,RowSet fm)
+        internal virtual Context Delete(Context cx,RowSet fm, bool iter)
         {
             throw new NotImplementedException();
         }
-        internal virtual Context Update(Context cx, RowSet fm)
+        internal virtual Context Update(Context cx, RowSet fm, bool iter)
         {
             throw new NotImplementedException();
         }

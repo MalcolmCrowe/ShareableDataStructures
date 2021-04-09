@@ -1,6 +1,9 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level2;
+using System;
+using System.Text;
+using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -165,15 +168,18 @@ namespace Pyrrho.Level4
     }
     internal class TargetActivation : Activation
     {
-        internal readonly TransitionRowSet _trs;
+        internal Context _cx;
+        internal readonly RowSet _trs;
         internal readonly RowSet _fm;
         internal readonly ObInfo _ti;
         internal readonly long _tgt;
         internal readonly CTree<long, RowSet.Finder> _finder;
         internal PTrigger.TrigType _tty; // may be Insert
-        internal TargetActivation(Context _cx, RowSet fm, PTrigger.TrigType tt)
-            : base(_cx, "")
+        internal int count = 0;
+        internal TargetActivation(Context cx, RowSet fm, PTrigger.TrigType tt)
+            : base(cx, "")
         {
+            _cx = cx;
             _tty = tt; // guaranteed to be Insert, Update or Delete
             _trs = new TransitionRowSet(this,fm);
             _fm = fm;
@@ -196,9 +202,46 @@ namespace Pyrrho.Level4
         {
             sb.Append(" " + _ti.name);
         }
+        internal virtual void EachRow()
+        { }
+        internal virtual Context Finish()
+        {
+            return _cx;
+        }
+        internal void RoundTrip(RestRowSet rrs, WebRequest rq, string url, StringBuilder sql)
+        {
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine(url + " " + sql.ToString());
+            var bs = Encoding.UTF8.GetBytes(sql.ToString());
+            rq.ContentLength = bs.Length;
+            try
+            {
+                var rqs = rq.GetRequestStream();
+                rqs.Write(bs, 0, bs.Length);
+                rqs.Close();
+            }
+            catch (WebException)
+            {
+                throw new DBException("3D002", url);
+            }
+            var rp = RestRowSet.GetResponse(rq);
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine("--> " + rp.StatusCode);
+            if (rp == null || rp.StatusCode != HttpStatusCode.OK)
+                throw new DBException("2E201");
+            var ld = rp.GetResponseHeader("LastData");
+            if (ld != null)
+                _cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
+            var et = rp.GetResponseHeader("ETag");
+            var es = et.Split(',');
+            if (es.Length == 3)
+                _cx.affected = (_cx.affected ?? Rvv.Empty)
+                    + (rrs.target, (long.Parse(es[1]), long.Parse(es[2])));
+        }
     }
     internal class TableActivation : TargetActivation
     {
+        internal Table table;
         /// <summary>
         /// There may be several triggers of any type, so we manage a set of transition activations for each.
         /// These are for table before, table instead, table after, row before, row instead, row after.
@@ -207,11 +250,17 @@ namespace Pyrrho.Level4
         internal readonly CTree<PTrigger.TrigType,CTree<long, bool>> _tgs;
         internal Index index = null; // for autokey
         internal bool? trigFired = null;
-        internal TableActivation(Context _cx,RowSet fm,PTrigger.TrigType tt)
-            : base(_cx,fm,tt)
+        internal string prov = null;
+        internal Level level = Level.D;
+        internal SqlValue security = null;
+        internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
+        internal TableActivation(Context cx,RowSet fm,PTrigger.TrigType tt,string pr=null,Level cl=null)
+            : base(cx,fm,tt)
         {
-            var tb = (Table)_cx.obs[_tgt];
-            _tgs = tb.triggers;
+            _cx = cx;
+            table = (Table)cx.obs[_tgt];
+            _tgs = table.triggers;
+            var trs = (TransitionRowSet)_trs;
             acts = BTree<long, TriggerActivation>.Empty;
             for (var b = _tgs.First(); b != null; b = b.Next())
                 if (b.key().HasFlag(tt))
@@ -220,14 +269,235 @@ namespace Pyrrho.Level4
                         var t = tg.key();
                         // NB at this point obs[t] version of the trigger has the wrong action field
                         var td = (Trigger)db.objects[t];
-                        var ta = new TriggerActivation(this, _trs, td);
+                        var ta = new TriggerActivation(this, trs, td);
                         acts += (t, ta);
                         ta.Frame(t);  
                         ta.obs += (t, td);
                     }
-            if (_trs.indexdefpos >= 0)
-                index =  (Index)_cx.db.objects[_trs.indexdefpos];
+            if (trs.indexdefpos >= 0)
+                index =  (Index)cx.db.objects[trs.indexdefpos];
+            switch (tt & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    if (table.Denied(cx, Grant.Privilege.Insert))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                    // parameter cl is only supplied when d_User.defpos==d.owner
+                    // otherwise check if we should compute it
+                    if (cx.db.user != null &&
+                        cx.db.user.defpos != cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Insert))
+                    {
+                        var uc = cx.db.user.clearance;
+                        if (!uc.ClearanceAllows(table.classification))
+                            throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                        // The new record’s classification will have the user’s minimum clearance level:
+                        // if this is above D, the groups will be the subset of the user’s groups 
+                        // that are in the table classification, 
+                        // and the references will be the same as the table 
+                        // (a subset of the user’s references)
+                        level = uc.ForInsert(table.classification);
+                    }
+                    //       var ckc = new ConstraintChecking(tr, trs, this);
+                    finder = cx.finder + _finder;
+                    break;
+                case PTrigger.TrigType.Update:
+                    if (table.Denied(cx, Grant.Privilege.Update))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                    for (var ass = fm.assig.First(); ass != null; ass = ass.Next())
+                        if (cx.obs[ass.key().vbl] is SqlSecurity)
+                            security = cx.obs[ass.key().val] as SqlValue;
+                        else
+                        {
+                            var c = cx.obs[ass.key().vbl] as SqlCopy
+                                ?? throw new DBException("0U000");
+                            DBObject oc = c;
+                            while (oc is SqlCopy sc) // Views have indirection here
+                                oc = cx.obs[sc.copyFrom];
+                            if (oc is TableColumn tc && tc.generated != GenerationRule.None)
+                                throw cx.db.Exception("0U000", c.name).Mix();
+                            if (c.Denied(cx, Grant.Privilege.Update))
+                                throw new DBException("42105", c.name);
+                            updates += (oc.defpos, ass.key());
+                        }
+                    //  Values in a row can be modified in 3 ways:
+                    //  1. by one of the UpdateAssignments (i.e. this.updates, will affect vs)
+                    //  2. in a row-level trigger by assignment to newrow (will affect ta.NewRow)
+                    //  3. in a row-level before trigger by assignment to a column (will affect ta.values)
+                    // A. Before before triggers, set ta.newRow to vs
+                    // B. Allow before triggers to modify ta.newRow and ta.values progressively.
+                    // C. After before triggers, set vs to final value of ta.newRow
+                    // D. Compare tgc.rec to ta.values, destructively apply *changes* to vs 
+                    // (By Note 116 of ISO 9075 (2016) changes of type 3 override those of type 1,
+                    // and are made at this point.)
+                    // E. Update tgc from vs.
+                    level = cx.db.user?.clearance ?? Level.D;
+                    cx.finder += _finder;
+                    if ((level != null || updates.Count > 0))
+                    {
+                        var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+                        if (fi != true)
+                            Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
+                    }
+                    // Do statement-level triggers
+                    trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+                    break;
+                case PTrigger.TrigType.Delete:
+                    var targetInfo = (ObInfo)cx.db.role.infos[fm.target];
+                    if (table.Denied(cx, Grant.Privilege.Delete) ||
+                        (table.enforcement.HasFlag(Grant.Privilege.Delete) &&
+                        cx.db.user.clearance.minLevel > 0 &&
+                        (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
+                        cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel)))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                    level = cx.db.user.clearance;
+                    cx.finder += _finder;
+                    trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
+                    if (trigFired != true)
+                        trigFired = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
+                    break;
+            }
         }
+        internal override void EachRow()
+        {
+            var tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+            var rc = tgc._rec;
+            var np = db.nextPos;
+            var trs = (TransitionRowSet)_trs;
+            if (trigFired == true)
+                return;
+            switch (_tty & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    {
+                        // Do row-level triggers
+                        trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (trigFired != true)
+                            trigFired = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
+                        if (trigFired == true) // an insteadof trigger has fired
+                            return;
+                        np = db.nextPos;
+                        tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+                        var st = rc.subType;
+                        Record r;
+                        if (level != Level.D)
+                            r = new Record3(table, tgc.values, st, level, np, _cx);
+                        else if (prov != null)
+                            r = new Record1(table, tgc.values, prov, np, _cx);
+                        else
+                            r = new Record(table, tgc.values, np, _cx);
+                        Add(r);
+                        var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
+                        newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx.db)));
+                        count++;
+                        // install the record in the transaction
+                        //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
+                        _cx.db = db;
+                        // Row-level after triggers
+                        Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
+                        break;
+                    }
+                case PTrigger.TrigType.Update:
+                    {
+                        var vs = rc.vals;
+                        for (var b = updates.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.value();
+                            var tv = _cx.obs[ua.val].Eval(this);
+                            var tp = trs.transTarget[ua.vbl].col;
+                            vs += (tp, tv);
+                        }
+                        // Step A
+                        values += (Trigger.OldRow, tgc);
+                        values += (Trigger.NewRow, new TRow(tgc.dataType, vs));
+                        values += rc.vals;
+                        // Step B
+                        var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (fi != true)
+                            fi = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
+                        if (fi == true) // an insteadof trigger has fired
+                            return;
+                        // Step C
+                        vs = ((TRow)values[Trigger.NewRow]).values;
+                        // If Update is enforced by the table, and a record selected for update 
+                        // is not one to which the user has clearance 
+                        // or does not match the user’s clearance level, 
+                        // throw an Access Denied exception.
+                        if (table.enforcement.HasFlag(Grant.Privilege.Update)
+                            && _cx.db.user != null
+                            && _cx.db.user.defpos != _cx.db.owner && ((rc != null) ?
+                                 ((!level.ClearanceAllows(rc.classification))
+                                 || level.minLevel != rc.classification.minLevel)
+                                 : level.minLevel > 0))
+                            throw new DBException("42105");
+                        // Step D
+                        np = db.nextPos;
+                        tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+                        var old = ((TRow)values[Trigger.OldRow]).values;
+                        for (var b = tgc.dataType.rowType.First(); b != null; b = b.Next())
+                        {
+                            var p = b.value();
+                            var tv = values[p];
+                            var ov = old[p];
+                            var v = vs[p];
+                            if (tv.CompareTo(ov)!=0 && v.CompareTo(tv) != 0)// ISO9075 Note 116
+                                vs += (p, tv);
+                        }
+                        if (vs.CompareTo(rc.vals) == 0)
+                            return;
+                        var nu = tgc._rec;
+                        var u = (security == null) ?
+                                new Update(nu, table, vs, np, _cx) :
+                                new Update1(nu, table, vs,(Level)security.Eval(_cx).Val(), np, _cx);
+                        Add(u);
+                        var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
+                        newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u,_cx.db)));
+                        _cx.db = db;
+                        Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
+                        break;
+                    }
+                case PTrigger.TrigType.Delete:
+                    {
+                        var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
+                        if (fi == true)
+                            return;
+                        fi = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
+                        if (fi == true)
+                            return;
+                        np = db.nextPos;
+                        tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+                        rc = tgc._rec;
+                        if (_cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
+                            // If Delete is enforced by the table and the user has delete privilege for the table, 
+                            // but the record to be deleted has a classification level different from the user 
+                            // or the clearance does not allow access to the record, throw an Access Denied exception.
+                            ((!level.ClearanceAllows(rc.classification)) || level.minLevel > rc.classification.minLevel)
+                            : level.minLevel > 0)
+                            throw new DBException("42105");
+                        //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
+                        var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
+                        newTables += (_trs.defpos, ns - rc.defpos);
+                        Add(new Delete1(rc, np, _cx));
+                        _cx.db = db;
+                        count++;
+                        break;
+                    }
+            }
+        }
+        internal override Context Finish()
+        {
+            if (trigFired == true)
+                return _cx;
+            // Statement-level after triggers
+            Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
+            _cx.result = -1L;
+            if (PyrrhoStart.DebugMode)
+                System.Console.WriteLine("Ins: " + _cx.tr.physicals.Count);
+            return _cx;
+        }
+        /// <summary>
+        /// Perform triggers
+        /// </summary>
+        /// <param name="fg"></param>
+        /// <returns></returns>
         internal bool? Triggers(PTrigger.TrigType fg) // flags to add
         {
             bool? r = null;
@@ -244,29 +514,281 @@ namespace Pyrrho.Level4
             SlideDown(); // get next to adopt our changes
             return r;
         }
-        /// <summary>
-        /// Perform the triggers in a set. 
-        /// </summary>
-        /// <param name="acts"></param>
-        internal bool Exec()
-        {
-            var r = false;
-            db = next.db;
-            nextHeap = next.nextHeap;
-            bool skip;
-            for (var a = acts?.First(); a != null; a = a.Next())
-            {
-                var ta = a.value();
-                ta.db = db;
-                ta.nextHeap = nextHeap;
-                skip = ta.Exec();
-                r = r || skip;
-            }
-            return r;
-        }
         protected override void Debug(System.Text.StringBuilder sb)
         {
             sb.Append(" " + _ti.name);
+        }
+    }
+    internal class RESTActivation: TargetActivation
+    {
+        internal RestRowSet _rr;
+        internal RestView _vw;
+        internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
+        internal RESTActivation(Context cx, RestRowSet rr, RowSet fm, PTrigger.TrigType tgt,
+            string prov = null, Level cl = null)
+            : base(cx, fm, tgt)
+        {
+            _rr = rr;
+            _vw = (RestView)cx.obs[rr.restView];
+            switch (tgt & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    if (_vw.Denied(cx, Grant.Privilege.Insert))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    break;
+                case PTrigger.TrigType.Update:
+                    if (_vw.Denied(cx, Grant.Privilege.Update))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    for (var ass = rr.assig.First(); ass != null; ass = ass.Next())
+                    {
+                        var c = cx.obs[ass.key().vbl] as SqlCopy
+                            ?? throw new DBException("0U000");
+                        DBObject oc = c;
+                        while (oc is SqlCopy sc) // Views have indirection here
+                            oc = cx.obs[sc.copyFrom];
+                        if (oc is TableColumn tc && tc.generated != GenerationRule.None)
+                            throw cx.db.Exception("0U000", c.name).Mix();
+                        if (c.Denied(cx, Grant.Privilege.Update))
+                            throw new DBException("42105", c.name);
+                        updates += (oc.defpos, ass.key());
+                    }
+                    break;
+                case PTrigger.TrigType.Delete:
+                    if (_vw.Denied(cx, Grant.Privilege.Delete))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    break;
+            }
+        }
+        internal override void EachRow()
+        {
+            var cu = (RestRowSet.RestCursor)_cx.cursors[_rr.defpos];
+            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
+            var (url, targetName, sql) = _rr.GetUrl(this, vi);
+            var rq = _rr.GetRequest(this, url);
+            var np = _cx.db.nextPos;
+            rq.Method = "POST"; 
+            switch (_tty & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    var vs = cu.values;
+                    rq.ContentType = "text/plain";
+                    sql.Append("insert into "); sql.Append(targetName);
+                    var cm = " values(";
+                    for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
+                        if (vs[b.value()[_rr.defpos]] is TypedValue tv)
+                        {
+                            sql.Append(cm); cm = ",";
+                            if (tv.dataType.kind == Sqlx.CHAR)
+                            {
+                                sql.Append("'");
+                                sql.Append(tv.ToString().Replace("'", "'''"));
+                                sql.Append("'");
+                            }
+                            else
+                                sql.Append(tv);
+                        }
+                    RoundTrip(_rr, rq, url, sql);
+                    var nr = new RemoteTableRow(np, vs, url, _rr);
+                    var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
+                    _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
+                    count++;
+                    break;
+                case PTrigger.TrigType.Update:
+                    if (_rr.assig.Count == 0)
+                        return;
+                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+                    {
+                        var rc = rb.value(); // probably a RemoteTableRow
+                        vs = rc.vals;
+                        for (var b = updates.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.value();
+                            var tv = _cx.obs[ua.val].Eval(_cx);
+                            vs += (ua.vbl, tv);
+                        }
+                        sql.Append("update "); sql.Append(targetName);
+                        cm = " set ";
+                        for (var b = _rr.assig.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.key();
+                            sql.Append(cm); cm = ",";
+                            sql.Append(((SqlValue)obs[ua.vbl]).name); sql.Append("=");
+                            var tv = ((SqlValue)obs[ua.val]).Eval(_cx);
+                            if (tv.dataType.kind == Sqlx.CHAR)
+                            {
+                                sql.Append("'");
+                                sql.Append(tv.ToString().Replace("'", "'''"));
+                                sql.Append("'");
+                            }
+                            else
+                                sql.Append(tv);
+                        }
+                        if (_rr.where.Count > 0 || _rr.matches.Count > 0)
+                        {
+                            var sw = _rr.WhereString(_cx);
+                            if (sw.Length > 0)
+                            {
+                                sql.Append(" where ");
+                                sql.Append(sw);
+                            }
+                        }
+                        RoundTrip(_rr, rq, url, sql);
+                        nr = new RemoteTableRow(np, vs, url, _rr);
+                        ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
+                        _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
+                    }
+                    break;
+                case PTrigger.TrigType.Delete:
+                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+                    {
+                        var rc = rb.value(); // probably a RemoteTableRow
+                        rq.ContentType = "text/plain";
+                        rq.Method = "POST";
+                        sql.Append("delete from "); sql.Append(targetName);
+                        if (_rr.where.Count > 0 || _rr.matches.Count > 0)
+                        {
+                            var sw = _rr.WhereString(_cx);
+                            if (sw.Length > 0)
+                            {
+                                sql.Append(" where ");
+                                sql.Append(sw);
+                            }
+                        }
+                        RoundTrip(_rr, rq, url, sql);
+                        count++;
+                    }
+                    break;
+            }
+        }
+    }
+    internal class HTTPActivation: TargetActivation
+    {
+        internal RestRowSet _rr;
+        internal RestView _vw;
+        internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
+        internal HTTPActivation(Context cx, RestRowSet rr, RowSet fm, PTrigger.TrigType tgt,
+            string prov = null, Level cl=null)
+            : base(cx, fm, tgt)
+        {
+            _rr = rr;
+            _vw = (RestView)cx.obs[rr.restView];
+            switch (tgt & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    if (_vw.Denied(cx, Grant.Privilege.Insert))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    break;
+                case PTrigger.TrigType.Update:
+                    if (_vw.Denied(cx, Grant.Privilege.Update))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    for (var ass = rr.assig.First(); ass != null; ass = ass.Next())
+                    {
+                        var c = cx.obs[ass.key().vbl] as SqlCopy
+                            ?? throw new DBException("0U000");
+                        DBObject oc = c;
+                        while (oc is SqlCopy sc) // Views have indirection here
+                            oc = cx.obs[sc.copyFrom];
+                        if (oc is TableColumn tc && tc.generated != GenerationRule.None)
+                            throw cx.db.Exception("0U000", c.name).Mix();
+                        if (c.Denied(cx, Grant.Privilege.Update))
+                            throw new DBException("42105", c.name);
+                        updates += (oc.defpos, ass.key());
+                    }
+                    break;
+                case PTrigger.TrigType.Delete:
+                    if (_vw.Denied(cx, Grant.Privilege.Delete))
+                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    break;
+            }
+        }
+        internal override void EachRow()
+        {
+            var cu = (RestRowSet.RestCursor)_cx.cursors[_rr.defpos];
+            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
+            var (url, targetName, sql) = _rr.GetUrl(this, vi);
+            var rq = _rr.GetRequest(this, url);
+            switch (_tty & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    rq.Method = "POST";
+                    rq.Accept = _vw.mime ?? "application/json";
+                    var cm = "[{";
+                    var vs = cu.values;
+                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+                    {
+                        var rc = rb.value(); // probably a RemoteTableRow
+                        var st = rc.subType;
+                        var np = _cx.db.nextPos;
+                        vs += rc.vals;
+                        for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
+                        {
+                            sql.Append(cm); cm = ",";
+                            sql.Append('"'); sql.Append(b.key());
+                            sql.Append("\":"); sql.Append(vs[b.value()[_rr.defpos]]);
+                        }
+                        sql.Append("}]");
+                        RoundTrip(_rr, rq, url, sql);
+                        var nr = new RemoteTableRow(np, vs, url, _rr);
+                        var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
+                        _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
+                        count++;
+                    }
+                    break;
+                case PTrigger.TrigType.Update:
+                        if (_rr.assig.Count == 0)
+                        return;
+                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+                    {
+                        var rc = rb.value(); // probably a RemoteTableRow
+                        vs = rc.vals;
+                        for (var b = updates.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.value();
+                            var tv = _cx.obs[ua.val].Eval(_cx);
+                            vs += (ua.vbl, tv);
+                        }
+                        var np = _cx.db.nextPos;
+                        rq.Accept = _vw.mime ?? "application/json";
+                        rq.Method = "PUT";
+                        cm = "[{";
+                        vs = _cx.cursors[_rr.defpos].values;
+                        for (var b = _rr.assig.First(); b != null; b = b.Next())
+                        {
+                            var ua = b.key();
+                            vs += (ua.vbl, ((SqlValue)obs[ua.val]).Eval(_cx));
+                        }
+                        var tb = _rr.rt.First();
+                        for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), rb = rb.Next())
+                        {
+                            sql.Append(cm); cm = ",";
+                            sql.Append('"'); sql.Append(b.key());
+                            var tv = vs[tb.value()];
+                            sql.Append("\":");
+                            if (tv.dataType.kind == Sqlx.CHAR)
+                            {
+                                sql.Append("'");
+                                sql.Append(tv.ToString().Replace("'", "'''"));
+                                sql.Append("'");
+                            }
+                            else
+                                sql.Append(tv);
+                        }
+                        sql.Append("}]");
+                        RoundTrip(_rr, rq, url, sql);
+                        var nr = new RemoteTableRow(np,vs,url,_rr);
+                        var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
+                        _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
+                    }
+                    break;
+                case PTrigger.TrigType.Delete:
+                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
+                    {
+                        rq.Method = "DELETE";
+                        RoundTrip(_rr, rq, url, sql);
+                        count++;
+                    }
+                    break;
+            }
         }
     }
     /// <summary>

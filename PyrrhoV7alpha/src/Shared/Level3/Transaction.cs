@@ -713,7 +713,7 @@ namespace Pyrrho.Level3
                 us += (new UpdateAssignment(c.value(), sl.defpos), true);
             }
             rs += (Query.Assig, us);
-            return rs.Update(cx, rs);
+            return rs.Update(cx, rs, true);
         }
         internal override Context Post(Context cx, RowSet r, string s)
         {
@@ -736,7 +736,7 @@ namespace Pyrrho.Level3
                 rws += (cx.nextHeap++, new TRow(r.domain,vs));
             }
             rs += (RowSet._Source,new ExplicitRowSet(cx.nextHeap++,r.domain,rws));
-            return rs.Insert(cx, rs, "", null);
+            return rs.Insert(cx, rs, true, "", null);
         }
         /// <summary>
         /// Implement Grant or Revoke

@@ -406,7 +406,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var tg = cx.data[nuid];
-            cx = tg.Insert(cx,cx.data[value],provenance, classification);
+            cx = tg.Insert(cx,cx.data[value],true,provenance, classification);
             return cx;
         }
         public override string ToString()
@@ -494,7 +494,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var rs = cx.data[nuid];
-            return rs.Delete(cx,rs);
+            return rs.Delete(cx,rs,true);
         }
         /// <summary>
         /// A readable version of the delete statement
@@ -532,7 +532,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var rs = cx.data[nuid];
-            return rs.Update(cx,rs);
+            return rs.Update(cx,rs,true);
         }
         internal override DBObject Relocate(long dp)
         {

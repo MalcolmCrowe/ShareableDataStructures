@@ -396,70 +396,12 @@ namespace Pyrrho.Level3
             return base.Denied(cx, priv);
         }
         /// <summary>
-        /// Execute an Insert on a single table including trigger operation.
+        /// Prepare an Insert on a single table including trigger operation.
         /// </summary>
-        internal override Context Insert(Context cx, RowSet fm, string prov, Level cl)
+        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
-            int count = 0;
-            if (Denied(cx, Grant.Privilege.Insert))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            // parameter cl is only supplied when d_User.defpos==d.owner
-            // otherwise check if we should compute it
-            if (cx.db.user != null &&
-                cx.db.user.defpos != cx.db.owner && enforcement.HasFlag(Grant.Privilege.Insert))
-            {
-                var uc = cx.db.user.clearance;
-                if (!uc.ClearanceAllows(classification))
-                    throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-                // The new record’s classification will have the user’s minimum clearance level:
-                // if this is above D, the groups will be the subset of the user’s groups 
-                // that are in the table classification, 
-                // and the references will be the same as the table 
-                // (a subset of the user’s references)
-                cl = uc.ForInsert(classification);
-            }
-            var ta = new TableActivation(cx, fm, PTrigger.TrigType.Insert);
-            //       var ckc = new ConstraintChecking(tr, trs, this);
-            ta.finder = cx.finder + ta._finder;
-            // Do statement-level triggers
-            bool? fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
-            if (fi != true) // no insteadof has fired
-            {
-                for (var trb = ta._trs.First(ta) as TransitionRowSet.TransitionCursor;
-                    trb != null; trb = trb.Next(ta) as TransitionRowSet.TransitionCursor) // trb constructor checks for autokey
-                {
-                    // Do row-level triggers
-                    fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
-                    if (fi!=true)
-                        fi = ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
-                    if (fi == true) // an insteadof trigger has fired
-                        continue;
-                    var tgc = (TransitionRowSet.TargetCursor)ta.cursors[ta._trs.defpos];
-                    var rc = tgc._rec;
-                    var st = rc.subType;
-                    var np = cx.db.nextPos;
-                    if (rc._Insert(cx, np, tgc.values, st, prov, cl) is TableRow nr)
-                    {
-                        var ns = cx.newTables[ta._trs.defpos] ?? BTree<long, TableRow>.Empty;
-                        cx.newTables += (ta._trs.defpos, ns + (nr.defpos, nr));
-                        count++;
-                    }
-                    // install the record in the transaction
-              //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
-                    ta.db = cx.db;
-                    // Row-level after triggers
-                    ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
-                    trb = (TransitionRowSet.TransitionCursor)cx.cursors[ta._trs.defpos];
-                }
-            }
-            // Statement-level after triggers
-            ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
-            cx.result = -1L;
-            if (PyrrhoStart.DebugMode)
-                Console.WriteLine("Ins: " + cx.tr.physicals.Count);
-            return cx;
+            return new TableActivation(cx, fm, PTrigger.TrigType.Insert, prov, cl);
         }
-
         /// <summary>
         /// Execute an Update operation on the Table, including triggers
         /// </summary>
@@ -467,168 +409,20 @@ namespace Pyrrho.Level3
         /// <param name="ur">The update row identifiers may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         /// <param name="rs">The target rowset may be explicit</param>
-        internal override Context Update(Context cx,RowSet fm)
+        internal override Context Update(Context cx, RowSet fm, bool iter)
         {
-            if (fm.assig.Count == 0)
-                return cx;
-            if (Denied(cx, Grant.Privilege.Update))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var ta = new TableActivation(cx, fm, PTrigger.TrigType.Update);
-            var updates = BTree<long, UpdateAssignment>.Empty;
-            SqlValue level = null; // Only the SA can modify the classification
-            for (var ass = fm.assig.First(); ass != null; ass = ass.Next())
-                if (cx.obs[ass.key().vbl] is SqlSecurity)
-                    level = cx.obs[ass.key().val] as SqlValue;
-                else
-                {
-                    var c = cx.obs[ass.key().vbl] as SqlCopy
-                        ?? throw new DBException("0U000");
-                    DBObject oc = c;
-                    while (oc is SqlCopy sc) // Views have indirection here
-                        oc = cx.obs[sc.copyFrom];
-                    if (oc is TableColumn tc && tc.generated != GenerationRule.None)
-                        throw cx.db.Exception("0U000", c.name).Mix();
-                    if (c.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105", c.name);
-                    updates += (oc.defpos, ass.key());
-                }
-            //  Values in a row can be modified in 3 ways:
-            //  1. by one of the UpdateAssignments (i.e. this.updates, will affect vs)
-            //  2. in a row-level trigger by assignment to newrow (will affect ta.NewRow)
-            //  3. in a row-level before trigger by assignment to a column (will affect ta.values)
-            // A. Before before triggers, set ta.newRow to vs
-            // B. Allow before triggers to modify ta.newRow and ta.values progressively.
-            // C. After before triggers, set vs to final value of ta.newRow
-            // D. Compare tgc.rec to ta.values, destructively apply *changes* to vs 
-            // (By Note 116 of ISO 9075 (2016) changes of type 3 override those of type 1,
-            // and are made at this point.)
-            // E. Update tgc from vs.
-            var cl = cx.db.user?.clearance ?? Level.D;
-            cx.finder += ta._finder;
-            if ((level != null || updates.Count > 0))
-            {
-                var fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
-                if (fi != true)
-                    fi = ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
-                if (fi != true)
-                    for (var trb = ta._trs.First(ta) as TransitionRowSet.TransitionCursor;
-                        trb != null; trb = trb.Next(ta) as TransitionRowSet.TransitionCursor)
-                    {
-                        var tgc = (TransitionRowSet.TargetCursor)ta.cursors[ta._trs.defpos];
-                        var rc = tgc._rec;  // holds unchanged values of tgc
-                        var vs = rc.vals;
-                        for (var b = updates.First(); b != null; b = b.Next())
-                        {
-                            var ua = b.value();
-                            var tv = cx.obs[ua.val].Eval(ta);
-                            var tp = ta._trs.transTarget[ua.vbl].col;
-                            vs += (tp, tv);
-                        }
-                        // Step A
-                        ta.values += (Trigger.OldRow, tgc);
-                        ta.values += (Trigger.NewRow, new TRow(tgc.dataType, vs));
-                        ta.values += rc.vals;
-                        // Step B
-                        fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
-                        if (fi != true)
-                            fi = ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
-                        if (fi == true) // an insteadof trigger has fired
-                            continue;
-                        // Step C
-                        vs = ((TRow)ta.values[Trigger.NewRow]).values;
-                        // If Update is enforced by the table, and a record selected for update 
-                        // is not one to which the user has clearance 
-                        // or does not match the user’s clearance level, 
-                        // throw an Access Denied exception.
-                        if (enforcement.HasFlag(Grant.Privilege.Update)
-                            && cx.db.user != null
-                            && cx.db.user.defpos != cx.db.owner && ((rc != null) ?
-                                 ((!cl.ClearanceAllows(rc.classification))
-                                 || cl.minLevel != rc.classification.minLevel)
-                                 : cl.minLevel > 0))
-                            throw new DBException("42105");
-                        // Step D
-                        var np = cx.db.nextPos;
-                        for (var b = tgc.dataType.rowType.First(); b != null; b = b.Next())
-                        {
-                            var p = b.value();
-                            var tv = ta.values[p];
-                            var v = tgc[p];
-                            if (v.CompareTo(tv) != 0)// ISO9075 Note 116
-                                vs += (p, tv); 
-                        }
-                        if (vs.CompareTo(rc.vals) == 0)
-                            continue;
-                        var nr = tgc._rec._Update(cx, np, vs, level);
-                        var ns = cx.newTables[ta._trs.defpos] ?? BTree<long, TableRow>.Empty;
-                        cx.newTables += (ta._trs.defpos, ns + (nr.defpos, nr));
-                        ta.db = cx.db;
-                  //      cx.tr.FixTriggeredActions(triggers, ta._tty, np);
-                        ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
-                    }
-            }
-            ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
-            cx.result = -1L; //??
-            if (PyrrhoStart.DebugMode)
-                Console.WriteLine("Upd: " + cx.tr.physicals.Count);
-            return cx;
+            return new TableActivation(cx, fm, PTrigger.TrigType.Update);
         }
         /// <summary>
-        /// Execute a Delete on a Table, including triggers
+        /// Prepare a Delete on a Table, including triggers
         /// </summary>
         /// <param name="f">The Delete operation</param>
         /// <param name="ds">A set of delete strings may be explicit</param>
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override Context Delete(Context cx, RowSet fm)
+        internal override Context Delete(Context cx, RowSet fm, bool iter)
         {
-            var count = 0;
-            var targetInfo = (ObInfo)cx.db.role.infos[fm.target];
-            if (Denied(cx, Grant.Privilege.Delete) ||
-                (enforcement.HasFlag(Grant.Privilege.Delete) &&
-                cx.db.user.clearance.minLevel > 0 &&
-                (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
-                cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel)))
-                throw new DBException("42105", ((ObInfo)cx.db.role.infos[defpos]).name);
-            var ta = new TableActivation(cx, fm, PTrigger.TrigType.Delete);
-            var cl = cx.db.user.clearance;
-            cx.finder += ta._finder;
-            bool? fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
-            if (fi!=true)
-                fi = ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
-            if (fi != true)
-                for (var trb = ta._trs.First(ta) as TransitionRowSet.TransitionCursor; trb != null;
-                    trb = trb.Next(ta) as TransitionRowSet.TransitionCursor)
-                {
-                    //          if (ds.Count > 0 && !ds.Contains(trb.Rvv()))
-                    //            continue;
-                    fi = ta.Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
-                    if (fi == true)
-                        continue;
-                    fi = ta.Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
-                    if (fi == true)
-                        continue;
-                    ta.db = cx.db;
-                    trb = (TransitionRowSet.TransitionCursor)cx.cursors[ta._trs.defpos];
-                    var tgc = (TransitionRowSet.TargetCursor)ta.cursors[ta._trs.defpos];
-                    var rec = tgc.Rec()[0];
-                    if (cx.db.user.defpos != cx.db.owner && enforcement.HasFlag(Grant.Privilege.Delete) ?
-                        // If Delete is enforced by the table and the user has delete privilege for the table, 
-                        // but the record to be deleted has a classification level different from the user 
-                        // or the clearance does not allow access to the record, throw an Access Denied exception.
-                        ((!cl.ClearanceAllows(rec.classification)) || cl.minLevel > rec.classification.minLevel)
-                        : cl.minLevel > 0)
-                        throw new DBException("42105");
-              //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
-                    if (rec._Delete(ta))
-                        count++;
-                }
-            ta.Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
-            cx.result = -1L;
-            if (PyrrhoStart.DebugMode)
-                Console.WriteLine("Del: " + cx.tr.physicals.Count);
-            return cx;
+            return new TableActivation(cx, fm, PTrigger.TrigType.Delete);
         }
-
         /// <summary>
         /// A readable version of the Table
         /// </summary>
