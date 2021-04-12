@@ -7,6 +7,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Configuration;
 using System.CodeDom.Compiler;
 using System.Net.NetworkInformation;
+using System.Net;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
@@ -497,6 +498,84 @@ namespace Pyrrho.Level2
             framing = new Framing(cx);
             Relocate(cx);
             cx.frame = null;
+        }
+    }
+    internal class Post : Physical
+    {
+        internal string url;
+        internal string target;
+        internal string sql;
+        internal string user;
+        internal RestView rv;
+        internal Context _cx;
+        internal bool committed = false;
+        internal Post(string u,string tn,string s,string us,RestView r,
+            long cp,Context cx):base(Type.Post,cp,cx)
+        {
+            url = u;
+            sql = s;
+            target = tn;
+            user = us;
+            rv = r;
+            _cx = cx;
+        }
+        HttpWebRequest GetRequest()
+        {
+            string user = rv.clientName ?? _cx.user.name, password = rv.clientPassword;
+            var ss = url.Split('/');
+            if (ss.Length > 3)
+            {
+                var st = ss[2].Split('@');
+                if (st.Length > 1)
+                {
+                    var su = st[0].Split(':');
+                    user = su[0];
+                    if (su.Length > 1)
+                        password = su[1];
+                }
+            }
+            var rq = WebRequest.Create(url) as HttpWebRequest;
+            rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
+            if (user == null)
+                rq.UseDefaultCredentials = true;
+            else
+            {
+                var cr = user + ":" + password;
+                var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
+                rq.Headers.Add("Authorization: Basic " + d);
+            }
+            return rq;
+        }
+        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        {
+            if (!committed)
+            {
+                var rq = GetRequest();
+                rq.Method = "POST";
+                var sb = new StringBuilder();
+                for (var b = tr.physicals.First(); b != null; b = b.Next())
+                    if (b.value() is Post p && (!p.committed) && p.url == url)
+                    {
+                        sb.Append(p.sql);
+                        sb.Append("\r\n");
+                        p.committed = true;
+                    }
+                TargetActivation.RoundTrip(_cx, null, rq, url, sb);
+            }
+            return (tr,this);
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            return -1L;
+        }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            return this;
+        }
+
+        internal override void Install(Context cx, long p)
+        {
         }
     }
 }

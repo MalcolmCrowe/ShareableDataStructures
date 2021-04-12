@@ -714,6 +714,7 @@ namespace Pyrrho
                 cx.result = cx.db.lexeroffset;
                 db.Execute(cx,client.Request.HttpMethod,"H",pathbits, client.Request.Headers["Content-Type"],
                     sb, et);
+                cx.db.Commit(cx);
                 woutput.SendResults(client.Response,db,cx,"");
                 return;
             }

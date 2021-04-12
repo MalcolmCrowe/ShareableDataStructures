@@ -318,20 +318,29 @@ namespace Pyrrho.Level4
         internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             var ts = BTree<long, TargetActivation>.Empty;
-            var db = cx.db;
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var tf = cx.data[b.value()];
-                var ta = (TargetActivation)tf.Insert(cx,tf,false,prov,cl);
+                var ta = (TargetActivation)tf.Insert(cx, fm, false,prov,cl);
                 ts += (b.key(), ta);
             }
-            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
+            var db = cx.db;
+            var data = cx.data[fm.source];
+            for (var cu = data.First(cx); cu != null; cu = cu.Next(cx))
             {
+                for (var m=matching.First();m!=null;m=m.Next())
+                {
+                    var p = m.key();
+                    if (cu.values.Contains(p))
+                        for (var c = m.value().First(); c != null; c = c.Next())
+                            cu += (cx, c.key(), cu[p]);
+                }
                 for (var b = rsTargets.First(); b != null; b = b.Next())
                 {
                     var ta = ts[b.key()];
+                    var trs = (TransitionRowSet)ta._trs;
+                    new TransitionRowSet.TransitionCursor(ta, trs, cu.values, cu._defpos, cu._pos);
                     ta.db = db;
-                    ((TransitionRowSet)ta._trs).At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
                     ta.EachRow();
                     db = ta.db;
                 }
@@ -347,24 +356,23 @@ namespace Pyrrho.Level4
         internal override Context Delete(Context cx, RowSet fm, bool iter)
         {
             var ts = BTree<long, TargetActivation>.Empty;
-            var db = cx.db;
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var tf = cx.data[b.value()];
                 var ta = (TargetActivation)tf.Delete(cx, tf, false);
                 ts += (b.key(), ta);
             }
-            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
-            {
+            var db = cx.db;
+            for (var cu = First(cx); cu != null; cu = cu.Next(cx))
                 for (var b = rsTargets.First(); b != null; b = b.Next())
                 {
                     var ta = ts[b.key()];
                     ta.db = db;
-                    ((TransitionRowSet)ta._trs).At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
+                    var dp = cx.cursors[b.value()]._defpos;
+                    ((TransitionRowSet)ta._trs).At(cx, dp);
                     ta.EachRow();
                     db = ta.db;
                 }
-            }
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var ta = ts[b.key()];
@@ -376,24 +384,23 @@ namespace Pyrrho.Level4
         internal override Context Update(Context cx, RowSet fm, bool iter)
         {
             var ts = BTree<long, TargetActivation>.Empty;
-            var db = cx.db;
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var tf = cx.data[b.value()];
                 var ta = (TargetActivation)tf.Update(cx, tf, false);
                 ts += (b.key(), ta);
             }
-            for (var teb = First(cx); teb != null; teb = teb.Next(cx))
-            {
+            var db = cx.db;
+            for (var cu = First(cx); cu != null; cu = cu.Next(cx))
                 for (var b = rsTargets.First(); b != null; b = b.Next())
                 {
                     var ta = ts[b.key()];
                     ta.db = db;
-                    ((TransitionRowSet)ta._trs).At(ta, ((JoinBookmark)teb)._ts[b.value()]._defpos);
+                    var dp = cx.cursors[b.value()]._defpos;
+                    ((TransitionRowSet)ta._trs).At(ta, dp);
                     ta.EachRow();
                     db = ta.db;
                 }
-            }
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var ta = ts[b.key()];
@@ -449,7 +456,7 @@ namespace Pyrrho.Level4
         protected readonly Cursor _left, _right;
         internal readonly bool _useLeft, _useRight;
         internal readonly BTree<long, Cursor> _ts;
-        internal JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+        protected JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
             bool ur, int pos) : base(cx, jrs, pos, 0, 0, _Vals(jrs, left, ul, right, ur))
         {
             _jrs = jrs;
@@ -459,7 +466,7 @@ namespace Pyrrho.Level4
             _useRight = ur;
             _ts = cx.cursors;
         }
-        internal JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
+        protected JoinBookmark(Context cx, JoinRowSet jrs, Cursor left, bool ul, Cursor right,
     bool ur, int pos,TRow rw) : base(cx, jrs, pos, 0, 0, rw)
         {
             _jrs = jrs;

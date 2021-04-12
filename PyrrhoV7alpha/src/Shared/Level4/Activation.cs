@@ -208,7 +208,7 @@ namespace Pyrrho.Level4
         {
             return _cx;
         }
-        internal void RoundTrip(RestRowSet rrs, WebRequest rq, string url, StringBuilder sql)
+        internal static void RoundTrip(Context cx,RestRowSet rrs, WebRequest rq, string url, StringBuilder sql)
         {
             if (PyrrhoStart.HTTPFeedbackMode)
                 Console.WriteLine(url + " " + sql.ToString());
@@ -230,13 +230,8 @@ namespace Pyrrho.Level4
             if (rp == null || rp.StatusCode != HttpStatusCode.OK)
                 throw new DBException("2E201");
             var ld = rp.GetResponseHeader("LastData");
-            if (ld != null)
-                _cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
-            var et = rp.GetResponseHeader("ETag");
-            var es = et.Split(',');
-            if (es.Length == 3)
-                _cx.affected = (_cx.affected ?? Rvv.Empty)
-                    + (rrs.target, (long.Parse(es[1]), long.Parse(es[2])));
+            if (rrs!=null && ld != null && ld!="")
+                cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
         }
     }
     internal class TableActivation : TargetActivation
@@ -519,10 +514,14 @@ namespace Pyrrho.Level4
             sb.Append(" " + _ti.name);
         }
     }
-    internal class RESTActivation: TargetActivation
+    internal class RESTActivation : TargetActivation
     {
         internal RestRowSet _rr;
         internal RestView _vw;
+        internal WebRequest _rq;
+        internal string _url;
+        internal string _targetName;
+        internal StringBuilder _sql = new StringBuilder();
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
         internal RESTActivation(Context cx, RestRowSet rr, RowSet fm, PTrigger.TrigType tgt,
             string prov = null, Level cl = null)
@@ -530,6 +529,10 @@ namespace Pyrrho.Level4
         {
             _rr = rr;
             _vw = (RestView)cx.obs[rr.restView];
+            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
+            (_url, _targetName, _sql) = _rr.GetUrl(this, vi);
+            _rq = _rr.GetRequest(this, _url);
+            _rq.Method = "POST";
             switch (tgt & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
@@ -561,37 +564,30 @@ namespace Pyrrho.Level4
         }
         internal override void EachRow()
         {
-            var cu = (RestRowSet.RestCursor)_cx.cursors[_rr.defpos];
-            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
-            var (url, targetName, sql) = _rr.GetUrl(this, vi);
-            var rq = _rr.GetRequest(this, url);
-            var np = _cx.db.nextPos;
-            rq.Method = "POST"; 
+            var cu = (TransitionRowSet.TargetCursor)_cx.cursors[_rr.defpos];
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
                     var vs = cu.values;
-                    rq.ContentType = "text/plain";
-                    sql.Append("insert into "); sql.Append(targetName);
+                    _rq.ContentType = "text/plain";
+                    _sql.Append("insert into "); _sql.Append(_targetName);
                     var cm = " values(";
                     for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
-                        if (vs[b.value()[_rr.defpos]] is TypedValue tv)
+                        if (vs[b.value()[_rr.target]] is TypedValue tv)
                         {
-                            sql.Append(cm); cm = ",";
+                            _sql.Append(cm); cm = ",";
                             if (tv.dataType.kind == Sqlx.CHAR)
                             {
-                                sql.Append("'");
-                                sql.Append(tv.ToString().Replace("'", "'''"));
-                                sql.Append("'");
+                                _sql.Append("'");
+                                _sql.Append(tv.ToString().Replace("'", "'''"));
+                                _sql.Append("'");
                             }
                             else
-                                sql.Append(tv);
+                                _sql.Append(tv);
                         }
-                    RoundTrip(_rr, rq, url, sql);
-                    var nr = new RemoteTableRow(np, vs, url, _rr);
-                    var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
-                    _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
-                    count++;
+                    _sql.Append(")");
+                    _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
+                        _vw, _cx.db.nextPos, this));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_rr.assig.Count == 0)
@@ -606,59 +602,62 @@ namespace Pyrrho.Level4
                             var tv = _cx.obs[ua.val].Eval(_cx);
                             vs += (ua.vbl, tv);
                         }
-                        sql.Append("update "); sql.Append(targetName);
+                        _sql.Append("update "); _sql.Append(_targetName);
                         cm = " set ";
                         for (var b = _rr.assig.First(); b != null; b = b.Next())
                         {
                             var ua = b.key();
-                            sql.Append(cm); cm = ",";
-                            sql.Append(((SqlValue)obs[ua.vbl]).name); sql.Append("=");
+                            _sql.Append(cm); cm = ",";
+                            _sql.Append(((SqlValue)obs[ua.vbl]).name); _sql.Append("=");
                             var tv = ((SqlValue)obs[ua.val]).Eval(_cx);
                             if (tv.dataType.kind == Sqlx.CHAR)
                             {
-                                sql.Append("'");
-                                sql.Append(tv.ToString().Replace("'", "'''"));
-                                sql.Append("'");
+                                _sql.Append("'");
+                                _sql.Append(tv.ToString().Replace("'", "'''"));
+                                _sql.Append("'");
                             }
                             else
-                                sql.Append(tv);
+                                _sql.Append(tv);
                         }
                         if (_rr.where.Count > 0 || _rr.matches.Count > 0)
                         {
                             var sw = _rr.WhereString(_cx);
                             if (sw.Length > 0)
                             {
-                                sql.Append(" where ");
-                                sql.Append(sw);
+                                _sql.Append(" where ");
+                                _sql.Append(sw);
                             }
                         }
-                        RoundTrip(_rr, rq, url, sql);
-                        nr = new RemoteTableRow(np, vs, url, _rr);
-                        ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
-                        _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
-                    }
-                    break;
-                case PTrigger.TrigType.Delete:
-                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
-                    {
-                        var rc = rb.value(); // probably a RemoteTableRow
-                        rq.ContentType = "text/plain";
-                        rq.Method = "POST";
-                        sql.Append("delete from "); sql.Append(targetName);
-                        if (_rr.where.Count > 0 || _rr.matches.Count > 0)
-                        {
-                            var sw = _rr.WhereString(_cx);
-                            if (sw.Length > 0)
-                            {
-                                sql.Append(" where ");
-                                sql.Append(sw);
-                            }
-                        }
-                        RoundTrip(_rr, rq, url, sql);
-                        count++;
+                        _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
+                            _vw, _cx.db.nextPos, this));
                     }
                     break;
             }
+        }
+        internal override Context Finish()
+        {
+            switch (_tty & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Delete:
+                    {
+                        _rq.ContentType = "text/plain";
+                        _sql.Append("delete from "); _sql.Append(_targetName);
+                        if (_rr.where.Count > 0 || _rr.matches.Count > 0)
+                        {
+                            var sw = _rr.WhereString(_cx);
+                            if (sw.Length > 0)
+                            {
+                                _sql.Append(" where ");
+                                _sql.Append(sw);
+                            }
+                        }
+                        _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
+                            _vw, _cx.db.nextPos, this));
+                    }
+                    break;
+
+            }
+            return _cx;
         }
     }
     internal class HTTPActivation: TargetActivation
@@ -727,7 +726,7 @@ namespace Pyrrho.Level4
                             sql.Append("\":"); sql.Append(vs[b.value()[_rr.defpos]]);
                         }
                         sql.Append("}]");
-                        RoundTrip(_rr, rq, url, sql);
+                        RoundTrip(this,_rr, rq, url, sql);
                         var nr = new RemoteTableRow(np, vs, url, _rr);
                         var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                         _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
@@ -758,7 +757,7 @@ namespace Pyrrho.Level4
                             vs += (ua.vbl, ((SqlValue)obs[ua.val]).Eval(_cx));
                         }
                         var tb = _rr.rt.First();
-                        for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), rb = rb.Next())
+                        for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), tb = tb.Next())
                         {
                             sql.Append(cm); cm = ",";
                             sql.Append('"'); sql.Append(b.key());
@@ -774,7 +773,7 @@ namespace Pyrrho.Level4
                                 sql.Append(tv);
                         }
                         sql.Append("}]");
-                        RoundTrip(_rr, rq, url, sql);
+                        RoundTrip(this,_rr, rq, url, sql);
                         var nr = new RemoteTableRow(np,vs,url,_rr);
                         var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                         _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
@@ -784,7 +783,7 @@ namespace Pyrrho.Level4
                     for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
                     {
                         rq.Method = "DELETE";
-                        RoundTrip(_rr, rq, url, sql);
+                        RoundTrip(this,_rr, rq, url, sql);
                         count++;
                     }
                     break;

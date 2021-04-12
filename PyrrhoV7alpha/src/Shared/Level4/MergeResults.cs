@@ -196,7 +196,7 @@ namespace Pyrrho.Level4
         /// Constructor: a merge enumerator for a mergerowset
         /// </summary>
         /// <param name="r">the rowset</param>
-        internal MergeBookmark(Context _cx, MergeRowSet r,int pos,Cursor left=null,
+        protected MergeBookmark(Context _cx, MergeRowSet r,int pos,Cursor left=null,
             Cursor right=null,bool ul=false)
             :base(_cx,r,pos,0,ul?left._ppos:right._ppos,ul?left:right)
         {

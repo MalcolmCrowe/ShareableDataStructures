@@ -6588,7 +6588,6 @@ namespace Pyrrho.Level4
             cx.data += (rs.defpos, rs);
             // the columns of sce must be assignment compatible to fm
             // and have the same length as fm.display
-//            cx.data += (vrs.defpos, vrs);
             // The SqlInsert constructor (in From) maps fm to tb cols
             // Columns after fm.display are needed for where conds etc
             SqlInsert s = new SqlInsert(lp, fm, prov, cx.data[fm.defpos]);
@@ -6650,6 +6649,8 @@ namespace Pyrrho.Level4
             fm = (From)cx.obs[fm.defpos];
             var rf = fm.RowSets(cx, cx.data[fm.target]?.finder ?? CTree<long, RowSet.Finder>.Empty);
             cx.result = fm.defpos;
+            if (tok != Sqlx.EOF)
+                throw new DBException("42000", tok);
             if (cx.parse == ExecuteStatus.Obey)
             {
                 cx.Review(rf,CTree<long,bool>.Empty,fm.filter+fm.matches,fm.assig);

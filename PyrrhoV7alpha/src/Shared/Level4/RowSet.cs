@@ -825,7 +825,7 @@ namespace Pyrrho.Level4
         public readonly long _ppos;
         public readonly int display;
         public readonly CTree<long, TypedValue> _needed;
-        public Cursor(Context _cx, RowSet rs, int pos, long defpos, long ppos,
+        protected Cursor(Context _cx, RowSet rs, int pos, long defpos, long ppos,
             TRow rw,BTree<long,object>m=null) :base(rs.domain,rw.values)
         {
             _rowsetpos = rs.defpos;
@@ -843,7 +843,7 @@ namespace Pyrrho.Level4
             _cx.cursors += (rs.defpos, this);
             PyrrhoServer.Debug(1, GetType().Name);
         }
-        public Cursor(Context _cx, RowSet rs, int pos, long defpos, long ppos,
+        protected Cursor(Context _cx, RowSet rs, int pos, long defpos, long ppos,
             TypedValue[] vs, BTree<long,object>m = null) : base(rs, vs)
         {
             _rowsetpos = rs.defpos;
@@ -1234,8 +1234,13 @@ namespace Pyrrho.Level4
             var ta = (TargetActivation)((DBObject)cx.db.objects[target]).Insert(cx, fm, false, prov, cl);
             if (!iter)
                 return ta;
-            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
+            var data = cx.data[fm.source];
+            var trs = (TransitionRowSet)ta._trs;
+            for (var b = data.First(ta); b != null; b = b.Next(ta))
+            {
+                new TransitionRowSet.TransitionCursor(ta, trs, b.values, b._defpos, b._pos);
                 ta.EachRow();
+            }
             return ta.Finish();
         }
         internal override Context Update(Context cx,RowSet fm,bool iter)
@@ -3550,7 +3555,7 @@ namespace Pyrrho.Level4
             : base(cx.GetUid(), cx, fm.domain,
                   fm?.finder,
                   null, fm?.where, null, null, 
-                  _Mem(cx.GetPrevUid(), cx, fm)+(RSTargets,fm.rsTargets))
+                  _Mem(cx.GetPrevUid(), cx, fm))
         {
             cx.data += (defpos, this);
         }
@@ -3562,6 +3567,7 @@ namespace Pyrrho.Level4
             var tnTg = CTree<long, Finder>.Empty;
             var ta = fm.rsTargets.First().key();
             m += (From.Target, ta);
+            m += (RSTargets, fm.rsTargets);
             var t = tr.objects[ta] as Table;
             m += (IxDefPos, t?.FindPrimaryIndex(tr)?.defpos ?? -1L);
             var ti = (ObInfo)tr.schema.infos[ta];
@@ -3694,6 +3700,25 @@ namespace Pyrrho.Level4
                 _tgc = TargetCursor.New(cx, this,false);
                 cx.values += (p, v);
                 cx.values += (_defpos, this);
+            }
+            internal TransitionCursor(TargetActivation ta, TransitionRowSet trs,
+                CTree<long,TypedValue> vs,long dpos, int pos)
+                :base(ta.next,trs,pos,-1L,-1L,_Row(trs,vs))
+            {
+                _trs = trs;
+                _fbm = null;
+                _tgc = TargetCursor.New(ta,this,true);
+                var cx = ta.next;
+                cx.values += (values, false);
+                cx.values += (_defpos, this);
+            }
+            static TRow _Row(TransitionRowSet trs,CTree<long,TypedValue> vs)
+            {
+                var nv = CTree<long, TypedValue>.Empty;
+                var db = trs.data.rt.First();
+                for (var b = trs.rt.First(); b != null && db != null; b = b.Next(), db = db.Next())
+                    nv += (b.value(), vs[db.value()]);
+                return new TRow(trs.domain, nv);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -5243,26 +5268,43 @@ namespace Pyrrho.Level4
         internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
         {
             var vi = (ObInfo)cx.db.role.infos[restView];
-            if (vi.metadata.Contains(Sqlx.URL))
-                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl);
-            else
-                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl);
+            var ta = vi.metadata.Contains(Sqlx.URL)?
+                (TargetActivation)new HTTPActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl)
+                :new RESTActivation(cx, this, fm, PTrigger.TrigType.Insert, prov, cl);
+            if (!iter)
+                return ta;
+            var trs = (TransitionRowSet)ta._trs;
+            for (var b = trs.data.First(ta); b != null; b = b.Next(ta))
+            {
+                var cu = new TransitionRowSet.TransitionCursor(ta, trs, b.values, b._defpos, b._pos);
+                cx.cursors += (defpos, cu._tgc);
+                ta.EachRow();
+            }
+            return ta.Finish();
         }
         internal override Context Update(Context cx,RowSet fm, bool iter)
         {
             var vi = (ObInfo)cx.db.role.infos[restView];
-            if (vi.metadata.Contains(Sqlx.URL))
-                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Update);
-            else
-                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Update);
+            var ta = vi.metadata.Contains(Sqlx.URL) ?
+                (TargetActivation)new HTTPActivation(cx, this, fm, PTrigger.TrigType.Update)
+                : new RESTActivation(cx, this, fm, PTrigger.TrigType.Update);
+            if (!iter)
+                return ta;
+            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
+            {
+                var cu = (TransitionRowSet.TransitionCursor)b;
+                cx.cursors += (defpos,cu._tgc);
+                ta.EachRow();
+            }
+            return ta.Finish();
         }
         internal override Context Delete(Context cx,RowSet fm, bool iter)
         {
             var vi = (ObInfo)cx.db.role.infos[restView];
-            if (vi.metadata.Contains(Sqlx.URL))
-                return new HTTPActivation(cx, this, fm, PTrigger.TrigType.Delete);
-            else
-                return new RESTActivation(cx, this, fm, PTrigger.TrigType.Delete);
+            var ta = vi.metadata.Contains(Sqlx.URL) ?
+                (TargetActivation)new HTTPActivation(cx, this, fm, PTrigger.TrigType.Delete)
+                : new RESTActivation(cx, this, fm, PTrigger.TrigType.Delete);
+            return ta.Finish();
         }
         public override string ToString()
         {
@@ -5333,6 +5375,12 @@ namespace Pyrrho.Level4
             {
                 cx.cursors += (rb._rrs.defpos, this);
                 _rrs = rb._rrs; _ix = rb._ix;
+            }
+            internal RestCursor(Context cx,RestRowSet rs,int pos,CTree<long,TypedValue>vals)
+                :base(cx,rs,pos,-1L,-1L,new TRow(rs.domain,vals))
+            {
+                cx.cursors += (rs.defpos, this);
+                _rrs = rs; _ix = pos;
             }
             static TRow _Value(Context cx, RestRowSet rrs, int pos)
             {
