@@ -84,15 +84,16 @@ namespace Pyrrho.Level2
                     {
                         var d = (Drop)that;
                         if (d.delpos == tabledefpos)
-                            return new DBException("40010", ppos, that, ct);
+                            return new DBException("40010", tabledefpos, that, ct);
                         for (var b = fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == d.delpos)
-                                return new DBException("40010", ppos, that, ct);
+                                return new DBException("40010", d.delpos, that, ct);
                         break;
                     }
                 case Type.Delete:
+                case Type.Delete1:
                     if (((Delete)that).delpos == defpos)
-                        return new DBException("40014", ppos, that, ct);
+                        return new DBException("40029", defpos, that, ct);
                     break;
                 case Type.Update1:
                 case Type.Update:
@@ -100,19 +101,25 @@ namespace Pyrrho.Level2
                         var u = (Update)that;
                         if (defpos != u.defpos)
                             break;
-                        return new DBException("40029", ppos, that, ct);
+                        return new DBException("40029", defpos, that, ct);
                     }
                 case Type.Alter3:
+                    if (((Alter3)that).table.defpos == tabledefpos)
+                        return new DBException("40080", defpos, that, ct);
+                    break;
                 case Type.Alter2:
+                    if (((Alter2)that).table.defpos == tabledefpos)
+                        return new DBException("40080", defpos, that, ct);
+                    break;
                 case Type.Alter:
                     if (((Alter)that).table.defpos == tabledefpos)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
                     if (((PColumn)that).table.defpos == tabledefpos)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40045", defpos, that, ct);
                     break;
 
             }

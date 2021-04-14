@@ -111,13 +111,13 @@ namespace Pyrrho.Level2
                         {
                             var c = (DBObject)db.objects[cp.key()];
                             if (cx.db.types[c.domain] == defpos)
-                                return new DBException("40079", ppos, that, ct);
+                                return new DBException("40079", defpos, that, ct);
                         }
                         break;
                     }
                 case Type.Drop:
                     if (((Drop)that).delpos == defpos)
-                        return new DBException("40016", ppos, that, ct);
+                        return new DBException("40016", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

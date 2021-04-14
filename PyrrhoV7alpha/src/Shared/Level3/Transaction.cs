@@ -294,6 +294,8 @@ namespace Pyrrho.Level3
                         }
                     }
                 }
+                if (physicals.Count == 0)
+                    return parent.Commit(cx);
                 var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
                         nextPos, cx);
                 cx.Add(pt);
@@ -308,7 +310,7 @@ namespace Pyrrho.Level3
                 wr.cx.result = -1L;
                 // we install the new version of the database, and then 
                 // add the Connection information for the session
-                return wr.cx.db.Install(wr.Length) + (_Connection,conn);
+                return wr.cx.db.Install(wr.Length) + (_Connection, conn);
             }
         }
         /// <summary>

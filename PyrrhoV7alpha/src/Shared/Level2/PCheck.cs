@@ -119,19 +119,19 @@ namespace Pyrrho.Level2
                 case Type.PCheck2:
                 case Type.PCheck:
                     if (name == ((PCheck)that).name)
-                        return new DBException("40046", ppos, that, ct);
+                        return new DBException("40046", defpos, that, ct);
                     break;
                 case Type.Drop:
                     if (ckobjdefpos == ((Drop)that).delpos)
-                        return new DBException("40010", ppos, that, ct);
+                        return new DBException("40010", defpos, that, ct);
                     break;
                 case Type.Change:
                     if (ckobjdefpos == ((Change)that).affects)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40025", defpos, that, ct);
                     break;
                 case Type.Alter:
                     if (ckobjdefpos == ((Alter)that).defpos)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40025", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

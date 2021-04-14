@@ -114,12 +114,14 @@ namespace Pyrrho.Level2
             switch (that.type)
             {
                 case Type.Delete:
+                case Type.Delete1:
                     if (((Delete)that).delpos == delpos)
-                        return new DBException("40014", ppos, that, ct);
+                        return new DBException("40014", delpos, that, ct);
                     break;
                 case Type.Update:
+                case Type.Update1:
                     if (((Update)that)._defpos == delpos)
-                        return new DBException("40029", ppos, that, ct);
+                        return new DBException("40029", delpos, that, ct);
                     break;
             }
             return null;

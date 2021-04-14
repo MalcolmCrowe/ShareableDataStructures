@@ -228,38 +228,40 @@ namespace Pyrrho.Level2
                 case Type.PDomain1:
                 case Type.PDomain:
                     if (nm == ((PDomain)that).domain.name)
-                        return new DBException("40022", ppos, that, ct);
+                        return new DBException("40022", nm, that, ct);
                     break;
                 case Type.PTable:
                 case Type.PTable1:
                     if (nm == ((PTable)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", nm, that, ct);
                     break;
                 case Type.PView1:
                 case Type.PView:
                     if (nm == ((PView)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", nm, that, ct);
                     break;
+                case Type.PRole1:
                 case Type.PRole:
                     if (nm == ((PRole)that).name)
-                        return new DBException("40035", ppos, that, ct);
+                        return new DBException("40035", nm, that, ct);
                     break;
                 case Type.RestView1:
                 case Type.RestView:
                     if (nm == ((PRestView)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", nm, that, ct);
                     break;
+                case Type.PType1:
                 case Type.PType:
                     if (nm == ((PType)that).domain.name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", nm, that, ct);
                     break;
                 case Type.Change:
                     if (nm == ((Change)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", nm, that, ct);
                     break;
                 case Type.Drop:
                     if (defpos==((Drop)that).delpos)
-                        return new DBException("40016", ppos, that, ct);
+                        return new DBException("40016", nm, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

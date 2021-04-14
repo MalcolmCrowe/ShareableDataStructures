@@ -145,7 +145,7 @@ namespace Pyrrho.Level2
                     {
                         var m = (Modify)that;
                         if (name == m.name || modifydefpos == m.modifydefpos)
-                            return new DBException("40052", ppos, that, ct);
+                            return new DBException("40052", modifydefpos, that, ct);
                         break;
                     }
             }

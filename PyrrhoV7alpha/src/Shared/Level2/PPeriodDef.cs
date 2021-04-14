@@ -116,32 +116,32 @@ namespace Pyrrho.Level2
             {
                 case Type.PeriodDef:
                     if (tabledefpos == ((PPeriodDef)that).tabledefpos)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", tabledefpos, that, ct);
                     break;
                 case Type.PTable1:
                 case Type.PTable:
                     if (tabledefpos == ((PTable)that).defpos)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", tabledefpos, that, ct);
                     break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
                         if (startcol == a.defpos || endcol == a.defpos)
-                            return new DBException("40043", ppos, that, ct);
+                            return new DBException("40043", tabledefpos, that, ct);
                         break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
                         if (startcol == a.defpos || endcol == a.defpos)
-                            return new DBException("40043", ppos, that, ct);
+                            return new DBException("40043", tabledefpos, that, ct);
                         break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
                         if (startcol == a.defpos || endcol == a.defpos)
-                            return new DBException("40043", ppos, that, ct);
+                            return new DBException("40043", tabledefpos, that, ct);
                         break;
                     }
                 case Type.Drop:

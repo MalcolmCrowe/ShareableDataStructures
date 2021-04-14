@@ -289,11 +289,11 @@ namespace Pyrrho.Level2
             {
                 case Type.PeriodDef:
                     if (perioddefpos == ((PPeriodDef)that).defpos)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", perioddefpos, that, ct);
                     break;
                 case Type.Versioning:
                     if (perioddefpos == ((Versioning)that).perioddefpos)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", perioddefpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

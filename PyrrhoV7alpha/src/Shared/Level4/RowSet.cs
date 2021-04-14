@@ -1307,7 +1307,6 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk;
                 _srs = srs;
-                cx.obs[_srs.target]._ReadConstraint(cx,this);
             }
             SelectedCursor(SelectedCursor cu,Context cx,long p,TypedValue v)
                 :base(cu,cx,AllowRvv(cu._srs,p),v)
@@ -1335,6 +1334,8 @@ namespace Pyrrho.Level4
                     if (rb.Matches(cx))
                     {
                         cx.finder = ox;
+                        if (!cx.db.autoCommit)
+                            cx.obs[srs.target]._ReadConstraint(cx, rb);
                         return rb;
                     }
                 }
@@ -1352,6 +1353,8 @@ namespace Pyrrho.Level4
                     if (rb.Matches(cx))
                     {
                         cx.finder = ox;
+                        if (!cx.db.autoCommit)
+                            cx.obs[srs.target]._ReadConstraint(cx, rb);
                         return rb;
                     }
                 }

@@ -188,17 +188,17 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Alter2:
                     if (((Alter2)that).table.defpos == tabledefpos)
-                        return new DBException("40077", ppos, that, ct);
+                        return new DBException("40077", tabledefpos, that, ct);
                     break;
                 case Type.Alter:
                     if (((Alter)that).table.defpos == tabledefpos)
-                        return new DBException("40077", ppos, that, ct);
+                        return new DBException("40077", tabledefpos, that, ct);
                     break;
                 case Type.PIndex2:
                 case Type.PIndex1:
                 case Type.PIndex:
                     if (((PIndex)that).tabledefpos == tabledefpos)
-                        return new DBException("40042", ppos, that, ct);
+                        return new DBException("40042", tabledefpos, that, ct);
                     break;
                 case Type.Drop:
                     {
@@ -421,30 +421,32 @@ namespace Pyrrho.Level2
             {
                 case Type.RefAction:
                     var ra = (RefAction)that; if (ra.index == index)
-                        return new DBException("40077", ppos, that, ct);
+                        return new DBException("40077", index, that, ct);
                     break;
                 case Type.PIndex:
                 case Type.PIndex1:
                 case Type.PIndex2:
                     var pi = (PIndex)that; if (pi.defpos == index)
-                        return new DBException("40077", ppos, that, ct);
+                        return new DBException("40077", index, that, ct);
                     break;
                 case Type.Drop:
                     var dp = (Drop)that; if(dp.delpos == index)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40025", index, that, ct);
                     break;
                 case Type.Delete:
+                case Type.Delete1:
                     {
                         var x = (Index)db.objects[index];
                         var dl = (Delete)that; if (dl.tabledefpos == x.tabledefpos)
-                            return new DBException("40077", ppos, that, ct);
+                            return new DBException("40077", index, that, ct);
                         break;
                     }
                 case Type.Update:
+                case Type.Update1:
                     {
                         var x = (Index)db.objects[index];
                         var up = (Update)that; if (up.tabledefpos == x.tabledefpos)
-                            return new DBException("40077", ppos, that, ct);
+                            return new DBException("40077", index, that, ct);
                         break;
                     }
             }

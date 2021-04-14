@@ -266,7 +266,7 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Change:
                     if (target == ((Change)that).affects)
-                        return new DBException("40043", ppos, that, ct);
+                        return new DBException("40043", target, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

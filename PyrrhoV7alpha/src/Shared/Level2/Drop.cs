@@ -109,39 +109,55 @@ namespace Pyrrho.Level2
             {
                 case Type.Drop1:
                 case Type.Drop: if (delpos==((Drop)that).delpos)
-                        return new DBException("40010", ppos, that, ct);
+                        return new DBException("40010", delpos, that, ct);
                     break;
                 case Type.Change: if (delpos == ((Change)that).Affects)
-                        return new DBException("40047", ppos, that, ct);
+                        return new DBException("40047", delpos, that, ct);
                     break;
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record1:
                 case Type.Record:
                 case Type.Update:
+                case Type.Update1:
                     {
                         var r = (Record)that;
                         if (delpos == r.tabledefpos)
-                            return new DBException("40055", ppos, that, ct);
+                            return new DBException("40055", delpos, that, ct);
                         for (var b = r.fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == delpos)
-                                return new DBException("40055", ppos, that, ct);
+                                return new DBException("40055", delpos, that, ct);
                         break;
                     }
+                case Type.Delete1:
                 case Type.Delete: if (delpos == 
                         ((Record)db.GetD(((Delete)that).delpos)).tabledefpos)
-                        return new DBException("40057", ppos, that, ct);
+                        return new DBException("40057", delpos, that, ct);
                     break;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn: if (delpos == ((PColumn)that).table.defpos)
-                        return new DBException("40043", ppos, that, ct);
+                        return new DBException("40043", delpos, that, ct);
                     break;
+                case Type.Alter3:
+                    {
+                        var a = (Alter3)that;
+                        if (delpos == a.defpos || delpos == a.table.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
+                    }
+                case Type.Alter2:
+                    {
+                        var a = (Alter2)that;
+                        if (delpos == a.defpos || delpos == a.table.defpos)
+                            return new DBException("40043", ppos, that, ct);
+                        break;
+                    }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
                         if (delpos == a.table.defpos || delpos == a.defpos)
-                            return new DBException("40043", ppos, that, ct);
+                            return new DBException("40043", delpos, that, ct);
                         break;
                     }
                 case Type.PIndex2:
@@ -150,41 +166,41 @@ namespace Pyrrho.Level2
                     {
                         var c = (PIndex)that;
                         if (delpos == c.tabledefpos || delpos == c.defpos || delpos == c.reference)
-                            return new DBException("40058", ppos, that, ct);
+                            return new DBException("40058", delpos, that, ct);
                         for (var i = 0; i < c.columns.Count; i++)
                             if (delpos == c.columns[i])
-                                return new DBException("40058", ppos, that, ct);
+                                return new DBException("40058", delpos, that, ct);
                         break;
                     }
                 case Type.Grant: if (delpos == ((Grant)that).obj)
-                        return new DBException("40051", ppos, that, ct);
+                        return new DBException("40051", delpos, that, ct);
                     break;
                 case Type.PCheck: if (delpos == ((PCheck)that).ckobjdefpos)
-                        return new DBException("40059", ppos, that, ct);
+                        return new DBException("40059", delpos, that, ct);
                     break;
                 case Type.PMethod2:
                 case Type.PMethod: if (delpos == ((PMethod)that).udt.defpos)
-                        return new DBException("40060", ppos, that, ct);
+                        return new DBException("40060", delpos, that, ct);
                     break;
                 case Type.Edit:
                 case Type.PDomain: if (delpos == ((PDomain)that).Affects)
-                        return new DBException("40068", ppos, that, ct);
+                        return new DBException("40068", delpos, that, ct);
                     break;
                 case Type.Modify: if (delpos == ((Modify)that).modifydefpos)
-                        return new DBException("40069", ppos, that, ct);
+                        return new DBException("40069", delpos, that, ct);
                     break;
                 case Type.Ordering: if (delpos == db.types[((Ordering)that).domain])
-                        return new DBException("40049", ppos, that, ct);
+                        return new DBException("40049", delpos, that, ct);
                     break;
                 case Type.PeriodDef:
                     {
                         var p = (PPeriodDef)that;
                         if (delpos == p.defpos || delpos == p.tabledefpos || delpos == p.startcol || delpos == p.endcol) 
-                            return new DBException("40077", ppos, that, ct);
+                            return new DBException("40077", delpos, that, ct);
                         break;
                     }
                 case Type.Versioning: if (delpos == ((Versioning)that).perioddefpos)
-                        return new DBException("40072", ppos, that, ct);
+                        return new DBException("40072", delpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

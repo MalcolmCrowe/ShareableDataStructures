@@ -135,36 +135,36 @@ namespace Pyrrho.Level2
                 case Type.PColumn2:
                 case Type.PColumn:
                     if (table.defpos == ((PColumn)that).table.defpos)
-                        return new DBException("40025", ppos, that, ct);
+                        return new DBException("40025", defpos, that, ct);
                     break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
                         if (table.defpos == a.table.defpos && name == a.name)
-                            return new DBException("40025", ppos, that, ct);
+                            return new DBException("40025", table.defpos, that, ct);
                         break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
                         if (table.defpos == a.table.defpos && name == a.name)
-                            return new DBException("40025", ppos, that, ct);
+                            return new DBException("40025", defpos, that, ct);
                         break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
                         if (table.defpos == a.table.defpos && name == a.name)
-                            return new DBException("40025", ppos, that, ct);
+                            return new DBException("40025", defpos, that, ct);
                         break;
                     }
                 case Type.Drop:
                     {
                         var d = (Drop)that;
                         if (table.defpos == d.delpos)
-                            return new DBException("40012", ppos, that, ct);
+                            return new DBException("40012", table.defpos, that, ct);
                         if (cx.db.types[domain] == d.delpos)
-                            return new DBException("40016", ppos, that, ct);  
+                            return new DBException("40016", defpos, that, ct);  
                         break;
                     }
             }

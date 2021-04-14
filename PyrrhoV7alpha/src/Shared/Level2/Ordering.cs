@@ -106,13 +106,13 @@ namespace Pyrrho.Level2
             {
                 case Type.Ordering:
                     if (domain == ((Ordering)that).domain)
-                        return new DBException("40048", ppos, that, ct);
+                        return new DBException("40048", funcdefpos, that, ct);
                     break;
                 case Type.Drop:
                     {
                         var t = (Drop)that;
                         if (db.types[domain] == t.delpos || funcdefpos == t.delpos)
-                            return new DBException("40010", t.delpos, that, ct);
+                            return new DBException("40010", funcdefpos, that, ct);
                         break;
                     }
             }

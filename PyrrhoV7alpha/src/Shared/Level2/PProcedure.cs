@@ -170,17 +170,20 @@ namespace Pyrrho.Level2
         {
             switch(that.type)
             {
+                case Type.PProcedure2:
                 case Type.PProcedure:
+                case Type.PMethod:
+                case Type.PMethod2:
                     if (nameAndArity == ((PProcedure)that).nameAndArity)
-                        return new DBException("40039", ppos, that, ct);
+                        return new DBException("40039", name, that, ct);
                     break;
                 case Type.Change:
                     if (nameAndArity == ((Change)that).name)
-                        return new DBException("40039", ppos, that, ct);
+                        return new DBException("40039", name, that, ct);
                     break;
                 case Type.Ordering:
                     if (defpos == ((Ordering)that).funcdefpos)
-                        return new DBException("40039", ppos, that, ct);
+                        return new DBException("40039",name, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

@@ -123,11 +123,11 @@ namespace Pyrrho.Level2
             {
                 case Type.Drop:
                     if (udt.defpos == ((Drop)that).delpos)
-                        return new DBException("40016", ppos, that, ct);
+                        return new DBException("40016", defpos, that, ct);
                     break;
                 case Type.Change:
                     if (udt.defpos == ((Change)that).affects)
-                        return new DBException("40021", ppos, that, ct);
+                        return new DBException("40021", defpos, that, ct);
                     break;
                 case Type.PMethod2:
                 case Type.PMethod:
@@ -135,12 +135,12 @@ namespace Pyrrho.Level2
                         var t = (PMethod)that;
                         if (udt.defpos == t.udt.defpos
                             && nameAndArity == t.nameAndArity)
-                            return new DBException("40039", ppos, that, ct);
+                            return new DBException("40039", defpos, that, ct);
                         break;
                     }
                 case Type.Modify:
                     if (nameAndArity == ((Modify)that).name)
-                        return new DBException("4003p", ppos, that, ct);
+                        return new DBException("4003p", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

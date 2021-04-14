@@ -118,16 +118,16 @@ namespace Pyrrho.Level2
                 case Type.PTable1:
                 case Type.PTable:
                     if (name == ((PTable)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", name, that, ct);
                     break;
                 case Type.PView1:
                 case Type.PView:
                     if (name == ((PView)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", name, that, ct);
                     break;
                 case Type.Change:
                     if (name == ((Change)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", name, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);

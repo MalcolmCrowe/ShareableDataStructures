@@ -118,28 +118,34 @@ namespace Pyrrho.Level2
                     {
                         var g = (Grant)that;
                         if (obj == g.obj && grantee == g.grantee)
-                            return new DBException("40051", ppos, that, ct);
+                            return new DBException("40051", obj, that, ct);
                         break;
                     }
                 case Type.Drop:
                     if (obj == ((Drop)that).delpos)
-                        return new DBException("40010", ppos, that, ct);
+                        return new DBException("40010", obj, that, ct);
                     break;
                 case Type.Alter3:
+                    if (obj == ((Alter3)that).defpos)
+                        return new DBException("40051", obj, that, ct);
+                    break;
                 case Type.Alter2:
+                    if (obj == ((Alter2)that).defpos)
+                        return new DBException("40051", obj, that, ct);
+                    break;
                 case Type.Alter:
                     if (obj == ((Alter)that).defpos)
-                        return new DBException("40051", ppos, that, ct);
+                        return new DBException("40051", obj, that, ct);
                     break;
                 case Type.Change:
                     if (obj == ((Change)that).affects)
-                        return new DBException("40051", ppos, that, ct);
+                        return new DBException("40051", obj, that, ct);
                     break;
                 case Type.Modify:
                     {
                         var m = (Modify)that;
                         if (obj == m.modifydefpos || grantee == m.modifydefpos)
-                            return new DBException("40051", ppos, that, ct);
+                            return new DBException("40051", obj, that, ct);
                         break;
                     }
             }

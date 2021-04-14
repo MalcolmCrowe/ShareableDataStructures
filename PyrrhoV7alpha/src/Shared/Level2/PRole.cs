@@ -83,13 +83,14 @@ namespace Pyrrho.Level2
         {
             switch(that.type)
             {
+                case Type.PRole1:
                 case Type.PRole:
                     if (name==((PRole)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", name, that, ct);
                     break;
                 case Type.Change:
                     if (name == ((Change)that).name)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40032", name, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);
@@ -292,12 +293,12 @@ namespace Pyrrho.Level2
                     {
                         var t = (PMetadata)that;
                         if (defpos == t.defpos || name == t.name)
-                            return new DBException("40041", ppos, that, ct);
+                            return new DBException("40041", defpos, that, ct);
                         break;
                     }
                 case Type.Drop:
                     if (((Drop)that).delpos == defpos)
-                        return new DBException("40010", ppos, that, ct);
+                        return new DBException("40010", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that,ct);

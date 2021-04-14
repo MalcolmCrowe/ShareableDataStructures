@@ -231,8 +231,8 @@ namespace Pyrrho.Level2
                     {
                         var a = (Alter3)that;
                         if (defpos == a.defpos ||
-                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)) 
-                            return new DBException("40032", ppos, that, ct);
+                            (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
+                            return new DBException("40032", table.defpos, that, ct);
                         break;
                     }
                 case Type.Alter2:
@@ -240,7 +240,7 @@ namespace Pyrrho.Level2
                         var a = (Alter2)that;
                         if (defpos == a.defpos ||
                             (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
-                            return new DBException("40032", ppos, that, ct);
+                            return new DBException("40032", table.defpos, that, ct);
                         break;
                     }
                 case Type.Alter:
@@ -248,7 +248,7 @@ namespace Pyrrho.Level2
                         var a = (Alter)that;
                         if (defpos == a.defpos ||
                             (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
-                            return new DBException("40032", ppos, that, ct);
+                            return new DBException("40032", table.defpos, that, ct);
                         break;
                     }
                 case Type.PColumn3:
@@ -257,7 +257,7 @@ namespace Pyrrho.Level2
                     {
                         var a = (PColumn)that;
                         if (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)
-                            return new DBException("40032", ppos, that, ct);
+                            return new DBException("40045", DBObject.Uid(table.defpos), that, ct);
                         break;
                     }
                 case Type.Record3:
@@ -285,13 +285,15 @@ namespace Pyrrho.Level2
                             return new DBException("40010", ppos, that, ct);
                         break;
                     }
+                case Type.PIndex1:
+                case Type.PIndex2:
                 case Type.PIndex:
                     {
                         var c = (PIndex)that;
                         if (table.defpos==c.tabledefpos)
                             for (int j = 0; j < c.columns.Count; j++)
                                 if (c.columns[j] == defpos)
-                                    return new DBException("40043", ppos, that, ct);
+                                    return new DBException("40042", ppos, that, ct);
                         break;
                     }
                 case Type.Grant:
@@ -301,6 +303,7 @@ namespace Pyrrho.Level2
                             return new DBException("40051", ppos, that, ct);
                         break;
                     }
+                case Type.PCheck2:
                 case Type.PCheck:
                     {
                         var c = (PCheck)that;

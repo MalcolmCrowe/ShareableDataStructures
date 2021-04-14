@@ -183,12 +183,20 @@ namespace Pyrrho.Level2
                         var d = (Drop)that;
                         var table = (Table)db.objects[tabledefpos];
                         if (d.delpos == table.defpos)
-                            return new DBException("40012",ppos,that,ct);
+                            return new DBException("40012",d.delpos,that,ct);
                         for (var s = fields.PositionAt(0); s != null; s = s.Next())
                             if (s.key() == d.delpos)
                                 return new DBException("40013",d.delpos,that,ct);
                         return null;
                     }
+                case Type.Alter3:
+                    if (((Alter3)that).table.defpos == tabledefpos)
+                        return new DBException("40079", tabledefpos, that, ct);
+                    break;
+                case Type.Alter2:
+                    if (((Alter2)that).table.defpos == tabledefpos)
+                        return new DBException("40079", tabledefpos, that, ct);
+                    break;
                 case Type.Alter:
                     if (((Alter)that).table.defpos == tabledefpos)
                         return new DBException("40079", tabledefpos, that, ct);

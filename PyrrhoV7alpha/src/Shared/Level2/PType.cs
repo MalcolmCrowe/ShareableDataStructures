@@ -105,11 +105,11 @@ namespace Pyrrho.Level2
             {
                 case Type.Drop:
                         if (db.types[under] == ((Drop)that).delpos)
-                        return new DBException("40011", ppos, that, ct);
+                        return new DBException("40011", name, that, ct);
                     break;// base class has other reasons for concern
                 case Type.Change:
                     if (db.types[under] == ((Change)that).affects)
-                        return new DBException("40021", ppos, that, ct);
+                        return new DBException("40021", name, that, ct);
                     break;// base class has other reasons for concern
             }
             return base.Conflicts(db, cx, that, ct);

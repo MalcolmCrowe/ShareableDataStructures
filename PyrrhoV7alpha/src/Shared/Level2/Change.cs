@@ -136,12 +136,13 @@ namespace Pyrrho.Level2
                     break;
                 case Type.PDomain1:
                 case Type.PDomain: if (name.CompareTo(((PDomain)that).domain.name) == 0)
-                        return new DBException("40032", ppos, that, ct);
+                        return new DBException("40022", name, that, ct);
                     break;
                 case Type.PType1:
                 case Type.PType: if (name.CompareTo(((PType)that).domain.name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
+                case Type.PRole1:
                 case Type.PRole: if (name.CompareTo(((PRole)that).name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
@@ -161,6 +162,9 @@ namespace Pyrrho.Level2
                     }
                 case Type.Grant:
                     return new DBException("40051", ppos, that, ct);
+                case Type.PMethod:
+                case Type.PMethod2:
+                case Type.PProcedure2:
                 case Type.PProcedure: if (name.CompareTo(((PProcedure)that).nameAndArity)==0) 
                         return new DBException("40032", ppos, that, ct);
                     break;
