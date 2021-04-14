@@ -167,22 +167,6 @@ namespace Pyrrho.Level3
                 + (NextPos, ph.ppos + 1));
             ph.Install(cx, lp);
         }
-        internal override ReadConstraint _ReadConstraint(Context cx, DBObject d)
-        {
-            var t = d as Table;
-            if (t == null || t.defpos < 0)
-                return null;
-            ReadConstraint r = cx.rdC[t.defpos];
-            var db = this;
-            if (r == null)
-            {
-                r = new ReadConstraint(cx, d.defpos);
-                if (t != null)
-                    r.check = new CheckUpdate(cx,d.defpos);
-                cx.rdC+=(d.defpos, r);
-            }
-            return r;
-        }
         /// <summary>
         /// Ensure that TriggeredAction effects get serialised after the event that triggers them. 
         /// </summary>

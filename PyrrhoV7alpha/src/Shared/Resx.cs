@@ -134,10 +134,10 @@ namespace Pyrrho
             dict.Add("40001", "Transaction conflict {0} {1}");
             dict.Add("40003", "Transaction rollback – statement completion unknown");
             dict.Add("40005", "Transaction rollback - new key conflict with empty query");
-            dict.Add("40006", "Transaction conflict: Read constraint for {0}");
-            dict.Add("40007", "Transaction conflict: Read conflict for {0}");
-            dict.Add("40008", "Transaction conflict: Read conflict for table {0}");
-            dict.Add("40009", "Transaction conflict: Read conflict for record {0} {1}");
+            dict.Add("40006", "Transaction conflict: column {0}");
+            dict.Add("40007", "Transaction conflict: {0}");
+            dict.Add("40008", "Transaction conflict: table {0}");
+            dict.Add("40009", "Transaction conflict: record {0} {1}");
             dict.Add("40010", "Transaction conflict: Object {0} has just been dropped");
             dict.Add("40011", "Transaction conflict: Supertype {0} has just been dropped");
             dict.Add("40012", "Table {0} has just been dropped");

@@ -487,6 +487,8 @@ namespace Pyrrho.Level3
                 s = ((SqlValue)cx.obs[b.value()]).Needs(cx, s);
             return s;
         }
+        internal virtual void _ReadConstraint(Context cx,SelectedRowSet.SelectedCursor cu)
+        { }
         internal virtual DBObject Orders(Context cx, CList<long> ord)
         {
             return this;

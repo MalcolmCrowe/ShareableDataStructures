@@ -30,7 +30,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("22 March 2021 Repeatable tests");
+                Console.WriteLine("14 April 2021 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Ensure testdb not present in database folder for any of");
@@ -295,7 +295,7 @@ namespace Test
             r.Close();
             var task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict: Read conflict");
+            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict: record 137");
             Begin();
             cmd.CommandText = "select * from RDC where A=52";
             r = cmd.ExecuteReader();
@@ -308,7 +308,7 @@ namespace Test
             CheckResults(10,2,"select * from RDC","[{A:42,B:'the product of 6 and 7'},{A:52,B:'Weeks in the year'}]");
             task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict: Read conflict");
+            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict: record 137");
         }
         void Test10A()
         {

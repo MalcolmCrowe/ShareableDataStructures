@@ -342,9 +342,6 @@ namespace Pyrrho.Level3
         }
         internal override void RowSets(Context cx, From f,CTree<long,RowSet.Finder> fi)
         {
-            // ReadConstraints only apply in explicit transactions 
-            ReadConstraint readC = cx.db.autoCommit ? null
-                : cx.db._ReadConstraint(cx, this);
             var (index, matches, match) = BestForMatch(cx, f.filter);
             if (index == null)
                 index = BestForOrdSpec(cx, f.ordSpec);
@@ -354,15 +351,6 @@ namespace Pyrrho.Level3
                 var sce = (match == null) ? new IndexRowSet(cx, this, index, f.filter)
                             : new FilterRowSet(cx, this, index, match);
                 rowSet = (f.rowType!=sce.rt)?(RowSet)new SelectedRowSet(cx, f, sce, fi):sce;
-                if (readC != null)
-                {
-                    if (matches == index.keys.Length &&
-                        (index.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
-                            != PIndex.ConstraintType.NoType)
-                        readC.Singleton(index, match);
-                    else
-                        readC.Block();
-                }
             }
             else
             {
@@ -377,15 +365,11 @@ namespace Pyrrho.Level3
                 rowSet = (f.rowType == sa.rt && f.display == sa.display) ? sa
                     : new SelectedRowSet(cx, f, sa, fi);
                 rowSet += (RowSet.RSTargets,new CTree<long,long>(f.target,f.defpos));
-                if (readC != null)
-                    readC.Block();
             }
             if (f.assig != CTree<UpdateAssignment, bool>.Empty)
                 rowSet += (Query.Assig, f.assig);
             cx.data += (f.defpos, rowSet);
             cx.results += (f.defpos, rowSet.defpos);
-            if (readC != null)
-                cx.rdC += (defpos, readC);
         }
         public override bool Denied(Context cx, Grant.Privilege priv)
         { 
@@ -422,6 +406,18 @@ namespace Pyrrho.Level3
         internal override Context Delete(Context cx, RowSet fm, bool iter)
         {
             return new TableActivation(cx, fm, PTrigger.TrigType.Delete);
+        }
+        internal override void _ReadConstraint(Context cx,SelectedRowSet.SelectedCursor cu)
+        {
+            ReadConstraint r = cx.rdC[defpos];
+            if (r == null)
+  
+                r = new ReadConstraint(defpos,
+                    new CheckSpecific(defpos,
+                        new BTree<long, bool>(cu._defpos, true), cu._srs.rdCols));
+            else
+                r = r + cu;
+            cx.rdC += (defpos, r);
         }
         /// <summary>
         /// A readable version of the Table

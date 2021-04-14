@@ -452,15 +452,6 @@ namespace Pyrrho.Level3
                 throw new PEException("PE555");
             return (Domain)objects[types[dm]];
         }
-        /// <summary>
-        /// Build a ReadConstraint object.
-        /// </summary>
-        /// <param name="q">The database object concerned</param>
-        /// <returns></returns>
-        internal virtual ReadConstraint _ReadConstraint(Context cx,DBObject d)
-        {
-            return null;
-        }
         public virtual Database RdrClose(Context cx)
         {
             return cx.db - NextId;

@@ -1073,9 +1073,12 @@ namespace Pyrrho.Level4
     internal class SelectedRowSet : RowSet
     {
         internal const long
+            RdCols = -462,  // BTree<long,bool>
             SQMap = -408; // CTree<long,Finder> SqlValue
         internal CTree<long, Finder> sQMap =>
             (CTree<long, Finder>)mem[SQMap];
+        internal BTree<long, bool> rdCols =>
+            (BTree<long, bool>)mem[RdCols] ?? BTree<long, bool>.Empty;
         /// <summary>
         /// This constructor builds a rowset for the given Query
         /// directly using its defpos, rowType, where and match info.
@@ -1135,7 +1138,26 @@ namespace Pyrrho.Level4
                 cx.data += (defpos, sc);
                 return sc;
             }
-            return this;
+            if (cx.db.autoCommit)
+                return this;
+            // Construct rdCols for use in cx.rdC (see SelectedCursor)
+            var rc = BTree<long, bool>.Empty;
+            for (var b = rt.First(); b != null; b = b.Next())
+            {
+                var p = sQMap[b.value()].col;
+                if (b.key() < domain.display)
+                    rc += (p, true);
+                else
+                    for (var c = where.First(); c != null; c = c.Next())
+                        if (((SqlValue)cx.obs[c.key()]).Uses(cx, p))
+                        {
+                            rc += (p, true);
+                            break;
+                        }
+            }
+            for (var b = matches.First(); b != null; b = b.Next())
+                rc += (sQMap[b.key()].col, true);
+            return this + (RdCols,rc);
         }
         internal override CTree<UpdateAssignment, bool> Review(Context cx, CTree<UpdateAssignment, bool> sg)
         {
@@ -1277,14 +1299,15 @@ namespace Pyrrho.Level4
         }
         internal class SelectedCursor : Cursor
         {
-            readonly SelectedRowSet _srs;
+            internal readonly SelectedRowSet _srs;
             internal readonly Cursor _bmk; // for rIn
-            internal SelectedCursor(Context _cx,SelectedRowSet srs, Cursor bmk, int pos) 
-                : base(_cx,srs, pos, bmk._defpos, bmk._ppos, 
+            internal SelectedCursor(Context cx,SelectedRowSet srs, Cursor bmk, int pos) 
+                : base(cx,srs, pos, bmk._defpos, bmk._ppos, 
                       new TRow(srs.domain,srs.sQMap,bmk.values)) 
             {
                 _bmk = bmk;
                 _srs = srs;
+                cx.obs[_srs.target]._ReadConstraint(cx,this);
             }
             SelectedCursor(SelectedCursor cu,Context cx,long p,TypedValue v)
                 :base(cu,cx,AllowRvv(cu._srs,p),v)

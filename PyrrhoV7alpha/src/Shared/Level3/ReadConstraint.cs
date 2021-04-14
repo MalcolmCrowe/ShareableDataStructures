@@ -29,48 +29,25 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class ReadConstraint
     {
-        readonly Context cnx;
-        /// <summary>
-        /// The object we have just read
-        /// </summary>
-        public long defpos;
-        /// <summary>
-        /// Record what the consequences are
-        /// </summary>
-		public CheckUpdate check = null;
+        public readonly long tabledefpos;
+		public readonly CheckUpdate check;
         /// <summary>
         /// Constructor: a new empty readconstraint for the table
         /// </summary>
         /// <param name="cx">the current context</param>
         /// <param name="d">the object in question</param>
-		internal ReadConstraint(Context cx, long d)
+		internal ReadConstraint(long d,CheckUpdate c)
         {
-            cnx = cx;
-            defpos = d;
+            tabledefpos = d;
+            check = c;
         }
-        /// <summary>
-        /// Add a selector to the CheckUpdate
-        /// </summary>
-        /// <param name="c">the selector's defining position</param>
-		internal void AddSelect(long c)
+        public static ReadConstraint operator +(ReadConstraint rc,
+            SelectedRowSet.SelectedCursor cu)
         {
-            check.AddSelect(c);
-        }
-        /// <summary>
-        /// Record a singleton in the CheckUpdate (only used for primary key)
-        /// </summary>
-        /// <param name="x">The index</param>
-        /// <param name="m">The key</param>
-		public void Singleton(Index x, PRow m)
-        {
-            check = check.Singleton(x, m);
-        }
-        /// <summary>
-        /// This readconstraint now blocks any updates to the object
-        /// </summary>
-		public void Block()
-        {
-            check = new BlockUpdate(cnx,defpos);
+            return (rc.check != null) ? new ReadConstraint(rc.tabledefpos, rc.check.Add(cu))
+            : new ReadConstraint(rc.tabledefpos, // first constraint on this table
+                new CheckSpecific(rc.tabledefpos, cu._srs.rdCols, // therefore specific
+                    new BTree<long, bool>(cu._defpos, true)));
         }
         /// <summary>
         /// Examine the consequences of changes to the object
@@ -80,7 +57,7 @@ namespace Pyrrho.Level3
 		public DBException Check(Physical p,PTransaction ct)
         {
             if (check == null)
-                return p.ReadCheck(defpos,p,ct);
+                return p.ReadCheck(tabledefpos,p,ct);
             if (p is Record r)
                 return check.Check(r, ct);
             return null;
@@ -91,7 +68,7 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            return "[" + defpos + (check?.ToString() ?? "") + "]";
+            return "[" + tabledefpos + (check?.ToString() ?? "") + "]";
         }
     }
     /// <summary>
@@ -101,42 +78,24 @@ namespace Pyrrho.Level3
     /// </summary>
 	internal class CheckUpdate
     {
-        internal readonly Context cnx;
-        public long tabledefpos;
+        public readonly long tabledefpos;
         /// <summary>
-        /// a list of ReadColumn
+        /// a list of read Columns
         /// </summary>
-		public BTree<long, bool> rdcols = null;
-        /// <summary>
-        /// a specific key
-        /// </summary>
-        public PRow rdkey = null;
+		public readonly BTree<long, bool> rdcols;
         /// <summary>
         /// Constructor: a read operation involving the readConstraint's database object
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckUpdate(Context cx,long tb)
+        public CheckUpdate(long tb,BTree<long,bool> rc)
         {
-            cnx = cx;
             tabledefpos = tb;
+            rdcols = rc;
         }
-        /// <summary>
-        /// Add a Selector to this CheckUpdate
-        /// </summary>
-        /// <param name="d">the selector</param>
-        internal void AddSelect(long d)
+        public virtual CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
         {
-            rdcols +=(d, true);
-        }
-        /// <summary>
-        /// Make the CheckUpdate specific to a single row
-        /// </summary>
-        /// <param name="x">the index</param>
-        /// <param name="m">the key</param>
-        /// <returns>the new CheckUpdate (now a CheckSpecific)</returns>
-		public virtual CheckUpdate Singleton(Index x, PRow m)
-        {
-            return new CheckSpecific(cnx, x, m);
+            var cs = cu._srs.rdCols;
+            return (cs == rdcols)?this: new CheckUpdate(tabledefpos, cs+rdcols);
         }
         /// <summary>
         /// Check an insert/update/deletion against the ReadConstraint
@@ -173,12 +132,14 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            var sb = new StringBuilder("-");
+            var sb = new StringBuilder("(");
+            var cm = "";
             for (var e = rdcols?.First(); e != null; e = e.Next())
             {
-                sb.Append(" ");
-                sb.Append(e.key());
+                sb.Append(cm);cm = ",";
+                sb.Append(DBObject.Uid(e.key()));
             }
+            sb.Append(")");
             return sb.ToString();
         }
     }
@@ -188,41 +149,23 @@ namespace Pyrrho.Level3
 	internal class CheckSpecific : CheckUpdate
     {
         /// <summary>
-        /// The Index nominating the row
-        /// </summary>
-		public Index index;
-        /// <summary>
         /// A list of Row (from MakeKey)
         /// </summary>
-		public List<PRow> recs = new List<PRow>();
+		public readonly BTree<long, bool> recs = BTree<long, bool>.Empty;
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckSpecific(Context cx,long tb) : base(cx,tb) { }
-        /// <summary>
-        /// Constructor: CheckUpdate builds this on receipt of Singleton information
-        /// </summary>
-        /// <param name="cx">the context</param>
-        /// <param name="x">the Index</param>
-        /// <param name="m">the key</param>
-		public CheckSpecific(Context cx, Index x, PRow m) : this(cx,x.tabledefpos)
+        public CheckSpecific(long tb,BTree<long,bool> rs,BTree<long,bool> cs) : base(tb,cs) 
         {
-            index = x;
-            recs.Add(m); // recs is initially empty here
+            recs = rs;
         }
-        /// <summary>
-        /// Add another singleton to the CheckSpecific
-        /// </summary>
-        /// <param name="x">the index</param>
-        /// <param name="m">the new key</param>
-        /// <returns>the modified CheckUpdate (maybe BlockUpdate)</returns>
-		public override CheckUpdate Singleton(Index x, PRow m)
+        public override CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
         {
-            if (index != x) // the index has changed!
-                return new BlockUpdate(this);
-            recs.Add(m);
-            return this;
+            var cs = cu._srs.rdCols;
+            return (cs != rdcols) ? base.Add(cu) :
+                recs.Contains(cu._defpos) ? this :
+                new CheckSpecific(cu._srs.target, recs + (cu._defpos, true),cs);
         }
         /// <summary>
         /// Test for conflict against a given insert/update/deletion
@@ -231,12 +174,8 @@ namespace Pyrrho.Level3
         /// <returns>whether conflict has occurred</returns>
 		public override DBException Check(Record r, PTransaction ct)
         {
-            // check for insertion (or key update) conflicting with an empty query
-            var m = r?.MakeKey(index.keys);
-            if (m != null)
-                foreach (var rr in recs)
-                    if (m._CompareTo(rr) == 0)
-                        return new DBException("40009", r.defpos, r, ct).Mix();
+            if (recs.Contains(r.defpos))
+                return new DBException("40009", r.defpos, r, ct).Mix();
             return null;
         }
         /// <summary>
@@ -246,8 +185,7 @@ namespace Pyrrho.Level3
         /// <param name="tableProfile">the profile</param>
         internal override void Profile(Database db, TableProfile tableProfile)
         {
-            tableProfile.ckix = index.defpos;
-            tableProfile.specific = recs.Count;
+            tableProfile.specific = (int)recs.Count;
             base.Profile(db, tableProfile);
         }
         /// <summary>
@@ -257,9 +195,13 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append("-");
-            foreach (var r in recs)
-                sb.Append(r.ToString());
+            var cm = "[";
+            for (var b=recs.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm);cm = ",";
+                sb.Append(DBObject.Uid(b.key()));
+            }
+            sb.Append("]");
             return sb.ToString();
         }
     }
@@ -272,25 +214,7 @@ namespace Pyrrho.Level3
         /// Constructor for a local database
         /// </summary>
         /// <param name="cx">The context</param>
-        public BlockUpdate(Context cx,long tb) : base(cx,tb) { }
-        /// <summary>
-        /// Constructor: all updates for the specified TableColumns of this table should now be blocked
-        /// </summary>
-        /// <param name="cu">the checkupdate</param>
-		public BlockUpdate(CheckSpecific cu) : this(cu.cnx,cu.index.tabledefpos)
-        {
-            rdcols = cu.rdcols;
-        }
-        /// <summary>
-        /// No-op on singleton (updates are already blocked)
-        /// </summary>
-        /// <param name="x">The Index</param>
-        /// <param name="m">The key</param>
-        /// <returns>This BlockUpdate</returns>
-		public override CheckUpdate Singleton(Index x, PRow m)
-        {
-            return this;
-        }
+        public BlockUpdate(long tb) : base(tb,BTree<long,bool>.Empty) { }
         /// <summary>
         /// If we have a list of TableColumns use them.
         /// Otherwise signal transaction conflict on a change to our table
@@ -299,7 +223,7 @@ namespace Pyrrho.Level3
         /// <returns>An exception (null means no problem)</returns>
         public override DBException Check(Record r,PTransaction ct)
         {
-            if (rdcols != null)
+            if (rdcols != BTree<long,bool>.Empty)
                 return base.Check(r,ct);
             return (tabledefpos==r.tabledefpos)? new DBException("40008", tabledefpos,r,ct).Mix():null;
         }
