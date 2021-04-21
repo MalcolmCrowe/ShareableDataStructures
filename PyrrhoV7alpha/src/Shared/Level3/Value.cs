@@ -4995,7 +4995,7 @@ namespace Pyrrho.Level3
                         return new TInt(0);
                     }
                 case Sqlx.CHARACTER_LENGTH: goto case Sqlx.CHAR_LENGTH;
-                case Sqlx.CHECK: return new TRvv(cx);
+                case Sqlx.CHECK: return new TRvv(cx,"");
                 case Sqlx.COLLECT: return domain.Coerce(cx,(TypedValue)fc.mset ??TNull.Value);
                 //		case Sqlx.CONVERT: transcoding all seems to be implementation-defined TBD
                 case Sqlx.COUNT: return new TInt(fc.count);
@@ -5300,7 +5300,7 @@ namespace Pyrrho.Level3
                         if (vl !=null)
                         {
                             vcx.result = vl.defpos;
-                            return new TRvv(vcx);
+                            return new TRvv(vcx,"");
                         }
                         vcx.result = from;
                         var p = -1L;

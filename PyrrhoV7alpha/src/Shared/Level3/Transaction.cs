@@ -116,6 +116,7 @@ namespace Pyrrho.Level3
             cx.result = -1L;
             if (!autoCommit)
                 return Unheap(cx);
+            cx.etags = CTree<string, Rvv>.Empty;
             return cx.db.Commit(cx)+(NextPrep,nextPrep);
         }
         internal override int AffCount(Context cx)
@@ -304,6 +305,7 @@ namespace Pyrrho.Level3
                 for (var b = physicals.First(); b != null; b = b.Next())
                     (tr, _) = b.value().Commit(wr, tr);
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
+                cx.etags += (name, (cx.etags[name] ?? Rvv.Empty) + cx.affected);
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
@@ -360,36 +362,44 @@ namespace Pyrrho.Level3
         /// <param name="path">The URL</param>
         /// <param name="mime">The mime type in the header</param>
         /// <param name="sdata">The posted data if any</param>
-        internal Context Execute(Context cx,string method, string id, string[] path, string mime, 
-            string sdata, string etag)
+        internal Context Execute(Context cx, string method, string id, string dn, string[] path, string mime, 
+            string sdata, string[] ets)
         {
             var db = this;
-            /*          if (etag != null)
-                      {
-                          var ss = etag.Split(';');
-                          if (ss.Length > 1)
-                              db.CheckRdC(ss[1]);
-                      }
-          */
+            var etag = cx.etags[dn];
+            if (ets != null)
+                for (var i = 0; i < ets.Length; i++)
+                {
+                    var rv = Rvv.Parse(ets[i]);
+                    if (!rv.Validate(this))
+                    {
+                        if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
+                            Console.WriteLine("ETag invalid " + ets[i]);
+                        throw new DBException("40000", etag);
+                    }
+                    etag += rv;
+                    cx.etags += (dn,etag);
+                }
+            var es = etag?.ToString()??"";
             if (path.Length >= 4)
             {
                 switch (method)
                 {
                     case "GET":
-                        db.Execute(cx, From._static, id + ".", path, 2, etag);
+                        db.Execute(cx, From._static, id + ".", path, 2, es);
                         break;
                     case "DELETE":
-                        db.Execute(cx, From._static, id + ".", path, 2, etag);
+                        db.Execute(cx, From._static, id + ".", path, 2, es);
                         cx = db.Delete(cx, cx.data[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, From._static, id + ".", path, 2, etag);
+                        db.Execute(cx, From._static, id + ".", path, 2, es);
                         cx = db.Put(cx,cx.data[cx.result], sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
                     case "POST":
-                        db.Execute(cx, From._static,id + ".", path, 2, etag);
+                        db.Execute(cx, From._static,id + ".", path, 2, es);
         //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
         //                db.Post(tr.result?.rowSet, sdata);
                         break;

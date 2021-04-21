@@ -111,16 +111,22 @@ namespace Pyrrho
         /// Send results to the client using the PyrrhoWebOutput mechanisms
         /// </summary>
         public virtual void SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
-            string rdc)
+            string dn,bool etags)
         {
             var r = cx.data[cx.result];
             Cursor e = r?.First(cx);
-            Header(rs, tr, cx, rdc);
+            if (e!=null && etags)
+            {
+                for (; e != null; e = e.Next(cx))
+                    e._Rvv(cx);
+                e = r.First(cx);
+            }
+            Header(rs, tr, cx, dn,etags);
             if (r!=null)
             {
                 BeforeResults();
-                for (;e!=null;e=e.Next(cx))
-                    PutRow(cx,e);
+                for (; e != null; e = e.Next(cx))
+                    PutRow(cx, e);
                 AfterResults();
             }
             Footer();
@@ -129,7 +135,7 @@ namespace Pyrrho
         /// Header for the page
         /// </summary>
         public virtual void Header(HttpListenerResponse rs, Transaction tr,
-            Context cx, string rdc)
+            Context cx, string dn,bool etags)
         {
             rs.StatusCode = 200;
             RowSet r = cx.data[cx.result];
@@ -146,11 +152,11 @@ namespace Pyrrho
                 if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
-            string s = (r?._Rvv(cx)?.ToString() ?? "") + rdc;
-            if (s != "")
+            if (etags)
             {
+                var s = cx.etags[dn]?.ToString()??"";
                 rs.AddHeader("ETag", s);
-                if (PyrrhoStart.DebugMode)
+                if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                     Console.WriteLine("Returning ETag: " + s);
             }
         }
@@ -183,10 +189,11 @@ namespace Pyrrho
         public SqlWebOutput(Transaction d,StringBuilder s)
             : base(d,s)
         { }
-        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, string rdc)
+        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
+            string dn, bool etags)
         {
             rs.AddHeader("Content-Type", "text/plain");
-            base.Header(rs, tr, cx, rdc);
+            base.Header(rs, tr, cx, dn, etags);
         }
         public override void PutRow(Context cx, Cursor e)
         {
@@ -201,10 +208,10 @@ namespace Pyrrho
             sbuild.Append(")");
         }
         public override void SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
-            string rdc)
+            string dn,bool etags)
         {
             var cm = "";
-            Header(rs, tr,cx, rdc);
+            Header(rs, tr,cx, dn,etags);
             if (cx.data[cx.result] is RowSet r)
             {
                 BeforeResults();
@@ -238,10 +245,10 @@ namespace Pyrrho
             : base(d, s)
         { }
         public override void Header(HttpListenerResponse hrs, Transaction tr,
-            Context cx,string rdc)
+            Context cx,string dn,bool etags)
         {
             hrs.AddHeader("Content-Type", "text/html");
-            base.Header(hrs, tr, cx, rdc);
+            base.Header(hrs, tr, cx, dn,etags);
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
@@ -555,10 +562,11 @@ namespace Pyrrho
         string cm = "";
         public JsonWebOutput(Transaction db, StringBuilder s) : base(db, s)
         { }
-        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, string rdc)
+        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
+            string dn,bool etags)
         {
             rs.AddHeader("Content-Type", "application/json");
-            base.Header(rs, tr, cx, rdc);
+            base.Header(rs, tr, cx, dn,etags);
         }
         public override void BeforeResults()
         {
@@ -604,10 +612,11 @@ namespace Pyrrho
         {
             rootName = rn;
         }
-        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, string rdc)
+        public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
+            string dn, bool etags)
         {
             rs.AddHeader("Content-Type", "application/xml");
-            base.Header(rs, tr, cx, rdc);
+            base.Header(rs, tr, cx, dn, etags);
         }
         /*        /// <summary>
                 /// Output a row for XML
@@ -703,19 +712,40 @@ namespace Pyrrho
                     client.Request.InputStream.Read(bytes, 0, bytes.Length);
                 var sb = Encoding.UTF8.GetString(bytes);
                 var et = client.Request.Headers["If-Match"];
-                if (PyrrhoStart.DebugMode)
+                string[] ets = null;
+                if (et != null)
+                { 
+                    if (et.StartsWith("W/"))
+                        et = et.Substring(2);
+                    ets = et.Split(';');
+                    for (var i=0;i<ets.Length;i++)
+                        ets[i] = ets[i].Trim().Trim('"');
+                }
+                if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                 {
-                    if (sb != "" && sb!=null)
+                    if (sb != "" && sb != null)
                         Console.WriteLine(sb);
                     if (et != null)
                         Console.WriteLine("If-Match: " + et);
                 }
+                if (ets != null)
+                    for (var i = 0; i < ets.Length; i++)
+                    {
+                        var rv = Rvv.Parse(ets[i]);
+                        if (!rv.Validate(db))
+                        {
+                            if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
+                                Console.WriteLine("ETag invalid " + ets[i]);
+                            throw new DBException("40000",ets[i]);
+                        }
+                    }
                 var cx = new Context(db);
                 cx.result = cx.db.lexeroffset;
-                db.Execute(cx,client.Request.HttpMethod,"H",pathbits, client.Request.Headers["Content-Type"],
-                    sb, et);
+                db.Execute(cx,client.Request.HttpMethod,"H",cx.db.name,pathbits, 
+                    client.Request.Headers["Content-Type"],
+                    sb, ets);
                 cx.db.Commit(cx);
-                woutput.SendResults(client.Response,db,cx,"");
+                woutput.SendResults(client.Response,db,cx,db.name,true);
                 return;
             }
             catch (DBException e)
@@ -723,7 +753,8 @@ namespace Pyrrho
                 if (woutput != null)
                     try
                     {
-                        client.Response.StatusCode = 400;
+                        client.Response.StatusCode = 
+                            e.signal.StartsWith("40")?412:400;
                         woutput.sbuild.Append("SQL Error: ");
                         woutput.sbuild.Append(Resx.Format(e.signal, e.objects));
                         for (var ii = e.info.First(); ii != null; ii = ii.Next())

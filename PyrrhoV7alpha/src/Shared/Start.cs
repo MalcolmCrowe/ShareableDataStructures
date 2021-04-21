@@ -177,7 +177,10 @@ namespace Pyrrho
                                 db = db.Transact(db.nextId, cmd);
                                 var tr = db;
                                 long t = 0;
+                                var ex = cx?.etags;
                                 cx = new Context(db);
+                                if (ex!=null)
+                                    cx.etags = ex;
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
@@ -200,7 +203,10 @@ namespace Pyrrho
                                 db = db.Transact(db.nextId, cmd);
                                 var tr = db;
                                 long t = 0;
+                                var ex = cx?.etags;
                                 cx = new Context(db);
+                                if (ex != null)
+                                    cx.etags = ex;
                                 var ts = db.loadpos;
                                 db = new Parser(db).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
@@ -401,7 +407,10 @@ namespace Pyrrho
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
                                 var tr = db.Transact(db.nextId, cmd);
+                                var ex = cx?.etags;
                                 cx = new Context(tr);
+                                if (ex != null)
+                                    cx.etags = ex;
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
@@ -579,7 +588,8 @@ namespace Pyrrho
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
-                                tr.Execute(cx, vb, "R", url.Split('/'), "application/json", jo, "");
+                                tr.Execute(cx, vb, "R", url, url.Split('/'), "application/json", jo, 
+                                    new string[0]);
                                 tcp.PutWarnings(tr);
                                 db = tr.RdrClose(cx);
                                 rb = null;
@@ -1258,7 +1268,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (14 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (21 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

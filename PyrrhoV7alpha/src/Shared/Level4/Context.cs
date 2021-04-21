@@ -56,6 +56,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal CTree<long,bool> withViews = CTree<long,bool>.Empty;
         internal Rvv affected = null;
+        internal CTree<string,Rvv> etags = CTree<string,Rvv>.Empty;
         internal int physAtStepStart;
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;

@@ -1120,9 +1120,9 @@ namespace Pyrrho.Common
     internal class TRvv : TypedValue
     {
         internal readonly Rvv rvv;
-        internal TRvv(Context cx) : base (Domain.Rvv)
+        internal TRvv(Context cx,string url) : base (Domain.Rvv)
         {
-            rvv = cx.data[cx.result]._Rvv(cx);
+            rvv = cx.etags[url];
         }
         internal TRvv(Rvv r) : base(Domain.Rvv)
         {

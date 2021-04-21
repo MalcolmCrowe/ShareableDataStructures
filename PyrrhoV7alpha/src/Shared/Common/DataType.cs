@@ -491,182 +491,183 @@ namespace Pyrrho.Common
         DYNAMIC_FUNCTION_CODE = 451,
         ENFORCED = 452,
         ENTITY = 453, // Pyrrho 4.5
-        EXCLUDE = 454,
-        EXCLUDING = 455,
-        FINAL = 456,
-        FIRST = 457,
-        FLAG = 458, 
-        FOLLOWING = 459,
-        FORTRAN = 460,
-        FOUND = 461,
-        G = 462,
-        GENERAL = 463,
-        GENERATED = 464,
-        GO = 465,
-        GOTO = 466,
-        GRANTED = 467,
-        HIERARCHY = 468,
-        HISTOGRAM = 469, // Pyrrho 4.5
-        IGNORE = 470,
-        IMMEDIATE = 471,
-        IMMEDIATELY = 472,
-        IMPLEMENTATION = 473,
-        INCLUDING = 474,
-        INCREMENT = 475,
-        INITIALLY = 476,
-        INPUT = 477,
-        INSTANCE = 478,
-        INSTANTIABLE = 479,
-        INSTEAD = 480,
-        INVERTS = 481, // Pyrrho Metadata 5.7
-        INVOKER = 482,
-        IRI = 483, // Pyrrho 7
-        ISOLATION = 484,
-        JSON = 485, // Pyrrho 5.5
-        K = 486,
-        KEY = 487,
-        KEY_MEMBER = 488,
-        KEY_TYPE = 489,
-        LAST = 490,
-        LEGEND = 491, // Pyrrho Metadata 4.8
-        LENGTH = 492,
-        LEVEL = 493,
-        LINE = 494, // Pyrrho 4.5
-        LOCATOR = 495,
-        M = 496,
-        MAP = 497,
-        MATCHED = 498,
-        MAXVALUE = 499,
-        MESSAGE_LENGTH = 500,
-        MESSAGE_OCTET_LENGTH = 501,
-        MESSAGE_TEXT = 502,
-        METADATA = 503, // Pyrrho 7
-        MIME = 504, // Pyrrho 7
-        MINVALUE = 505,
-        MONOTONIC = 506, // Pyrrho 5.7
-        MORE = 507,
-        MUMPS = 508,
-        NAME = 509,
-        NAMES = 510,
-        NESTING = 511,
-        NEXT = 512,
-        NFC = 513,
-        NFD = 514,
-        NFKC = 515,
-        NFKD = 516,
-        NORMALIZED = 517,
-        NULLABLE = 518,
-        NULLS = 519,
-        NUMBER = 530,
-        OCCURRENCE = 521,
-        OCTETS = 522,
-        OPTION = 523,
-        OPTIONS = 524,
-        ORDERING = 525,
-        ORDINALITY = 526,
-        OTHERS = 527,
-        OUTPUT = 528,
-        OVERRIDING = 529,
-        OWNER = 530, // Pyrrho
-        P = 531,
-        PAD = 532,
-        PARAMETER_MODE = 533,
-        PARAMETER_NAME = 534,
-        PARAMETER_ORDINAL_POSITION = 535,
-        PARAMETER_SPECIFIC_CATALOG = 536,
-        PARAMETER_SPECIFIC_NAME = 537,
-        PARAMETER_SPECIFIC_SCHEMA = 538,
-        PARTIAL = 539,
-        PASCAL = 540,
-        PATH = 541,
-        PIE = 542, // Pyrrho 4.5
-        PLACING = 543,
-        PL1 = 544,
-        POINTS = 545, // Pyrrho 4.5
-        PRECEDING = 546,
-        PRESERVE = 547,
-        PRIOR = 548,
-        PRIVILEGES = 549,
-        PROFILING = 550, // Pyrrho
-        PROVENANCE = 551, // Pyrrho
-        PUBLIC = 552,
-        READ = 553,
-        REFERRED = 554, // 5.2
-        REFERS = 555, // 5.2
-        RELATIVE = 556,
-        REPEATABLE = 557,
-        RESPECT = 558,
-        RESTART = 559,
-        RESTRICT = 560,
-        RETURNED_CARDINALITY = 561,
-        RETURNED_LENGTH = 562,
-        RETURNED_OCTET_LENGTH = 563,
-        RETURNED_SQLSTATE = 564,
-        ROLE = 565,
-        ROUTINE = 566,
-        ROUTINE_CATALOG = 567,
-        ROUTINE_NAME = 568,
-        ROUTINE_SCHEMA = 569,
-        ROW_COUNT = 570,
-        SCALE = 571,
-        SCHEMA = 572,
-        SCHEMA_NAME = 573,
-        SCOPE_CATALOG = 574,
-        SCOPE_NAME = 575,
-        SCOPE_SCHEMA = 576,
-        SECTION = 577,
-        SECURITY = 578,
-        SELF = 579,
-        SEQUENCE = 580,
-        SERIALIZABLE = 581,
-        SERVER_NAME = 582,
-        SESSION = 583,
-        SETS = 584,
-        SIMPLE = 585,
-        SIZE = 586,
-        SOURCE = 587,
-        SPACE = 588,
-        SPECIFIC_NAME = 589,
-        SQLAGENT = 590, // Pyrrho 7
-        STANDALONE = 591, // vol 14
-        STATE = 592,
-        STATEMENT = 593,
-        STRUCTURE = 594,
-        STYLE = 595,
-        SUBCLASS_ORIGIN = 596,
-        T = 597,
-        TABLE_NAME = 598,
-        TEMPORARY = 599,
-        TIES = 600,
-        TIMEOUT = 601, // Pyrrho
-        TOP_LEVEL_COUNT = 602,
-        TRANSACTION = 603,
-        TRANSACTION_ACTIVE = 604,
-        TRANSACTIONS_COMMITTED = 605,
-        TRANSACTIONS_ROLLED_BACK = 606,
-        TRANSFORM = 607,
-        TRANSFORMS = 608,
-        TRIGGER_CATALOG = 609,
-        TRIGGER_NAME = 610,
-        TRIGGER_SCHEMA = 611, // TYPE  is 267 but is not a reserved word
-        TYPE_URI = 612, // Pyrrho
-        UNBOUNDED = 613,
-        UNCOMMITTED = 614,
-        UNDER = 615,
-        UNDO = 616,
-        UNNAMED = 617,
-        URL = 618,  // Pyrrho 7
-        USAGE = 619,
-        USER_DEFINED_TYPE_CATALOG = 620,
-        USER_DEFINED_TYPE_CODE = 621,
-        USER_DEFINED_TYPE_NAME = 622,
-        USER_DEFINED_TYPE_SCHEMA = 623,
-        VIEW = 624,
-        WORK = 625,
-        WRITE = 626,
-        X = 627, // Pyrrho 4.5
-        Y = 628, // Pyrrho 4.5
-        ZONE = 629
+        ETAG = 454, // Pyrrho Metadata 7.0
+        EXCLUDE = 455,
+        EXCLUDING = 456,
+        FINAL = 457,
+        FIRST = 458,
+        FLAG = 459, 
+        FOLLOWING = 460,
+        FORTRAN = 461,
+        FOUND = 462,
+        G = 463,
+        GENERAL = 464,
+        GENERATED = 465,
+        GO = 466,
+        GOTO = 467,
+        GRANTED = 468,
+        HIERARCHY = 469,
+        HISTOGRAM = 470, // Pyrrho 4.5
+        IGNORE = 471,
+        IMMEDIATE = 472,
+        IMMEDIATELY = 473,
+        IMPLEMENTATION = 474,
+        INCLUDING = 475,
+        INCREMENT = 476,
+        INITIALLY = 477,
+        INPUT = 478,
+        INSTANCE = 479,
+        INSTANTIABLE = 480,
+        INSTEAD = 481,
+        INVERTS = 482, // Pyrrho Metadata 5.7
+        INVOKER = 483,
+        IRI = 484, // Pyrrho 7
+        ISOLATION = 485,
+        JSON = 486, // Pyrrho 5.5
+        K = 487,
+        KEY = 488,
+        KEY_MEMBER = 489,
+        KEY_TYPE = 490,
+        LAST = 491,
+        LEGEND = 492, // Pyrrho Metadata 4.8
+        LENGTH = 493,
+        LEVEL = 494,
+        LINE = 495, // Pyrrho 4.5
+        LOCATOR = 496,
+        M = 497,
+        MAP = 498,
+        MATCHED = 499,
+        MAXVALUE = 500,
+        MESSAGE_LENGTH = 501,
+        MESSAGE_OCTET_LENGTH = 502,
+        MESSAGE_TEXT = 503,
+        METADATA = 504, // Pyrrho 7
+        MIME = 505, // Pyrrho 7
+        MINVALUE = 506,
+        MONOTONIC = 507, // Pyrrho 5.7
+        MORE = 508,
+        MUMPS = 509,
+        NAME = 510,
+        NAMES = 511,
+        NESTING = 512,
+        NEXT = 513,
+        NFC = 514,
+        NFD = 515,
+        NFKC = 516,
+        NFKD = 517,
+        NORMALIZED = 518,
+        NULLABLE = 519,
+        NULLS = 520,
+        NUMBER = 521,
+        OCCURRENCE = 522,
+        OCTETS = 523,
+        OPTION = 524,
+        OPTIONS = 525,
+        ORDERING = 526,
+        ORDINALITY = 527,
+        OTHERS = 528,
+        OUTPUT = 529,
+        OVERRIDING = 530,
+        OWNER = 531, // Pyrrho
+        P = 532,
+        PAD = 533,
+        PARAMETER_MODE = 534,
+        PARAMETER_NAME = 535,
+        PARAMETER_ORDINAL_POSITION = 536,
+        PARAMETER_SPECIFIC_CATALOG = 537,
+        PARAMETER_SPECIFIC_NAME = 538,
+        PARAMETER_SPECIFIC_SCHEMA = 539,
+        PARTIAL = 540,
+        PASCAL = 541,
+        PATH = 542,
+        PIE = 543, // Pyrrho 4.5
+        PLACING = 544,
+        PL1 = 545,
+        POINTS = 546, // Pyrrho 4.5
+        PRECEDING = 547,
+        PRESERVE = 548,
+        PRIOR = 549,
+        PRIVILEGES = 550,
+        PROFILING = 551, // Pyrrho
+        PROVENANCE = 552, // Pyrrho
+        PUBLIC = 553,
+        READ = 554,
+        REFERRED = 555, // 5.2
+        REFERS = 556, // 5.2
+        RELATIVE = 557,
+        REPEATABLE = 558,
+        RESPECT = 559,
+        RESTART = 560,
+        RESTRICT = 561,
+        RETURNED_CARDINALITY = 562,
+        RETURNED_LENGTH = 563,
+        RETURNED_OCTET_LENGTH = 564,
+        RETURNED_SQLSTATE = 565,
+        ROLE = 566,
+        ROUTINE = 567,
+        ROUTINE_CATALOG = 568,
+        ROUTINE_NAME = 569,
+        ROUTINE_SCHEMA = 570,
+        ROW_COUNT = 571,
+        SCALE = 572,
+        SCHEMA = 573,
+        SCHEMA_NAME = 574,
+        SCOPE_CATALOG = 575,
+        SCOPE_NAME = 576,
+        SCOPE_SCHEMA = 577,
+        SECTION = 578,
+        SECURITY = 579,
+        SELF = 580,
+        SEQUENCE = 581,
+        SERIALIZABLE = 582,
+        SERVER_NAME = 583,
+        SESSION = 584,
+        SETS = 585,
+        SIMPLE = 586,
+        SIZE = 587,
+        SOURCE = 588,
+        SPACE = 589,
+        SPECIFIC_NAME = 590,
+        SQLAGENT = 591, // Pyrrho 7
+        STANDALONE = 592, // vol 14
+        STATE = 593,
+        STATEMENT = 594,
+        STRUCTURE = 595,
+        STYLE = 596,
+        SUBCLASS_ORIGIN = 597,
+        T = 598,
+        TABLE_NAME = 599,
+        TEMPORARY = 600,
+        TIES = 601,
+        TIMEOUT = 602, // Pyrrho
+        TOP_LEVEL_COUNT = 603,
+        TRANSACTION = 604,
+        TRANSACTION_ACTIVE = 605,
+        TRANSACTIONS_COMMITTED = 606,
+        TRANSACTIONS_ROLLED_BACK = 607,
+        TRANSFORM = 608,
+        TRANSFORMS = 609,
+        TRIGGER_CATALOG = 610,
+        TRIGGER_NAME = 611,
+        TRIGGER_SCHEMA = 612, // TYPE  is 267 but is not a reserved word
+        TYPE_URI = 613, // Pyrrho
+        UNBOUNDED = 614,
+        UNCOMMITTED = 615,
+        UNDER = 616,
+        UNDO = 617,
+        UNNAMED = 618,
+        URL = 619,  // Pyrrho 7
+        USAGE = 620,
+        USER_DEFINED_TYPE_CATALOG = 621,
+        USER_DEFINED_TYPE_CODE = 622,
+        USER_DEFINED_TYPE_NAME = 623,
+        USER_DEFINED_TYPE_SCHEMA = 624,
+        VIEW = 625,
+        WORK = 626,
+        WRITE = 627,
+        X = 628, // Pyrrho 4.5
+        Y = 629, // Pyrrho 4.5
+        ZONE = 630
     }
     /// <summary>
     /// These are the underlying (physical) datatypes used  for values in the database
@@ -830,8 +831,11 @@ namespace Pyrrho.Common
         public static Rvv operator+(Rvv r,(long,(long,long))x)
         {
             var (t, p) = x;
+            if (r[t]?.Contains(-1L)==true)
+                return r;
             var (d, o) = p;
-            return new Rvv(r + (t, (r[t]??CTree<long,long>.Empty)+(d, o)));
+            var s = ((d == -1L) ? null:r[t]) ?? CTree<long,long>.Empty;
+            return new Rvv(r + (t, s+(d, o)));
         }
         public static Rvv operator+(Rvv r,Rvv s)
         {
@@ -839,16 +843,19 @@ namespace Pyrrho.Common
                 return s;
             if (s==null ||s == Empty)
                 return r;
+            // Implement a wild-card -1L
             var a = (CTree<long, CTree<long, long>>)r;
             var b = (CTree<long, CTree<long, long>>)s;
             for (var bb=b.First();bb!=null;bb=bb.Next())
             {
                 var k = bb.key();
                 var bt = bb.value();
-                if (a[k] is CTree<long, long> at)
+                if (a[k] is CTree<long, long> at && !bt.Contains(-1L))
                 {
+                    if (at.Contains(-1L))
+                        continue;
                     for (var cb = bt.First(); cb != null; cb = cb.Next())
-                    {
+                    { 
                         var bk = cb.key();
                         var bv = cb.value();
                         if (at.Contains(bk))
@@ -873,20 +880,28 @@ namespace Pyrrho.Common
             for (var b=First();b!=null;b=b.Next())
             {
                 var t = (Table)db.objects[b.key()];
-                for (var c=b.value().First();c!=null;c=c.Next())
-                if (t.tableRows[c.key()]?.ppos != c.value())
-                    return false;
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.key() < 0L)
+                    {
+                        if (t.lastData > c.value())
+                            return false;
+                    } 
+                    else if (t.tableRows[c.key()]?.ppos != c.value())
+                        return false;
             }
             return true;
         }
         public static Rvv Parse(string s)
         {
             var r = Empty;
+            if (s == "*")
+                return Empty;
             var ss = s.Split(';');
             foreach(var t in ss)
             {
                 var tt = t.Split(',');
-                r += (long.Parse(tt[0]), (long.Parse(tt[1]), long.Parse(tt[2])));
+                if (tt.Length>2)
+                    r += (long.Parse(tt[0]), (long.Parse(tt[1]), long.Parse(tt[2])));
             }
             return r;
         }

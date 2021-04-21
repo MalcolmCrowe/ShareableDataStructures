@@ -130,10 +130,6 @@ namespace Pyrrho.Level4
         {
             return new JoinRowSet(dp, mem);
         }
-        public override Rvv _Rvv(Context cx)
-        {
-            return cx.data[first]._Rvv(cx) + cx.data[second]._Rvv(cx);
-        }
         internal override Basis Fix(Context cx)
         {
             var r = (JoinRowSet)base.Fix(cx);

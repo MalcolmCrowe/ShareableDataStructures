@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
             Sqlx.PIE, Sqlx.NONE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, //0x4-0x80
             Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x2000
             Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x4000-0x40000
-            Sqlx.PASSWORD, Sqlx.IRI}; // 0x80000-0x100000
+            Sqlx.PASSWORD, Sqlx.IRI, Sqlx.ETAG }; // 0x80000-0x200000
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
@@ -205,7 +205,7 @@ namespace Pyrrho.Level2
             for (var b=md.First();b!=null;b=b.Next())
             {
                 var m = 1L;
-                for (var i = 1; i < keys.Length; i++, m <<= 1)
+                for (var i = 1; i <= keys.Length; i++, m <<= 1)
                     if (b.key() == keys[i-1])
                         r += m;
             }
@@ -216,7 +216,7 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder();
             var cm = "";
             var m = 1L;
-            for (var i=0;i<keys.Length;i++,m<<=1)
+            for (var i=0;i<=keys.Length;i++,m<<=1)
                 if ((flags&m)!=0L)
                 { sb.Append(cm); cm = " "; sb.Append(keys[i-1]); }
             return sb.ToString();
@@ -225,7 +225,7 @@ namespace Pyrrho.Level2
         {
             var r = BTree<Sqlx, object>.Empty;
             var m = 1L;
-            for (var i = 1; i < keys.Length; i++, m <<= 1)
+            for (var i = 1; i <= keys.Length; i++, m <<= 1)
                 if ((flags & m) != 0L)
                 {
                     object v = "";
@@ -273,7 +273,7 @@ namespace Pyrrho.Level2
             sb.Append("]");
             var m = 1L;
             var cm = "";
-            for (var i = 1; i < keys.Length; i++, m <<= 1)
+            for (var i = 1; i <= keys.Length; i++, m <<= 1)
                 if ((flags&m)!=0L)
                 {
                     sb.Append(cm); cm = ","; sb.Append(keys[i-1]);

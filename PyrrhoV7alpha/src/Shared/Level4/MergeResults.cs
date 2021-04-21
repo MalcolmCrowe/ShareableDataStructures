@@ -99,10 +99,6 @@ namespace Pyrrho.Level4
         {
             return (MergeRowSet)rs.New(rs.mem + x);
         }
-        public override Rvv _Rvv(Context cx)
-        {
-            return useLeft?cx.data[left]._Rvv(cx):cx.data[right]._Rvv(cx);
-        }
         internal override DBObject Relocate(long dp)
         {
             return new MergeRowSet(dp, mem);

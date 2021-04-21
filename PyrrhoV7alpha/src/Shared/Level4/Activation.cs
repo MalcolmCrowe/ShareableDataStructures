@@ -702,7 +702,7 @@ namespace Pyrrho.Level4
         }
         internal override void EachRow()
         {
-            var cu = (RestRowSet.RestCursor)_cx.cursors[_rr.defpos];
+            var cu = (RestRowSet.RestCursor)cursors[_rr.defpos];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             var (url, targetName, sql) = _rr.GetUrl(this, vi);
             var rq = _rr.GetRequest(this, url);
@@ -750,7 +750,7 @@ namespace Pyrrho.Level4
                         rq.Accept = _vw.mime ?? "application/json";
                         rq.Method = "PUT";
                         cm = "[{";
-                        vs = _cx.cursors[_rr.defpos].values;
+                        vs = cursors[_rr.defpos].values;
                         for (var b = _rr.assig.First(); b != null; b = b.Next())
                         {
                             var ua = b.key();

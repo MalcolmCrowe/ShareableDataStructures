@@ -193,6 +193,10 @@ namespace Pyrrho.Level4
         {
             return (RowSet)rs.New(rs.mem+x);
         }
+        internal virtual string DbName(Context cx)
+        {
+            return cx.db.name;
+        }
         internal virtual RowSet Relocate1(Context cx)
         {
             var rs = this;
@@ -486,13 +490,6 @@ namespace Pyrrho.Level4
             var sv = cx.obs[p];
             var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
             return cx.Inf(p)?.name ?? n??("Col"+i);
-        }
-        public virtual Rvv _Rvv(Context cx)
-        {
-            var r = Rvv.Empty;
-            for (var b = rsTargets.First(); b != null; b = b.Next())
-                r += (b.value(),cx.cursors[b.value()]);
-            return r;
         }
         internal virtual RowSet Source(Context cx)
         {
@@ -911,6 +908,19 @@ namespace Pyrrho.Level4
         }
         protected abstract Cursor _Next(Context cx);
         protected abstract Cursor _Previous(Context cx);
+        internal void _Rvv(Context cx)
+        {
+            var rs = cx.data[_rowsetpos];
+            var dn = rs.DbName(cx);
+            var etag = cx.etags[dn]??Rvv.Empty;
+            for (var b = rs.rsTargets.First(); b != null; b = b.Next())
+                if ((rs.where == CTree<long, bool>.Empty && rs.matches == CTree<long, TypedValue>.Empty)
+                    || rs.aggregates(cx))
+                    etag += (b.key(), (-1L, ((Table)cx.obs[b.key()]).lastData));
+                else
+                    etag += (b.key(), cx.cursors[b.value()]);
+            cx.etags += (dn, etag);
+        }
         internal bool Matches(Context cx)
         {
             var rs = cx.data[_rowsetpos];
@@ -1173,10 +1183,6 @@ namespace Pyrrho.Level4
             if (ags != assig)
                 cx.data += (defpos, this + (Query.Assig, ags));
             return sg;
-        }
-        public override Rvv _Rvv(Context cx)
-        {
-            return cx.data[source]._Rvv(cx)??Rvv.Empty;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -1453,10 +1459,6 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new SelectRowSet(defpos,m);
-        }
-        public override Rvv _Rvv(Context cx)
-        {
-            return cx.data[source]?._Rvv(cx)??Rvv.Empty;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -1814,10 +1816,6 @@ namespace Pyrrho.Level4
             return (TableRowSet)rs.New(rs.mem + x);
         }
         internal override bool TableColsOk => true;
-        public override Rvv _Rvv(Context cx)
-        {
-            return Rvv.Empty+(target,cx.cursors[defpos]);
-        }
         internal override DBObject Relocate(long dp)
         {
             return new TableRowSet(dp,mem);
@@ -2068,12 +2066,6 @@ namespace Pyrrho.Level4
             return (IndexRowSet)rs.New(rs.mem + x);
         }
         internal override bool TableColsOk => true;
-        public override Rvv _Rvv(Context cx)
-        {
-            return (cx.cursors[defpos] is Cursor cu)?
-                Rvv.Empty+(target,cu)
-                : cx.affected;
-        }
         internal override DBObject Relocate(long dp)
         {
             return new IndexRowSet(dp,mem);
@@ -2722,11 +2714,6 @@ namespace Pyrrho.Level4
             }
             return this;
         }
-        public override Rvv _Rvv(Context cx)
-        {
-            var tv = (TRvv)(cx.cursors[defpos]?[Rvv.RVV]);
-            return tv?.rvv;
-        }
         internal override DBObject Relocate(long dp)
         {
             return new OrderedRowSet(dp, mem);
@@ -2777,8 +2764,6 @@ namespace Pyrrho.Level4
                     vs += (s.defpos,s.Eval(_cx));
                 }
                 var rw = new TRow(dm, vs);
-                if (cx.affected!=null && !e.values.Contains(Rvv.RVV))
-                    e += (cx,Rvv.RVV, new TRvv(sce._Rvv(_cx)));
                 RTree.Add(ref tree, rw, _cx.cursors);
             }
             return new OrderedRowSet(cx,this,needed,tree);
@@ -3083,10 +3068,6 @@ namespace Pyrrho.Level4
             var rs = new TableExpRowSet(cx.GetUid(), m);
             Fixup(cx, rs);
             return rs;
-        }
-        public override Rvv _Rvv(Context cx)
-        {
-            return cx.data[source]?._Rvv(cx)??Rvv.Empty;
         }
         static CTree<long,Finder> _Fin(CTree<long,Finder> fi,RowSet sc)
         {
@@ -4912,9 +4893,11 @@ namespace Pyrrho.Level4
         {
             return new RestRowSet(defpos,m);
         }
-        public override Rvv _Rvv(Context cx)
+        internal override string DbName(Context cx)
         {
-            return Rvv.Empty + (target,cx.cursors[defpos]);
+            var _vw = (RestView)cx.obs[restView];
+            var vi = (ObInfo)cx.db.role.infos[_vw.viewPpos];
+            return GetUrl(cx,vi).Item1;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -5007,6 +4990,19 @@ namespace Pyrrho.Level4
                 var cr = user + ":" + password;
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
                 rq.Headers.Add("Authorization: Basic " + d);
+                var _vw = (RestView)cx.obs[restView];
+                var vi = (ObInfo)cx.db.role.infos[_vw.viewPpos];
+                var xc = cx;
+                while (xc.next != null)
+                    xc = xc.next;
+                if (vi.metadata.Contains(Sqlx.ETAG))
+                {
+                    var dn = url.Split('/')[3];
+                    var s = xc.etags[dn]?.ToString()??"";
+                    if (s == "")
+                        s = "*";
+                    rq.Headers.Add("If-Match: \"" + s + "\"");
+                }
             }
             return rq;
         }
@@ -5026,6 +5022,8 @@ namespace Pyrrho.Level4
                     throw new DBException("42105");
                 if (wr.StatusCode == HttpStatusCode.Forbidden)
                     throw new DBException("42105");
+                if ((int)wr.StatusCode == 412)
+                    throw new DBException("40000");
             }
             catch (Exception e)
             {
@@ -5159,6 +5157,10 @@ namespace Pyrrho.Level4
             if (wr == null)
                 throw new DBException("2E201", url);
             var et = wr.GetResponseHeader("ETag");
+            if (et != null && et.StartsWith("W/"))
+                et = et.Substring(2);
+            if (et != null)
+                et = et.Trim('"');
             var ds = wr.GetResponseHeader("Description");
             var cl = wr.GetResponseHeader("Classification");
             var ld = wr.GetResponseHeader("LastData");
@@ -5180,10 +5182,12 @@ namespace Pyrrho.Level4
             }
             s.Close();
             var r = this+(RestValue,a)+(Built,true);
-            if (et != null)
+            if (et != null && et!="")
             {
                 r += (ETag, et);
-                if (PyrrhoStart.DebugMode)
+                var dn = url.Split('/')[3];
+                cx.etags += (dn,cx.etags[dn]+Rvv.Parse(et));
+                if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                     Console.WriteLine("Response ETag: " + et);
             }
             if (ds != null)

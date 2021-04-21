@@ -2552,7 +2552,7 @@ namespace Pyrrho.Level3
                                 case Sqlx.TIMESTAMP: str = ((DateTime)(v.Val())).ToString(culture); break;
                                 case Sqlx.DATE: str = ((Date)v.Val()).date.ToString(culture); break;
                                 case Sqlx.CHAR: str = (string)v.Val(); break;
-                                case Sqlx.CHECK: str = ((Rvv)v.Val()).ToString(); break;
+                                case Sqlx.CHECK: str = ((Rvv)v.Val())?.ToString()??""; break;
                                 default: //str = v.ToString(); break;
                                     throw new DBException("22005", vt.kind, vk);
                             }

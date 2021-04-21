@@ -3181,7 +3181,8 @@ CallingConventions.HasThis, new Type[0], null);
         { info.Add("WITH", reason); }
         public TransactionConflict(string sig,string[] obs) :base(sig,obs)
         {
-            info.Add("WITH", obs[1]+" "+obs[2]);
+            if (obs.Length>2)
+                info.Add("WITH", obs[1]+" "+obs[2]);
         }
     }
 #if (EMBEDDED)
