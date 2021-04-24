@@ -386,22 +386,22 @@ namespace Pyrrho.Level3
                 switch (method)
                 {
                     case "GET":
-                        db.Execute(cx, From._static, id + ".", path, 2, es);
+                        db.Execute(cx, From._static, method, path, 2, es);
                         break;
                     case "DELETE":
-                        db.Execute(cx, From._static, id + ".", path, 2, es);
+                        db.Execute(cx, From._static,method, path, 2, es);
                         cx = db.Delete(cx, cx.data[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, From._static, id + ".", path, 2, es);
+                        db.Execute(cx, From._static,method, path, 2, es);
                         cx = db.Put(cx,cx.data[cx.result], sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
                     case "POST":
                         db.Execute(cx, From._static,id + ".", path, 2, es);
-        //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
-        //                db.Post(tr.result?.rowSet, sdata);
+                        //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
+                        cx = db.Post(cx, cx.data[cx.result],sdata);
                         break;
                 }
             }
@@ -422,7 +422,7 @@ namespace Pyrrho.Level3
         /// <param name="ro"></param>
         /// <param name="path"></param>
         /// <param name="p"></param>
-        internal void Execute(Context cx, From f,string id, string[] path, int p, string etag)
+        internal void Execute(Context cx, From f,string method, string[] path, int p, string etag)
         {
             if (p >= path.Length || path[p] == "")
             {
@@ -643,7 +643,7 @@ namespace Pyrrho.Level3
                         else if (ob is Role ro)
                         {
                             cx.db += (Role, ro.defpos);
-                            Execute(cx, f, id, path, p + 1, etag);
+                            Execute(cx, f, method, path, p + 1, etag);
                             return;
                         }
                         if (cn.Contains(":"))
@@ -689,7 +689,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42107", sp[0]).Mix();
                     }
             }
-            Execute(cx, f, id + "." + p, path, p + 1, etag);
+            Execute(cx, f, method, path, p + 1, etag);
         }
         internal override Context Put(Context cx, RowSet r, string s)
         {
@@ -731,7 +731,9 @@ namespace Pyrrho.Level3
                 }
                 rws += (cx.nextHeap++, new TRow(r.domain,vs));
             }
-            rs += (RowSet._Source,new ExplicitRowSet(cx.nextHeap++,r.domain,rws));
+            var ers = new ExplicitRowSet(cx.nextHeap++, r.domain, rws);
+            cx.data += (ers.defpos, ers);
+            rs += (RowSet._Source, ers.defpos);
             return rs.Insert(cx, rs, true, "", null);
         }
         /// <summary>

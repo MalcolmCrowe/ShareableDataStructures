@@ -170,6 +170,12 @@ namespace Pyrrho.Level2
         {
             return new PMetadata(this, wr);
         }
+        internal override void Relocate(Context cx)
+        {
+            refpos = cx.ObUnheap(refpos);
+            defpos = cx.ObUnheap(defpos);
+            Install(cx, cx.db.loadpos);
+        }
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>

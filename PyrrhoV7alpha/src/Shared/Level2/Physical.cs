@@ -506,22 +506,24 @@ namespace Pyrrho.Level2
         internal string target;
         internal string sql;
         internal string user;
-        internal RestView rv;
+        internal RestView _vw;
+        internal RestRowSet _rr;
         internal Context _cx;
         internal bool committed = false;
-        internal Post(string u,string tn,string s,string us,RestView r,
+        internal Post(string u,string tn,string s,string us,RestView r,RestRowSet rr,
             long cp,Context cx):base(Type.Post,cp,cx)
         {
             url = u;
             sql = s;
             target = tn;
             user = us;
-            rv = r;
+            _vw = r;
+            _rr  = rr;
             _cx = cx;
         }
         HttpWebRequest GetRequest()
         {
-            string user = rv.clientName ?? _cx.user.name, password = rv.clientPassword;
+            string user = _vw.clientName ?? _cx.user.name, password = _vw.clientPassword;
             var ss = url.Split('/');
             if (ss.Length > 3)
             {
@@ -573,9 +575,18 @@ namespace Pyrrho.Level2
         {
             return this;
         }
-
         internal override void Install(Context cx, long p)
         {
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("Post");
+            sb.Append(" "); sb.Append(target);
+            sb.Append(" "); sb.Append(url);
+            sb.Append(" "); sb.Append(sql);
+            sb.Append(" "); sb.Append(DBObject.Uid(_vw.defpos));
+            sb.Append("="); sb.Append(DBObject.Uid(_rr.defpos));
+            return sb.ToString();
         }
     }
 }

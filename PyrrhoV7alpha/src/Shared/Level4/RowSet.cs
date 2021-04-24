@@ -3212,12 +3212,19 @@ namespace Pyrrho.Level4
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
         internal ExplicitRowSet(long dp,Domain dt,BList<(long,TRow)>r)
-            : base(dp, new BTree<long,object>(ExplRows,r)+(_Domain,dt))
+            : base(dp, _Fin(dp,dt)+(ExplRows,r)+(_Domain,dt))
         { }
         ExplicitRowSet(Context cx, ExplicitRowSet rs, CTree<long, Finder> nd, bool bt) 
             : base(cx, rs, nd, bt) 
         { }
         protected ExplicitRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Fin(long dp,Domain dt)
+        {
+            var f = CTree<long, Finder>.Empty;
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+                f += (b.value(), new Finder(b.value(), dp));
+            return new BTree<long, object>(_Finder, f);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new ExplicitRowSet(defpos,m);

@@ -587,7 +587,7 @@ namespace Pyrrho.Level4
                         }
                     _sql.Append(")");
                     _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                        _vw, _cx.db.nextPos, this));
+                        _vw, _rr, _cx.db.nextPos, this));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_rr.assig.Count == 0)
@@ -629,7 +629,7 @@ namespace Pyrrho.Level4
                             }
                         }
                         _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                            _vw, _cx.db.nextPos, this));
+                            _vw, _rr, _cx.db.nextPos, this));
                     }
                     break;
             }
@@ -652,7 +652,7 @@ namespace Pyrrho.Level4
                             }
                         }
                         _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                            _vw, _cx.db.nextPos, this));
+                            _vw, _rr, _cx.db.nextPos, this));
                     }
                     break;
 
@@ -702,7 +702,7 @@ namespace Pyrrho.Level4
         }
         internal override void EachRow()
         {
-            var cu = (RestRowSet.RestCursor)cursors[_rr.defpos];
+            var cu = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             var (url, targetName, sql) = _rr.GetUrl(this, vi);
             var rq = _rr.GetRequest(this, url);
@@ -723,7 +723,10 @@ namespace Pyrrho.Level4
                         {
                             sql.Append(cm); cm = ",";
                             sql.Append('"'); sql.Append(b.key());
-                            sql.Append("\":"); sql.Append(vs[b.value()[_rr.defpos]]);
+                            sql.Append("\":"); 
+                            var v =vs[b.value()[_vw.viewPpos]];
+                            sql.Append((v is TChar) ? ("'" + v.ToString() + "'")
+                                : v.ToString());
                         }
                         sql.Append("}]");
                         RoundTrip(this,_rr, rq, url, sql);

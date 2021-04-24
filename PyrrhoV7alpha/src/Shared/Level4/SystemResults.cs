@@ -693,7 +693,10 @@ namespace Pyrrho.Level4
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                 {
-                    var rb = new LogBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                    var np = _cx.db._NextPhysical(lb.key());
+                    if (np.Item1 == null)
+                        return null;
+                    var rb = new LogBookmark(_cx, res, 0, np);
                     if (!rb.Match(res))
                         return null;
                     if (Eval(res.where, _cx))
@@ -705,7 +708,10 @@ namespace Pyrrho.Level4
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                 {
-                    var rb = new LogBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                    var np = _cx.db._NextPhysical(lb.key());
+                    if (np.Item1 == null)
+                        return null;
+                    var rb = new LogBookmark(_cx, res, 0, np);
                     if (!rb.Match(res))
                         return null;
                     if (Eval(res.where, _cx))
@@ -4808,9 +4814,9 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
             t+=new SystemTableColumn(t, "View", Domain.Char,1);
             t+=new SystemTableColumn(t, "Select", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Using", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Using", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("View");
             t.AddIndex("Pos");
             t.Add();
@@ -4855,9 +4861,11 @@ namespace Pyrrho.Level4
                 if (ob is RestView rv)
                 {
                     var tb = (Table)_cx.db.objects[rv.usingTable];
-                    var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
                     if (tb != null)
+                    {
+                        var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
                         us = oi.name;
+                    }
                     st = rv.name;
                 }
                 var vw = (View)ob;
@@ -6975,7 +6983,7 @@ namespace Pyrrho.Level4
                     if (oi == null)
                         continue;
                     var ou = ObInfo.Metadata(oi.metadata,oi.description);
-                    if (ou=="")
+                    if (ou=="" && oi.description=="")
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, _pos+1, en);
                     if (rb.Match(res) && Query.Eval(res.where, _cx))

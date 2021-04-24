@@ -389,14 +389,6 @@ namespace Pyrrho.Level4
                 Console.WriteLine(ph.ToString());
             db.Add(this, ph, lp);
         }
-        internal void Inf(BTree<long,ObInfo> infos)
-        {
-            for (var b = infos?.First();b!=null;b=b.Next())
-            {
-                var oi = b.value();
-                defs += (oi.name, oi.defpos, Ident.Idents.Empty);
-            }
-        }
         internal Domain Add(Domain dm)
         {
             throw new PEException("PE999");

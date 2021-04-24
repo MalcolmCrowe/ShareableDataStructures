@@ -4818,7 +4818,7 @@ namespace Pyrrho.Level3
                 case Sqlx.CEILING: return val?.domain ?? Domain.UnionNumeric;
                 case Sqlx.CHAR_LENGTH: return Domain.Int;
                 case Sqlx.CHARACTER_LENGTH: return Domain.Int;
-                case Sqlx.CHECK: cx.affected = Rvv.Empty; return Domain.Char;
+                case Sqlx.CHECK: return Domain.Rvv;
                 case Sqlx.COLLECT: return Domain.Collection;
                 case Sqlx.COUNT: return Domain.Int;
                 case Sqlx.CURRENT: return Domain.Bool; // for syntax check: CURRENT OF
@@ -4995,7 +4995,14 @@ namespace Pyrrho.Level3
                         return new TInt(0);
                     }
                 case Sqlx.CHARACTER_LENGTH: goto case Sqlx.CHAR_LENGTH;
-                case Sqlx.CHECK: return new TRvv(cx,"");
+                case Sqlx.CHECK: 
+                    {
+                        var rv = Rvv.Empty;
+                        for (var b = cx.data[from].rsTargets.First(); b != null; b = b.Next())
+                            if (cx.cursors[b.value()] is Cursor c)
+                                rv += (b.key(), (c._defpos, c._ppos));
+                        return new TRvv(rv);
+                    }
                 case Sqlx.COLLECT: return domain.Coerce(cx,(TypedValue)fc.mset ??TNull.Value);
                 //		case Sqlx.CONVERT: transcoding all seems to be implementation-defined TBD
                 case Sqlx.COUNT: return new TInt(fc.count);
@@ -5542,10 +5549,10 @@ namespace Pyrrho.Level3
                         var v = vl.Eval(cx);
                         if (v == null)
                         {
-       //                     (tr as Transaction)?.Warning("01003");
+                            //                     (tr as Transaction)?.Warning("01003");
                             break;
                         }
-        //                etag = ETag.Add(v.etag, etag);
+                        //                etag = ETag.Add(v.etag, etag);
                     }
                     fc.count++;
                     goto case Sqlx.SUM;
@@ -5558,9 +5565,9 @@ namespace Pyrrho.Level3
                         {
                             if (v.Val() is bool)
                                 fc.bval = fc.bval || (bool)v.Val();
-               //             else
-               //                 (tr as Transaction)?.Warning("01003");
-              //              etag = ETag.Add(v.etag, etag);
+                            //             else
+                            //                 (tr as Transaction)?.Warning("01003");
+                            //              etag = ETag.Add(v.etag, etag);
                         }
                         break;
                     }
@@ -5573,11 +5580,11 @@ namespace Pyrrho.Level3
                         var v = vl.Eval(cx);
                         if (v != null)
                         {
-                            ar+=v;
-                //            etag = ETag.Add(v.etag, etag);
+                            ar += v;
+                            //            etag = ETag.Add(v.etag, etag);
                         }
-               //         else
-                //            (tr as Transaction)?.Warning("01003");
+                        //         else
+                        //            (tr as Transaction)?.Warning("01003");
                     }
                     break;
                 case Sqlx.COLLECT:
@@ -5590,10 +5597,10 @@ namespace Pyrrho.Level3
                             if (v != null)
                             {
                                 fc.mset.Add(v);
-                  //              etag = ETag.Add(v.etag, etag);
+                                //              etag = ETag.Add(v.etag, etag);
                             }
-                //            else
-                //                (tr as Transaction)?.Warning("01003");
+                            //            else
+                            //                (tr as Transaction)?.Warning("01003");
                         }
                         break;
                     }
@@ -5608,7 +5615,7 @@ namespace Pyrrho.Level3
                         if (v != null && !v.IsNull)
                         {
                             fc.count++;
-            //                etag = ETag.Add(v.etag, etag);
+                            //                etag = ETag.Add(v.etag, etag);
                         }
                     }
                     break;
@@ -5618,21 +5625,21 @@ namespace Pyrrho.Level3
                         if (v is TBool vb)
                         {
                             fc.bval = fc.bval && vb.value.Value;
-   //                         etag = ETag.Add(v.etag, etag);
+                            //                         etag = ETag.Add(v.etag, etag);
                         }
-         //               else
-         //                   tr.Warning("01003");
+                        //               else
+                        //                   tr.Warning("01003");
                         break;
                     }
                 case Sqlx.FIRST:
                     if (vl != null && fc.acc == null)
                     {
                         fc.acc = vl.Eval(cx);
-            //            if (fd.cur.acc != null)
-             //           {
-             //               domain = fd.cur.acc.dataType;
-            //                etag = ETag.Add(cur.acc.etag, etag);
-             //           }
+                        //            if (fd.cur.acc != null)
+                        //           {
+                        //               domain = fd.cur.acc.dataType;
+                        //                etag = ETag.Add(cur.acc.etag, etag);
+                        //           }
                     }
                     break;
                 case Sqlx.FUSION:
@@ -5642,30 +5649,30 @@ namespace Pyrrho.Level3
                             var vv = vl.Eval(cx);
                             if (vv == null || vv.IsNull)
                                 fc.mset = new TMultiset(vl.domain.elType); // check??
-            //                else
-            //                    (tr as Transaction)?.Warning("01003");
+                                                                           //                else
+                                                                           //                    (tr as Transaction)?.Warning("01003");
                         }
                         else
                         {
                             var v = vl.Eval(cx);
                             fc.mset = TMultiset.Union(fc.mset, v as TMultiset, true);
-              //              etag = ETag.Add(v?.etag, etag);
+                            //              etag = ETag.Add(v?.etag, etag);
                         }
                         break;
                     }
                 case Sqlx.INTERSECTION:
                     {
                         var v = vl.Eval(cx);
-               //         if (v == null)
-               //             (tr as Transaction)?.Warning("01003");
-               //         else
+                        //         if (v == null)
+                        //             (tr as Transaction)?.Warning("01003");
+                        //         else
                         {
                             var mv = v as TMultiset;
                             if (fc.mset == null || fc.mset.IsNull)
                                 fc.mset = mv;
                             else
                                 fc.mset = TMultiset.Intersect(fc.mset, mv, true);
-               //             etag = ETag.Add(v.etag, etag);
+                            //             etag = ETag.Add(v.etag, etag);
                         }
                         break;
                     }
@@ -5673,11 +5680,11 @@ namespace Pyrrho.Level3
                     if (vl != null)
                     {
                         fc.acc = vl.Eval(cx);
-                 //       if (fd.cur.acc != null)
-                 //       {
-                //            domain = cur.acc.dataType;
-                //            etag = ETag.Add(val.etag, etag);
-                 //       }
+                        //       if (fd.cur.acc != null)
+                        //       {
+                        //            domain = cur.acc.dataType;
+                        //            etag = ETag.Add(val.etag, etag);
+                        //       }
                     }
                     break;
                 case Sqlx.MAX:
@@ -5686,10 +5693,10 @@ namespace Pyrrho.Level3
                         if (v != null && (fc.acc == null || fc.acc.CompareTo(v) < 0))
                         {
                             fc.acc = v;
-               //             etag = ETag.Add(v.etag, etag);
+                            //             etag = ETag.Add(v.etag, etag);
                         }
-              //          else
-               //             (tr as Transaction)?.Warning("01003");
+                        //          else
+                        //             (tr as Transaction)?.Warning("01003");
                         break;
                     }
                 case Sqlx.MIN:
@@ -5698,10 +5705,10 @@ namespace Pyrrho.Level3
                         if (v != null && (fc.acc == null || fc.acc.CompareTo(v) > 0))
                         {
                             fc.acc = v;
-             //             etag = ETag.Add(v.etag, etag);
+                            //             etag = ETag.Add(v.etag, etag);
                         }
-             //           else
-             //               (tr as Transaction)?.Warning("01003");
+                        //           else
+                        //               (tr as Transaction)?.Warning("01003");
                         break;
                     }
                 case Sqlx.STDDEV_POP: // not used for Remote
@@ -5718,12 +5725,12 @@ namespace Pyrrho.Level3
                 case Sqlx.SUM:
                     {
                         var v = vl.Eval(cx);
-                        if (v==null)
+                        if (v == null)
                         {
-                //            tr.Warning("01003");
+                            //            tr.Warning("01003");
                             return tg;
                         }
-               //         etag = ETag.Add(v.etag, etag);
+                        //         etag = ETag.Add(v.etag, etag);
                         switch (fc.sumType.kind)
                         {
                             case Sqlx.CONTENT:
@@ -5731,15 +5738,18 @@ namespace Pyrrho.Level3
                                 {
                                     fc.sumType = Domain.Int;
                                     fc.sumLong = v.ToLong().Value;
-                                } else if (v is TInteger)
+                                }
+                                else if (v is TInteger)
                                 {
                                     fc.sumType = Domain.Int;
                                     fc.sumInteger = (Integer)v.Val();
-                                } else if (v is TReal)
+                                }
+                                else if (v is TReal)
                                 {
                                     fc.sumType = Domain.Real;
                                     fc.sum1 = ((TReal)v).dvalue;
-                                } else if (v is TNumeric)
+                                }
+                                else if (v is TNumeric)
                                 {
                                     fc.sumType = Domain.Numeric;
                                     fc.sumDecimal = ((TNumeric)v).value;
@@ -5758,7 +5768,8 @@ namespace Pyrrho.Level3
                                     }
                                     else
                                         fc.sumInteger = fc.sumInteger + new Integer(a);
-                                } else if (v is TInteger)
+                                }
+                                else if (v is TInteger)
                                 {
                                     Integer a = ((TInteger)v).ivalue;
                                     if (fc.sumInteger == null)
@@ -5789,14 +5800,14 @@ namespace Pyrrho.Level3
                         if (o != null)
                         {
                             fc.sb.Append(o.ToString());
-                 //           etag = ETag.Add(o.etag, etag);
+                            //           etag = ETag.Add(o.etag, etag);
                         }
-                //        else
-                 //           tr.Warning("01003");
+                        //        else
+                        //           tr.Warning("01003");
                         break;
                     }
                 default:
-                    vl?.AddIn(cx,rb,tg);
+                    vl?.AddIn(cx, rb, tg);
                     break;
             }
             return tg; 

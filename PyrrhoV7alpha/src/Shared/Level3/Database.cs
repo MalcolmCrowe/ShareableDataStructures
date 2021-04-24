@@ -6,8 +6,6 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
 using System.Security.Principal;
-using System.Security.AccessControl;
-using System.Runtime.CompilerServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //

@@ -511,6 +511,7 @@ namespace Pyrrho.Level3
                 case Sqlx.INTEGER: return 1;
                 case Sqlx.NUMERIC: return 2;
                 case Sqlx.REAL: return 8;
+                case Sqlx.CHECK: 
                 case Sqlx.LEVEL:
                 case Sqlx.NCHAR: return 3;
                 case Sqlx.CHAR: return 3;
