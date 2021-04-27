@@ -17,10 +17,11 @@ using Pyrrho.Level4;
 
 namespace Pyrrho.Level3
 {
-	/// <summary>
-	/// A Trigger database object
-	/// </summary>
-	internal class Trigger : DBObject
+    /// <summary>
+    /// A Trigger database object
+    /// // shareable as at 26 April 2021
+    /// </summary>
+    internal class Trigger : DBObject
 	{
         internal const long
             Action = -290, // long Executable
@@ -30,7 +31,6 @@ namespace Pyrrho.Level3
             OldTable = -296, // long Query
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // CList<long> SqlValue
-        public string name => (string)mem[Name];
         public long table => (long)mem[From.Target];
         /// <summary>
         /// The trigger type (flags)

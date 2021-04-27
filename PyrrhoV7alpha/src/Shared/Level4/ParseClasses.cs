@@ -18,6 +18,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// Used while parsing a QuerySpecification,
     /// and removed at end of the parse (DoStars)
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class SqlStar : SqlValue
     {

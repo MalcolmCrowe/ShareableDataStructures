@@ -20,22 +20,22 @@ using System.Net.NetworkInformation;
 
 namespace Pyrrho.Level3
 {
-	/// <summary>
-	/// A database object for a view.
+    /// <summary>
+    /// A database object for a view.
     /// The domain is computed from the pv.viewdef immediately.
     /// Immutable
     /// However, we want to optimise queries deribed from views, so
     /// we use the second constructor to make a private immutable copy
     /// of the committed version.
-	/// </summary>
-	internal class View : DBObject
+    /// // shareable as of 26 April 2021
+    /// </summary>
+    internal class View : DBObject
 	{
         internal const long
             Targets = -154, // CList<long>  Table/View
             ViewCols = -378, // CTree<string,CTree<long,long>> Target SqlValue
             ViewDef = -379, // string
             ViewPpos = -377;// long View
-        public string name => (string)mem[Name];
         public string viewDef => (string)mem[ViewDef];
         public CTree<string, CTree<long,long>> viewCols =>
             (CTree<string, CTree<long,long>>)mem[ViewCols] 
@@ -520,6 +520,7 @@ namespace Pyrrho.Level3
     ///     CS (SUM(E+[K]) as C_2,F COUNT(E+[K]) as D_2), [K] is the current value of K from UF
     ///     GF (SUM(C_2) as C2,F,COUNT(D_2) as D2) 
     ///         -> QS(C2/D2 as "AVG(E+K)", F)
+    ///         // shareable as of 26 April 2021
     /// </summary>
     internal class RestView : View
     {

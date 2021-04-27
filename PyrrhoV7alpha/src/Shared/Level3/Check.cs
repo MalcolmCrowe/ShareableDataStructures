@@ -17,6 +17,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// Database Object for Check constraints
     /// Immutable
+    /// shareable
     /// </summary>
     internal class Check : DBObject
     {
@@ -27,7 +28,6 @@ namespace Pyrrho.Level3
         /// The object to which the check applies
         /// </summary>
         internal long checkobjpos => (long)(mem[From.Target]??-1L);
-        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The source SQL for the check constraint
         /// </summary>

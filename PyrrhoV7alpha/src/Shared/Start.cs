@@ -189,7 +189,7 @@ namespace Pyrrho
                                 if (db is Transaction td) // the SQL might or might not have been a Commit
                                 {
                                     db = td + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains, cx.db.types);
-                                    tcp.PutWarnings(td);
+                                    tcp.PutWarnings(cx);
                                 }
                                 tr = db;
                                 db = db.RdrClose(cx);
@@ -217,7 +217,7 @@ namespace Pyrrho
                                 if (db is Transaction td) // the SQL might or might not have been a Commit
                                 {
                                     db = td + (Transaction.ReadConstraint, cx.rdC);// + (Transaction.Domains,cx.db.types);
-                                    tcp.PutWarnings(td);
+                                    tcp.PutWarnings(cx);
                                 }
                                 tr = db;
                                 db = db.RdrClose(cx);
@@ -252,7 +252,7 @@ namespace Pyrrho
                                 db = db.Commit(cx);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Commit Transaction " + tr.uid);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
                                 break;
@@ -266,7 +266,7 @@ namespace Pyrrho
                                 db = db.Commit(cx);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Commit Transaction " + tr.uid);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.DoneTrace);
                                 tcp.PutInt(db.AffCount(cx));
                                 tcp.PutLong(ts);
@@ -321,7 +321,7 @@ namespace Pyrrho
                                 cx.parse = ExecuteStatus.Prepare;
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
                                 cx.db = (Transaction)db;
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 cx.unLex = true;
                                 // Prepared statements get relocated above db.nextPrep>=0x7000000000000000
                                 prepared += (nm, new PreparedStatement(cx));
@@ -349,7 +349,7 @@ namespace Pyrrho
                                 db = new Parser(cx).ParseSql(prepared[nm], cmp);
                                 cx.db = (Transaction)db;
                                 tr = (Transaction)db;
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 if (cx.result<0L)
                                 {
                                     db = db.RdrClose(cx);
@@ -384,7 +384,7 @@ namespace Pyrrho
                                 cx = new Context(tr);
                                 db = new Parser(cx).ParseSql(prepared[nm], cmp);
                                 cx.db = (Transaction)db;
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 if (cx.result<0L)
                                 {
                                     tr = (Transaction)db;
@@ -418,7 +418,7 @@ namespace Pyrrho
                                 //                if (PyrrhoStart.DebugMode && tn>t)
                                 //                    Console.WriteLine(""+(tn- t));
                                 tr = (Transaction)db + (Transaction.ReadConstraint, cx.rdC);// +(Transaction.Domains,cx.db.types);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 if (cx.result>0L)
                                 {
                                     tcp.PutSchema(cx);
@@ -435,17 +435,6 @@ namespace Pyrrho
                                 }
                                 break;
                             }
-
-                        // 5.0 allow continue after interactive error
-                        case Protocol.Mark:
-                            {
-                                db = db.Transact(db.nextId, "");
-                                var t = db as Transaction;
-                                if (t != null)
-                                    t += (Transaction._Mark, t);
-                            }
-                            break;
-
                         case Protocol.Get: // GET rurl
                             {
                                 string[] path = tcp.GetString().Split('/');
@@ -453,7 +442,7 @@ namespace Pyrrho
                                 cx = new Context(db);
                                 db.Execute(db.role, "G", path, 1, "");
                                 var tr = (Transaction)db;
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 if (cx.result>0)
                                 {
                                     tcp.PutSchema(cx);
@@ -474,7 +463,7 @@ namespace Pyrrho
                                 var tr = (Transaction)db;
                                 cx = new Context(tr);
                                 db.Execute(tr.role, "G", path, 1, "");
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 if (cx.result>0)
                                 {
                                     var rs = cx.data[cx.result];
@@ -494,7 +483,7 @@ namespace Pyrrho
                                 string tname = tcp.GetString();
                                 db = db.Transact(db.nextId, "");
                                 var tr = (Transaction)db;
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 var tb = tr.GetObject(tname) as Table;
                                 if (tb == null)
                                 {
@@ -524,7 +513,7 @@ namespace Pyrrho
                                 cx = psr.cx;
                                 tr = cx.tr;
                                 var trs = cx.data[cx.result-1];
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tr = cx.tr;
                                 tcp.PutSchema(cx);
                                 var recs = rb.Rec();
@@ -551,7 +540,7 @@ namespace Pyrrho
                                 var rs = cx.data[cx.result];
                                 if (rs != null)
                                     rb = rs.First(cx);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.PutSchema(cx);
                                 var recs = rb.Rec();
                                 var dt = rb.dataType;
@@ -590,7 +579,7 @@ namespace Pyrrho
                                 var jo = tcp.GetString();
                                 tr.Execute(cx, vb, "R", url, url.Split('/'), "application/json", jo, 
                                     new string[0]);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 db = tr.RdrClose(cx);
                                 rb = null;
                                 tcp.PutSchema(cx);
@@ -609,7 +598,7 @@ namespace Pyrrho
                                     var o = tcp.GetLong();
                                 }
                                 db = db.Commit(cx);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReport);
                                 PutReport(cx);
                                 break;
@@ -626,7 +615,7 @@ namespace Pyrrho
                                     var o = tcp.GetLong();
                                 }
                                 db = db.Commit(cx);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReport);
                                 tcp.PutInt(db.AffCount(cx));
                                 PutReport(cx);
@@ -645,7 +634,7 @@ namespace Pyrrho
                                     var o = tcp.GetLong();
                                 }
                                 db = db.Commit(cx);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReportTrace);
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
@@ -666,7 +655,7 @@ namespace Pyrrho
                                     var o = tcp.GetLong();
                                 }
                                 db = db.Commit(cx);
-                                tcp.PutWarnings(tr);
+                                tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReportTrace);
                                 tcp.PutInt(db.AffCount(cx));
                                 tcp.PutLong(ts);
@@ -1044,7 +1033,7 @@ namespace Pyrrho
             int m = r.display;
             if (m > 0)
             {
-                len += StringLength(cx.obs[r.defpos]?.mem[Basis.Name] ?? "");
+                len += StringLength(cx.obs[r.defpos]?.name);
                 int[] flags = new int[m];
                 r.Schema(cx, flags);
                 var j = 0;
@@ -1268,7 +1257,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (24 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (27 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

@@ -17,6 +17,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// A Level 3 Method definition (a subclass of Procedure)
     /// Immutable
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class Method : Procedure
     {

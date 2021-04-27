@@ -22,6 +22,7 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// A Database object representing a table column
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TableColumn : DBObject
     {
@@ -293,6 +294,7 @@ namespace Pyrrho.Level3
     /// At end of parsing, tc.gen.framing matches pc.generated.framing. 
     /// In case the transaction continues uncommitted, both should be relocated in RdrClose
     /// to fix any heap uids
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class GenerationRule : Basis
     {
@@ -348,6 +350,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// This is a type of Selector that corresponds to subColumn that is specified in a constraint
     /// and so must be realised in the physical infrastructure. 
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class ColumnPath : TableColumn
     {
@@ -405,6 +408,7 @@ namespace Pyrrho.Level3
     /// Table. 
     /// It is Role-independent, so it doesn't follow the representation of any domain 
     /// and therefore can't subclass TRow.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TableRow
     {
@@ -620,6 +624,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class RemoteTableRow : TableRow 
     {
         internal readonly string url;

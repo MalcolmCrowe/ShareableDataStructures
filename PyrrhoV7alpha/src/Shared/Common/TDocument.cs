@@ -22,6 +22,7 @@ namespace Pyrrho.Common
     /// Json format is used in SQL.
     /// Alas: Json format has positional fields, so we can't use simple string->Column tree
     /// IMMUTABLE - all fields are private
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TDocument : TypedValue
     {
@@ -664,7 +665,13 @@ namespace Pyrrho.Common
                         return r.ToArray();
                     }
                 case Sqlx.BLOB:
-                    return ((TBlob)v).value;
+                    {
+                        var b = (TBlob)v;
+                        var r = new byte[b.Length];
+                        for (var i = 0; i < b.Length; i++)
+                            r[i] = b[i];
+                        return r;
+                    }
                 case Sqlx.BOOLEAN:
                     return new byte[] { (byte)(v.ToBool().Value ? 1 : 0) };
                 case Sqlx.TIMESTAMP:
@@ -861,16 +868,18 @@ namespace Pyrrho.Common
     /// a) they have the same _Id
     /// b) the list of fields can be merged, that is for names A and B
     /// if W.colNames[A] lt W.colNames[B] then N.colNames[A] lt colNames[B]
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class Delta : TypedValue
     {
         internal enum Verb { Add,Change,Delta,Remove,All }
+        // shareable as of 26 April 2021
         internal class Action
         {
-            public int ix;
-            public Verb how;
-            public string name;
-            public TypedValue what;
+            public readonly int ix;
+            public readonly Verb how;
+            public readonly string name;
+            public readonly TypedValue what;
             public Action(int i, Verb h, string n, TypedValue w)
             { ix = i; how = h; name = n; what = w; }
             public Action(int i, string n) 
@@ -971,6 +980,7 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class TDocArray :TypedValue
     {
         readonly BList<TypedValue> content = BList<TypedValue>.Empty;

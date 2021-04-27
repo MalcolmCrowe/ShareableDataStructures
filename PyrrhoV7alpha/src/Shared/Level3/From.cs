@@ -27,6 +27,7 @@ namespace Pyrrho.Level3
     /// but will differ from it in general because of
     /// explicit column lists in syntax such as INSERT and CREATE VIEW.
     /// The domain of the VALUES will be the display columns of the From domain.
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class From : Query
     {
@@ -336,6 +337,7 @@ namespace Pyrrho.Level3
     /// The current approach is that in the above example domain is a's row type, nominaltype is for (b,c)
     /// and rows is a subquery before the renaming. 
     /// The renaming, reordering and coercion steps complicate the coding.
+    /// shareable
     /// </summary>
     internal class SqlInsert : Executable
     {
@@ -422,6 +424,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// QuerySearch is for DELETE and UPDATE 
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class QuerySearch : Executable
     {
@@ -509,6 +512,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a searched UPDATE statement as a kind of QuerySearch
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class UpdateSearch : QuerySearch
     {

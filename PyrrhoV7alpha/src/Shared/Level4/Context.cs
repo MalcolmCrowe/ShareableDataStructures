@@ -65,6 +65,9 @@ namespace Pyrrho.Level4
         public TypedValue val = TNull.Value;
         internal Database db = null;
         internal Transaction tr => db as Transaction;
+        internal BTree<long, Physical> physicals = BTree<long, Physical>.Empty;
+        internal BList<TriggerActivation> deferred = BList<TriggerActivation>.Empty;
+        internal BList<Exception> warnings = BList<Exception>.Empty;
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty;
         internal Framing frame = null;
         internal BTree<int, BTree<long, DBObject>> depths = BTree<int, BTree<long, DBObject>>.Empty;
@@ -151,7 +154,7 @@ namespace Pyrrho.Level4
             nextStmt = db.nextStmt;
             dbformat = db.format;
             parseStart = 0L;
-            physAtStepStart = (int)((db as Transaction)?.physicals.Count ?? 0L);
+            physAtStepStart = (int)physicals.Count;
             this.db = db;
             rdC = (db as Transaction)?.rdC;
             //            domains = (db as Transaction)?.domains;
@@ -918,6 +921,9 @@ namespace Pyrrho.Level4
             if (next == null)
                 return this;
             next.values += values;
+            next.warnings += warnings;
+            next.physicals += physicals;
+            next.deferred += deferred;
             next.val = val;
             next.nextHeap = nextHeap;
             next.nextStmt = nextStmt;
@@ -1302,6 +1308,7 @@ namespace Pyrrho.Level4
             return r;
         }
     }
+    // shareable as of 26 April 2021
     internal class Framing : Basis // for compiled code
     {
         internal const long
@@ -1613,62 +1620,29 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A period specification occurs in a table reference: AS OF/BETWEEN/FROM
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class PeriodSpec
     {
         /// <summary>
         /// the name of the period
         /// </summary>
-        public string periodname = "SYSTEM_TIME";
+        public readonly string periodname;
         /// <summary>
         /// AS, BETWEEN, SYMMETRIC, FROM
         /// </summary>
-        public Sqlx kind = Sqlx.NO;  
+        public readonly Sqlx kind = Sqlx.NO;  
         /// <summary>
         /// The first point in time specified
         /// </summary>
-        public SqlValue time1 = null;
+        public readonly SqlValue time1 = null;
         /// <summary>
         /// The second point in time specified
         /// </summary>
-        public SqlValue time2 = null;
-    }
-    /// <summary>
-    /// A Period Version class
-    /// </summary>
-    internal class PeriodVersion : IComparable
-    {
-        internal Sqlx kind; // NO, AS, BETWEEN, SYMMETRIC or FROM
-        internal DateTime time1;
-        internal DateTime time2;
-        internal long indexdefpos;
-        /// <summary>
-        /// Constructor: a Period Version
-        /// </summary>
-        /// <param name="k">NO, AS, BETWEEN, SYMMETRIC or FROM</param>
-        /// <param name="t1">The start time</param>
-        /// <param name="t2">The end time</param>
-        /// <param name="ix">The index</param>
-        internal PeriodVersion(Sqlx k,DateTime t1,DateTime t2,long ix)
-        { kind = k; time1 = t1; time2 = t2; indexdefpos = ix; }
-        /// <summary>
-        /// Compare versions
-        /// </summary>
-        /// <param name="obj">another PeriodVersion</param>
-        /// <returns>-1, 0, 1</returns>
-        public int CompareTo(object obj)
+        public readonly SqlValue time2 = null;
+        internal PeriodSpec(string n,Sqlx k,SqlValue t1,SqlValue t2)
         {
-            var that = obj as PeriodVersion;
-            var c = kind.CompareTo(that.kind);
-            if (c != 0)
-                return c;
-            c = time1.CompareTo(that.time1);
-            if (c != 0)
-                return c;
-            c = time2.CompareTo(that.time2);
-            if (c != 0)
-                return c;
-            return indexdefpos.CompareTo(that.indexdefpos);
+            periodname = n; kind = k; time1 = t1; time2 = t2;
         }
     }
 }

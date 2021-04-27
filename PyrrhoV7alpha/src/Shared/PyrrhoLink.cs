@@ -1129,17 +1129,18 @@ CallingConventions.HasThis, new Type[0], null);
 
         #region IDbCommand Members
 
-        public void Cancel()
+#if !EMBEDDED
+        public PyrrhoReader ExecuteReaderCrypt()
         {
-            // TODO:  Add PyrrhoCommand.Cancel implementation
+            if (!conn.isOpen)
+                throw new DatabaseError("2E201");
+            conn.AcquireExecution();
+            conn.Send(Protocol.ExecuteReaderCrypt);
+            conn.crypt.PutString(commandText);
+            return PyrrhoReader.New(this);
         }
-
-        public void Prepare()
-        {
-            // TODO:  Add PyrrhoCommand.Prepare implementation
-        }
-
-        internal PyrrhoReader _ExecuteReader()
+#endif
+        public PyrrhoReader ExecuteReader()
         {
             if (!conn.isOpen)
                 throw new DatabaseError("2E201");
@@ -1157,7 +1158,7 @@ CallingConventions.HasThis, new Type[0], null);
                 throw new DatabaseError(e);
             }
 #else
-            conn.Send(Protocol.ExecuteReader,commandText); 
+            conn.Send(Protocol.ExecuteReader, commandText);
 #endif
             return PyrrhoReader.New(this);
         }
@@ -1182,26 +1183,6 @@ CallingConventions.HasThis, new Type[0], null);
             return PyrrhoReader.New<T>(this, t);
         }
 #endif
-#if !EMBEDDED
-        public PyrrhoReader ExecuteReaderCrypt()
-        {
-            if (!conn.isOpen)
-                throw new DatabaseError("2E201");
-            conn.AcquireExecution();
-            conn.Send(Protocol.ExecuteReaderCrypt);
-            conn.crypt.PutString(commandText);
-            return PyrrhoReader.New(this);
-        }
-#endif
-        public PyrrhoReader ExecuteReader()
-        {
-#if !EMBEDDED
-            if (trans != null)
-                conn.Send(Protocol.Mark); // Mark for error recovery (5.0)
-#endif
-            return _ExecuteReader();
-        }
-
         public object ExecuteScalar()
         {
             var rdr = (PyrrhoReader)ExecuteReader();

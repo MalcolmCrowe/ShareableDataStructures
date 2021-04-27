@@ -15,16 +15,17 @@ using Pyrrho.Level4;
 
 namespace Pyrrho.Level3
 {
-	/// <summary>
-	/// A level 3 Procedure/Function object.
+    /// <summary>
+    /// A level 3 Procedure/Function object.
     /// The domain for the Procedure/Function gives the return type.
     /// The ObInfo is role-dependent and so is computed for the SqlCall.
     /// Similarly for the parameters.
     /// Execution always uses the definer's (PProcedure) versions, 
     /// fetched from the schema role.
     /// Immutable
-	/// </summary>
-	internal class Procedure : DBObject
+    /// // shareable as of 26 April 2021
+    /// </summary>
+    internal class Procedure : DBObject
 	{
         internal const long
             Body = -168, // long Executable
@@ -36,7 +37,6 @@ namespace Pyrrho.Level3
         /// The arity (number of parameters) of the procedure
         /// </summary>
 		public int arity => ins.Length;
-        public string name => (string)mem[Name];
         /// <summary>
         /// The body and ins stored in the database uses the definer's role. 
         /// These fields are filled in during Install.

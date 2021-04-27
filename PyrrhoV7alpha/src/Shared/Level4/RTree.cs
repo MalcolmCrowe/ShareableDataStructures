@@ -21,13 +21,13 @@ namespace Pyrrho.Level4
     /// Logically an RTree contains associations of form (TRow,RRow)
     /// RTree uses MTree for implementation.
     /// IMMUTABLE
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class RTree
     {
         internal readonly long defpos; // RowSet
         internal readonly Domain domain;
         internal CList<long> keyType => domain.rowType;
-        internal readonly Context _cx;
         internal readonly MTree mt;
         /// <summary>
         /// rows is a set of snapshots of cx.cursors, taken during Build.
@@ -40,30 +40,27 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
-        internal RTree(long dp,Context cx,CList<long> ks,Domain dt,
+        internal RTree(long dp,CList<long> ks,Domain dt,
             TreeBehaviour d=TreeBehaviour.Disallow,TreeBehaviour n=TreeBehaviour.Allow)
         {
             defpos = dp;
             domain = dt+(Domain.RowType,ks);
-            _cx = cx;
             mt = new MTree(new TreeInfo(ks,dt,d,n));
             rows = BList<BTree<long, Cursor>>.Empty;
         }
-        internal RTree(long dp, Context cx, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
+        internal RTree(long dp, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
              TreeBehaviour n = TreeBehaviour.Allow)
         {
             defpos = dp;
             domain = dt;
-            _cx = cx;
             var m = new MTree(new TreeInfo(dt.rowType, dt, d, n));
             mt = m;
             rows = BList<BTree<long, Cursor>>.Empty;
         }
-        protected RTree(long dp,Context cx,CList<long> k,Domain d,MTree m,
+        protected RTree(long dp,CList<long> k,Domain d,MTree m,
             BList<BTree<long,Cursor>> rs)
         {
             defpos = dp;
-            _cx = cx;
             domain = d+(Domain.RowType,k);
             mt = m;
             rows = rs;
@@ -74,7 +71,7 @@ namespace Pyrrho.Level4
             TreeBehaviour tb = MTree.Add(ref m, 
                 (k.Length==0)?null:new PRow(k), t.rows.Count);
             if (tb == TreeBehaviour.Allow)
-                t = new RTree(t.defpos,t._cx,t.keyType, t.domain, m, 
+                t = new RTree(t.defpos,t.keyType, t.domain, m, 
                     t.rows + v);
             return tb;
         }
@@ -88,21 +85,22 @@ namespace Pyrrho.Level4
         }
         internal RTree Fix(Context cx)
         {
-            return new RTree(cx.rsuids[defpos]??defpos, _cx, 
+            return new RTree(cx.rsuids[defpos]??defpos, 
                 cx.Fix(keyType), (Domain)domain.Fix(cx),
                 mt.Fix(cx),cx.Fix(rows));
         }
         internal RTree Relocate(Writer wr)
         {
-            return new RTree(wr.Fix(defpos), _cx, (Domain)domain._Relocate(wr),
+            return new RTree(wr.Fix(defpos), (Domain)domain._Relocate(wr),
                 mt.info.onDuplicate, mt.info.onNullKey);
         }
         internal RTree Replace(Context cx,DBObject so,DBObject sv)
         {
-            return new RTree(defpos, cx, cx.Replaced(keyType), (Domain)domain._Replace(cx,so,sv),
+            return new RTree(defpos,  cx.Replaced(keyType), (Domain)domain._Replace(cx,so,sv),
                 mt.Replaced(cx,so,sv), rows);
         }
     }
+    // shareable as of 26 April 2021
     internal class RTreeBookmark : Cursor
     {
         internal readonly RTree _rt;

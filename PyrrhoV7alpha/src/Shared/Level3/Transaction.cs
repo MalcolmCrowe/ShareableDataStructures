@@ -16,47 +16,34 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// DBObjects with transaction uids are add to the transaction's list of objects.
-    /// Transaction itself is immutable and shareable.
+    /// Transaction itself is not shareable because Physicals are mutable.
     /// 
     /// WARNING: Each new Physical for a transaction must be added to the Context
     /// so that Transaction gets a chance to update nextPos. Make sure you understand this fully
     /// before you add any code that creates a new Physical.
+    /// shareable as at 26 April 2021
     /// </summary>
     internal class Transaction : Database
     {
         internal const long
             AutoCommit = -278, // bool
-            Deferred = -279, // BList<TriggerActivation>
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
-            _Mark = -281, // Transaction
-            Physicals = -282, // BTree<long,Physical>
             ReadConstraint = -283, // BTree<long,ReadConstraint> Context has latest version
             Step = -276, // long
             StartTime = -287, //long
-            TriggeredAction = -288, // long
-            Warnings = -289; // BList<Exception>
-        internal BTree<long,Physical> physicals => 
-            (BTree<long,Physical>)mem[Physicals]?? BTree<long,Physical>.Empty;
+            TriggeredAction = -288; // long
         internal long startTime => (long)(mem[StartTime] ?? 0);
-   //     internal BTree<CList<long>,BTree<CList<Domain>,Domain>> domains => 
-   //         (BTree<CList<long>,BTree<CList<Domain>,Domain>>)mem[Domains]
-   //         ??BTree<CList<long>,BTree<CList<Domain>,Domain>>.Empty;
         public BTree<Sqlx, TypedValue> diagnostics =>
             (BTree<Sqlx,TypedValue>)mem[Diagnostics]??BTree<Sqlx, TypedValue>.Empty;
-        public BList<System.Exception> warnings =>
-            (BList<System.Exception>)mem[Warnings]??BList<System.Exception>.Empty;
         public BTree<long, ReadConstraint> rdC =>
             (BTree<long, ReadConstraint>)mem[ReadConstraint] ?? BTree<long, ReadConstraint>.Empty;
         internal override long uid => (long)(mem[NextId]??-1L);
         public override long lexeroffset => uid;
-        internal Transaction mark => (Transaction)mem[_Mark];
         internal long step => (long)(mem[Step] ?? TransPos);
         internal override long nextPos => (long)(mem[NextPos]??TransPos);
         internal override string source => (string)mem[CursorSpecification._Source];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
-        internal BList<TriggerActivation> deferred =>
-            (BList<TriggerActivation>)mem[Deferred] ?? BList<TriggerActivation>.Empty;
         /// <summary>
         /// Physicals, SqlValues and Executables constructed by the transaction
         /// will use virtual positions above this mark (see PyrrhoServer.nextIid)
@@ -122,7 +109,7 @@ namespace Pyrrho.Level3
         internal override int AffCount(Context cx)
         {
             var c = 0;
-            for (var b = physicals.PositionAt(cx.physAtStepStart); b != null;
+            for (var b = cx.physicals.PositionAt(cx.physAtStepStart); b != null;
                 b = b.Next())
                 if (b.value() is Record || b.value() is Delete)
                     c++;
@@ -136,7 +123,7 @@ namespace Pyrrho.Level3
         /// <returns>This Transaction with the compiled objects updated</returns>
         Database Unheap(Context cx)
         {
-            for (var b = physicals.PositionAt(step); b != null; b = b.Next())
+            for (var b = cx.physicals.PositionAt(step); b != null; b = b.Next())
                 b.value().Relocate(cx);
             return cx.db;
         }
@@ -163,27 +150,9 @@ namespace Pyrrho.Level3
         {
             if (cx.parse != ExecuteStatus.Obey)
                 return;
-            var d = cx.db as Transaction;
-            cx.db = new Transaction(d, lp, d.mem+(Physicals, d.physicals + (ph.ppos, ph))
-                + (NextPos, ph.ppos + 1));
+            cx.physicals += (ph.ppos, ph);
+            cx.db += (NextPos, ph.ppos + 1);
             ph.Install(cx, lp);
-        }
-        /// <summary>
-        /// Ensure that TriggeredAction effects get serialised after the event that triggers them. 
-        /// </summary>
-        /// <param name="rp">The triggering record</param>
-        internal void FixTriggeredActions(CTree<PTrigger.TrigType,CTree<long,bool>> trigs,
-            PTrigger.TrigType tgt, long rp)
-        {
-            for (var t = trigs.First(); t != null; t = t.Next())
-                if (t.key().HasFlag(tgt))
-                {
-                    var tgs = t.value();
-                    for (var b = physicals.First(); b != null; b = b.Next())
-                        if (b.value() is TriggeredAction ta && tgs.Contains(ta.trigger) 
-                                && ta.refPhys < 0)
-                            ta.refPhys = rp;
-                }
         }
         internal override Database Rollback(object e)
         {
@@ -214,15 +183,15 @@ namespace Pyrrho.Level3
         }
         internal override Database Commit(Context cx)
         {
-            if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
+            if (cx.physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0)
                 return parent.Commit(cx);
             // check for the case of an ad-hoc user that does not need to commit
-            if (physicals.Count == 1L && physicals.First().value() is PUser)
+            if (cx.physicals.Count == 1L && cx.physicals.First().value() is PUser)
                 return parent.Commit(cx);
-            for (var b=deferred.First();b!=null;b=b.Next())
+            for (var b=cx.deferred.First();b!=null;b=b.Next())
             {
                 var ta = b.value();
-                ta.deferred = false;
+                ta.defer = false;
                 ta.db = this;
                 ta.Exec();
             }
@@ -230,7 +199,7 @@ namespace Pyrrho.Level3
             var db = databases[name];
             var rdr = new Reader(new Context(db), loadpos);
             var wr = new Writer(new Context(db), dbfiles[name]);
-            var tb = physicals.First(); // start of the work we want to commit
+            var tb = cx.physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
             for (var pb=since.First(); pb!=null; pb=pb.Next())
@@ -295,14 +264,14 @@ namespace Pyrrho.Level3
                         }
                     }
                 }
-                if (physicals.Count == 0)
+                if (cx.physicals.Count == 0)
                     return parent.Commit(cx);
-                var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
+                var pt = new PTransaction((int)cx.physicals.Count, user.defpos, role.defpos,
                         nextPos, cx);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
                 var (tr, _) = pt.Commit(wr, this);
-                for (var b = physicals.First(); b != null; b = b.Next())
+                for (var b = cx.physicals.First(); b != null; b = b.Next())
                     (tr, _) = b.value().Commit(wr, tr);
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.etags += (name, (cx.etags[name] ?? Rvv.Empty) + cx.affected);
@@ -334,17 +303,13 @@ namespace Pyrrho.Level3
             r.Add(Sqlx.TRANSACTIONS_ROLLED_BACK, diagnostics[Sqlx.TRANSACTIONS_ROLLED_BACK]);
             return r;
         }
-        internal override Transaction Mark()
-        {
-            return this+(_Mark,this);
-        }
         internal Context Execute(Executable e, Context cx)
         {
             if (cx.parse != ExecuteStatus.Obey)
                 return cx;
             var a = new Activation(cx,e.label);
             a.exec = e;
-            cx = e.Obey(a); // Obey must not call the Parser!
+            var ac = e.Obey(a); // Obey must not call the Parser!
             if (a.signal != null)
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
@@ -353,6 +318,11 @@ namespace Pyrrho.Level3
                 throw ex;
             }
             cx.result = -1L;
+            if (cx != ac)
+            {
+                cx.physicals += ac.physicals;
+                cx.db = ac.db;
+            }
             return cx;
         }
         /// <summary>

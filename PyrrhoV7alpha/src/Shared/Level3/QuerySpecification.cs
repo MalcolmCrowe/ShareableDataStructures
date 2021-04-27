@@ -18,6 +18,7 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// QuerySpecification = SELECT [ALL|DISTINCT] SelectList TableExpression .
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class QuerySpecification : Query
     {

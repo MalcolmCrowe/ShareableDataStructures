@@ -35,9 +35,10 @@ namespace Pyrrho.Level3
         internal static long _uid = -500;
         internal const long Name = -50; // string
         static long _dbg = 0;
-        internal long dbg = ++_dbg;
+        internal readonly long dbg = ++_dbg;
         // negative keys are for system data, positive for user-defined data
-        public readonly BTree<long, object> mem;
+        internal readonly BTree<long, object> mem;
+        public string name => (string)mem[Name]??"";
         public virtual long lexeroffset => 0;
         protected Basis (BTree<long,object> m)
         {
@@ -78,7 +79,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
-            if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append((string)mem[Name]); }
+            if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append(name); }
             return sb.ToString();
         }
         // Tailor REST string for differnt remote DBMS
@@ -116,6 +117,7 @@ namespace Pyrrho.Level3
     /// can obviously play their part there. 
     /// 
     /// From version 7, the latest version of every record is held in memory.
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class Database : Basis
     {
@@ -158,7 +160,6 @@ namespace Pyrrho.Level3
             User = -277, // User: always the connection user
             _User = -301; // long: user.defpos, always the connection user, maybe uncommitted
         internal virtual long uid => -1;
-        public string name => (string)(mem[Name] ?? "");
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextPrep => (long)(mem[NextPrep] ?? PyrrhoServer.Preparing);

@@ -35,6 +35,7 @@ namespace Pyrrho.Level3
     /// (3) Conditions: Then examine SearchConditions and move them down the tree if possible
     /// (4) Orders: Then examine Orders and move them down the tree if possible (not below SearchConditions though) create Evaluation and ordering steps if required)
     /// (5) RowSets: Compute the rowset for the given query
+    /// shareable
     /// </summary>
     internal class Query : DBObject
     {
@@ -51,7 +52,6 @@ namespace Pyrrho.Level3
             Where = -190; // CTree<long,bool> Boolean conditions to be imposed by this query
         public CTree<long,bool> aggs => 
             (CTree<long,bool>)mem[Aggregates] ?? CTree<long,bool>.Empty;
-        public string name => (string)mem[Name] ?? "";
         internal CTree<long, TypedValue> matches =>
              (CTree<long, TypedValue>)mem[_Matches] ?? CTree<long, TypedValue>.Empty; // guaranteed constants
         internal CTree<long, CTree<long, bool>> matching =>
@@ -527,6 +527,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a CursorSpecification 
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class CursorSpecification : Query
     {
@@ -693,6 +694,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a TableExpression as a subclass of Query
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TableExpression : Query
     {
@@ -898,6 +900,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Join is implemented as a subclass of Query
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class JoinPart : Query
     {
@@ -1376,11 +1379,13 @@ namespace Pyrrho.Level3
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
                     var x = (Index)cx.db.objects[bx.value()];
+                    cx._Add(x);
                     if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey)
                     && x.tabledefpos == ta.defpos && x.reftabledefpos == tb.defpos)
                     {
                         var cs = CTree<long,long>.Empty;
                         var rx = (Index)cx.db.objects[x.refindexdefpos];
+                        cx._Add(x);
                         var br = rx.keys.First();
                         for (var bc=x.keys.First();bc!=null&&br!=null;bc=bc.Next(),br=br.Next())
                         {
@@ -1417,6 +1422,7 @@ namespace Pyrrho.Level3
                 for (var bx = ta.indexes.First(); bx != null; bx = bx.Next())
                 {
                     var x = (Index)tr.objects[bx.value()];
+                    cx._Add(x);
                     if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                         x.flags.HasFlag(PIndex.ConstraintType.Unique))
                     && x.tabledefpos == ta.defpos)
@@ -1487,8 +1493,12 @@ namespace Pyrrho.Level3
             }
             if (FDInfo is FDJoinPart fd)
             {
-                var ds = new IndexRowSet(cx, fd.table, fd.index,cx.Filter(fd.table,where));
-                var rs = new IndexRowSet(cx, fd.rtable, fd.rindex,null);
+                var tb = (Table)cx.obs[fd.table];
+                var ix = (Index)cx.obs[fd.index];
+                var rt = (Table)cx.obs[fd.rtable];
+                var rx = (Index)cx.obs[fd.rindex];
+                var ds = new IndexRowSet(cx, tb, ix, cx.Filter(tb,where));
+                var rs = new IndexRowSet(cx, rt, rx,null);
                 if (fd.reverse)
                     return new JoinRowSet(cx, this, Selected(cx,lf,ds,fi), 
                         Selected(cx,rg,rs,fi));
@@ -1564,26 +1574,27 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Information about functional dependency for join evaluation
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class FDJoinPart : Basis
     {
         internal const long
             FDConds = -211, // CTree<long,long> SqlValue,SqlValue
-            FDIndex = -212, // Index
-            FDRefIndex = -213, // Index
-            FDRefTable = -214, // Table
-            FDTable = -215, // Table
+            FDIndex = -212, // long Index
+            FDRefIndex = -213, // long Index
+            FDRefTable = -214, // long Table
+            FDTable = -215, // long Table
             Reverse = -216; // bool
         /// <summary>
         /// The primary key Index giving the functional dependency
         /// </summary>
-        public Index index => (Index)mem[FDIndex];
-        public Table table => (Table)mem[FDTable];
+        public long index => (long)(mem[FDIndex]??-1L);
+        public long table => (long)(mem[FDTable]??-1L);
         /// <summary>
         /// The foreign key index if any
         /// </summary>
-        public Index rindex => (Index)mem[FDRefIndex];
-        public Table rtable => (Table)mem[FDRefTable];
+        public long rindex => (long)(mem[FDRefIndex]??-1L);
+        public long rtable => (long)(mem[FDRefTable]??-1L);
         /// <summary>
         /// The joinCond entries moved to this FDJoinPart: the indexing is hierarchical: 0, then 1 etc.
         /// </summary>
@@ -1601,8 +1612,8 @@ namespace Pyrrho.Level3
         /// <param name="d">the destination expressions</param>
         public FDJoinPart(Table tb, Index ix, Table rt, Index rx, CTree<long,long> c, bool r)
             :base(BTree<long,object>.Empty
-                 +(FDIndex,ix)+(FDTable,tb)
-                 +(FDRefIndex,rx)+(FDRefTable,rt)
+                 +(FDIndex,ix.defpos)+(FDTable,tb.defpos)
+                 +(FDRefIndex,rx.defpos)+(FDRefTable,rt.defpos)
                  +(FDConds,c)+(Reverse,r))
         { }
         protected FDJoinPart(BTree<long, object> m) : base(m) { }
@@ -1618,10 +1629,10 @@ namespace Pyrrho.Level3
         {
             var r = this;
             r += (FDConds, wr.Fix(conds));
-            r += (FDIndex, index._Relocate(wr));
-            r += (FDTable, table._Relocate(wr));
-            r += (FDRefIndex, rindex?._Relocate(wr));
-            r += (FDRefTable, rtable?._Relocate(wr));
+            r += (FDIndex, wr.Fix(index));
+            r += (FDTable, wr.Fix(table));
+            r += (FDRefIndex, wr.Fix(rindex));
+            r += (FDRefTable, wr.Fix(rtable));
             return r;
         }
         internal override Basis Fix(Context cx)
@@ -1630,16 +1641,16 @@ namespace Pyrrho.Level3
             var nc = cx.Fix(conds);
             if (nc != conds)
                 r += (FDConds, nc);
-            var ni = index.Fix(cx);
+            var ni = cx.obuids[index]??index;
             if (ni != index)
                 r += (FDIndex, ni);
-            var nt = table.Fix(cx);
+            var nt = cx.obuids[table]??table;
             if (nt != table)
                 r += (FDTable, nt);
-            var nr = rindex?.Fix(cx);
+            var nr = cx.obuids[rindex]??rindex;
             if (nr != rindex)
                 r += (FDRefIndex, nr);
-            var nu = rtable?.Fix(cx);
+            var nu = cx.obuids[rtable]??rtable;
             if (nu != rtable)
                 r += (FDRefTable, nu);
             return r;

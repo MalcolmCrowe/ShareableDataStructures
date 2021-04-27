@@ -83,8 +83,8 @@ namespace Pyrrho.Level4
             next.nextStmt = nextStmt;
             if (PyrrhoStart.DebugMode && next.db!=db)
             {
-                var ps = ((Transaction)db).physicals;
-                var ns = ((Transaction)next.db).physicals;
+                var ps = physicals;
+                var ns = next.physicals;
                 var sb = new System.Text.StringBuilder("SD: "+GetType().Name+" "+cxid);
                 Debug(sb);
                 var nb = ns.First();
@@ -102,6 +102,7 @@ namespace Pyrrho.Level4
                 }
                 System.Console.WriteLine(sb.ToString());
             }
+            next.physicals += physicals;
             next.db = db; // adopt the transaction changes done by this
             return next;
         }
@@ -385,6 +386,7 @@ namespace Pyrrho.Level4
                         count++;
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
+                        _cx.physicals += physicals;
                         _cx.db = db;
                         // Row-level after triggers
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
@@ -445,6 +447,7 @@ namespace Pyrrho.Level4
                         Add(u);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u,_cx.db)));
+                        _cx.physicals += physicals;
                         _cx.db = db;
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
                         break;
@@ -471,6 +474,7 @@ namespace Pyrrho.Level4
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
                         Add(new Delete1(rc, np, _cx));
+                        _cx.physicals += physicals;
                         _cx.db = db;
                         count++;
                         break;
@@ -485,7 +489,7 @@ namespace Pyrrho.Level4
             Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
             _cx.result = -1L;
             if (PyrrhoStart.DebugMode)
-                System.Console.WriteLine("Ins: " + _cx.tr.physicals.Count);
+                System.Console.WriteLine("Ins: " + _cx.physicals.Count);
             return _cx;
         }
         /// <summary>
@@ -803,7 +807,7 @@ namespace Pyrrho.Level4
     internal class TriggerActivation : Activation
     {
         internal readonly TransitionRowSet _trs;
-        internal bool deferred;
+        internal bool defer;
         /// <summary>
         /// The trigger definition
         /// </summary>
@@ -830,12 +834,12 @@ namespace Pyrrho.Level4
             cx.obs += (tb.defpos, tb);
             _trig = tg;
             (trigTarget,targetTrig) = _Map(ti, tg);
-            deferred = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
+            defer = _trig.tgType.HasFlag(Level2.PTrigger.TrigType.Deferred);
             if (cx.obs[tg.oldTable] is TransitionTable tt)
                 new TransitionTableRowSet(tt.defpos,cx,trs,
                     tg.framing.obs[tt.defpos].domain,true);
-            if (deferred)
-                cx.db += (Transaction.Deferred, cx.tr.deferred + this);
+            if (defer)
+                cx.deferred += this;
             var fi = CTree<long, RowSet.Finder>.Empty;
             for (var b = trigTarget.First(); b != null; b = b.Next())
             {
@@ -866,15 +870,6 @@ namespace Pyrrho.Level4
             }
             return (ma,rm);
         }
-        static (SqlRow,BTree<long,long>) _Map(ObInfo oi,SqlValue sv)
-        {
-            var ma = BTree<long, long>.Empty;
-            var sb = sv.columns.First();
-            for (var b = oi.domain.rowType.First(); b != null && sb != null; b = b.Next(), 
-                sb = sb.Next())
-                ma += (sb.value(), b.value());
-            return ((SqlRow)sv, ma);
-        }
         /// <summary>
         /// Execute the trigger for the current row or table, using the definer's role.
         /// </summary>
@@ -885,7 +880,7 @@ namespace Pyrrho.Level4
             var trc = (TransitionRowSet.TransitionCursor)next.next.cursors[rp];
             if (trc!=null) // row=level trigger
                 new TransitionRowSet.TriggerCursor(this, trc._tgc);
-            if (deferred)
+            if (defer)
                 return false;
             if (_trig.oldRow != -1L)
                 values += (_trig.oldRow, new TRow(_trig.domain, trigTarget,

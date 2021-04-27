@@ -105,7 +105,6 @@ namespace Pyrrho.Level3
             Label = -92, // string
             Stmt = -93, // string
             _Type = -94; // Executable.Type
-        public string name => (string)mem[Name] ?? "";
         public string stmt => (string)mem[Stmt];
         /// <summary>
         /// The label for the Executable
@@ -198,12 +197,14 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class CommitStatement : Executable
     {
         public CommitStatement(long dp) : base(dp, Type.Commit) { }
     }
     /// <summary>
     /// A Select Statement can be used in a stored procedure so is a subclass of Executable
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SelectStatement : Executable
     {
@@ -277,6 +278,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Compound Statement for the SQL procedure language
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class CompoundStatement : Executable
     {
@@ -361,6 +363,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class PreparedStatement : Executable
     {
         internal const long
@@ -413,6 +416,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A local variable declaration.
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class LocalVariableDec : Executable
     {
@@ -505,6 +509,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// A procedure formal parameter has mode and result info
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class FormalParameter : SqlValue
     {
@@ -587,6 +592,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A local cursor
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class CursorDeclaration : LocalVariableDec
     {
@@ -663,6 +669,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Exception handler for a stored procedure
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class HandlerStatement : Executable
 	{
@@ -754,11 +761,12 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Handler helps implementation of exception handling
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class Handler : Executable
 	{
         internal const long
-            HDefiner = -103, // Activation
+            HDefiner = -103, // long Activation
             Hdlr = -104; // HandlerStatement
         /// <summary>
         /// The shared handler statement
@@ -767,7 +775,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The activation that defined this
         /// </summary>
-        Activation hdefiner =>(Activation)mem[HDefiner];
+        long hdefiner =>(long)(mem[HDefiner]??-1L);
         /// <summary>
         /// Constructor: a Handler instance
         /// </summary>
@@ -817,6 +825,10 @@ namespace Pyrrho.Level3
         {
             try
             {
+                Activation definer = null;
+                for (Context p = cx; definer == null && p != null; p = p.next)
+                    if (p.cxid == hdefiner)
+                        definer = p as Activation;
                 if (hdlr.htype == Sqlx.UNDO)
                 {
                     CompoundStatement cs = null;
@@ -824,13 +836,13 @@ namespace Pyrrho.Level3
                         cs = p.exec as CompoundStatement;
                     if (cs != null)
                     {
-                        cx.db = hdefiner.saved.mark;
-                        cx.next = hdefiner.saved.stack;
+                        cx.db = definer.saved.mark;
+                        cx.next = definer.saved.stack;
                     }
                 }
                 ((Executable)cx.obs[hdlr.action]).Obey(cx);
                 if (hdlr.htype == Sqlx.EXIT)
-                    return hdefiner.next;
+                    return definer.next;
                 var a = (Activation)cx;
                 if (a.signal != null)
                     a.signal.Throw(cx);
@@ -845,7 +857,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Hdef=");sb.Append(Uid(hdefiner.cxid));
+            sb.Append(" Hdef=");sb.Append(Uid(hdefiner));
             sb.Append(" Hdlr=");sb.Append(Uid(hdlr.defpos));
             return sb.ToString();
         }
@@ -853,6 +865,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Break statement for a stored procedure
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class BreakStatement : Executable
 	{
@@ -893,6 +906,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// An assignment statement for a stored procedure
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class AssignmentStatement : Executable
     {
@@ -984,6 +998,7 @@ namespace Pyrrho.Level3
     /// A multiple assignment statement for a stored procedure.
     /// The right hand side must be row valued, and the left hand side is a
     /// list of variable identifiers.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class MultipleAssignment : Executable
     {
@@ -1085,6 +1100,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A return statement for a stored procedure or function
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class ReturnStatement : Executable
     {
@@ -1157,6 +1173,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Case statement for a stored procedure
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SimpleCaseStatement : Executable
     {
@@ -1266,6 +1283,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A searched case statement
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class SearchedCaseStatement : Executable
 	{
@@ -1365,6 +1383,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A when part for a searched case statement or trigger action
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class WhenPart :Executable
 	{
@@ -1459,6 +1478,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An if-then-else statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class IfThenElse : Executable
 	{
@@ -1582,6 +1602,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class XmlNameSpaces : Executable
     {
         internal const long
@@ -1632,6 +1653,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A while statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class WhileStatement : Executable
 	{
@@ -1741,6 +1763,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A repeat statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class RepeatStatement : Executable
 	{
@@ -1845,6 +1868,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Iterate (like C continue;) statement for a stored proc/func 
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class IterateStatement : Executable
 	{
@@ -1881,6 +1905,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// A Loop statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class LoopStatement : Executable
 	{
@@ -1981,6 +2006,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A for statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class ForSelectStatement : Executable
 	{
@@ -2118,6 +2144,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Open statement for a cursor
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class OpenStatement : Executable
 	{
@@ -2189,6 +2216,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Close statement for a cursor
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class CloseStatement : Executable
 	{
@@ -2255,6 +2283,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A fetch statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class FetchStatement : Executable
 	{
@@ -2413,9 +2442,10 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A call statement for a stored proc/func
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class CallStatement : Executable
-	{
+    {
         internal const long
             Parms = -133, // CList<long> SqlValue
             ProcDefPos = -134, // long
@@ -2423,7 +2453,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The target object (for a method)
         /// </summary>
-		public long var => (long)(mem[Var]??-1L);
+		public long var => (long)(mem[Var] ?? -1L);
         /// <summary>
         /// The proc/method to call
         /// </summary>
@@ -2432,22 +2462,22 @@ namespace Pyrrho.Level3
         /// The list of actual parameters
         /// </summary>
 		public CList<long> parms =>
-            (CList<long>)mem[Parms]?? CList<long>.Empty;
+            (CList<long>)mem[Parms] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, CList<long> acts, SqlValue tg=null)
-         : this(dp, pr, pn, acts, (tg==null)?null: new BTree<long, object>(Var,tg.defpos))
+        public CallStatement(long dp, Procedure pr, string pn, CList<long> acts, SqlValue tg = null)
+         : this(dp, pr, pn, acts, (tg == null) ? null : new BTree<long, object>(Var, tg.defpos))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, CList<long> acts, BTree<long,object> m=null)
-         : base(dp, (m??BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos??-1L)
-               +(_Domain,pr?.domain??Domain.Content) + (Name,pn))
+        protected CallStatement(long dp, Procedure pr, string pn, CList<long> acts, BTree<long, object> m = null)
+         : base(dp, (m ?? BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
+               + (_Domain, pr?.domain ?? Domain.Content) + (Name, pn))
         {
-   //         if (pr == null)
-   //             throw new DBException("42108", pn);
+            //         if (pr == null)
+            //             throw new DBException("42108", pn);
         }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static CallStatement operator+(CallStatement s,(long,object)x)
+        public static CallStatement operator +(CallStatement s, (long, object) x)
         {
             return new CallStatement(s.defpos, s.mem + x);
         }
@@ -2473,13 +2503,13 @@ namespace Pyrrho.Level3
         {
             var r = (CallStatement)base.Fix(cx);
             var np = cx.obuids[procdefpos] ?? procdefpos;
-            if (np!=procdefpos)
+            if (np != procdefpos)
                 r += (ProcDefPos, np);
             var ns = cx.Fix(parms);
-            if (parms!=ns)
+            if (parms != ns)
                 r += (Parms, ns);
             var va = cx.obuids[var] ?? var;
-            if (var!=va)
+            if (var != va)
                 r += (Var, va);
             return r;
         }
@@ -2487,9 +2517,9 @@ namespace Pyrrho.Level3
         {
             if (var != -1L && cx.obs[var].Calls(defpos, cx))
                 return true;
-            return procdefpos==defpos || Calls(parms,defpos, cx);
+            return procdefpos == defpos || Calls(parms, defpos, cx);
         }
-        internal void Grouped(Context cx,GroupSpecification gs)
+        internal void Grouped(Context cx, GroupSpecification gs)
         {
             ((SqlValue)cx.obs[var])?.Grouped(cx, gs);
             gs.Grouped(cx, parms);
@@ -2499,21 +2529,21 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr">the transaction</param>
         public override Context Obey(Context cx)
-		{
+        {
             cx.exec = this;
             var proc = (Procedure)cx.db.objects[procdefpos];
-            return proc.Exec(cx,parms);
-		}
-        internal override DBObject _Replace(Context cx,DBObject so,DBObject sv)
+            return proc.Exec(cx, parms);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = this;
-            var nv = cx.Replace(var,so, sv);
+            var nv = cx.Replace(var, so, sv);
             if (nv != var)
                 r += (Var, nv);
             var np = r.parms;
-            for (var b=parms.First();b!=null;b=b.Next())
+            for (var b = parms.First(); b != null; b = b.Next())
             {
                 var a = cx.Replace(b.value(), so, sv);
                 if (a != b.value())
@@ -2535,7 +2565,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (var!=-1L)
+            if (var != -1L)
             {
                 sb.Append(" Var="); sb.Append(Uid(var));
             }
@@ -2552,15 +2582,15 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
 
-}
+    }
     /// <summary>
     /// A signal statement for a stored proc/func
+    /// shareable as of 26 April 2021
     /// </summary>
-	internal class Signal : Executable
+    internal class SignalStatement : Executable
     {
         internal const long
-            Exception = -136, // Exception
-            Objects = -137, // BList<object>
+            Objects = -137, // BList<string>
             _Signal = -138, // string
             SetList = -139, // CTree<Sqlx,long>
             SType = -140; // Sqlx RAISE or RESIGNAL
@@ -2569,8 +2599,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Sqlx stype => (Sqlx)(mem[SType] ?? Sqlx.NO); // RAISE or RESIGNAL
         internal string signal => (string)mem[_Signal];
-        internal BList<object> objects => (BList<object>)mem[Objects];
-        internal Exception exception => (Exception)mem[Exception];
+        internal BList<string> objects => (BList<string>)mem[Objects];
         internal CTree<Sqlx, long> setlist =>
             (CTree<Sqlx, long>)mem[SetList] ?? CTree<Sqlx, long>.Empty;
         /// <summary>
@@ -2578,42 +2607,40 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n">The signal name</param>
         /// <param name="m">The signal information items</param>
-		public Signal(long dp, string n, params object[] m) : base(dp, _Mem(m) + (_Signal, n))
+		public SignalStatement(long dp, string n, params string[] obs) 
+            : base(dp, _Mem(obs) +(_Signal, n))
         { }
-        public Signal(long dp, DBException e) : base(dp, _Mem(e.objects)
-            + (_Signal, e.signal) + (Exception, e))
-        { }
-        protected Signal(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(object[] obs)
+        protected SignalStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long, object> _Mem(string[] obs)
         {
-            var r = BList<object>.Empty;
+            var r = BList<string>.Empty;
             foreach (var o in obs)
                 r += o;
             return new BTree<long, object>(Objects, r);
         }
-        public static Signal operator +(Signal s, (long, object) x)
+        public static SignalStatement operator +(SignalStatement s, (long, object) x)
         {
-            return new Signal(s.defpos, s.mem + x);
+            return new SignalStatement(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new Signal(defpos, m);
+            return new SignalStatement(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new Signal(dp, mem);
+            return new SignalStatement(dp, mem);
         }
         internal override Basis _Relocate(Writer wr)
         {
             if (defpos < wr.Length)
                 return this;
-            var r = (Signal)base._Relocate(wr);
+            var r = (SignalStatement)base._Relocate(wr);
             r += (SetList, wr.Fix(setlist));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
-            var r = (Signal)base.Fix(cx);
+            var r = (SignalStatement)base.Fix(cx);
             var ns = cx.Fix(setlist);
             if (ns != setlist)
                 r += (SetList, ns);
@@ -2639,6 +2666,116 @@ namespace Pyrrho.Level3
             string sclass = signal.Substring(0, 2);
             var dia = cx.tr.diagnostics;
             dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
+            for (var s = setlist.First(); s != null; s = s.Next())
+                dia += (s.key(), cx.obs[s.value()].Eval(cx));
+            cx.db += (Transaction.Diagnostics, dia);
+            Handler h = null;
+            Activation cs = null;
+            for (cs = a; h == null && cs != null;)
+            {
+                h = cs.exceptions[signal];
+                if (h == null && Char.IsDigit(signal[0]))
+                    h = cs.exceptions[sclass + "000"];
+                if (h == null)
+                    h = cs.exceptions["SQLEXCEPTION"];
+                if (h == null)
+                {
+                    var c = cs.next;
+                    while (c != null && !(c is Activation))
+                        c = c.next;
+                    cs = c as Activation;
+                }
+            }
+            if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
+            {
+                for (; cs != null && a != cs; a = cx.GetActivation())
+                    cx = a;
+                a.signal = new Signal(defpos,signal,objects);
+            }
+            else
+            {
+                a.signal = null;
+                cx = h.Obey(cx);
+            }
+            return cx;
+        }
+        /// <summary>
+        /// Throw this signal
+        /// </summary>
+        /// <param name="cx">the context</param>
+        public void Throw(Context cx)
+        {
+            var e = new DBException(signal, objects);
+                for (var x = setlist.First(); x != null; x = x.Next())
+                    e.info += (x.key(), cx.obs[x.value()].Eval(cx));
+            throw e;
+        }
+        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
+        {
+            return Scan(t, setlist, VIC.OK | VIC.OV);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (stype != Sqlx.NO)
+            { sb.Append(" "); sb.Append(stype); }
+            sb.Append(" "); sb.Append(signal);
+            var cs = " Set: ";
+            for (var b = setlist.First(); b != null; b = b.Next())
+            {
+                sb.Append(cs); cs = ";";
+                sb.Append(b.key()); sb.Append("=");
+                sb.Append(Uid(b.value()));
+            }
+            return sb.ToString();
+        }
+    }
+    /// <summary>
+    /// A signal for an activation
+    /// </summary>
+	internal class Signal
+    {
+        /// <summary>
+        /// The signal to raise
+        /// </summary>
+        internal long defpos;
+        internal string signal;
+        internal Sqlx stype = Sqlx.SIGNAL;
+        internal BList<string> objects = BList<string>.Empty;
+        internal Exception exception;
+        internal CTree<Sqlx, long> setlist = CTree<Sqlx, long>.Empty;
+        /// <summary>
+        /// Constructor: a signal statement from the parser
+        /// </summary>
+        /// <param name="n">The signal name</param>
+        /// <param name="m">The signal information items</param>
+		public Signal(long dp, string n,params object[] obs)
+        {
+            defpos = dp;
+            signal = n;
+            foreach (var o in obs)
+                objects += o.ToString();
+        }
+        public Signal(long dp, DBException e)
+        {
+            defpos = dp;
+            signal = e.signal;
+            exception = e;
+            foreach (var o in e.objects)
+                objects += o.ToString();
+        }
+        /// <summary>
+        /// Execute a signal
+        /// </summary>
+        /// <param name="tr">the transaction</param>
+        public Context Obey(Context cx)
+        {
+            var a = cx.GetActivation(); // from the top of the stack each time
+            if (stype == Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
+                throw new DBException("0K000").ISO();
+            string sclass = signal.Substring(0, 2);
+            var dia = cx.tr.diagnostics;
+            dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
             if (exception is DBException dbex)
             {
                 for (var b = dbex.info.First(); b != null; b = b.Next())
@@ -2649,7 +2786,7 @@ namespace Pyrrho.Level3
                 dia += (s.key(), cx.obs[s.value()].Eval(cx));
             cx.db += (Transaction.Diagnostics, dia);
             Handler h = null;
-            Activation cs = null;
+            Activation cs;
             for (cs = a; h == null && cs != null;)
             {
                 h = cs.exceptions[signal];
@@ -2693,38 +2830,10 @@ namespace Pyrrho.Level3
             }
             throw e;
         }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, setlist, VIC.OK|VIC.OV);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (stype!=Sqlx.NO)
-            { sb.Append(" "); sb.Append(stype); }
-            sb.Append(" "); sb.Append(signal);
-            if (mem.Contains(Exception))
-            {
-                sb.Append(" Exception: "); sb.Append(exception);
-                var cm = " ";
-                for (var b = objects.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = " ";
-                    sb.Append(b.value());
-                } 
-            }
-            var cs = " Set: ";
-            for (var b=setlist.First();b!=null;b=b.Next())
-            {
-                sb.Append(cs); cs = ";";
-                sb.Append(b.key());sb.Append("=");
-                sb.Append(Uid(b.value()));
-            }
-            return sb.ToString();
-        }
     }
     /// <summary>
     /// A GetDiagnostics statement for a routine
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class GetDiagnostics : Executable
     {
@@ -2800,6 +2909,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Select statement: single row
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class SelectSingle : Executable
     {

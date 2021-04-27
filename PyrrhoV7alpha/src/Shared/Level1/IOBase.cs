@@ -72,10 +72,10 @@ namespace Pyrrho.Level2
         }
         internal void PutInteger(Integer b)
         {
-            var m = b.bytes.Length;
+            var m = b.Length;
             WriteByte((byte)m);
             for (int j = 0; j < m; j++)
-                WriteByte(b.bytes[j]);
+                WriteByte(b[j]);
         }
         public void PutLong(long n)
         {
@@ -91,12 +91,6 @@ namespace Pyrrho.Level2
         public void PutBytes(byte[] b)
         {
             PutInt(b.Length);
-            for (var i = 0; i < b.Length; i++)
-                WriteByte(b[i]);
-        }
-        public void PutBytes0(byte[] b)
-        {
-            WriteByte((byte)b.Length);
             for (var i = 0; i < b.Length; i++)
                 WriteByte(b[i]);
         }
@@ -773,10 +767,8 @@ namespace Pyrrho.Level2
         {
             var years = GetInt();
             var months = GetInt();
-            var r = new Interval(years, months)
-            { ticks = GetLong() };
-            if (r.years == 0 && r.months == 0)
-                r.yearmonth = false; // low marks for this!
+            var ticks = GetLong();
+            var r = new Interval(years, months, ticks);
             return r;
         }
         /// <summary>
@@ -989,7 +981,7 @@ namespace Pyrrho.Level2
                 for (var b=context.db.objects.Last();b!=null;b=b.Previous())
                     if (b.value() is Table st)
                     {
-                        if (st.mem[Basis.Name] is string n && n.Length>0 && n[0]=='(')
+                        if (st.name is string n && n.Length>0 && n[0]=='(')
                             domain = domain + (Domain.Structure, st.defpos)
                                 + (Domain.RowType, st.domain.rowType)
                                 + (Domain.Representation, st.domain.representation);

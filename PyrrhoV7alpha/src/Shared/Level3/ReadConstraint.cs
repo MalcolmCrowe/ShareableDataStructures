@@ -26,6 +26,7 @@ namespace Pyrrho.Level3
     ///	we can limit the conflict check to updates of the selected records (if any), 
     ///	or to updates of the key TableColumns.
     ///	(c) (BlockUpdate) as (a) but it is known that case (b) cannot apply.
+    ///	// shareable as of 26 April 2021
     /// </summary>
     internal class ReadConstraint
     {
@@ -75,6 +76,7 @@ namespace Pyrrho.Level3
     /// A clever class for checking transaction conflicts between read actions in one transaction
     /// and write/updates in another.
     /// Subclasses record other sorts of constraint: eg CheckSpecific, BlockUpdate.
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class CheckUpdate
     {
@@ -145,6 +147,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A readConstraint for specific rows
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class CheckSpecific : CheckUpdate
     {
@@ -207,6 +210,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// The readConstraint blocks Updates for a database object
+    /// // shareable as of 26 April 2021
     /// </summary>
 	internal class BlockUpdate : CheckUpdate
     {

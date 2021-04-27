@@ -17,6 +17,7 @@ using Pyrrho.Level2;
 
 namespace Pyrrho.Level4
 {
+    /// shareable as of 26 April 2021
     internal class GroupingRowSet : RowSet
     {
         internal const long
@@ -286,6 +287,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// An enumerator for a grouping rowset: behaviour is different during building
+        ///     /// shareable as of 26 April 2021
         /// </summary>
         internal class GroupingBookmark : Cursor
         {

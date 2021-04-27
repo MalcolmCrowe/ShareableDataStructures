@@ -20,6 +20,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// DBObject is the base class for Level 3 database objects (e.g. Table, Role, Procedure, Domain)
     /// Immutable
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal abstract class DBObject : Basis
     {
@@ -30,7 +31,6 @@ namespace Pyrrho.Level3
         internal const long
             _Alias = -62, // string        
             Classification = -63, // Level
-            CompareContext = -250, // Context structured types
             Definer = -64, // long Role
             Defpos = -257, // long for Rest service
             Dependents = -65, // CTree<long,bool> Non-obvious objects that need this to exist
@@ -292,7 +292,7 @@ namespace Pyrrho.Level3
         internal virtual void Cascade(Context cx, Drop.DropAction a=0,
             BTree<long,TypedValue>u=null)
         {
-            for (var b = cx.tr.physicals.First(); b != null; b = b.Next())
+            for (var b = cx.physicals.First(); b != null; b = b.Next())
                 if (b.value() is Drop dr && dr.delpos == defpos)
                     return;
             cx.Add(new Drop1(defpos, a, cx.tr.nextPos, cx));

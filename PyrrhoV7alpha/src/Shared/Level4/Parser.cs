@@ -1940,8 +1940,8 @@ namespace Pyrrho.Level4
                 if (pc != null)
                 { 
                     pc.notNull = true;
-                    if (cx.db is Transaction tr)
-                        cx.db += (Transaction.Physicals,tr.physicals + (pc.defpos, pc));
+                    if (cx.db is Transaction)
+                        cx.physicals += (pc.defpos, pc);
                 }
                 Mustbe(Sqlx.NULL);
                 // Updating the database to add NOT NULL at this stage is ridiculously tricky
@@ -3385,7 +3385,7 @@ namespace Pyrrho.Level4
                 n = lxr.val;
                 Mustbe(Sqlx.CHARLITERAL);
             }
-            var r = new Signal(lxr.Position, n.ToString()) + (Signal.SType, s);
+            var r = new SignalStatement(lxr.Position, n.ToString()) + (SignalStatement.SType, s);
             if (tok == Sqlx.SET)
             {
                 Next();
@@ -3401,7 +3401,9 @@ namespace Pyrrho.Level4
                         Sqlx.SCHEMA_NAME, Sqlx.TABLE_NAME, Sqlx.COLUMN_NAME, Sqlx.CURSOR_NAME,
                         Sqlx.MESSAGE_TEXT);
                     Mustbe(Sqlx.EQL);
-                    r+=(Signal.SetList, r.setlist+(k, ParseSqlValue(Domain.Content).defpos));
+                    var sv = ParseSqlValue(Domain.Content);
+                    cx.Add(sv);
+                    r += (SignalStatement.SetList, r.setlist + (k, sv.defpos));
                     if (tok != Sqlx.COMMA)
                         break;
                     Next();
@@ -4178,7 +4180,7 @@ namespace Pyrrho.Level4
                         else
                         {
                             ns = ParseColumnDefin(tb.defpos, ns);
-                            if (cx.tr.physicals.Last()?.value() is PColumn pc 
+                            if (cx.physicals.Last()?.value() is PColumn pc 
                                 && pc.notNull && tb.tableRows.PositionAt(0) != null)
                                     throw new DBException("42130");
                         }
@@ -6063,42 +6065,44 @@ namespace Pyrrho.Level4
         /// <returns>The periodSpec</returns>
         PeriodSpec ParsePeriodSpec()
         {
-            var r = new PeriodSpec();
+            string pn = "SYSTEM_TIME";
+            Sqlx kn;
+            SqlValue t1 = null, t2 = null;
             Next();
             if (tok == Sqlx.ID)
-                r.periodname = lxr.val.ToString();
+                pn = lxr.val.ToString();
             Mustbe(Sqlx.SYSTEM_TIME,Sqlx.ID);
-            r.kind = tok;
+            kn = tok;
             var xp = Domain.UnionDate;
             switch (tok)
             {
                 case Sqlx.AS: Next();
                     Mustbe(Sqlx.OF);
-                    r.time1 = ParseSqlValue(Domain.UnionDate);
+                    t1 = ParseSqlValue(Domain.UnionDate);
                     break;
                 case Sqlx.BETWEEN: Next();
-                    r.kind = Sqlx.ASYMMETRIC;
+                    kn = Sqlx.ASYMMETRIC;
                     if (Match(Sqlx.ASYMMETRIC))
                         Next();
                     else if (Match(Sqlx.SYMMETRIC))
                     {
                         Next();
-                        r.kind = Sqlx.SYMMETRIC;
+                        kn = Sqlx.SYMMETRIC;
                     }
-                    r.time1 = ParseSqlValueTerm(Domain.UnionDate, false);
+                    t1 = ParseSqlValueTerm(Domain.UnionDate, false);
                     Mustbe(Sqlx.AND);
-                    r.time2 = ParseSqlValue(Domain.UnionDate);
+                    t2 = ParseSqlValue(Domain.UnionDate);
                     break;
                 case Sqlx.FROM: Next();
-                    r.time1 = ParseSqlValue(Domain.UnionDate);
+                    t1 = ParseSqlValue(Domain.UnionDate);
                     Mustbe(Sqlx.TO);
-                    r.time2 = ParseSqlValue(Domain.UnionDate);
+                    t2 = ParseSqlValue(Domain.UnionDate);
                     break;
                 default:
-                    r.kind=Sqlx.NO;
+                    kn  =Sqlx.NO;
                     break;
             }
-            return r;
+            return new PeriodSpec(pn, kn, t1, t2);
         }
         /// <summary>
         /// Cols = [ ident {, ident }]
@@ -8807,8 +8811,8 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.COLON)
             {
                 Next();
-                e.prefix = e.keyname;
-                e.keyname = new string(lxr.input, lxr.start, lxr.pos - lxr.start);
+                e=new SqlXmlValue.XmlName(new string(lxr.input, lxr.start, lxr.pos - lxr.start),
+                    e.keyname);
                 Mustbe(Sqlx.ID);
             }
             return e;

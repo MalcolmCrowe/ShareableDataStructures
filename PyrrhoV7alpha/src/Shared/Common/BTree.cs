@@ -18,7 +18,8 @@ namespace Pyrrho.Common
     /// A BTree is a BTREE which uses immutable classes
     /// to assist with transaction start and rollback.
     /// Hence no Mutators.
-    /// This subclass is for IComparable struct type keys
+    /// Shareable if both K and V are shareable.
+    /// This subclass is for IComparable struct type keys.
     /// </summary>
     public class BTree<K,V> : ATree<K,V>
         where K: IComparable

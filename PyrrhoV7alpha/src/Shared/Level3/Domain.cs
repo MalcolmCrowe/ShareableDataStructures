@@ -19,6 +19,7 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// Immutable (everything in level 3 must be immutable)
+    ///     // shareable as of 26 April 2021 (depends on TypedValue remaining shareable)
     /// </summary>
     internal class Domain : DBObject, IComparable
     {
@@ -31,7 +32,7 @@ namespace Pyrrho.Level3
     UnionDateNumeric,Exception,Period,
     Document,DocArray,ObjectId,JavaScript,ArgList, // Pyrrho 5.1
     TableType,Row,Delta,Position,Role,
-    Metadata, // Pyrrho v7
+    Metadata,HttpDate, // Pyrrho v7
     RdfString,RdfBool,RdfInteger,RdfInt,RdfLong,RdfShort,RdfByte,RdfUnsignedInt,
     RdfUnsignedLong,RdfUnsignedShort,RdfUnsignedByte,RdfNonPositiveInteger,
     RdfNonNegativeInteger,RdfPositiveInteger,RdfNegativeInteger,RdfDecimal,
@@ -92,6 +93,7 @@ namespace Pyrrho.Level3
             Numeric = new StandardDataType(Sqlx.NUMERIC);
             Real = new StandardDataType(Sqlx.REAL);
             Date = new StandardDataType(Sqlx.DATE);
+            HttpDate = new StandardDataType(Sqlx.HTTPDATE);
             Timespan = new StandardDataType(Sqlx.TIME);
             Timestamp = new StandardDataType(Sqlx.TIMESTAMP);
             Interval = new StandardDataType(Sqlx.INTERVAL);
@@ -173,7 +175,6 @@ namespace Pyrrho.Level3
         public OrderCategory orderflags => (OrderCategory)(mem[OrderCategory]??Common.OrderCategory.None);
         public CTree<Domain,bool> unionOf => 
             (CTree<Domain,bool>)mem[UnionOf] ?? CTree<Domain,bool>.Empty;
-        public string name => (string)mem[Name] ?? "";
         /// <summary>
         /// The first three constructors are used by subclasses
         /// </summary>
@@ -865,7 +866,7 @@ namespace Pyrrho.Level3
                         if (n == null)
                             wr.PutLong(tv.ToLong().Value);
                         else
-                            wr.PutBytes0(n.ivalue.bytes);
+                            wr.PutInteger(n.ivalue);
                         break;
                     }
                 case Sqlx.NUMERIC:
@@ -875,7 +876,7 @@ namespace Pyrrho.Level3
                             d = new Numeric(tv.ToLong().Value);
                         if (tv is TInteger)
                             d = new Numeric((Integer)tv.Val(), 0);
-                        wr.PutBytes0(d.mantissa.bytes);
+                        wr.PutInteger(d.mantissa);
                         wr.PutInt(d.scale);
                         break;
                     }
@@ -888,7 +889,7 @@ namespace Pyrrho.Level3
                             d = new Numeric(tv.ToDouble());
                         else
                             d = (Numeric)tv.Val();
-                        wr.PutBytes0(d.mantissa.bytes);
+                        wr.PutInteger(d.mantissa);
                         wr.PutInt(d.scale);
                         break;
                     }
@@ -979,7 +980,7 @@ namespace Pyrrho.Level3
                 case Sqlx.METADATA:
                     {
                         var m = (TMetadata)tv;
-                        wr.PutString(ObInfo.Metadata(m.md));
+                        wr.PutString(m.ToString());
                         break;
                     }
             }
@@ -2406,17 +2407,20 @@ namespace Pyrrho.Level3
                             if (vk == Sqlx.NUMERIC)
                             {
                                 var a = v.Val() as Common.Numeric;
+                                var m = a.mantissa;
+                                var s = a.scale;
                                 int r = 0;
-                                while (a.scale > 0)
+                                while (s > 0)
                                 {
-                                    a.mantissa = a.mantissa.Quotient(10, ref r);
-                                    a.scale--;
+                                    m = m.Quotient(10, ref r);
+                                    s--;
                                 }
-                                while (a.scale < 0)
+                                while (s < 0)
                                 {
-                                    a.mantissa = a.mantissa.Times(10);
-                                    a.scale++;
+                                    m = a.mantissa.Times(10);
+                                    s++;
                                 }
+                                a = new Numeric(m, s);
                                 if (prec != 0)
                                 {
                                     var limit = Integer.Pow10(prec);
@@ -2464,16 +2468,19 @@ namespace Pyrrho.Level3
                                 if ((!a.mantissa.IsZero()) && a.scale > scale)
                                     a = a.Round(scale);
                                 int r = 0;
-                                while (a.scale > scale)
+                                var m = a.mantissa;
+                                var s = a.scale;
+                                while (s > scale)
                                 {
-                                    a.mantissa = a.mantissa.Quotient(10, ref r);
-                                    a.scale--;
+                                    m = m.Quotient(10, ref r);
+                                    s--;
                                 }
-                                while (a.scale < scale)
+                                while (s < scale)
                                 {
-                                    a.mantissa = a.mantissa.Times(10);
-                                    a.scale++;
+                                    m = m.Times(10);
+                                    s++;
                                 }
+                                a = new Numeric(m, s);
                             }
                             if (prec != 0)
                             {
@@ -3039,8 +3046,7 @@ namespace Pyrrho.Level3
                 case Sqlx.INTERVAL:
                     {
                         var ia = (Interval)a.Val();
-                        Interval ic = null;
-                        switch (bk)
+                         switch (bk)
                         {
                             case Sqlx.DATE:
                                 return Eval(lp,cx,b, op, a);
@@ -3049,7 +3055,7 @@ namespace Pyrrho.Level3
                                 if (ia.yearmonth)
                                 {
                                     var m = ia.years * 12 + ia.months;
-                                    ic = new Interval(0, 0);
+                                    var y = 0;
                                     switch (kind)
                                     {
                                         case Sqlx.TIMES: m = m * bi; break;
@@ -3057,17 +3063,16 @@ namespace Pyrrho.Level3
                                     }
                                     if (start == Sqlx.YEAR)
                                     {
-                                        ic.years = m / 12;
+                                        y = m / 12;
                                         if (end == Sqlx.MONTH)
-                                            ic.months = m - 12 * (m / 12);
+                                            m = m - 12 * (m / 12);
                                     }
-                                    else
-                                        ic.months = m;
-                                    return new TInterval(this, ic);
+                                    return new TInterval(this, new Interval(y,m));
                                 }
                                 break;
                             case Sqlx.INTERVAL:
                                 var ib = (Interval)b.Val();
+                                Interval ic;
                                 if (ia.yearmonth != ib.yearmonth)
                                     break;
                                 if (ia.yearmonth)
@@ -3503,7 +3508,7 @@ namespace Pyrrho.Level3
         public string NameFor(Context cx, long p, int i)
         {
             var sv = cx.obs[p];
-            var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
+            var n = sv?.alias ?? sv?.name;
             return cx.Inf(p)?.name ?? n ?? ("Col"+i);
         }
         internal static TypedValue Now => new TDateTime(Timestamp, DateTime.Now);
@@ -3637,6 +3642,7 @@ namespace Pyrrho.Level3
             return new Domain(dp,mem);
         }
     }
+    // shareable as of 26 April 2021
     internal class StandardDataType : Domain
     {
         public static BTree<Sqlx, Domain> types = BTree<Sqlx, Domain>.Empty;
@@ -3669,6 +3675,7 @@ namespace Pyrrho.Level3
     /// In addition clearance must have all the references of the classification 
     /// and at least one of the groups.
     /// The database uses a cache of level descriptors called levels.
+    /// shareable
     /// </summary>
     public class Level : IComparable
     {
@@ -3874,9 +3881,10 @@ namespace Pyrrho.Level3
         }
 
     }
+    // shareable as of 26 April 2021
     internal class Period
     {
-        public TypedValue start, end;
+        public readonly TypedValue start, end;
         public Period(TypedValue s, TypedValue e)
         {
             start = s; end = e;
@@ -4088,11 +4096,12 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A class for RdfLiterals
+    /// // shareable
     /// </summary>
     internal class RdfLiteral : TChar
     {
-        public object val; // the binary version
-        public bool name; // whether str matches val
+        public readonly object val; // the binary version
+        public readonly bool name; // whether str matches val
         public RdfLiteral(Domain t, string s, object v, bool c) : base(t, s)
         {
             val = v;
@@ -4134,6 +4143,7 @@ namespace Pyrrho.Level3
         public readonly static string DATETIME = xsd + "dateTime";
         public readonly static string DATE = xsd + "date";
     }
+    // shareable as of 26 April 2021
     internal class UDType: Domain
     {
         internal const long

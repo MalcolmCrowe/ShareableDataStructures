@@ -21,6 +21,7 @@ namespace Pyrrho.Level3
     /// any role with select access to the table will be able to retrieve rows subject 
     /// to security clearance and classification. Which columns are accessible also depends
     /// on privileges (but columns are not subject to classification).
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class Table : DBObject
     {
@@ -624,21 +625,4 @@ namespace Pyrrho.Level3
             return sk.ToString();
         }
     }
-    internal class VirtTable : Table 
-    {
-        // internal VirtTable(VTable pt, Role ro) : base(pt,ro)
-        // compatibility
-        internal VirtTable(PTable pt, Role ro) : base(pt, ro)
-        { }
-        protected VirtTable(long dp, BTree<long,object> m) :base(dp,m)
-        { }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new VirtTable(defpos,m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return (DBObject)New(mem);
-        }
-    } 
 }

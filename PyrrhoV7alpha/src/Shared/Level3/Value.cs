@@ -41,6 +41,7 @@ namespace Pyrrho.Level3
     /// They participate in rowset rewriting where expressions are interesting if they
     /// are locally constant (i.e. entirely needed) or entirely from views.
     /// During rowset construction we fill in the LocalConstant and ViewOrigin structures.
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class SqlValue : DBObject,IComparable
     {
@@ -51,7 +52,6 @@ namespace Pyrrho.Level3
             _Meta = -307, // Metadata
             Right = -309, // long SqlValue
             Sub = -310; // long SqlValue
-        public string name => (string)mem[Name]??"";
         internal long left => (long)(mem[Left]??-1L); 
         internal long right => (long)(mem[Right]??-1L);
         internal long sub => (long)(mem[Sub]??-1L);
@@ -592,6 +592,7 @@ namespace Pyrrho.Level3
             return r;
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlTable : SqlValue
     {
         public SqlTable(long dp, Query fm, BTree<long, object> m = null)
@@ -642,6 +643,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlCopy : SqlValue
     {
         internal const long
@@ -797,6 +799,7 @@ namespace Pyrrho.Level3
                 : Eval(cx)?.ToString() ?? throw new DBException("42000");
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlRowSetCol : SqlValue
     {
         public SqlRowSetCol(long dp, ObInfo oi, long rp)
@@ -819,6 +822,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A TYPE value for use in CAST
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class SqlTypeExpr : SqlValue
     {
@@ -897,6 +901,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Subtype value for use in TREAT
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class SqlTreatExpr : SqlValue
     {
@@ -1024,6 +1029,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    /// shareable as of 26 April 2021
     internal class SqlElement : SqlValue
     {
         internal SqlElement(long defpos,Context cx,long op,Domain dt,CList<long> cols=null) 
@@ -1079,6 +1085,7 @@ namespace Pyrrho.Level3
     /// ASC and DESC for ++ and -- , with modifier BEFORE
     /// QMARK and COLON for ? :
     /// UPPER and LOWER for shifts (GTR is a modifier for the unsigned right shift)
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlValueExpr : SqlValue
     {
@@ -2373,6 +2380,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A SqlValue that is the null literal
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlNull : SqlValue
     {
@@ -2428,6 +2436,7 @@ namespace Pyrrho.Level3
             return "null";
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlSecurity : SqlValue
     {
         internal SqlSecurity(long dp) : base(dp, "SECURITY", Domain._Level) { }
@@ -2446,6 +2455,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// Added for LogRowsRowSet and similar: Values are computed in Cursor constructor
     /// and do not depend on other SqlValues
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlFormal : SqlValue 
     {
@@ -2481,6 +2491,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// The SqlLiteral subclass
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlLiteral : SqlValue
     {
@@ -2634,6 +2645,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A DateTime Literal
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlDateTimeLiteral : SqlLiteral
     {
@@ -2658,6 +2670,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Row value
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlRow : SqlValue
     {
@@ -2898,6 +2911,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Prepare an SqlValue with reified columns for use in trigger
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlOldRow : SqlRow
     {
@@ -2924,7 +2938,8 @@ namespace Pyrrho.Level3
             ta.values += (Trigger.OldRow, v);
             base.Set(cx, v);
         }
-    } 
+    }
+    // shareable as of 26 April 2021
     internal class SqlNewRow : SqlRow
     {
         internal string label => (string)mem[Executable.Label];
@@ -2952,7 +2967,8 @@ namespace Pyrrho.Level3
             ta.values += (Trigger.NewRow, v);
             base.Set(cx, v);
         }
-    } 
+    }
+    // shareable as of 26 April 2021
     internal class SqlRowArray : SqlValue
     {
         internal static readonly long
@@ -3123,6 +3139,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlXmlValue : SqlValue
     {
         internal const long
@@ -3320,12 +3337,14 @@ namespace Pyrrho.Level3
             sb.Append(">");
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class XmlName
         {
-            public string prefix = "";
-            public string keyname;
-            public XmlName(string k) {
+            public readonly string prefix;
+            public readonly string keyname;
+            public XmlName(string k,string p="") {
                 keyname = k;
+                prefix = p;
             }
             public override string ToString()
             {
@@ -3335,6 +3354,7 @@ namespace Pyrrho.Level3
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlSelectArray : SqlValue
     {
         internal const long
@@ -3446,6 +3466,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// an array value
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlValueArray : SqlValue
     {
@@ -3624,6 +3645,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A subquery
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlValueSelect : SqlValue
     {
@@ -3770,6 +3792,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Column Function SqlValue class
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class ColumnFunction : SqlValue
     {
@@ -3844,6 +3867,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlCursor : SqlValue
     {
         internal const long
@@ -3925,6 +3949,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlCall : SqlValue
     {
         internal const long
@@ -4087,6 +4112,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An SqlValue that is a procedure/function call or static method
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlProcedureCall : SqlCall
     {
@@ -4154,6 +4180,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A SqlValue that is evaluated by calling a method
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlMethodCall : SqlCall // instance methods
     {
@@ -4229,6 +4256,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An SqlValue that is a constructor expression
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlConstructor : SqlCall
     {
@@ -4280,6 +4308,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An SqlValue corresponding to a default constructor call
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlDefaultConstructor : SqlValue
     {
@@ -4413,6 +4442,7 @@ namespace Pyrrho.Level3
      }
     /// <summary>
     /// A built-in SQL function
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlFunction : SqlValue
     {
@@ -6169,6 +6199,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// The Parser converts this n-adic function to a binary one
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlCoalesce : SqlFunction
     {
@@ -6194,6 +6225,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class SqlTypeUri : SqlFunction
     {
         internal SqlTypeUri(long dp, Context cx, SqlValue op1)
@@ -6230,6 +6262,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Quantified Predicate subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class QuantifiedPredicate : SqlValue
     {
@@ -6441,6 +6474,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// BetweenPredicate subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class BetweenPredicate : SqlValue
     {
@@ -6686,6 +6720,7 @@ namespace Pyrrho.Level3
 
     /// <summary>
     /// LikePredicate subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class LikePredicate : SqlValue
     {
@@ -6943,6 +6978,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// The InPredicate subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class InPredicate : SqlValue
     {
@@ -7207,6 +7243,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// MemberPredicate is a subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class MemberPredicate : SqlValue
     {
@@ -7397,6 +7434,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// TypePredicate is a subclass of SqlValue
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TypePredicate : SqlValue
     {
@@ -7529,6 +7567,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// SQL2011 defined some new predicates for period
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class PeriodPredicate : SqlValue
     {
@@ -7634,6 +7673,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A base class for QueryPredicates such as ANY
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal abstract class QueryPredicate : SqlValue
     {
@@ -7737,6 +7777,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// the EXISTS predicate
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class ExistsPredicate : QueryPredicate
     {
@@ -7779,6 +7820,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// the unique predicate
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class UniquePredicate : QueryPredicate
     {
@@ -7815,7 +7857,7 @@ namespace Pyrrho.Level3
         {
             RowSet rs = ((Query)cx.obs[expr])
                 .RowSets(cx,cx.data[from]?.finder?? CTree<long, RowSet.Finder>.Empty);
-            RTree a = new RTree(rs.defpos,cx,rs.rt,rs.domain,TreeBehaviour.Disallow, TreeBehaviour.Disallow);
+            RTree a = new RTree(rs.defpos,rs.rt,rs.domain,TreeBehaviour.Disallow, TreeBehaviour.Disallow);
             for (var rb=rs.First(cx);rb!= null;rb=rb.Next(cx))
                 if (RTree.Add(ref a, rb, cx.cursors) == TreeBehaviour.Disallow)
                     return TBool.False;
@@ -7833,6 +7875,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// the null predicate: test to see if a value is null in this row
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class NullPredicate : SqlValue
     {

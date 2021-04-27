@@ -20,6 +20,7 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// Implement bounds for a window in a windowed table
+    /// shareable as of 26 April 2021
     /// </summary>
     internal class WindowBound :Basis
     {
@@ -83,6 +84,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Window Specification from the parser
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class WindowSpecification : DBObject
     {
@@ -96,7 +98,6 @@ namespace Pyrrho.Level3
             PartitionType = -229, // CList<long>
             Units = -230, // Sqlx
             WQuery = -231; // long Query
-        public string name => (string)mem[Name];
         /// <summary>
         /// The associated Query
         /// </summary>
@@ -204,6 +205,7 @@ namespace Pyrrho.Level3
             return partition == w.partition;
         }
     }
+    // shareable as of 26 April 2021
     internal class Grouping :DBObject,IComparable
     {
         internal const long
@@ -326,6 +328,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a GroupSpecfication
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class GroupSpecification : DBObject
     {
@@ -434,6 +437,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class UpdateAssignment : Basis,IComparable
     {
         internal const long

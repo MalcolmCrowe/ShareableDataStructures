@@ -19,6 +19,7 @@ namespace Pyrrho.Level3
     /// This class corresponds to logical Index database objects.
     /// Indexes are database objects that are created by primary key and unique constraints.
     /// Indexes have unique names of form U(nnn), since they are not named in SQL.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class Index : DBObject // can't implement RowSet unfortunately, see below
     {

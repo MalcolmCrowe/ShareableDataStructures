@@ -28,6 +28,7 @@ namespace Pyrrho.Common
     /// it is built into a structured SqlValue (SqlRow, SqlArray etc) 
     /// whose referenceable elements are SqlValues. 
     /// Evaluation will restore the simple TypedValue structure.
+    /// As of 26 April 2021, all TypedValue classes are shareable
     /// </summary>
     public abstract class TypedValue : ITypedValue,IComparable
     {
@@ -157,6 +158,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TInt : TypedValue
     {
         internal readonly long? value;
@@ -220,6 +222,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TPosition : TInt
     {
         internal TPosition(long? p) : base(Domain.Position, p) { }
@@ -230,6 +233,7 @@ namespace Pyrrho.Common
             return DBObject.Uid(value.Value);
         }
     }
+    // shareable
     internal class TInteger : TInt
     {
         internal readonly Integer ivalue;
@@ -296,6 +300,7 @@ namespace Pyrrho.Common
             return ivalue.ToString();
         }
     }
+    // shareable
     internal class TBool : TypedValue
     {
         internal readonly bool? value;
@@ -343,6 +348,7 @@ namespace Pyrrho.Common
             return p ? True : False;
         }
     }
+    // shareable
     internal class TChar : TypedValue
     {
         internal readonly string value;
@@ -389,6 +395,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TNumeric : TypedValue
     {
         internal readonly Numeric value;
@@ -456,6 +463,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TReal : TypedValue
     {
         internal readonly double dvalue = double.NaN;
@@ -520,6 +528,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class TSensitive : TypedValue
     {
         internal readonly TypedValue value;
@@ -547,6 +556,7 @@ namespace Pyrrho.Common
             return value.ToString();
         }
     }
+    // shareable
     internal class TQParam : TypedValue
     {
         internal readonly long qid;
@@ -585,9 +595,10 @@ namespace Pyrrho.Common
             return "?" + DBObject.Uid(qid);
         }
     }
+    // shareable as of 26 April 2021
     internal class TUnion : TypedValue 
     {
-        internal TypedValue value = null;
+        internal readonly TypedValue value = null;
         internal TUnion(Domain dt, TypedValue v) : base(dt) { value = v;  }
         internal override TypedValue New(Domain t)
         {
@@ -642,6 +653,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TDateTime : TypedValue
     {
         internal readonly DateTime? value;
@@ -688,6 +700,123 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
+    internal class THttpDate : TDateTime
+    {
+        internal THttpDate(DateTime d) : base(Domain.HttpDate, d)
+        { }
+        enum DayOfWeek { Sun=0,Mon=1,Tue=2,Wed=3,Thu=4,Fri=5,Sat=6}
+        enum Month { Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}
+        int White(char[] a,int i)
+        {
+            // - is white space in RFC 850
+            // also treat , as white
+            while (i < a.Length && 
+                (char.IsWhiteSpace(a[i])||a[i]=='-'||a[i]==','))
+                i++;
+            return i;
+        }
+        (int,int) Digits(string s,char[] a, int i)
+        {
+            int n;
+            for (n = 0; i < a.Length && char.IsDigit(a[i + n]); n++)
+                ;
+            if (n == 0)
+                return (0, i);
+            var r = int.Parse(s.Substring(i, n));
+            return (r,i+n);
+        }
+        /// <summary>
+        /// Parse a UTC representation according to RFC 7231
+        /// </summary>
+        /// <param name="r">The string representation</param>
+        /// <returns>A THttpDate</returns>
+        internal THttpDate Parse(string r)
+        {
+            // example formats from RFC 7231
+            // Sun, 06 Nov 1994 08:49:37 GMT
+            // Sunday, 06-Nov-94 08:49:37 GMT
+            // Sun Nov  6 08:49:37 1994 
+            var a = r.ToCharArray();
+            var i = 0;
+            int M = 1;
+            int h = 0;
+            int m = 0;
+            int s = 0;
+            int d, y;
+            i = White(a, i);
+            for (var j = 0; j <= 6; j++)
+                if (r.Substring(i, 3) == ((DayOfWeek)j).ToString())
+                    break;
+            i = White(a, i);
+            // 06 Nov 1994 08:49:37 GMT
+            // 06-Nov-94 08:49:37 GMT
+            // Nov  6 08:49:37 1994 
+            (d,i) = Digits(r, a, i);
+            i = White(a, i);
+            // Nov 1994 08:49:37 GMT
+            // Nov-94 08:49:37 GMT
+            // Nov  6 08:49:37 1994 
+            for (var j = 1; j <= 12; j++)
+                if (r.Substring(i, 3) == ((Month)j).ToString())
+                {
+                    i += 3;
+                    M = j;
+                    break;
+                }
+            i = White(a, i);
+            // 1994 08:49:37 GMT
+            // 94 08:49:37 GMT
+            // 6 08:49:37 1994 
+            (y, i) = Digits(r, a, i);
+            if (d == 0)
+            {
+                d = y;
+                y = 0;
+            }
+            else if (y < 100)
+                y += 1900;
+            i = White(a, i);
+            // 08:49:37 GMT
+            // 08:49:37 GMT
+            // 08:49:37 1994 
+            if (r[i + 2] == ':')
+            {
+                h = int.Parse(r.Substring(0, 2));
+                m = int.Parse(r.Substring(3, 2));
+                s = int.Parse(r.Substring(6, 2));
+                i += 8;
+            }
+            i = White(a, i);
+            // GMT
+            // GMT
+            // 1994 
+            if (y == 0)
+                (y, i) = Digits(r, a, i);
+            return new THttpDate(new DateTime(y,M,d,h,m,s));
+        }
+        /// <summary>
+        /// RFC 7231 representation of a timestamp
+        /// </summary>
+        /// <returns></returns>
+        public override string ToString()
+        {
+            if (value == null)
+                return "";
+            var sb = new StringBuilder();
+            var d = value.Value;
+            sb.Append((DayOfWeek)(int)d.DayOfWeek);
+            sb.Append(' '); sb.Append(d.Day.ToString("D2"));
+            sb.Append(' '); sb.Append((Month)d.Month);
+            sb.Append(','); sb.Append(d.Year);
+            sb.Append(' '); sb.Append(d.Hour.ToString("D2"));
+            sb.Append(' '); sb.Append(d.Minute.ToString("D2"));
+            sb.Append(' '); sb.Append(d.Second.ToString("D2"));
+            sb.Append(" GMT");
+            return sb.ToString();
+        }
+    }
+    // shareable
     internal class TInterval : TypedValue
     {
         internal readonly Interval value;
@@ -729,6 +858,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable
     internal class TTimeSpan : TypedValue
     {
         internal readonly TimeSpan? value;
@@ -767,6 +897,7 @@ namespace Pyrrho.Common
     }
     /// <summary>
     /// This is really part of the implementation of multi-level indexes (MTree etc)
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TMTree: TypedValue
     {
@@ -849,6 +980,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class TArray : TypedValue
     {
         internal readonly BList<TypedValue> list; 
@@ -944,6 +1076,7 @@ namespace Pyrrho.Common
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class TTypeSpec : TypedValue
     {
         Domain _dataType;
@@ -1026,9 +1159,12 @@ namespace Pyrrho.Common
             return val.ToString();
         }
     }
+    // shareable
     internal class TBlob : TypedValue
     {
-        internal byte[] value;
+        protected readonly byte[] value;
+        public int Length => value.Length;
+        public byte this[int i] => value[i];
         internal TBlob(Domain dt, byte[] b) : base(dt) { value = b; }
         internal TBlob(byte[] b) : this(Domain.Blob, b) { }
         internal override TypedValue New(Domain t)
@@ -1090,9 +1226,10 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class TPeriod : TypedValue
     {
-        internal Period value;
+        internal readonly Period value;
         internal TPeriod(Domain dt, Period p) : base(dt) { value = p; }
         internal override TypedValue New(Domain t)
         {
@@ -1159,9 +1296,10 @@ namespace Pyrrho.Common
             return rvv.ToString();
         }
     }
+    // shareable
     internal class TMetadata : TypedValue
     {
-        public readonly BTree<Sqlx, object> md;
+        protected readonly BTree<Sqlx, object> md;
         public TMetadata(BTree<Sqlx,object> m) : base(Domain.Metadata)
         {
             md = m;
@@ -1181,7 +1319,7 @@ namespace Pyrrho.Common
 
         internal override object Val()
         {
-            return md;
+            throw new NotImplementedException();
         }
         public override string ToString()
         {
@@ -1192,6 +1330,7 @@ namespace Pyrrho.Common
     /// Column is a convenience class for named values: has a name, segpos, data type, value.
     /// Should really only be used in system tables and Documents. Should not be stored anywhere.
     /// </summary>
+    ///     // shareable as of 26 April 2021
     internal sealed class Column
     {
         internal readonly string name;
@@ -1213,7 +1352,7 @@ namespace Pyrrho.Common
         }
     }
     /// This primitive form of TRow is a linked=list suitable for MTree indexes
-    /// </summary>
+    // shareable as of 26 April 2021
     internal class PRow : ITypedValue
     {
         internal readonly TypedValue _head;
@@ -1323,6 +1462,7 @@ namespace Pyrrho.Common
     /// Cursor and RowBookmark are TRows, and rows can be assigned to SqlValues if the columns
     /// match (not the uids).
     /// If the columns don't match then a map is required.
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TRow : TypedValue
     {
@@ -1548,6 +1688,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// A Multiset can be placed in a cell of a Table, so is treated as a value type.
     /// Operations of UNION and INTERSECT etc are defined on Multisets.
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TMultiset : TypedValue
     {
@@ -1641,6 +1782,7 @@ namespace Pyrrho.Common
         {
             return new MultisetBookmark(this);
         }
+        // shareable as of 26 April 2021
         internal class MultisetBookmark : IBookmark<TypedValue>
         {
             readonly TMultiset _set;
@@ -1866,7 +2008,8 @@ namespace Pyrrho.Common
     }
     /// <summary>
     /// The model for Xml values is that element ordering and repetition is important,
-    /// but attributes are not ordered and have unique neames.
+    /// but attributes are not ordered and have unique names.
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TXml : TypedValue
     {
@@ -1937,6 +2080,7 @@ namespace Pyrrho.Common
             get { return this==Null;  }
         }
     }
+    // shareable
     internal class Adapters
     {
         readonly BTree<long, BTree<long, long?>> list; // if long? >0 it is defpos of invertible adapter function

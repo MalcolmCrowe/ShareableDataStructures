@@ -44,13 +44,13 @@ namespace Pyrrho.Level3
     /// for this reason granting a role to a role is deprecated.
     /// For ease of implementation, the transaction's Role also holds ObInfos for SqlValues and Queries. 
     /// Immutable
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class Role : DBObject
     {
         internal const long
             DBObjects = -248, // BTree<string,long> Domain/Table/View etc by name
             Procedures = -249; // BTree<string,BTree<int,long>> Procedure/Function by name and arity
-        public string name => (string)(mem[Name] ?? "");
         internal BTree<string, long> dbobjects => 
             (BTree<string, long>)mem[DBObjects]??BTree<string,long>.Empty;
         internal BTree<string, BTree<int,long>> procedures => // not BList<long> !
@@ -166,6 +166,7 @@ namespace Pyrrho.Level3
     /// mem includes Selectors and some metadata
     /// Note: DBObject.Description and Domain.Iri are set by Role metadata
     /// (this is a design anomaly)
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class ObInfo : DBObject
     {
@@ -176,7 +177,6 @@ namespace Pyrrho.Level3
             MethodInfos = -252, // CTree<string, CTree<int,long>> Method
             Privilege = -253; // Grant.Privilege
         public string description => (string)mem[Description] ?? "";
-        public string name => (string)mem[Name] ?? "";
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
         public long inverts => (long)(mem[Inverts] ?? -1L);
         public string iri => (string)mem[Domain.Iri] ?? "";

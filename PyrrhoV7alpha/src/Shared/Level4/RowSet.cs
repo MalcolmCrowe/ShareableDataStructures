@@ -48,6 +48,7 @@ namespace Pyrrho.Level4
     /// All other rowSets get their defining position by cx.nextId++
     /// 
     /// IMMUTABLE
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal abstract class RowSet : DBObject
     {
@@ -488,7 +489,7 @@ namespace Pyrrho.Level4
         {
             var p = rt[i];
             var sv = cx.obs[p];
-            var n = sv?.alias ?? (string)sv?.mem[Basis.Name];
+            var n = sv?.alias ?? sv?.name;
             return cx.Inf(p)?.name ?? n??("Col"+i);
         }
         internal virtual RowSet Source(Context cx)
@@ -813,6 +814,7 @@ namespace Pyrrho.Level4
     /// column references (c) triggers.
     /// 4. In view of the anxieties of 3. these overrides are explicit
     /// in the Cursor itself.
+    ///  /// shareable as of 26 April 2021 (but e.g. LogSystemBookmark  and its subclasses are not)
     /// </summary>
     internal abstract class Cursor : TRow
     {
@@ -973,6 +975,7 @@ namespace Pyrrho.Level4
             return sb.ToString();
         }
     }
+    // shareable as of 26 April 2021
     internal class TrivialRowSet: RowSet
     {
         internal const long
@@ -1042,6 +1045,7 @@ namespace Pyrrho.Level4
         {
             return new TrivialRowSet(defpos,m);
         }
+        // shareable as of 26 April 2021
         internal class TrivialCursor : Cursor
         {
             readonly TrivialRowSet trs;
@@ -1079,6 +1083,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// A rowset consisting of selected Columns from another rowset (e.g. SELECT A,B FROM C).
     /// NB we assume that the rowtype contains only simple SqlCopy expressions
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SelectedRowSet : RowSet
     {
@@ -1303,6 +1308,7 @@ namespace Pyrrho.Level4
             }
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class SelectedCursor : Cursor
         {
             internal readonly SelectedRowSet _srs;
@@ -1413,6 +1419,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class SelectRowSet : RowSet
     {
         /// <summary>
@@ -1510,6 +1517,7 @@ namespace Pyrrho.Level4
         {
             return cx.data[source].Update(cx,fm, iter);
         }
+        // shareable as of 26 April 2021
         internal class SelectCursor : Cursor
         {
             readonly SelectRowSet _srs;
@@ -1605,7 +1613,7 @@ namespace Pyrrho.Level4
             }
         }
     }
-
+    // shareable as of 26 April 2021
     internal class EvalRowSet : RowSet
     {
         /// <summary>
@@ -1727,6 +1735,7 @@ namespace Pyrrho.Level4
             t = Scan(t,having, VIC.RK|VIC.OV);
             return base.Scan(t);
         }
+        // shareable as of 26 April 2021
         internal class EvalBookmark : Cursor
         {
             readonly EvalRowSet _ers;
@@ -1768,6 +1777,7 @@ namespace Pyrrho.Level4
 
     /// <summary>
     /// A TableRowSet consists of all of the *accessible* TableColumns from a Table
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TableRowSet : RowSet
     {
@@ -1853,6 +1863,7 @@ namespace Pyrrho.Level4
         {
             return TableCursor.New(this, _cx);
         }
+        // shareable as of 26 April 2021
         internal class TableCursor : Cursor
         {
             internal readonly Table _table;
@@ -1967,6 +1978,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// VirtualRowSet dummy - will be replaced by Instance()
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class VirtualRowSet : RowSet
     {
@@ -2009,6 +2021,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A RowSet defined by an Index (e.g. the primary key for a table)
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class IndexRowSet : RowSet
     {
@@ -2130,6 +2143,7 @@ namespace Pyrrho.Level4
             sb.Append(")");
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class IndexCursor : Cursor
         {
             internal readonly IndexRowSet _irs;
@@ -2264,6 +2278,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A RowSet defined by an Index (e.g. the primary key for a table) with a constant filter
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class FilterRowSet : IndexRowSet
     {
@@ -2361,6 +2376,7 @@ namespace Pyrrho.Level4
             sb.Append(" Filter ("); sb.Append(filter); sb.Append(")");
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class FilterCursor : IndexCursor
         {
             internal readonly FilterRowSet _frs;
@@ -2428,6 +2444,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A rowset for distinct values
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class DistinctRowSet : RowSet
     {
@@ -2550,6 +2567,7 @@ namespace Pyrrho.Level4
         {
             throw new DBException("42174");
         }
+        // shareable as of 26 April 2021
         internal class DistinctCursor : Cursor
         {
             readonly DistinctRowSet _drs;
@@ -2644,6 +2662,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class OrderedRowSet : RowSet
     {
         internal const long
@@ -2753,7 +2772,7 @@ namespace Pyrrho.Level4
             var sce = cx.data[source];
             _cx.finder += sce.finder;
             var dm = new Domain(Sqlx.ROW,cx, keys);
-            var tree = new RTree(sce.defpos,cx, keys, dm, 
+            var tree = new RTree(sce.defpos,keys, dm, 
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
             for (var e = sce.First(_cx); e != null; e = e.Next(_cx))
             {
@@ -2776,6 +2795,7 @@ namespace Pyrrho.Level4
         {
             return OrderedCursor.New(_cx, this, RTreeBookmark.New(tree, _cx));
         }
+        // shareable as of 26 April 2021
         internal class OrderedCursor : Cursor
         {
             readonly OrderedRowSet _ors;
@@ -2816,6 +2836,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class EmptyRowSet : RowSet
     {
         internal EmptyRowSet(long dp, Context cx,Domain dm) 
@@ -2870,6 +2891,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A rowset for SqlRows
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlRowSet : RowSet
     {
@@ -2953,6 +2975,7 @@ namespace Pyrrho.Level4
             t = Scan(t, sqlRows, VIC.RK|VIC.OV);
             return base.Scan(t);
         }
+        // shareable as of 26 April 2021
         internal class SqlCursor : Cursor
         {
             readonly SqlRowSet _srs;
@@ -3027,6 +3050,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class TableExpRowSet : RowSet
     {
         internal override RowSet Source(Context cx)
@@ -3096,6 +3120,7 @@ namespace Pyrrho.Level4
         {
             return TableExpCursor.New(this, _cx);
         }
+        // shareable as of 26 April 2021
         internal class TableExpCursor : Cursor
         {
             internal readonly TableExpRowSet _trs;
@@ -3199,6 +3224,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// a row set for TRows.
     /// Each TRow has the same domain as the ExplicitRowSet.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class ExplicitRowSet : RowSet
     {
@@ -3303,6 +3329,7 @@ namespace Pyrrho.Level4
             }
             return r;
         }
+        // shareable as of 26 April 2021
         internal class ExplicitCursor : Cursor
         {
             readonly ExplicitRowSet _ers;
@@ -3387,6 +3414,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class ProcRowSet : RowSet
     {
         internal SqlCall call => (SqlCall)mem[SqlCall.Call];
@@ -3463,6 +3491,7 @@ namespace Pyrrho.Level4
             sb.Append(" Call: "); sb.Append(call);
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class ProcRowSetCursor : Cursor
         {
             readonly ProcRowSet _prs;
@@ -3542,6 +3571,7 @@ namespace Pyrrho.Level4
     /// from the rowset's version of the destination table.
     /// The target activation has the current execution role, which in
     /// general may be different from any of the trigger activation roles.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TransitionRowSet : RowSet
     {
@@ -3687,6 +3717,7 @@ namespace Pyrrho.Level4
             { sb.Append(" Data: "); sb.Append(Uid(data.defpos)); }
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class TransitionCursor : Cursor
         {
             internal readonly TransitionRowSet _trs;
@@ -3793,6 +3824,7 @@ namespace Pyrrho.Level4
             }
 
         }
+        // shareable as of 26 April 2021
         internal class TargetCursor : Cursor
         {
             internal readonly ObInfo _ti;
@@ -3963,6 +3995,7 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+        // shareable as of 26 April 2021
         internal class TriggerCursor : Cursor
         {
             internal readonly TransitionRowSet _trs;
@@ -4010,6 +4043,7 @@ namespace Pyrrho.Level4
 
     /// <summary>
     /// Used for oldTable/newTable in trigger execution
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class TransitionTableRowSet : RowSet
     {
@@ -4119,6 +4153,7 @@ namespace Pyrrho.Level4
             sb.Append(old ? " OLD" : " NEW");
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class TransitionTableCursor : Cursor
         {
             internal readonly ABookmark<long, TableRow> _bmk;
@@ -4165,6 +4200,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// RoutineCallRowSet is a table-valued routine call
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class RoutineCallRowSet : RowSet
     {
@@ -4247,6 +4283,7 @@ namespace Pyrrho.Level4
             return base.Scan(t);
         }
     }
+    // shareable as of 26 April 2021
     internal class RowSetSection : RowSet
     {
         internal const long
@@ -4316,6 +4353,7 @@ namespace Pyrrho.Level4
                 b = b.Previous(cx);
             return RowSetSectionCursor.New(cx, this, b);
         }
+        // shareable as of 26 April 2021
         internal class RowSetSectionCursor : Cursor
         {
             readonly RowSetSection _rss;
@@ -4358,6 +4396,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    // shareable as of 26 April 2021
     internal class DocArrayRowSet : RowSet
     {
         internal const long
@@ -4428,6 +4467,7 @@ namespace Pyrrho.Level4
         {
             return DocArrayBookmark.New(this, cx);
         }
+        // shareable as of 26 April 2021
         internal class DocArrayBookmark : Cursor
         {
             readonly DocArrayRowSet _drs;
@@ -4486,171 +4526,7 @@ namespace Pyrrho.Level4
             }
         }
     }
-    internal class ValueRowSet : RowSet
-    {
-        public ValueRowSet(long dp, Context cx, Domain dm, RowSet r, long tg)
-            : base(dp, BTree<long,object>.Empty+(_Source,r.defpos)
-                  +(_Domain,dm)+ (_Finder,_Fin(cx, dm, r))
-                  +(RSTargets,new CTree<long,long>(tg,tg))
-                  +(Query.Where, r.where)+(From.Target, tg)
-                  +(RowOrder,r.rowOrder)+(Query._Matches, r.matches))
-        { }
-        protected ValueRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        protected ValueRowSet(Context cx, RowSet rs, CTree<long, Finder> nd,bool bt)
-            : base(cx, rs, nd, bt) { }
-        static CTree<long,Finder> _Fin(Context cx,Domain dm,RowSet s)
-        {
-            var fi = CTree<long,Finder>.Empty;
-            var sb = s.rt.First();
-            for (var b = dm.rowType.First(); b != null && sb != null;
-                b = b.Next(), sb = sb.Next())
-                fi += (b.value(), s.finder[sb.value()]);
-            return fi;
-        }
-        public static ValueRowSet operator+(ValueRowSet v,(long,object)x)
-        {
-            return (ValueRowSet)v.New(v.mem + x);
-        }
-        internal override RowSet Source(Context cx)
-        {
-            return cx.data[source];
-        }
-        public override Cursor First(Context _cx) // NB not _First
-        {
-            return ValueCursor.New(_cx,this,0);
-        }
-        protected override Cursor _First(Context _cx)
-        {
-            throw new NotImplementedException();
-        }
-        public override Cursor Last(Context cx)
-        {
-            return ValueCursor.New(this, cx, 0);
-        }
-        protected override Cursor _Last(Context _cx)
-        {
-            throw new NotImplementedException();
-        }
-        internal override RowSet New(Context cx, CTree<long, Finder> nd, bool bt)
-        {
-            return new ValueRowSet(cx,this,nd,bt);
-        }
-
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new ValueRowSet(defpos,m);
-        }
-
-        internal override DBObject Relocate(long dp)
-        {
-            return new ValueRowSet(dp,mem);
-        }
-        internal class ValueCursor : Cursor
-        {
-            ValueRowSet _vrs;
-            Cursor _sc;
-            ValueCursor(Context cx, ValueRowSet rs, int pos, long defpos, Cursor sc)
-                : base(cx, rs, pos, defpos, sc._ppos, _Row(rs,sc)) 
-            {
-                _vrs = rs; _sc = sc;
-            }
-            ValueCursor(ValueCursor cu, Context cx, long p, TypedValue v) 
-                : base(cu, cx, p, v) 
-            { }
-            ValueCursor(Context cx,ValueCursor cu) :base(cx,cu)
-            {
-                _vrs = (ValueRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
-                _sc = _sc?._Fix(cx);
-            }
-            static TRow _Row(ValueRowSet rs,Cursor sc)
-            {
-                var vs = CTree<long, TypedValue>.Empty;
-                for (var b = rs.rt.First(); b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    var fi = rs.finder[p];
-                    vs += (p, sc[fi.col]);
-                }
-                return new TRow(rs.domain, vs);
-            }
-            protected override Cursor New(Context cx, long p, TypedValue v)
-            {
-                return new ValueCursor(this,cx,p,v);
-            }
-            internal static ValueCursor New(Context cx,ValueRowSet vrs,int pos)
-            {
-                var sce = vrs.Source(cx);
-                var ox = cx.finder;
-                cx.finder += sce.finder;
-                for (var b = sce.First(cx);b!=null;b=b.Next(cx))
-                {
-                    var rb = new ValueCursor(cx, vrs, pos, b._defpos, b);
-                    if (rb.Matches(cx) && Eval(vrs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return rb;
-                    }
-                }
-                return null;
-            }
-            internal static ValueCursor New(ValueRowSet vrs, Context cx, int pos)
-            {
-                var sce = vrs.Source(cx);
-                var ox = cx.finder;
-                cx.finder += sce.finder;
-                for (var b = sce.Last(cx); b != null; b = b.Previous(cx))
-                {
-                    var rb = new ValueCursor(cx, vrs, pos, b._defpos, b);
-                    if (rb.Matches(cx) && Eval(vrs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return rb;
-                    }
-                }
-                return null;
-            }
-            protected override Cursor _Next(Context cx)
-            {
-                var sce = _vrs.Source(cx);
-                var ox = cx.finder;
-                cx.finder += sce.finder;
-                for (var b = _sc.Next(cx); b != null; b = b.Next(cx))
-                {
-                    var rb = new ValueCursor(cx, _vrs, _pos+1, b._defpos, b);
-                    if (rb.Matches(cx) && Eval(_vrs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return rb;
-                    }
-                }
-                return null;
-            }
-            protected override Cursor _Previous(Context cx)
-            {
-                var sce = _vrs.Source(cx);
-                var ox = cx.finder;
-                cx.finder += sce.finder;
-                for (var b = _sc.Previous(cx); b != null; b = b.Previous(cx))
-                {
-                    var rb = new ValueCursor(cx, _vrs, _pos + 1, b._defpos, b);
-                    if (rb.Matches(cx) && Eval(_vrs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return rb;
-                    }
-                }
-                return null;
-            }
-            internal override BList<TableRow> Rec()
-            {
-                return _sc.Rec();
-            }
-            internal override Cursor _Fix(Context cx)
-            {
-                return new ValueCursor(cx, this);
-            }
-        }
-    } 
+    // shareable as of 26 April 2021
     /// <summary>
     /// WindowRowSet is built repeatedly during traversal of the source rowset.
     /// </summary>
@@ -4739,7 +4615,7 @@ namespace Pyrrho.Level4
             // (There may be an argument for including the rest of the row - might we allow triggers?)
             // We build the whole WRS at this stage for saving in f
             var kd = new Domain(Sqlx.ROW, w.domain.representation, w.order);
-            var tree = new RTree(source,cx, w.order, w.domain, 
+            var tree = new RTree(source,w.order, w.domain, 
                 TreeBehaviour.Allow, TreeBehaviour.Disallow);
             var values = new TMultiset(new Domain(Sqlx.MULTISET,wf.domain));
             for (var rw = cx.data[source].First(cx); rw != null; 
@@ -4755,6 +4631,7 @@ namespace Pyrrho.Level4
         {
             throw new NotImplementedException();
         }
+        // shareable as of 26 April 2021
         internal class WindowCursor : Cursor
         {
             WindowCursor(Context cx,long rp,Domain dm,int pos,long defpos,TRow rw) 
@@ -4795,6 +4672,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// This section nneeds much more work, along with deep testing of the HTTP service
     /// and query rewriting for RESTViews.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class RestRowSet : RowSet
     {
@@ -5393,6 +5271,7 @@ namespace Pyrrho.Level4
             { sb.Append(" UrlCol:"); sb.Append(Uid(urlCol)); }
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class RestCursor : Cursor
         {
             readonly RestRowSet _rrs;
@@ -5501,6 +5380,7 @@ namespace Pyrrho.Level4
 
     // An ad-hoc RowSet for a row history: the work is mostly done by
     // LogRowsCursor
+    // shareable as of 26 April 2021
     internal class LogRowsRowSet : RowSet
     {
         internal const long
@@ -5593,6 +5473,7 @@ namespace Pyrrho.Level4
             sb.Append(" for "); sb.Append(Uid(targetTable));
             return sb.ToString();
         }
+        // shareable as of 26 April 2021
         internal class LogRowsCursor : Cursor
         {
             readonly LogRowsRowSet _lrs;
@@ -5723,6 +5604,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// An Ad-hoc RowSet for a row,column history: the work is mostly done by
     /// LogRowColCursor
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class LogRowColRowSet : RowSet
     {
@@ -5828,6 +5710,7 @@ namespace Pyrrho.Level4
             r += (LogCol, cx.Replace(logCol, so, sv));
             return r;
         }
+        // shareable as of 26 April 2021
         internal class LogRowColCursor : Cursor
         {
             readonly LogRowColRowSet _lrs;

@@ -20,6 +20,7 @@ namespace Pyrrho.Level4
 {
     /// <summary>
     /// A row set for a Join operation.
+    ///     /// shareable as of 26 April 2021
     /// </summary>
 	internal class JoinRowSet : RowSet
 	{
@@ -442,6 +443,7 @@ namespace Pyrrho.Level4
     /// all tying values of right must be used with each tying value of left.
     /// We discover there is a tie when the MTreeBookmark is over-long or has pmk nonnull.
     /// With joins we always have MTree for both left and right (from Indexes or from Ordering)
+    ///     /// shareable as of 26 April 2021
     /// </summary>
 	internal abstract class JoinBookmark : Cursor
 	{
@@ -543,6 +545,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// An enumerator for an inner join rowset
     /// Key for left and right is given by the JoinCondition
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class InnerJoinBookmark : JoinBookmark
     {
@@ -697,6 +700,7 @@ namespace Pyrrho.Level4
     /// an operand of the part.
     /// So we enumerate the other operand and position for the determined
     /// operand.
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class FDJoinBookmark : JoinBookmark
     {
@@ -884,6 +888,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// Enumerator for a left join
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class LeftJoinBookmark : JoinBookmark
     {
@@ -1048,6 +1053,7 @@ namespace Pyrrho.Level4
             return new LeftJoinBookmark(cx,this);
         }
     }
+    /// shareable as of 26 April 2021
     internal class RightJoinBookmark : JoinBookmark
     {
         /// <summary>
@@ -1202,6 +1208,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A full join bookmark for a join row set
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class FullJoinBookmark : JoinBookmark
     {
@@ -1344,6 +1351,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A cross join bookmark for a join row set
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class CrossJoinBookmark : JoinBookmark
     {
@@ -1467,6 +1475,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A join bookmark for a lateral join row set
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class LateralJoinBookmark : JoinBookmark
     {

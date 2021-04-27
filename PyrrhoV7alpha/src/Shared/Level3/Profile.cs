@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Xml;
 using System.IO;
 using Pyrrho.Level2;
+using Pyrrho.Level4;
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
@@ -538,14 +539,14 @@ namespace Pyrrho.Level3
         /// <param name="t">The local database</param>
         /// <param name="success">Whether the transaction has succeeded</param>
         /// <returns>The new or updated transaction profile</returns>
-        public TransactionProfile AddProfile(Transaction t,bool success)
+        public TransactionProfile AddProfile(Context cx,bool success)
         {
-            if (t == null)
+            if (cx == null)
                 return null;
             TransactionProfile tp = new TransactionProfile();
             if (!success)
                 tp.fails = 1;
-            for (var b = t.physicals.First(); b != null; b = b.Next())
+            for (var b = cx.physicals.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 switch (p.type)

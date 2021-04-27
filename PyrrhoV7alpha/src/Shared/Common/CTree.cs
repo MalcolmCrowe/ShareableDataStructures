@@ -163,6 +163,7 @@ namespace Pyrrho.Common
     /// A generic strongly-typed Tree for values in the database.
     /// The tree's single-level key and value type are determined at creation.
     /// IMMUTABLE
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class SqlTree : CTree<TypedValue, TypedValue>
     {

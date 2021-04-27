@@ -16,6 +16,7 @@ namespace Pyrrho.Level4
 {
     /// <summary>
     /// A MergeRowSet is for handling UNION, INTERSECT, EXCEPT
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class MergeRowSet : RowSet
     {
@@ -175,6 +176,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// An enumerator for a mergerowset
     /// A class for shared MergeEnumerator machinery. Supports IntersectionEnumerator, ExceptEnumerator and UnionEnumerator
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal abstract class MergeBookmark : Cursor
     {
@@ -237,6 +239,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A Union enumerator for merge rowset
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class UnionBookmark : MergeBookmark
     {
@@ -295,6 +298,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// An except enumerator for the merge rowset
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class ExceptBookmark : MergeBookmark
     {
@@ -390,6 +394,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// An intersect enumerator for the merge row set
+    ///     /// shareable as of 26 April 2021
     /// </summary>
     internal class IntersectBookmark : MergeBookmark
     {

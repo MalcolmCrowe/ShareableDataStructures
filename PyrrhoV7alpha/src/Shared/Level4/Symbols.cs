@@ -18,7 +18,7 @@ namespace Pyrrho.Level4
 
     /// <summary>
     /// Implement an identifier lexeme class.
-    /// Ident is not immutable and must not be used in any property of any subclass of Basis.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class Ident : IComparable
     {
@@ -123,6 +123,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// TODO: if A(B,C) do not match select D.B from A,..
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class Idents : BTree<string, (long, Idents)>
         {
@@ -278,6 +279,7 @@ namespace Pyrrho.Level4
                 return sb.ToString();
             }
         }
+        // shareable as of 26 April 2021
         internal class IdBookmark
         {
             internal readonly ABookmark<string, (long, Idents)> _bmk;
@@ -354,12 +356,13 @@ namespace Pyrrho.Level4
         public TypedValue pushVal;
         /// <summary>
         /// Entries in the reserved word table
-        /// If there are more than 2048 reserved words, the hp will hang
+        /// If there are more than 2048 reserved words, the server will hang
+        /// // shareable as of 26 April 2021
         /// </summary>
 		class ResWd
 		{
-			public Sqlx typ;
-			public string spell;
+			public readonly Sqlx typ;
+			public readonly string spell;
 			public ResWd(Sqlx t,string s) { typ=t; spell=s; }
 		}
  		static ResWd[] resWds = new ResWd[0x800]; // open hash

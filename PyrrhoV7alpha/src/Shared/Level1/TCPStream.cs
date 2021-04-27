@@ -494,9 +494,9 @@ namespace Pyrrho.Level1
             else
                 PutLong(v.ticks);
         }
-        internal void PutWarnings(Transaction tr)
+        internal void PutWarnings(Context cx)
         {
-            for (var b=tr.warnings.First();b!=null;b=b.Next())
+            for (var b=cx.warnings.First();b!=null;b=b.Next())
             {
                 var e = (DBException)b.value();
                 Write(Responses.Warning);

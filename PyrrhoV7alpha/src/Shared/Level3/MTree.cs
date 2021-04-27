@@ -25,6 +25,7 @@ namespace Pyrrho.Level3
     /// of course in a multi-level MTree with allowNulls, any element of the key might be null.
     /// We detect partial ordering through the TreeBehaviour on onDuplicate.
     /// Immutable: No Mutators
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class MTree
     {
@@ -468,6 +469,7 @@ namespace Pyrrho.Level3
     /// So in handling joins we can get back to the first in a group of ties by truncating the bookmark
     /// to the right length. This depth is given by the length of the join condition.
     /// Thus we detect the presence of ties by (a) an over-long bookmark and (b) a non-null pmk.
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal sealed class MTreeBookmark 
     {
@@ -789,6 +791,7 @@ namespace Pyrrho.Level3
     internal enum TreeBehaviour { Ignore, Allow, Disallow };
     /// <summary>
     /// TreeInfo is used for handling complex SQL result types (for MTree, RTree)
+    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class TreeInfo
     {

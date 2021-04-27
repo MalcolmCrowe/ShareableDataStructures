@@ -17,11 +17,11 @@ using Pyrrho.Level3;
 
 namespace Pyrrho.Level4
 {
+    // shareable as of 26 April 2021
     internal class SystemTable : Table
     {
         internal const long
             Cols = -175; // BTree<long,TableColumn>
-        public string name => (string)mem[Name];
         public BTree<long, TableColumn> tableCols =>
             (BTree<long, TableColumn>)mem[Cols] ?? BTree<long, TableColumn>.Empty;
         internal SystemTable(string n)
@@ -102,12 +102,12 @@ namespace Pyrrho.Level4
             cx.data += (f.defpos, r);
         }
     }
+    // shareable as of 26 April 2021
     internal class SystemTableColumn : TableColumn
     {
         internal const long
             Key = -389;
         public readonly bool DBNeeded = true;
-        public string name => (string)mem[Name];
         public int isKey => (int)mem[Key];
         /// <summary>
         /// A table column for a System or Log table
@@ -157,6 +157,7 @@ namespace Pyrrho.Level4
             return domain.rowType;
         }
     }
+    // shareable as of 26 April 2021
     internal class SystemIndex : Index
     {
         public SystemIndex(long tb,CList<long> ks) 
@@ -164,6 +165,7 @@ namespace Pyrrho.Level4
                   +(Keys,ks)+(TableDefPos,tb))
         { }
     }
+    // shareable as of 26 April 2021
     internal class SystemFilter
     {
         public readonly long col;
@@ -230,6 +232,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// Perform selects from virtual 'system tables'
+    /// // shareable as of 26 April 2021
     /// </summary>
     internal class SystemRowSet : RowSet
     {
@@ -563,6 +566,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// A bookmark for a system table
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal abstract class SystemBookmark : Cursor
         {
@@ -4098,11 +4102,12 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// enumerate the Sys$Role table
+        /// shareable as of 26 April 2021
         /// </summary>
         internal class SysRoleBookmark : SystemBookmark
         {
             /// <summary>
-            /// an enumerator for the role's objects
+            /// an enumerator for the role's objects (all of which will be shareable)
             /// </summary>
             readonly ABookmark<long,object> _bmk;
             /// <summary>
@@ -4173,11 +4178,12 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// enumerate the Sys$User table
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class SysUserBookmark : SystemBookmark
         {
             /// <summary>
-            /// an enumerator for the roles tree
+            /// an enumerator for the roles tree 
             /// </summary>
             readonly ABookmark<long,object> en;
             /// <summary>
@@ -4250,6 +4256,7 @@ namespace Pyrrho.Level4
             t .AddIndex("Role", "User");
             t.Add();
         }
+        // shareable as of 26 April 2021
         internal class SysRoleUserBookmark : SystemBookmark
         {
             readonly ABookmark<string, long> _rbmk;
@@ -4556,6 +4563,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// Classification is useful for DBObjects, TableColumns, and records
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class SysClassificationBookmark : SystemBookmark
         {
@@ -4823,6 +4831,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$View
+        /// shareable as of 26 April 2021
         /// </summary>
         internal class RoleViewBookmark : SystemBookmark
         {
@@ -4914,6 +4923,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// and enumerator for Role$DomainCheck
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleDomainCheckBookmark : SystemBookmark
         {
@@ -5023,6 +5033,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$TableCheck
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTableCheckBookmark : SystemBookmark
         {
@@ -5123,6 +5134,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$TablePeriod
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTablePeriodBookmark : SystemBookmark
         {
@@ -5242,6 +5254,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Column
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleColumnBookmark : SystemBookmark
         {
@@ -5343,6 +5356,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
+        // shareable as of 26 April 2021
         internal class RoleClassBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _enu;
@@ -5408,6 +5422,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$ColumnCheck
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleColumnCheckBookmark : SystemBookmark
         {
@@ -5531,6 +5546,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$columnPrivilege
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleColumnPrivilegeBookmark : SystemBookmark
         {
@@ -5632,6 +5648,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// and enumerator for Role$Domain
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleDomainBookmark : SystemBookmark
         {
@@ -5736,6 +5753,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Index
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleIndexBookmark : SystemBookmark
         {
@@ -5833,6 +5851,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$IndexKey
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
@@ -5925,6 +5944,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
+        // shareable as of 26 April 2021
         internal class RoleJavaBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _enu;
@@ -5977,6 +5997,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
+        // shareable as of 26 April 2021
         internal class RolePythonBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _enu;
@@ -6039,6 +6060,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Procedure
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleProcedureBookmark : SystemBookmark
         {
@@ -6122,6 +6144,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Parameter
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleParameterBookmark : SystemBookmark
         {
@@ -6209,6 +6232,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Object
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleSubobjectBookmark : SystemBookmark
         {
@@ -6312,6 +6336,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Table
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTableBookmark : SystemBookmark
         {
@@ -6394,6 +6419,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Trigger
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTriggerBookmark : SystemBookmark
         {
@@ -6496,6 +6522,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$TriggerUpdateColumn
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTriggerUpdateColumnBookmark : SystemBookmark
         {
@@ -6619,6 +6646,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Type
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleTypeBookmark : SystemBookmark
         {
@@ -6702,6 +6730,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Method
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleMethodBookmark : SystemBookmark
         {
@@ -6813,6 +6842,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// enumerate Role$Privilege
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RolePrivilegeBookmark : SystemBookmark
         {
@@ -6923,6 +6953,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Object
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleObjectBookmark : SystemBookmark
         {
@@ -7010,6 +7041,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// an enumerator for Role$Primarykey
+        /// // shareable as of 26 April 2021
         /// </summary>
         internal class RolePrimaryKeyBookmark : SystemBookmark
         {

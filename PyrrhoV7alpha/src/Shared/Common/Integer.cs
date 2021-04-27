@@ -16,13 +16,16 @@ namespace Pyrrho.Common
     /// This namespace has its own concept of Integer
     /// Uses signed radix-256 arithmetic.
     /// Integers are values, so no Mutators
+    /// Shareable
     /// </summary>
 	internal class Integer : IComparable 
 	{
         /// <summary>
         /// The radix-256 digits in the Integer
         /// </summary>
-		public byte[] bytes = null; // high to low, first bit is sign bit
+		protected readonly byte[] bytes = null; // high to low, first bit is sign bit
+        public int Length => bytes.Length;
+        public byte this[int x] => bytes[x];
         /// <summary>
         /// A table of powers of 10 to start off the hp
         /// </summary>
@@ -804,22 +807,23 @@ namespace Pyrrho.Common
     /// An arbitrary-precision decimal class
     /// Decimals are Integers together with an instruction about the decimal point. 
     /// Immutable: no Mutators.
+    /// shareable
     /// </summary>
     internal class Numeric : IComparable
 	{
         /// <summary>
         /// Ignore the decimal point for the mantissa
         /// </summary>
-		internal Integer mantissa;
+		internal readonly Integer mantissa;
         /// <summary>
         /// The position of the decimal point (digits from right): 0, no shifting.
         /// </summary>
-		internal int scale;
+		internal readonly int scale;
         /// <summary>
         /// The number of radix-256 digits to retain for division
         /// sticky: set by Domain when assigned
         /// </summary>
-		internal int precision = 0;
+		internal readonly int precision = 0;
         /// <summary>
         /// Constructor: given a mantissa and scale
         /// </summary>
@@ -872,7 +876,7 @@ namespace Pyrrho.Common
 		{
 			int n = 0;
 			Integer m = mantissa;
-			if (m.bytes.Length==0)
+			if (m.Length==0)
 				return Zero;
 			bool sg = m.Sign;
 			if (sg)
@@ -884,7 +888,7 @@ namespace Pyrrho.Common
                 if (r != 0)
                     break;
                 m = q;
-                if (m.bytes.Length == 0)
+                if (m.Length == 0)
                     return Zero;
                 n++;
             }
@@ -947,7 +951,7 @@ namespace Pyrrho.Common
             if (n <= 0)
                 return this;
             Integer m = mantissa;
-            if (m.bytes.Length != 0)
+            if (m.Length != 0)
                 for (int j = 0; j < n; j++)
                     m = m.Times10();
             return new Numeric(m, scale + n);
@@ -1040,7 +1044,7 @@ namespace Pyrrho.Common
 			// we want at least prec bytes in the result, i.e. len(a)-len(b)>prec+1
 			if (prec==0)
 				prec = 13; // if no precision specified
-			a = a.Denormalise(b.mantissa.bytes.Length-a.mantissa.bytes.Length+prec+1);
+			a = a.Denormalise(b.mantissa.Length-a.mantissa.Length+prec+1);
 			return new Numeric(a.mantissa/b.mantissa,a.scale-b.scale).Normalise();
 		}
         public static Numeric operator%(Numeric a,Numeric b)
@@ -1138,7 +1142,7 @@ namespace Pyrrho.Common
             Integer n = new Integer(0);
             if (!TryConvert(ref n))
                 return false;
-            if (n.bytes.Length > 8)
+            if (n.Length > 8)
                 return false;
             r = (long)n;
             return true;
@@ -1148,7 +1152,7 @@ namespace Pyrrho.Common
             Integer n = new Integer(0);
             if (!TryConvert(ref n))
                 return false;
-            if (n.bytes.Length > 4)
+            if (n.Length > 4)
                 return false;
             r = (int)n;
             return true;

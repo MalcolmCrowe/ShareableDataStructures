@@ -93,7 +93,7 @@ namespace Pyrrho.Level2
         }
         internal static int IntLength(long p)
         {
-            return 1 + new Integer(p).bytes.Length;
+            return 1 + new Integer(p).Length;
         }
         internal static int ColsLength(CList<long> cols)
         {
@@ -156,7 +156,7 @@ namespace Pyrrho.Level2
                 if (Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
-                tr?.physicals[pd].Commit(wr,tr);
+                wr.cx.physicals[pd].Commit(wr,tr);
                 // and try again
             }
             wr.srcPos = wr.Length + 1;
@@ -555,7 +555,7 @@ namespace Pyrrho.Level2
                 var rq = GetRequest();
                 rq.Method = "POST";
                 var sb = new StringBuilder();
-                for (var b = tr.physicals.First(); b != null; b = b.Next())
+                for (var b = wr.cx.physicals.First(); b != null; b = b.Next())
                     if (b.value() is Post p && (!p.committed) && p.url == url)
                     {
                         sb.Append(p.sql);
