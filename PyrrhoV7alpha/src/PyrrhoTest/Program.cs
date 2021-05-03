@@ -1,9 +1,8 @@
 ﻿using System;
 using Pyrrho;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.Data;
+using System.Security.Principal;
 
 namespace Test
 {
@@ -11,7 +10,7 @@ namespace Test
     {
         static int test = 0, qry = 0,testing=0,cur=0;
         bool commit = false;
-        PyrrhoConnect conn;
+        PyrrhoConnect conn,connA;
         PyrrhoTransaction tr;
         Program(string[] args)
         {
@@ -30,10 +29,11 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("14 April 2021 Repeatable tests");
+                Console.WriteLine("2 May 2021 Repeatable tests");
                 if (args.Length == 0)
                 {
-                    Console.WriteLine("Ensure testdb not present in database folder for any of");
+                    Console.WriteLine("Tests 22,23 need Server with +s");
+                    Console.WriteLine("Ensure A,testdb not present in database folder for any of");
                     Console.WriteLine("PyrrhoTest");
                     Console.WriteLine("PyrrhoTest 10 0");
                     Console.WriteLine("PyrrhoTest 0 0 commit");
@@ -52,7 +52,7 @@ namespace Test
         void Begin()
         {
             if (!commit)
-                tr = (PyrrhoTransaction)conn.BeginTransaction();
+                tr = conn.BeginTransaction();
         }
         void Rollback()
         {
@@ -64,31 +64,47 @@ namespace Test
         }
         void Tests()
         {
-            Test1(test);
-            Test2(test);
-            Test3(test);
-            Test4(test);
-            Test5(test);
-            Test6(test);
-            Test7(test);
-            Test8(test);
-            Test9(test); 
-            Test10(test);
-            Test11(test);
-            Test12(test);
-            Test13(test);
-            Test14(test);
-            Test15(test);
-            Test16(test);
-            Test17(test);
-            Test18(test);
-            Test19(test);
-            Test20(test);
-            Test21(test); 
+            Test1();
+            Test2();
+            Test3();
+            Test4();
+            Test5();
+            Test6();
+            Test7();
+            Test8();
+            Test9(); 
+            Test10();
+            Test11();
+            Test12();
+            Test13();
+            Test14();
+            Test15();
+            Test16();
+            Test17();
+            Test18();
+            Test19();
+            Test20();
+            Test21();
+            if (test == 0 || test > 21)
+            {
+                connA = new PyrrhoConnect("Files=A");
+                connA.Act("create table D(e int primary key,f char,g char)");
+                connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
+                connA.Act("create role A");
+                connA.Act("grant A to \"" + WindowsIdentity.GetCurrent().Name+"\"");
+                Test22();
+                ResetA();
+                Test23();
+            }
         }
-        void Test1(int t)
+        void ResetA()
         {
-            if (t > 0 && t != 1)
+            connA.Act("delete from D");
+            connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
+        }
+        void Test1()
+        {
+            if (test > 0 && test != 1)
                 return;
             testing = 1;
             Begin();
@@ -104,9 +120,9 @@ namespace Test
             CheckResults(1, 5, "table A", "[{B:2,C:3,D:'TwentyThree'},{B:2,C:4,D:'TWENTYTHREE'}]");
             Rollback();
         }
-        void Test2(int t)
+        void Test2()
         {
-            if (t > 0 && t != 2)
+            if (test > 0 && test != 2)
                 return;
             testing = 2;
             Begin();
@@ -122,9 +138,9 @@ namespace Test
             CheckResults(2, 6,"select count(C) from AA", "[{COUNT:2}]");
             Rollback();
         }
-        void Test3(int t)
+        void Test3()
         {
-            if (t > 0 && t != 3)
+            if (test > 0 && test != 3)
                 return;
             testing = 3;
             Begin();
@@ -135,9 +151,9 @@ namespace Test
             CheckResults(3, 2,"select * from b where c=-23", "[{C:-23,D:'HC'}]");
             Rollback();
         }
-        void Test4(int t)
+        void Test4()
         {
-            if (t > 0 && t != 4)
+            if (test > 0 && test != 4)
                 return;
             testing = 4;
             Begin();
@@ -153,9 +169,9 @@ namespace Test
                 "[{COUNT:1}]");
             Rollback();
         }
-        void Test5(int t)
+        void Test5()
         {
-            if (t > 0 && t != 5)
+            if (test > 0 && test != 5)
                 return;
             testing = 5;
             Begin();
@@ -175,9 +191,9 @@ namespace Test
             CheckResults(5, 11,"select count(c) as d from f where b<20", "[{D:1}]");
             Rollback();
         }
-        void Test6(int t)
+        void Test6()
         {
-            if (t > 0 && t != 6)
+            if (test > 0 && test != 6)
                 return;
             testing = 6;
             Begin();
@@ -187,9 +203,9 @@ namespace Test
             CheckResults(6, 1, "select * from ta", "[{B:\""+d.ToString("d")+"\",C:\"2h\",D:\"False\"}]");
             Rollback();
         }
-        void Test7(int t)
+        void Test7()
         {
-            if (t > 0 && t != 7)
+            if (test > 0 && test != 7)
                 return;
             testing = 7;
             Begin();
@@ -206,9 +222,9 @@ namespace Test
                 "[{H:2,D:31},{H:2,D:33},{H:1,D:35},{H:2,D:37}]");
             Rollback();
         }
-        void Test8(int t)
+        void Test8()
         {
-            if (t > 0 && t != 8)
+            if (test > 0 && test != 8)
                 return;
             testing = 8;
             Begin();
@@ -252,9 +268,9 @@ namespace Test
                 "[{PID:1,CUST:12,AMOUNT:17},{PID:2,CUST:10,AMOUNT:37},{PID:3,CUST:13,AMOUNT:41}]");
             Rollback();
         }
-        void Test9(int t)
+        void Test9()
         {
-            if (t > 0 && t != 9)
+            if (test > 0 && test != 9)
                 return;
             testing = 9;
             Begin();
@@ -274,9 +290,9 @@ namespace Test
         /// Check transaction conflicts for read transactions
         /// </summary>
         /// <param name="t"></param>
-        void Test10(int t)
+        void Test10()
         {
-            if (commit || (t > 0 && t != 10)) //This test runs if commit is false
+            if (commit || (test > 0 && test != 10)) //This test runs if commit is false
                 return;
             testing = 10;
             try
@@ -322,9 +338,9 @@ namespace Test
             p.conn.Act("update RDC set B='the product of 6 and 7' where A=42");
             p.conn.Close();
         }
-        void Test11(int t)
+        void Test11()
         {
-            if (commit || (t > 0 && t != 11)) // this test only runs if commit is false
+            if (commit || (test > 0 && test != 11)) // this test only runs if commit is false
                 return;
             testing = 11;
             if (qry == 0 || qry == 1)
@@ -349,9 +365,9 @@ namespace Test
             }
             Rollback();
         }
-        void Test12(int t)
+        void Test12()
         {
-            if (t > 0 && t != 12)
+            if (test > 0 && test != 12)
                 return;
             testing = 12;
             Begin();
@@ -398,9 +414,9 @@ namespace Test
             CheckResults(12,9, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
             Rollback();
         }
-        void Test13(int t)
+        void Test13()
         {
-            if (t > 0 && t != 13)
+            if (test > 0 && test != 13)
                 return;
             testing = 13;
             Begin();
@@ -488,9 +504,9 @@ namespace Test
             }
             Rollback();
         }
-        void Test14(int t)
+        void Test14()
         {
-            if (t > 0 && t != 14)
+            if (test > 0 && test != 14)
                 return;
             testing = 14;
             Begin();
@@ -520,9 +536,9 @@ namespace Test
             CheckResults(14,4, "table se", "[{C:'disaster'},{C:'elizabeth',D:1953},{C:'johnson'}]");
             Rollback();
         }
-        public void Test15(int t)
+        public void Test15()
         {
-            if (t > 0 && t != 15)
+            if (test > 0 && test != 15)
                 return;
             testing = 15;
             Begin();
@@ -537,9 +553,9 @@ namespace Test
             CheckResults(15, 2, "table ca", "[{A:'Pos',B:45}]");
             Rollback();
         }
-        public void Test16(int t)
+        public void Test16()
         {
-            if (t > 0 && t != 16)
+            if (test > 0 && test != 16)
                 return;
             testing = 16;
             Begin();
@@ -566,9 +582,9 @@ namespace Test
             CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]"); // INSTEAD OF!
             Rollback();
         }
-        public void Test17(int t)
+        public void Test17()
         {
-            if (t > 0 && t != 17)
+            if (test > 0 && test != 17)
                 return;
             testing = 17;
             Begin();
@@ -579,9 +595,9 @@ namespace Test
             CheckResults(17, 1, "select reverse('Fred')", "[{REVERSE:'derF'}]");
             Rollback();
         }
-        public void Test18(int t)
+        public void Test18()
         {
-            if (t > 0 && t != 18)
+            if (test > 0 && test != 18)
                 return;
             testing = 18;
             Begin();
@@ -600,9 +616,9 @@ namespace Test
                 "[{COUNT:2}]");
             Rollback();
         }
-        public void Test19(int t)
+        public void Test19()
         {
-            if (t > 0 && t != 19)
+            if (test > 0 && test != 19)
                 return;
             testing = 19;
             Begin();
@@ -641,9 +657,9 @@ namespace Test
             CheckResults(19, 2, "select gather2()", "[{GATHER2:'First, Second'}]");
             Rollback();
         }
-        public void Test20(int t)
+        public void Test20()
         {
-            if (t > 0 && t != 20)
+            if (test > 0 && test != 20)
                 return;
             testing = 20;
             Begin();
@@ -670,9 +686,9 @@ namespace Test
                 "[{WHAT:'LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))'}]");
             Rollback();
         }
-        public void Test21(int t)
+        public void Test21()
         {
-            if (t > 0 && t != 21)
+            if (test > 0 && test != 21)
                 return;
             testing = 21;
             Begin();
@@ -701,6 +717,180 @@ namespace Test
             conn.Act("call claim(1,2)");
             CheckResults(21, 2, "table played", "[{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]");
             Rollback();
+        }
+        public void Test22()
+        {
+            if (test > 0 && test != 22)
+                return;
+            testing = 22;
+            Begin();
+            conn.Act("create view WU of (e int, f char, g char) as get " +
+                "etag url 'http://localhost:8180/A/A/D'");
+            CheckResults(22, 1, "select * from wu", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
+            conn.Act("create table HU (e int primary key, k char, m int)");
+            conn.Act("insert into HU values (1,'Cleaner',12500), (2,'Manager',31400)");
+            conn.Act("create view VU as select * from wu natural join HU");
+            CheckResults(22, 2, "select e, f, m from VU where e=1",
+                "[{E:1,F:'Joe',M:12500}]"); // CHECK only works for committed tables/views
+            conn.Act("insert into wu values(3,'Fred','Bloggs')");
+            CheckResults(22, 3, "select * from wu", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},"+
+                "{E:3,F:'Fred',G:'Bloggs'}]");
+            conn.Act("update vu set f='Elizabeth' where e=2");
+            CheckResults(22, 4, "select * from wu where e=2", "[{E:2,F:'Elizabeth',G:'Boop'}]");
+            Rollback();
+        }
+        public void Test23()
+        {
+            if (test > 0 && test != 23)
+                return;
+            testing = 23;
+            // this test has its own explicit transaction control
+            conn.Act("create view W of (e int, f char, g char) as get " +
+                "etag 'http://localhost:8180/A/A/D'");
+            CheckResults(23, 1, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
+            if (qry < 5)
+            {
+                conn.Act("create table H (e int primary key, k char, m int)");
+                conn.Act("insert into H values (1,'Cleaner',12500), (2,'Manager',31400)");
+                conn.Act("create view V as select * from w natural join H");
+                CheckResults(22, 2, "select e, f, m from V where e=1", "[{E:1,F:'Joe',M:12500}]");
+                conn.Act("insert into w values(3,'Fred','Bloggs')");
+                CheckResults(23, 3, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
+                    "{E:3,F:'Fred',G:'Bloggs'}]");
+                conn.Act("update v set f='Elizabeth' where e=2");
+                CheckResults(23, 4, "select * from w where e=2", "[{E:2,F:'Elizabeth',G:'Boop'}]");
+                ResetA();
+            }
+            // read-write conflicts
+            if (qry == 0 || qry == 5)
+            {
+                tr = conn.BeginTransaction();
+                Touch("select * from w where e=2");
+                connA.Act("update d set f='Liz' where e=2");
+                CheckExceptionCommit(23, 5, "ETag validation failure");
+                ResetA();
+            }
+            if (qry == 0 || qry == 6)
+            {
+                tr = conn.BeginTransaction();
+                Touch("select * from w where e=2");
+                connA.Act("delete from d where e=2");
+                CheckExceptionCommit(23, 6, "ETag validation failure");
+                ResetA();
+            }
+            // read/write non conflicts
+            if (qry == 0 || qry == 7)
+            {
+                tr = conn.BeginTransaction();
+                Touch("select * from w where e=1");
+                connA.Act("update d set f='Liz' where e=2");
+                tr.Commit();
+                CheckResults(23, 7, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]");
+                ResetA();
+            }
+            if (qry == 0 || qry == 8)
+            {
+                tr = conn.BeginTransaction();
+                Touch("select * from w where e=1");
+                connA.Act("delete from d where e=2");
+                CheckResults(23, 8, "select * from w", "[{E:1,F:'Joe',G:'Soap'}]");
+                tr.Commit();
+                ResetA();
+            }
+            // write/write conflicts UU
+            if (qry == 0 || qry == 9)
+            {
+                tr = conn.BeginTransaction();
+                conn.Act("update w set f='Liz' where e=2");
+                connA.Act("update d set f='Eliza' where e=2");
+                CheckExceptionCommit(23, 9, "ETag validation failure");
+                ResetA();
+            }
+            if (qry == 0 || qry == 10)
+            {
+                tr = conn.BeginTransaction(); // II
+                conn.Act("insert into w values (3,'Fred','Bloggs')");
+                connA.Act("insert into d values (3,'Anyone','Else')");
+                CheckExceptionCommit(23, 10, "Integrity constraint");
+                ResetA();
+            }
+            if (qry == 0 || qry == 11)
+            {
+                tr = conn.BeginTransaction();  // UD
+                conn.Act("update w set f='Liz' where e=2");
+                connA.Act("delete from d where e=2");
+                CheckExceptionCommit(23, 11, "ETag validation failure");
+                ResetA();
+            }
+            if (qry == 0 || qry == 12)
+            {
+                tr = conn.BeginTransaction();  // DU
+                conn.Act("delete from w where e=2");
+                connA.Act("update d set f='Eliza' where e=2");
+                CheckExceptionCommit(23, 12, "ETag validation failure");
+                ResetA();
+            }
+            if (qry == 0 || qry == 13)
+            {
+                tr = conn.BeginTransaction();  // DD
+                conn.Act("delete from w where e=2");
+                connA.Act("delete from d where e=2");
+                CheckExceptionCommit(23, 13, "ETag validation failure");
+                ResetA();
+            }
+            if (qry == 0 || qry == 14)
+            {
+                tr = conn.BeginTransaction();  // non UU
+                conn.Act("update w set f='Joseph' where e=1");
+                connA.Act("update d set f='Eliza' where e=2");
+                tr.Commit();
+                CheckResults(23, 14, "select * from w", "[{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]");
+                ResetA();
+            }
+            if (qry == 0 || qry == 15)
+            {
+                tr = conn.BeginTransaction();  // non II
+                conn.Act("insert into w values (4,'Some','Other')");
+                connA.Act("insert into d values (3,'Anyone','Else')");
+                tr.Commit();
+                CheckResults(23, 15, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
+                    "{E:3,F:'Anyone',G:'Else'},{E:4,F:'Some',G:'Other'}]");
+                ResetA();
+            }
+            if (qry == 0 || qry == 16)
+            {
+                tr = conn.BeginTransaction(); // non UD
+                conn.Act("update w set f='Joseph' where e=1");
+                connA.Act("delete from d where e=2");
+                tr.Commit();
+                CheckResults(23, 16, "select * from w", "[{E:1,F:'Joseph',G:'Soap'}]");
+                ResetA();
+            }
+            if (qry == 0 || qry == 17)
+            {
+                tr = conn.BeginTransaction(); // non DU
+                conn.Act("delete from w where e=2");
+                connA.Act("update d set f='Joseph' where e=1");
+                tr.Commit();
+                CheckResults(23, 17, "select * from w", "[{E:1,F:'Joseph',G:'Soap'}]");
+                ResetA();
+            }
+        }
+        void CheckExceptionCommit(int t, int q,string m)
+        {
+            try
+            {
+                tr.Commit();
+            }
+            catch(Exception e)
+            {
+                if (e.Message.StartsWith(m))
+                    return;
+                Console.WriteLine("Unexpected exception (" + t + " " + q + ") " + e.Message);
+                return;
+            }
+            Console.WriteLine("Didnt get exception (" + t + " " + q + ") " + m);
+            tr.Rollback();
         }
         void CheckExceptionQuery(int t, int q, string c, string m)
         {
@@ -743,6 +933,21 @@ namespace Test
                 return;
             }
             Console.WriteLine("Didnt get exception (" + t + " " + q + ") " + m);
+        }
+        void Touch(string s)
+        {
+            try
+            {
+                var cmd = conn.CreateCommand();
+                cmd.CommandText = s;
+                var r = cmd.ExecuteReader();
+                r?.Read();
+                r?.Close();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Exception (" + test + " " + qry + ") " + e.Message);
+            }
         }
         void CheckResults(int t,int q,string c,string d)
         {

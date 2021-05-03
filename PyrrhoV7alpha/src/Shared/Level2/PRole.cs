@@ -134,7 +134,7 @@ namespace Pyrrho.Level2
             Sqlx.PIE, Sqlx.NONE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, //0x4-0x80
             Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x2000
             Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x4000-0x40000
-            Sqlx.PASSWORD, Sqlx.IRI, Sqlx.ETAG }; // 0x80000-0x200000
+            Sqlx.PASSWORD, Sqlx.IRI, Sqlx.ETAG, Sqlx.MILLI }; // 0x80000-0x400000
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;

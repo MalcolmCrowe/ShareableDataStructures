@@ -202,6 +202,21 @@ namespace Pyrrho.Level4
                 cx.db += (Database.NextId,cx.db.nextId+sql.Length);
             return cx.db;
         }
+        public Database ParseSql(string sql)
+        {
+            lxr = new Lexer(sql, cx.db.lexeroffset);
+            tok = lxr.tok;
+            do
+            {
+                var e = ParseSqlStatement(Domain.Content);
+                //      cx.result = e.defpos;
+                if (tok == Sqlx.SEMICOLON)
+                    Next();
+            } while (tok != Sqlx.EOF);
+            if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
+                cx.db += (Database.NextId, cx.db.nextId + sql.Length);
+            return cx.db;
+        }
         /// <summary>
         /// Add the parameters to a prepared statement
         /// </summary>
@@ -1750,7 +1765,7 @@ namespace Pyrrho.Level4
                 case Sqlx.FUNCTION: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND,
                     Sqlx.LINE, Sqlx.POINTS, Sqlx.DROP, Sqlx.JSON, Sqlx.CSV, Sqlx.INVERTS, Sqlx.MONOTONIC);
                 case Sqlx.VIEW: return Match(Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, Sqlx.PASSWORD,
-                    Sqlx.CHARLITERAL,Sqlx.RDFLITERAL,Sqlx.ETAG);
+                    Sqlx.CHARLITERAL,Sqlx.RDFLITERAL,Sqlx.ETAG,Sqlx.MILLI);
                 default: return Match(Sqlx.CHARLITERAL, Sqlx.RDFLITERAL);
             }
         }

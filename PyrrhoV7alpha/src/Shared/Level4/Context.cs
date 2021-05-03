@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.Diagnostics.Eventing.Reader;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using Pyrrho.Common;
@@ -57,6 +58,7 @@ namespace Pyrrho.Level4
         internal CTree<long,bool> withViews = CTree<long,bool>.Empty;
         internal Rvv affected = null;
         internal CTree<string,Rvv> etags = CTree<string,Rvv>.Empty;
+        internal BTree<string, HttpParams> httpParams = BTree<string, HttpParams>.Empty;
         internal int physAtStepStart;
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;
@@ -109,12 +111,6 @@ namespace Pyrrho.Level4
                 nd += obs[b.key()].Needs(this,rs);
             return nd;
         }
-        internal BTree<long, bool> Needs<V>(BTree<long, bool> nd, BTree<long,V> wh)
-        {
-            for (var b = wh?.First(); b != null; b = b.Next())
-                nd += obs[b.key()].Needs(this);
-            return nd;
-        }
         // used SqlColRefs by From.defpos
         internal BTree<long, BTree<long, SqlValue>> used = BTree<long, BTree<long, SqlValue>>.Empty;
         /// <summary>
@@ -157,8 +153,8 @@ namespace Pyrrho.Level4
             physAtStepStart = (int)physicals.Count;
             this.db = db;
             rdC = (db as Transaction)?.rdC;
-            //            domains = (db as Transaction)?.domains;
-        }
+        //            domains = (db as Transaction)?.domains;
+    }
         internal Context(Context cx)
         {
             next = cx;
@@ -201,6 +197,30 @@ namespace Pyrrho.Level4
                 throw new DBException("42000", ic);
             return v;
         }
+
+        internal void CheckRemote(string url,Rvv rvv)
+        {
+            var hp = httpParams[url];
+            var rq = WebRequest.Create(url) as HttpWebRequest;
+            rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
+            if (hp.defaultCredentials)
+                rq.UseDefaultCredentials = true;
+            else
+                rq.Headers.Add("Authorization: Basic " + hp.authorization);
+            rq.Headers.Add("If-Match: " + rvv);
+            rq.Method = "HEAD";
+            HttpWebResponse rs = null;
+            try
+            {
+                rs = rq.GetResponse() as HttpWebResponse;
+            }
+            catch (WebException e)
+            {     
+                throw new DBException("40082", url);
+            }
+            rs?.Close();
+        }
+
         internal long GetUid()
         {
             return (parse==ExecuteStatus.Obey) ? nextHeap++ : nextStmt++;
@@ -391,6 +411,28 @@ namespace Pyrrho.Level4
             if (PyrrhoStart.DebugMode && db is Transaction)
                 Console.WriteLine(ph.ToString());
             db.Add(this, ph, lp);
+        }
+        internal void AddPost(string u, string tn, string s, string us, long vp, PTrigger.TrigType tp)
+        {
+            for (var b = physicals.Last(); b != null; b = b.Previous())
+                switch (b.value().type)
+                {
+                    case Physical.Type.PTransaction:
+                    case Physical.Type.PTransaction2:
+                            goto ins;
+                    case Physical.Type.Post:
+                        {
+                            Post p = (Post)b.value();
+                            if (p.url == u && p.target == tn && p.user == us && vp == p._vw)
+                            {
+                                p.sql += ("," + s);
+                                return;
+                            }
+                            goto ins;
+                        }
+                }
+            ins:
+            Add(new Post(u, tn, s, us, vp, tp, db.nextPos, this));
         }
         internal Domain Add(Domain dm)
         {

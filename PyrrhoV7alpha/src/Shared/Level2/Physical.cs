@@ -506,24 +506,25 @@ namespace Pyrrho.Level2
         internal string target;
         internal string sql;
         internal string user;
-        internal RestView _vw;
-        internal RestRowSet _rr;
+        internal long _vw;
+        internal PTrigger.TrigType tp;
         internal Context _cx;
         internal bool committed = false;
-        internal Post(string u,string tn,string s,string us,RestView r,RestRowSet rr,
-            long cp,Context cx):base(Type.Post,cp,cx)
+        internal Post(string u,string tn,string s,string us,long vw,
+            PTrigger.TrigType t,long cp,Context cx):base(Type.Post,cp,cx)
         {
             url = u;
             sql = s;
             target = tn;
             user = us;
-            _vw = r;
-            _rr  = rr;
+            _vw = vw;
+            tp = t;
             _cx = cx;
         }
         HttpWebRequest GetRequest()
         {
-            string user = _vw.clientName ?? _cx.user.name, password = _vw.clientPassword;
+            var vw = (RestView)_cx.obs[_vw];
+            string user = vw.clientName ?? _cx.user.name, password = vw.clientPassword;
             var ss = url.Split('/');
             if (ss.Length > 3)
             {
@@ -536,7 +537,8 @@ namespace Pyrrho.Level2
                         password = su[1];
                 }
             }
-            var rq = WebRequest.Create(url) as HttpWebRequest;
+            var ix = url.LastIndexOf('/');
+            var rq = WebRequest.Create(url.Substring(0,ix)) as HttpWebRequest;
             rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
             if (user == null)
                 rq.UseDefaultCredentials = true;
@@ -545,6 +547,17 @@ namespace Pyrrho.Level2
                 var cr = user + ":" + password;
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
                 rq.Headers.Add("Authorization: Basic " + d);
+            }
+            var vi = (ObInfo)_cx.db.role.infos[vw.viewPpos];
+            if (vi.metadata.Contains(Sqlx.ETAG))
+            {
+                var s = _cx.etags[url]?.ToString() ?? "";
+                if (s == "")
+                    rq.Headers.Add("If-Unmodified-Since: "
+                        + new THttpDate(_cx.db.lastModified,
+                        vi.metadata.Contains(Sqlx.MILLI)));
+                else
+                    rq.Headers.Add("If-Match: " + s);
             }
             return rq;
         }
@@ -555,14 +568,11 @@ namespace Pyrrho.Level2
                 var rq = GetRequest();
                 rq.Method = "POST";
                 var sb = new StringBuilder();
-                for (var b = wr.cx.physicals.First(); b != null; b = b.Next())
-                    if (b.value() is Post p && (!p.committed) && p.url == url)
-                    {
-                        sb.Append(p.sql);
-                        sb.Append("\r\n");
-                        p.committed = true;
-                    }
-                TargetActivation.RoundTrip(_cx, null, rq, url, sb);
+                sb.Append(sql);
+                sb.Append("\r\n");
+                var ix = url.LastIndexOf('/');
+                TargetActivation.RoundTrip(_cx, _vw, tp, rq, url.Substring(0,ix), sb);
+                committed = true;
             }
             return (tr,this);
         }
@@ -584,8 +594,7 @@ namespace Pyrrho.Level2
             sb.Append(" "); sb.Append(target);
             sb.Append(" "); sb.Append(url);
             sb.Append(" "); sb.Append(sql);
-            sb.Append(" "); sb.Append(DBObject.Uid(_vw.defpos));
-            sb.Append("="); sb.Append(DBObject.Uid(_rr.defpos));
+            sb.Append(" "); sb.Append(DBObject.Uid(_vw));
             return sb.ToString();
         }
     }

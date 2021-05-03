@@ -918,7 +918,7 @@ namespace Pyrrho.Level4
             for (var b = rs.rsTargets.First(); b != null; b = b.Next())
                 if ((rs.where == CTree<long, bool>.Empty && rs.matches == CTree<long, TypedValue>.Empty)
                     || rs.aggregates(cx))
-                    etag += (b.key(), (-1L, ((Table)cx.obs[b.key()]).lastData));
+                    etag += (b.key(), ( -1L, ((Table)cx.obs[b.key()]).lastData));
                 else
                     etag += (b.key(), cx.cursors[b.value()]);
             cx.etags += (dn, etag);
@@ -4850,7 +4850,7 @@ namespace Pyrrho.Level4
             }
             return nd;
         }
-        public HttpWebRequest GetRequest(Context cx,string url)
+        public HttpWebRequest GetRequest(Context cx,string url, bool ifmatch)
         {
             var rv = (RestView)cx.obs[restView];
             string user = rv.clientName??cx.user.name, password = rv.clientPassword;
@@ -4867,14 +4867,19 @@ namespace Pyrrho.Level4
                 }
             }
             var rq = WebRequest.Create(url) as HttpWebRequest;
+            var hps = new HttpParams(url);
             rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
             if (user == null)
+            {
                 rq.UseDefaultCredentials = true;
+                hps.defaultCredentials = true;
+            }
             else
             {
                 var cr = user + ":" + password;
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
                 rq.Headers.Add("Authorization: Basic " + d);
+                hps.authorization = d;
                 var _vw = (RestView)cx.obs[restView];
                 var vi = (ObInfo)cx.db.role.infos[_vw.viewPpos];
                 var xc = cx;
@@ -4883,12 +4888,16 @@ namespace Pyrrho.Level4
                 if (vi.metadata.Contains(Sqlx.ETAG))
                 {
                     var dn = url.Split('/')[3];
-                    var s = xc.etags[dn]?.ToString()??"";
+                    var s = xc.etags[dn]?.ToString() ?? "";
                     if (s == "")
-                        s = "*";
-                    rq.Headers.Add("If-Match: \"" + s + "\"");
+                        rq.Headers.Add("If-Unmodified-Since: "
+                            + new THttpDate(cx.db.lastModified,
+                            vi.metadata.Contains(Sqlx.MILLI)));
+                    else if (ifmatch)
+                        rq.Headers.Add("If-Match: \"" + s + "\"");
                 }
             }
+            cx.httpParams += (url, hps);
             return rq;
         }
         public static HttpWebResponse GetResponse(WebRequest rq)
@@ -4908,11 +4917,11 @@ namespace Pyrrho.Level4
                 if (wr.StatusCode == HttpStatusCode.Forbidden)
                     throw new DBException("42105");
                 if ((int)wr.StatusCode == 412)
-                    throw new DBException("40000");
+                    throw new DBException("40082");
             }
             catch (Exception e)
             {
-                throw new DBException(e.Message);
+                throw new DBException("40082");
             }
             return wr;
         }
@@ -4955,7 +4964,7 @@ namespace Pyrrho.Level4
             var vw = (RestView)cx.obs[restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
             var (url,targetName,sql) = GetUrl(cx,vi);
-            var rq = GetRequest(cx,url);
+            var rq = GetRequest(cx,url, false);
             rq.Accept = vw.mime ?? "application/json";
             if (vi.metadata.Contains(Sqlx.URL))
                 rq.Method = "GET";
@@ -5037,51 +5046,58 @@ namespace Pyrrho.Level4
                 {
                     throw new DBException("3D002", url);
                 }
-            } 
-            var wr = GetResponse(rq);
-            if (wr == null)
-                throw new DBException("2E201", url);
-            var et = wr.GetResponseHeader("ETag");
-            if (et != null && et.StartsWith("W/"))
-                et = et.Substring(2);
-            if (et != null)
-                et = et.Trim('"');
-            var ds = wr.GetResponseHeader("Description");
-            var cl = wr.GetResponseHeader("Classification");
-            var ld = wr.GetResponseHeader("LastData");
-            var lv = (cl != "") ? Level.Parse(cl) : Level.D;
-            var mime = wr.GetResponseHeader("Content-Type")??"text/plain";
-            var s = wr.GetResponseStream();
-            TypedValue a = null;
-            var or = cx.result;
-            cx.result = target; // sneaky
-            if (s != null)
-                a = domain.Parse(0, new StreamReader(s).ReadToEnd(),mime,cx);
-            cx.result = or;
-            if (PyrrhoStart.HTTPFeedbackMode)
-            {
-                if (a is TArray)
-                    Console.WriteLine("--> " + ((TArray)a).list.Count + " rows");
-                else
-                    Console.WriteLine("--> " + (a?.ToString() ?? "null"));
             }
-            s.Close();
-            var r = this+(RestValue,a)+(Built,true);
-            if (et != null && et!="")
+            HttpWebResponse wr = null;
+            try
             {
-                r += (ETag, et);
-                var dn = url.Split('/')[3];
-                cx.etags += (dn,cx.etags[dn]+Rvv.Parse(et));
-                if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                    Console.WriteLine("Response ETag: " + et);
+                wr = GetResponse(rq);
+                if (wr == null)
+                    throw new DBException("2E201", url);
+                var et = wr.GetResponseHeader("ETag");
+                if (et != null && et.StartsWith("W/"))
+                    et = et.Substring(2);
+                if (et != null)
+                    et = et.Trim('"');
+                var ds = wr.GetResponseHeader("Description");
+                var cl = wr.GetResponseHeader("Classification");
+                var ld = wr.GetResponseHeader("LastData");
+                var lv = (cl != "") ? Level.Parse(cl) : Level.D;
+                var mime = wr.GetResponseHeader("Content-Type") ?? "text/plain";
+                var s = wr.GetResponseStream();
+                TypedValue a = null;
+                var or = cx.result;
+                cx.result = target; // sneaky
+                if (s != null)
+                    a = domain.Parse(0, new StreamReader(s).ReadToEnd(), mime, cx);
+                cx.result = or;
+                if (PyrrhoStart.HTTPFeedbackMode)
+                {
+                    if (a is TArray)
+                        Console.WriteLine("--> " + ((TArray)a).list.Count + " rows");
+                    else
+                        Console.WriteLine("--> " + (a?.ToString() ?? "null"));
+                }
+                s.Close();
+                var r = this + (RestValue, a) + (Built, true);
+                if (et != null && et != "" && rq.Method == "POST") // Pyrrho manual 3.8.1
+                {
+                    r += (ETag, et);
+                    cx.etags += (url, cx.etags[url] + Rvv.Parse(et));
+                    if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
+                        Console.WriteLine("Response ETag: " + et);
+                }
+                if (ds != null)
+                    r += (ObInfo.Description, ds);
+                if (lv != Level.D)
+                    r += (Classification, lv);
+                if (ld != null && ld != "")
+                    r += (Table.LastData, long.Parse(ld));
+                return r;
             }
-            if (ds != null)
-                r += (ObInfo.Description, ds);
-            if (lv!=Level.D)
-                r+= (Classification,lv);
-            if (ld != null && ld!="")
-                r += (Table.LastData, long.Parse(ld));
-            return r;
+            catch (Exception e)
+            {
+                throw new DBException("40082");
+            }
         }
         BTree<long,bool> Grouped(Context cx, Grouping gs, StringBuilder sql, ref string cm, 
             BTree<long,bool> ids)
@@ -5205,12 +5221,6 @@ namespace Pyrrho.Level4
                 : new RESTActivation(cx, this, fm, PTrigger.TrigType.Update);
             if (!iter)
                 return ta;
-            for (var b = ta._trs.First(ta); b != null; b = b.Next(ta))
-            {
-                var cu = (TransitionRowSet.TransitionCursor)b;
-                cx.cursors += (defpos,cu._tgc);
-                ta.EachRow();
-            }
             return ta.Finish();
         }
         internal override Context Delete(Context cx,RowSet fm, bool iter)
@@ -5291,12 +5301,6 @@ namespace Pyrrho.Level4
             {
                 cx.cursors += (rb._rrs.defpos, this);
                 _rrs = rb._rrs; _ix = rb._ix;
-            }
-            internal RestCursor(Context cx,RestRowSet rs,int pos,CTree<long,TypedValue>vals)
-                :base(cx,rs,pos,-1L,-1L,new TRow(rs.domain,vals))
-            {
-                cx.cursors += (rs.defpos, this);
-                _rrs = rs; _ix = pos;
             }
             static TRow _Value(Context cx, RestRowSet rrs, int pos)
             {

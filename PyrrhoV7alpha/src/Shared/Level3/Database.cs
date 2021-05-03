@@ -142,6 +142,7 @@ namespace Pyrrho.Level3
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
             Public = -311, // long: always -1L, a dummy user ID
+            LastModified = -279, // DateTime
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>
@@ -185,6 +186,7 @@ namespace Pyrrho.Level3
         public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
+        public DateTime lastModified => (DateTime)mem[LastModified];
         public BTree<long, Physical.Type> log =>
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
@@ -235,8 +237,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n"></param>
         /// <param name="f"></param>
-        public Database(string n,FileStream f):base(_system.mem+(Name,n)
-            +(Format,_Format(f)))
+        public Database(string n,string path,FileStream f):base(_system.mem+(Name,n)
+            +(Format,_Format(f))+(LastModified,File.GetLastWriteTimeUtc(path)))
         {
             dbfiles += (n, f);
             loadpos = 5;
@@ -305,7 +307,7 @@ namespace Pyrrho.Level3
                     var fp = PyrrhoStart.path + fn;
                     if (!File.Exists(fp))
                         return null;
-                    var db = new Database(fn, new FileStream(fp,
+                    var db = new Database(fn, fp, new FileStream(fp,
                         FileMode.Open, FileAccess.ReadWrite, FileShare.None));
                     db.Load();
                     f = dbfiles[fn];
@@ -429,7 +431,8 @@ namespace Pyrrho.Level3
                 tr.Add(cx,pu,loadpos);
                 tr = (Transaction)cx.db;
             }
-            tr = tr + (_User, u.defpos) + (_Role, ro.defpos);
+            tr = tr + (_User, u.defpos) + (_Role, ro.defpos)
+                      + (LastModified, DateTime.UtcNow); // transaction start time
             return tr;
         }
         public DBObject GetObject(string n)
@@ -541,13 +544,6 @@ namespace Pyrrho.Level3
         public Physical GetD(long pos)
         {
             return new Reader(new Context(this),pos).Create();
-        }
-        public Physical Get(ref long pos)
-        {
-            var rdr = new Reader(new Context(this), pos);
-            var r = rdr.Create();
-            pos = rdr.Position;
-            return r;
         }
         internal virtual void Execute(Role r, string id,string[] path, int p, string etag)
         { }

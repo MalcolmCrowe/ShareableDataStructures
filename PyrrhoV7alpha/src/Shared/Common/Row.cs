@@ -703,11 +703,14 @@ namespace Pyrrho.Common
     // shareable
     internal class THttpDate : TDateTime
     {
-        internal THttpDate(DateTime d) : base(Domain.HttpDate, d)
-        { }
+        internal readonly bool milli;
+        internal THttpDate(DateTime d,bool m=false) : base(Domain.HttpDate, d)
+        {
+            milli = m;
+        }
         enum DayOfWeek { Sun=0,Mon=1,Tue=2,Wed=3,Thu=4,Fri=5,Sat=6}
         enum Month { Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}
-        int White(char[] a,int i)
+        static int  White(char[] a,int i)
         {
             // - is white space in RFC 850
             // also treat , as white
@@ -716,7 +719,7 @@ namespace Pyrrho.Common
                 i++;
             return i;
         }
-        (int,int) Digits(string s,char[] a, int i)
+        static (int,int) Digits(string s,char[] a, int i)
         {
             int n;
             for (n = 0; i < a.Length && char.IsDigit(a[i + n]); n++)
@@ -731,32 +734,41 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="r">The string representation</param>
         /// <returns>A THttpDate</returns>
-        internal THttpDate Parse(string r)
+        internal static THttpDate Parse(string r)
         {
             // example formats from RFC 7231
             // Sun, 06 Nov 1994 08:49:37 GMT
             // Sunday, 06-Nov-94 08:49:37 GMT
             // Sun Nov  6 08:49:37 1994 
+            // allowed by Pyrrho
+            // Sun, 06 Nov 1994 08:49:37.123 GMT
             var a = r.ToCharArray();
             var i = 0;
             int M = 1;
             int h = 0;
             int m = 0;
             int s = 0;
+            int f = 0;
             int d, y;
+            bool milli = false;
             i = White(a, i);
             for (var j = 0; j <= 6; j++)
                 if (r.Substring(i, 3) == ((DayOfWeek)j).ToString())
+                {
+                    i = i + 3;
                     break;
+                }
             i = White(a, i);
             // 06 Nov 1994 08:49:37 GMT
             // 06-Nov-94 08:49:37 GMT
             // Nov  6 08:49:37 1994 
+            // 06 Nov 1994 08:49:37.123 GMT
             (d,i) = Digits(r, a, i);
             i = White(a, i);
             // Nov 1994 08:49:37 GMT
             // Nov-94 08:49:37 GMT
             // Nov  6 08:49:37 1994 
+            // Nov 1994 08:49:37.123 GMT
             for (var j = 1; j <= 12; j++)
                 if (r.Substring(i, 3) == ((Month)j).ToString())
                 {
@@ -768,6 +780,7 @@ namespace Pyrrho.Common
             // 1994 08:49:37 GMT
             // 94 08:49:37 GMT
             // 6 08:49:37 1994 
+            // 1994 08:49:37.123 GMT
             (y, i) = Digits(r, a, i);
             if (d == 0)
             {
@@ -780,20 +793,35 @@ namespace Pyrrho.Common
             // 08:49:37 GMT
             // 08:49:37 GMT
             // 08:49:37 1994 
+            // 08:49:37.123 GMT
             if (r[i + 2] == ':')
             {
-                h = int.Parse(r.Substring(0, 2));
-                m = int.Parse(r.Substring(3, 2));
-                s = int.Parse(r.Substring(6, 2));
+                h = int.Parse(r.Substring(i, 2));
+                m = int.Parse(r.Substring(i+3, 2));
+                s = int.Parse(r.Substring(i+6, 2));
                 i += 8;
+            }
+            //  GMT
+            //  GMT
+            //  1994 
+            // .123 GMT
+            if (r[i] == '.')
+            {
+                f = int.Parse(r.Substring(i + 1, 3));
+                milli = true;
+                i += 4;
             }
             i = White(a, i);
             // GMT
             // GMT
             // 1994 
+            // GMT
             if (y == 0)
                 (y, i) = Digits(r, a, i);
-            return new THttpDate(new DateTime(y,M,d,h,m,s));
+            var dt = new DateTime(y, M, d, h, m, s);
+            if (f != 0)
+                dt = new DateTime(dt.Ticks + f*10000);
+            return new THttpDate(dt,milli);
         }
         /// <summary>
         /// RFC 7231 representation of a timestamp
@@ -806,12 +834,19 @@ namespace Pyrrho.Common
             var sb = new StringBuilder();
             var d = value.Value;
             sb.Append((DayOfWeek)(int)d.DayOfWeek);
-            sb.Append(' '); sb.Append(d.Day.ToString("D2"));
+            sb.Append(", "); sb.Append(d.Day.ToString("D2"));
             sb.Append(' '); sb.Append((Month)d.Month);
-            sb.Append(','); sb.Append(d.Year);
+            sb.Append(' '); sb.Append(d.Year);
             sb.Append(' '); sb.Append(d.Hour.ToString("D2"));
-            sb.Append(' '); sb.Append(d.Minute.ToString("D2"));
-            sb.Append(' '); sb.Append(d.Second.ToString("D2"));
+            sb.Append(':'); sb.Append(d.Minute.ToString("D2"));
+            sb.Append(':'); sb.Append(d.Second.ToString("D2"));
+            if (milli)
+            {
+                var t = d.Ticks
+                    -new DateTime(d.Year, d.Month, d.Day, d.Hour, d.Minute, d.Second).Ticks;
+                t /= 10000;
+                sb.Append('.'); sb.Append(t.ToString("D3")); 
+            }
             sb.Append(" GMT");
             return sb.ToString();
         }

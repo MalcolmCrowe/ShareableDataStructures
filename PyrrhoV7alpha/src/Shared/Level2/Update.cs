@@ -161,12 +161,6 @@ namespace Pyrrho.Level2
             }
             return now;
         }
-        internal override void Install(Context cx, long p)
-        {
-            var fl = AddRow(cx);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install((Table)cx.db.objects[tabledefpos]+new TableRow(this, cx.db, fl),p);
-        }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
         public override string ToString()

@@ -92,7 +92,7 @@ namespace Pyrrho
                         wr.PutBuf();
                         if (user != WindowsIdentity.GetCurrent().Name)
                         {
-                            db = new Database(fn, fs);
+                            db = new Database(fn, fp, fs);
                             var _cx = new Context(db);
                             wr = new Writer(_cx, db.df);
                             new PRole(fn, "Default Role", wr.Length, _cx).Commit(wr, null);
@@ -101,7 +101,7 @@ namespace Pyrrho
                         }
                         fs.Close();
                     }
-                    db = new Database(fn, new FileStream(fp,
+                    db = new Database(fn, fp, new FileStream(fp,
                         FileMode.Open, FileAccess.ReadWrite, FileShare.None));
                     if (PyrrhoStart.VerboseMode)
                         Console.WriteLine("Server " + cid + " " + user
@@ -179,7 +179,7 @@ namespace Pyrrho
                                 long t = 0;
                                 var ex = cx?.etags;
                                 cx = new Context(db);
-                                if (ex!=null)
+                                if (ex!=null && !(db is Transaction))
                                     cx.etags = ex;
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
@@ -205,7 +205,7 @@ namespace Pyrrho
                                 long t = 0;
                                 var ex = cx?.etags;
                                 cx = new Context(db);
-                                if (ex != null)
+                                if (ex != null && !(db is Transaction))
                                     cx.etags = ex;
                                 var ts = db.loadpos;
                                 db = new Parser(db).ParseSql(cmd, Domain.Content);
@@ -409,7 +409,7 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextId, cmd);
                                 var ex = cx?.etags;
                                 cx = new Context(tr);
-                                if (ex != null)
+                                if (ex != null && !(db is Transaction))
                                     cx.etags = ex;
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
@@ -577,7 +577,7 @@ namespace Pyrrho
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
-                                tr.Execute(cx, vb, "R", url, url.Split('/'), "application/json", jo, 
+                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "application/json", jo, 
                                     new string[0]);
                                 tcp.PutWarnings(cx);
                                 db = tr.RdrClose(cx);
@@ -1257,7 +1257,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (27 April 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (3 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

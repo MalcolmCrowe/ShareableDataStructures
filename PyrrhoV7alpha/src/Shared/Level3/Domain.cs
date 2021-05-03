@@ -793,6 +793,7 @@ namespace Pyrrho.Level3
                     case Sqlx.BOOLEAN: wr.WriteByte((byte)DataType.Boolean); break;
                     case Sqlx.LEVEL:
                     case Sqlx.METADATA:
+                    case Sqlx.CHECK:
                     case Sqlx.CHAR: wr.WriteByte((byte)DataType.String); break;
                     case Sqlx.DOCUMENT: goto case Sqlx.BLOB;
                     case Sqlx.DOCARRAY: goto case Sqlx.BLOB;

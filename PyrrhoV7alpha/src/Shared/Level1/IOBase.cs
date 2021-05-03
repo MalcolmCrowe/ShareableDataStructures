@@ -621,7 +621,7 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         internal virtual Domain GetColumnDomain(long cp,long p)
         {
-            // This implementation is only used for Log$ files
+            // This implementation is only used for Log$ rowsets
             var tp = -1L;
             for (var cb = database.colTracker[cp].First(); cb != null; cb = cb.Next())
             {

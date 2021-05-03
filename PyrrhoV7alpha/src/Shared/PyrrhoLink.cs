@@ -3358,7 +3358,13 @@ CallingConventions.HasThis, new Type[0], null);
                         e = new TransactionConflict(sig, connect.GetStrings());
                     else
                         e = new DatabaseError(sig, connect.GetStrings()); break;
-                case Responses.FatalError: sig = "2E206"; e = new DatabaseError(sig, connect.GetString()); break;
+                case Responses.FatalError:
+                    {
+                        var cs = connect.GetString();
+                        sig = cs.Contains("(412) Precondition Failed")?"40082":"2E206"; 
+                        e = new DatabaseError(sig, cs); 
+                        break;
+                    }
                 case Responses.TransactionConflict: sig = "40001"; e = new TransactionConflict(connect.GetString()); break;
                 case Responses.TransactionReason:
                     {

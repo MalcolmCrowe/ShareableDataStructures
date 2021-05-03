@@ -222,6 +222,7 @@ namespace Pyrrho.Level2
                 cx.Install(ix,p);
             }
             tb -= delpos;
+            tb += (Table.LastData, ppos);
             cx.Install(tb,p);
             cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

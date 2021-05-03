@@ -1,43 +1,487 @@
-
-create table b(a int primary key, c int)
-insert into b values(5,2),(6,1),(7,4)
-create table d(e int array)
-insert into d values(array(select c from b g))
-select e[0] from d
-
-6.1 doesn't allow the table d verification
-6.2 OSPSvr crashes if its in a transaction while computing _ETag if table b is not committed
-and fails on select e[0] from d if table d is not committed
-6.2 EmbeddedOSP is confused as to the datatype being transmitted
-e[0] left is SqlName
-
-Try order by with different options
-Try goup and having
-
-with table a(b int,c int)
-select * from a
-select b from a
-select b as d from a
-select a.b from a
-select a.b as b from a
-select a.b from a d
-select d.b from a d
-select d.b as e from a d
-select d.b as c from a d
-select c.b from a c
-select * from a d
-select (b) from a
-select (a.b) from a
-select (d.b) as c from a
-select (b,c) from a
-select (b,a.c) from a
-select (b as d,c) from a
-select (b,d.c) from a d
-select b+1 from a
-select b from a order by c
-select b from a order by b+c
-select a.b+1 from a
-select c.b+1 as d from a c 
-select b from a order by b
-
-Repeat all the above with primary key
+1:
+create table A(B int,C int,D char,primary key(B,C))
+insert into A values(2,3,'TwentyThree')
+insert into A values(1,9,'Nineteen')
+select * from A
+update A set C=19 where C=9
+select * from A
+delete from A where C=19
+insert into A(B,D) (select E.B,upper(E.D) from A E)
+table A
+2:
+create table AA(B int,C char)
+insert into AA(B) values(17)
+insert into AA(C) values('BC')
+insert into AA(C,B) values('GH',+67)
+select * from AA
+select B from AA
+select C as E from AA
+select C from AA where B<20
+select C from AA where B>20
+select count(C) from AA
+3:
+create table b(c int primary key,d char)
+insert into b values(45,'DE')
+insert into b values(-23,'HC')
+select * from b
+select * from b where c=-23
+4:
+create table e(f int,g char,primary key(g,f))
+insert into e values(23,'XC')
+insert into e values(45,'DE')
+select * from e
+insert into e(g) values('DE')
+select * from e
+select count(f) from e where g='DE' and f<=45
+5:
+create table f(b int,c int)
+insert into f values(17,15)
+insert into f values(23,6)
+select * from f
+select b-3 as h,22 as g from f
+select f.b as h,(c) from f
+select b+3,d.c from f d
+select (b as d,c) from f
+select * from f order by c
+select * from f order by b desc
+select * from f order by b+c
+select sum(b) from f
+select max(c),min(b) from f
+select count(c) as d from f where b<20
+6:
+create table ta(b date,c interval hour to second,d boolean)
+insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)
+select * from ta
+7:
+create table TB(S char,D int,C int)
+insert into TB values('Glasgow',2,43)
+insert into TB values('Paisley',3,82)
+insert into TB values('Glasgow',4,29)
+select S,count(C) as occ,sum(C) as total from TB group by S
+->[{S:Glasgow,OCC:2,TOTAL:72},{S:Paisley,OCC:1,TOTAL:82}]
+create table TBB(b int,c int,d int, e int)
+insert into TBB values(1,21,31,41),(3,22,35,47),(1,22,33,42),(1,22,35,49)
+insert into TBB values(2,21,37,40),(2,23,33,43),(1,24,31,44),(2,26,37,45)
+select sum(g) as h,d from (select count(*) as g,b,d from TBB group by b,d) group by d having b<3
+->[{H:2,D:31},{H:2,D:33},{H:1,D:35},{H:2,D:37}]
+8:
+create table JA(B int,C int,D int)
+insert into JA values(4,2,43)
+insert into JA values(8,3,82)
+insert into JA values(7,4,29)
+create table JE(F int,C int,G int)
+insert into JE values(4,3,22)
+insert into JE values(11,4,10)
+insert into JE values(7,2,31)
+select * from JA,JE
+select * from JA natural join JE
+->[{B:4,C:2,D:43,F:7,G:31},{B:8,C:3,D:82,F:4,G:22},{B:7,C:4,D:29,F:11,G:10}]
+select D,G from JA cross join JE where D<G
+select B,D,G from JA, JE where B=F
+select B,D,G from JA H, JE where H.C=JE.C
+select * from JA inner join JE on B=F
+select * from JA left join JE on B=F
+select * from JA right join JE on B=F
+select * from JA full join JE on B=F
+create table SalesPerson(pid int primary key)
+insert into SalesPerson values(1),(2),(3)
+create table Sales(sid int primary key, spid int, cust int, amount int)
+insert into Sales values(4,3,10,22),(5,2,11,12),(6,2,10,37)
+insert into Sales values(7,1,12,7),(8,3,13,41),(9,1,12,17)
+[select * from SalesPerson,
+(select cust, amount from Sales where spid = pid
+order by amount desc fetch first 1 rows only)]
+->[{PID:1,CUST:12,AMOUNT:17}],[{PID:2,CUST:10,AMOUNT:37}],[{PID:3,CUST:13,AMOUNT:41}]");
+8A:
+create table JA(B int primary key,C int,D int)
+insert into JA values(4,2,43)
+insert into JA values(8,3,82)
+insert into JA values(7,4,29)
+create table JE(F int references JA,C int primary key,G int)
+insert into JE values(4,3,22)
+insert into JE values(7,2,31)
+select * from JA,JE
+select * from JA natural join JE
+select D,G from JA cross join JE where D<G
+select B,D,G from JA, JE where B=F
+select B,D,G from JA H, JE where H.C=JE.C
+select * from JA inner join JE on B=F
+select * from JA left join JE on B=F
+select * from JA right join JE on B=F
+select * from JA full join JE on B=F
+9:
+create table ba(b int,c real,d numeric)
+insert into ba values(12345678901234567890123456789,123.4567,0.1234)
+insert into ba values(0,123.4567e-15,1234)
+insert into ba values(12,1234.0,0.00045)
+insert into ba values(34,0.5678e9,0)
+select * from ba
+10:
+create table RDC(A int primary key,B char)
+insert into RDC values(42,'Life, the Universe')
+insert into RDC values(52,'Weeks in the year')
+begin transaction
+select * from RDC where A=42
+10A: 
+update RDC set B='the product of 6 and 9' where A=42
+10 contd:
+commit
+-> Transaction conflict: Read conflict for record 135
+begin transaction
+select * from RDC where A=52
+10B:
+update RDC set B='the product of 6 and 7' where A=42
+10 contd:
+commit
+begin transaction
+select * from RDC
+10A:
+update RDC set B='the product of 6 and 9' where A=42
+10 contd:
+commit
+ -> Transaction conflict: Read conflict for table 22
+11:
+create table cs(b int not null,c int default 4,d int generated always as b+c)
+insert into cs(c) values(5)
+ -> Null value not allowed in column B
+insert into cs(b) values(3)
+insert into cs values(1,2,3)
+ -> Attempt to assign to a non-updatable column
+select * from cs
+12:
+create table sce(a int,b char)
+insert into sce values(12,'Zodiac')
+insert into sce values(13,'Bakers')
+insert into sce values(14,'Fortnight')
+create table dst(c int)
+insert into dst (select a from sce where b<'H')
+select * from dst
+select a from sce where b in('Fortnight','Zodiac')
+select * from dst where c in (select a from sce where b='Bakers')
+insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')
+insert into dst (select min(x.c)-3 from dst x)
+table dst
+-> 13 14 18 10
+create table p(q int primary key,r char,a int)
+create view v as select q,r as s,a from p
+insert into v(s) values('Twenty'),('Thirty')
+update v set s='Forty two' where q=1
+select q,s from v
+->[{Q:1,S:'Forty two'},{Q:2,R:'Thirty'}]
+select r from p
+->[{R:'Forty two'},{R:'Thirty'}]
+delete from v where s='Thirty'
+select * from p
+->[{Q:1,R:'Forty two',A:}]
+insert into p(r) values('Fifty')
+create table t(s char,u int)
+insert into t values('Forty two',42),('Fifty',48)
+create view w as select * from t natural join v
+update w set u=50,a=21 where q=2
+table p
+->[{Q:1,R:'Forty two',A:},{Q:2,'R:'Fifty',A:21}]
+table t
+->[{S:'Forty two',U:42},{S:'Fifty',U:50}]
+13:
+create table ad(a int,b char)
+insert into ad values(20,'Twenty')
+alter table ad add c char not null
+ -> Table is not empty
+alter table ad add c char default 'XX'
+insert into ad(a,b) values(2,'Two')
+select * from ad
+alter table ad drop b
+select * from ad
+alter table ad add primary key(a)
+insert into ad values(21,'AB')
+create table de (d int references ad)
+insert into de values(14)
+ -> Integrity constraint: foreign key DE(14)
+insert into de values(21)
+delete from ad where c='AB'
+ -> Integrity constraint: RESTRICT - foreign key in use
+drop ad
+ -> RESTRICT: Index 271 referenced in Index 380 
+drop de cascade
+alter table ad drop primary key(a)
+select * from ad
+insert into ad(a) values(13)
+select * from ad
+drop ad
+select * from ad
+ -> Table AD undefined
+14: 
+create table fi(a int primary key,b char)
+create table se(c char primary key, d int references fi on delete cascade)
+insert into fi values (1066,'invasion'),(1953,'accession'),(2019,'brexit')
+insert into se values ('disaster',2019),('elizabeth',1953),('johnson',2019)
+insert into se values ('normans',1066),('hastings',1066)
+delete from fi where a=1066
+table se
+  -> [{C:'disaster',D:2019},{C:'elizabeth',D:1953},{C:'johnson',D:2019}]
+alter table se set (d) references fi on delete restrict
+delete from fi where a=2019
+  -> Integrity constraint: RESTRICT
+alter table se set (d) references fi on delete set null on update cascade
+update fi set a=2020 where a=2019
+table se
+  -> [{C:'disaster',D:2020},{C:'elizabeth',D:1953},{C:'johnson',D:2020}]
+delete from fi where a=2020
+table se
+  -> [{C:'disaster'},{C:'elizabeth',D:1953},{C:'johnson'}]
+15:
+create table ca(a char,b int check (b>0))
+insert into ca values('Neg',-99)
+  -> Column B check constraint fails
+insert into ca values('Pos',45)
+table ca
+  -> [{A:'Pos',B:45}]
+16:
+create table xa(b int,c int,d char)
+create table xb(tot int)
+insert into xb values (0)
+[create trigger ruab before update on xa referencing old as mr new as nr
+for each row begin atomic update xb set tot=tot-mr.b+nr.b; set d='changed' end]
+[create trigger riab before insert on xa 
+for each row begin atomic set c=b+3; update xb set tot=tot+b end]
+insert into xa(b,d) values (7,'inserted')
+insert into xa(b, d) values(9, 'Nine')
+table xa
+  -> [{B:7,C:10,D:'inserted'},{B:9,C:12,D:'Nine'}]
+table xb
+  -> [{TOT:16}]
+update xa set b=8,d='updated' where b=7
+table xa
+  -> [{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]
+table xb
+  -> [{TOT:17}]
+create table xc(totb int,totc int)
+[create trigger sdai instead of delete on xa referencing old table as ot for each statement 
+begin atomic insert into xc (select b,c from ot) end]
+delete from xa where d='changed'
+table xc
+  -> [{TOTB:8,TOTC:10}]
+17:
+[create function reverse(a char) returns char 
+  if char_length(a)<=1 then return a 
+  else return reverse(substring(a from 1 for char_length(a)-1))
+             ||substring(a from 0 for 1) 
+  end if]
+select reverse('Fred')
+  -> [{Col0:'derF'}]
+18:
+create table author(id int primary key,aname char)
+create table book(id int primary key,authid int references author,title char)
+insert into author values (1,'Dickens'),(2,'Conrad')
+insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')
+[create function booksby(auth char) returns table(title char)
+  return table (select title from author inner join book b on author.id=b.authid where aname=booksby.auth)]
+select title from author inner join book b on author.id=b.authid where aname='Dickens'
+  -> [{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]
+select * from table(booksby('Dickens'))
+  -> [{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]
+select count(*) from table(booksby('Dickens'))
+  -> [{COUNT:2}]
+19:
+create table ga(a1 int primary key,a2 char)
+insert into ga values(1,'First'),(2,'Second')
+[create function gather1() returns char 
+ begin declare c cursor for select a2 from ga;
+  declare done Boolean default false;
+  declare continue handler for sqlstate '02000' set done=true;
+  declare a char default '';
+  declare p char;
+  open c;
+  repeat
+   fetch c into p; 
+   if not done then 
+    if a='' then 
+     set a=p 
+    else 
+     set a=a||', '||p 
+    end if
+   end if
+  until done end repeat;
+  close c;
+  return a end]
+select gather1()
+  -> [{Col0:'First, Second'}]
+[create function gather2() returns char 
+  begin declare b char default '';
+   for select a2 from ga do 
+    if b='' then 
+     set b=a2 
+    else 
+     set b=b||', '||a2 
+    end if 
+   end for;
+   return b end]
+select gather2()
+  -> [{Col0:'First, Second'}]
+20:
+create type point as (x int, y int)
+create type size as (w int,h int)
+create type line as (strt point,en point)
+[create type rect as (tl point,sz size) 
+  constructor method rect(x1 int,y1 int, x2 int, y2 int),
+  method centre() returns point]
+create table figure(id int primary key,title char)
+create table figureline(id int primary key,fig int references figure,what line)
+create table figurerect(id int primary key,fig int references figure,what rect)
+[create constructor method rect(x1 int,y1 int,x2 int,y2 int) 
+  begin tl=point(x1,y1); sz=size(x2-x1,y2-y1) end]
+[create method centre() returns point for rect 
+  return point(tl.x+sz.w/2,tl.y+sz.h/2)]
+[create function centrerect(a int) returns point 
+  return (select what.centre() from figurerect where id=centrerect.a)]
+insert into figure values(1,'Diagram')
+insert into figurerect values(1,1,rect(point(1,2),size(3,4)))
+insert into figurerect values(2,1,rect(4,5,6,7))
+insert into figureline values(1,1,line(centrerect(1),centrerect(2)))
+select what from figureline
+  -> [{WHAT:LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))}]
+21:
+create table members (id int primary key,firstname char)
+[create table played (id int primary key, winner int references members, 
+  loser int references members,agreed boolean)]
+grant select on members to public
+grant select on played to public
+[create procedure claim(won int,beat int) 
+  insert into played(winner,loser) values(claim.won,claim.beat)]
+[create procedure agree(p int) 
+  update played set agreed=true 
+   where winner=agree.p and loser in
+    (select m.id from members m where current_user like '%'||firstname escape '^')]
+insert into members(firstname) values(current_user)
+select id from members where current_user like '%'||firstname escape'^'
+  -> [{ID:1}]
+insert into members(firstname) values('Fred')
+insert into played(winner,loser) values(2,1)
+create role membergames
+grant execute on procedure claim(int,int) to role membergames
+grant execute on procedure agree(int) to role membergames
+grant membergames to public
+set role membergames
+call agree(2)
+call claim(1,2)
+table played
+  -> [{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]
+22: 
+A> create table D(e int primary key,f char,g char)
+A> insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')
+A> create role A
+A> grant A to "MALCOLM1\Malcolm"
+B> begin transaction
+B> create view WU of (e int, f char, g char) as get etag url 'http://localhost:8180/A/A/D'
+B> select * from wu
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]
+B> create table HU (e int primary key, k char, m int)
+B> insert into HU values (1,'Cleaner',12500), (2,'Manager',31400)
+B> create view VU as select * from wu natural join HU
+B> select e, f, m from VU where e=1
+ -> [{E:1,F:'Joe',M:12500}]
+B> insert into wu values(3,'Fred','Bloggs')
+B> select * from wu
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},{E:3,F:'Fred',G:'Bloggs'}]
+B> update vu set f='Elizabeth' where e=2
+B> select * from wu where e=2
+ -> [{E:2,F:'Elizabeth',G:'Boop'}]
+23:
+Reset A:> delete from D
+Reset A:> insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')
+B> create view W of (e int, f char, g char) as get etag 'http://localhost:8180/A/A/D'
+B> create table H (e int primary key, k char, m int)
+B> insert into H values (1,'Cleaner',12500), (2,'Manager',31400)
+B> create view V as select * from w natural join H
+B> select e, f, m from V where e=1
+ -> [{E:1,F:'Joe',M:12500}]
+B> insert into w values(3,'Fred','Bloggs')
+B> select * from w
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},{E:3,F:'Fred',G:'Bloggs'}]
+B> update v set f='Elizabeth' where e=2
+B> select * from w where e=2
+ -> [{E:2,F:'Elizabeth',G:'Boop'}]
+Reset A>
+B> begin transaction
+B> select * from w where e=2
+A> update d set f='Liz' where e=2
+B> commit
+ -> ETag validation failure
+Reset A>
+B> begin transaction
+B> select * from w where e=2
+A> delete from d where e=2
+B> commit
+ -> ETag validation failure
+Reset A>
+B> begin transaction
+B> select * from w where e=1
+A> update d set f='Liz' where e=2
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]
+Reset A>
+B> begin transaction
+B> select * from w where e=1
+A> delete from d where e=2 
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joe',G:'Soap'}]
+Reset A>
+B> begin transaction
+B> update w set f='Liz' where e=2
+A> update d set f='Eliza' where e=2
+B> commit
+ -> ETag validation failure
+Reset A>
+B> begin transaction
+B> insert into w values (3,'Fred','Bloggs')
+A> insert into d values (3,'Anyone','Else')
+B> commit
+  -> Integrity constraint
+Reset A>
+B> begin transaction
+B> update w set f='Liz' where e=2
+A> delete from d where e=2
+B> commit
+  -> ETag validation failure
+Reset A>
+B> begin transaction
+B> delete from w where e=2
+A> update d set f='Eliza' where e=2
+B> commit
+-> ETag validation failure
+Reset A>
+B> begin transaction
+B> delete from w where e=2
+A> delete from d where e=2
+B> commit
+-> ETag validation failure
+Reset A>
+B> begin transaction
+B> update w set f='Joseph' where e=1
+A> update d set f='Eliza' where e=2
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]
+Reset A>
+B> begin transaction
+B> insert into w values (4,'Some','Other')
+A> insert into d values (3,'Anyone','Else')
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},{E:3,F:'Anyone',G:'Else'},{E:4,F:'Some',G:'Other'}]
+Reset A>
+B> begin transaction
+B> update w set f='Joseph' where e=1
+A> delete from d where e=2
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joseph',G:'Soap'}]
+Reset A>
+B> begin transaction
+B> delete from w where e=2
+A> update d set f='Joseph' where e=1
+B> commit
+B> select * from w
+ -> [{E:1,F:'Joseph',G:'Soap'}]

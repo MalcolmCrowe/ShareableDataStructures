@@ -4,6 +4,7 @@ using Pyrrho.Level2;
 using System;
 using System.Text;
 using System.Net;
+using System.IO;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -209,30 +210,75 @@ namespace Pyrrho.Level4
         {
             return _cx;
         }
-        internal static void RoundTrip(Context cx,RestRowSet rrs, WebRequest rq, string url, StringBuilder sql)
+        internal static void RoundTrip(Context cx, long vp, PTrigger.TrigType tp, WebRequest rq, string url, StringBuilder sql)
         {
             if (PyrrhoStart.HTTPFeedbackMode)
-                Console.WriteLine(url + " " + sql.ToString());
-            var bs = Encoding.UTF8.GetBytes(sql.ToString());
-            rq.ContentLength = bs.Length;
-            try
+                Console.WriteLine("RoundTrip " + rq.Method + " " + url + " " + sql?.ToString());
+            if (sql != null)
             {
-                var rqs = rq.GetRequestStream();
-                rqs.Write(bs, 0, bs.Length);
-                rqs.Close();
+                var bs = Encoding.UTF8.GetBytes(sql.ToString());
+                rq.ContentLength = bs.Length;
+                try
+                {
+                    var rqs = rq.GetRequestStream();
+                    rqs.Write(bs, 0, bs.Length);
+                    rqs.Close();
+                }
+                catch (WebException)
+                {
+                    throw new DBException("3D002", url);
+                }
             }
-            catch (WebException)
+            HttpWebResponse rp = null;
+            rp = RestRowSet.GetResponse(rq);
+            var vi = (ObInfo)cx.db.role.infos[vp];
+            var post = rq.Method == "POST";
+            if (vi.metadata.Contains(Sqlx.ETAG)) // see Pyrrho manual sec 3.8.1
             {
-                throw new DBException("3D002", url);
+                var et = rp.Headers["ETag"];
+                if (et!=null)
+                switch (tp & (PTrigger.TrigType.Insert | PTrigger.TrigType.Update | PTrigger.TrigType.Delete))
+                {
+                    case PTrigger.TrigType.Insert:
+                        if (post)
+                        {
+                            cx.etags += (url, Rvv.Parse(et));
+                            ShowETag(cx);
+                        }
+                        break;
+                    case PTrigger.TrigType.Update:
+                        cx.etags += (url, Rvv.Parse(et));
+                        ShowETag(cx);
+                        break;
+                    case PTrigger.TrigType.Delete:
+                        if (!post)
+                        {
+                            cx.etags += (url, Rvv.Parse(et));
+                            ShowETag(cx);
+                        }
+                        break;
+                }
             }
-            var rp = RestRowSet.GetResponse(rq);
             if (PyrrhoStart.HTTPFeedbackMode)
                 Console.WriteLine("--> " + rp.StatusCode);
             if (rp == null || rp.StatusCode != HttpStatusCode.OK)
+            {
+                var rs = rp.GetResponseStream();
+                var s = new StreamReader(rs).ReadToEnd();
+                if (s.StartsWith("SQL Error: "))
+                {
+                    var sig = s.Substring(11, 5);
+                    var ix = s.IndexOf('\n');
+                    throw new DBException(sig, s.Substring(16));
+                }
                 throw new DBException("2E201");
-            var ld = rp.GetResponseHeader("LastData");
-            if (rrs!=null && ld != null && ld!="")
-                cx.data += (rrs.defpos, rrs + (Table.LastData, long.Parse(ld)));
+            }
+            rp?.Close();
+        }
+        static void ShowETag(Context cx)
+        {
+            if (PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine("Recording ETag ", cx.etags);
         }
     }
     internal class TableActivation : TargetActivation
@@ -526,6 +572,7 @@ namespace Pyrrho.Level4
         internal string _url;
         internal string _targetName;
         internal StringBuilder _sql = new StringBuilder();
+        internal string inscm = "";
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
         internal RESTActivation(Context cx, RestRowSet rr, RowSet fm, PTrigger.TrigType tgt,
             string prov = null, Level cl = null)
@@ -535,13 +582,25 @@ namespace Pyrrho.Level4
             _vw = (RestView)cx.obs[rr.restView];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             (_url, _targetName, _sql) = _rr.GetUrl(this, vi);
-            _rq = _rr.GetRequest(this, _url);
-            _rq.Method = "POST";
+            _url += "/" + _targetName;
+            var url = new StringBuilder(_url);
+            for (var b = _rr.matches.First(); b != null; b = b.Next())
+            {
+                var kn = ((SqlValue)cx.obs[b.key()]).name;
+                url.Append("/"); url.Append(kn);
+                url.Append("="); url.Append(b.value());
+            }
+            _rq = _rr.GetRequest(this, url.ToString(), false);
+            _rq.Method = "HEAD";
+            RoundTrip(cx, rr.restView, tgt, _rq, _url, null); 
             switch (tgt & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
                         throw new DBException("42105", ((ObInfo)cx.db.role.infos[rr.defpos]).name);
+                    _rq.ContentType = "text/plain";
+                    _sql.Append("insert into "); _sql.Append(_targetName);
+                    _sql.Append(" values");
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
@@ -553,8 +612,6 @@ namespace Pyrrho.Level4
                         DBObject oc = c;
                         while (oc is SqlCopy sc) // Views have indirection here
                             oc = cx.obs[sc.copyFrom];
-                        if (oc is TableColumn tc && tc.generated != GenerationRule.None)
-                            throw cx.db.Exception("0U000", c.name).Mix();
                         if (c.Denied(cx, Grant.Privilege.Update))
                             throw new DBException("42105", c.name);
                         updates += (oc.defpos, ass.key());
@@ -568,14 +625,13 @@ namespace Pyrrho.Level4
         }
         internal override void EachRow()
         {
-            var cu = (TransitionRowSet.TargetCursor)_cx.cursors[_rr.defpos];
+            var cu = _cx.cursors[_rr.defpos];
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
                     var vs = cu.values;
-                    _rq.ContentType = "text/plain";
-                    _sql.Append("insert into "); _sql.Append(_targetName);
-                    var cm = " values(";
+                    _sql.Append(inscm); inscm = ",";
+                    var cm = "(";
                     for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
                         if (vs[b.value()[_rr.target]] is TypedValue tv)
                         {
@@ -590,24 +646,22 @@ namespace Pyrrho.Level4
                                 _sql.Append(tv);
                         }
                     _sql.Append(")");
-                    _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                        _vw, _rr, _cx.db.nextPos, this));
+                    break;
+            }
+        } 
+        internal override Context Finish()
+        {
+            switch (_tty & (PTrigger.TrigType)7)
+            {
+                case PTrigger.TrigType.Insert:
+                    _cx.AddPost(_url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
                     break;
                 case PTrigger.TrigType.Update:
-                    if (_rr.assig.Count == 0)
-                        return;
-                    for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
                     {
-                        var rc = rb.value(); // probably a RemoteTableRow
-                        vs = rc.vals;
-                        for (var b = updates.First(); b != null; b = b.Next())
-                        {
-                            var ua = b.value();
-                            var tv = _cx.obs[ua.val].Eval(_cx);
-                            vs += (ua.vbl, tv);
-                        }
+                        var cm = " set ";
+                        if (_rr.assig.Count == 0)
+                            return _cx;
                         _sql.Append("update "); _sql.Append(_targetName);
-                        cm = " set ";
                         for (var b = _rr.assig.First(); b != null; b = b.Next())
                         {
                             var ua = b.key();
@@ -632,16 +686,9 @@ namespace Pyrrho.Level4
                                 _sql.Append(sw);
                             }
                         }
-                        _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                            _vw, _rr, _cx.db.nextPos, this));
+                        _cx.AddPost(_url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
                     }
                     break;
-            }
-        }
-        internal override Context Finish()
-        {
-            switch (_tty & (PTrigger.TrigType)7)
-            {
                 case PTrigger.TrigType.Delete:
                     {
                         _rq.ContentType = "text/plain";
@@ -655,11 +702,9 @@ namespace Pyrrho.Level4
                                 _sql.Append(sw);
                             }
                         }
-                        _cx.Add(new Post(_url, _targetName, _sql.ToString(), db.user.name,
-                            _vw, _rr, _cx.db.nextPos, this));
+                        _cx.AddPost(_url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
                     }
                     break;
-
             }
             return _cx;
         }
@@ -709,7 +754,7 @@ namespace Pyrrho.Level4
             var cu = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             var (url, targetName, sql) = _rr.GetUrl(this, vi);
-            var rq = _rr.GetRequest(this, url);
+            var rq = _rr.GetRequest(this, url, !_tty.HasFlag(PTrigger.TrigType.Insert));
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
@@ -733,7 +778,7 @@ namespace Pyrrho.Level4
                                 : v.ToString());
                         }
                         sql.Append("}]");
-                        RoundTrip(this,_rr, rq, url, sql);
+                        RoundTrip(this,_rr.restView, _tty, rq, url, sql);
                         var nr = new RemoteTableRow(np, vs, url, _rr);
                         var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                         _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
@@ -780,7 +825,7 @@ namespace Pyrrho.Level4
                                 sql.Append(tv);
                         }
                         sql.Append("}]");
-                        RoundTrip(this,_rr, rq, url, sql);
+                        RoundTrip(this,_rr.restView, _tty, rq, url, sql);
                         var nr = new RemoteTableRow(np,vs,url,_rr);
                         var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                         _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
@@ -790,7 +835,7 @@ namespace Pyrrho.Level4
                     for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
                     {
                         rq.Method = "DELETE";
-                        RoundTrip(this,_rr, rq, url, sql);
+                        RoundTrip(this,_rr.restView, _tty, rq, url, sql);
                         count++;
                     }
                     break;

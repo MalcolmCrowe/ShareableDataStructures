@@ -211,13 +211,13 @@ namespace Pyrrho.Common
         LOOP = 173,  // vol 4
         LOWER = 174,
         MATCH = 175,
-        MAX = 176, 
+        MAX = 176,
         NULL = 177, // must be 177
         MEMBER = 178,
         NUMERIC = 179, // must be 179
         MERGE = 180,
         METHOD = 181,
-        MIN = 182, 
+        MIN = 182,
         MINUTE = 183,
         MOD = 184,
         MODIFIES = 185,
@@ -496,7 +496,7 @@ namespace Pyrrho.Common
         EXCLUDING = 456,
         FINAL = 457,
         FIRST = 458,
-        FLAG = 459, 
+        FLAG = 459,
         FOLLOWING = 460,
         FORTRAN = 461,
         FOUND = 462,
@@ -543,132 +543,133 @@ namespace Pyrrho.Common
         MESSAGE_OCTET_LENGTH = 503,
         MESSAGE_TEXT = 504,
         METADATA = 505, // Pyrrho 7
-        MIME = 506, // Pyrrho 7
-        MINVALUE = 507,
-        MONOTONIC = 508, // Pyrrho 5.7
-        MORE = 509,
-        MUMPS = 510,
-        NAME = 511,
-        NAMES = 512,
-        NESTING = 513,
-        NEXT = 514,
-        NFC = 515,
-        NFD = 516,
-        NFKC = 517,
-        NFKD = 518,
-        NORMALIZED = 519,
-        NULLABLE = 530,
+        MILLI = 506, // Pyrrho 7
+        MIME = 507, // Pyrrho 7
+        MINVALUE = 508,
+        MONOTONIC = 509, // Pyrrho 5.7
+        MORE = 510,
+        MUMPS = 511,
+        NAME = 512,
+        NAMES = 513,
+        NESTING = 514,
+        NEXT = 515,
+        NFC = 516,
+        NFD = 517,
+        NFKC = 518,
+        NFKD = 519,
+        NORMALIZED = 520,
+        NULLABLE = 521,
         NULLS = 522,
         NUMBER = 523,
-        OCCURRENCE = 523,
-        OCTETS = 524,
-        OPTION = 525,
-        OPTIONS = 526,
-        ORDERING = 527,
-        ORDINALITY = 528,
-        OTHERS = 529,
-        OUTPUT = 530,
-        OVERRIDING = 531,
-        OWNER = 532, // Pyrrho
-        P = 533,
-        PAD = 534,
-        PARAMETER_MODE = 535,
-        PARAMETER_NAME = 536,
-        PARAMETER_ORDINAL_POSITION = 537,
-        PARAMETER_SPECIFIC_CATALOG = 538,
-        PARAMETER_SPECIFIC_NAME = 539,
-        PARAMETER_SPECIFIC_SCHEMA = 540,
-        PARTIAL = 541,
-        PASCAL = 542,
-        PATH = 543,
-        PIE = 544, // Pyrrho 4.5
-        PLACING = 545,
-        PL1 = 546,
-        POINTS = 547, // Pyrrho 4.5
-        PRECEDING = 548,
-        PRESERVE = 549,
-        PRIOR = 550,
-        PRIVILEGES = 551,
-        PROFILING = 552, // Pyrrho
-        PROVENANCE = 553, // Pyrrho
-        PUBLIC = 554,
-        READ = 555,
-        REFERRED = 556, // 5.2
-        REFERS = 557, // 5.2
-        RELATIVE = 558,
-        REPEATABLE = 559,
-        RESPECT = 560,
-        RESTART = 561,
-        RESTRICT = 562,
-        RETURNED_CARDINALITY = 563,
-        RETURNED_LENGTH = 564,
-        RETURNED_OCTET_LENGTH = 565,
-        RETURNED_SQLSTATE = 566,
-        ROLE = 567,
-        ROUTINE = 568,
-        ROUTINE_CATALOG = 569,
-        ROUTINE_NAME = 570,
-        ROUTINE_SCHEMA = 571,
-        ROW_COUNT = 572,
-        SCALE = 573,
-        SCHEMA = 574,
-        SCHEMA_NAME = 575,
-        SCOPE_CATALOG = 576,
-        SCOPE_NAME = 577,
-        SCOPE_SCHEMA = 578,
-        SECTION = 579,
-        SECURITY = 580,
-        SELF = 581,
-        SEQUENCE = 582,
-        SERIALIZABLE = 583,
-        SERVER_NAME = 584,
-        SESSION = 585,
-        SETS = 586,
-        SIMPLE = 587,
-        SIZE = 588,
-        SOURCE = 589,
-        SPACE = 590,
-        SPECIFIC_NAME = 591,
-        SQLAGENT = 592, // Pyrrho 7
-        STANDALONE = 593, // vol 14
-        STATE = 594,
-        STATEMENT = 595,
-        STRUCTURE = 596,
-        STYLE = 597,
-        SUBCLASS_ORIGIN = 598,
-        T = 599,
-        TABLE_NAME = 600,
-        TEMPORARY = 601,
-        TIES = 602,
-        TIMEOUT = 603, // Pyrrho
-        TOP_LEVEL_COUNT = 604,
-        TRANSACTION = 605,
-        TRANSACTION_ACTIVE = 606,
-        TRANSACTIONS_COMMITTED = 607,
-        TRANSACTIONS_ROLLED_BACK = 608,
-        TRANSFORM = 609,
-        TRANSFORMS = 610,
-        TRIGGER_CATALOG = 611,
-        TRIGGER_NAME = 612,
-        TRIGGER_SCHEMA = 613, // TYPE  is 267 but is not a reserved word
-        TYPE_URI = 614, // Pyrrho
-        UNBOUNDED = 615,
-        UNCOMMITTED = 616,
-        UNDER = 617,
-        UNDO = 618,
-        UNNAMED = 619,
-        URL = 620,  // Pyrrho 7
-        USAGE = 621,
-        USER_DEFINED_TYPE_CATALOG = 622,
-        USER_DEFINED_TYPE_CODE = 623,
-        USER_DEFINED_TYPE_NAME = 624,
-        USER_DEFINED_TYPE_SCHEMA = 625,
-        VIEW = 626,
-        WORK = 627,
-        WRITE = 628,
-        X = 629, // Pyrrho 4.5
-        Y = 630, // Pyrrho 4.5
-        ZONE = 631
+        OCCURRENCE = 524,
+        OCTETS = 525,
+        OPTION = 526,
+        OPTIONS = 527,
+        ORDERING = 528,
+        ORDINALITY = 529,
+        OTHERS = 530,
+        OUTPUT = 531,
+        OVERRIDING = 532,
+        OWNER = 533, // Pyrrho
+        P = 534,
+        PAD = 535,
+        PARAMETER_MODE = 536,
+        PARAMETER_NAME = 537,
+        PARAMETER_ORDINAL_POSITION = 538,
+        PARAMETER_SPECIFIC_CATALOG = 539,
+        PARAMETER_SPECIFIC_NAME = 540,
+        PARAMETER_SPECIFIC_SCHEMA = 541,
+        PARTIAL = 542,
+        PASCAL = 543,
+        PATH = 544,
+        PIE = 545, // Pyrrho 4.5
+        PLACING = 546,
+        PL1 = 547,
+        POINTS = 548, // Pyrrho 4.5
+        PRECEDING = 549,
+        PRESERVE = 550,
+        PRIOR = 551,
+        PRIVILEGES = 552,
+        PROFILING = 553, // Pyrrho
+        PROVENANCE = 554, // Pyrrho
+        PUBLIC = 555,
+        READ = 556,
+        REFERRED = 557, // 5.2
+        REFERS = 558, // 5.2
+        RELATIVE = 559,
+        REPEATABLE = 560,
+        RESPECT = 561,
+        RESTART = 562,
+        RESTRICT = 563,
+        RETURNED_CARDINALITY = 564,
+        RETURNED_LENGTH = 565,
+        RETURNED_OCTET_LENGTH = 566,
+        RETURNED_SQLSTATE = 567,
+        ROLE = 568,
+        ROUTINE = 569,
+        ROUTINE_CATALOG = 570,
+        ROUTINE_NAME = 571,
+        ROUTINE_SCHEMA = 572,
+        ROW_COUNT = 573,
+        SCALE = 574,
+        SCHEMA = 575,
+        SCHEMA_NAME = 576,
+        SCOPE_CATALOG = 577,
+        SCOPE_NAME = 578,
+        SCOPE_SCHEMA = 579,
+        SECTION = 580,
+        SECURITY = 581,
+        SELF = 582,
+        SEQUENCE = 583,
+        SERIALIZABLE = 584,
+        SERVER_NAME = 585,
+        SESSION = 586,
+        SETS = 587,
+        SIMPLE = 588,
+        SIZE = 589,
+        SOURCE = 590,
+        SPACE = 591,
+        SPECIFIC_NAME = 592,
+        SQLAGENT = 593, // Pyrrho 7
+        STANDALONE = 594, // vol 14
+        STATE = 595,
+        STATEMENT = 596,
+        STRUCTURE = 597,
+        STYLE = 598,
+        SUBCLASS_ORIGIN = 599,
+        T = 600,
+        TABLE_NAME = 601,
+        TEMPORARY = 602,
+        TIES = 603,
+        TIMEOUT = 604, // Pyrrho
+        TOP_LEVEL_COUNT = 605,
+        TRANSACTION = 606,
+        TRANSACTION_ACTIVE = 607,
+        TRANSACTIONS_COMMITTED = 608,
+        TRANSACTIONS_ROLLED_BACK = 609,
+        TRANSFORM = 610,
+        TRANSFORMS = 611,
+        TRIGGER_CATALOG = 612,
+        TRIGGER_NAME = 613,
+        TRIGGER_SCHEMA = 614, // TYPE  is 267 but is not a reserved word
+        TYPE_URI = 615, // Pyrrho
+        UNBOUNDED = 616,
+        UNCOMMITTED = 617,
+        UNDER = 618,
+        UNDO = 619,
+        UNNAMED = 620,
+        URL = 621,  // Pyrrho 7
+        USAGE = 622,
+        USER_DEFINED_TYPE_CATALOG = 623,
+        USER_DEFINED_TYPE_CODE = 624,
+        USER_DEFINED_TYPE_NAME = 625,
+        USER_DEFINED_TYPE_SCHEMA = 626,
+        VIEW = 627,
+        WORK = 628,
+        WRITE = 629,
+        X = 630, // Pyrrho 4.5
+        Y = 631, // Pyrrho 4.5
+        ZONE = 632
     }
     /// <summary>
     /// These are the underlying (physical) datatypes used  for values in the database
@@ -799,11 +800,11 @@ namespace Pyrrho.Common
     /// Shareable
     /// </summary>
 	internal class Interval
-	{
-		internal readonly int years = 0, months = 0;
+    {
+        internal readonly int years = 0, months = 0;
         internal readonly long ticks = 0;
         internal readonly bool yearmonth = true;
-        public Interval(int y,int m,long t = 0) { years = y; months = m; ticks = t; }
+        public Interval(int y, int m, long t = 0) { years = y; months = m; ticks = t; }
         public Interval(long t) { ticks = t; yearmonth = false; }
         public override string ToString()
         {
@@ -811,54 +812,61 @@ namespace Pyrrho.Common
                 return "" + years + "Y" + months + "M";
             return "" + ticks;
         }
-	}
+    }
     /// <summary>
     /// Row Version cookie (Sqlx.CHECK). See Laiho/Laux 2010.
     /// Check allows transactions to find out if another transaction has overritten the row.
-    /// RVV is calculated only when required: see affected in Context
+    /// RVV is calculated only when required: see affected in Context.
+    /// Modified in V7 to conform to RFC 7232.
     /// Shareable
     /// </summary>
-    internal class Rvv : CTree<long,CTree<long,long>>
+    internal class Rvv : CTree<long, CTree<long, long>>
     {
         internal const long
             RVV = -193; // Rvv
         internal new static Rvv Empty = new Rvv();
-        Rvv() :base()
+        Rvv() : base()
         { }
-        protected Rvv(CTree<long,CTree<long,long>> t) : base(t.root) { }
-        public static Rvv operator+(Rvv r,(long,Level4.Cursor) x)
+        protected Rvv(CTree<long, CTree<long, long>> t) : base(t.root) { }
+        public static Rvv operator +(Rvv r, (long, Level4.Cursor) x)
         {
             var (rp, cu) = x;
             return new Rvv(r + (rp, (cu._defpos, cu._ppos)));
         }
-        public static Rvv operator+(Rvv r,(long,(long,long))x)
+        public static Rvv operator +(Rvv r, (long, (long, long)) x)
         {
             var (t, p) = x;
-            if (r[t]?.Contains(-1L)==true)
+            if (r[t]?.Contains(-1L) == true)
                 return r;
             var (d, o) = p;
-            var s = ((d == -1L) ? null:r[t]) ?? CTree<long,long>.Empty;
-            return new Rvv(r + (t, s+(d, o)));
+            var s = ((d == -1L) ? null : r[t]) ?? CTree<long, long>.Empty;
+            return new Rvv(r + (t, s + (d, o)));
         }
-        public static Rvv operator+(Rvv r,Rvv s)
+        public static Rvv operator +(Rvv r, Rvv s)
         {
-            if (r==null || r == Empty)
+            if (r == null || r == Empty)
                 return s;
-            if (s==null ||s == Empty)
+            if (s == null || s == Empty)
                 return r;
             // Implement a wild-card -1L
             var a = (CTree<long, CTree<long, long>>)r;
             var b = (CTree<long, CTree<long, long>>)s;
-            for (var bb=b.First();bb!=null;bb=bb.Next())
+            for (var bb = b.First(); bb != null; bb = bb.Next())
             {
                 var k = bb.key();
                 var bt = bb.value();
-                if (a[k] is CTree<long, long> at && !bt.Contains(-1L))
+            /* If we read the whole table, then any change will be a conflict, 
+             * so we record -1, lastData; */ 
+                if (bt.Contains(-1L))
+                    a += (k, bt);
+                else
+            /* we override a previous -1,lastData entry with specific information. */
+                if (a[k] is CTree<long, long> at)
                 {
                     if (at.Contains(-1L))
-                        continue;
+                        at -= -1L;
                     for (var cb = bt.First(); cb != null; cb = cb.Next())
-                    { 
+                    {
                         var bk = cb.key();
                         var bv = cb.value();
                         if (at.Contains(bk))
@@ -866,12 +874,12 @@ namespace Pyrrho.Common
                         else
                             at += (bk, bv);
                     }
-                    a += (k, at); 
+                    a += (k, at);
                 }
                 else
                     a += (k, bt);
             }
-            return new Rvv(a); 
+            return new Rvv(a);
         }
         /// <summary>
         /// Validate an RVV string
@@ -880,7 +888,7 @@ namespace Pyrrho.Common
         /// <returns>the rvv</returns>
         internal bool Validate(Database db)
         {
-            for (var b=First();b!=null;b=b.Next())
+            for (var b = First(); b != null; b = b.Next())
             {
                 var t = (Table)db.objects[b.key()];
                 for (var c = b.value().First(); c != null; c = c.Next())
@@ -888,7 +896,7 @@ namespace Pyrrho.Common
                     {
                         if (t.lastData > c.value())
                             return false;
-                    } 
+                    }
                     else if (t.tableRows[c.key()]?.ppos != c.value())
                         return false;
             }
@@ -899,11 +907,11 @@ namespace Pyrrho.Common
             var r = Empty;
             if (s == "*")
                 return Empty;
-            var ss = s.Split(';');
-            foreach(var t in ss)
+            var ss = s.Trim('"').Split(new string[] { "\",\"" }, StringSplitOptions.None);
+            foreach (var t in ss)
             {
                 var tt = t.Split(',');
-                if (tt.Length>2)
+                if (tt.Length > 2)
                     r += (long.Parse(tt[0]), (long.Parse(tt[1]), long.Parse(tt[2])));
             }
             return r;
@@ -915,16 +923,17 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             var sb = new StringBuilder();
-            var sc = "";
-            for (var b=First();b!=null;b=b.Next())
+            var sc = "\"";
+            for (var b = First(); b != null; b = b.Next())
             {
-                sb.Append(sc); sc = ";";
+                sb.Append(sc); sc = "\",\"";
                 for (var c = b.value().First(); c != null; c = c.Next())
                 {
                     sb.Append(b.key()); sb.Append(",");
-                    sb.Append(c.key()); sb.Append(","); 
+                    sb.Append(c.key()); sb.Append(",");
                     sb.Append(c.value());
                 }
+                sb.Append("\"");
             }
             return sb.ToString();
         }
@@ -932,13 +941,13 @@ namespace Pyrrho.Common
     /// <summary>
     /// Supports the SQL2003 Date data type
     /// </summary>
-	public class Date : IComparable
-	{
-		public readonly DateTime date;
-		internal Date(DateTime d)
-		{
-			date = d;
-		}
+    public class Date : IComparable
+    {
+        public readonly DateTime date;
+        internal Date(DateTime d)
+        {
+            date = d;
+        }
         public override string ToString()
         {
             return date.ToString("dd/MM/yyyy");
