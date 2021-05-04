@@ -5334,12 +5334,18 @@ namespace Pyrrho.Level4
             }
             internal static RestCursor New(RestRowSet rrs, Context cx)
             {
+                var ox = cx.finder;
+                cx.finder += rrs.finder;
                 for (var i = rrs.aVal.Length-1; i>=0; i--)
                 {
                     var rb = new RestCursor(cx, rrs, 0, i);
                     if (rb.Matches(cx))
+                    {
+                        cx.finder = ox;
                         return rb;
+                    }
                 }
+                cx.finder = ox;
                 return null;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
@@ -5349,12 +5355,18 @@ namespace Pyrrho.Level4
 
             protected override Cursor _Next(Context cx)
             {
+                var ox = cx.finder;
+                cx.finder += _rrs.finder;
                 for (var i = _ix+1; i < _rrs.aVal.Length; i++)
                 {
                     var rb = new RestCursor(cx, _rrs, _pos+1, i);
                     if (rb.Matches(cx))
+                    {
+                        cx.finder = ox;
                         return rb;
+                    }
                 }
+                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context cx)
