@@ -20,7 +20,7 @@ and AWebSvr.dll in any product on a royalty-free basis, provided the use
 of this code is suitably acknowledged.
 
 This is version 7.0(alpha) of the DBMS. 
-It passes tests 1 to 21 of the PyrrhoTest program, and has a basic 
+It passes tests 1 to 23 of the PyrrhoTest program, and has a basic 
 implementation of RESTView.
 
 Malcolm Crowe
