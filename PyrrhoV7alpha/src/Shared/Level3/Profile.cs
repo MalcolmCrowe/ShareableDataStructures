@@ -546,7 +546,7 @@ namespace Pyrrho.Level3
             TransactionProfile tp = new TransactionProfile();
             if (!success)
                 tp.fails = 1;
-            for (var b = cx.physicals.First(); b != null; b = b.Next())
+            for (var b = ((Transaction)cx.db).physicals.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 switch (p.type)

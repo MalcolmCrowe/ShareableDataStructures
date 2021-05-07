@@ -82,28 +82,6 @@ namespace Pyrrho.Level4
             next.val = val;
             next.nextHeap = nextHeap;
             next.nextStmt = nextStmt;
-            if (PyrrhoStart.DebugMode && next.db!=db)
-            {
-                var ps = physicals;
-                var ns = next.physicals;
-                var sb = new System.Text.StringBuilder("SD: "+GetType().Name+" "+cxid);
-                Debug(sb);
-                var nb = ns.First();
-                for (var b = ps.First(); b != null; b = b.Next(), nb = nb?.Next())
-                {
-                    var p = b.key();
-                    for (; nb != null && nb.key() < p; nb = nb.Next())
-                        nb = nb.Next();
-                    if (nb != null && nb.key() == p)
-                    {
-                        nb = nb.Next();
-                        continue;
-                    }
-                    sb.Append(" " + b.value().ToString());
-                }
-                System.Console.WriteLine(sb.ToString());
-            }
-            next.physicals += physicals;
             next.db = db; // adopt the transaction changes done by this
             return next;
         }
@@ -432,7 +410,6 @@ namespace Pyrrho.Level4
                         count++;
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
-                        _cx.physicals += physicals;
                         _cx.db = db;
                         // Row-level after triggers
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
@@ -493,7 +470,6 @@ namespace Pyrrho.Level4
                         Add(u);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u,_cx.db)));
-                        _cx.physicals += physicals;
                         _cx.db = db;
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
                         break;
@@ -520,7 +496,6 @@ namespace Pyrrho.Level4
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
                         Add(new Delete1(rc, np, _cx));
-                        _cx.physicals += physicals;
                         _cx.db = db;
                         count++;
                         break;
@@ -534,8 +509,6 @@ namespace Pyrrho.Level4
             // Statement-level after triggers
             Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
             _cx.result = -1L;
-            if (PyrrhoStart.DebugMode)
-                System.Console.WriteLine("Ins: " + _cx.physicals.Count);
             return _cx;
         }
         /// <summary>
@@ -633,7 +606,7 @@ namespace Pyrrho.Level4
                     _sql.Append(inscm); inscm = ",";
                     var cm = "(";
                     for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
-                        if (vs[b.value()[_rr.target]] is TypedValue tv)
+                        if (vs[b.value()] is TypedValue tv)
                         {
                             _sql.Append(cm); cm = ",";
                             if (tv.dataType.kind == Sqlx.CHAR)
@@ -771,9 +744,9 @@ namespace Pyrrho.Level4
                         for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
                         {
                             sql.Append(cm); cm = ",";
-                            sql.Append('"'); sql.Append(b.key());
+                            sql.Append('"'); sql.Append(obs[b.value()].name);
                             sql.Append("\":"); 
-                            var v =vs[b.value()[_vw.viewPpos]];
+                            var v =vs[b.value()];
                             sql.Append((v is TChar) ? ("'" + v.ToString() + "'")
                                 : v.ToString());
                         }
@@ -812,7 +785,7 @@ namespace Pyrrho.Level4
                         for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), tb = tb.Next())
                         {
                             sql.Append(cm); cm = ",";
-                            sql.Append('"'); sql.Append(b.key());
+                            sql.Append('"'); sql.Append(obs[b.value()].name);
                             var tv = vs[tb.value()];
                             sql.Append("\":");
                             if (tv.dataType.kind == Sqlx.CHAR)

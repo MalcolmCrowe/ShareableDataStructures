@@ -391,5 +391,19 @@ namespace Pyrrho.Common
             }
             return (b == null) ? ((tb == null) ? 0 : 1) : -1;
         }
+        public override bool Has(V v)
+        {
+            for (var b = First(); b != null; b = b.Next())
+                if (v.CompareTo(b.value()) == 0)
+                    return true;
+            return false;
+        }
+        public int IndexOf(V v)
+        {
+            for (var b = First(); b != null; b = b.Next())
+                if (v.CompareTo(b.value()) == 0)
+                    return b.key();
+            return -1;
+        }
     }
 }

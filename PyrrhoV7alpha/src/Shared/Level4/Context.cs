@@ -55,11 +55,10 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The current set of values of objects in the Context
         /// </summary>
-        internal CTree<long,bool> withViews = CTree<long,bool>.Empty;
+        internal CTree<long,bool> aggregators = CTree<long,bool>.Empty; // EvalRowSet or GroupRowSet
         internal Rvv affected = null;
         internal CTree<string,Rvv> etags = CTree<string,Rvv>.Empty;
         internal BTree<string, HttpParams> httpParams = BTree<string, HttpParams>.Empty;
-        internal int physAtStepStart;
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;
         internal CTree<long, RowSet.Finder> finder = CTree<long, RowSet.Finder>.Empty; 
@@ -67,7 +66,6 @@ namespace Pyrrho.Level4
         public TypedValue val = TNull.Value;
         internal Database db = null;
         internal Transaction tr => db as Transaction;
-        internal BTree<long, Physical> physicals = BTree<long, Physical>.Empty;
         internal BList<TriggerActivation> deferred = BList<TriggerActivation>.Empty;
         internal BList<Exception> warnings = BList<Exception>.Empty;
         internal BTree<long, DBObject> obs = BTree<long, DBObject>.Empty;
@@ -150,7 +148,6 @@ namespace Pyrrho.Level4
             nextStmt = db.nextStmt;
             dbformat = db.format;
             parseStart = 0L;
-            physAtStepStart = (int)physicals.Count;
             this.db = db;
             rdC = (db as Transaction)?.rdC;
         //            domains = (db as Transaction)?.domains;
@@ -214,7 +211,7 @@ namespace Pyrrho.Level4
             {
                 rs = rq.GetResponse() as HttpWebResponse;
             }
-            catch (WebException e)
+            catch 
             {     
                 throw new DBException("40082", url);
             }
@@ -414,7 +411,7 @@ namespace Pyrrho.Level4
         }
         internal void AddPost(string u, string tn, string s, string us, long vp, PTrigger.TrigType tp)
         {
-            for (var b = physicals.Last(); b != null; b = b.Previous())
+            for (var b = ((Transaction)db).physicals.Last(); b != null; b = b.Previous())
                 switch (b.value().type)
                 {
                     case Physical.Type.PTransaction:
@@ -688,6 +685,17 @@ namespace Pyrrho.Level4
                 r += (b.key(), Replaced(b.value()));
             return r;
         }
+        BTree<long,bool> RestRowSets(long p)
+        {
+            var r = BTree<long, bool>.Empty;
+            var s = data[p];
+            if (s is RestRowSet)
+                r += (p, true);
+            else
+                for (var b = s.Sources(this).First(); b != null; b = b.Next())
+                    r += RestRowSets(b.value());
+            return r;
+        }
         /// <summary>
         /// This is called at the end of CursorSpecification.RowSets and just before
         /// Obeying SqlInsert, SqlUpdate, and SqlDelete.
@@ -697,19 +705,40 @@ namespace Pyrrho.Level4
         internal void Review(RowSet r, CTree<long,bool> ags, CTree<long,TypedValue> matches,
             CTree<UpdateAssignment,bool> asg)
         {
-            for (var vb = withViews.First(); vb != null; vb = vb.Next())
-                if (data[vb.key()] is RestRowSet rr)
-                {
-                    var vi = (ObInfo)db.role.infos[rr.restView];
-                    var map = BTree<long, SqlValue>.Empty;
-                    for (var b = r.rt.First(); b != null; b = b.Next())
-                    {
-                        var sc = (SqlValue)obs[b.value()];
-                        (_, map) = sc.ColsForRestView(this, rr, vi, null, map); // transform for aggregations and filters
-                    }
-                    for (var b = map.First(); b != null; b = b.Next())
-                        _Add(b.value());
-                }
+            for (var vb = aggregators.First(); vb != null; vb = vb.Next())
+            {
+                var pa = vb.key();
+                var rr = data[pa];
+                var map = BTree<long, SqlValue>.Empty;
+                var te = (TableExpRowSet)data[rr.source];
+                for (var c = te.rsTargets.First(); c != null; c = c.Next())
+                    if (obs[c.key()] is VirtualTable vt)
+                        for (var rb = RestRowSets(c.value()).First(); rb != null; rb = rb.Next())
+                        {
+                            var pr = rb.key();
+                            rr = data[pa]; // may have changed
+                            var rrs = (RestRowSet)data[pr];
+                            for (var b = rr.rt.First(); b != null; b = b.Next())
+                            {
+                                var sv = (SqlValue)obs[b.value()];
+                                map = sv.ColsForRestView(this, pa, pr, vt.metadata,
+                                    rrs.remoteGroups, map); // transform for aggregations and filters
+                            }
+                            rr = data[pa]; // may have changed
+                            rrs = (RestRowSet)data[pr];
+                            for (var b = rrs.rt.First(); b != null; b = b.Next())
+                            {
+                                var p = b.value();
+                                if (!rr.Uses(this, p))
+                                {
+                                    rrs += (RestRowSet.RemoteCols,
+                                        rrs.remoteCols - rrs.remoteCols.IndexOf(p));
+                                    rrs += (DBObject._Domain, rrs.domain - p);
+                                }
+                            }
+                            data += (pr, rrs);
+                        }
+            }
             var todo = new BList<(long, CTree<long,bool>, CTree<long, TypedValue>,
                 CTree<UpdateAssignment,bool>,CTree<long,CTree<long,bool>>)>
                 ((r.defpos, ags, matches, asg, r.matching));
@@ -964,7 +993,6 @@ namespace Pyrrho.Level4
                 return this;
             next.values += values;
             next.warnings += warnings;
-            next.physicals += physicals;
             next.deferred += deferred;
             next.val = val;
             next.nextHeap = nextHeap;

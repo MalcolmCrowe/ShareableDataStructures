@@ -883,5 +883,12 @@ namespace Pyrrho.Common
                 r[i] = b.value();
             return r;
         }
+        public virtual bool Has(V v)
+        {
+            for (var b = First(); b != null; b = b.Next())
+                if ((object)b.value() == (object)v)
+                    return true;
+            return false;
+        }
     }
 }

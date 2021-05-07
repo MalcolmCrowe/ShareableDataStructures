@@ -431,10 +431,6 @@ namespace Pyrrho.Level3
                 return (SqlValue)cx.obs[cols[i]];
             throw new PEException("PE335");
         }
-        internal virtual bool Uses(Context cx,long t)
-        {
-            return false;
-        }
         internal static bool Uses(Context cx,CTree<long,bool> x,long t)
         {
             for (var b = x.First(); b != null; b = b.Next())
@@ -510,19 +506,6 @@ namespace Pyrrho.Level3
             if (mem.Contains(_Repl)) { sb.Append(" Replace:"); sb.Append(replace); }
             if (mem.Contains(Where)) { sb.Append(" Where:"); sb.Append(where); }
             return sb.ToString();
-        }
-
-        internal SqlValue MaybeAdd(Context cx, SqlValue su)
-        {
-            for (var b=domain.rowType.First();b!=null;b=b.Next())
-            {
-                var sv = (SqlValue)cx.obs[b.value()];
-                if (sv._MatchExpr(cx, this, su))
-                    return sv;
-            }
-            su += (_Alias, alias ?? name ?? ("C_" + (defpos&0xfff)));
-            Add(cx,su);
-            return su;
         }
     }
     /// <summary>

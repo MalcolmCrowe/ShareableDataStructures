@@ -71,6 +71,11 @@ namespace Pyrrho.Level3
             (CTree<long, bool>)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[Depth] ?? 1);
         /// <summary>
+        /// Metadata set by definer
+        /// </summary>
+        internal BTree<Sqlx, object> metadata =>
+(BTree<Sqlx, object>)mem[ObInfo._Metadata] ?? BTree<Sqlx, object>.Empty;
+        /// <summary>
         /// Constructor
         /// </summary>
         protected DBObject(long dp, BTree<long, object> m) : base(m)
@@ -292,7 +297,7 @@ namespace Pyrrho.Level3
         internal virtual void Cascade(Context cx, Drop.DropAction a=0,
             BTree<long,TypedValue>u=null)
         {
-            for (var b = cx.physicals.First(); b != null; b = b.Next())
+            for (var b = ((Transaction)cx.db).physicals.First(); b != null; b = b.Next())
                 if (b.value() is Drop dr && dr.delpos == defpos)
                     return;
             cx.Add(new Drop1(defpos, a, cx.tr.nextPos, cx));
@@ -924,6 +929,10 @@ namespace Pyrrho.Level3
             if (u == -1)
                 return "_";
             return "" + u;
+        }
+        internal virtual bool Uses(Context cx, long t)
+        {
+            return false;
         }
         public override string ToString()
         {

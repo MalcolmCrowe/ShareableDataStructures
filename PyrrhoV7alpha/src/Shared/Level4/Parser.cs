@@ -1955,8 +1955,8 @@ namespace Pyrrho.Level4
                 if (pc != null)
                 { 
                     pc.notNull = true;
-                    if (cx.db is Transaction)
-                        cx.physicals += (pc.defpos, pc);
+                    if (cx.db is Transaction tr)
+                        cx.db += (Transaction.Physicals,tr.physicals + (pc.defpos, pc));
                 }
                 Mustbe(Sqlx.NULL);
                 // Updating the database to add NOT NULL at this stage is ridiculously tricky
@@ -4195,7 +4195,7 @@ namespace Pyrrho.Level4
                         else
                         {
                             ns = ParseColumnDefin(tb.defpos, ns);
-                            if (cx.physicals.Last()?.value() is PColumn pc 
+                            if (((Transaction)cx.db).physicals.Last()?.value() is PColumn pc 
                                 && pc.notNull && tb.tableRows.PositionAt(0) != null)
                                     throw new DBException("42130");
                         }

@@ -29,11 +29,11 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("2 May 2021 Repeatable tests");
+                Console.WriteLine("4 May 2021 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23 need Server with +s");
-                    Console.WriteLine("Ensure A,testdb not present in database folder for any of");
+                    Console.WriteLine("Ensure A,DB,DC,testdb not present in database folder for any of");
                     Console.WriteLine("PyrrhoTest");
                     Console.WriteLine("PyrrhoTest 10 0");
                     Console.WriteLine("PyrrhoTest 0 0 commit");
@@ -96,6 +96,7 @@ namespace Test
                 ResetA();
                 Test23();
             }
+      //      Test24();
         }
         void ResetA()
         {
@@ -875,6 +876,96 @@ namespace Test
                 CheckResults(23, 17, "select * from w", "[{E:1,F:'Joseph',G:'Soap'}]");
                 ResetA();
             }
+        }
+        public void Test24()
+        {
+            var connB = new PyrrhoConnect("Files=DB");
+            connB.Act("create table T(E int,F char)");
+            connB.Act("insert into T values(3,'Three'),(6,'Six'),(4,'Vier'),(6,'Sechs')");
+            connB.Act("create role DB");
+            connB.Act("grant DB to \"" + WindowsIdentity.GetCurrent().Name + "\"");
+            connB.Close();
+            var connC = new PyrrhoConnect("Files=DC");
+            connC.Act("create table U(E int,F char)");
+            connC.Act("insert into U values(5,'Five'),(4,'Four'),(8,'Ate')");
+            connB.Act("create role DC");
+            connB.Act("grant DC to \"" + WindowsIdentity.GetCurrent().Name + "\"");
+            connB.Close();
+            conn.Act("create view V of (E int,F char) as get 'http://localhost:8180/DB/DB/t'");
+            conn.Act("create table VU (d char primary key, k int, u char)");
+            conn.Act("insert into VU values('B',4,'http://localhost:8180/DB/DB/t'");
+            conn.Act("insert into VU values('C',1,'http://localhost:8180/DC/DC/u'");
+            conn.Act("create view W of (E int, D char, K int, F char) as get using VU");
+            conn.Act("create table M (e int primary key, n char, unique(n))");
+            conn.Act("insert into M values (2,'Deux'),(3,'Trois'),(4,'Quatre')");
+            conn.Act("insert into M values (5,'Cinq'),(6,'Six'),(7,'Sept')");
+            CheckResults(24, 1, "select * from v", "[{E:3,F:'Three'},{E:6,F:'Six'}," +
+                "{E:4,F:'Vier'},{E:6,F:'Sechs'}]");
+            CheckResults(24, 2, "select * from V where e=6", "[{E:6,F:'Six'},{E:6,F:'Sechs'}]");
+            CheckResults(24, 3, "select * from w", "[{E:3,D:'B',K:4,F:'Three'}," +
+                "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
+                "{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Ate'}]");
+            CheckResults(24, 4, "select * from w where e<6", "[{E:3,D:'B',K:4,F:'Three'}," +
+                "{E:4,D:'B',K:4,F:'Vier'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'}]");
+            CheckResults(24, 5, "select * from w where k=1", "[{E:5,D:'C',K:1,F:'Five'}," +
+                "{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Ate'}]");
+            CheckResults(24, 6, "select count(e) from w", "[{COUNT:7}]");
+            CheckResults(24, 7, "select count(*) from w", "[{COUNT:7}]");
+            CheckResults(24, 8, "select max(f) from w", "[{MAX:'Vier'}]");
+            CheckResults(24, 9, "select max(f) from w where e>4", "[{MAX:'Six'}]");
+            CheckResults(24, 10, "select count(*) from w where k>2", "[{COUNT:4}]");
+            CheckResults(24, 11, "select min(f) from w", "[{MIN:'Ate'}]");
+            CheckResults(24, 12, "select sum(e)*sum(e),d from w group by d",
+                "[{Col0:97,D:'B'},{Col0:105,D:'C'}]");
+            CheckResults(24, 13, "select count(*),k/2 as k2 from w group by k2",
+                "[{COUNT:4,K2:2},{COUNT:3,K2:0}]");
+            CheckResults(24, 14, "select avg(e) from w", "[{AVG:7.14582}]");
+            /* E	D	K	F	    N
+                3	B	4	Three	Trois
+                4	B	4	Vier	Quatre
+                4	C	1	Four	Quatre
+                5	C	1	Five	Cinq
+                6	B	4	Six	    Six
+                6	B	4	Sechs	Six	 */
+            CheckResults(24, 15, "select f,n from w natural join m", "[{F:'Three',N:'Trois'}," +
+                "{F:'Vier',N:'Quatre'},{F:'Four',N:'Quatre'},{F:'Five',N:'Cinq'}," +
+                "(F:'Six',N:'Six'},(F:'Sechs',N:'Six'}]");
+            CheckResults(24, 16, "select e+char_length(f) as x,n from w natural join m",
+                "[{Col0:8,N:'Trois'},{Col0:8,N:'Quatre'},{Col0:8,N:'Quatre'}," +
+                "{Col0:9,N:'Cinq'},{Col0:9, N::'Six'},{Col0:10,N:'Six'}]");
+            CheckResults(24, 17, "select char_length(f)+char_length(n) from w natural join m",
+                "[{Col0:10},{Col0:10},{Col0:10},{Col0:8},{Col0:6},{Col0:8}]");
+            CheckResults(24, 18, "select sum(e)+char_length(max(f)) from w", "[{Col0:32}]");
+            CheckResults(24, 19, "select count(*),e+char_length(f) as x from w group by x",
+                "[{COUNT:3,Col1:8},{COUNT:2,Col1:9},{COUNT:1,Col1:11}]");
+            CheckResults(24, 20, "select count(*),e+char_length(n) as x from w natural join m group by x",
+                "[{COUNT:1,Col1:8},{COUNT:2,Col1:10},{COUNT:3,Col1:9}]");
+            CheckResults(24, 21, "select sum(e)+char_length(f),f  from w natural join m group by f",
+                "[{Col0:8,F:'Three'},{Col0:8,F:'Vier'},{Col0:8,F:'Four'},{Col0:9,F:'Five'}," +
+                "{Col0:9,F:'Six'},{Col0:11,'F:'Sechs'}]");
+            CheckResults(24, 22, "select sum(char_length(f))+char_length(n) as x,n from w natural join m group by n",
+                "{Col0:10,N:'Trois'},{Col0:14,N:'Quatre'},{Col0:8,N:'Cinq'},{Col0:11,N:'Six'}]");
+            CheckResults(24, 23, "Select count(*) from w natural join m","[{COUNT:6}]");
+            conn.Act("update v set F='Tri' where E=3");
+            conn.Act("insert into V values (9,'Nine')");
+            CheckResults(24, 24, "select * from V", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
+                "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]");
+            conn.Act("update w set f='Eight' where e=8");
+            conn.Act("insert into w(D,E,F) values('B',7,'Seven')");
+            CheckResults(24, 25, "select * from V","[{E:3,F:'Tri'},{E:6,F:'Six'},"+
+                "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},{E:8,F:'Seven'}]");
+            CheckResults(24, 26, "select * from W", "[{E:3,D:'B',K:4,F:'Three'}," +
+                "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
+                "{E:9,D:'B',K:4,F:'Nine'},{E:7,D:'B',K:4,F:'Seven'},"+
+                "{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]");
+            conn.Act("delete from w where E=7");
+            conn.Act("update v set f='Ate' where e=8");
+            CheckResults(24, 27, "select * from v", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
+                "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]");
+            CheckResults(24, 28, "select * from w", "[{E:3,D:'B',K:4,F:'Three'}," +
+                "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
+                "{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},"+
+                "{E:8,D:'C',K:1,F:'Eight'}]");
         }
         void CheckExceptionCommit(int t, int q,string m)
         {

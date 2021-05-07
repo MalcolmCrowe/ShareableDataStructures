@@ -2720,8 +2720,8 @@ namespace Pyrrho.Level3
                         for (var b = rowType.First(); b != null; b = b.Next())
                         {
                             var p = b.value();
-                            var cn = (cx.obs[p] is SqlValue sv) ? sv.name
-                                : (ro.infos[p] is ObInfo ci) ? ci.name
+                            var cn = (cx.obs[p] is SqlValue sv) ? sv.alias??sv.name
+                                : (ro.infos[p] is ObInfo ci) ? ci.alias??ci.name
                                 : null;
                             if (cn!=null && d.Contains(cn))
                             {

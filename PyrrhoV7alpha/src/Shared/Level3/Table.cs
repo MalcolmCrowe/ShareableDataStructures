@@ -69,16 +69,6 @@ namespace Pyrrho.Level3
             +(Triggers, CTree<PTrigger.TrigType, CTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
-        /// <summary>
-        /// Ad hoc table for LogRows, LogRowCol
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="nm"></param>
-        internal Table(Context cx,string nm)
-            :base(cx.GetUid(),BTree<long,object>.Empty+(Name,nm)+(_Domain,Domain.TableType))
-        {
-            cx.Add(this);
-        }
         protected Table(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Table operator+(Table tb,DBObject tc) // tc can be SqlValue for Type def
         {
@@ -92,7 +82,7 @@ namespace Pyrrho.Level3
         }
         public static Table operator-(Table tb,long p)
         {
-            return new Table(tb.defpos, tb.mem + (TableRows,tb.tableRows-p));
+            return (Table)tb.New(tb.mem + (TableRows,tb.tableRows-p));
         }
         /// <summary>
         /// Add a new or updated row, indexes already fixed.
@@ -103,7 +93,7 @@ namespace Pyrrho.Level3
         public static Table operator +(Table t, TableRow rw)
         {
             var se = t.sensitive || rw.classification!=Level.D;
-            return new Table(t.defpos, t.mem + (TableRows,t.tableRows+(rw.defpos,rw)) 
+            return (Table)t.New(t.mem + (TableRows,t.tableRows+(rw.defpos,rw)) 
                 + (Sensitive,se));
         }
         public static Table operator+(Table tb,(long,object)v)
@@ -623,6 +613,20 @@ namespace Pyrrho.Level3
                 }
             }
             return sk.ToString();
+        }
+    }
+    internal class VirtualTable : Table
+    {
+        internal VirtualTable(PTable pt, Role ro) : base(pt, ro) { }
+        protected VirtualTable(long dp, BTree<long, object> m) : base(dp, m) { }
+
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new VirtualTable(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new VirtualTable(dp, mem);
         }
     }
 }

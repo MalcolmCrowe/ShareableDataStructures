@@ -112,7 +112,7 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal virtual string ToString(CTree<string, CTree<long,long>> cs, Context cx)
+        internal virtual string ToString(CList<long> cs, Context cx)
         {
             return ToString();
         }
@@ -379,7 +379,7 @@ namespace Pyrrho.Common
         {
             return value;
         }
-        internal override string ToString(CTree<string,CTree<long, long>> cs,Context cx)
+        internal override string ToString(CList<long> cs,Context cx)
         {
             return "'" + base.ToString() + "'";
         }

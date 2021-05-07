@@ -6330,6 +6330,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Triggers", Domain.Int,0);
             t+=new SystemTableColumn(t, "CheckConstraints", Domain.Int,0);
             t+=new SystemTableColumn(t, "RowIri", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastData", Domain.Int, 0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6357,10 +6358,10 @@ namespace Pyrrho.Level4
             internal static RoleTableBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Table t)
+                    if (b.value() is Table t && t.name[0]!='(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, 0, b);
-                        if (rb.Match(res) && Query.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -6379,7 +6380,8 @@ namespace Pyrrho.Level4
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
-                    new TChar(t.domain.iri));
+                    new TChar(t.domain.iri),
+                    new TInt(t.lastData));
             }
             /// <summary>
             /// Move to next Table
@@ -6389,7 +6391,7 @@ namespace Pyrrho.Level4
             {
                 var en = _en;
                 for (en=en.Next();en!=null;en=en.Next())
-                    if (en.value() is Table t)
+                    if (en.value() is Table t && t.name[0]!='(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, _pos + 1, en);
                         if (rb.Match(res) && Query.Eval(res.where, _cx))

@@ -180,8 +180,6 @@ namespace Pyrrho.Level3
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
         public long inverts => (long)(mem[Inverts] ?? -1L);
         public string iri => (string)mem[Domain.Iri] ?? "";
-        public BTree<Sqlx, object> metadata =>
-            (BTree<Sqlx, object>)mem[_Metadata] ?? BTree<Sqlx, object>.Empty;
         public CTree<string, CTree<int, long>> methodInfos =>
 (CTree<string, CTree<int, long>>)mem[MethodInfos] ?? CTree<string, CTree<int, long>>.Empty;
 

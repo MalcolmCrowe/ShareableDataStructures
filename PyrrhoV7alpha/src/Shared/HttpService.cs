@@ -586,7 +586,7 @@ namespace Pyrrho
             {
                 var ci = (SqlValue)_cx.obs[b.value()];
                 if (e[ci.defpos] is TypedValue tv)
-                    doc=doc.Add(ci.name, tv);
+                    doc=doc.Add(ci.alias??ci.name, tv);
             }
             if (e[DBObject.Classification] is TLevel lv)
                 doc=doc.Add("$classification", lv.ToString());

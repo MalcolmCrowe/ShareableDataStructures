@@ -573,7 +573,7 @@ namespace Pyrrho.Level3
         {
             return false; // might be the target of an assignment in the method body
         }
-        internal override string ToString(string sg,CTree<string, CTree<long, long>> cs, Context cx)
+        internal override string ToString(string sg,CList<long> cs, Context cx)
         {
             return Eval(cx).ToString();
         }

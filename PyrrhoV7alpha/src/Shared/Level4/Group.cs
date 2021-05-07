@@ -112,6 +112,7 @@ namespace Pyrrho.Level4
             var ng = cx.Fix(groupings);
             if (ng != groupings)
                 r += (Groupings, ng);
+            cx.aggregators += (r.defpos, true);
             return r;
         }
         internal override Basis _Relocate(Writer wr)

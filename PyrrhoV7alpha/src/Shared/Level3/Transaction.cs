@@ -28,6 +28,7 @@ namespace Pyrrho.Level3
         internal const long
             AutoCommit = -278, // bool
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
+            Physicals = -250, // BTree<long,Physical>
             ReadConstraint = -283, // BTree<long,ReadConstraint> Context has latest version
             Step = -276, // long
             TriggeredAction = -288; // long
@@ -40,6 +41,8 @@ namespace Pyrrho.Level3
         internal long step => (long)(mem[Step] ?? TransPos);
         internal override long nextPos => (long)(mem[NextPos]??TransPos);
         internal override string source => (string)mem[CursorSpecification._Source];
+        internal BTree<long, Physical> physicals =>
+            (BTree<long,Physical>)mem[Physicals]??BTree<long, Physical>.Empty;
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
         /// <summary>
@@ -107,7 +110,7 @@ namespace Pyrrho.Level3
         internal override int AffCount(Context cx)
         {
             var c = 0;
-            for (var b = cx.physicals.PositionAt(cx.physAtStepStart); b != null;
+            for (var b = ((Transaction)cx.db).physicals.PositionAt(step); b != null;
                 b = b.Next())
                 if (b.value() is Record || b.value() is Delete)
                     c++;
@@ -121,7 +124,7 @@ namespace Pyrrho.Level3
         /// <returns>This Transaction with the compiled objects updated</returns>
         Database Unheap(Context cx)
         {
-            for (var b = cx.physicals.PositionAt(step); b != null; b = b.Next())
+            for (var b = physicals.PositionAt(step); b != null; b = b.Next())
                 b.value().Relocate(cx);
             return cx.db;
         }
@@ -148,7 +151,7 @@ namespace Pyrrho.Level3
         {
             if (cx.parse != ExecuteStatus.Obey)
                 return;
-            cx.physicals += (ph.ppos, ph);
+            cx.db += (Physicals,physicals +(ph.ppos, ph));
             cx.db += (NextPos, ph.ppos + 1);
             ph.Install(cx, lp);
         }
@@ -181,11 +184,11 @@ namespace Pyrrho.Level3
         }
         internal override Database Commit(Context cx)
         {
-            if (cx.physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
+            if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
                 && cx.etags.Count==0)
                 return parent.Commit(cx);
             // check for the case of an ad-hoc user that does not need to commit
-            if (cx.physicals.Count == 1L && cx.physicals.First().value() is PUser)
+            if (physicals.Count == 1L && physicals.First().value() is PUser)
                 return parent.Commit(cx);
             for (var b=cx.deferred.First();b!=null;b=b.Next())
             {
@@ -201,7 +204,7 @@ namespace Pyrrho.Level3
             var db = databases[name];
             var rdr = new Reader(new Context(db), loadpos);
             var wr = new Writer(new Context(db), dbfiles[name]);
-            var tb = cx.physicals.First(); // start of the work we want to commit
+            var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
             for (var pb=since.First(); pb!=null; pb=pb.Next())
@@ -267,14 +270,14 @@ namespace Pyrrho.Level3
                         }
                     }
                 }
-                if (cx.physicals.Count == 0)
+                if (physicals.Count == 0)
                     return parent.Commit(cx);
-                var pt = new PTransaction((int)cx.physicals.Count, user.defpos, role.defpos,
+                var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
                         nextPos, cx);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
                 var (tr, _) = pt.Commit(wr, this);
-                for (var b = cx.physicals.First(); b != null; b = b.Next())
+                for (var b = physicals.First(); b != null; b = b.Next())
                     (tr, _) = b.value().Commit(wr, tr);
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.etags += (name, (cx.etags[name] ?? Rvv.Empty) + cx.affected);
@@ -322,10 +325,7 @@ namespace Pyrrho.Level3
             }
             cx.result = -1L;
             if (cx != ac)
-            {
-                cx.physicals += ac.physicals;
                 cx.db = ac.db;
-            }
             return cx;
         }
         /// <summary>

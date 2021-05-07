@@ -83,7 +83,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
         // Tailor REST string for differnt remote DBMS
-        internal virtual string ToString(string sg, CTree<string,CTree<long, long>> cs, Context cx)
+        internal virtual string ToString(string sg, CList<long> cs, Context cx)
         {
             return ToString();
         }

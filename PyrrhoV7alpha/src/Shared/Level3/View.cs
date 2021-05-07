@@ -583,9 +583,14 @@ namespace Pyrrho.Level3
         }
         internal override Database Add(Database d, PMetadata pm, long p)
         {
-            var oi = ((ObInfo)d.role.infos[defpos])+(ObInfo._Metadata,pm.Metadata());
+            var md = pm.Metadata();
+            var oi = ((ObInfo)d.role.infos[defpos])+(ObInfo._Metadata,md);
             var ro = d.role + (defpos, oi);
-            d += (ro,p); 
+            d += (ro,p);
+            var tb = (Table)d.objects[viewTable];
+            tb += (ObInfo._Metadata, tb.metadata + md);
+            d += (tb, p);
+            d += (this + (ObInfo._Metadata, metadata + md),p);
             return base.Add(d, pm, p);
         }
         public static RestView operator +(RestView r, (long, object) x)
@@ -627,10 +632,10 @@ namespace Pyrrho.Level3
                 var np = cx.GetUid(); // restrowset new position
                 var a = ((ObInfo)cx.db.role.infos[tb.defpos]).name; // tb.name
                 var uf = new From(new Ident(a,cx.GetUid()), cx, tb).RowSets(cx, fi); // SelectedRowSet
-                var rc = CTree<string, long>.Empty; // remotecols
+                var rc = CList<long>.Empty; // remotecols
                 var us = CTree<string,long>.Empty; // catalogue of using columns
-                // usingcols are all columns from tb except the last
-                for (var b=uf.rt.First();b!=null && b.key()<n;b=b.Next())
+                // usingcols are all columns from tb including the last
+                for (var b=uf.rt.First();b!=null;b=b.Next())
                 {
                     var p = b.value();
                     var sc = (SqlCopy)cx.obs[p];
@@ -638,7 +643,11 @@ namespace Pyrrho.Level3
                 }
                 var ju = CTree<long,long>.Empty; // joinUsing
                 var uc = CTree<string, long>.Empty; // usingCols
-                // scan gf rowType to get remote columns and match up using cols
+                var nd = Domain.TableType;
+                var st = Domain.TableType;
+                var jd = Domain.TableType;
+                var mg = CTree<long, CTree<long, bool>>.Empty;
+                // scan gf rowType to limit to remote cols
                 for (var b = r.rt.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
@@ -647,36 +656,70 @@ namespace Pyrrho.Level3
                     {
                         var q = us[sv.name]; // match and translate uids
                         ju += (q, p);
+                        st += (p,sv.domain);
+                        mg += (p, new CTree<long, bool>(q, true));
+                        mg += (q, new CTree<long, bool>(p, true));
                         uc += (sv.name, p);
                         fi += (p, new RowSet.Finder(q, uf.defpos));
                         fi += (q, new RowSet.Finder(q, uf.defpos));
                     }
                     else
                     {
-                        rc += (sv.name, p); // column is remote
+                        nd += (p,sv.domain);
+                        rc += p; // column is remote
                         fi += (p, new RowSet.Finder(p, np));
                     }
                 }
                 var ul = uf.rt.Last().value();
-                var nr = (RowSet)(r+(RestRowSet.UrlCol,ul)
-                    +(RestRowSet.RemoteCols,rc)+(Index.Keys,r.rt)
-                    +(RestRowSet.UsingCols,uc)+(RowSet._Finder,fi)
-                    +(JoinPart.JoinUsing,ju)
-                    +(RestRowSet.UsingTable,uf.defpos)).Relocate(np);
-                cx.withViews -= r.defpos;
-                cx.withViews += (np,true);
+                fi += (ul, new RowSet.Finder(ul, uf.defpos));
+                var nr = (RowSet)(r + (RestRowSet.UrlCol, ul)
+                    + (RestRowSet.RemoteCols, rc) + (Index.Keys, nd.rowType)
+                 //   + (RestRowSet.UsingCols, uc) 
+                    + (RowSet._Finder, fi)
+                    + (RestRowSet.UsingRowSet, uf.defpos)
+                    + (_Domain, nd)
+                    + (RestRowSet.UsingRowSet, uf.defpos)).Relocate(np);
+                var ss = new SelectedRowSet(cx, st, uf);
                 var jp = new JoinPart(r.defpos) + (_Domain, r.domain)
                     + (JoinPart.LeftOperand, uf.defpos)
                     + (JoinPart.RightOperand, nr.defpos)
-                    + (JoinPart.Natural, Sqlx.USING)
-                    + (JoinPart.JoinUsing, ju);
-                var jr = new JoinRowSet(cx,jp,uf, nr);
+                    + (JoinPart.JoinKind,Sqlx.CROSS);
+                var jr = new JoinRowSet(cx,jp,ss, nr);
+                cx.data += (ss.defpos, ss);
                 cx.data += (nr.defpos, nr);
                 cx.data += (dp, jr);
                 return;
             }
-            cx.withViews += (dp, true);
             cx.data += (dp, r);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (clientName!=null)
+            {
+                sb.Append(" Client: "); sb.Append(clientName);
+            }
+            if (clientPassword!=null)
+            {
+                sb.Append(" Password: "); sb.Append(clientPassword);
+            }
+            if (mem.Contains(Mime))
+            {
+                sb.Append(" Mime: "); sb.Append(mime);
+            }
+            if (mem.Contains(SqlAgent))
+            {
+                sb.Append(" SqlAgent: "); sb.Append(sqlAgent);
+            }
+            if (mem.Contains(UsingTablePos))
+            {
+                sb.Append(" UsingTable: ");sb.Append(Uid(usingTable));
+            }
+            if (mem.Contains(ViewTable))
+            {
+                sb.Append(" ViewTable:");sb.Append(Uid(viewTable));
+            }
+            return sb.ToString();
         }
     }
 }

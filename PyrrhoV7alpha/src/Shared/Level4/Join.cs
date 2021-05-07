@@ -334,7 +334,6 @@ namespace Pyrrho.Level4
                 for (var b = rsTargets.First(); b != null; b = b.Next())
                 {
                     var ta = ts[b.key()];
-                    ta.physicals = cx.physicals;
                     ta.db = cx.db;
                     var trs = (TransitionRowSet)ta._trs;
                     new TransitionRowSet.TransitionCursor(ta, trs, cu.values, cu._defpos, cu._pos);
@@ -344,7 +343,6 @@ namespace Pyrrho.Level4
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var ta = ts[b.key()];
-                ta.physicals = cx.physicals;
                 ta.db = cx.db;
                 ta.Finish();
             }
@@ -363,7 +361,6 @@ namespace Pyrrho.Level4
                 for (var b = rsTargets.First(); b != null; b = b.Next())
                 {
                     var ta = ts[b.key()];
-                    ta.physicals = cx.physicals;
                     ta.db = cx.db;
                     var dp = cx.cursors[b.value()]._defpos;
                     ((TransitionRowSet)ta._trs).At(cx, dp);
@@ -372,7 +369,6 @@ namespace Pyrrho.Level4
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var ta = ts[b.key()];
-                ta.physicals = cx.physicals;
                 ta.db = cx.db;
                 ta.Finish();
             }
@@ -392,7 +388,6 @@ namespace Pyrrho.Level4
                 {
                     var ta = ts[b.key()];
                     ta.db = cx.db;
-                    ta.physicals = cx.physicals;
                     var dp = cx.cursors[b.value()]._defpos;
                     ((TransitionRowSet)ta._trs).At(ta, dp);
                     ta.EachRow();
@@ -400,7 +395,6 @@ namespace Pyrrho.Level4
             for (var b = rsTargets.First(); b != null; b = b.Next())
             {
                 var ta = ts[b.key()];
-                ta.physicals = cx.physicals;
                 ta.db = cx.db;
                 ta.Finish();
             }
