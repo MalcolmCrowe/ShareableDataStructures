@@ -154,7 +154,7 @@ namespace Pyrrho
             }
             if (etags)
             {
-                var s = cx.etags[url]?.ToString()??"";
+                var s = cx.etags.cons[url].rvv?.ToString()??"";
                 rs.AddHeader("ETag", s);
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                     Console.WriteLine("Returning ETag: "+s);
@@ -634,13 +634,6 @@ namespace Pyrrho
                     sbuild.Append(dt.Xml(tp._tr as Transaction, _cx,tb?.defpos??-1L, new TRow(dt, rc)));
                 } */
     }
-    internal class HttpParams
-    {
-        public string url;
-        public bool defaultCredentials = false;
-        public string authorization = "";
-        internal HttpParams(string u) { url = u; }
-    }
     /// <summary>
     /// The HttpServer class
     /// </summary>
@@ -683,7 +676,7 @@ namespace Pyrrho
                 }
                 if (path.Length <= 2)
                     return;
-                var dbn = new Ident(pathbits[1],0);
+                var dbn = new Ident(pathbits[1], 0);
                 if (dbn.ident.EndsWith(".htm"))
                 {
                     var rdr = new StreamReader(PyrrhoStart.path + path);
@@ -699,14 +692,14 @@ namespace Pyrrho
                 var h = client.Request.Headers["Authorization"];
                 var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;
-                details+=("User", s[0]);
-                details+=("Password", s[1]);
+                details += ("User", s[0]);
+                details += ("Password", s[1]);
                 details += ("Files", dbn.ident);
                 details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
                 var d = Database.Get(details);
-                var db = d.Transact(Transaction.Analysing,"")
-                    +(Database.LastModified,d.lastModified); // use the file time, not UTCNow
+                var db = d.Transact(Transaction.Analysing, "")
+                    + (Database.LastModified, d.lastModified); // use the file time, not UTCNow
                 if (acc != null && acc.Contains("text/plain"))
                     woutput = new SqlWebOutput(db, sbuild);
                 else if (acc != null && acc.Contains("text/html"))
@@ -721,76 +714,66 @@ namespace Pyrrho
                 var sb = Encoding.UTF8.GetString(bytes);
                 var et = client.Request.Headers["If-Match"];
                 var eu = client.Request.Headers["If-Unmodified-Since"];
-                string[] ets = null;
+                var rv = Rvv.Empty;
                 if (et != null)
-                { 
+                {
                     if (et.StartsWith("W/"))
                         et = et.Substring(2);
-                    ets = et.Split(';');
-                    for (var i=0;i<ets.Length;i++)
-                        ets[i] = ets[i].Trim().Trim('"');
+                    var ets = et.Split(';');
+                    for (var i = 0; i < ets.Length; i++)
+                        rv += Rvv.Parse(ets[i].Trim().Trim('"'));
                 }
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                 {
                     if (sb != "" && sb != null)
                         Console.WriteLine(sb);
                     if (et != null)
-                        Console.WriteLine("If-Match: " + et);
+                        Console.WriteLine("Received If-Match: " + et);
                     if (eu != null)
-                        Console.WriteLine("If-Unmodified-Since: " + eu);
-                }
-                if (ets != null)
-                    for (var i = 0; i < ets.Length; i++)
-                    {
-                        var rv = Rvv.Parse(ets[i]);
-                        if (!rv.Validate(db))
-                        {
-                            if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                                Console.WriteLine("ETag invalid " + ets[i]);
-                            throw new DBException("40082",ets[i]);
-                        }
-                    }
-                if (eu!=null)
-                {
-                    var ed = THttpDate.Parse(eu);
-                    var delta = ed.milli ? 10000 : 10000000;
-                    if (db.lastModified.Ticks > ed.value.Value.Ticks + delta)
-                    {
-                        if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                            Console.WriteLine("Unmodified condition fails " + ed);
-                        throw new DBException("40084", ed.ToString());
-                    }
+                        Console.WriteLine("Received If-Unmodified-Since: " + eu);
                 }
                 var cx = new Context(db);
+                cx.etags = new ETags();
+                cx.etags.cons += (cx.db.name, new HttpParams(cx.db.name));
                 cx.result = cx.db.lexeroffset;
-                db.Execute(cx,client.Request.HttpMethod,"H",cx.db.name,pathbits, 
-                    client.Request.Headers["Content-Type"],
-                    sb, ets);
+                cx.etags.assertMatch = rv;
+                cx.etags.assertUnmodifiedSince = THttpDate.Parse(eu);
+                db.Execute(cx, client.Request.HttpMethod, "H", cx.db.name, pathbits,
+                    client.Request.Headers["Content-Type"], sb);
+                var ex = cx.etags.cons[cx.db.name];
                 cx.db.Commit(cx);
-                woutput.SendResults(client.Response,db,cx,db.name,true);
+                cx.etags.cons += (cx.db.name, ex);
+                woutput.SendResults(client.Response, db, cx, db.name, true);
                 return;
             }
             catch (DBException e)
             {
                 if (woutput != null)
-                    try
+                {
+                    switch (e.signal.Substring(0, 2))
                     {
-                        client.Response.StatusCode = 
-                            e.signal.StartsWith("40")?412:400;
-                        woutput.sbuild.Append("SQL Error: ");
-                        woutput.sbuild.Append(e.signal);
-                        woutput.sbuild.Append(" ");
-                        woutput.sbuild.Append(Resx.Format(e.signal, e.objects));
-                        for (var ii = e.info.First(); ii != null; ii = ii.Next())
-                            woutput.sbuild.Append("\n\r" + ii.key() + ": " + ii.value());
-                        woutput.sbuild.Append("\n\r");
-                        var bs = System.Text.Encoding.UTF8.GetBytes(woutput.sbuild.ToString());
-                        client.Response.ContentLength64 = bs.Length;
-                        var wr = client.Response.OutputStream;
-                        wr.Write(bs, 0, bs.Length);
-                        wr.Close();
+                        case "22":
+                        case "20": client.Response.StatusCode = 400; break;
+                        case "23": client.Response.StatusCode = 403; 
+                            if(woutput!=null)
+                            {
+                                var bs = Encoding.UTF8.GetBytes(e.Message);
+                                client.Response.ContentLength64 = bs.Length;
+                                var wr = client.Response.OutputStream;
+                                wr.Write(bs, 0, bs.Length);
+                                wr.Close();
+                            }
+                            break;
+                        case "42": client.Response.StatusCode = 401; break;
+                        case "40": client.Response.StatusCode = 412; break;
+                        default: client.Response.StatusCode = 400; break;
                     }
-                    catch (Exception) { }
+                }
+                return;
+            }
+            catch (PEException)
+            {
+                client.Response.StatusCode = 500; 
             }
             catch (IOException)
             {
@@ -802,7 +785,7 @@ namespace Pyrrho
                     {
                         client.Response.StatusCode = 500;
                         woutput.sbuild.Append("<p>Pyrrho DBMS Internal Error: " + e.Message + "</p>");
-                        var bs = System.Text.Encoding.UTF8.GetBytes(woutput.sbuild.ToString());
+                        var bs = Encoding.UTF8.GetBytes(woutput.sbuild.ToString());
                         client.Response.ContentLength64 = bs.Length;
                         var wr = client.Response.OutputStream;
                         wr.Write(bs, 0, bs.Length);
@@ -840,11 +823,11 @@ namespace Pyrrho
 				bytes[j] = (byte)a[j];
 			return Encoding.UTF8.GetString(bytes,0,bytes.Length);
 		}
-        internal virtual void TransactionOperation()
+        internal void TransactionOperation()
         {
             // nothing - though it is a surprise if we get here
         }
-        internal virtual void Close()
+        internal void Close()
         {
             if (sbuild != null && client.Response.StatusCode == 200)
                 try

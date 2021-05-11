@@ -57,8 +57,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal CTree<long,bool> aggregators = CTree<long,bool>.Empty; // EvalRowSet or GroupRowSet
         internal Rvv affected = null;
-        internal CTree<string,Rvv> etags = CTree<string,Rvv>.Empty;
-        internal BTree<string, HttpParams> httpParams = BTree<string, HttpParams>.Empty;
+        internal ETags etags = null;
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;
         internal CTree<long, RowSet.Finder> finder = CTree<long, RowSet.Finder>.Empty; 
@@ -150,8 +149,7 @@ namespace Pyrrho.Level4
             parseStart = 0L;
             this.db = db;
             rdC = (db as Transaction)?.rdC;
-        //            domains = (db as Transaction)?.domains;
-    }
+        }
         internal Context(Context cx)
         {
             next = cx;
@@ -170,6 +168,7 @@ namespace Pyrrho.Level4
             parent = cx.parent; // for triggers
             dbformat = cx.dbformat;
             rdC = cx.rdC;
+            etags = cx.etags;
             // and maybe some more?
         }
         internal Context(Context c, Role r, User u) : this(c)
@@ -195,15 +194,25 @@ namespace Pyrrho.Level4
             return v;
         }
 
-        internal void CheckRemote(string url,Rvv rvv)
+        internal void CheckRemote(string url, Rvv rvv)
         {
-            var hp = httpParams[url];
+            var hp = etags.cons[url];
             var rq = WebRequest.Create(url) as HttpWebRequest;
             rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
-            if (hp.defaultCredentials)
+            if (user == null)
+            {
                 rq.UseDefaultCredentials = true;
+                hp.defaultCredentials = true;
+            }
             else
-                rq.Headers.Add("Authorization: Basic " + hp.authorization);
+            {
+                var cr = user.name + ":";
+                var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
+                rq.UseDefaultCredentials = false;
+                hp.defaultCredentials = false;
+                hp.authorization = d;
+                rq.Headers.Add("Authorization: Basic " + d);
+            }
             rq.Headers.Add("If-Match: " + rvv);
             rq.Method = "HEAD";
             HttpWebResponse rs = null;
@@ -211,8 +220,8 @@ namespace Pyrrho.Level4
             {
                 rs = rq.GetResponse() as HttpWebResponse;
             }
-            catch 
-            {     
+            catch
+            {
                 throw new DBException("40082", url);
             }
             rs?.Close();
@@ -1714,5 +1723,28 @@ namespace Pyrrho.Level4
         {
             periodname = n; kind = k; time1 = t1; time2 = t2;
         }
+    }
+    // This is a mutable class common to all Contexts for a given local database
+    // available if (a) the context is for the HttpService or
+    // (b) we will have a HttpService branch transaction
+    internal class ETags
+    {
+        // local databasename or url of form http://hostname/db/role/table
+        public BTree<string, HttpParams> cons = BTree<string, HttpParams>.Empty;
+        public THttpDate assertUnmodifiedSince = null;
+        public Rvv assertMatch = null;
+        internal void Clear()
+        {
+            cons = BTree<string, HttpParams>.Empty;
+        }
+    }
+    internal class HttpParams
+    {
+        // local databasename or url of form http://hostname/db/role/table
+        public string url; 
+        public bool defaultCredentials = false;
+        public string authorization = "";
+        public Rvv rvv = Rvv.Empty;
+        internal HttpParams(string u) { url = u; }
     }
 }

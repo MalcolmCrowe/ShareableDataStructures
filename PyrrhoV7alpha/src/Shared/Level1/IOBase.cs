@@ -1014,7 +1014,7 @@ namespace Pyrrho.Level2
                                 psr.cx.defs += (ic, p);
                                 psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
                             }
-                            pm.now = psr.ParseProcedureStatement(xp);
+                            pm.now = psr.ParseProcedureStatement(xp,null,null);
                             pm.framing = new Framing(psr.cx);
                             pm.Frame(psr.cx);
                             pm.framing += (Framing.Obs,

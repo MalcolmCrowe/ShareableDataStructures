@@ -422,7 +422,8 @@ namespace Pyrrho.Level3
             else
                 ro = guest;
             done:
-            var tr = new Transaction(r, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep);
+            var tr = new Transaction(r, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep)
+                + (Transaction.StartTime,DateTime.Now);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
                 var cx = new Context(tr);

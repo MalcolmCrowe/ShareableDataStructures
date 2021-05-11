@@ -818,6 +818,10 @@ namespace Pyrrho.Common
     /// Check allows transactions to find out if another transaction has overritten the row.
     /// RVV is calculated only when required: see affected in Context.
     /// Modified in V7 to conform to RFC 7232.
+    /// Rvv format
+    /// tabledefpos-> (defpos,ppos)  Record
+    ///               (defpos,-1)    Delete
+    ///               (-1, lastData) Table
     /// Shareable
     /// </summary>
     internal class Rvv : CTree<long, CTree<long, long>>
@@ -882,23 +886,37 @@ namespace Pyrrho.Common
             return new Rvv(a);
         }
         /// <summary>
-        /// Validate an RVV string
+        /// This is from the context, st is the time from If-Unmodified-Since
         /// </summary>
-        /// <param name="s">the string</param>
-        /// <returns>the rvv</returns>
-        internal bool Validate(Database db)
+        /// <param name="db"></param>
+        /// <param name="st"></param>
+        /// <returns></returns>
+        internal bool Validate(Database db, THttpDate st)
         {
+            var eps = (st==null)?0: st.milli ? 10000000 : 10000;
+            var tt = (st==null)? 0: st.value.Value.Ticks - eps;
             for (var b = First(); b != null; b = b.Next())
             {
                 var t = (Table)db.objects[b.key()];
                 for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.key() < 0L)
+                {
+                    if (c.key() < 0)
                     {
                         if (t.lastData > c.value())
                             return false;
                     }
-                    else if (t.tableRows[c.key()]?.ppos != c.value())
-                        return false;
+                    else
+                    {
+                        var tr = t.tableRows[c.key()];
+                        if (tr == null)
+                        {
+                            if (c.value() > 0)
+                                return false;
+                        }
+                        else if (tr.ppos > c.value())
+                            return false;
+                    }
+                }
             }
             return true;
         }

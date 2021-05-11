@@ -30,6 +30,7 @@ namespace Pyrrho.Level3
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
             Physicals = -250, // BTree<long,Physical>
             ReadConstraint = -283, // BTree<long,ReadConstraint> Context has latest version
+            StartTime = -217, // DateTime
             Step = -276, // long
             TriggeredAction = -288; // long
         public BTree<Sqlx, TypedValue> diagnostics =>
@@ -43,6 +44,7 @@ namespace Pyrrho.Level3
         internal override string source => (string)mem[CursorSpecification._Source];
         internal BTree<long, Physical> physicals =>
             (BTree<long,Physical>)mem[Physicals]??BTree<long, Physical>.Empty;
+        internal DateTime startTime => (DateTime)mem[StartTime];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
         /// <summary>
@@ -104,8 +106,9 @@ namespace Pyrrho.Level3
             cx.result = -1L;
             if (!autoCommit)
                 return Unheap(cx);
-            cx.etags = CTree<string, Rvv>.Empty;
-            return cx.db.Commit(cx)+(NextPrep,nextPrep)+(LastModified,DateTime.UtcNow);
+            var r = cx.db.Commit(cx)+(NextPrep,nextPrep)+(LastModified,DateTime.UtcNow);
+            cx.etags?.Clear();
+            return r;
         }
         internal override int AffCount(Context cx)
         {
@@ -185,7 +188,7 @@ namespace Pyrrho.Level3
         internal override Database Commit(Context cx)
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
-                && cx.etags.Count==0)
+                && cx.etags==null)
                 return parent.Commit(cx);
             // check for the case of an ad-hoc user that does not need to commit
             if (physicals.Count == 1L && physicals.First().value() is PUser)
@@ -197,9 +200,10 @@ namespace Pyrrho.Level3
                 ta.db = this;
                 ta.Exec();
             }
-            for (var b = cx.etags.First(); b != null; b = b.Next())
-                if (b.key() != name)
-                    cx.CheckRemote(b.key(),b.value());
+            if (!autoCommit)
+                for (var b = cx.etags?.cons.First(); b != null; b = b.Next())
+                    if (b.key() != name)
+                        cx.CheckRemote(b.key(),b.value().rvv);
             // Both rdr and wr access the database - not the transaction information
             var db = databases[name];
             var rdr = new Reader(new Context(db), loadpos);
@@ -280,10 +284,10 @@ namespace Pyrrho.Level3
                 for (var b = physicals.First(); b != null; b = b.Next())
                     (tr, _) = b.value().Commit(wr, tr);
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
-                cx.etags += (name, (cx.etags[name] ?? Rvv.Empty) + cx.affected);
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
+                cx.etags?.Clear();
                 wr.cx.result = -1L;
                 // we install the new version of the database, and then 
                 // add the Connection information for the session
@@ -336,47 +340,34 @@ namespace Pyrrho.Level3
         /// <param name="mime">The mime type in the header</param>
         /// <param name="sdata">The posted data if any</param>
         internal Context Execute(Context cx, string method, string id, string dn, string[] path, string mime, 
-            string sdata, string[] ets)
+            string sdata)
         {
             var db = this;
-            var etag = cx.etags[dn];
-            if (ets != null)
-                for (var i = 0; i < ets.Length; i++)
-                {
-                    var rv = Rvv.Parse(ets[i]);
-                    if (!rv.Validate(this))
-                    {
-                        if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                            Console.WriteLine("ETag invalid " + ets[i]);
-                        throw new DBException("40000", etag);
-                    }
-                    etag += rv;
-                    cx.etags += (dn,etag);
-                }
-            var es = etag?.ToString()??"";
             if (path.Length >= 4)
             {
                 switch (method)
                 {
                     case "HEAD":
-                        db.Execute(cx, From._static, method, dn, path, 2, es);
+                        if (!cx.etags.assertMatch.Validate(cx.db, cx.etags.assertUnmodifiedSince))
+                            throw new DBException("40082");
+                        db.Execute(cx, From._static, method, dn, path, 2);
                         cx.result = -1L;
                         break;
                     case "GET":
-                        db.Execute(cx, From._static, method, dn, path, 2, es);
+                        db.Execute(cx, From._static, method, dn, path, 2);
                         break;
                     case "DELETE":
-                        db.Execute(cx, From._static,method, dn, path, 2, es);
+                        db.Execute(cx, From._static,method, dn, path, 2);
                         cx = db.Delete(cx, cx.data[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, From._static,method, dn, path, 2, es);
+                        db.Execute(cx, From._static,method, dn, path, 2);
                         cx = db.Put(cx,cx.data[cx.result], sdata);
         //                var rvr = tr.result.rowSet as RvvRowSet;
         //                tr.SetResults(rvr._rs);
                         break;
                     case "POST":
-                        db.Execute(cx, From._static,id + ".", dn, path, 2, es);
+                        db.Execute(cx, From._static,id + ".", dn, path, 2);
                         //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
                         cx = db.Post(cx, cx.data[cx.result],sdata);
                         break;
@@ -399,7 +390,7 @@ namespace Pyrrho.Level3
         /// <param name="ro"></param>
         /// <param name="path"></param>
         /// <param name="p"></param>
-        internal void Execute(Context cx, From f,string method, string dn, string[] path, int p, string etag)
+        internal void Execute(Context cx, From f,string method, string dn, string[] path, int p)
         {
             if (p >= path.Length || path[p] == "")
             {
@@ -409,13 +400,13 @@ namespace Pyrrho.Level3
                 if (method == "HEAD")
                 {
                     var tb = (Table)cx.obs[rs.rsTargets.First().key()];
-                    var rv = Rvv.Empty + (tb.defpos, (-1L, tb.lastData));
                     var b = rs.First(cx);
                     if (b != null)
                         for (; b != null; b = b.Next(cx))
                             b._Rvv(cx);
-                    else
-                        cx.etags += (dn, rv);
+                    var st = cx.etags.assertUnmodifiedSince;
+                    if (st!=null && !cx.etags.assertMatch.Validate(cx.db, st))
+                        throw new DBException("40084");
                 }
                 return;
             }
@@ -631,7 +622,7 @@ namespace Pyrrho.Level3
                         else if (ob is Role ro)
                         {
                             cx.db += (Role, ro.defpos);
-                            Execute(cx, f, method, dn, path, p + 1, etag);
+                            Execute(cx, f, method, dn, path, p + 1);
                             return;
                         }
                         if (cn.Contains(":"))
@@ -677,7 +668,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42107", sp[0]).Mix();
                     }
             }
-            Execute(cx, f, method, dn, path, p + 1, etag);
+            Execute(cx, f, method, dn, path, p + 1);
         }
         internal override Context Put(Context cx, RowSet r, string s)
         {

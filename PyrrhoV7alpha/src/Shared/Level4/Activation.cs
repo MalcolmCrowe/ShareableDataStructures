@@ -220,19 +220,19 @@ namespace Pyrrho.Level4
                     case PTrigger.TrigType.Insert:
                         if (post)
                         {
-                            cx.etags += (url, Rvv.Parse(et));
-                            ShowETag(cx);
+                            cx.etags.cons[url].rvv += Rvv.Parse(et);
+                            ShowETag(cx,vi);
                         }
                         break;
                     case PTrigger.TrigType.Update:
-                        cx.etags += (url, Rvv.Parse(et));
-                        ShowETag(cx);
+                        cx.etags.cons[url].rvv += Rvv.Parse(et);
+                        ShowETag(cx,vi);
                         break;
                     case PTrigger.TrigType.Delete:
                         if (!post)
                         {
-                            cx.etags += (url, Rvv.Parse(et));
-                            ShowETag(cx);
+                            cx.etags.cons[url].rvv += Rvv.Parse(et);
+                            ShowETag(cx,vi);
                         }
                         break;
                 }
@@ -249,14 +249,15 @@ namespace Pyrrho.Level4
                     var ix = s.IndexOf('\n');
                     throw new DBException(sig, s.Substring(16));
                 }
-                throw new DBException("2E201");
+                throw new DBException("23000");
             }
             rp?.Close();
         }
-        static void ShowETag(Context cx)
+        static void ShowETag(Context cx,ObInfo vi)
         {
+            var url = (string)vi.metadata[Sqlx.URL] ?? vi.description;
             if (PyrrhoStart.HTTPFeedbackMode)
-                Console.WriteLine("Recording ETag ", cx.etags);
+                Console.WriteLine("Recording ETag "+ cx.etags.cons[url].rvv);
         }
     }
     internal class TableActivation : TargetActivation
@@ -273,11 +274,14 @@ namespace Pyrrho.Level4
         internal string prov = null;
         internal Level level = Level.D;
         internal SqlValue security = null;
+        internal THttpDate _st;
+        internal Rvv _rv;
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
-        internal TableActivation(Context cx,RowSet fm,PTrigger.TrigType tt,string pr=null,Level cl=null)
+        internal TableActivation(Context cx,RowSet fm,PTrigger.TrigType tt,string pr=null,Level cl=null, 
+            THttpDate st = null, Rvv rv = null)
             : base(cx,fm,tt)
         {
-            _cx = cx;
+            _cx = cx; _st = st; _rv = rv;
             table = (Table)cx.obs[_tgt];
             _tgs = table.triggers;
             var trs = (TransitionRowSet)_trs;
@@ -451,6 +455,7 @@ namespace Pyrrho.Level4
                         // Step D
                         np = db.nextPos;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+                        tgc.Validate(db, _st, _rv);
                         var old = ((TRow)values[Trigger.OldRow]).values;
                         for (var b = tgc.dataType.rowType.First(); b != null; b = b.Next())
                         {
@@ -484,6 +489,7 @@ namespace Pyrrho.Level4
                             return;
                         np = db.nextPos;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
+                        tgc.Validate(db, _st, _rv);
                         rc = tgc._rec;
                         if (_cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
                             // If Delete is enforced by the table and the user has delete privilege for the table, 
@@ -563,8 +569,9 @@ namespace Pyrrho.Level4
                 url.Append("/"); url.Append(kn);
                 url.Append("="); url.Append(b.value());
             }
-            _rq = _rr.GetRequest(this, url.ToString(), false);
+            _rq = _rr.GetRequest(this, url.ToString(), vi, false);
             _rq.Method = "HEAD";
+            rr.SetupETags(cx);
             RoundTrip(cx, rr.restView, tgt, _rq, _url, null); 
             switch (tgt & (PTrigger.TrigType)7)
             {
@@ -727,7 +734,7 @@ namespace Pyrrho.Level4
             var cu = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             var (url, targetName, sql) = _rr.GetUrl(this, vi);
-            var rq = _rr.GetRequest(this, url, !_tty.HasFlag(PTrigger.TrigType.Insert));
+            var rq = _rr.GetRequest(this, url, vi, !_tty.HasFlag(PTrigger.TrigType.Insert));
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:

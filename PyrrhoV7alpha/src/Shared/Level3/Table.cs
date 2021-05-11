@@ -386,7 +386,7 @@ namespace Pyrrho.Level3
         /// <param name="rs">The target rowset may be explicit</param>
         internal override Context Update(Context cx, RowSet fm, bool iter)
         {
-            return new TableActivation(cx, fm, PTrigger.TrigType.Update);
+            return new TableActivation(cx, fm, PTrigger.TrigType.Update, null, null);
         }
         /// <summary>
         /// Prepare a Delete on a Table, including triggers
@@ -396,7 +396,7 @@ namespace Pyrrho.Level3
         /// <param name="eqs">equality pairings (e.g. join conditions)</param>
         internal override Context Delete(Context cx, RowSet fm, bool iter)
         {
-            return new TableActivation(cx, fm, PTrigger.TrigType.Delete);
+            return new TableActivation(cx, fm, PTrigger.TrigType.Delete, null, null);
         }
         internal override void _ReadConstraint(Context cx,SelectedRowSet.SelectedCursor cu)
         {

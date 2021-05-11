@@ -736,6 +736,8 @@ namespace Pyrrho.Common
         /// <returns>A THttpDate</returns>
         internal static THttpDate Parse(string r)
         {
+            if (r == null)
+                return null;
             // example formats from RFC 7231
             // Sun, 06 Nov 1994 08:49:37 GMT
             // Sunday, 06-Nov-94 08:49:37 GMT
@@ -1294,7 +1296,8 @@ namespace Pyrrho.Common
         internal readonly Rvv rvv;
         internal TRvv(Context cx,string url) : base (Domain.Rvv)
         {
-            rvv = cx.etags[url];
+            rvv = cx.etags?.cons[url].rvv??
+                throw new PEException("PE381");
         }
         internal TRvv(Rvv r) : base(Domain.Rvv)
         {

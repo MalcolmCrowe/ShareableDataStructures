@@ -1256,7 +1256,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42132", mn.mname.ToString(), oi.name).Mix();
             ((UDType)oi.domain).Defs(cx);
             meth +=(Procedure.Params, mn.ins);
-            meth += (Procedure.Body, ParseProcedureStatement(mn.retType).defpos);
+            meth += (Procedure.Body, ParseProcedureStatement(mn.retType,null,null).defpos);
             string ss = new string(lxr.input,st, lxr.start - st);
             // we really should check the signature here
             if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
@@ -2354,7 +2354,7 @@ namespace Pyrrho.Level4
                     var op = cx.parse;
                     cx.parse = ExecuteStatus.Parse;
                     cx.AddParams(pr);
-                    var bd = ParseProcedureStatement(pr.domain);
+                    var bd = ParseProcedureStatement(pr.domain,null,null);
                     pr += (Procedure.Body, bd.defpos);
                     cx.Add(pr);
                     Framing fm;
@@ -2544,7 +2544,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.FOR);
             var ac = new Activation(cx,hs.name);
             hs+=(HandlerStatement.Conds,ParseConditionValueList());
-            var a = ParseProcedureStatement(Domain.Content);
+            var a = ParseProcedureStatement(Domain.Content,null,null);
             cx.Add(a);
             hs= hs+(HandlerStatement.Action,a.defpos)+(DBObject.Dependents,a.dependents);
             return (Executable)cx.Add(hs);
@@ -2621,7 +2621,7 @@ namespace Pyrrho.Level4
             }
             while (tok != Sqlx.END)
             {
-                r+=cx.Add(ParseProcedureStatement(xp)).defpos;
+                r+=cx.Add(ParseProcedureStatement(xp,null,null)).defpos;
                 if (tok == Sqlx.END)
                     break;
                 Mustbe(Sqlx.SEMICOLON);
@@ -2637,7 +2637,7 @@ namespace Pyrrho.Level4
             tok = lxr.tok;
             if (lxr.Position > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
                 cx.db += (Database.NextId, cx.db.nextId + sql.Length);
-            var b = ParseProcedureStatement(xp);
+            var b = ParseProcedureStatement(xp,null,null);
             return (cx.db,(b!=null)?(Executable)cx.Add(b):null);
         }
         /// <summary>
@@ -2671,7 +2671,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="p">the procedure return type</param>
         /// <returns>the Executable resulting from the parse</returns>
-		internal Executable ParseProcedureStatement(Domain xp)
+		internal Executable ParseProcedureStatement(Domain xp, THttpDate st, Rvv rv)
 		{
             Match(Sqlx.BREAK);
             Executable r;
@@ -3009,11 +3009,11 @@ namespace Pyrrho.Level4
         /// <returns>the Executable result of the parse</returns>
 		BList<long> ParseStatementList(Domain xp)
 		{
-            var r = new BList<long>(cx.Add(ParseProcedureStatement(xp)).defpos);
+            var r = new BList<long>(cx.Add(ParseProcedureStatement(xp,null,null)).defpos);
             while (tok==Sqlx.SEMICOLON)
 			{
 				Next();
-                r+=cx.Add(ParseProcedureStatement(xp)).defpos;
+                r+=cx.Add(ParseProcedureStatement(xp,null,null)).defpos;
 			}
 			return r;
 		}
@@ -3541,7 +3541,7 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ATOMIC);
                 while (tok != Sqlx.END)
                 {
-                    ss+=cx.Add(ParseProcedureStatement(Domain.Content)).defpos; 
+                    ss+=cx.Add(ParseProcedureStatement(Domain.Content,null,null)).defpos; 
                     if (tok == Sqlx.END)
                         break;
                     Mustbe(Sqlx.SEMICOLON);
@@ -3552,7 +3552,7 @@ namespace Pyrrho.Level4
                 act = cs;
             }
             else
-                act = ParseProcedureStatement(Domain.Content);
+                act = ParseProcedureStatement(Domain.Content,null,null);
             cx.Add(act);
             var r = (WhenPart)cx.Add(new WhenPart(lxr.Position, when, new BList<long>(act.defpos)));
             trig.def = r.defpos;
@@ -5368,7 +5368,8 @@ namespace Pyrrho.Level4
 		/// CursorSpecification = [ XMLOption ] QueryExpression  .
         /// </summary>
         /// <returns>A CursorSpecification</returns>
-		internal SelectStatement ParseCursorSpecification(Domain xp)
+		internal SelectStatement ParseCursorSpecification(Domain xp, THttpDate st = null,
+            Rvv rv = null)
         {
             var lp = lxr.Position;
             var cs = _ParseCursorSpecification(xp);

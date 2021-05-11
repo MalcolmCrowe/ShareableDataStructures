@@ -179,7 +179,7 @@ namespace Pyrrho
                                 long t = 0;
                                 var ex = cx?.etags;
                                 cx = new Context(db);
-                                if (ex!=null && !(db is Transaction))
+                                if (ex != null && !(db is Transaction))
                                     cx.etags = ex;
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
@@ -577,8 +577,7 @@ namespace Pyrrho
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
-                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "application/json", jo, 
-                                    new string[0]);
+                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "application/json", jo);
                                 tcp.PutWarnings(cx);
                                 db = tr.RdrClose(cx);
                                 rb = null;
@@ -1257,7 +1256,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (7 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (11 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

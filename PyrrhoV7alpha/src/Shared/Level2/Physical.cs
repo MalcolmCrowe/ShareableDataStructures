@@ -551,7 +551,7 @@ namespace Pyrrho.Level2
             var vi = (ObInfo)_cx.db.role.infos[vw.viewPpos];
             if (vi.metadata.Contains(Sqlx.ETAG))
             {
-                var s = _cx.etags[url]?.ToString() ?? "";
+                var s = _cx.etags.cons[url].rvv?.ToString() ?? "";
                 if (s == "")
                     rq.Headers.Add("If-Unmodified-Since: "
                         + new THttpDate(_cx.db.lastModified,

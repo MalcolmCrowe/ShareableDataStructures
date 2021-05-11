@@ -151,7 +151,7 @@ namespace Pyrrho.Level2
             var psr = new Parser(rdr.context, source);
             Install(psr.cx, rdr.Position);
             var (_, xp) = psr.ParseProcedureHeading(new Ident(name, ppos));
-            proc = psr.ParseProcedureStatement(xp)?.defpos??-1L;
+            proc = psr.ParseProcedureStatement(xp,null,null)?.defpos??-1L;
             psr.cx.obs += (ppos, ((Procedure)psr.cx.obs[ppos]) + (Procedure.Body, proc));
             Frame(psr.cx);
             // final installation now that the body is defined

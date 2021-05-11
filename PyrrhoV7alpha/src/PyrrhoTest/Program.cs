@@ -29,7 +29,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("4 May 2021 Repeatable tests");
+                Console.WriteLine("11 May 2021 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23 need Server with +s");
@@ -312,7 +312,7 @@ namespace Test
             r.Close();
             var task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict: record 137");
+            CheckExceptionNonQuery(10, 1, "Commit", "Transaction conflict");
             Begin();
             cmd.CommandText = "select * from RDC where A=52";
             r = cmd.ExecuteReader();
@@ -325,7 +325,7 @@ namespace Test
             CheckResults(10,2,"select * from RDC","[{A:42,B:'the product of 6 and 7'},{A:52,B:'Weeks in the year'}]");
             task1 = Task.Factory.StartNew(() => Test10A());
             task1.Wait();
-            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict: record 137");
+            CheckExceptionNonQuery(10, 3, "Commit", "Transaction conflict");
         }
         void Test10A()
         {
@@ -812,7 +812,7 @@ namespace Test
                 tr = conn.BeginTransaction(); // II
                 conn.Act("insert into w values (3,'Fred','Bloggs')");
                 connA.Act("insert into d values (3,'Anyone','Else')");
-                CheckExceptionCommit(23, 10, "Integrity constraint");
+                CheckExceptionCommit(23, 10, "Integrity constraint:");
                 ResetA();
             }
             if (qry == 0 || qry == 11)
@@ -1032,7 +1032,8 @@ namespace Test
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = s;
                 var r = cmd.ExecuteReader();
-                r?.Read();
+                while (r?.Read()==true)
+                    ;
                 r?.Close();
             }
             catch (Exception e)

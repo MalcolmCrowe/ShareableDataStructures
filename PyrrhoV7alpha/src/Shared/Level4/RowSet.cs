@@ -962,14 +962,14 @@ namespace Pyrrho.Level4
         {
             var rs = cx.data[_rowsetpos];
             var dn = rs.DbName(cx);
-            var etag = cx.etags[dn]??Rvv.Empty;
+            var etag = cx.etags.cons[dn].rvv;
             for (var b = rs.rsTargets.First(); b != null; b = b.Next())
                 if ((rs.where == CTree<long, bool>.Empty && rs.matches == CTree<long, TypedValue>.Empty)
                     || rs.aggregates(cx))
                     etag += (b.key(), ( -1L, ((Table)cx.obs[b.key()]).lastData));
                 else
                     etag += (b.key(), cx.cursors[b.value()]);
-            cx.etags += (dn, etag);
+            cx.etags.cons[dn].rvv += etag;
         }
         internal bool Matches(Context cx)
         {
@@ -1569,7 +1569,7 @@ namespace Pyrrho.Level4
         {
             return cx.data[source].Insert(cx, fm, iter, prov, cl);
         }
-        internal override Context Delete(Context cx,RowSet fm, bool iter)
+        internal override Context Delete(Context cx, RowSet fm, bool iter)
         {
             return cx.data[source].Delete(cx,fm, iter);
         }
@@ -4062,6 +4062,22 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
+            internal void Validate(Database db,THttpDate st,Rvv rv)
+            {
+                if (st == null && rv == null)
+                    return;
+                var t = (Table)db.objects[_trs.target];
+                var tr = t.tableRows[_defpos]; 
+                if (st!=null)
+                {
+                    var delta = st.milli ? 10000 : 10000000;
+                    if (tr.time > st.value.Value.Ticks + delta)
+                        throw new DBException("40029", _defpos);
+                }
+                var rp = rv?[_trs.target]?[_defpos];
+                if (rp != null && tr.ppos > rp.Value)
+                    throw new DBException("40029", _defpos);
+            }
         }
         // shareable as of 26 April 2021
         internal class TriggerCursor : Cursor
@@ -4775,7 +4791,9 @@ namespace Pyrrho.Level4
                   +(Query._Matches,f.matches)+(Query.Where,f.where)+(From.Target,f.target)
                   +(Query.OrdSpec,f.ordSpec)+(_Domain,f.domain)
                   +(Index.Keys,f.domain.rowType))
-        { }
+        {
+            SetupETags(cx);
+        }
         protected RestRowSet(Context cx, RestRowSet rs, CTree<long, Finder> nd, bool bt)
             : base(cx, rs, nd, bt) 
         { }
@@ -4835,6 +4853,40 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new RestRowSet(defpos,m);
+        }
+        internal void SetupETags(Context cx)
+        {
+            var vi = (ObInfo)cx.db.role.infos[restView];
+            var rv = (RestView)cx.obs[restView];
+            string user = rv.clientName ?? cx.user.name, password = rv.clientPassword;
+            var vwdesc = (string)vi.metadata[Sqlx.URL] ?? vi.description;
+            var ss = vwdesc.Split('/');
+            if (ss.Length > 3)
+            {
+                var st = ss[2].Split('@');
+                if (st.Length > 1)
+                {
+                    var su = st[0].Split(':');
+                    user = su[0];
+                    if (su.Length > 1)
+                        password = su[1];
+                }
+            }
+            if (cx.etags?.cons.Contains(vwdesc) != true)
+            {
+                if (cx.etags == null)
+                    cx.etags = new ETags();
+                var hps = new HttpParams(vwdesc);
+                cx.etags.cons += (vwdesc, hps);
+                if (user == null)
+                    hps.defaultCredentials = true;
+                else
+                {
+                    var cr = user + ":" + password;
+                    var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
+                    hps.authorization = d;
+                }
+            }
         }
         internal override string DbName(Context cx)
         {
@@ -4907,54 +4959,26 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public HttpWebRequest GetRequest(Context cx,string url, bool ifmatch)
+        public HttpWebRequest GetRequest(Context cx, string url, ObInfo vi, bool ifmatch)
         {
-            var rv = (RestView)cx.obs[restView];
-            string user = rv.clientName??cx.user.name, password = rv.clientPassword;
-            var ss = url.Split('/');
-            if (ss.Length > 3)
-            {
-                var st = ss[2].Split('@');
-                if (st.Length > 1)
-                {
-                    var su = st[0].Split(':');
-                    user = su[0];
-                    if (su.Length > 1)
-                        password = su[1];
-                }
-            }
+            SetupETags(cx);
+            var vwdesc = (string)vi.metadata[Sqlx.URL] ?? vi.description;
             var rq = WebRequest.Create(url) as HttpWebRequest;
-            var hps = new HttpParams(url);
             rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
-            if (user == null)
-            {
+            var hps = cx.etags.cons[vwdesc];
+            if (hps.defaultCredentials)
                 rq.UseDefaultCredentials = true;
-                hps.defaultCredentials = true;
-            }
             else
+                rq.Headers.Add("Authorization: Basic " + hps.authorization);
+            if (vi.metadata.Contains(Sqlx.ETAG))
             {
-                var cr = user + ":" + password;
-                var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
-                rq.Headers.Add("Authorization: Basic " + d);
-                hps.authorization = d;
-                var _vw = (RestView)cx.obs[restView];
-                var vi = (ObInfo)cx.db.role.infos[_vw.viewPpos];
-                var xc = cx;
-                while (xc.next != null)
-                    xc = xc.next;
-                if (vi.metadata.Contains(Sqlx.ETAG))
-                {
-                    var dn = url.Split('/')[3];
-                    var s = xc.etags[dn]?.ToString() ?? "";
-                    if (s == "")
-                        rq.Headers.Add("If-Unmodified-Since: "
-                            + new THttpDate(cx.db.lastModified,
+                rq.Headers.Add("If-Unmodified-Since: "
+                    + new THttpDate(((Transaction)cx.db).startTime,
                             vi.metadata.Contains(Sqlx.MILLI)));
-                    else if (ifmatch)
-                        rq.Headers.Add("If-Match: \"" + s + "\"");
-                }
+                var s = cx.etags.cons[vwdesc].rvv?.ToString() ?? "";
+                if (s != "")
+                    rq.Headers.Add("If-Match: " + s);
             }
-            cx.httpParams += (url, hps);
             return rq;
         }
         public static HttpWebResponse GetResponse(WebRequest rq)
@@ -4972,7 +4996,16 @@ namespace Pyrrho.Level4
                 if (wr.StatusCode == HttpStatusCode.Unauthorized)
                     throw new DBException("42105");
                 if (wr.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    var ws = wr.GetResponseStream();
+                    if (ws!=null)
+                    {
+                        var s = new StreamReader(ws).ReadToEnd();
+                        ws.Close();
+                        throw new DBException(s.Substring(0, 5));
+                    }
                     throw new DBException("42105");
+                }
                 if ((int)wr.StatusCode == 412)
                     throw new DBException("40082");
             }
@@ -5024,7 +5057,7 @@ namespace Pyrrho.Level4
             var vw = (RestView)cx.obs[restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
             var (url,targetName,sql) = GetUrl(cx,vi);
-            var rq = GetRequest(cx,url, false);
+            var rq = GetRequest(cx,url, vi, false);
             rq.Accept = vw.mime ?? "application/json";
             if (vi.metadata.Contains(Sqlx.URL))
                 rq.Method = "GET";
@@ -5136,7 +5169,8 @@ namespace Pyrrho.Level4
                 if (et != null && et != "" && rq.Method == "POST") // Pyrrho manual 3.8.1
                 {
                     r += (ETag, et);
-                    cx.etags += (url, cx.etags[url] + Rvv.Parse(et));
+                    var vwdesc = (string)vi.metadata[Sqlx.URL] ?? vi.description;
+                    cx.etags.cons[vwdesc].rvv += Rvv.Parse(et);
                     if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                         Console.WriteLine("Response ETag: " + et);
                 }

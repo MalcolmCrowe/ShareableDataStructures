@@ -692,6 +692,10 @@ namespace Pyrrho.Level3
             }
             cx.data += (dp, r);
         }
+        internal override void _ReadConstraint(Context cx, SelectedRowSet.SelectedCursor cu)
+        {
+            base._ReadConstraint(cx, cu);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
