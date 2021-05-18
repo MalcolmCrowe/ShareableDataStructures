@@ -569,7 +569,7 @@ namespace Pyrrho.Level4
                 url.Append("/"); url.Append(kn);
                 url.Append("="); url.Append(b.value());
             }
-            _rq = _rr.GetRequest(this, url.ToString(), vi, false);
+            _rq = _rr.GetRequest(this, url.ToString(), vi);
             _rq.Method = "HEAD";
             rr.SetupETags(cx);
             RoundTrip(cx, rr.restView, tgt, _rq, _url, null); 
@@ -734,7 +734,7 @@ namespace Pyrrho.Level4
             var cu = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
             var vi = (ObInfo)db.role.infos[_vw.viewPpos];
             var (url, targetName, sql) = _rr.GetUrl(this, vi);
-            var rq = _rr.GetRequest(this, url, vi, !_tty.HasFlag(PTrigger.TrigType.Insert));
+            var rq = _rr.GetRequest(this, url, vi);
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:

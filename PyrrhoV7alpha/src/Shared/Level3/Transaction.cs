@@ -242,35 +242,31 @@ namespace Pyrrho.Level3
                 db = databases[name]; // may have moved on
                 wr.stmtPos = db.nextStmt;
                 wr.oldStmt = wr.stmtPos;
-                var lb = db.log.PositionAt(ph?.ppos ?? loadpos)?.Next();
-                if (lb != null)
+                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos);
+                rdr.locked = true;
+                since = rdr.GetAll(); // resume where we had to stop above, use new file length
+                for (var pb = since.First(); pb != null; pb = pb.Next())
                 {
-                    rdr = new Reader(new Context(db), lb.key());
-                    rdr.locked = true;
-                    since = rdr.GetAll(); // resume where we had to stop above, use new file length
-                    for (var pb = since.First(); pb != null; pb = pb.Next())
+                    ph = pb.value();
+                    PTransaction pu = null;
+                    if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
+                        pu = (PTransaction)ph;
+                    for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                     {
-                        ph = pb.value();
-                        PTransaction pu = null;
-                        if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
-                            pu = (PTransaction)ph;
-                        for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
+                        var ce = cb.value()?.Check(ph, pu);
+                        if (ce != null)
                         {
-                            var ce = cb.value()?.Check(ph, pu);
-                            if (ce != null)
-                            {
-                                cx.rconflicts++;
-                                throw ce;
-                            }
+                            cx.rconflicts++;
+                            throw ce;
                         }
-                        for (var b = tb; b != null; b = b.Next())
+                    }
+                    for (var b = tb; b != null; b = b.Next())
+                    {
+                        var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pu);
+                        if (ce != null)
                         {
-                            var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pu);
-                            if (ce != null)
-                            {
-                                cx.wconflicts++;
-                                throw ce;
-                            }
+                            cx.wconflicts++;
+                            throw ce;
                         }
                     }
                 }

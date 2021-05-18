@@ -341,10 +341,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QueryExpression)base._Replace(cx, was, now);
-            var lf = cx.Replace(r.left, was, now);
+            var lf = cx.ObReplace(r.left, was, now);
             if (lf != r.left)
                 r += (_Left, lf);
-            var rg = cx.Replace(r.right, was, now);
+            var rg = cx.ObReplace(r.right, was, now);
             if (rg != r.right)
                 r += (_Right, rg);
             r = (QueryExpression)New(cx, r.mem);
@@ -368,6 +368,11 @@ namespace Pyrrho.Level3
                     r += (_Right, rg.defpos);
             }
             return (r == rr) ? rr : (Query)New(cx,r.mem);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[left].CountStar(cx, te);
+            cx.obs[right]?.CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {

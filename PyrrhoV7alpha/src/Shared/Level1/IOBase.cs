@@ -619,23 +619,23 @@ namespace Pyrrho.Level2
         /// <param name="log"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal virtual Domain GetColumnDomain(long cp,long p)
+        internal (string,Domain) GetColumnDomain(long cp,long p)
         {
-            // This implementation is only used for Log$ rowsets
             var tp = -1L;
-            for (var cb = database.colTracker[cp].First(); cb != null; cb = cb.Next())
+            var n = "";
+            for (var cb = database.colTracker[cp]?.First(); cb != null; cb = cb.Next())
             {
-                var pp = cb.key();
-                if (pp > p)
+                tp = cb.key();
+                if (tp > p)
                     break;
-                tp = cb.value();
+                n = cb.value();
             }
-            return GetDomain(tp,p);
+            return (n,GetDomain(tp,p));
         }
-        internal virtual Domain GetDomain(long tp,long p)
-        { 
+        internal Domain GetDomain(long tp,long p)
+        {
             var r = Domain.Null;
-            for (var b = database.typeTracker[tp].First();b!=null;b=b.Next())
+            for (var b = database.typeTracker[tp]?.First();b!=null;b=b.Next())
             {
                 var dp = b.key();
                 if (dp > p)
@@ -653,26 +653,14 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         internal virtual (long, Domain) GetDomain(long tb, string cn, long pp)
         {
-            // This implementation is SLOW and only used for Log$ files
-            // first find the correct PColumn
-            PColumn pc = null;
-            for (var b = log.PositionAt(buf.start); b != null && b.key() >= tb;
-                b = b.Previous())
-                switch (b.value())
-                {
-                    case Physical.Type.PColumn:
-                    case Physical.Type.PColumn2:
-                    case Physical.Type.PColumn3:
-                    case Physical.Type.Alter:
-                    case Physical.Type.Alter2:
-                    case Physical.Type.Alter3:
-                        {
-                            pc = (PColumn)GetPhysical(b.key());
-                            if (pc.tabledefpos == tb && pc.name == cn)
-                                return (pc.defpos, GetColumnDomain(pc.defpos,pp));
-                            continue;
-                        }
-                }
+            var dm = GetDomain(tb, pp);
+            for (var b=dm.rowType.First();b!=null;b=b.Next())
+            {
+                var cp = b.value();
+                var (n, cdt) = GetColumnDomain(cp, pp);
+                if (n == cn)
+                    return (cp, cdt);
+            }
             return (-1L, Domain.Content);
         }
         internal Physical GetPhysical(long pv)
@@ -813,9 +801,6 @@ namespace Pyrrho.Level2
                 case Physical.Type.Modify: p = new Modify(this); break;
                 case Physical.Type.Namespace: p = new Namespace(this); break;
                 case Physical.Type.Ordering: p = new Ordering(this); break;
-#if !(LOCAL || EMBEDDED)
-                case Physical.Type.Partitioned: p = new Partitioned(this, m); break;
-#endif
                 case Physical.Type.PCheck: p = new PCheck(this); break;
                 case Physical.Type.PCheck2: p = new PCheck2(this); break;
                 case Physical.Type.PColumn: p = new PColumn(this); break;
@@ -1036,24 +1021,6 @@ namespace Pyrrho.Level2
                     pm.now = null;
                     break;
             }
-        }
-        // get nominal data type for a column
-        internal override Domain GetColumnDomain(long cp,long p)
-        {
-            var tc = (TableColumn)context.db.objects[cp]
-               ?? throw new DBException("22003");
-            return tc.domain;
-        }
-        internal override Domain GetDomain(long tp,long p)
-        {
-            return (Domain)context.db.objects[tp];
-        }
-        internal override (long,Domain) GetDomain(long t, string cn, long pp)
-        {
-            var tb = (Table)context.db.objects[t];
-            var cp = tb.domain.ColFor(context, cn);
-            var tc = (DBObject)context.db.objects[cp];
-            return (tc.defpos,tc.domain);
         }
         internal void Add(Physical ph)
         {

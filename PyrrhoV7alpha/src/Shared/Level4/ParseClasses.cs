@@ -44,6 +44,18 @@ namespace Pyrrho.Level4
         {
             return new SqlStar(dp,mem);
         }
+        internal override CTree<long, bool> Needs(Context cx)
+        {
+            return CTree<long,bool>.Empty;
+        }
+        internal override CTree<long, bool> Needs(Context cx, CTree<long, bool> qn)
+        {
+            return qn;
+        }
+        internal override CTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
+        {
+            return CTree<long, RowSet.Finder>.Empty;
+        }
     }
     /// <summary>
     /// A Method Name for the parser

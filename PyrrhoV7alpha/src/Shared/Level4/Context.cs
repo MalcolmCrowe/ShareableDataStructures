@@ -91,8 +91,13 @@ namespace Pyrrho.Level4
         internal CTree<long, RowSet.Finder> Needs(CTree<long, RowSet.Finder> nd, 
             RowSet rs,CList<long> rt)
         {
+            var s = (long)(rs.mem[RowSet._CountStar] ?? -1L);
             for (var b = rt?.First(); b != null; b = b.Next())
-                nd += obs[b.value()].Needs(this,rs);
+            {
+                var p = b.value();
+                if (p!=s)
+                    nd += obs[p].Needs(this, rs);
+            }
             return nd;
         }
         internal CTree<long, bool> Needs(CTree<long,bool> nd,CList<long> rt)
@@ -626,13 +631,27 @@ namespace Pyrrho.Level4
                 _Remove(was.defpos);
             return now;
         }
-        internal long Replace(long dp,DBObject was,DBObject now)
+        internal long ObReplace(long dp,DBObject was,DBObject now)
         {
             if (dp < Transaction.TransPos)
                 return dp;
             if (done.Contains(dp))
                 return done[dp].defpos;
-            return obs[dp]?._Replace(this,was, now)?.defpos??-1L;
+            if (obs[dp]==null)
+                throw new PEException("Bad replace");
+            return obs[dp]?._Replace(this, was, now)?.defpos??
+                throw new PEException("Bad replace");
+        }
+        internal long RsReplace(long dp, DBObject was, DBObject now)
+        {
+            if (dp < Transaction.TransPos)
+                return dp;
+            if (done.Contains(dp))
+                return done[dp].defpos;
+            if (data[dp] == null)
+                throw new PEException("Bad replace");
+            return data[dp]?._Replace(this, was, now)?.defpos ??
+                throw new PEException("Bad replace");
         }
         internal CTree<long,RowSet.Finder> Replaced(CTree<long,RowSet.Finder>fi)
         {
@@ -714,10 +733,14 @@ namespace Pyrrho.Level4
         internal void Review(RowSet r, CTree<long,bool> ags, CTree<long,TypedValue> matches,
             CTree<UpdateAssignment,bool> asg)
         {
+            if (PyrrhoStart.DontReviewRowSets)
+                return;
             for (var vb = aggregators.First(); vb != null; vb = vb.Next())
             {
                 var pa = vb.key();
                 var rr = data[pa];
+                for (var b = rr.rt.First(); b != null; b = b.Next())
+                    obs[b.value()].CountStar(this,rr.source);
                 var map = BTree<long, SqlValue>.Empty;
                 var te = (TableExpRowSet)data[rr.source];
                 for (var c = te.rsTargets.First(); c != null; c = c.Next())
@@ -735,6 +758,7 @@ namespace Pyrrho.Level4
                             }
                             rr = data[pa]; // may have changed
                             rrs = (RestRowSet)data[pr];
+                            var s = te.countStar;
                             for (var b = rrs.rt.First(); b != null; b = b.Next())
                             {
                                 var p = b.value();

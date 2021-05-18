@@ -7823,6 +7823,7 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.LPAREN);
                         if (kind == Sqlx.COUNT && tok == Sqlx.TIMES)
                         {
+                            val = (SqlValue)cx.Add(new SqlStar(lxr.Position, -1L));
                             Next();
                             mod = Sqlx.TIMES;
                         }

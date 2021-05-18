@@ -374,7 +374,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = base._Replace(cx,so,sv);
-            var tg = cx.Replace(target, so, sv);
+            var tg = cx.ObReplace(target, so, sv);
             if (tg!=target)
                 r += (From.Target, tg);
             r = (SqlInsert)New(cx,r.mem);
@@ -467,7 +467,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QuerySearch)base._Replace(cx, so, sv);
-            var tg = cx.Replace(target, so, sv);
+            var tg = cx.ObReplace(target, so, sv);
             if (tg!=target)
                 r += (From.Target, tg);
             r = (QuerySearch)New(cx, r.mem);

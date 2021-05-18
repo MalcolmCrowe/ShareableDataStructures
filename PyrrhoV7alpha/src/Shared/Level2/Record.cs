@@ -139,7 +139,7 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var cdt = rdr.GetColumnDomain(c,ppos); // nominal data type from log
+                var (_, cdt) = rdr.GetColumnDomain(c,ppos); // nominal data type from log
                 cdt = cdt.GetDataType(rdr); // actual data type from buffer
                 if (cdt != null)
                 {
@@ -250,7 +250,8 @@ namespace Pyrrho.Level2
                 throw e;
             }
             cx.Install(tb, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {

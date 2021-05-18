@@ -23,6 +23,8 @@ This is version 7.0(alpha) of the DBMS.
 It passes tests 1 to 23 of the PyrrhoTest program, and has a basic 
 implementation of RESTView.
 
+Server binaries for Unix are in Mono folder. The rest should work cross-platform.
+
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-11 May 2021
+18 May 2021

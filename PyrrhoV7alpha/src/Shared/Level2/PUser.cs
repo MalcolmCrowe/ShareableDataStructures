@@ -104,7 +104,9 @@ namespace Pyrrho.Level2
             var ui = new ObInfo(nu.defpos, nu.name, Domain.Null, pr);
             ro += (ui,false);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.db += (Database.Users, cx.db.users + (name, ppos));
+            if (cx.db.log!=null)
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
             {
                 cx.db = cx.db + (Database.Owner, nu.defpos);
@@ -165,7 +167,8 @@ namespace Pyrrho.Level2
             var us = cx.db.objects[_user] as User;
             us += (User.Clearance, clearance);
             cx.db += (us, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(us);
         }
     }

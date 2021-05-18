@@ -379,6 +379,11 @@ namespace Pyrrho.Level3
         {
             return false;
         }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = rowType.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
+        }
         internal override BTree<long,Register> StartCounter(Context _cx, RowSet rs, BTree<long, Register> tg)
         {
             for (var b = rowType.First(); b != null; b = b.Next())
@@ -643,6 +648,10 @@ namespace Pyrrho.Level3
             cx.result = r.defpos;
             return cx.data[r.defpos];
         }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[union].CountStar(cx, te);
+        }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
             tg = ((Query)cx.obs[union]).StartCounter(cx,rs, tg);
@@ -810,6 +819,10 @@ namespace Pyrrho.Level3
             var rs = new TableExpRowSet(defpos, cx, nuid, domain, kt, r, where, matches+filter, fi);
             cx.results += (defpos, rs.defpos);
             return cx.data[rs.defpos];
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[nuid].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {

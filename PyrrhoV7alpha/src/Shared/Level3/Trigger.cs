@@ -123,29 +123,29 @@ namespace Pyrrho.Level3
             var r = base._Replace(cx, so, sv);
             if (table == so.defpos)
                 r += (From.Target, sv.defpos);
-            var a = cx.Replace(action, so, sv);
+            var a = cx.ObReplace(action, so, sv);
             if (a != action)
                 r += (Action, a);
             var ch = false;
             var cs = CList<long>.Empty;
             for (var b = cols?.First(); b != null; b = b.Next())
             {
-                var c = cx.Replace(b.value(), so, sv);
+                var c = cx.ObReplace(b.value(), so, sv);
                 cs += c;
                 ch = ch || c != b.value();
             }
             if (ch)
                 r += (UpdateCols, cs);
-            var o = cx.Replace(oldRow, so, sv);
+            var o = cx.ObReplace(oldRow, so, sv);
             if (o != oldRow)
                 r += (OldRow, o);
-            o = cx.Replace(newRow, so, sv);
+            o = cx.ObReplace(newRow, so, sv);
             if (o != newRow)
                 r += (NewRow, o);
-            o = cx.Replace(oldTable, so, sv);
+            o = cx.ObReplace(oldTable, so, sv);
             if (o != oldTable)
                 r += (OldTable, o);
-            o = cx.Replace(newTable, so, sv);
+            o = cx.ObReplace(newTable, so, sv);
             if (o != newTable)
                 r += (NewTable, o);
             r = New(cx, r.mem);

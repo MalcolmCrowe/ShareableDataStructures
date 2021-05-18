@@ -175,8 +175,8 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (RowSet)base._Replace(cx, so, sv);
-            r += (JFirst, cx.Replace(first, so, sv));
-            r += (JSecond, cx.Replace(second, so, sv));
+            r += (JFirst, cx.RsReplace(first, so, sv));
+            r += (JSecond, cx.RsReplace(second, so, sv));
             return r;
         }
         internal override CTree<long, Finder> AllWheres(Context cx,CTree<long,Finder> nd)

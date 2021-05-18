@@ -63,7 +63,8 @@ namespace Pyrrho.Level2
             ro = ro + (defpos,ci) + (ti + (tc.defpos,ci),false);
             table += tc;
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table, p);
             cx.Install(tc, p);
         }
@@ -124,7 +125,8 @@ namespace Pyrrho.Level2
             ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv),false);
             table += tc;
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
         }
@@ -202,7 +204,8 @@ namespace Pyrrho.Level2
             ro = ro + (oc.defpos, oc) + (ti + (defpos, oc),true);
             table += tc;
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
         }

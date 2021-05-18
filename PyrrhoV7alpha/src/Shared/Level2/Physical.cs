@@ -257,7 +257,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             cx.db += (Database.Curated, ppos);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
 
     }
@@ -327,7 +328,8 @@ namespace Pyrrho.Level2
             var pd = (PeriodDef)cx.db.mem[perioddefpos];
             var tb = (Table)cx.db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
             cx.db += (tb, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
  
@@ -444,7 +446,8 @@ namespace Pyrrho.Level2
                     cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
             }
             cx.db += (ob+(DBObject.Classification,classification), p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>

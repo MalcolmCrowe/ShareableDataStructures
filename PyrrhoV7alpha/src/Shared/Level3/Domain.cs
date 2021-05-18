@@ -613,7 +613,7 @@ namespace Pyrrho.Level3
                         var dt = CTree<long, Domain>.Empty;
                         var rt = CList<long>.Empty;
                         var n = rdr.GetInt();
-                        for (var j=0; j<n; j++)
+                        for (var j = 0; j < n; j++)
                         {
                             var c = rdr.GetString();
                             var (cp,cdt) = rdr.GetDomain(dp, c, pp);
@@ -629,7 +629,7 @@ namespace Pyrrho.Level3
                         var ut = rdr.GetDomain(dp,pp);
                         var r = CTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
-                        for (var j=0;j<n;j++)
+                        for (var j = 0; j < n; j++)
                         {
                             var c = rdr.GetString();
                             var (cp,cdt) = rdr.GetDomain(ut.structure, c, pp);

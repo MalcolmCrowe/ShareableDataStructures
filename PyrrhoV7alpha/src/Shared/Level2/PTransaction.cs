@@ -145,7 +145,8 @@ namespace Pyrrho.Level2
             var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schema;
             if (ro!=cx.db.role)
                 cx.db += (ro,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>
@@ -228,7 +229,8 @@ namespace Pyrrho.Level2
         {
             var tg = (Trigger)cx.db.objects[trigger];
             cx.db+=((Role)cx.db.objects[tg.definer],p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     /// <summary>
@@ -318,7 +320,8 @@ namespace Pyrrho.Level2
 
         internal override void Install(Context cx, long p)
         {
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
 
         protected override Physical Relocate(Writer wr)

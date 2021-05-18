@@ -373,7 +373,8 @@ namespace Pyrrho.Level3
             if (mem.Contains(TableExpression.Nuid))
             {
                 var nu = (long)mem[TableExpression.Nuid];
-                var fm = cx.Replace(nu, so, sv);
+                var fm = cx.data.Contains(nu)?
+                    cx.RsReplace(nu,so,sv):cx.ObReplace(nu, so, sv);
                 if (fm != nu)
                     r += (TableExpression.Nuid, fm);
             }
@@ -550,6 +551,13 @@ namespace Pyrrho.Level3
         {
             cx.values += (defpos, v);
         }
+        /// <summary>
+        /// Scan an aggregator item for count(*) and ensure it is in the source
+        /// </summary>
+        /// <param name="cx">the context</param>
+        /// <param name="te">the source</param>
+        internal virtual void CountStar(Context cx, long te)
+        { }
         /// <summary>
         /// If the value contains aggregates we need to accumulate them
         /// </summary>

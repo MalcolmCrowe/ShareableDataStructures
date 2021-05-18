@@ -212,10 +212,10 @@ namespace Pyrrho.Level2
             table += tc; 
             table += (DBObject._Domain,ti.domain);
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
-            var tt = cx.db.colTracker[defpos] ?? BTree<long,long>.Empty
-                    + (ppos, domdefpos);
-            cx.db += (Database.ColTracker, cx.db.colTracker + (defpos, tt));
+            var ct = cx.db.colTracker[defpos] ?? BTree<long, string>.Empty;
+            cx.db += (Database.ColTracker, cx.db.colTracker + (defpos, ct + (ppos, name)));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
         }

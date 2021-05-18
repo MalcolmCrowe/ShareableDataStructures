@@ -135,6 +135,8 @@ namespace Pyrrho.Level3
         internal override CTree<long, RowSet.Finder> Needs(Context cx,RowSet rs)
         {
             var fi = rs.finder[defpos];
+            if (fi.rowSet == 0)
+                Console.WriteLine("Here");
             return (rs.Knows(cx,fi.rowSet))?CTree<long,RowSet.Finder>.Empty
                 :new CTree<long, RowSet.Finder>(defpos, fi);
         }
@@ -297,6 +299,8 @@ namespace Pyrrho.Level3
                 var sn = ((SqlValue)cx.obs[defpos]);
                 an = sn.alias ?? sn.name;
             }
+            ra = cx.data[pa];
+            re = (RestRowSet)cx.data[pr];
             for (var b = rt.First();b!=null;b=b.Next())
             {
                 var su = (SqlValue)cx.obs[b.value()];
@@ -966,7 +970,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlTreatExpr)base._Replace(cx,so,sv);
-            var v = cx.Replace(r.val,so,sv);
+            var v = cx.ObReplace(r.val,so,sv);
             if (v != r.val)
                 r += (TreatExpr, v);
             r = (SqlTreatExpr)New(cx, r.mem);
@@ -1148,7 +1152,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlValueExpr)base._Replace(cx,so,sv);
-            var lf = cx.Replace(r.left, so, sv);
+            var lf = cx.ObReplace(r.left, so, sv);
             if (kind == Sqlx.DOT)
             {
                 if (lf == so.defpos)
@@ -1161,7 +1165,7 @@ namespace Pyrrho.Level3
             }
             if (lf != r.left)
                 r += (Left, lf);
-            var rg = cx.Replace(r.right, so, sv);
+            var rg = cx.ObReplace(r.right, so, sv);
             if (rg != r.right)
                 r += (Right, rg);
             if (r.domain.kind==Sqlx.UNION || r.domain.kind==Sqlx.CONTENT)
@@ -1543,6 +1547,11 @@ namespace Pyrrho.Level3
         {
             return (cx.obs[left]?.aggregates(cx) == true) 
                 || (cx.obs[right]?.aggregates(cx) == true);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[left]?.CountStar(cx, te);
+            cx.obs[right]?.CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -2853,6 +2862,11 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = columns.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
+        }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
             for (var b=columns.First(); b!=null;b=b.Next())
@@ -3014,7 +3028,7 @@ namespace Pyrrho.Level3
             var ch = false;
             for (var b=r.rows?.First();b!=null;b=b.Next())
             {
-                var v = cx.Replace(b.value(),so,sv);
+                var v = cx.ObReplace(b.value(),so,sv);
                 ch = ch || v != b.value();
                 rws += v;
             }
@@ -3093,6 +3107,11 @@ namespace Pyrrho.Level3
                 if (cx.obs[b.value()].aggregates(cx))
                     return true;
             return false;
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = rows.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -3207,19 +3226,19 @@ namespace Pyrrho.Level3
             for (var b=at?.First();b!=null;b=b.Next())
             {
                 var (n, ao) = b.value();
-                var v = cx.Replace(ao,so,sv);
+                var v = cx.ObReplace(ao,so,sv);
                 if (v != ao)
                     at = new BList<(XmlName,long)>(at,b.key(), (n, v));
             }
             if (at != r.attrs)
                 r += (Attrs, at);
-            var co = cx.Replace(r.content,so,sv);
+            var co = cx.ObReplace(r.content,so,sv);
             if (co != r.content)
                 r += (Content, co);
             var ch = r.children;
             for(var b=ch?.First();b!=null;b=b.Next())
             {
-                var v = cx.Replace(b.value(),so,sv);
+                var v = cx.ObReplace(b.value(),so,sv);
                 if (v != b.value())
                     ch = new CList<long>(ch, b.key(), v);
             }
@@ -3391,7 +3410,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlSelectArray)base._Replace(cx,so,sv);
-            var ae = cx.Replace(r.aqe,so,sv);
+            var ae = cx.ObReplace(r.aqe,so,sv);
             if (ae != r.aqe)
                 r += (ArrayValuedQE, ae);
             r = (SqlSelectArray)New(cx, r.mem);
@@ -3430,6 +3449,10 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return cx.obs[aqe].aggregates(cx);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[aqe].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -3519,13 +3542,13 @@ namespace Pyrrho.Level3
             var ar = r.array;
             for (var b=ar?.First();b!=null;b=b.Next())
             {
-                var v = cx.Replace(b.value(),so,sv);
+                var v = cx.ObReplace(b.value(),so,sv);
                 if (v != b.value())
                     ar += (b.key(), v);
             }
             if (ar != r.array)
                 r += (Array, ar);
-            var ss = cx.Replace(r.svs, so, sv);
+            var ss = cx.ObReplace(r.svs, so, sv);
             if (ss != r.svs)
                 r += (Svs, ss);
             r = (SqlValueArray)New(cx, r.mem);
@@ -3599,6 +3622,12 @@ namespace Pyrrho.Level3
                 if (cx.obs[b.value()].aggregates(cx))
                     return true;
             return cx.obs[svs]?.aggregates(cx) ?? false;
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = array.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
+            cx.obs[svs]?.CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -3745,6 +3774,10 @@ namespace Pyrrho.Level3
                 .RowSets(cx, cx.data[from]?.finder?? CTree<long, RowSet.Finder>.Empty);
             cx.data += (expr, r);
             return r;
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[expr].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -3907,7 +3940,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlCursor)base._Replace(cx,so,sv);
-            var sp = cx.Replace(r.spec,so,sv);
+            var sp = cx.ObReplace(r.spec,so,sv);
             if (sp != r.spec)
                 r += (Spec, sp);
             r = (SqlCursor)New(cx, r.mem);
@@ -4015,7 +4048,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlCall)base._Replace(cx,so,sv);
-            var ca = cx.Replace(r.call,so,sv);
+            var ca = cx.ObReplace(r.call,so,sv);
             if (ca != r.call)
                 r += (Call, ca);
             r = (SqlCall)New(cx, r.mem);
@@ -4049,6 +4082,11 @@ namespace Pyrrho.Level3
                 if (cx.obs[b.value()].aggregates(cx))
                     return true;
             return false;
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = ((CallStatement)cx.obs[call]).parms.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -4626,19 +4664,19 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlFunction)base._Replace(cx,so,sv);
-            var fi = cx.Replace(r.filter, so, sv);
+            var fi = cx.ObReplace(r.filter, so, sv);
             if(fi != r.filter)
                 r += (cx, Filter, fi);
-            var o1 = cx.Replace(r.op1, so, sv);
+            var o1 = cx.ObReplace(r.op1, so, sv);
             if (o1 != r.op1)
                     r += (cx, Op1, o1);
-            var o2 = cx.Replace(r.op2, so, sv);
+            var o2 = cx.ObReplace(r.op2, so, sv);
             if (o2 != r.op2)
                 r += (cx, Op2, o2);
-            var vl = cx.Replace(r.val, so, sv);
+            var vl = cx.ObReplace(r.val, so, sv);
             if (vl != r.val)
                 r += (cx, _Val, vl);
-            var q = cx.Replace(r.query, so, sv);
+            var q = cx.ObReplace(r.query, so, sv);
             if (q != r.query)
                 r += (cx, Query, q);
             if (domain.kind==Sqlx.UNION || domain.kind==Sqlx.CONTENT)
@@ -4698,8 +4736,6 @@ namespace Pyrrho.Level3
             var ac = Uid("C",defpos);
             var vl = (SqlValue)cx.obs[val];
             var an = alias ?? ac;
-            var ra = cx.data[pa];
-            var re = (RestRowSet)cx.data[pr];
             switch (kind)
             {
                 case Sqlx.AVG:
@@ -4791,18 +4827,33 @@ namespace Pyrrho.Level3
                         if (aggregates0())
                         {
                             var nk = kind;
-                            var vn = ac;
                             if (kind == Sqlx.COUNT)
                                 nk = Sqlx.SUM;
                             var o1 = (SqlValue)cx.obs[op1];
                             var o2 = (SqlValue)cx.obs[op2];
                             var nm = kind.ToString() + "(" + vl.name + ") as "+ac;
-                            var st = new SqlValue(vl.defpos,nm,vl.domain)
+                            var st = new SqlValue(vl.defpos,nm,domain)
                                 +(_Alias,ac);
                             cx._Add(st);
                             var sf = (SqlValue)cx.Add(new SqlFunction(defpos, cx, nk,
                                 st, o1, o2, mod, new BTree<long, object>(_Alias, alias??name)));
                             map += (defpos, sf);
+                            var rcs = CList<long>.Empty;
+                            var rd = Domain.TableType;
+                            for (var b=rc.First();b!=null;b=b.Next())
+                            {
+                                var p = b.value();
+                                if (gr.Has(p))
+                                {
+                                    rcs += p;
+                                    rd += (p, cx.obs[p].domain);
+                                }
+                            }
+                            rc = rcs + st.defpos;
+                            rd += (st.defpos, st.domain);
+                            rd += (Domain.RowType, rc);
+                            cx.data += (pr, cx.data[pr] + (_Domain, rd)
+                                + (Index.Keys,CList<long>.Empty));
                             return (rt,rc,gr,map);
                         }
                         if (aggregates(cx))
@@ -5453,31 +5504,41 @@ namespace Pyrrho.Level3
             }
             throw new DBException("42000", mod).ISO().Add(Sqlx.ROUTINE_NAME, new TChar("Extract"));
         }
-/*        /// <summary>
-        /// helper for XML processing instruction
-        /// </summary>
-        /// <param name="sv">the object</param>
-        /// <returns>the result xml string</returns>
-        object XmlFromXPI(object o)
+        /*        /// <summary>
+                /// helper for XML processing instruction
+                /// </summary>
+                /// <param name="sv">the object</param>
+                /// <returns>the result xml string</returns>
+                object XmlFromXPI(object o)
+                {
+                    if (o is XPathNodeIterator pi)
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        for (int j = 0; pi.MoveNext(); j++)
+                            sb.Append(XmlFromXPI(pi.Current));
+                        return sb.ToString();
+                    }
+                    return (o as XPathNavigator)?.OuterXml ?? o.ToString();
+                }
+                /// <summary>
+                /// Xml encoding
+                /// </summary>
+                /// <param name="a">an object to encode</param>
+                /// <returns>an encoded string</returns>
+                string XmlEnc(object a)
+                {
+                    return a.ToString().Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\r", "&#x0d;");
+                } */
+        internal override void CountStar(Context cx, long te)
         {
-            if (o is XPathNodeIterator pi)
+            if (kind == Sqlx.COUNT && mod == Sqlx.TIMES)
             {
-                StringBuilder sb = new StringBuilder();
-                for (int j = 0; pi.MoveNext(); j++)
-                    sb.Append(XmlFromXPI(pi.Current));
-                return sb.ToString();
+                var tr = cx.data[te];
+                if (!tr.domain.representation.Contains(val))
+                    cx.data += (te, tr + (_Domain, tr.domain + (val, Domain.Int))
+                        +(Level4.RowSet._CountStar,val));
             }
-            return (o as XPathNavigator)?.OuterXml ?? o.ToString();
         }
-        /// <summary>
-        /// Xml encoding
-        /// </summary>
-        /// <param name="a">an object to encode</param>
-        /// <returns>an encoded string</returns>
-        string XmlEnc(object a)
-        {
-            return a.ToString().Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\r", "&#x0d;");
-        } */
         /// <summary>
         /// for aggregates and window functions we need to implement StartCounter
         /// </summary>
@@ -5989,6 +6050,8 @@ namespace Pyrrho.Level3
         internal override CTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
         {
             var r = CTree<long, RowSet.Finder>.Empty;
+            if (mod == Sqlx.TIMES)
+                return r;
             if (cx.obs[val] is SqlValue v)
                 r += v.Needs(cx, rs);
             if (cx.obs[op1] is SqlValue o1)
@@ -6155,9 +6218,7 @@ namespace Pyrrho.Level3
             {
                 sb.Append(':'); sb.Append(Uid(op2));
             }
-            if (mod == Sqlx.TIMES)
-                sb.Append('*');
-            else if (mod != Sqlx.NO)
+            if (mod != Sqlx.NO && mod != Sqlx.TIMES)
             {
                 sb.Append(' '); sb.Append(mod);
             }
@@ -6345,10 +6406,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (QuantifiedPredicate)base._Replace(cx, so, sv);
-            var wh = cx.Replace(r.what,so,sv);
+            var wh = cx.ObReplace(r.what,so,sv);
             if (wh != r.what)
                 r += (What, wh);
-            var se = cx.Replace(r.select, so, sv);
+            var se = cx.ObReplace(r.select, so, sv);
             if (se != r.select)
                 r += (_Select, se);
             r = (QuantifiedPredicate)New(cx, r.mem);
@@ -6433,6 +6494,11 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return ((SqlValue)cx.obs[what]).aggregates(cx)||((Query)cx.obs[select]).aggregates(cx);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[what]?.CountStar(cx, te);
+            cx.obs[select].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -6558,13 +6624,13 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (BetweenPredicate)base._Replace(cx, so, sv);
-            var wh = cx.Replace(r.what, so, sv);
+            var wh = cx.ObReplace(r.what, so, sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
-            var lw = cx.Replace(r.low, so, sv);
+            var lw = cx.ObReplace(r.low, so, sv);
             if (lw != r.low)
                 r += (QuantifiedPredicate.Low, lw);
-            var hg = cx.Replace(r.high, so, sv);
+            var hg = cx.ObReplace(r.high, so, sv);
             if (hg != r.high)
                 r += (QuantifiedPredicate.High, hg);
             r = (BetweenPredicate)New(cx, r.mem);
@@ -6628,6 +6694,12 @@ namespace Pyrrho.Level3
             return ((SqlValue)cx.obs[what])?.aggregates(cx)==true
                 || ((SqlValue)cx.obs[low])?.aggregates(cx)==true
                 || ((SqlValue)cx.obs[high])?.aggregates(cx)==true;
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[what]?.CountStar(cx, te);
+            cx.obs[low]?.CountStar(cx, te);
+            cx.obs[high]?.CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -6794,13 +6866,13 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (LikePredicate)base._Replace(cx, so, sv);
-            var wh = cx.Replace(r.left, so, sv);
+            var wh = cx.ObReplace(r.left, so, sv);
             if (wh != r.left)
                 r += (Left, wh);
-            var rg = cx.Replace(r.right, so, sv);
+            var rg = cx.ObReplace(r.right, so, sv);
             if (rg != r.right)
                 r += (Right, rg);
-            var esc = cx.Replace(r.escape, so, sv);
+            var esc = cx.ObReplace(r.escape, so, sv);
             if (esc != r.escape)
                 r += (Escape, esc);
             r = (LikePredicate)New(cx, r.mem);
@@ -6929,6 +7001,11 @@ namespace Pyrrho.Level3
         {
             return cx.obs[left].aggregates(cx) || cx.obs[right].aggregates(cx);
         }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[left].CountStar(cx, te);
+            cx.obs[right].CountStar(cx, te);
+        }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, 
             BTree<long, Register> tg)
         {
@@ -7054,16 +7131,16 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (InPredicate)base._Replace(cx, so, sv);
-            var wh = cx.Replace(r.what, so, sv);
+            var wh = cx.ObReplace(r.what, so, sv);
             if (wh != r.what)
                 r += (QuantifiedPredicate.What, wh);
-            var wr = cx.Replace(r.select, so, sv);
+            var wr = cx.ObReplace(r.select, so, sv);
             if (wr != r.select)
                 r += (QuantifiedPredicate._Select, wr);
             var vs = vals;
             for (var b = vs.First(); b != null; b = b.Next())
             {
-                var v = cx.Replace(b.value(), so, sv);
+                var v = cx.ObReplace(b.value(), so, sv);
                 if (v != b.value())
                     vs += (b.key(), v);
             }
@@ -7192,6 +7269,12 @@ namespace Pyrrho.Level3
                     return true;
             return cx.obs[what].aggregates(cx) || base.aggregates(cx);
         }
+        internal override void CountStar(Context cx, long te)
+        {
+            for (var b = vals?.First(); b != null; b = b.Next())
+                cx.obs[b.value()].CountStar(cx, te);
+            cx.obs[what]?.CountStar(cx, te);
+        }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
             for (var v = vals?.First(); v != null; v = v.Next())
@@ -7317,10 +7400,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (MemberPredicate)base._Replace(cx, so, sv);
-            var lf = cx.Replace(lhs,so,sv);
+            var lf = cx.ObReplace(lhs,so,sv);
             if (lf != left)
                 r += (Lhs,lf);
-            var rg = cx.Replace(rhs,so,sv);
+            var rg = cx.ObReplace(rhs,so,sv);
             if (rg != rhs)
                 r += (Rhs,rg);
             r = (MemberPredicate)New(cx, r.mem);
@@ -7396,6 +7479,11 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return cx.obs[lhs].aggregates(cx)||cx.obs[rhs].aggregates(cx);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[lhs].CountStar(cx, te);
+            cx.obs[rhs].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -7505,7 +7593,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (TypePredicate)base._Replace(cx, so, sv);
-            var lh = cx.Replace(r.lhs, so, sv);
+            var lh = cx.ObReplace(r.lhs, so, sv);
             if (lh != r.lhs)
                 r += (MemberPredicate.Lhs, lh);
             r = (TypePredicate)New(cx, r.mem);
@@ -7601,10 +7689,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (PeriodPredicate)base._Replace(cx, so, sv);
-            var a = cx.Replace(left, so, sv);
+            var a = cx.ObReplace(left, so, sv);
             if (a != left)
                 r += (Left, a);
-            var b = cx.Replace(right, so, sv);
+            var b = cx.ObReplace(right, so, sv);
             if (b != r.right)
                 r += (Right, b);
             r = (PeriodPredicate)New(cx, r.mem);
@@ -7632,6 +7720,11 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return (cx.obs[left]?.aggregates(cx)??false)||(cx.obs[right]?.aggregates(cx)??false);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[left]?.CountStar(cx, te);
+            cx.obs[right]?.CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -7750,6 +7843,10 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return cx.obs[expr].aggregates(cx);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[expr].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -7949,7 +8046,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (NullPredicate)base._Replace(cx, so, sv);
-            var vl = cx.Replace(r.val,so,sv);
+            var vl = cx.ObReplace(r.val,so,sv);
             if (vl != r.val)
                 r += (NVal, vl);
             r = (NullPredicate)New(cx, r.mem);
@@ -7970,6 +8067,10 @@ namespace Pyrrho.Level3
         internal override bool aggregates(Context cx)
         {
             return cx.obs[val].aggregates(cx);
+        }
+        internal override void CountStar(Context cx, long te)
+        {
+            cx.obs[val].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {

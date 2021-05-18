@@ -2539,13 +2539,13 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = this;
-            var nv = cx.Replace(var, so, sv);
+            var nv = cx.ObReplace(var, so, sv);
             if (nv != var)
                 r += (Var, nv);
             var np = r.parms;
             for (var b = parms.First(); b != null; b = b.Next())
             {
-                var a = cx.Replace(b.value(), so, sv);
+                var a = cx.ObReplace(b.value(), so, sv);
                 if (a != b.value())
                     np += (b.key(), a);
             }

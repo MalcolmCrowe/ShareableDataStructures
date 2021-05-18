@@ -425,6 +425,8 @@ namespace Pyrrho.Level4
             if (res.sysFrom == null) // for kludge
                 return null;
             SystemTable st = res.sysFrom;
+            if (st.name.StartsWith("Log$"))
+                _cx.db = _cx.db.BuildLog();
             switch (st.name)
             {
                 // level 2 stuff
@@ -690,8 +692,7 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             protected LogBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) p)
                 : base(_cx,r, pos, p,_Value(r,p.Item1))
-            {
-            }
+            { }
             internal static LogBookmark New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;

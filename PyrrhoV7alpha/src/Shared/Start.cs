@@ -10,8 +10,9 @@ using Pyrrho.Level3; // for Database
 using Pyrrho.Level4; // for Select
 using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
-using System.Security.Principal;
+#if WINDOWS
 using System.Security.AccessControl;
+#endif
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
@@ -90,7 +91,7 @@ namespace Pyrrho
                         wr.PutInt(777);
                         wr.PutInt(51);
                         wr.PutBuf();
-                        if (user != WindowsIdentity.GetCurrent().Name)
+                        if (user!=Environment.UserDomainName+"\\"+Environment.UserName)
                         {
                             db = new Database(fn, fp, fs);
                             var _cx = new Context(db);
@@ -1091,7 +1092,9 @@ namespace Pyrrho
         /// the default database folder
         /// </summary>
         internal static string path = "";
+#if WINDOWS
         internal static FileSecurity arule;
+#endif
         /// <summary>
         /// The identity that started the service
         /// </summary>
@@ -1111,7 +1114,8 @@ namespace Pyrrho
         public static string host = "::1";
         public static string hostname = "localhost";
         public static int port = 5433;
-        internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, HTTPFeedbackMode = false;
+        internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, 
+            HTTPFeedbackMode = false, DontReviewRowSets = false;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1182,6 +1186,7 @@ namespace Pyrrho
                             break;
                         case 'D': DebugMode = true; break;
                         case 'H': HTTPFeedbackMode = true; break;
+                        case 'R': DontReviewRowSets = true; break;
                         case 'V': VerboseMode = true; break;
                         case 'T': TutorialMode = true; break;
                         default: Usage(); return;
@@ -1196,6 +1201,7 @@ namespace Pyrrho
                     if (args[k][1] == 'S')
                         httpsport = (p < 0) ? 8133 : p;
                 }
+#if WINDOWS
             arule = new FileSecurity();
             var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
             var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
@@ -1205,6 +1211,7 @@ namespace Pyrrho
                 AccessControlType.Allow));
             arule.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
                 FileSystemRights.FullControl, AccessControlType.Allow));
+#endif
             if (httpport > 0 || httpsport > 0)
                 new Thread(new ThreadStart(new HttpService(hostname, httpport, httpsport).Run)).Start();
             Run();
@@ -1212,14 +1219,13 @@ namespace Pyrrho
         static void FixPath()
         {
             if (path == "")
-                return;
+                path = Environment.CurrentDirectory;
             if (path.Contains("/") && !path.EndsWith("/"))
                 path += "/";
-            else if (!path.EndsWith("\\"))
+            else if (path.Contains("\\") && !path.EndsWith("\\"))
                 path += "\\";
+#if WINDOWS
             var acl = Directory.GetAccessControl(path);
-            if (acl == null)
-                goto bad;
             var acr = acl.GetAccessRules(true, true, typeof(SecurityIdentifier));
             if (acr == null)
                 goto bad;
@@ -1228,6 +1234,7 @@ namespace Pyrrho
                     && r.AccessControlType==AccessControlType.Allow)
                     return;
             bad: throw new Exception("Cannot access path " + path);
+#endif
         }
         /// <summary>
         /// Provide help about the command line options
@@ -1247,6 +1254,7 @@ namespace Pyrrho
             Console.WriteLine("Flags:");
             Console.WriteLine("   -D  Debug mode");
             Console.WriteLine("   -H  Show feedback on HTTP RESTView operations");
+            Console.WriteLine("   -R  Don't do rowset review");
             Console.WriteLine("   -V  Verbose mode");
             Console.WriteLine("   -T  Tutorial mode");
 		}
@@ -1256,7 +1264,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (11 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (18 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

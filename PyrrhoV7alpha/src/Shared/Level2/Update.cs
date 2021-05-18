@@ -198,7 +198,8 @@ namespace Pyrrho.Level2
             var fl = AddRow(cx);
             cx.Install((Table)cx.db.objects[tabledefpos] 
                 + new TableRow(this, cx.db, fl, _classification), p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override void Serialise(Writer wr)
         {

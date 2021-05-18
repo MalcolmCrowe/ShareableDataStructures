@@ -145,7 +145,8 @@ namespace Pyrrho.Level2
                 ro += (new ObInfo(defpos, name,Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro, p);
             }
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
             cx.Install(ck,p);
         }
@@ -238,7 +239,8 @@ namespace Pyrrho.Level2
                 ro += (new ObInfo(defpos, name, Domain.Bool,Grant.Privilege.Execute),true);
                 cx.db += (ro,p);
             }
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(ck,p);
         }
     }

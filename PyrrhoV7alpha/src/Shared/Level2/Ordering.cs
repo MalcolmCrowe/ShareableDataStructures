@@ -133,7 +133,8 @@ namespace Pyrrho.Level2
             var dm = domain + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
                 +(Domain.OrderCategory,flags);
             cx.db += (cx.db.types[domain],dm, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

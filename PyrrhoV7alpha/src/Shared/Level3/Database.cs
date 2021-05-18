@@ -159,7 +159,8 @@ namespace Pyrrho.Level3
             Types = -61, // CTree<Domain,long>
             TypeTracker = -315, // BTree<long,BTree<long,Domain>> colpos,modpos
             User = -277, // User: always the connection user
-            _User = -301; // long: user.defpos, always the connection user, maybe uncommitted
+            _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
+            Users = -287; // BTree<string,long> users defined in the database
         internal virtual long uid => -1;
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
@@ -170,6 +171,8 @@ namespace Pyrrho.Level3
         internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
             (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
+        public BTree<string, long> users =>
+            (BTree<string, long>)mem[Users] ?? BTree<string, long>.Empty;
         // NB The following 8 entries have default values supplied by _system
         internal Role schema => (Role)mem[(long)mem[_Schema]];
         internal Role guest => (Role)mem[Guest];
@@ -187,14 +190,17 @@ namespace Pyrrho.Level3
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
         public DateTime lastModified => (DateTime)mem[LastModified];
+        /// <summary>
+        /// This is normally left unbuilt
+        /// </summary>
         public BTree<long, Physical.Type> log =>
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
         public BTree<string, string> conn => (BTree<string,string>)mem[_Connection];
         public BTree<long, BTree<long, Domain>> typeTracker =>
             (BTree<long, BTree<long, Domain>>)mem[TypeTracker] ?? BTree<long, BTree<long, Domain>>.Empty;
-        public BTree<long, BTree<long, long>> colTracker =>
-            (BTree<long, BTree<long, long>>)mem[ColTracker] ?? BTree<long, BTree<long, long>>.Empty;
+        public BTree<long, BTree<long, string>> colTracker =>
+            (BTree<long, BTree<long, string>>)mem[ColTracker] ?? BTree<long, BTree<long, string>>.Empty;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 
@@ -203,7 +209,7 @@ namespace Pyrrho.Level3
         static Database()
         {
             var su = new User(--_uid, new BTree<long, object>(Name,
-                    WindowsIdentity.GetCurrent().Name));
+                    Environment.UserDomainName + "\\" + Environment.UserName));
             var sr = new Role("$Schema",--_uid,BTree<long, object>.Empty +
                     (_User, su.defpos) +  (Owner, su.defpos));
             var gu = new Role("GUEST", Guest, BTree<long, object>.Empty);
@@ -363,19 +369,11 @@ namespace Pyrrho.Level3
             if (u == null)// 2. if the user is unknown
             {
                 // Has the schema role any users?
-                var users = false;
-                for (var b=log.PositionAt(0L);(!users) && b!=null; b=b.Next())
-                    if (b.value() == Physical.Type.PUser)
-                    {
-                        var up = b.key();
-                        if (schema.infos[up] is ObInfo si
-                            && si.priv.HasFlag(Grant.Privilege.UseRole))
-                            users = true;
-                    }
+                var users = r.mem.Contains(Users);
                 if (users) // 2a make an uncommitted user
                     u = new User(user); // added to the new Transaction below
                 else {  // 2b 
-                    if (user == WindowsIdentity.GetCurrent().Name) //2bi
+                    if (user == Environment.UserDomainName+"\\"+Environment.UserName) //2bi
                     {
                         u = (User)objects[_system._user]
                             ?? throw new PEException("PE855");
@@ -490,6 +488,28 @@ namespace Pyrrho.Level3
                         rdr.role = rdr.context.db.role;
                     }
                     catch (Exception) { }
+                    if (rdr.context.db.mem.Contains(Log))
+                        rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
+                }
+            }
+            var d = rdr.context.db;
+            databases += (name, d);
+            rdr.context.db = d;
+            return d;
+        }
+        internal Database BuildLog()
+        {
+            if (mem.Contains(Log))
+                return this;
+            var rdr = new Reader(new Context(this),5L);
+            Physical p;
+            lock (df) //(consistency)
+            {
+                for (int counter = 0; ; counter++)
+                {
+                    p = rdr.Create();
+                    if (p == null)
+                        break;
                     rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }

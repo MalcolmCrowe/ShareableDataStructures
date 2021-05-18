@@ -291,7 +291,8 @@ namespace Pyrrho.Level2
             var tt = cx.db.typeTracker[defpos] ?? BTree<long, Domain>.Empty
                 + (ppos, dt);
             cx.db += (Database.TypeTracker, cx.db.typeTracker+(defpos,tt));
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 

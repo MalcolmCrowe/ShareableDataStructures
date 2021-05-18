@@ -1,10 +1,7 @@
-using System;
 using System.Text;
 using Pyrrho.Common;
-using Pyrrho.Level1;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
-using System.Security.Principal;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
@@ -113,7 +110,8 @@ namespace Pyrrho.Level2
             nr += (ri, true);
             var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
             cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
                 cx.db = cx.db+(DBObject.Definer, nr.defpos)+(Database._Role,nr.defpos);
         }
@@ -325,7 +323,8 @@ namespace Pyrrho.Level2
                 cx.db = cx.db+(ro, p);
             }
             cx.db = ((DBObject)cx.db.objects[defpos]).Add(cx.db,this, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
      internal class PMetadata2 : PMetadata

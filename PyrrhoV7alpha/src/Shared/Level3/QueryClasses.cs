@@ -480,8 +480,8 @@ namespace Pyrrho.Level3
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)
         {
-            var va = cx.Replace(val, was, now);
-            var vb = cx.Replace(vbl, was, now);
+            var va = cx.ObReplace(val, was, now);
+            var vb = cx.ObReplace(vbl, was, now);
             return new UpdateAssignment(vb, va);
         }
         public int CompareTo(object obj)

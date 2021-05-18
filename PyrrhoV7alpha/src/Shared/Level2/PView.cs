@@ -189,7 +189,8 @@ namespace Pyrrho.Level2
             var ti = new ObInfo(ppos, name, domain, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(vw, p);
         }
         public override (Transaction, Physical) Commit(Writer wr, Transaction t)

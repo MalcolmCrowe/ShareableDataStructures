@@ -1538,28 +1538,8 @@ namespace Pyrrho.Common
                     v += (b.key(), vs[b.value().col] ?? TNull.Value);
             values = v;
         }
-        /// <summary>
-        /// Assert1: For each p in rs.rowType, rw.dataType.representation.Contains(p) 
-        /// </summary>
-        /// <param name="dst"></param>
-        /// <param name="sce"></param>
-        /// <returns></returns>
-        public static bool Assert1(Domain dst,Domain sce)
-        {
-            for (var b = dst.rowType.First(); b != null; b = b.Next())
-                if (!sce.representation.Contains(b.value()))
-                    return false;
-            return true;
-        }
-        /// <summary>
-        /// Precondition: Assert1
-        /// </summary>
-        /// <param name="rs"></param>
-        /// <param name="rw"></param>
         public TRow(RowSet rs, TRow rw) : base(rs.domain) 
         {
-            if (!Assert1(rs.domain, rw.dataType))
-                throw new PEException("Assert1");
             var v = CTree<long, TypedValue>.Empty;
             for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
             {

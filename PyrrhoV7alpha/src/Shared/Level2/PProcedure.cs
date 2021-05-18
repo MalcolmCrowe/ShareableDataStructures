@@ -1,7 +1,3 @@
-using System;
-using System.Configuration;
-using System.Data.SqlTypes;
-using System.Security.Principal;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -205,7 +201,8 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + (ro, p) + (pr, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pr, p);
         }
     }

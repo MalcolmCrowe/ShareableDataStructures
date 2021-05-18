@@ -165,7 +165,8 @@ namespace Pyrrho.Level2
             ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, this, p);
             var ob = ((DBObject)cx.db.objects[modifydefpos])??now;
             cx.obs += (modifydefpos,ob);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

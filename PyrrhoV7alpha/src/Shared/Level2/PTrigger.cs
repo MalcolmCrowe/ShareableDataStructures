@@ -279,7 +279,8 @@ namespace Pyrrho.Level2
             tb = tb.AddTrigger(tg, cx.db);
             ro = ro + (new ObInfo(defpos, name, Domain.Null,Grant.Privilege.Execute),true);
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
             cx.Install(tg, p);
         }

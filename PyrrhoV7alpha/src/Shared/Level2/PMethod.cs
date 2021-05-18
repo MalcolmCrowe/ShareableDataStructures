@@ -157,7 +157,8 @@ namespace Pyrrho.Level2
             oi += (mt,name);
             ro = ro + mt + (oi,true) + (mi,false);
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(mt,p);
         }
     }

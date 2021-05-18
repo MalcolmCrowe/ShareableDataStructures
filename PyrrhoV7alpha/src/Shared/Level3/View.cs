@@ -443,7 +443,7 @@ namespace Pyrrho.Level3
             for (var b=targets.First();b!=null;b=b.Next())
             {
                 var tg = b.value();
-                var nt = cx.Replace(tg, so, sv);
+                var nt = cx.ObReplace(tg, so, sv);
                 ch = nt != tg;
                 ts += nt;
             }

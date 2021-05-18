@@ -191,7 +191,8 @@ namespace Pyrrho.Level2
             ro = ro + (new ObInfo(affects, name,oi.domain, oi.priv),true);
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
 }

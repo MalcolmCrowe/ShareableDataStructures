@@ -148,7 +148,8 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
         }
     }
@@ -304,7 +305,8 @@ namespace Pyrrho.Level2
             var tb = (Table)cx.db.objects[tabledefpos];
             tb += (Table.Enforcement, enforcement);
             cx.db += (tb, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(tb);
         }
     }

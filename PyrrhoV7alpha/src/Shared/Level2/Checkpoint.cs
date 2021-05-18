@@ -32,7 +32,8 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         /// <summary>
         /// A readable version of the Checkpoint

@@ -156,7 +156,8 @@ namespace Pyrrho.Level2
                     tb += (Table.LastData, ppos);
                     cx.Install(tb,p);
                 }
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Delete1 : Delete
@@ -224,7 +225,8 @@ namespace Pyrrho.Level2
             tb -= delpos;
             tb += (Table.LastData, ppos);
             cx.Install(tb,p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override string ToString()
         {

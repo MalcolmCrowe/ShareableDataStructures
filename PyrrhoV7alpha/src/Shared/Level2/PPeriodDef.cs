@@ -168,7 +168,8 @@ namespace Pyrrho.Level2
             var oi = (ObInfo)ro.infos[tabledefpos];
             ro = ro + (oc,false) + (oi + (ppos,oc.domain),false);
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pd, p);
         }
     }

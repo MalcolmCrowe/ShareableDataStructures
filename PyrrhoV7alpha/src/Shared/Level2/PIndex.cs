@@ -253,7 +253,8 @@ namespace Pyrrho.Level2
             var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs),
                 Grant.Privilege.Execute));
             cx.db += (r, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
         }
     }
@@ -458,7 +459,8 @@ namespace Pyrrho.Level2
             var x = (Index)cx.db.objects[index];
             x += (Index.IndexConstraint, ctype);
             cx.db += (x, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
         public override string ToString()
         {

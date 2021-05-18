@@ -212,7 +212,8 @@ namespace Pyrrho.Level2
             // install the privilege on the target object
             ro += (new ObInfo(obj, oi.name, oi.domain + (Domain.RowType,rt),pr),true);
             cx.db += (ro, p);
-            cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
     }
     internal class Authenticate : Physical

@@ -54,7 +54,8 @@ namespace Pyrrho.Level4
     {
         internal const long
             Built = -402, // bool
-            _Finder = -403, // CTree<long,Finder> SqlValue
+            _CountStar = -281, // long
+        _Finder = -403, // CTree<long,Finder> SqlValue
             _Needed = -401, // CTree<long,Finder>  SqlValue
             RowOrder = -404, //CList<long> SqlValue 
             _Rows = -407, // CList<TRow> 
@@ -87,14 +88,13 @@ namespace Pyrrho.Level4
         internal BList<TRow> rows =>
             (BList<TRow>)mem[_Rows] ?? BList<TRow>.Empty;
         internal long lastData => (long)(mem[Table.LastData] ?? 0L);
+        internal long countStar => (long)(mem[_CountStar] ?? -1L);
         internal readonly struct Finder :IComparable
         {
             public readonly long col;
             public readonly long rowSet;
             public Finder(long c, long r) 
             {
-                if (r == 0 || c == 0)
-                    Console.WriteLine("Bad finder");
                 col = c; rowSet = r; 
             }
             internal Finder Relocate(Context cx)
@@ -502,7 +502,7 @@ namespace Pyrrho.Level4
             var ts = CTree<long,long>.Empty;
             for (var b=rsTargets.First();b!=null; b=b.Next())
             {
-                var p = cx.Replace(b.value(), so, sv);
+                var p = cx.RsReplace(b.value(), so, sv);
                 var k = cx.done[b.key()]?.defpos??b.key();
                 if (p != b.value() || k!=b.key())
                     ch = true;
@@ -511,7 +511,7 @@ namespace Pyrrho.Level4
             if (ch)
                 r += (RSTargets, ts);
             if (mem.Contains(_Source))
-                r += (_Source, cx.Replace((long)mem[_Source],so,sv));
+                r += (_Source, cx.RsReplace((long)mem[_Source],so,sv));
             if (cx.done.Contains(groupSpec))
                 r += (TableExpression.Group, cx.done[groupSpec].defpos);
             cx.data += (defpos, r);
@@ -701,7 +701,6 @@ namespace Pyrrho.Level4
             {
                 var sv = (SqlValue)cx.obs[rs.needed.First().key()];
                 throw new DBException("42112", sv.name);
-             //   throw new PEException("PE198");
             }
             return rs._First(cx);
         }
@@ -712,7 +711,6 @@ namespace Pyrrho.Level4
             {
                 var sv = (SqlValue)cx.obs[rs.needed.First().key()];
                 throw new DBException("42112", sv.name);
-                //   throw new PEException("PE198");
             }
             return rs._Last(cx);
         }
@@ -2165,7 +2163,7 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (IndexRowSet)base._Replace(cx, so, sv);
-            r += (_Index, cx.Replace(index, so, sv));
+            r += (_Index, cx.ObReplace(index, so, sv));
             return r;
         }
         internal override Basis _Relocate(Writer wr)
@@ -3176,6 +3174,12 @@ namespace Pyrrho.Level4
         {
             return (TableExpRowSet)rs.New(rs.mem + x);
         }
+        internal override bool Knows(Context cx, long rp)
+        {
+            if (rp == countStar)
+                return true;
+            return base.Knows(cx, rp);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableExpRowSet(dp,mem);
@@ -3188,13 +3192,22 @@ namespace Pyrrho.Level4
         {
             return TableExpCursor.New(this, _cx);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (mem.Contains(_CountStar))
+            {
+                sb.Append(" CountStar="); sb.Append(Uid(countStar));
+            }
+            return sb.ToString();
+        }
         // shareable as of 26 April 2021
         internal class TableExpCursor : Cursor
         {
             internal readonly TableExpRowSet _trs;
             internal readonly Cursor _bmk;
             TableExpCursor(Context cx,TableExpRowSet trs,Cursor bmk,int pos) 
-                :base(cx,trs,pos,bmk._defpos,bmk._ppos,new TRow(trs,bmk))
+                :base(cx,trs,pos,bmk._defpos,bmk._ppos,_Row(trs,bmk))
             {
                 _trs = trs;
                 _bmk = bmk;
@@ -3208,6 +3221,18 @@ namespace Pyrrho.Level4
             {
                 _trs = (TableExpRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
                 _bmk = cu._bmk?._Fix(cx);
+            }
+            static TRow _Row(TableExpRowSet t,Cursor bmk)
+            {
+                var v = CTree<long, TypedValue>.Empty;
+                var s = t.countStar;
+                for (var b = t.domain.rowType.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    if (p!=s)
+                        v += (p, bmk[p] ?? TNull.Value);
+                }
+                return new TRow(t.domain, v);
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
             {
@@ -4766,7 +4791,7 @@ namespace Pyrrho.Level4
             RemoteAggregates = -384, // bool
             RemoteCols = -373, // CList<long> SqlValue
             RemoteGroups = -374, // CList<long> SqlValue
-            RestView = -459,    // long
+            RestView = -459,    // long 
             RestValue = -457,   // TArray
             SqlAgent = 458, // string
             UrlCol = -446, // long SqlValue
@@ -4901,24 +4926,24 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (RestRowSet)base._Replace(cx, so, sv);
-            r += (RestView, cx.Replace(restView, so, sv));
+            r += (RestView, cx.ObReplace(restView, so, sv));
             var ch = false;
             var rg = CList<long>.Empty;
             for (var b= remoteGroups.First();b!=null;b=b.Next())
             {
-                var p = cx.Replace(b.value(), so, sv);
+                var p = cx.ObReplace(b.value(), so, sv);
                 rg += p;
                 ch = ch || p != b.value();
             }
             if (ch)
                 r += (RemoteGroups, rg);
             if (usingRowSet >= 0)
-                r += (UsingRowSet, cx.Replace(UsingRowSet, so, sv));
+                r += (UsingRowSet, cx.RsReplace(UsingRowSet, so, sv));
             ch = false;
             var rc = CList<long>.Empty;
             for (var b = remoteCols.First();b!=null;b=b.Next())
             {
-                var p = cx.Replace(b.value(), so, sv);
+                var p = cx.ObReplace(b.value(), so, sv);
                 rc += p;
                 ch = ch || p != b.value();
             }
@@ -4959,7 +4984,7 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        public HttpWebRequest GetRequest(Context cx, string url, ObInfo vi, bool ifmatch)
+        public HttpWebRequest GetRequest(Context cx, string url, ObInfo vi)
         {
             SetupETags(cx);
             var vwdesc = (string)vi.metadata[Sqlx.URL] ?? vi.description;
@@ -5057,7 +5082,7 @@ namespace Pyrrho.Level4
             var vw = (RestView)cx.obs[restView];
             var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
             var (url,targetName,sql) = GetUrl(cx,vi);
-            var rq = GetRequest(cx,url, vi, false);
+            var rq = GetRequest(cx,url, vi);
             rq.Accept = vw.mime ?? "application/json";
             if (vi.metadata.Contains(Sqlx.URL))
                 rq.Method = "GET";
@@ -5209,11 +5234,6 @@ namespace Pyrrho.Level4
             var r = base.Sources(cx);
             if (usingRowSet >= 0)
                 r += usingRowSet;
-            return r;
-        }
-        internal override CTree<long, bool> Review(Context cx, CTree<long, bool> ag)
-        {
-            var r = base.Review(cx, ag);
             return r;
         }
         public string WhereString(Context cx)
@@ -5451,7 +5471,9 @@ namespace Pyrrho.Level4
         public long targetTable => (long)(mem[TargetTable] ?? -1L);
         public LogRowsRowSet(long dp, Context cx, long td)
             : base(dp, _Mem(cx, dp, td)+(Built,true))
-        { }
+        {
+            cx.db = cx.db.BuildLog();
+        }
         protected LogRowsRowSet(long dp,BTree<long,object> m) :base(dp,m)
         { }
         protected LogRowsRowSet(Context cx, RowSet rs, CTree<long, Finder> nd, bool bt)
@@ -5518,7 +5540,7 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (LogRowsRowSet) base._Replace(cx, so, sv);
-            r += (TargetTable, cx.Replace(targetTable, so, sv));
+            r += (TargetTable, cx.ObReplace(targetTable, so, sv));
             return r;
         }
         internal override Basis New(BTree<long, object> m)
@@ -5769,8 +5791,8 @@ namespace Pyrrho.Level4
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (LogRowColRowSet) base._Replace(cx, so, sv);
-            r += (LogRowsRowSet.TargetTable, cx.Replace(targetTable, so, sv));
-            r += (LogCol, cx.Replace(logCol, so, sv));
+            r += (LogRowsRowSet.TargetTable, cx.ObReplace(targetTable, so, sv));
+            r += (LogCol, cx.ObReplace(logCol, so, sv));
             return r;
         }
         // shareable as of 26 April 2021
