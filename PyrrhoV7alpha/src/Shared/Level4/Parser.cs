@@ -255,6 +255,7 @@ namespace Pyrrho.Level4
             if (!(b == null && tok == Sqlx.EOF))
                 throw new DBException("33001");
             cx.Install2(pre.framing);
+            cx.QParams(); // replace SqlLiterals that are QParams with actuals
             cx = pre.target.Obey(cx);
             return cx.db;
         }

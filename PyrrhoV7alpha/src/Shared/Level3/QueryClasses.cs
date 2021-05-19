@@ -204,6 +204,21 @@ namespace Pyrrho.Level3
             }
             return partition == w.partition;
         }
+        internal override DBObject QParams(Context cx)
+        {
+            var r = base.QParams(cx);
+            var h = high.distance;
+            if (h is TQParam tq)
+                h = cx.values[tq.qid];
+            if (h != high.distance)
+                r += (High, h);
+            var w = low.distance;
+            if (w is TQParam tr)
+                w = cx.values[tr.qid];
+            if (w != low.distance)
+                r += (Low, w);
+            return r;
+        }
     }
     // shareable as of 26 April 2021
     internal class Grouping :DBObject,IComparable

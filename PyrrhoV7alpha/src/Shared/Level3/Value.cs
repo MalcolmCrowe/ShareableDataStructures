@@ -135,8 +135,6 @@ namespace Pyrrho.Level3
         internal override CTree<long, RowSet.Finder> Needs(Context cx,RowSet rs)
         {
             var fi = rs.finder[defpos];
-            if (fi.rowSet == 0)
-                Console.WriteLine("Here");
             return (rs.Knows(cx,fi.rowSet))?CTree<long,RowSet.Finder>.Empty
                 :new CTree<long, RowSet.Finder>(defpos, fi);
         }
@@ -2559,6 +2557,16 @@ namespace Pyrrho.Level3
             move = true;
             return q;
         }
+        internal override DBObject QParams(Context cx)
+        {
+            var r = base.QParams(cx);
+            if (val is TQParam tq)
+            {
+                r += (_Val, cx.values[tq.qid]);
+                cx.obs += (defpos, r);
+            }
+            return r;
+        }
         /// <summary>
         /// test for structural equivalence
         /// </summary>
@@ -2607,7 +2615,7 @@ namespace Pyrrho.Level3
         }
         internal override bool isConstant(Context cx)
         {
-            return !(val is TQParam);
+            return true; // !(val is TQParam);
         }
         internal override Domain FindType(Context cx, Domain dt)
         {
@@ -2980,7 +2988,7 @@ namespace Pyrrho.Level3
     internal class SqlRowArray : SqlValue
     {
         internal static readonly long
-            Rows = -319; // CList<long>
+            Rows = -319; // CList<long> SqlValue
         internal CList<long> rows =>
             (CList<long>)mem[Rows]?? CList<long>.Empty;
         public SqlRowArray(long dp,Context cx,Domain ap,CList<long> rs) 
@@ -7337,8 +7345,8 @@ namespace Pyrrho.Level3
     {
         internal const long
             Found = -360, // bool
-            Lhs = -361, // long
-            Rhs = -362; // long
+            Lhs = -361, // long SqlValue
+            Rhs = -362; // long SqlValue
         /// <summary>
         /// the test expression
         /// </summary>
@@ -7983,7 +7991,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             NIsNull = -364, //bool
-            NVal = -365; //long
+            NVal = -365; //long SqlValue
         /// <summary>
         /// the value to test
         /// </summary>

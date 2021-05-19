@@ -1218,8 +1218,6 @@ namespace Pyrrho
 		}
         static void FixPath()
         {
-            if (path == "")
-                path = Environment.CurrentDirectory;
             if (path.Contains("/") && !path.EndsWith("/"))
                 path += "/";
             else if (path.Contains("\\") && !path.EndsWith("\\"))
@@ -1264,7 +1262,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (18 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (19 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

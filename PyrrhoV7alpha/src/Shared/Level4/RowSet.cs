@@ -55,7 +55,7 @@ namespace Pyrrho.Level4
         internal const long
             Built = -402, // bool
             _CountStar = -281, // long
-        _Finder = -403, // CTree<long,Finder> SqlValue
+            _Finder = -403, // CTree<long,Finder> SqlValue
             _Needed = -401, // CTree<long,Finder>  SqlValue
             RowOrder = -404, //CList<long> SqlValue 
             _Rows = -407, // CList<TRow> 
@@ -534,6 +534,14 @@ namespace Pyrrho.Level4
             var p = (long)(mem[_Source] ?? -1L);
             if (p >= 0)
                 r += p;
+            return r;
+        }
+        internal override DBObject QParams(Context cx)
+        {
+            var r = base.QParams(cx);
+            var m = cx.QParams(matches);
+            if (m != matches)
+                r += (Query._Matches, m);
             return r;
         }
         /// <summary>
@@ -2110,7 +2118,7 @@ namespace Pyrrho.Level4
         /// <param name="x">the index</param>
         internal IndexRowSet(Context cx, Table tb, Index x,
             CTree<long,TypedValue> fl,long? dp=null, BTree<long,object>m=null) 
-            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,null,null,null,null,
+            : base(dp??x.defpos,cx,cx.Inf(tb.defpos).domain,null,x.keys,null,null,
                   fl,(m??BTree<long,object>.Empty) + (From.Target,tb.defpos)
                   +(_Index,x.defpos)+(Table.LastData,tb.lastData))
         { }
@@ -2363,12 +2371,13 @@ namespace Pyrrho.Level4
         /// <param name="f">the from part</param>
         /// <param name="x">the index</param>
         internal FilterRowSet(Context cx, Table tb, Index x, PRow filt)
-            : base(cx, tb, x, null, cx.nextHeap,BTree<long, object>.Empty 
-                  + (IxFilter, filt) + (RSTargets,new CTree<long,long>(tb.defpos,cx.nextHeap))
-                  + (From.Target,tb.defpos) + (Table.LastData,tb.lastData))
-        { 
-            cx.GetUid();
-        }
+            : this(cx, tb, x, cx.GetUid(), filt)
+        { }
+        FilterRowSet(Context cx, Table tb, Index x, long dp, PRow filt)
+            : base(cx, tb, x, null, dp, BTree<long, object>.Empty
+                  + (IxFilter, filt) + (RSTargets, new CTree<long, long>(tb.defpos, dp))
+                  + (From.Target, tb.defpos) + (Table.LastData, tb.lastData))
+        { }
         FilterRowSet(Context cx, FilterRowSet irs, CTree<long, Finder> nd, bool bt)
             : base(cx, irs, nd, bt)
         { }

@@ -552,6 +552,15 @@ namespace Pyrrho.Level3
             cx.values += (defpos, v);
         }
         /// <summary>
+        /// Replace TypedValues that are QParams with actuals
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal virtual DBObject QParams(Context cx)
+        {
+            return this;
+        }
+        /// <summary>
         /// Scan an aggregator item for count(*) and ensure it is in the source
         /// </summary>
         /// <param name="cx">the context</param>

@@ -234,7 +234,7 @@ namespace Pyrrho.Level4
 
         internal long GetUid()
         {
-            return (parse==ExecuteStatus.Obey) ? nextHeap++ : nextStmt++;
+            return (parse==ExecuteStatus.Obey || parse==ExecuteStatus.Prepare) ? nextHeap++ : nextStmt++;
         }
         internal long GetUid(int n)
         {
@@ -723,6 +723,32 @@ namespace Pyrrho.Level4
                 for (var b = s.Sources(this).First(); b != null; b = b.Next())
                     r += RestRowSets(b.value());
             return r;
+        }
+        /// <summary>
+        /// Propagate prepared statement parameters into their referencing TypedValues
+        /// </summary>
+        internal void QParams()
+        {
+            for (var b = obs.First(); b != null; b = b.Next())
+               obs += (b.key(), b.value().QParams(this));
+            for (var b = data.First(); b != null; b = b.Next())
+                data += (b.key(), (RowSet)b.value().QParams(this));
+        }
+        internal CTree<long,TypedValue> QParams(CTree<long,TypedValue> f)
+        {
+            var r = CTree<long, TypedValue>.Empty;
+            var ch = false;
+            for (var b = f.First(); b != null; b = b.Next())
+            {
+                var v = b.value();
+                if (v is TQParam tq)
+                {
+                    ch = true;
+                    v = values[tq.qid];
+                }
+                r += (b.key(), v);
+            }
+            return ch ? r : f;
         }
         /// <summary>
         /// This is called at the end of CursorSpecification.RowSets and just before

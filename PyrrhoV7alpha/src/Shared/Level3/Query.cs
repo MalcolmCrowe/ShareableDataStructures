@@ -379,6 +379,19 @@ namespace Pyrrho.Level3
         {
             return false;
         }
+        internal override DBObject QParams(Context cx)
+        {
+            var r = (Query)base.QParams(cx);
+            var f = cx.QParams(filter);
+            if (f != filter)
+                r += (Filter, f);
+            var m = cx.QParams(matches);
+            if (m != matches)
+                r += (_Matches, m);
+            if (r!=this)
+                cx.Add(r);
+            return r;
+        }
         internal override void CountStar(Context cx, long te)
         {
             for (var b = rowType.First(); b != null; b = b.Next())
