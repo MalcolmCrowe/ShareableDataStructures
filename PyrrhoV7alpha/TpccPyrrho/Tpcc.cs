@@ -21,16 +21,14 @@ namespace Tpcc
 		private System.Windows.Forms.TabPage tabPage3;
 		private System.Windows.Forms.TabPage tabPage4;
 		private System.Windows.Forms.TabPage tabPage5;
-		private System.Windows.Forms.TabPage tabPage6;
 		private System.Windows.Forms.Button button1;
 		private System.Windows.Forms.Label label2;
         private System.Windows.Forms.TextBox textBox1;
 		private Tpcc.OrderStatus orderStatus1;
 		private Tpcc.NewOrder newOrder1;
 		private Tpcc.Payment payment1;
-		private Tpcc.StockLevel stockLevel1;
-        private Tpcc.Delivery delivery1;
-		private System.ComponentModel.IContainer components;
+//		private Tpcc.StockLevel stockLevel1;
+ 		private System.ComponentModel.IContainer components;
 		public PyrrhoConnect conn;
         PyrrhoTransaction tr = null;
 		private System.Windows.Forms.Button button2;
@@ -43,8 +41,6 @@ namespace Tpcc
 		public int activewh;
 		private System.Windows.Forms.Button AutoRun;
 		private System.Windows.Forms.Button CommitBtn;
-		private System.Windows.Forms.TabPage tabPage7;
-		private DelReport delReport1;
 		Thread thread = null;
 		Thread deferred = null;
         private System.Windows.Forms.Timer timer1,timer2;
@@ -137,11 +133,7 @@ namespace Tpcc
             this.tabPage4 = new System.Windows.Forms.TabPage();
             this.payment1 = new Tpcc.Payment(this,1);
             this.tabPage5 = new System.Windows.Forms.TabPage();
-            this.stockLevel1 = new Tpcc.StockLevel(this,1);
-            this.tabPage6 = new System.Windows.Forms.TabPage();
-            this.delivery1 = new Tpcc.Delivery(this,1);
-            this.tabPage7 = new System.Windows.Forms.TabPage();
-            this.delReport1 = new Tpcc.DelReport(this,1);
+      //      this.stockLevel1 = new Tpcc.StockLevel(this,1);
             this.label1 = new System.Windows.Forms.Label();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
             this.tabControl1.SuspendLayout();
@@ -150,9 +142,7 @@ namespace Tpcc
             this.tabPage3.SuspendLayout();
             this.tabPage4.SuspendLayout();
             this.tabPage5.SuspendLayout();
-            this.tabPage6.SuspendLayout();
-            this.tabPage7.SuspendLayout();
-            this.SuspendLayout();
+                  this.SuspendLayout();
             // 
             // tabControl1
             // 
@@ -161,8 +151,6 @@ namespace Tpcc
             this.tabControl1.Controls.Add(this.tabPage3);
             this.tabControl1.Controls.Add(this.tabPage4);
             this.tabControl1.Controls.Add(this.tabPage5);
-            this.tabControl1.Controls.Add(this.tabPage6);
-            this.tabControl1.Controls.Add(this.tabPage7);
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
@@ -396,7 +384,7 @@ namespace Tpcc
             this.payment1.Name = "payment1";
             this.payment1.Size = new System.Drawing.Size(536, 384);
             this.payment1.TabIndex = 0;
-            // 
+      /*      // 
             // tabPage5
             // 
             this.tabPage5.Controls.Add(this.stockLevel1);
@@ -411,39 +399,7 @@ namespace Tpcc
             this.stockLevel1.Location = new System.Drawing.Point(8, 8);
             this.stockLevel1.Name = "stockLevel1";
             this.stockLevel1.Size = new System.Drawing.Size(552, 392);
-            this.stockLevel1.TabIndex = 0;
-            // 
-            // tabPage6
-            // 
-            this.tabPage6.Controls.Add(this.delivery1);
-            this.tabPage6.Location = new System.Drawing.Point(4, 22);
-            this.tabPage6.Name = "tabPage6";
-            this.tabPage6.Size = new System.Drawing.Size(560, 366);
-            this.tabPage6.TabIndex = 5;
-            this.tabPage6.Text = "Delivery";
-            // 
-            // delivery1
-            // 
-            this.delivery1.Location = new System.Drawing.Point(0, 0);
-            this.delivery1.Name = "delivery1";
-            this.delivery1.Size = new System.Drawing.Size(560, 400);
-            this.delivery1.TabIndex = 0;
-            // 
-            // tabPage7
-            // 
-            this.tabPage7.Controls.Add(this.delReport1);
-            this.tabPage7.Location = new System.Drawing.Point(4, 22);
-            this.tabPage7.Name = "tabPage7";
-            this.tabPage7.Size = new System.Drawing.Size(560, 366);
-            this.tabPage7.TabIndex = 6;
-            this.tabPage7.Text = "Delivery Report";
-            // 
-            // delReport1
-            // 
-            this.delReport1.Location = new System.Drawing.Point(8, 8);
-            this.delReport1.Name = "delReport1";
-            this.delReport1.Size = new System.Drawing.Size(544, 352);
-            this.delReport1.TabIndex = 0;
+            this.stockLevel1.TabIndex = 0; */
             // 
             // label1
             // 
@@ -475,8 +431,6 @@ namespace Tpcc
             this.tabPage3.ResumeLayout(false);
             this.tabPage4.ResumeLayout(false);
             this.tabPage5.ResumeLayout(false);
-            this.tabPage6.ResumeLayout(false);
-            this.tabPage7.ResumeLayout(false);
             this.ResumeLayout(false);
 
 		}
@@ -566,8 +520,8 @@ namespace Tpcc
             newOrder1.PrepareStatements();
             orderStatus1.PrepareStatements();
             payment1.PrepareStatements();
-            stockLevel1.PrepareStatements();
-        }
+     //       stockLevel1.PrepareStatements();
+          }
 		private void tabControl1_SelectedIndexChanged(object sender, System.EventArgs e)
 		{
 			VTerm vt = null;
@@ -591,22 +545,12 @@ namespace Tpcc
 					vt = p;
 					p.status = label1;
 					break;
-				case 4:
+		/*		case 4:
 					StockLevel s = (StockLevel)tabPage5.Controls[0];
 					s.did = 1;
 					s.status = label1;
 					vt = s;
-					break;
-				case 5:
-					Delivery d = (Delivery)tabPage6.Controls[0];
-					d.status = label1;
-					vt = d;
-					break;
-				case 6:
-					DelReport dl = (DelReport)tabPage7.Controls[0];
-    				dl.status = label1;
-					vt = dl;
-					break;
+					break; */
 			}
 			//		VTerm vt = (VTerm)tabControl1.SelectedTab.Controls[0];
 			vt.Activate();
@@ -681,7 +625,7 @@ namespace Tpcc
 		{
             try
             {
-                int i = util.random(0, 23);
+                int i = util.random(0, 21);
                 stage = 0;
                 if (i < 10)
                 {
@@ -703,7 +647,7 @@ namespace Tpcc
                     action = 3;
                     timer1.Interval = 3000;
                 }
-                else if (i < 21)
+                else// if (i < 21)
                 {
                     orderStatus1.wid = wid;
                     orderStatus1.PutBlanks();
@@ -713,17 +657,7 @@ namespace Tpcc
                     action = 2;
                     timer1.Interval = 2000;
                 }
-                else if (i < 22)
-                {
-                    delivery1.wid = wid;
-                    delivery1.PutBlanks();
-                    tabControl1.SelectedIndex = 4;
-                    delivery1.status = label1;
-                    delivery1.Activate();
-                    action = 4;
-                    timer1.Interval = 2000;
-                }
-                else
+         /*       else
                 {
                     stockLevel1.wid = wid;
                     stockLevel1.PutBlanks();
@@ -731,9 +665,9 @@ namespace Tpcc
                     stockLevel1.status = label1;
                     stockLevel1.did = 1;
                     stockLevel1.Activate();
-                    action = 5;
+                    action = 4;
                     timer1.Interval = 2000;
-                }
+                } */
                 timer1.Enabled = true;
             } catch (Exception e)
             {
@@ -774,16 +708,11 @@ namespace Tpcc
 						timer1.Interval = 3000;
 						action = 0;
 						break;
-					case 4:
-						delivery1.Single();
-						timer1.Interval = 2000;
-						action = 0;
-						break;
-					case 5:
+			/*		case 4:
 						stockLevel1.Single();
 						timer1.Interval = 2000;
 						action = 0;
-						break;
+						break; */
 				}
 			}
 			catch(Exception ex)

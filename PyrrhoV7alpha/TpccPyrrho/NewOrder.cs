@@ -82,7 +82,7 @@ namespace Tpcc
                 }
             }
         }
-        bool ExecNQ(string name,params string[] args)
+        bool ExecNQ(ref string mess, string name,params string[] args)
         {
             try
             {
@@ -94,7 +94,7 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                var s = ex.Message;
+                mess = ex.Message;
                 Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message
@@ -103,10 +103,11 @@ namespace Tpcc
             }
             catch (Exception ex)
             {
-                var s = ex.Message;
+                mess = ex.Message;
                     Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message);
+                form.Rollback();
             }
             return true;
         }
@@ -124,9 +125,11 @@ namespace Tpcc
                 c_discount = (decimal)rdr[0];
                 Set(5, c_discount.ToString("F4").Substring(1));
             }
-            catch(Exception)
+            catch(Exception e)
             {
+                mess = e.Message;
                 form.Rollback();
+                return true;
             }
             finally
             {
@@ -152,17 +155,21 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                var s = ex.Message;
+                mess = ex.Message;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message
                     + " " + ex.info["WITH"]);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             catch (Exception ex)
             {
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order Exception 1 " + ex.Message);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             finally
             {
@@ -183,24 +190,27 @@ namespace Tpcc
             }
             catch (TransactionConflict ex)
             {
-                var s = ex.Message;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message
                     + " " + ex.info["WITH"]);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             catch (Exception ex)
             {
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             finally
             {
                 rdr.Close();
             }
             //		mess=cmd.CommandText;
-            if (ExecNQ("UpdateOrderNo", "" + (o_id + 1), "" + wid, "" + did))
+            if (ExecNQ(ref mess, "UpdateOrderNo", "" + (o_id + 1), "" + wid, "" + did))
                 return true;
             allhome = true;
             return false;
@@ -208,10 +218,9 @@ namespace Tpcc
 		bool DoOLCount(ref string mess)
 		{
             Set(7, ol_cnt);
-            if (ExecNQ("CreateOrder",""+o_id,""+did,""+wid,""+cid, "date'" + DateTime.Now.ToString("yyyy-MM-dd")+"'",""+ol_cnt,""+ (allhome ? 1 : 0)))
+            if (ExecNQ(ref mess, "CreateOrder",""+o_id,""+did,""+wid,""+cid, "date'" + DateTime.Now.ToString("yyyy-MM-dd")+"'",""+ol_cnt,""+ (allhome ? 1 : 0)))
                 return true;
-            //		mess=cmd.CommandText;
-            if (ExecNQ("CreateNewOrder",""+o_id,""+did,""+wid))
+            if (ExecNQ(ref mess, "CreateNewOrder",""+o_id,""+did,""+wid))
                 return true;
             return false;
 		}
@@ -244,13 +253,16 @@ namespace Tpcc
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message
                     + " " + ex.info["WITH"]);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             catch (Exception ex)
             {
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
-                form.Rollback();
+                mess = ex.Message;
+                return true;
             }
             finally
             {
@@ -286,13 +298,17 @@ namespace Tpcc
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message
                     + " " + ex.info["WITH"]);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             catch (Exception ex)
             {
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message);
+                mess = ex.Message;
                 form.Rollback();
+                return true;
             }
             finally
             {
@@ -340,9 +356,9 @@ namespace Tpcc
                     s_quantity = a.s_quantity - a.ol_quantity;
                     if (s_quantity < 10)
                         s_quantity += 91;
-                    if (ExecNQ("UpdateStock",""+s_quantity,""+a.oliid,""+a.ol_supply_w_id))
+                    if (ExecNQ(ref mess, "UpdateStock",""+s_quantity,""+a.oliid,""+a.ol_supply_w_id))
                         return false;
-                    if (ExecNQ("AddOrderLine",""+o_id,""+did,""+wid,""+(j+1),""+a.oliid,""+a.ol_supply_w_id,""+a.ol_quantity,""+a.ol_amount))
+                    if (ExecNQ(ref mess, "AddOrderLine",""+o_id,""+did,""+wid,""+(j+1),""+a.oliid,""+a.ol_supply_w_id,""+a.ol_quantity,""+a.ol_amount))
                         return false;
                 }
                 mess = "OKAY";
@@ -351,6 +367,7 @@ namespace Tpcc
                 {
      //               Console.WriteLine("New Order Rollback");
                     form.Rollback();
+                    mess = "Rollback";
                     done = true;
                 }
                 else
@@ -360,26 +377,25 @@ namespace Tpcc
                     Form1.commits++;
                 }
                 // Phase 3 display the results
-                Set(130, "OKAY");
                 done = true;
             }
             catch (TransactionConflict ex)
             {
                 var s = ex.Message;
-                Set(130, s);
                 Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message 
                     + " " + ex.info["WITH"]);
+                mess = s;
                 form.Rollback();
             }
             catch (Exception ex)
             {
                 var s = ex.Message;
-                Set(130, s);
-                    Form1.wconflicts++;
+                Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
                     PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message);
+                mess = s;
                 form.Rollback();
             }
             return done;
@@ -550,7 +566,8 @@ namespace Tpcc
 			Invalidate(true);
 			if (btn!=null)
 				btn.Enabled = true;
-        //    Console.WriteLine("Committed Order");
+            //    Console.WriteLine("Committed Order");
+            Set(130, mess);
             form.Commit("Single Order");
 			return;
         bad:

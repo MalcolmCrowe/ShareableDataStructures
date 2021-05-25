@@ -125,6 +125,7 @@ namespace Pyrrho.Level3
         internal readonly long did = ++_did;
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
         internal static BTree<string, Database> databases = BTree<string, Database>.Empty;
+        internal static object _lock = new object();
         /// <summary>
         /// The _system database contains primitive domains and system tables and columns.
         /// These objects are inherited by any new database, and the _system._role uid
@@ -455,7 +456,9 @@ namespace Pyrrho.Level3
         }
         public virtual Database RdrClose(Context cx)
         {
-            return cx.db - NextId;
+            if (cx != null)
+                cx.db = this;
+            return this;
         }
         /// <summary>
         /// Load the database
@@ -493,7 +496,8 @@ namespace Pyrrho.Level3
                 }
             }
             var d = rdr.context.db;
-            databases += (name, d);
+            lock (_lock)
+                databases += (name, d);
             rdr.context.db = d;
             return d;
         }
@@ -514,7 +518,8 @@ namespace Pyrrho.Level3
                 }
             }
             var d = rdr.context.db;
-            databases += (name, d);
+            lock (_lock)
+                databases += (name, d);
             rdr.context.db = d;
             return d;
         }
@@ -574,31 +579,22 @@ namespace Pyrrho.Level3
         { return cx;  }
         internal virtual Context Delete(Context cx, RowSet r)
         { return cx; }
-         /// <summary>
-        /// Prepare for a CONTINUE condition handler (implemented in Participant)
-        /// </summary>
-        /// <returns>The updated Participant</returns>
-        internal virtual Transaction Mark()
-        {
-            return null;
-        }
         /// <summary>
         /// Commit the physical data
         /// </summary>
         internal virtual Database Commit(Context cx)
         {
-            return this - NextId;
+            var r = databases[name] + (_Connection, conn);
+            if (cx!=null)
+                cx.db = r;
+            return r;
         }
-
-        internal Database Install(long pos)
+        internal Database Rollback(Context cx)
         {
-            var db = new Database(pos, mem);
-            databases += (name, db);
-            return db;
-        }
-        internal virtual Database Rollback(object e)
-        {
-            return this - NextId;
+            var r = databases[name] + (_Connection, conn);
+            if (cx!=null)
+                cx.db = r;
+            return r;
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

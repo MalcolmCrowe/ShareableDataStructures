@@ -186,6 +186,8 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
+        internal virtual void Review(Context cx)
+        { }
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);

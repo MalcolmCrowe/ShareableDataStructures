@@ -23,6 +23,7 @@ namespace Pyrrho.Level2
 	{
         public long _defpos;
         public long prev;
+        public TableRow prevrec;
         /// <summary>
         /// Constructor: an UPDATE from the Parser
         /// </summary>
@@ -40,6 +41,7 @@ namespace Pyrrho.Level2
             : base(t,tb,fl,pp,cx)
         {
             _defpos = old.defpos;
+            prevrec = old;
             if (t!=Type.Update1)
                 _classification = old.classification;
             prev = old.ppos;
@@ -101,7 +103,10 @@ namespace Pyrrho.Level2
                         var u = (Update)that;
                         if (defpos != u.defpos)
                             break;
-                        return new DBException("40029", defpos, that, ct);
+                        for (var b=fields.First();b!=null;b=b.Next())
+                            if (u.fields.Contains(b.key()))
+                                return new DBException("40029", defpos, that, ct);
+                        break;
                     }
                 case Type.Alter3:
                     if (((Alter3)that).table.defpos == tabledefpos)

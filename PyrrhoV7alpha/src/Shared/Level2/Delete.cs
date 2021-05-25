@@ -23,6 +23,8 @@ namespace Pyrrho.Level2
 	{
         public long delpos;
         public long tabledefpos;
+        public TableRow delrec;
+        public BTree<long, (CList<long>,CList<long>)> deC = BTree<long,(CList<long>,CList<long>)>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             var dp = wr.Fix(delpos);
@@ -39,13 +41,16 @@ namespace Pyrrho.Level2
             : base(Type.Delete, pp, cx)
 		{
             tabledefpos = rw.tabledefpos;
+            delrec = rw;
             delpos = rw.defpos;
 		}
-        protected Delete(Type t,TableRow rw, long pp, Context cx)
+        protected Delete(Type t,TableRow rw, Table tb, long pp, Context cx)
     : base(t, pp, cx)
         {
             tabledefpos = rw.tabledefpos;
+            delrec = rw;
             delpos = rw.defpos;
+            deC = tb.rindexes;
         }
         /// <summary>
         /// Constructor: a new Delete request from the buffer
@@ -120,9 +125,27 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Update:
                 case Type.Update1:
-                    if (((Update)that)._defpos == delpos)
-                        return new DBException("40029", delpos, that, ct);
-                    break;
+                    {
+                        var u = (Update)that;
+                        if (((Update)that)._defpos == delpos)
+                            return new DBException("40029", delpos, that, ct);
+                        goto case Type.Record;
+                    }
+                case Type.Record:
+                case Type.Record1:
+                case Type.Record2:
+                case Type.Record3:
+                    {
+                        // conflict if we refer to the deleted row
+                        var r = (Record)that;
+                        for (var b = deC.First(); b != null; b = b.Next())
+                        {
+                            var (cs, rs) = b.value();
+                            if (b.key() == r.tabledefpos && r.MakeKey(rs).CompareTo(delrec.MakeKey(cs)) == 0)
+                                throw new DBException("40027", delpos, that, ct);
+                        }
+                        break;
+                    }
             }
             return null;
         }
@@ -167,8 +190,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete1(TableRow rw, long pp, Context cx)
-            : base(Type.Delete1, rw, pp, cx)
+        public Delete1(TableRow rw, Table tb, long pp, Context cx)
+            : base(Type.Delete1, rw, tb, pp, cx)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;

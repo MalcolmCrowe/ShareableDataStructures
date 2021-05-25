@@ -117,26 +117,39 @@ insert into ba values(12,1234.0,0.00045)
 insert into ba values(34,0.5678e9,0)
 select * from ba
 10:
-create table RDC(A int primary key,B char)
-insert into RDC values(42,'Life, the Universe')
-insert into RDC values(52,'Weeks in the year')
+create table RWC(A int primary key,B char,C int)
+insert into RWC values(42,'Life, the Universe',1)
+insert into RWC values(52,'Weeks in the year',2)
 begin transaction
-select * from RDC where A=42
+select * from RWC where A=42
 10A: 
-update RDC set B='the product of 6 and 9' where A=42
+update RWC set B='the product of 6 and 9' where A=42
 10 contd:
 commit
 -> Transaction conflict: Read conflict for record 135
 begin transaction
-select * from RDC where A=52
+select * from RWC where A=52
 10B:
-update RDC set B='the product of 6 and 7' where A=42
+update RWC set B='the product of 6 and 7' where A=42
 10 contd:
 commit
 begin transaction
-select * from RDC
+update RWC set C=3 where A=42
 10A:
-update RDC set B='the product of 6 and 9' where A=42
+update RWC set B='the product of 6 and 9' where A=42
+10 contd:
+commit
+begin transaction
+update RWC set C=3 where A=52
+10C:
+update RWC set C=4 where A=52
+10 contd:
+commit
+ -> Transaction conflict:
+begin transaction
+select * from RWC
+10B:
+update RWC set B='the product of 6 and 7' where A=42
 10 contd:
 commit
  -> Transaction conflict: Read conflict for table 22
@@ -387,9 +400,13 @@ B> update vu set f='Elizabeth' where e=2
 B> select * from wu where e=2
  -> [{E:2,F:'Elizabeth',G:'Boop'}]
 23:
+Create A:>create table D(e int primary key,f char,g char)
+Create A:>insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')
+Create A:>create role A
+Create A:>grant A to "MALCOLM1\Malcolm"
 Reset A:> delete from D
 Reset A:> insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')
-B> create view W of (e int, f char, g char) as get etag 'http://localhost:8180/A/A/D'
+B> create view W of (e int, f char, g char) as get etag milli 'http://localhost:8180/A/A/D'
 B> create table H (e int primary key, k char, m int)
 B> insert into H values (1,'Cleaner',12500), (2,'Manager',31400)
 B> create view V as select * from w natural join H
@@ -485,3 +502,91 @@ A> update d set f='Joseph' where e=1
 B> commit
 B> select * from w
  -> [{E:1,F:'Joseph',G:'Soap'}]
+24:
+DB> create table T(E int,F char)
+DB> insert into T values(3,'Three'),(6,'Six'),(4,'Vier'),(6,'Sechs')
+DB> create role DB
+DB> grant DB to "MALCOLM1\Malcolm"
+DC> create table U(E int,F char)
+DC> insert into U values(5,'Five'),(4,'Four'),(8,'Ate')
+DC> create role DC
+DC> grant DC to "MALCOLM1\Malcolm"
+create view V of (E int,F char) as get 'http://localhost:8180/DB/DB/t'
+create table VU (d char primary key, k int, u char)
+insert into VU values('B',4,'http://localhost:8180/DB/DB/t')
+insert into VU values('C',1,'http://localhost:8180/DC/DC/u')
+create view W of (E int, D char, K int, F char) as get using VU
+create table M (e int primary key, n char, unique(n))
+insert into M values (2,'Deux'),(3,'Trois'),(4,'Quatre')
+insert into M values (5,'Cinq'),(6,'Six'),(7,'Sept')
+select * from v
+ -> [{E:3,F:'Three'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'}]
+select * from V where e=6
+ -> [{E:6,F:'Six'},{E:6,F:'Sechs'}]
+select * from w
+ -> [{E:3,D:'B',K:4,F:'Three'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},     {E:6,D:'B',K:4,F:'Sechs'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},
+     {E:8,D:'C',K:1,F:'Ate'}]
+select * from w where e<6
+ -> [{E:3,D:'B',K:4,F:'Three'},{E:4,D:'B',K:4,F:'Vier'},
+     {E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'}]
+select * from w where k=1
+ -> [{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Ate'}]
+select count(e) from w
+ -> [{COUNT:7}]
+select count(*) from w
+ -> [{COUNT:7}]
+select max(f) from w
+ -> [{MAX:'Vier'}]
+select max(f) from w where e>4
+ -> [{MAX:'Six'}]
+select count(*) from w where k>2
+ -> [{COUNT:4}]
+select min(f) from w
+ -> [{MIN:'Ate'}]
+select sum(e)*sum(e),d from w group by d
+ -> [{Col0:97,D:'B'},{Col0:105,D:'C'}]  Wrong!
+select count(*),k/2 as k2 from w group by k2
+ -> [{COUNT:4,K2:2},{COUNT:3,K2:0}]
+select avg(e) from w
+ -> [{AVG:7.14582}]
+select f,n from w natural join m
+ -> [{F:'Three',N:'Trois'},{F:'Vier',N:'Quatre'},{F:'Four',N:'Quatre'},{F:'Five',N:'Cinq'},
+     (F:'Six',N:'Six'},(F:'Sechs',N:'Six'}]
+select e+char_length(f) as x,n from w natural join m
+ -> [{Col0:8,N:'Trois'},{Col0:8,N:'Quatre'},{Col0:8,N:'Quatre'},
+     {Col0:9,N:'Cinq'},{Col0:9, N::'Six'},{Col0:10,N:'Six'}]
+select char_length(f)+char_length(n) from w natural join m
+ -> [{Col0:10},{Col0:10},{Col0:10},{Col0:8},{Col0:6},{Col0:8}]
+select sum(e)+char_length(max(f)) from w
+ -> [{Col0:32}]
+select count(*),e+char_length(f) as x from w group by x
+ -> [{COUNT:3,Col1:8},{COUNT:2,Col1:9},{COUNT:1,Col1:11}]
+select count(*),e+char_length(n) as x from w natural join m group by x
+ -> [{COUNT:1,Col1:8},{COUNT:2,Col1:10},{COUNT:3,Col1:9}]
+select sum(e)+char_length(f),f  from w natural join m group by f
+ -> [{Col0:8,F:'Three'},{Col0:8,F:'Vier'},{Col0:8,F:'Four'},{Col0:9,F:'Five'},
+     {Col0:9,F:'Six'},{Col0:11,'F:'Sechs'}]
+select sum(char_length(f))+char_length(n) as x,n from w natural join m group by n
+ -> {Col0:10,N:'Trois'},{Col0:14,N:'Quatre'},{Col0:8,N:'Cinq'},{Col0:11,N:'Six'}]
+Select count(*) from w natural join m
+ -> [{COUNT:6}]
+update v set F='Tri' where E=3
+insert into V values (9,'Nine')
+select * from V
+ -> [{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]
+update w set f='Eight' where e=8
+insert into w(D,E,F) values('B',7,'Seven')
+select * from V
+ -> [{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},{E:8,F:'Seven'}]
+select * from W
+ -> [{E:3,D:'B',K:4,F:'Three'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},
+     {E:6,D:'B',K:4,F:'Sechs'},{E:9,D:'B',K:4,F:'Nine'},{E:7,D:'B',K:4,F:'Seven'},
+     {E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]
+delete from w where E=7
+update v set f='Ate' where e=8
+select * from v
+ -> [{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]
+select * from w
+ -> [{E:3,D:'B',K:4,F:'Three'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},
+     {E:6,D:'B',K:4,F:'Sechs'},{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},
+     {E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]

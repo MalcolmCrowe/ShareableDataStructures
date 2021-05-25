@@ -60,10 +60,6 @@ namespace Pyrrho.Level2
     }
     public abstract class WriterBase : IOBase
     {
-        internal void Write(Physical.Type t)
-        {
-            WriteByte((byte)t);
-        }
         public void PutInt(int? n)
         {
             if (n == null)
@@ -108,6 +104,7 @@ namespace Pyrrho.Level2
         public long segment;  // the most recent PTransaction/PTriggeredAction written
         public long srcPos,oldStmt,stmtPos; // for Fixing uids
         internal BList<Rvv> rvv= BList<Rvv>.Empty;
+        BList<byte[]> prevBufs = BList<byte[]>.Empty;
         internal Context cx; // access the database we are writing to
         internal Writer(Context c,Stream f)
         {
@@ -118,6 +115,12 @@ namespace Pyrrho.Level2
         public override void PutBuf()
         {
             file.Seek(0, SeekOrigin.End);
+            for (var b=prevBufs.First();b!=null;b=b.Next())
+            {
+                var bf = b.value();
+                file.Write(bf, 0, Buffer.Size);
+            }
+            prevBufs = BList<byte[]>.Empty;
             file.Write(buf.buf, 0, buf.pos);
             buf.pos = 0;
         }
@@ -125,7 +128,8 @@ namespace Pyrrho.Level2
         {
             if (buf.pos >= Buffer.Size)
             {
-                PutBuf();
+                prevBufs += buf.buf;
+                buf.buf = new byte[Buffer.Size];
                 buf.pos = 0;
             }
             buf.buf[buf.pos++] = value;

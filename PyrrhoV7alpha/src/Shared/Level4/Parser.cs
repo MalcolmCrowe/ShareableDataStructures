@@ -256,6 +256,7 @@ namespace Pyrrho.Level4
                 throw new DBException("33001");
             cx.Install2(pre.framing);
             cx.QParams(); // replace SqlLiterals that are QParams with actuals
+            pre.target.Review(cx);
             cx = pre.target.Obey(cx);
             return cx.db;
         }
@@ -297,7 +298,7 @@ namespace Pyrrho.Level4
                     Next();
                     if (Match(Sqlx.WORK))
                         Next();
-                    cx.db = cx.tr.Rollback(new DBException("0000").ISO());
+                    cx.tr.Rollback(cx);
                     break;
                 case Sqlx.SELECT: 
                     cx.result = cx.db.lexeroffset; 

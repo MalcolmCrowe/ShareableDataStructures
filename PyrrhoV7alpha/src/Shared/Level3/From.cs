@@ -494,6 +494,11 @@ namespace Pyrrho.Level3
                 r += (From.Target, tg);
             return r;
         }
+        internal override void Review(Context cx)
+        {
+            var rs = cx.data[nuid];
+            cx.Review(rs, rs.aggs, rs.matches, rs.assig);
+        }
         public override Context Obey(Context cx)
         {
             var rs = cx.data[nuid];

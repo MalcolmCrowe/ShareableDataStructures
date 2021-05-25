@@ -45,9 +45,9 @@ namespace Pyrrho
         /// the Pyrrho protocol stream for this client
         /// </summary>
 		internal readonly TCPStream tcp;
-        Database db;
-        Context cx;
-        Cursor rb;
+        Database db = null;
+        Context cx = null;
+        Cursor rb = null;
         internal bool lookAheadDone = true, more = true;
         internal const long Preparing = Transaction.HeapStart;
         private int nextCol = 0;
@@ -256,6 +256,7 @@ namespace Pyrrho
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.Done);
                                 tcp.Flush();
+                                cx = new Context(db);
                                 break;
                             }
                         case Protocol.CommitTrace:
@@ -273,13 +274,14 @@ namespace Pyrrho
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
                                 tcp.Flush();
+                                cx = new Context(db);
                                 break;
                             }
                         // rollback
                         case Protocol.Rollback:
                             if (PyrrhoStart.DebugMode)
                                 Console.WriteLine("Rollback on Request " + (db as Transaction).uid);
-                            db = db.Rollback(new DBException("40000").ISO());
+                            db = db.Rollback(cx);
                             tcp.Write(Responses.Done);
                             break;
                         // close the connection
@@ -601,6 +603,7 @@ namespace Pyrrho
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReport);
                                 PutReport(cx);
+                                cx = new Context(db);
                                 break;
                             }
                         case Protocol.CommitAndReport1:
@@ -619,6 +622,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.TransactionReport);
                                 tcp.PutInt(db.AffCount(cx));
                                 PutReport(cx);
+                                cx = new Context(db);
                                 break;
                             }
                         case Protocol.CommitAndReportTrace:
@@ -639,6 +643,7 @@ namespace Pyrrho
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
                                 PutReport(cx);
+                                cx = new Context(db);
                                 break;
                             }
                         case Protocol.CommitAndReportTrace1:
@@ -661,6 +666,7 @@ namespace Pyrrho
                                 tcp.PutLong(ts);
                                 tcp.PutLong(db.loadpos);
                                 PutReport(cx);
+                                cx = new Context(db);
                                 break;
                             }
                         case Protocol.Authority:
@@ -695,7 +701,7 @@ namespace Pyrrho
                 {
                     try
                     {
-                        db = db.Rollback(e);
+                        db = db.Rollback(cx);
                         if (cx != null)
                             cx.data = BTree<long, RowSet>.Empty;
                         rb = null;
@@ -723,21 +729,21 @@ namespace Pyrrho
                     }
                     catch (Exception) { }
                 }
-                catch (SocketException e)
+                catch (SocketException)
                 {
-                    db = db.Rollback(new DBException("00003", e.Message).Pyrrho());
+                    db = db.Rollback(cx);
                     goto _return;
                 }
-                catch (ThreadAbortException e)
+                catch (ThreadAbortException)
                 {
-                    db = db.Rollback(new DBException("00004", e.Message).Pyrrho());
+                    db = db.Rollback(cx);
                     goto _return;
                 }
                 catch (Exception e)
                 {
                     try
                     {
-                        db = db.Rollback(e);
+                        db = db.Rollback(cx);
                         rb = null;
                         if (cx != null)
                             cx.data = BTree<long, RowSet>.Empty;
@@ -751,7 +757,7 @@ namespace Pyrrho
                     {
                         goto _return;
                     }
-                    db = db.Rollback(new DBException("00005", e.Message).Pyrrho());
+                    db = db.Rollback(cx);
                 }
             }
         _return: if (PyrrhoStart.TutorialMode)
@@ -833,7 +839,7 @@ namespace Pyrrho
 		void Close()
         {
             if (db != null)
-                db.Rollback(new DBException("00000").ISO());
+                db.Rollback(cx);
             tcp.Close();
             cx.data = BTree<long, RowSet>.Empty;
             rb = null;
@@ -1262,7 +1268,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (19 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (25 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

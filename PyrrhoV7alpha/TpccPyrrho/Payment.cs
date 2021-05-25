@@ -27,14 +27,13 @@ namespace Tpcc
         bool FetchDistrict()
         {
             form.BeginTransaction();
-     //       Console.WriteLine("Payment transaction start");
             Set(42, DateTime.Now.ToString());
             var rdr = form.conn.ExecuteReader("FetchWarehouse2",""+wid);
             try {
                 if (!rdr.Read())
                 {
                     form.Commit("No payment");
-    //                Console.WriteLine("Payment transaction empty");
+                    Console.WriteLine("Payment transaction empty");
                     return true;
                 }
                 Set(1, (string)rdr[0]);
@@ -65,7 +64,7 @@ namespace Tpcc
             try {
                 if (!rdr.Read())
                 {
-     //               Console.WriteLine("Payment done empty");
+                    Console.WriteLine("Payment done empty");
                     form.Commit("Empty payment");
                     return true;
                 }
@@ -180,7 +179,10 @@ namespace Tpcc
                 Set(37, ((decimal)rdr[11]).ToString("F2"));
                 Set(30, ((decimal)rdr[12]).ToString("F4").Substring(1)); // c_discount
                 Set(31, (string)rdr[8]); // c_phone
-                c_balance = (decimal)rdr[13];
+                var o = rdr[13];
+                if (o is string)
+                    o = decimal.Parse((string)o);
+                c_balance = (decimal)o;
                 c_ytd_payment = (decimal)rdr[14];
                 c_payment_cnt = (int)(decimal)rdr[15];
             }

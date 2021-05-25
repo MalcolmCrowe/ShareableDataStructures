@@ -28,12 +28,13 @@ namespace Pyrrho.Level3
         internal const long
             ApplicationPS = -262, // long PeriodSpecification
             Enforcement = -263, // Grant.Privilege (T)
-            Indexes = -264, // CTree<CList<long>,long> Index
+            Indexes = -264, // CTree<CList<long>,long> cols,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
-            TableCols = -332, // BTree<long,bool> TableColumn
+            RefIndexes = -250, // CTree<long,(CList<long>,CList<long>)> rTable,cols,rcols
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
+            TableCols = -332, // BTree<long,bool> TableColumn
             TableRows = -181, // BTree<long,TableRow>
             Triggers = -267; // BTree<PTrigger.TrigType,BTree<long,bool>> (T) 
         /// <summary>
@@ -53,6 +54,9 @@ namespace Pyrrho.Level3
         internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
+        internal BTree<long,(CList<long>,CList<long>)> rindexes =>
+            (BTree<long, (CList<long>,CList<long>)>)mem[RefIndexes] 
+            ?? BTree<long, (CList<long>,CList<long>)>.Empty;
         internal CTree<long, bool> tableChecks => 
             (CTree<long, bool>)mem[TableChecks]??CTree<long,bool>.Empty;
         internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>

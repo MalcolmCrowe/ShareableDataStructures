@@ -49,12 +49,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Deferred.cs" />
-    <Compile Include="Delivery.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="DelReport.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
     <Compile Include="GenBase.cs" />
     <Compile Include="NewOrder.cs">
       <SubType>UserControl</SubType>
@@ -66,9 +60,6 @@
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="StockLevel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
     <Compile Include="Tpcc.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -78,12 +69,6 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Delivery.resx">
-      <DependentUpon>Delivery.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="DelReport.resx">
-      <DependentUpon>DelReport.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="NewOrder.resx">
       <DependentUpon>NewOrder.cs</DependentUpon>
     </EmbeddedResource>
@@ -92,9 +77,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Payment.resx">
       <DependentUpon>Payment.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="StockLevel.resx">
-      <DependentUpon>StockLevel.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Tpcc.resx">
       <DependentUpon>Tpcc.cs</DependentUpon>

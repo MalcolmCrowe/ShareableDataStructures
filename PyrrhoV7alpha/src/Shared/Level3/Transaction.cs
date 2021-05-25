@@ -56,7 +56,6 @@ namespace Pyrrho.Level3
         public const long Executables = 0x6000000000000000;
         // actual start of Heap is given by db.nextPrep for the connection (see Context(db))
         public const long HeapStart = 0x7000000000000000; //so heap starts after prepared statements
-        readonly Database parent;
         /// <summary>
         /// As created from the Database: 
         /// via db.mem below we inherit its objects, and the session user and role
@@ -69,14 +68,10 @@ namespace Pyrrho.Level3
             :base(db.loadpos,db.mem+(NextId,t+1)
             +(NextStmt,db.nextStmt)+(AutoCommit,auto)
             +(CursorSpecification._Source,sce))
-        {
-            parent = db;
-        }
+        { }
         protected Transaction(Transaction t,long p, BTree<long, object> m)
             : base(p, m)
-        {
-            parent = t.parent;
-        }
+        { }
         internal override Basis New(BTree<long, object> m)
         {
             return new Transaction(this,loadpos, m);
@@ -158,10 +153,6 @@ namespace Pyrrho.Level3
             cx.db += (NextPos, ph.ppos + 1);
             ph.Install(cx, lp);
         }
-        internal override Database Rollback(object e)
-        {
-            return parent.Rollback(e);
-        }
         /// <summary>
         /// We commit unknown users to the database if necessary for audit.
         /// There is a theoretical danger here that a conncurrent transaction will
@@ -189,10 +180,10 @@ namespace Pyrrho.Level3
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
                 && cx.etags==null)
-                return parent.Commit(cx);
+                return Rollback(cx);
             // check for the case of an ad-hoc user that does not need to commit
             if (physicals.Count == 1L && physicals.First().value() is PUser)
-                return parent.Commit(cx);
+                return Rollback(cx);
             for (var b=cx.deferred.First();b!=null;b=b.Next())
             {
                 var ta = b.value();
@@ -238,11 +229,11 @@ namespace Pyrrho.Level3
                 }
             }
             lock (wr.file)
-            {
-                db = databases[name]; // may have moved on
+            { 
+                db = databases[name]; // may have moved on 
                 wr.stmtPos = db.nextStmt;
                 wr.oldStmt = wr.stmtPos;
-                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos);
+                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos); 
                 rdr.locked = true;
                 since = rdr.GetAll(); // resume where we had to stop above, use new file length
                 for (var pb = since.First(); pb != null; pb = pb.Next())
@@ -271,23 +262,31 @@ namespace Pyrrho.Level3
                     }
                 }
                 if (physicals.Count == 0)
-                    return parent.Commit(cx);
+                    return Rollback(cx);
                 var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
                         nextPos, cx);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
                 var (tr, _) = pt.Commit(wr, this);
                 for (var b = physicals.First(); b != null; b = b.Next())
+                {
                     (tr, _) = b.value().Commit(wr, tr);
+                    if (PyrrhoStart.TutorialMode)
+                        Console.WriteLine("Committed " + b.value());
+                }
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, wr.cx.nextStmt);
+                wr.cx.db += (LastModified, System.IO.File.GetLastWriteTimeUtc(name));
                 cx.etags?.Clear();
                 wr.cx.result = -1L;
-                // we install the new version of the database, and then 
-                // add the Connection information for the session
-                return wr.cx.db.Install(wr.Length) + (_Connection, conn);
+                var r = new Database(wr.Length,wr.cx.db.mem);
+                lock (_lock)
+                    databases += (name, r);
+                r += (_Connection, conn);
+                cx.db = r;
+                return r;
             }
         }
         /// <summary>

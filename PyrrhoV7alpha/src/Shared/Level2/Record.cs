@@ -47,7 +47,10 @@ namespace Pyrrho.Level2
         /// A relative URI (base is given in PImportTransaction)
         /// </summary>
         public string provenance;
-        long triggeredAction;
+        // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
+        public CTree<CList<long>,long> inC = CTree<CList<long>,long>.Empty;
+        public BTree<long,(CList<long>,CList<long>)> riC = BTree<long,(CList<long>,CList<long>)>.Empty;
+        public long triggeredAction;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
@@ -62,6 +65,8 @@ namespace Pyrrho.Level2
         {
             if (cx.tr.triggeredAction > 0)
                 triggeredAction = cx.tr.triggeredAction;
+            inC = tb.indexes;
+            riC = tb.rindexes;
         }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
@@ -201,6 +206,32 @@ namespace Pyrrho.Level2
                     if (((Alter)that).table.defpos == tabledefpos)
                         return new DBException("40079", tabledefpos, that, ct);
                     break;
+                case Type.Update:
+                case Type.Update1:
+                    {
+                        // conflict if our old values are referenced by a new foreign key
+                        var u = (Update)that;
+                        for (var b = riC.First(); b != null; b = b.Next())
+                        {
+                            var (cs, rs) = b.value();
+                            if (u.tabledefpos == b.key()
+                                && u.prevrec.MakeKey(rs).CompareTo(cs) == 0)
+                                throw new DBException("40014", u.prevrec.ToString());
+                        }
+                        goto case Type.Record;
+                    }
+                case Type.Record:
+                case Type.Record1:
+                case Type.Record2:
+                case Type.Record3:
+                    {
+                        // conflict if our new values conflict with a new key
+                        var rec = (Record)that;
+                        for (var b = inC.First(); b != null; b = b.Next())
+                            if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
+                                return new DBException("40026", ToString());
+                                break;
+                    }
             }
             return base.Conflicts(db, cx, that, ct);
         }

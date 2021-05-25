@@ -238,6 +238,9 @@ namespace Pyrrho.Level2
             {
                 var rx = (Index)cx.db.objects[x.refindexdefpos];
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
+                var rt = (Table)cx.db.objects[x.reftabledefpos];
+                rt += (Table.RefIndexes, tb.rindexes + (rt.defpos, (x.keys,rx.keys)));
+                cx.Install(rt, p);
                 cx.Install(rx,p);
             }
             var cs = CList<long>.Empty;

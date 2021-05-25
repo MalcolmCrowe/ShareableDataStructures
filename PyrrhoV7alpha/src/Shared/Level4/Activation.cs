@@ -466,7 +466,13 @@ namespace Pyrrho.Level4
                             if (tv.CompareTo(ov)!=0 && v.CompareTo(tv) != 0)// ISO9075 Note 116
                                 vs += (p, tv);
                         }
-                        if (vs.CompareTo(rc.vals) == 0)
+                        for (var b = vs.First(); b != null; b = b.Next())
+                        {
+                            var k = b.key();
+                            if (rc.vals[k] is TypedValue v && v.CompareTo(b.value()) == 0)
+                                vs -= k;
+                        }
+                        if (vs.Count == 0L)
                             return;
                         var nu = tgc._rec;
                         var u = (security == null) ?
@@ -501,7 +507,7 @@ namespace Pyrrho.Level4
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
-                        Add(new Delete1(rc, np, _cx));
+                        Add(new Delete1(rc, table, np, _cx));
                         _cx.db = db;
                         count++;
                         break;
