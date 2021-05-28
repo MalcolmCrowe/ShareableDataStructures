@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
             Indexes = -264, // CTree<CList<long>,long> cols,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
-            RefIndexes = -250, // CTree<long,(CList<long>,CList<long>)> rTable,cols,rcols
+            RefIndexes = -250, // BTree<long,(CList<long>,CList<long>)> rTable,cols,rcols
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
             TableCols = -332, // BTree<long,bool> TableColumn

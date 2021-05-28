@@ -29,14 +29,11 @@ namespace Pyrrho.Level3
             AutoCommit = -278, // bool
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
             Physicals = -250, // BTree<long,Physical>
-            ReadConstraint = -283, // BTree<long,ReadConstraint> Context has latest version
             StartTime = -217, // DateTime
             Step = -276, // long
             TriggeredAction = -288; // long
         public BTree<Sqlx, TypedValue> diagnostics =>
             (BTree<Sqlx,TypedValue>)mem[Diagnostics]??BTree<Sqlx, TypedValue>.Empty;
-        public BTree<long, ReadConstraint> rdC =>
-            (BTree<long, ReadConstraint>)mem[ReadConstraint] ?? BTree<long, ReadConstraint>.Empty;
         internal override long uid => (long)(mem[NextId]??-1L);
         public override long lexeroffset => uid;
         internal long step => (long)(mem[Step] ?? TransPos);
@@ -91,7 +88,7 @@ namespace Pyrrho.Level3
                 r = r+ (NextId,t+1)+(CursorSpecification._Source,sce);
             return r;
         }
-        public override Database RdrClose(Context cx)
+        public override Database RdrClose(ref Context cx)
         {
             cx.values = CTree<long, TypedValue>.Empty;
             cx.cursors = BTree<long, Cursor>.Empty;
@@ -99,11 +96,15 @@ namespace Pyrrho.Level3
             cx.results = BTree<long, long>.Empty;
             cx.obs = BTree<long, DBObject>.Empty;
             cx.result = -1L;
+            // but keep rdC, etags
             if (!autoCommit)
                 return Unheap(cx);
-            var r = cx.db.Commit(cx)+(NextPrep,nextPrep)+(LastModified,DateTime.UtcNow);
-            cx.etags?.Clear();
-            return r;
+            else
+            {
+                var r = cx.db.Commit(cx);
+                cx = new Context(r);
+                return r;
+            }
         }
         internal override int AffCount(Context cx)
         {
@@ -180,10 +181,10 @@ namespace Pyrrho.Level3
         {
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
                 && cx.etags==null)
-                return Rollback(cx);
+                return Rollback();
             // check for the case of an ad-hoc user that does not need to commit
             if (physicals.Count == 1L && physicals.First().value() is PUser)
-                return Rollback(cx);
+                return Rollback();
             for (var b=cx.deferred.First();b!=null;b=b.Next())
             {
                 var ta = b.value();
@@ -208,7 +209,6 @@ namespace Pyrrho.Level3
                 PTransaction pt = null;
                 if (ph.type == Physical.Type.PTransaction || ph.type == Physical.Type.PTransaction2)
                     pt = (PTransaction)ph;
-
                 for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
                 {
                     var ce = cb.value()?.Check(ph,pt);
@@ -262,7 +262,7 @@ namespace Pyrrho.Level3
                     }
                 }
                 if (physicals.Count == 0)
-                    return Rollback(cx);
+                    return Rollback();
                 var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
                         nextPos, cx);
                 cx.Add(pt);

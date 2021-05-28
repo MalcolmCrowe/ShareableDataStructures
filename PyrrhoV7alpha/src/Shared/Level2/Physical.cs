@@ -564,7 +564,7 @@ namespace Pyrrho.Level2
             }
             return rq;
         }
-        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        public override (Transaction,Physical) Commit(Writer wr, Transaction tr)
         {
             if (!committed)
             {

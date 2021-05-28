@@ -69,8 +69,7 @@ namespace Tpcc
                     else
                         Form1.wconflicts++;
                     lock(PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("Commit exception " + ex.Message
-                        + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("Commit exception " + ex.Message);
                     form.Rollback();
                 }
                 catch (Exception ex)
@@ -97,8 +96,7 @@ namespace Tpcc
                 mess = ex.Message;
                 Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 5 " + ex.Message);
                 form.Rollback();
             }
             catch (Exception ex)
@@ -157,8 +155,7 @@ namespace Tpcc
             {
                 mess = ex.Message;
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 1 " + ex.Message);
                 mess = ex.Message;
                 form.Rollback();
                 return true;
@@ -191,8 +188,7 @@ namespace Tpcc
             catch (TransactionConflict ex)
             {
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 2 " + ex.Message);
                 mess = ex.Message;
                 form.Rollback();
                 return true;
@@ -251,8 +247,7 @@ namespace Tpcc
             catch (TransactionConflict ex)
             {
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 3 " + ex.Message);
                 mess = ex.Message;
                 form.Rollback();
                 return true;
@@ -296,8 +291,7 @@ namespace Tpcc
             catch (TransactionConflict ex)
             {
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("New Order exception 4 " + ex.Message);
                 mess = ex.Message;
                 form.Rollback();
                 return true;
@@ -384,8 +378,7 @@ namespace Tpcc
                 var s = ex.Message;
                 Form1.wconflicts++;
                 lock (PyrrhoConnect.reqs)
-                    PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message 
-                    + " " + ex.info["WITH"]);
+                    PyrrhoConnect.reqs.WriteLine("Commit exception 1 "+ex.Message);
                 mess = s;
                 form.Rollback();
             }

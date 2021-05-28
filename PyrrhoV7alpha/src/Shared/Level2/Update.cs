@@ -100,10 +100,19 @@ namespace Pyrrho.Level2
                 case Type.Update1:
                 case Type.Update:
                     {
+                        // conflict if our old values are referenced by a new foreign key
                         var u = (Update)that;
+                        for (var b = u.riC.First(); b != null; b = b.Next())
+                        {
+                            var (cs, rs) = b.value();
+                            if (tabledefpos == b.key()
+                                && u.prevrec.MakeKey(rs).CompareTo(MakeKey(cs)) == 0)
+                                throw new DBException("40014", prevrec.ToString());
+                        }
+                        // conflict on columns in matching rows
                         if (defpos != u.defpos)
                             break;
-                        for (var b=fields.First();b!=null;b=b.Next())
+                        for (var b = fields.First(); b != null; b = b.Next())
                             if (u.fields.Contains(b.key()))
                                 return new DBException("40029", defpos, that, ct);
                         break;

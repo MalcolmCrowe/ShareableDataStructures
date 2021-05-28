@@ -454,10 +454,8 @@ namespace Pyrrho.Level3
                 throw new PEException("PE555");
             return (Domain)objects[types[dm]];
         }
-        public virtual Database RdrClose(Context cx)
+        public virtual Database RdrClose(ref Context cx)
         {
-            if (cx != null)
-                cx.db = this;
             return this;
         }
         /// <summary>
@@ -584,17 +582,13 @@ namespace Pyrrho.Level3
         /// </summary>
         internal virtual Database Commit(Context cx)
         {
-            var r = databases[name] + (_Connection, conn);
-            if (cx!=null)
-                cx.db = r;
-            return r;
+            return databases[name] + (_Connection, conn) 
+                + (NextPrep, nextPrep) + (LastModified, DateTime.UtcNow);
         }
-        internal Database Rollback(Context cx)
+        internal Database Rollback()
         {
-            var r = databases[name] + (_Connection, conn);
-            if (cx!=null)
-                cx.db = r;
-            return r;
+            return databases[name] + (_Connection, conn)
+                + (NextPrep, nextPrep);
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

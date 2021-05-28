@@ -741,9 +741,10 @@ namespace Pyrrho
                 db.Execute(cx, client.Request.HttpMethod, "H", cx.db.name, pathbits,
                     client.Request.Headers["Content-Type"], sb);
                 var ex = cx.etags.cons[cx.db.name];
-                cx.db.Commit(cx);
-                cx.etags.cons += (cx.db.name, ex);
-                woutput.SendResults(client.Response, db, cx, db.name, true);
+                var ocx = cx;
+                cx = new Context(cx.db.Commit(cx));
+                ocx.etags.cons += (ocx.db.name, ex);
+                woutput.SendResults(client.Response, db, ocx, db.name, true);
                 return;
             }
             catch (DBException e)

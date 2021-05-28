@@ -62,12 +62,7 @@ namespace Pyrrho.Level2
         }
         public Record(Table tb, CTree<long, TypedValue> fl, long pp, Context cx)
             : this(Type.Record, tb, fl, pp, cx) 
-        {
-            if (cx.tr.triggeredAction > 0)
-                triggeredAction = cx.tr.triggeredAction;
-            inC = tb.indexes;
-            riC = tb.rindexes;
-        }
+        { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
         /// </summary>
@@ -84,7 +79,11 @@ namespace Pyrrho.Level2
                 throw new DBException("2201C");
             fields = fl;
             if (t!=Type.Record3)
-                _classification = cx.db.user.classification; 
+                _classification = cx.db.user.classification;
+            if (cx.tr.triggeredAction > 0)
+                triggeredAction = cx.tr.triggeredAction;
+            inC = tb.indexes;
+            riC = tb.rindexes;
         }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
@@ -208,18 +207,6 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Update:
                 case Type.Update1:
-                    {
-                        // conflict if our old values are referenced by a new foreign key
-                        var u = (Update)that;
-                        for (var b = riC.First(); b != null; b = b.Next())
-                        {
-                            var (cs, rs) = b.value();
-                            if (u.tabledefpos == b.key()
-                                && u.prevrec.MakeKey(rs).CompareTo(cs) == 0)
-                                throw new DBException("40014", u.prevrec.ToString());
-                        }
-                        goto case Type.Record;
-                    }
                 case Type.Record:
                 case Type.Record1:
                 case Type.Record2:
@@ -227,7 +214,7 @@ namespace Pyrrho.Level2
                     {
                         // conflict if our new values conflict with a new key
                         var rec = (Record)that;
-                        for (var b = inC.First(); b != null; b = b.Next())
+                        for (var b = rec.inC.First(); b != null; b = b.Next())
                             if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
                                 return new DBException("40026", ToString());
                                 break;

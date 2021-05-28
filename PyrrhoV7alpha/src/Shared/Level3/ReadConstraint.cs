@@ -166,7 +166,7 @@ namespace Pyrrho.Level3
         public override CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
         {
             var cs = cu._srs.rdCols;
-            return (cs != rdcols) ? base.Add(cu) :
+            return (cs.CompareTo(rdcols)!=0) ? base.Add(cu) :
                 recs.Contains(cu._defpos) ? this :
                 new CheckSpecific(cu._srs.target, recs + (cu._defpos, true),cs);
         }

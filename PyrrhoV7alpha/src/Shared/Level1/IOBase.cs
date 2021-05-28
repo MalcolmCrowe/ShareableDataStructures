@@ -888,7 +888,7 @@ namespace Pyrrho.Level2
         internal Reader(Context cx) : base(cx.db,cx.db.loadpos)
         {
             var db = cx.db;
-            context = new Context(cx.db);
+            context = new Context(db);
             role = db.role;
             user = (User)db.objects[db.owner];
         }

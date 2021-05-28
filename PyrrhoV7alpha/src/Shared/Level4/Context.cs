@@ -140,11 +140,7 @@ namespace Pyrrho.Level4
         internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
         internal BTree<Audit,bool> auds = BTree<Audit,bool>.Empty;
         public int rconflicts = 0, wconflicts = 0;
-        /// <summary>
-        /// Create an empty context for the transaction 
-        /// </summary>
-        /// <param name="t">The transaction</param>
-        internal Context(Database db)
+        internal Context(Database db,Context cx=null)
         {
             next = null;
             cxid = db.lexeroffset;
@@ -153,7 +149,11 @@ namespace Pyrrho.Level4
             dbformat = db.format;
             parseStart = 0L;
             this.db = db;
-            rdC = (db as Transaction)?.rdC;
+            if (cx!=null && db is Transaction)
+            {
+                rdC = cx.rdC;
+                etags = cx.etags;
+            }
         }
         internal Context(Context cx)
         {

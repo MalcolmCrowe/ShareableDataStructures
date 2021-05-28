@@ -201,7 +201,7 @@ namespace Pyrrho
             dict.Add("40081", "Alter conflicts with drop of {0}");
             dict.Add("40082", "ETag validation failure");
             dict.Add("40083", "Secondary connection conflict on {0}");
-            dict.Add("40084", "Remote Transaction starttime conflict");
+            dict.Add("40084", "Remote object has just been changed");
             dict.Add("42000", "Syntax error at {0}");
             dict.Add("42101", "Illegal character {0}");
             dict.Add("42102", "Name cannot be null");

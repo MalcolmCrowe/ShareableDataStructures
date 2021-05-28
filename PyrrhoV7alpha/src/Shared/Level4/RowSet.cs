@@ -1142,12 +1142,12 @@ namespace Pyrrho.Level4
     internal class SelectedRowSet : RowSet
     {
         internal const long
-            RdCols = -462,  // BTree<long,bool>
+            RdCols = -462,  // CTree<long,bool>
             SQMap = -408; // CTree<long,Finder> SqlValue
         internal CTree<long, Finder> sQMap =>
             (CTree<long, Finder>)mem[SQMap];
-        internal BTree<long, bool> rdCols =>
-            (BTree<long, bool>)mem[RdCols] ?? BTree<long, bool>.Empty;
+        internal CTree<long, bool> rdCols =>
+            (CTree<long, bool>)mem[RdCols] ?? CTree<long, bool>.Empty;
         /// <summary>
         /// This constructor builds a rowset for the given Query
         /// directly using its defpos, rowType, where and match info.
@@ -1222,7 +1222,7 @@ namespace Pyrrho.Level4
             if (cx.db.autoCommit)
                 return this;
             // Construct rdCols for use in cx.rdC (see SelectedCursor)
-            var rc = BTree<long, bool>.Empty;
+            var rc = CTree<long, bool>.Empty;
             for (var b = rt.First(); b != null; b = b.Next())
             {
                 var p = sQMap[b.value()].col;

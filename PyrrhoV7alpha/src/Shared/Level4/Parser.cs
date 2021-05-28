@@ -53,13 +53,9 @@ namespace Pyrrho.Level4
         /// The current token
         /// </summary>
 		Sqlx tok;
-        /// <summary>
-        /// The constructor
-        /// </summary>
-        /// <param name="t">The transaction</param>
-        public Parser(Database da)
+        public Parser(Database da,Context _cx=null)
         {
-            cx = new Context(da);
+            cx = new Context(da,_cx);
             cx.db = da.Transact(da.nextId,da.source);
         }
         public Parser(Context c)
@@ -298,7 +294,7 @@ namespace Pyrrho.Level4
                     Next();
                     if (Match(Sqlx.WORK))
                         Next();
-                    cx.tr.Rollback(cx);
+                    cx = new Context(cx.tr.Rollback());
                     break;
                 case Sqlx.SELECT: 
                     cx.result = cx.db.lexeroffset; 
