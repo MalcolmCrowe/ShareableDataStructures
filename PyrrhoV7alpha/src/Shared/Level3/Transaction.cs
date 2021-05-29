@@ -102,7 +102,9 @@ namespace Pyrrho.Level3
             else
             {
                 var r = cx.db.Commit(cx);
+                var aff = cx.affected;
                 cx = new Context(r);
+                cx.affected = aff;
                 return r;
             }
         }

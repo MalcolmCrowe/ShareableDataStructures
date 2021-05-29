@@ -111,11 +111,11 @@ namespace Pyrrho.Level2
                         }
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
-                            break;
+                            return null; // do not call the base
                         for (var b = fields.First(); b != null; b = b.Next())
                             if (u.fields.Contains(b.key()))
                                 return new DBException("40029", defpos, that, ct);
-                        break;
+                        return null; // do not call the base
                     }
                 case Type.Alter3:
                     if (((Alter3)that).table.defpos == tabledefpos)

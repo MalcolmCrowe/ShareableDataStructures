@@ -212,12 +212,13 @@ namespace Pyrrho.Level2
                 case Type.Record2:
                 case Type.Record3:
                     {
-                        // conflict if our new values conflict with a new key
                         var rec = (Record)that;
+                        if (rec.tabledefpos != tabledefpos)
+                            break;
                         for (var b = rec.inC.First(); b != null; b = b.Next())
                             if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
                                 return new DBException("40026", ToString());
-                                break;
+                        break;
                     }
             }
             return base.Conflicts(db, cx, that, ct);

@@ -3,15 +3,8 @@ using Pyrrho.Common;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
-using System.Diagnostics.Eventing.Reader;
-using System.Data;
-using System.Runtime.Remoting.Channels;
-using System.Security.Policy;
-using System.Runtime.InteropServices;
-using System.Runtime.Remoting.Messaging;
 using System.Net;
 using System.IO;
-using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
