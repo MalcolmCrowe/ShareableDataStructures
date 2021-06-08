@@ -1047,11 +1047,10 @@ namespace Pyrrho
         /// <param name="tr"></param>
         internal void PutReport(Context cx)
         {
-            var tr = cx.db;
+            var tr = cx?.db ?? db;
             tcp.PutLong(tr.schemaKey);
-            tcp.PutInt((cx.affected==null)?0:(int)cx.affected.Count);
-            var dl = tr.name;
-            for (var tb = cx.affected?.First(); tb != null; tb = tb.Next())
+            tcp.PutInt((cx?.affected==null)?0:(int)cx.affected.Count);
+            for (var tb = cx?.affected?.First(); tb != null; tb = tb.Next())
                 for (var b = tb.value().First(); b != null; b = b.Next())
                 {
                     tcp.PutLong(b.key());
@@ -1240,7 +1239,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (29 May 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (8 June 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

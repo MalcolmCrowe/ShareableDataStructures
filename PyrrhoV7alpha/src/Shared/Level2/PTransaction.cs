@@ -127,8 +127,8 @@ namespace Pyrrho.Level2
 			ptrole = rdr.GetLong();
 			ptuser = rdr.GetLong();
 			pttime = rdr.GetLong();
-            if (rdr is Reader rr)
-                rr.context.Add(this);
+      //      if (rdr is Reader rr)
+       //         rr.context.Add(this);
 			// no base.Deserialise() for PTransaction
 		}
         /// <summary>

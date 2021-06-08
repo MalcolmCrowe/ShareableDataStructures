@@ -1426,13 +1426,6 @@ namespace Pyrrho.Common
             if (++off < v.Length)
                 _tail = new PRow(off, v);
         }
-        internal PRow Reverse()
-        {
-            PRow r = null;
-            for (var i = Length - 1; i >= 0; i--)
-                r = new PRow(this[i], r);
-            return r;
-        }
         public TypedValue this[int i]
         {
             get { if (i == 0) return _head; return _tail?[i - 1]; }

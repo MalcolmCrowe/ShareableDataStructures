@@ -127,9 +127,20 @@ namespace Pyrrho.Level2
                 case Type.Update1:
                     {
                         var u = (Update)that;
-                        if (((Update)that)._defpos == delpos)
+                        if (u._defpos == delpos)
                             return new DBException("40029", delpos, that, ct);
-                        goto case Type.Record;
+                        // conflict if we refer to the deleted row
+                        for (var b = u.inC.First(); b != null; b = b.Next())
+                            {
+                                var x = (Index)db.objects[b.value()];
+                                if (x.reftabledefpos==tabledefpos)
+                                {
+                                    var rx = (Index)db.objects[x.refindexdefpos];
+                                    if (!rx.rows.Contains(u.MakeKey(rx.keys)))
+                                        throw new DBException("40074", delpos, that, ct);
+                                }
+                            }
+                        break;
                     }
                 case Type.Record:
                 case Type.Record1:
@@ -137,12 +148,17 @@ namespace Pyrrho.Level2
                 case Type.Record3:
                     {
                         // conflict if we refer to the deleted row
+                        var dr = (TableRow)db.objects[delpos];
                         var r = (Record)that;
-                        for (var b = deC.First(); b != null; b = b.Next())
+                        for (var b = r.inC.First(); b != null; b = b.Next())
                         {
-                            var (cs, rs) = b.value();
-                            if (b.key() == r.tabledefpos && r.MakeKey(rs).CompareTo(delrec.MakeKey(cs)) == 0)
-                                throw new DBException("40027", delpos, that, ct);
+                            var x = (Index)db.objects[b.value()];
+                            if (x.reftabledefpos == tabledefpos)
+                            {
+                                var rx = (Index)db.objects[x.refindexdefpos];
+                                if (!rx.rows.Contains(r.MakeKey(rx.keys)))
+                                    throw new DBException("40027", delpos, that, ct);
+                            }
                         }
                         break;
                     }
@@ -164,7 +180,7 @@ namespace Pyrrho.Level2
                 if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
                 {
                     var delRow = tb.tableRows[delpos];
-                    ro = delRow.Cascade(cx.db, cx, ro, p);
+             //       ro = delRow.Cascade(cx.db, cx, ro, p); moved to TransitionRowSet
                     for (var b = tb.indexes.First(); b != null; b = b.Next())
                     {
                         var ix = (Index)cx.db.objects[b.value()];
@@ -233,8 +249,8 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var tb = cx.db.objects[tabledefpos] as Table;
-            var delRow = tb.tableRows[delpos] as TableRow;
-            delRow.Cascade(cx.db, cx, cx.role, p);
+            var delRow = tb.tableRows[delpos];
+    //        delRow.Cascade(cx.db, cx, cx.role, p); moved to TransitionRowSet
             for (var b = tb.indexes.First(); b != null; b = b.Next())
             {
                 var ix = (Index)cx.db.objects[b.value()];

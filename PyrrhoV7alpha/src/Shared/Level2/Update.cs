@@ -94,9 +94,20 @@ namespace Pyrrho.Level2
                     }
                 case Type.Delete:
                 case Type.Delete1:
-                    if (((Delete)that).delpos == defpos)
-                        return new DBException("40029", defpos, that, ct);
-                    break;
+                    {
+                        var de = (Delete)that;
+                        if (de.delpos == defpos)
+                            return new DBException("40029", defpos, that, ct);
+                        for (var b = de.deC.First();b!=null;b=b.Next())
+                        {
+                            var tb = (Table)db.objects[tabledefpos];
+                            var (cs, _) = b.value();
+                            var x = (Index)db.objects[tb.indexes[cs]];
+                            if (x.rows.Contains(x.MakeKey(fields)))
+                                return new DBException("40085", de.delpos);
+                        }
+                        break;
+                    }
                 case Type.Update1:
                 case Type.Update:
                     {
@@ -111,7 +122,7 @@ namespace Pyrrho.Level2
                         }
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
-                            return null; // do not call the base
+                            return null;
                         for (var b = fields.First(); b != null; b = b.Next())
                             if (u.fields.Contains(b.key()))
                                 return new DBException("40029", defpos, that, ct);
@@ -150,22 +161,22 @@ namespace Pyrrho.Level2
                     same = b.value().CompareTo(was.vals[b.key()]) == 0;
             if (same)
                 return now;
-            var ro = cx.db.role;
-            was.Cascade(cx.db, cx, ro, 0, Drop.DropAction.Restrict, fields);
+       //     var ro = cx.db.role; code moved to TableActivation
+       //     was.Cascade(cx.db, cx, ro, 0, Drop.DropAction.Restrict, fields);
             for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
             {
                 var x = (Index)cx.db.objects[xb.value()];
                 var ok = x.MakeKey(was.vals);
                 var nk = x.MakeKey(now.vals);
-                if (((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
-                    && x.rows.Contains(nk))
-                    throw new DBException("23000", "duplicate key", nk);
-                if (x.reftabledefpos >= 0)
-                {
-                    var rx = (Index)cx.db.objects[x.refindexdefpos];
-                    if (!rx.rows.Contains(nk))
-                        throw new DBException("23000", "missing foreign key ", nk);
-                }
+                /*        if (ok.CompareTo(nk)!=0 && ((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
+                            && x.rows.Contains(nk)) code moved to TableActivation
+                            throw new DBException("23000", "duplicate key", nk);
+                        if (x.reftabledefpos >= 0)
+                        { code moved to TableActivation
+                            var rx = (Index)cx.db.objects[x.refindexdefpos];
+                            if (!rx.rows.Contains(nk))
+                                throw new DBException("23000", "missing foreign key ", nk);
+                        } */
                 if (ok._CompareTo(nk) != 0)
                 {
                     x -= (ok, defpos);

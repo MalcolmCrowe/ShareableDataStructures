@@ -302,7 +302,7 @@ namespace Pyrrho.Level4
         {
             var s = (long)(mem[_Source] ?? -1L);
             if (cx.data[s] is RowSet rs && rs.finder.Contains(ua.vbl) 
-                && ((SqlValue)cx.obs[ua.val]).KnownBy(cx,rs))
+                && (ua.val==-1L || ((SqlValue)cx.obs[ua.val]).KnownBy(cx,rs)))
                     rs.AddUpdateAssignment(cx, ua);
             var r = this + (Query.Assig, assig + (ua, true));
             cx.data += (r.defpos, r);
@@ -4088,22 +4088,6 @@ namespace Pyrrho.Level4
             internal override Cursor _Fix(Context cx)
             {
                 throw new NotImplementedException();
-            }
-            internal void Validate(Database db,THttpDate st,Rvv rv)
-            {
-                if (st == null && rv == null)
-                    return;
-                var t = (Table)db.objects[_trs.target];
-                var tr = t.tableRows[_defpos]; 
-                if (st!=null)
-                {
-                    var delta = st.milli ? 10000 : 10000000;
-                    if (tr.time > st.value.Value.Ticks + delta)
-                        throw new DBException("40029", _defpos);
-                }
-                var rp = rv?[_trs.target]?[_defpos];
-                if (rp != null && tr.ppos > rp.Value)
-                    throw new DBException("40029", _defpos);
             }
         }
         // shareable as of 26 April 2021

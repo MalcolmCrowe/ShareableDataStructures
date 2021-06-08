@@ -181,6 +181,8 @@ namespace Pyrrho.Level3
         }
         internal override Database Commit(Context cx)
         {
+            if (cx == null)
+                return Rollback();
             if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
                 && cx.etags==null)
                 return Rollback();
@@ -885,9 +887,8 @@ namespace Pyrrho.Level3
                 throw new DBException("42111").Mix();
             if (rx.keys.Count != key.Count)
                 throw new DBException("22207").Mix();
-            var np = nextPos;
             var pc = new PIndex2(name.ident, tb.defpos, key, ct, rx.defpos, afn,0,
-                np,cx);
+                nextPos,cx);
             cx.Add(pc);
         }
     }

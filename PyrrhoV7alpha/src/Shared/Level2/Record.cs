@@ -49,6 +49,7 @@ namespace Pyrrho.Level2
         public string provenance;
         // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
         public CTree<CList<long>,long> inC = CTree<CList<long>,long>.Empty;
+        public CTree<long, bool> refs = CTree<long, bool>.Empty;
         public BTree<long,(CList<long>,CList<long>)> riC = BTree<long,(CList<long>,CList<long>)>.Empty;
         public long triggeredAction;
         public override long Dependent(Writer wr, Transaction tr)

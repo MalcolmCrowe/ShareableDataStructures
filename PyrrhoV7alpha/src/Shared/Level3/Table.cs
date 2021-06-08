@@ -408,8 +408,8 @@ namespace Pyrrho.Level3
             if (r == null)
   
                 r = new ReadConstraint(defpos,
-                    new CheckSpecific(defpos,
-                        new BTree<long, bool>(cu._defpos, true), cu._srs.rdCols));
+                    new CheckSpecific(
+                        new CTree<long, bool>(cu._defpos, true), cu._srs.rdCols));
             else
                 r = r + cu;
             cx.rdC += (defpos, r);

@@ -50,10 +50,20 @@ namespace Pyrrho.Level2
         public enum ConstraintType
         {
             NoType = 0, PrimaryKey = 1, ForeignKey = 2, Unique = 4, Desc = 8,
-            ConstrainUpdate = 16, CascadeUpdate = 32, SetDefaultUpdate = 64, SetNullUpdate = 128,
-            ConstrainDelete = 256, CascadeDelete = 512, SetDefaultDelete = 1024, SetNullDelete = 2048,
+            RestrictUpdate = 16, CascadeUpdate = 32, SetDefaultUpdate = 64, 
+            SetNullUpdate = 128, RestrictDelete = 256,
+            CascadeDelete = 512, SetDefaultDelete = 1024, SetNullDelete = 2048,
             SystemTimeIndex = 4096, ApplicationTimeIndex = 8192
         }
+        internal const ConstraintType Deletes = 
+            ConstraintType.RestrictDelete | ConstraintType.CascadeDelete |
+            ConstraintType.SetDefaultDelete | ConstraintType.SetNullDelete;
+        internal const ConstraintType Updates = 
+            ConstraintType.RestrictUpdate | ConstraintType.CascadeUpdate
+            | ConstraintType.SetDefaultUpdate | ConstraintType.SetNullUpdate;
+        public const ConstraintType Cascade = Deletes | Updates;
+        public const ConstraintType Reference = ConstraintType.ForeignKey
+            | ConstraintType.RestrictUpdate | ConstraintType.RestrictDelete;
         /// <summary>
         /// The referenced Index for a foreign key
         /// </summary>
@@ -90,7 +100,9 @@ namespace Pyrrho.Level2
         public PIndex(string nm, long tb, CList<long> cl,
             ConstraintType fl, long rx, long pp, Context cx) :
             this(Type.PIndex, nm, tb, cl, fl, rx, pp, cx)
-        { }
+        {
+
+        }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
         /// </summary>
@@ -106,6 +118,8 @@ namespace Pyrrho.Level2
             ConstraintType fl, long rx, long pp, Context cx) :
             base(t, pp, cx)
         {
+            if (fl == ConstraintType.ForeignKey || fl == ConstraintType.NoType)
+                fl = Reference;
             name = nm?? throw new DBException("42102").Mix();
             tabledefpos = tb;
             columns = cl;
@@ -239,7 +253,7 @@ namespace Pyrrho.Level2
                 var rx = (Index)cx.db.objects[x.refindexdefpos];
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 var rt = (Table)cx.db.objects[x.reftabledefpos];
-                rt += (Table.RefIndexes, tb.rindexes + (rt.defpos, (x.keys,rx.keys)));
+                rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, (rx.keys,x.keys)));
                 cx.Install(rt, p);
                 cx.Install(rx,p);
             }
@@ -457,10 +471,17 @@ namespace Pyrrho.Level2
             return base.Conflicts(db, cx, that, ct);
         }
         internal override void Install(Context cx, long p)
-
         {
             var x = (Index)cx.db.objects[index];
-            x += (Index.IndexConstraint, ctype);
+            var od = x.flags & PIndex.Deletes;
+            var ou = x.flags & PIndex.Updates;
+            var oc = x.flags & ~PIndex.Cascade;
+            var nd = ctype & PIndex.Deletes;
+            var nu = ctype & PIndex.Updates;
+            var nc = ctype & ~PIndex.Cascade;
+            var nt = (oc | nc) | ((nd == PIndex.ConstraintType.NoType) ? od : nd) 
+                | ((nu == PIndex.ConstraintType.NoType) ? ou : nu);
+            x += (Index.IndexConstraint, nt);
             cx.db += (x, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

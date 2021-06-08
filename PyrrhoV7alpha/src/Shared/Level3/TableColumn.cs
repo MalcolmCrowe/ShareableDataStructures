@@ -495,104 +495,33 @@ namespace Pyrrho.Level3
         {
             return new TableRow(r, r.vals -p);
         }
-        //Handle restrict/cascade for Delete and Update
-        internal Role Cascade(Database db, Context cx, Role ro, long p,
-            Drop.DropAction a = 0, BTree<long, TypedValue> u = null)
+        internal void Cascade(TableActivation cx, BTree<long, TypedValue> u = null)
         {
-            if (a != 0)
-                cx.db += (Database.Cascade, true);
-            var ta = (Table)db.objects[tabledefpos];
-            var px = ta.FindPrimaryIndex(db);
-            for (var b = ro.dbobjects.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value()] is Table tb)
-                    for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
+            var db = cx.db;
+            var rx = (Index)db.objects[cx._fm.defpos];
+            var _rx = (Index)db.objects[rx.refindexdefpos];
+            var pk = _rx.MakeKey(vals);
+            if (u != null)
+                for (var xb = _rx.keys.First(); xb != null; xb = xb.Next())
+                {
+                    var p = xb.value();
+                    var q = rx.keys[xb.key()];
+                    TypedValue v = TNull.Value;
+                    switch (rx.flags&PIndex.Updates)
                     {
-                        var rx = (Index)cx.db.objects[xb.value()];
-                        if (rx == null || rx.reftabledefpos != tabledefpos)
-                            continue;
-                        var x = (Index)db.objects[rx.refindexdefpos];
-                        var pk = MakeKey(x.keys);
-                        if (!rx.rows.Contains(pk))
-                            continue;
-                        var ca = rx.flags;
-                        if (u==null) 
-                            ca &= (PIndex.ConstraintType.CascadeDelete
-                                |PIndex.ConstraintType.SetDefaultDelete
-                                |PIndex.ConstraintType.SetNullDelete);
-                        else
-                            ca &= (PIndex.ConstraintType.CascadeUpdate 
-                                | PIndex.ConstraintType.SetDefaultUpdate
-                                | PIndex.ConstraintType.SetNullUpdate);
-                        PRow dk = null;
-                        if (ca == PIndex.ConstraintType.SetDefaultDelete ||
-                            ca == PIndex.ConstraintType.SetDefaultUpdate)
-                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                                dk = new PRow(cx.obs[kb.value()].Eval(cx), dk);
-                        if (db is Transaction && ca==0 && a==0)
-                            throw new DBException("23000", "RESTRICT - foreign key in use", pk);
-                        cx.db += (Database.Cascade, true);
-                        var rt = (Table)cx.db.objects[rx.tabledefpos];
-                        for (var d = rx.rows.PositionAt(pk); d != null && d.key()._CompareTo(pk) == 0; d = d.Next())
-                            if (d.Value() != null)
-                            {
-                                var dp = d.Value().Value;
-                                var rr = rt.tableRows[dp];  
-                                if (ca == PIndex.ConstraintType.CascadeDelete)
-                                {
-                                    for (var rb = rt.indexes.First(); rb != null; rb = rb.Next())
-                                    {
-                                        var ix = (Index)cx.db.objects[rb.value()];
-                                        var inf = ix.rows.info;
-                                        var key = rr.MakeKey(ix);
-                                        ix -= key;
-                                        if (ix.rows == null)
-                                            ix += (Index.Tree, new MTree(inf));
-                                        cx.db += (ix, cx.db.loadpos);
-                                    }
-                                    rt -= dp;
-                                }
-                                else
-                                {
-                                    var rz = rr;
-                                    var pb = px.keys.First();
-                                    var ok = rr.MakeKey(rx);
-                                    for (var fb = rx.keys.First(); pb!=null && fb != null; 
-                                        pb=pb.Next(),fb = fb.Next())
-                                    {
-                                        var q = pb.value();
-                                        TypedValue v = TNull.Value;
-                                        if (u?.Contains(q)!=false)
-                                        {
-                                            switch (ca)
-                                            {
-                                                case PIndex.ConstraintType.CascadeUpdate:
-                                                    v = u[q]; break;
-                                                case PIndex.ConstraintType.SetDefaultDelete:
-                                                case PIndex.ConstraintType.SetDefaultUpdate:
-                                                    v = dk[fb.key()];
-                                                    break;
-                                                    // otherwise SetNull cases
-                                            }
-                                            var tc = fb.value();
-                                            rr += (tc, v);
-                                        }
-                                    }
-                                    if (rr != rz)
-                                    {
-                                        var nk = rr.MakeKey(rx);
-                                        rt += rr;
-                                        rx -= (ok, rr.defpos);
-                                        if (nk != null && nk._head!=TNull.Value)
-                                            rx += (nk, rr.defpos);
-                                    }
-                                }
-                                cx.db += (rx, cx.db.loadpos);
-                                cx.Add(rx);
-                            }
-                        cx.db += (rt, cx.db.loadpos);
-                        cx.Add(rt);
+                        case PIndex.ConstraintType.CascadeUpdate:
+                            v = u[p]; break;
+                        case PIndex.ConstraintType.SetDefaultUpdate:
+                            v = ((DBObject)db.objects[p]).domain.defaultValue; break;
                     }
-            return ro;
+                    cx.updates += (q,new UpdateAssignment(q,v));
+                }
+            if ((cx._tty==PTrigger.TrigType.Delete && rx.flags.HasFlag(PIndex.ConstraintType.RestrictDelete))
+                || (cx._tty==PTrigger.TrigType.Update && rx.flags.HasFlag(PIndex.ConstraintType.RestrictUpdate)))
+                throw new DBException("23000", "RESTRICT - foreign key in use", pk);
+            for (var d = cx._trs.First(cx); d != null; d = d.Next(cx))
+                if (rx.MakeKey(d.values).CompareTo(pk) == 0)
+                        cx.EachRow();
         }
         public PRow MakeKey(Index x)
         {

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -31,24 +30,32 @@ namespace Pyrrho.Level3
     internal class ReadConstraint
     {
         public readonly long tabledefpos;
-		public readonly CheckUpdate check;
-        /// <summary>
-        /// Constructor: a new empty readconstraint for the table
-        /// </summary>
-        /// <param name="cx">the current context</param>
-        /// <param name="d">the object in question</param>
-		internal ReadConstraint(long d,CheckUpdate c)
+		public readonly CheckUpdate check = null;
+        public ReadConstraint(Context cx, long d, RowSet rs, Index index, PRow match) 
+            : this(d,_Check(cx,rs,index,match))
+        { }
+        internal ReadConstraint(long tb,CheckUpdate ch)
         {
-            tabledefpos = d;
-            check = c;
+            tabledefpos = tb;
+            check = ch;
+        }
+        static CheckUpdate _Check(Context cx,RowSet rs,Index index,PRow match)
+        {
+            var cs = CTree<long,bool>.Empty;
+            var n = (rs.display == 0) ? int.MaxValue : rs.display;
+            if (cx.exec is SelectStatement)
+                for (var b = rs.rt.First(); b != null && b.key() < n; b = b.Next())
+                    cs += (b.value(), true);
+            var rq = index?.rows?.Get(match);
+            return (rq == null) ? new CheckUpdate(cs) : new CheckSpecific(rq.Value, cs);
         }
         public static ReadConstraint operator +(ReadConstraint rc,
             SelectedRowSet.SelectedCursor cu)
         {
             return (rc.check != null) ? new ReadConstraint(rc.tabledefpos, rc.check.Add(cu))
             : new ReadConstraint(rc.tabledefpos, // first constraint on this table
-                new CheckSpecific(rc.tabledefpos, cu._srs.rdCols, // therefore specific
-                    new BTree<long, bool>(cu._defpos, true)));
+                new CheckSpecific(cu._srs.rdCols, // therefore specific
+                    new CTree<long, bool>(cu._defpos, true)));
         }
         /// <summary>
         /// Examine the consequences of changes to the object
@@ -80,24 +87,22 @@ namespace Pyrrho.Level3
     /// </summary>
 	internal class CheckUpdate
     {
-        public readonly long tabledefpos;
         /// <summary>
-        /// a list of read Columns
+        /// a list of ReadColumn
         /// </summary>
-		public readonly BTree<long, bool> rdcols;
+		public CTree<long,bool> rdcols = CTree<long,bool>.Empty;
         /// <summary>
         /// Constructor: a read operation involving the readConstraint's database object
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckUpdate(long tb,BTree<long,bool> rc)
+        public CheckUpdate(CTree<long,bool> rt)
         {
-            tabledefpos = tb;
-            rdcols = rc;
+            rdcols = rt;
         }
         public virtual CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
         {
             var cs = cu._srs.rdCols;
-            return (cs == rdcols)?this: new CheckUpdate(tabledefpos, cs+rdcols);
+            return (cs == rdcols)?this: new CheckUpdate(cs+rdcols);
         }
         /// <summary>
         /// Check an insert/update/deletion against the ReadConstraint
@@ -110,10 +115,6 @@ namespace Pyrrho.Level3
                 if (r.fields[c.key()] != null)
                     return new DBException("40006", c.key(),r,ct).Mix();
             return null;
-        }
-        public DBException Check(Delete r,PTransaction ct)
-        {
-            return (tabledefpos == r.tabledefpos) ? new DBException("40006", tabledefpos,r,ct).Mix() : null;
         }
         /// <summary>
         /// Add this readConstraint to the transaction profile
@@ -154,21 +155,24 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of Row (from MakeKey)
         /// </summary>
-		public readonly BTree<long, bool> recs = BTree<long, bool>.Empty;
+		public readonly CTree<long, bool> recs = CTree<long, bool>.Empty;
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="cx">The context</param>
-        public CheckSpecific(long tb,BTree<long,bool> rs,BTree<long,bool> cs) : base(tb,cs) 
+        public CheckSpecific(CTree<long,bool> rs,CTree<long,bool> cs) : base(cs) 
         {
             recs = rs;
         }
+        public CheckSpecific(long rp, CTree<long, bool> cs) 
+            : this(new CTree<long,bool>(rp,true),cs)
+        { }
         public override CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
         {
             var cs = cu._srs.rdCols;
             return (cs.CompareTo(rdcols)!=0) ? base.Add(cu) :
                 recs.Contains(cu._defpos) ? this :
-                new CheckSpecific(cu._srs.target, recs + (cu._defpos, true),cs);
+                new CheckSpecific(recs + (cu._defpos, true),cs);
         }
         /// <summary>
         /// Test for conflict against a given insert/update/deletion
@@ -218,7 +222,7 @@ namespace Pyrrho.Level3
         /// Constructor for a local database
         /// </summary>
         /// <param name="cx">The context</param>
-        public BlockUpdate(long tb) : base(tb,BTree<long,bool>.Empty) { }
+        public BlockUpdate() : base(CTree<long,bool>.Empty) { }
         /// <summary>
         /// If we have a list of TableColumns use them.
         /// Otherwise signal transaction conflict on a change to our table
@@ -229,7 +233,7 @@ namespace Pyrrho.Level3
         {
             if (rdcols != BTree<long,bool>.Empty)
                 return base.Check(r,ct);
-            return (tabledefpos==r.tabledefpos)? new DBException("40008", tabledefpos,r,ct).Mix():null;
+            return new DBException("40008", r.tabledefpos,r,ct).Mix();
         }
         /// <summary>
         /// Add this readConstraint to the transaction profile
@@ -247,7 +251,7 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            return "-" + tabledefpos;
+            return "-";
         }
     }
 

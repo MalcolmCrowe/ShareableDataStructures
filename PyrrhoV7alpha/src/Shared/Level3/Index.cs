@@ -234,8 +234,7 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var tb = (Table)nd.objects[tabledefpos];
-            if (tb != null)
+            if (nd.objects[tabledefpos] is Table tb)
             {
                 var xs = CTree<CList<long>, long>.Empty;
                 var ks = CTree<long, bool>.Empty;
@@ -250,6 +249,18 @@ namespace Pyrrho.Level3
                 tb += (Table.Indexes, xs);
                 tb += (Table.TableCols, ks);
                 nd += (tb, p);
+            }
+            if (nd.objects[reftabledefpos] is Table rt)
+            {
+                var xs = BTree<long,(CList<long>,CList<long>)>.Empty;
+                for (var b = rt.rindexes.First(); b != null; b = b.Next())
+                    if (b.key() != tabledefpos)
+                    {
+                        var cs = b.key();
+                        xs += (cs, b.value());
+                    }
+                rt += (Table.RefIndexes, xs);
+                nd += (rt, p);
             }
             return base.Drop(d, nd, p);
         }

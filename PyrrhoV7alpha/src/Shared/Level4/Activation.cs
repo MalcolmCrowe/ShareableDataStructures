@@ -157,7 +157,7 @@ namespace Pyrrho.Level4
         internal PTrigger.TrigType _tty; // may be Insert
         internal int count = 0;
         internal TargetActivation(Context cx, RowSet fm, PTrigger.TrigType tt)
-            : base(cx, "")
+            : base(cx,"")
         {
             _cx = cx;
             _tty = tt; // guaranteed to be Insert, Update or Delete
@@ -268,21 +268,19 @@ namespace Pyrrho.Level4
         /// These are for table before, table instead, table after, row before, row instead, row after.
         /// </summary>
         internal BTree<long, TriggerActivation> acts = null;
+        internal BTree<long, TableActivation> casc = BTree<long,TableActivation>.Empty;
         internal readonly CTree<PTrigger.TrigType,CTree<long, bool>> _tgs;
         internal Index index = null; // for autokey
         internal bool? trigFired = null;
         internal string prov = null;
         internal Level level = Level.D;
         internal SqlValue security = null;
-        internal THttpDate _st;
-        internal Rvv _rv;
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
-        internal TableActivation(Context cx,RowSet fm,PTrigger.TrigType tt,string pr=null,Level cl=null, 
-            THttpDate st = null, Rvv rv = null)
+        internal TableActivation(Context cx,RowSet fm,PTrigger.TrigType tt,string pr=null,Level cl=null)
             : base(cx,fm,tt)
         {
-            _cx = cx; _st = st; _rv = rv;
-            table = (Table)cx.obs[_tgt];
+            _cx = cx; 
+            table = (Table)obs[_tgt];
             _tgs = table.triggers;
             var trs = (TransitionRowSet)_trs;
             acts = BTree<long, TriggerActivation>.Empty;
@@ -298,6 +296,84 @@ namespace Pyrrho.Level4
                         ta.Frame(t);  
                         ta.obs += (t, td);
                     }
+            for (var b = table.rindexes.First(); b != null; b = b.Next())
+            {
+                var rt = (Table)cx.db.objects[b.key()];
+                var (cs, rs) = b.value();
+                var x = (Index)cx.db.objects[table.indexes[cs]];
+                var rx = (Index)cx.db.objects[rt.indexes[rs]];
+                var fl = CTree<long, TypedValue>.Empty;
+                var xm = BTree<long, long>.Empty;
+                var pb = rx.keys.First();
+                for (var rb = x.keys.First(); pb != null && rb != null;
+                    pb = pb.Next(), rb = rb.Next())
+                    xm += (rb.value(), pb.value());
+                for (var c = fm.matches.First(); c != null; c = c.Next())
+                {
+                    var sc = (SqlCopy)cx.obs[c.key()];
+                    fl += (xm[sc.copyFrom], c.value());
+                }
+                var rf = new IndexRowSet(cx, rt, rx, fl)
+                    + (RowSet.RSTargets, new CTree<long, long>(rt.defpos, trs.defpos));
+                data += (rf.defpos, rf);
+                obs += (rx.defpos, rx);
+                var tb = (Table)db.objects[rt.defpos];
+                obs += (tb.defpos, tb);
+                for (var xb = rf.rt.First(); xb != null; xb = xb.Next())
+                {
+                    var p = xb.value();
+                    obs += (p, (TableColumn)db.objects[p]);
+                }
+                nextHeap++;
+                var ra = new TableActivation(this, rf, tt);
+                ra._tty = PTrigger.TrigType.Update;
+                if (tt == PTrigger.TrigType.Update)
+                    switch (rx.flags & PIndex.Updates)
+                    {
+                       case PIndex.ConstraintType.CascadeUpdate:
+                            break;
+                        case PIndex.ConstraintType.SetDefaultUpdate:
+                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                            {
+                                var p = kb.value();
+                                var sc = (SqlValue)ra.obs[p];
+                                ra.updates += (p, new UpdateAssignment(p, sc.domain.defaultValue));
+                            }
+                            break;
+                        case PIndex.ConstraintType.SetNullUpdate:
+                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                            {
+                                var p = kb.value();
+                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
+                            }
+                            break;
+                    }
+                else if (tt==PTrigger.TrigType.Delete)
+                    switch (rx.flags & PIndex.Deletes)
+                    {
+                        case PIndex.ConstraintType.RestrictDelete:
+                        case PIndex.ConstraintType.CascadeDelete:
+                            ra._tty = PTrigger.TrigType.Delete;
+                            break;
+                        case PIndex.ConstraintType.SetDefaultDelete:
+                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                            {
+                                var p = kb.value();
+                                var sc = (SqlValue)ra.obs[p];
+                                ra.updates += (p, new UpdateAssignment(p, sc.domain.defaultValue));
+                            }
+                            break;
+                        case PIndex.ConstraintType.SetNullDelete:
+                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                            {
+                                var p = kb.value();
+                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
+                            }
+                            break;
+
+                    }
+                casc += (rx.defpos, ra);
+            }
             if (trs.indexdefpos >= 0)
                 index =  (Index)cx.db.objects[trs.indexdefpos];
             switch (tt & (PTrigger.TrigType)7)
@@ -398,16 +474,15 @@ namespace Pyrrho.Level4
                             trigFired = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
                         if (trigFired == true) // an insteadof trigger has fired
                             return;
-                        np = db.nextPos;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
                         var st = rc.subType;
                         Record r;
                         if (level != Level.D)
-                            r = new Record3(table, tgc.values, st, level, np, _cx);
+                            r = new Record3(table, tgc.values, st, level, db.nextPos, _cx);
                         else if (prov != null)
-                            r = new Record1(table, tgc.values, prov, np, _cx);
+                            r = new Record1(table, tgc.values, prov, db.nextPos, _cx);
                         else
-                            r = new Record(table, tgc.values, np, _cx);
+                            r = new Record(table, tgc.values, db.nextPos, _cx);
                         Add(r);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx.db)));
@@ -422,10 +497,11 @@ namespace Pyrrho.Level4
                 case PTrigger.TrigType.Update:
                     {
                         var vs = rc.vals;
+                        var was = tgc._rec;
                         for (var b = updates.First(); b != null; b = b.Next())
                         {
                             var ua = b.value();
-                            var tv = _cx.obs[ua.val].Eval(this);
+                            var tv = ua.Eval(this);
                             var tp = trs.transTarget[ua.vbl].col;
                             vs += (tp, tv);
                         }
@@ -455,8 +531,7 @@ namespace Pyrrho.Level4
                         // Step D
                         np = db.nextPos;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
-                        tgc.Validate(db, _st, _rv);
-                        var old = ((TRow)values[Trigger.OldRow]).values;
+                        var old = was.vals;
                         for (var b = tgc.dataType.rowType.First(); b != null; b = b.Next())
                         {
                             var p = b.value();
@@ -474,10 +549,12 @@ namespace Pyrrho.Level4
                         }
                         if (vs.Count == 0L)
                             return;
+                        for (var b=casc.First();b!=null;b=b.Next())
+                            was.Cascade(b.value(), vs);
                         var nu = tgc._rec;
                         var u = (security == null) ?
-                                new Update(nu, table, vs, np, _cx) :
-                                new Update1(nu, table, vs,(Level)security.Eval(_cx).Val(), np, _cx);
+                                new Update(nu, table, vs, db.nextPos, _cx) :
+                                new Update1(nu, table, vs,(Level)security.Eval(_cx).Val(), db.nextPos, _cx);
                         Add(u);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u,_cx.db)));
@@ -493,9 +570,7 @@ namespace Pyrrho.Level4
                         fi = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
                         if (fi == true)
                             return;
-                        np = db.nextPos;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
-                        tgc.Validate(db, _st, _rv);
                         rc = tgc._rec;
                         if (_cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
                             // If Delete is enforced by the table and the user has delete privilege for the table, 
@@ -504,10 +579,12 @@ namespace Pyrrho.Level4
                             ((!level.ClearanceAllows(rc.classification)) || level.minLevel > rc.classification.minLevel)
                             : level.minLevel > 0)
                             throw new DBException("42105");
+                        for (var b = casc.First(); b != null; b = b.Next())
+                            rc.Cascade(b.value());
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
-                        Add(new Delete1(rc, table, np, _cx));
+                        Add(new Delete1(rc, table, db.nextPos, _cx));
                         _cx.db = db;
                         count++;
                         break;
@@ -653,7 +730,7 @@ namespace Pyrrho.Level4
                             var ua = b.key();
                             _sql.Append(cm); cm = ",";
                             _sql.Append(((SqlValue)obs[ua.vbl]).name); _sql.Append("=");
-                            var tv = ((SqlValue)obs[ua.val]).Eval(_cx);
+                            var tv = ua.Eval(this);
                             if (tv.dataType.kind == Sqlx.CHAR)
                             {
                                 _sql.Append("'");
@@ -781,7 +858,7 @@ namespace Pyrrho.Level4
                         for (var b = updates.First(); b != null; b = b.Next())
                         {
                             var ua = b.value();
-                            var tv = _cx.obs[ua.val].Eval(_cx);
+                            var tv = ua.Eval(_cx);
                             vs += (ua.vbl, tv);
                         }
                         var np = _cx.db.nextPos;
@@ -792,7 +869,7 @@ namespace Pyrrho.Level4
                         for (var b = _rr.assig.First(); b != null; b = b.Next())
                         {
                             var ua = b.key();
-                            vs += (ua.vbl, ((SqlValue)obs[ua.val]).Eval(_cx));
+                            vs += (ua.vbl, ua.Eval(_cx));
                         }
                         var tb = _rr.rt.First();
                         for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), tb = tb.Next())

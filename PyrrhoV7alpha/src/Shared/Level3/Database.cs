@@ -136,7 +136,6 @@ namespace Pyrrho.Level3
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
-            Cascade = -227, // bool (only used for Transaction subclass)
             ColTracker = -318, // BTree<long,BTree<long,long>> colpos, ppos, dompos
             _Connection = -261, // BTree<string,string>: the session details
             Curated = -53, // long
@@ -184,7 +183,6 @@ namespace Pyrrho.Level3
         internal User user => (User)objects[_user]; 
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
-        internal bool cascade => (bool)(mem[Cascade] ?? false);
         internal int format => (int)(mem[Format] ?? 0);
         internal long schemaKey => (long)(mem[SchemaKey] ?? 0L);
         public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
@@ -551,7 +549,7 @@ namespace Pyrrho.Level3
         public virtual void Audit(Audit a,Context cx) { }
         internal virtual int AffCount(Context cx)
         {
-            var aff = cx.affected;
+            var aff = cx?.affected;
             if (aff == null)
                 return 0;
             var r = 0L;

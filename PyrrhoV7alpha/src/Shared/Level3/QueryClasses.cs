@@ -455,12 +455,17 @@ namespace Pyrrho.Level3
     internal class UpdateAssignment : Basis,IComparable
     {
         internal const long
+            Literal = -217, // TypedValue;
             Val = -237, // long SqlValue
             Vbl = -238; // long SqlValue
         public long vbl=>(long)(mem[Vbl]??-1L);
         public long val=>(long)(mem[Val]??-1L);
+        public TypedValue lit => (TypedValue)mem[Literal] ?? TNull.Value;
         public UpdateAssignment(long vb, long vl) : base(BTree<long, object>.Empty
             + (Vbl, vb) + (Val, vl))
+        { }
+        public UpdateAssignment(long vb, TypedValue vl) : base(BTree<long, object>.Empty
+    + (Vbl, vb) + (Literal, vl))
         { }
         protected UpdateAssignment(BTree<long, object> m) : base(m) { }
         public static UpdateAssignment operator+ (UpdateAssignment u,(long, object)x)
@@ -499,17 +504,28 @@ namespace Pyrrho.Level3
             var vb = cx.ObReplace(vbl, was, now);
             return new UpdateAssignment(vb, va);
         }
-        public int CompareTo(object obj)
+        public TypedValue Eval(Context cx)
         {
-            var that = (UpdateAssignment)obj;
-            return vbl.CompareTo(that.vbl);
+            return cx.obs[val]?.Eval(cx) ?? lit;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Vbl: ");sb.Append(DBObject.Uid(vbl));
-            sb.Append(" Val: "); sb.Append(DBObject.Uid(val));
+            if (val >= 0)
+            { sb.Append(" Val: "); sb.Append(DBObject.Uid(val)); }
+            else
+            { sb.Append("="); sb.Append(lit); }
             return sb.ToString();
+        }
+        public int CompareTo(object obj)
+        {
+            var that = (UpdateAssignment)obj;
+            int c = vbl.CompareTo(that.vbl);
+            if (c != 0)
+                return c;
+            c = val.CompareTo(that.val);
+            return (c!=0)? c: lit.CompareTo(that.lit);
         }
     }
 }
