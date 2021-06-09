@@ -218,7 +218,19 @@ namespace Pyrrho.Level2
                             break;
                         for (var b = rec.inC.First(); b != null; b = b.Next())
                             if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
-                                return new DBException("40026", ToString());
+                                return new DBException("40026", that);
+                        break;
+                    }
+                case Type.Delete1:
+                case Type.Delete:
+                    {
+                        var del = (Delete)that;
+                        if (del.deC.Contains(tabledefpos))
+                        {
+                            var (cs, rs) = del.deC[tabledefpos];
+                            if (del.delrec.MakeKey(cs).CompareTo(MakeKey(rs))==0)
+                                return new DBException("40075", that);
+                        }
                         break;
                     }
             }

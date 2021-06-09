@@ -872,7 +872,6 @@ CallingConventions.HasThis, new Type[0], null);
         {
             crypt.key = GetLong(); // nonce
             Send(0);
-#if !MONO1
             if (cs.Substring(0, 2) == "[{")
             {
                 var ss = cs.Substring(2, cs.Length - 4).Split(new string[] { "},{" }, StringSplitOptions.RemoveEmptyEntries);
@@ -883,18 +882,13 @@ CallingConventions.HasThis, new Type[0], null);
                 }
             }
             else
-#endif
                 SendConnectionString1(cs);
             crypt.Send(Connecting.Done);
         }
         void SendConnectionString1(string cs)
          {
              string[] fields = cs.Split(';');
-#if(NETCF)
-            crypt.Send(21, SystemState.OwnerName);
-#else
-             crypt.Send(Connecting.User, WindowsIdentity.GetCurrent().Name);
-#endif
+             crypt.Send(Connecting.User, Environment.UserDomainName + "\\" + Environment.UserName);
              for (int j = 0; j < fields.Length; j++)
              {
                  string f = fields[j];

@@ -101,7 +101,7 @@ namespace Pyrrho.Level2
                         for (var b = de.deC.First();b!=null;b=b.Next())
                         {
                             var tb = (Table)db.objects[tabledefpos];
-                            var (cs, _) = b.value();
+                            var (_, cs) = b.value();
                             var x = (Index)db.objects[tb.indexes[cs]];
                             if (x.rows.Contains(x.MakeKey(fields)))
                                 return new DBException("40085", de.delpos);
@@ -111,14 +111,23 @@ namespace Pyrrho.Level2
                 case Type.Update1:
                 case Type.Update:
                     {
-                        // conflict if our old values are referenced by a new foreign key
                         var u = (Update)that;
-                        for (var b = u.riC.First(); b != null; b = b.Next())
+                        if (u.riC.Contains(tabledefpos))
                         {
-                            var (cs, rs) = b.value();
-                            if (tabledefpos == b.key()
-                                && u.prevrec.MakeKey(rs).CompareTo(MakeKey(cs)) == 0)
-                                throw new DBException("40014", prevrec.ToString());
+                            var (cs, rs) = u.riC[tabledefpos];
+                            // conflict if our old values are referenced by a new foreign key
+                            if (u.prevrec.MakeKey(rs).CompareTo(MakeKey(cs)) == 0)
+                                throw new DBException("40014", u.prevrec.ToString());
+                        }
+                        var tb = (Table)cx.db.objects[u.tabledefpos];
+                        for (var b = tb.indexes.First(); b != null; b = b.Next())
+                        {
+                            // conflict if this updated one of our foreign keys
+                            var x = (Index)cx.db.objects[b.value()];
+                            for (var xb = ((Index)cx.db.objects[x.refindexdefpos])?.keys.First(); 
+                                    xb != null; xb = xb.Next())
+                                if (fields.Contains(xb.value()))
+                                    throw new DBException("40086", u.ToString());
                         }
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
