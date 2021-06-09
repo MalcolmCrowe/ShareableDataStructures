@@ -501,27 +501,38 @@ namespace Pyrrho.Level3
             var rx = (Index)db.objects[cx._fm.defpos];
             var _rx = (Index)db.objects[rx.refindexdefpos];
             var pk = _rx.MakeKey(vals);
+            var ku = BTree<long, UpdateAssignment>.Empty;
             if (u != null)
+            {
                 for (var xb = _rx.keys.First(); xb != null; xb = xb.Next())
                 {
                     var p = xb.value();
                     var q = rx.keys[xb.key()];
                     TypedValue v = TNull.Value;
-                    switch (rx.flags&PIndex.Updates)
+                    switch (rx.flags & PIndex.Updates)
                     {
                         case PIndex.ConstraintType.CascadeUpdate:
                             v = u[p]; break;
                         case PIndex.ConstraintType.SetDefaultUpdate:
                             v = ((DBObject)db.objects[p]).domain.defaultValue; break;
+                        default:
+                            continue;
                     }
-                    cx.updates += (q,new UpdateAssignment(q,v));
+                    ku += (q, new UpdateAssignment(q, v));
                 }
-            if ((cx._tty==PTrigger.TrigType.Delete && rx.flags.HasFlag(PIndex.ConstraintType.RestrictDelete))
-                || (cx._tty==PTrigger.TrigType.Update && rx.flags.HasFlag(PIndex.ConstraintType.RestrictUpdate)))
-                throw new DBException("23000", "RESTRICT - foreign key in use", pk);
+                if (ku == BTree<long, UpdateAssignment>.Empty) // not updating a key
+                    return;
+                cx.updates += ku;
+            }
+            var restrict = (cx._tty == PTrigger.TrigType.Delete && rx.flags.HasFlag(PIndex.ConstraintType.RestrictDelete))
+                || (cx._tty == PTrigger.TrigType.Update && rx.flags.HasFlag(PIndex.ConstraintType.RestrictUpdate));
             for (var d = cx._trs.First(cx); d != null; d = d.Next(cx))
                 if (rx.MakeKey(d.values).CompareTo(pk) == 0)
-                        cx.EachRow();
+                {
+                    if (restrict)
+                        throw new DBException("23000", "RESTRICT - foreign key in use", pk);
+                    cx.EachRow();
+                }
         }
         public PRow MakeKey(Index x)
         {
