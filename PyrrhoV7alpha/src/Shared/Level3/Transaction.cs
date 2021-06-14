@@ -281,7 +281,7 @@ namespace Pyrrho.Level3
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 wr.PutBuf();
                 df.Flush();
-                wr.cx.db += (NextStmt, wr.cx.nextStmt);
+                wr.cx.db += (NextStmt, cx.nextStmt);
                 wr.cx.db += (LastModified, System.IO.File.GetLastWriteTimeUtc(name));
                 cx.etags?.Clear();
                 wr.cx.result = -1L;
