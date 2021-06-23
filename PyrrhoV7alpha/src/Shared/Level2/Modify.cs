@@ -167,6 +167,7 @@ namespace Pyrrho.Level2
             cx.obs += (modifydefpos,ob);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            base.Install(cx, p);
         }
     }
 }

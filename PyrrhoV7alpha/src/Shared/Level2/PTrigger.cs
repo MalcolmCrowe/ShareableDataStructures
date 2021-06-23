@@ -283,6 +283,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
             cx.Install(tg, p);
+            base.Install(cx, p);
         }
         public override (Transaction,Physical) Commit(Writer wr, Transaction t)
         {

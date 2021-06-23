@@ -46,7 +46,7 @@ namespace Pyrrho.Level3
     internal class SqlValue : DBObject,IComparable
     {
         internal const long
-            _Columns = -299, // CList<long> SqlValue
+            ColExps = -299, // CList<long> SqlValue (expressions for column values)
             Left = -308, // long DBObject to allow for DOT
             LocalConstant = -192, // CTree<long,bool> RowSet
             _Meta = -307, // Metadata
@@ -55,9 +55,10 @@ namespace Pyrrho.Level3
         internal long left => (long)(mem[Left]??-1L); 
         internal long right => (long)(mem[Right]??-1L);
         internal long sub => (long)(mem[Sub]??-1L);
+        internal CList<long> colExps =>
+            (CList<long>)mem[ColExps] ?? CList<long>.Empty;
         internal BTree<Sqlx,object> meta => 
             (BTree<Sqlx,object>)mem[_Meta]??BTree<Sqlx,object>.Empty;
-        internal CList<long> columns => (CList<long>)mem[_Columns] ?? CList<long>.Empty;
         internal virtual long target => defpos;
         internal CTree<long, bool> localConstant =>
             (CTree<long, bool>)mem[LocalConstant] ?? CTree<long, bool>.Empty;
@@ -65,7 +66,7 @@ namespace Pyrrho.Level3
         public SqlValue(long dp,string nm="",Domain dt=null,CList<long> cols=null,
             BTree<long,object>m=null):
             base(dp,(m??BTree<long, object>.Empty)+(_Domain,dt??Domain.Content)
-                +(Name,nm)+(_Columns,cols??CList<long>.Empty))
+                +(Name,nm)+(ColExps,cols))
         { }
         protected SqlValue(Context cx,string nm,Domain dt,long cf=-1L)
             :base(cx.GetUid(),_Mem(cf)+(Name,nm)+(_Domain,dt))
@@ -89,11 +90,7 @@ namespace Pyrrho.Level3
         {
             return new SqlValue(defpos, m);
         }
-        internal virtual SqlValue Col(Context cx,int i)
-        {
-            throw new NotImplementedException();
-        }
-        internal virtual TypedValue Eval(Context cx,int i)
+        internal TypedValue Eval(Context cx,int i)
         {
             if (i < 0 || i >= domain.rowType.Length)
                 throw new DBException("22007");
@@ -134,13 +131,15 @@ namespace Pyrrho.Level3
         }
         internal override CTree<long, RowSet.Finder> Needs(Context cx,RowSet rs)
         {
+            if (rs is RestRowSet rrs && rrs.remoteCols.Has(defpos))
+                return CTree<long, RowSet.Finder>.Empty;
             var fi = rs.finder[defpos];
             return (rs.Knows(cx,fi.rowSet))?CTree<long,RowSet.Finder>.Empty
                 :new CTree<long, RowSet.Finder>(defpos, fi);
         }
         internal override bool LocallyConstant(Context cx,RowSet rs)
         {
-            return isConstant(cx) || rs.needed.Contains(defpos);
+            return isConstant(cx) || (rs.needed?.Contains(defpos)??false);
         }
         internal virtual SqlValue Reify(Context cx)
         {
@@ -254,7 +253,7 @@ namespace Pyrrho.Level3
         internal int PosFor(Context cx, string nm)
         {
             var i = 0;
-            for (var b = columns.First(); b != null; b = b.Next(), i++)
+            for (var b = colExps.First(); b != null; b = b.Next(), i++)
             {
                 var p = b.key();
                 var ci = cx.Inf(p);
@@ -279,13 +278,17 @@ namespace Pyrrho.Level3
             var re = (RestRowSet)cx.data[pr];
             var rt = ra.rt;
             var rc = re.remoteCols;
+            var ns = CTree<long,string>.Empty;
+            var nb = re.names.First();
+            for (var b = re.remoteCols.First(); b != null && nb != null; b = b.Next(), nb = nb.Next())
+                ns += (b.value(), nb.value());
             var gr = re.remoteGroups;
             var an = alias ?? name;
             if (gr.Has(defpos))
             {
                 var r0 = CList<long>.Empty;
                 var g0 = CList<long>.Empty;
-                (r0, rc, g0, map) = _ColsForRestView(cx, pa, pr, vi, r0, rc, g0, map);
+                (r0, rc, ns, g0, map) = _ColsForRestView(cx, pa, pr, r0, rc, ns, g0, map);
                 var sn = new SqlValue(cx.GetUid(), an, domain);
                 cx._Add(sn);
                 rt += sn.defpos;
@@ -293,7 +296,7 @@ namespace Pyrrho.Level3
             }
             else
             {
-                (rt, rc, gr, map) = _ColsForRestView(cx, pa, pr, vi, rt, rc, gr, map);
+                (rt, rc, ns, gr, map) = _ColsForRestView(cx, pa, pr, rt, rc, ns, gr, map);
                 var sn = ((SqlValue)cx.obs[defpos]);
                 an = sn.alias ?? sn.name;
             }
@@ -314,20 +317,41 @@ namespace Pyrrho.Level3
                 var s = cx.obs[p];
                 rd += (p, s.domain);
             }
+            var nm = CList<string>.Empty;
+            for (var b = rc.First(); b != null; b = b.Next())
+                nm += ns[b.value()];
             cx.data += (pa, ra + (_Domain, rd));
-            cx.data += (pr, re + (RestRowSet.RemoteCols, rc) + (RestRowSet.RemoteGroups, gr));
+            cx.data += (pr, re + (RestRowSet.RemoteCols, rc) + (RestRowSet.RemoteGroups, gr)
+                +(RestRowSet.Names,nm) + (RestRowSet.NamesMap,ns));
             return map;
         }
-        internal virtual (CList<long>,CList<long>,CList<long>,BTree<long,SqlValue>) _ColsForRestView(Context cx, long pa, long pr, 
-            BTree<Sqlx,object> vi,CList<long> rt,CList<long>rc,CList<long>rg,
+        /// <summary>
+        /// During Rowset review, if there are remote RowSets,
+        /// we modify aggregations, wheres and filters for better traversal
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <param name="pa">The current rowset</param>
+        /// <param name="pr">The remote rowset</param>
+        /// <param name="rt">The current rowType (returned as Item1)</param>
+        /// <param name="rc">The remote rowType (returned as Item2)</param>
+        /// <param name="ns">The remote names (returned as Item3)</param>
+        /// <param name="rg">The remote groups (returned as Item4)</param>
+        /// <param name="map">The set of newly introduced SqlValues (returned as Item5)</param>
+        /// <returns></returns>
+        internal virtual (CList<long>,CList<long>,CTree<long,string>,CList<long>,BTree<long,SqlValue>)
+            _ColsForRestView(Context cx, long pa, long pr, 
+            CList<long> rt,CList<long>rc,CTree<long,string> ns,CList<long>rg,
             BTree<long,SqlValue>map)
         {
             var ra = cx.data[pa];
             var rr = (RestRowSet)cx.data[pr];
             var gs = ((GroupSpecification)cx.obs[ra.groupSpec])?.sets;
-            if (gs!=null && gs.Has(defpos) && !rr.remoteGroups.Has(defpos))
-                rg+=defpos;
-            return (rt, rc, rg, map);
+            if (gs != null && gs.Has(defpos) && !rr.remoteGroups.Has(defpos))
+            {
+                rg += defpos;
+                ns += (defpos, alias ?? name);
+            }
+            return (rt, rc, ns, rg, map);
         }
         /// <summary>
         /// Eval is used to deliver the TypedValue for the current Cursor,
@@ -502,7 +526,7 @@ namespace Pyrrho.Level3
             t = Scan(t,right, VIC.OK | VIC.OV);
             t = Scan(t,sub, VIC.OK | VIC.OV);
             t = Scan(t, (long)(meta[Sqlx.INVERTS]??-1L), VIC.OK);
-            t = Scan(t, columns, VIC.OK | VIC.OV);
+            t = Scan(t, colExps, VIC.OK | VIC.OV);
             t = Scan(t, target, VIC.OK | VIC.OV);
             t = Scan(t, from, VIC.OK | VIC.OV);
             return t;
@@ -541,9 +565,15 @@ namespace Pyrrho.Level3
         {
             return 1;
         }
-        internal override CList<long> _Cols(Context cx)
+        internal override CList<string> _Cols(Context cx)
         {
-            return columns;
+            var r = CList<string>.Empty;
+            for (var b = colExps.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                r += cx.obs[b.value()].name;
+            }
+            return r;
         }
         internal override DBObject Relocate(long dp)
         {
@@ -558,7 +588,7 @@ namespace Pyrrho.Level3
             r += (Left, wr.Fixed(left)?.defpos??-1L);
             r += (Right, wr.Fixed(right)?.defpos??-1L);
             r += (_Domain, domain._Relocate(wr));
-            r += (_Columns, wr.Fix(columns));
+            r += (ColExps, wr.Fix(colExps));
             r += (Sub, wr.Fixed(sub)?.defpos??-1L);
             // don't worry about TableRow
             return r;
@@ -578,9 +608,9 @@ namespace Pyrrho.Level3
             var nd = domain.Fix(cx);
             if (nd!=domain)
             r += (_Domain,nd);
-            var nc = cx.Fix(columns);
-            if (columns!=nc)
-                r += (_Columns, nc);
+            var nc = cx.Fix(colExps);
+            if (colExps != nc)
+                r += (ColExps, nc);
             var ns = cx.obuids[sub] ?? sub;
             if (sub!=ns)
                 r += (Sub, ns);
@@ -657,12 +687,12 @@ namespace Pyrrho.Level3
         public long copyFrom => (long)mem[CopyFrom];
         public SqlCopy(long dp, Context cx, string nm, long fp, SqlValue cf,
             BTree<long, object> m = null)
-            : base(dp, _Mem(fp,m) + (CopyFrom, cf.defpos) + (_Columns, cf.columns)
+            : base(dp, _Mem(fp,m) + (CopyFrom, cf.defpos) + (ColExps,cf.colExps)
                   + (_Domain, cf.domain) + (Name, nm))
         {  }
         public SqlCopy(long dp, Context cx, string nm, long fp, long cp,
             BTree<long, object> m = null)
-            : base(dp, _Mem(fp, m) + (CopyFrom, cp) + (_Columns, cx.Cols(cp))
+            : base(dp, _Mem(fp, m) + (CopyFrom, cp) + (ColExps,((SqlValue)cx.obs[dp])?.colExps)
                  + (_Domain, (cx.obs[cp]??(DBObject)cx.db.objects[cp]).domain)+(Name,nm))
         { }
         static BTree<long,object> _Mem(long fp,BTree<long,object>m)
@@ -1245,15 +1275,18 @@ namespace Pyrrho.Level3
             return null;
         }
         const int ea = 1, eg = 2, la = 4, lr = 8, lg = 16, ra = 32, rr = 64, rg = 128;
-        internal override (CList<long>,CList<long>,CList<long>,BTree<long,SqlValue>) _ColsForRestView(Context cx, long pa, long pr,
-            BTree<Sqlx, object> vi,CList<long>rt,CList<long>rc,CList<long>gr,
-            BTree<long,SqlValue> map)
+        internal override (CList<long>, CList<long>, CTree<long, string>, CList<long>, BTree<long, SqlValue>) 
+            _ColsForRestView(Context cx, long pa, long pr,
+            CList<long> rt, CList<long> rc, CTree<long, string> ns, CList<long> gr,
+            BTree<long, SqlValue> map)
         {
             var rtl = CList<long>.Empty;
             var rcl = CList<long>.Empty;
+            var rnl = CTree<long, string>.Empty;
             var rgl = CList<long>.Empty;
             var rtr = CList<long>.Empty;
             var rcr = CList<long>.Empty;
+            var rnr = CTree<long, string>.Empty;
             var rgr = CList<long>.Empty;
             // we distinguish many cases here using the above constants: exp/left/right:agg/grouped/remote
             int cse = 0, csa = 0;
@@ -1273,13 +1306,13 @@ namespace Pyrrho.Level3
             if (lf.KnownBy(cx, re) && (!lf.isConstant(cx)))
             {
                 cse += lr;
-                (rtl,rcl,rgl,map) = lf._ColsForRestView(cx, pa, pr, vi, rtl, rcl, rgl,map);
+                (rtl,rcl,rnl,rgl,map) = lf._ColsForRestView(cx, pa, pr, rtl, rcl, rnl, rgl,map);
                 el = (SqlValue)cx.obs[left];
             }
             if (ri?.KnownBy(cx, re) == true && (!ri.isConstant(cx)))
             {
                 cse += rr;
-                (rtr,rcr,rgr,map) = ri._ColsForRestView(cx, pa,pr,vi, rtr, rcr, rgr,map);
+                (rtr,rcr,rnr,rgr,map) = ri._ColsForRestView(cx, pa,pr, rtr, rcr, rnr, rgr,map);
                 er = (SqlValue)cx.obs[right];
             }
             re = (RestRowSet)cx.data[pr];
@@ -1316,7 +1349,7 @@ namespace Pyrrho.Level3
                             re += (_Domain,re.domain + (sv.defpos, sv.domain));
                             re += (RestRowSet.RemoteCols,re.remoteCols + sv.defpos);
                         }
-                        return base._ColsForRestView(cx, pa, pr, vi,rt,rc,gr,map);
+                        return base._ColsForRestView(cx, pa, pr, rt,rc,ns,gr,map);
                     }
             }
             var se = (SqlValueExpr)cx.obs[defpos];
@@ -1324,6 +1357,7 @@ namespace Pyrrho.Level3
             var nn = Alias();
             var nl = el?.Alias();
             var nr = er?.Alias();
+            long p;
             switch (csa)
             {
                 case 1: // lr rr : QS->Cexp as exp ; CS->Left’ op right’ as Cexp
@@ -1336,8 +1370,9 @@ namespace Pyrrho.Level3
                     cx._Add(s1);
                     rt += st.defpos;
                     rc += s1.defpos;
+                    ns += (s1.defpos, nn);
                     map += (defpos, st);
-                    return (rt,rc,gr,map);
+                    return (rt, rc, ns, gr, map);
                 case 2: // lr: QS->Cleft op right as exp; CS->Left’ as Cleft 
                     // rel will have just one entry, rer will have 0 entries
                     se = new SqlValueExpr(cx.GetUid(),cx, kind,
@@ -1345,9 +1380,11 @@ namespace Pyrrho.Level3
                         +(_Alias,alias);
                     cx._Add(se);
                     rt += se.defpos;
-                    rc += rcl[0];
+                    p = rcl[0];
+                    rc += p;
+                    ns += (p, rnl[p]);
                     map += (defpos, se);
-                    return (rt,rc,gr,map);
+                    return (rt,rc,ns,gr,map);
                 case 3:// rr: QS->Left op Cright as exp; CS->Right’ as CRight
                     // rer will have just one entry, rel will have 0 entries
                     se = new SqlValueExpr(cx.GetUid(),cx, kind, lf,
@@ -1355,9 +1392,11 @@ namespace Pyrrho.Level3
                     +(_Alias,alias);
                     cx._Add(se);
                     rt += se.defpos;
-                    rc += rcr[0];
+                    p = rcr[0];
+                    rc += p;
+                    ns += (p, rnr[p]);
                     map += (defpos, se);
-                    return (rt,rc,gr,map);
+                    return (rt,rc,ns,gr,map);
                 case 4: // ea lr rr: QS->SCleft op SCright; CS->Left’ as Cleft,right’ as Cright
                     // gfl, gfr, rgl and rgr may have sevral entries: we need all of them
                     se = new SqlValueExpr(cx.GetUid(), cx, kind, el, er, mod)
@@ -1365,23 +1404,28 @@ namespace Pyrrho.Level3
                     cx._Add(se);
                     rt += rtl; 
                     rt += rtr;
-                    rc += rcl; 
+                    rc += rcl;
+                    ns += rnl;
                     rc += rcr;
+                    ns += rnr;
                     map += (defpos, se);
-                    return (rt,rc,gr,map);
+                    return (rt,rc,ns,gr,map);
                 case 5: // ea eg lr rr: QS->Cexp as exp  group by exp; CS->Left’ op right’ as Cexp group by Cexp
                     // rel and rer will have just one entry each
                     gr += defpos;
+                    ns += (defpos, alias??name);
                     goto case 1;
                 case 6: // ea eg lr: QS->Cleft op right as exp group by exp; CS-> Left’ as Cleft group by Cleft
                     gr += rcl;
+                    ns += rnl;
                     goto case 2;
                 case 7: // ea eg rr: QS->Left op Cright as exp group by exp; CS->Right’ as Cright group by Cright
                     gr += rcr;
+                    ns += rnr;
                     goto case 3;
                 case 8: // ea eg la lr ra rr: QS->SCleft op SCright as exp group by exp; CS->Left’ as Cleft,right’ as Cright group by Cleft,Cright
-                    gr += GroupOperands(cx, gr, rcl);
-                    gr = GroupOperands(cx, gr, rcr);
+                    (gr,ns) = GroupOperands(cx, gr, ns, rcl);
+                    (gr,ns) = GroupOperands(cx, gr, ns, rcr);
                     goto case 4;
                 case 9: // ea la lr rr rg: QS->SCleft op Cright as exp group by right; CS->Left’ as Cleft,right’ as Cright group by Cright
                     se = new SqlValueExpr(cx.GetUid(),cx, kind, el, er, mod)
@@ -1389,22 +1433,25 @@ namespace Pyrrho.Level3
                     cx._Add(se);
                     rt += rtl; 
                     rc += rcl;
+                    ns += rnl;
                     map += (defpos, se);
-                    return (rt,rc,gr,map);
+                    return (rt, rc, ns, gr, map);
                 case 10: // ea lr lg rg: QS->Left op SCright as exp group by left; CS->Left’ as Cleft,right’ as Cright group by Cleft
                     se = new SqlValueExpr(cx.GetUid(), cx, kind, el, er, mod)
                     +(_Alias,alias);
                     cx._Add(se);
                     rt += rtr; 
                     rc += rcr;
+                    ns += rnr;
                     map += (defpos, se);
-                    return (rt,rc,gr,map);
+                    return (rt,rc,ns,gr,map);
                 case 11: // ea la lr rg: QS->SCleft op right as exp group by right; CS->Left’ as Cleft
                     se = new SqlValueExpr(cx.GetUid(), cx, kind, el, ri, mod) 
                     + (_Alias,alias);
                     cx._Add(se);
                     rt += rtl; 
                     rc += rcl;
+                    ns += rnl;
                     map += (defpos, se);
                     break;
                 case 12: // ea lg ra: QS->Left op SCright as exp group by left; CS->Right’ as Cright
@@ -1413,6 +1460,7 @@ namespace Pyrrho.Level3
                     cx._Add(se);
                     rt += rtr; 
                     rc += rcr;
+                    ns += rnr;
                     break;
             }
             se = new SqlValueExpr(cx.GetUid(), cx, kind, el, er, mod)
@@ -1434,14 +1482,18 @@ namespace Pyrrho.Level3
                 if (!er.isConstant(cx))
                     rt += er.defpos;
             }
-            return (rt,rc,gr,map);
+            return (rt,rc,ns,gr,map);
         }
-        CList<long> GroupOperands(Context cx,CList<long> dst, CList<long> sce)
+        (CList<long>,CTree<long,string>) GroupOperands(Context cx,CList<long> dst, 
+            CTree<long,string> ns, CList<long> sce)
         {
             for (var b = sce.First(); b != null; b = b.Next())
-             if (cx.obs[b.value()].Operand(cx) is SqlValue sv)
-               dst += sv.defpos;
-            return dst;
+                if (cx.obs[b.value()].Operand(cx) is SqlValue sv)
+                {
+                    dst += sv.defpos;
+                    ns += (sv.defpos, sv.alias ?? sv.name);
+                }
+            return (dst,ns);
         }
         /// <summary>
         /// Examine a binary expression and work out the resulting type.
@@ -2106,9 +2158,9 @@ namespace Pyrrho.Level3
                     if (mod == Sqlx.BINARY) break; //JavaScript
                     dm = Domain.Bool; break;
                 case Sqlx.ASC: goto case Sqlx.PLUS; // JavaScript
-                case Sqlx.ASSIGNMENT: dm = right.domain; cs = left.columns;  nm = left.name; break;
+                case Sqlx.ASSIGNMENT: dm = right.domain; cs = left.colExps;  nm = left.name; break;
                 case Sqlx.COLLATE: dm = Domain.Char; break;
-                case Sqlx.COLON: dm = left.domain; nm = left.name; cs = right.columns;  break;// JavaScript
+                case Sqlx.COLON: dm = left.domain; nm = left.name; cs = right.colExps;  break;// JavaScript
                 case Sqlx.CONCATENATE: dm = Domain.Char; break;
                 case Sqlx.DESC: goto case Sqlx.PLUS; // JavaScript
                 case Sqlx.DIVIDE:
@@ -2120,7 +2172,7 @@ namespace Pyrrho.Level3
                         { dm = left.domain; break; }
                         dm = left.FindType(cx,Domain.UnionNumeric); break;
                     }
-                case Sqlx.DOT: dm = right.domain; cs = right.columns;
+                case Sqlx.DOT: dm = right.domain; cs = right.colExps;
                     if (left!=null && left.name!="" && right.name!="")
                         nm = left.name + "." + right.name; 
                     break;
@@ -2171,7 +2223,7 @@ namespace Pyrrho.Level3
                         dm = Domain.Content; break;
                 case Sqlx.RBRACK:
                         dm= new Domain(Sqlx.ARRAY, left.domain); break;
-                case Sqlx.SET: dm = left.domain; cs = left.columns;  nm = left.name; break; // JavaScript
+                case Sqlx.SET: dm = left.domain; cs = left.colExps;  nm = left.name; break; // JavaScript
                 case Sqlx.TIMES:
                     {
                         var dl = left.domain.kind;
@@ -2191,7 +2243,7 @@ namespace Pyrrho.Level3
                 case Sqlx.XMLATTRIBUTES: dm = Domain.Char; break;
                 case Sqlx.XMLCONCAT: dm = Domain.Char; break;
             }
-            return mm + (_Domain, dm) + (Name, nm) + (_Columns,cs);
+            return mm + (_Domain, dm) + (Name, nm) + (ColExps,cs);
         }
         internal override SqlValue Invert(Context cx)
         {
@@ -2509,7 +2561,7 @@ namespace Pyrrho.Level3
         /// <param name="v">the value of the literal</param>
         public SqlLiteral(long dp, Context cx, TypedValue v, Domain td=null,CList<long>cols=null) 
             : base(dp,BTree<long,object>.Empty+(_Domain,td??v.dataType)+(_Val, v)
-                  +(_Columns,cols??CList<long>.Empty))
+                  +(ColExps,cols))
         {
             if (dp == -1L)
                 throw new PEException("PE999");
@@ -2696,7 +2748,7 @@ namespace Pyrrho.Level3
                   + (Depth, 1 + _Depth(vs)))
         { }
         public SqlRow(long dp, Context cx, Domain xp, CList<long> vs, BTree<long, object> m = null)
-            : base(dp, _Inf(dp, cx, m, xp,vs) + (Dependents, _Deps(vs))
+            : base(dp, _Inf(dp, cx, m, xp,vs) + (Dependents, _Deps(vs)) 
                   + (Depth, cx.Depth(vs)))
         { }
         protected static BTree<long,object> _Inf(BTree<long, object> m, 
@@ -2714,7 +2766,7 @@ namespace Pyrrho.Level3
                 ch = ch || cd == null || sv.domain.CompareTo(cd) != 0;
                 dm += (cb?.value()??sv.defpos, sv.domain);
             }
-            return (m ?? BTree<long, object>.Empty)+(_Columns,cs) + (_Domain,ch?dm:xp);
+            return (m ?? BTree<long, object>.Empty)+ (ColExps,cs) + (_Domain,ch?dm:xp);
         }
         protected static BTree<long, object> _Inf(long dp, Context cx, BTree<long, object> m,
     Domain xp, CList<long> vs)
@@ -2729,7 +2781,7 @@ namespace Pyrrho.Level3
                 ch = ch || cd == null || ob.domain.CompareTo(cd) != 0; 
                 dm += (cb?.value()??ob.defpos, ob.domain);
             }
-            return (m ?? BTree<long, object>.Empty) + (_Columns, vs) + (_Domain, ch?dm:xp);
+            return (m ?? BTree<long, object>.Empty) + (ColExps, vs) + (_Domain, ch?dm:xp);
         }
         public static SqlRow operator+(SqlRow s,(long,object)m)
         {
@@ -2737,16 +2789,8 @@ namespace Pyrrho.Level3
         }
         public static SqlRow operator +(SqlRow s, SqlValue sv)
         {
-            return (SqlRow)s.New(s.mem + (_Columns,s.columns+sv.defpos))
-                +(_Domain, s.domain+(sv.defpos,sv.domain));
-        }
-        internal override SqlValue Col(Context cx, int i)
-        {
-            return (SqlValue)cx.obs[columns[i]];
-        }
-        internal override TypedValue Eval(Context cx, int i)
-        {
-            return Col(cx, i).Eval(cx);
+            return (SqlRow)s.New(s.mem + (ColExps,s.colExps+sv.defpos))
+                + (_Domain, s.domain+(sv.defpos,sv.domain));
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -2761,15 +2805,15 @@ namespace Pyrrho.Level3
             if (defpos < wr.Length)
                 return this;
             var r = (SqlRow)base._Relocate(wr);
-            r += (_Columns, wr.Fix(columns));
+            r += (ColExps, wr.Fix(colExps));
             return r;
         }
         internal override Basis Fix(Context cx)
         {
             var r = (SqlRow)base.Fix(cx);
-            var nv = cx.Fix(columns);
-            if (nv!=columns)
-            r += (_Columns, nv);
+            var nv = cx.Fix(colExps);
+            if (nv != colExps)
+                r += (ColExps, nv);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2780,7 +2824,7 @@ namespace Pyrrho.Level3
             var cs = CList<long>.Empty;
             var vs = BList<SqlValue>.Empty;
             var ch = false;
-            for (var b=columns.First();b!=null;b=b.Next())
+            for (var b=colExps.First();b!=null;b=b.Next())
             {
                 var v = (SqlValue)cx._Replace(b.value(),so,sv);
                 cs += v.defpos;
@@ -2791,7 +2835,7 @@ namespace Pyrrho.Level3
             if (ch)
             {
                 var dm = new Domain(Sqlx.ROW, vs);
-                r = r+ (_Columns, cs) +(_Domain,dm) + (Dependents, _Deps(vs))
+                r = r+ (ColExps, cs) + (_Domain,dm) + (Dependents, _Deps(vs))
                   + (Depth, 1 + _Depth(vs)); // don't use "new SqlRow" here as it won't work for SqlNewRow
             }
             r = (SqlRow)New(cx, r.mem);
@@ -2805,7 +2849,7 @@ namespace Pyrrho.Level3
             if (domain.kind != Sqlx.CONTENT)
                 return (this, fm);
             var cs = BList<SqlValue>.Empty;
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
             {
                 var c = (SqlValue)cx.obs[b.value()];
                 SqlValue v;
@@ -2823,27 +2867,27 @@ namespace Pyrrho.Level3
             var r = (SqlRow)base.AddFrom(cx, q);
             var cs = CList<long>.Empty;
             var ch = false;
-            for (var b=r.columns.First();b!=null;b=b.Next())
+            for (var b = r.colExps.First(); b != null; b = b.Next())
             {
-                var a = ((SqlValue)cx.obs[b.value()]).AddFrom(cx,q);
+                var a = ((SqlValue)cx.obs[b.value()]).AddFrom(cx, q);
                 if (a.defpos != b.value())
                     ch = true;
                 cs += a.defpos;
             }
             if (ch)
-                r += (_Columns, cs);
+                r += (ColExps, cs);
             return (SqlValue)cx.Add(r);
         }
         internal override bool KnownBy(Context cx, Query q)
         {
-            for (var b=columns.First();b!=null;b=b.Next())
+            for (var b=colExps.First();b!=null;b=b.Next())
                 if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx,q))
                         return false;
             return true;
         }
         internal override bool KnownBy(Context cx, RowSet r)
         {
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
                 if (!((SqlValue)cx.obs[b.value()]).KnownBy(cx, r))
                     return false;
             return true;
@@ -2856,7 +2900,7 @@ namespace Pyrrho.Level3
             if (cx.values[defpos] is TRow r && !r.IsNull)
                 return r;
             var vs = CTree<long,TypedValue>.Empty;
-            for (var b=columns.First();b!=null;b=b.Next())
+            for (var b=colExps.First();b!=null;b=b.Next())
             {
                 var s = b.value();
                 vs += (s, cx.obs[s].Eval(cx));
@@ -2865,25 +2909,25 @@ namespace Pyrrho.Level3
         }
         internal override bool aggregates(Context cx)
         {
-            for (var b = columns.First(); b!=null;b=b.Next())
+            for (var b = colExps.First(); b!=null;b=b.Next())
                 if (cx.obs[b.value()].aggregates(cx))
                     return true;
             return false;
         }
         internal override void CountStar(Context cx, long te)
         {
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
                 cx.obs[b.value()].CountStar(cx, te);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
-            for (var b=columns.First(); b!=null;b=b.Next())
+            for (var b=colExps.First(); b!=null;b=b.Next())
                 tg = cx.obs[b.value()].StartCounter(cx,rs,tg);
             return tg;
         }
         internal override BTree<long, Register> AddIn(Context cx,Cursor rb, BTree<long, Register> tg)
         {
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
                 tg = cx.obs[b.value()].AddIn(cx,rb, tg);
             return tg;
         }
@@ -2894,16 +2938,23 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override CTree<long, bool> Needs(Context cx, CTree<long, bool> qn)
         {
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
                 qn = ((SqlValue)cx.obs[b.value()]).Needs(cx,qn);
             return qn;
+        }
+        internal override CTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
+        {
+            var r = CTree<long, RowSet.Finder>.Empty;
+            for (var b = colExps.First(); b != null; b = b.Next())
+                r += cx.obs[b.value()].Needs(cx, rs);
+            return r;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             var cm = "";
             sb.Append(" [");
-            for (var b=columns.First();b!=null;b=b.Next())
+            for (var b=colExps.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(Uid(b.value()));
@@ -2916,7 +2967,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder();
             var cm = "";
             sb.Append(" (");
-            for (var b = columns.First(); b != null; b = b.Next())
+            for (var b = colExps.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(cx.obs[b.value()].ToString(sg,cs,cx));
@@ -2932,8 +2983,8 @@ namespace Pyrrho.Level3
     internal class SqlOldRow : SqlRow
     {
         internal SqlOldRow(Ident ic, Context cx, PTrigger tg, From fm)
-            : base(ic.iix, BTree<long, object>.Empty + (_Domain, fm.domain) 
-                  + (Name, ic.ident) + (_Columns, fm.rowType) + (_From, fm.defpos))
+            : base(ic.iix, BTree<long, object>.Empty + (_Domain, fm.domain)
+                   + (ColExps, fm.rowType) + (Name, ic.ident) + (_From, fm.defpos))
         { }
         protected SqlOldRow(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
@@ -2961,7 +3012,7 @@ namespace Pyrrho.Level3
         internal string label => (string)mem[Executable.Label];
         internal SqlNewRow(Ident ic, Context cx, PTrigger tg,From fm)
             : base(ic.iix, BTree<long, object>.Empty + (_Domain, fm.domain) + (Name, ic.ident)
-                  + (_Columns,fm.rowType)+(_From,fm.defpos)
+                   + (ColExps, fm.rowType) + (_From,fm.defpos)
                   +(Executable.Label,tg.name))
         { }
         protected SqlNewRow(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -3510,7 +3561,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="a">the array</param>
         public SqlValueArray(long dp,Context cx,Domain xp,CList<long> v)
-            : base(dp,BTree<long,object>.Empty+(_Domain,xp)+(_Columns,xp.rowType) +(Array,v))
+            : base(dp,BTree<long,object>.Empty+(_Domain,xp)+(Array,v))
         { }
         protected SqlValueArray(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlValueArray operator+(SqlValueArray s,(long,object)x)
@@ -4447,8 +4498,11 @@ namespace Pyrrho.Level3
             { 
                 var vs = CTree<long,TypedValue>.Empty;
                 var i = 0;
-                for (var b=domain.representation.First();b!=null;b=b.Next(),i++)
-                    vs += (b.key(),((SqlRow)cx.obs[sce]).Eval(cx,i));
+                for (var b = domain.representation.First(); b != null; b = b.Next(), i++)
+                {
+                    var p = ((SqlValue)cx.obs[sce]).colExps[i];
+                    vs += (b.key(), ((SqlValue)cx.obs[p]).Eval(cx));
+                }
                 return new TRow(domain,vs);
             }
             catch (DBException e)
@@ -4492,14 +4546,12 @@ namespace Pyrrho.Level3
             Monotonic = -341, // bool
             Op1 = -342, // long SqlValue
             Op2 = -343, // long SqlValue
-            Query = -344,//long Query
             _Val = -345,//long SqlValue
             Window = -346, // long WindowSpecification
             WindowId = -347; // long
         /// <summary>
         /// the query
         /// </summary>
-        internal long query => (long)(mem[Query]??-1L);
         public Sqlx kind => (Sqlx)mem[Domain.Kind];
         /// <summary>
         /// A modifier for the function from the parser
@@ -4631,7 +4683,7 @@ namespace Pyrrho.Level3
                 if (a.defpos != r.op2)
                     r += (cx, Op2, a.defpos);
             }
-            return base.AddFrom(cx,q);
+            return (SqlValue)cx.Add(r);
         }
         static CTree<long,bool> _Deps(SqlValue vl,SqlValue o1,SqlValue o2)
         {
@@ -4684,9 +4736,6 @@ namespace Pyrrho.Level3
             var vl = cx.ObReplace(r.val, so, sv);
             if (vl != r.val)
                 r += (cx, _Val, vl);
-            var q = cx.ObReplace(r.query, so, sv);
-            if (q != r.query)
-                r += (cx, Query, q);
             if (domain.kind==Sqlx.UNION || domain.kind==Sqlx.CONTENT)
             {
                 var dm = _Type(cx, kind, cx._Ob(val) as SqlValue, cx._Ob(op1) as SqlValue);
@@ -4736,10 +4785,10 @@ namespace Pyrrho.Level3
             ((SqlValue)cx.obs[op1])?.KnownBy(cx, r) != false &&
             ((SqlValue)cx.obs[op2])?.KnownBy(cx, r) != false;
         }
-        internal override (CList<long>,CList<long>,CList<long>,BTree<long,SqlValue>)
-            _ColsForRestView(Context cx, long pa, long pr,
-            BTree<Sqlx, object> vi,CList<long> rt,CList<long> rc,CList<long>gr,
-            BTree<long,SqlValue> map)
+        internal override (CList<long>, CList<long>, CTree<long, string>, CList<long>, 
+            BTree<long, SqlValue>) _ColsForRestView(Context cx, long pa, long pr,
+            CList<long> rt, CList<long> rc, CTree<long, string> ns, 
+            CList<long> gr,BTree<long, SqlValue> map)
         {
             var ac = Uid("C",defpos);
             var vl = (SqlValue)cx.obs[val];
@@ -4752,17 +4801,19 @@ namespace Pyrrho.Level3
                         var n1 = Uid("D",defpos);
                         var u = cx.GetUid(9);
                         var c0 = new SqlFunction(u, cx, Sqlx.SUM, vl, null, null, Sqlx.NO,
-                            new BTree<long, object>(_Alias, n0));
+                            new BTree<long, object>(_Alias, n0)+(_From,pa));
                         var c1 = new SqlFunction(u + 1, cx, Sqlx.COUNT, vl, null, null, Sqlx.NO,
-                            new BTree<long, object>(_Alias, n1));
+                            new BTree<long, object>(_Alias, n1)+(_From,pa));
                         cx.Add(c0);
                         cx.Add(c1);
                         rc = rc + c0.defpos + c1.defpos;
+                        ns = ns + (c0.defpos, c0.alias ?? c0.name)
+                            + (c1.defpos, c1.alias ?? c1.name);
                         var s0 = new SqlValue(u + 2, "", domain, null, BTree<long, object>.Empty
-                            + (Query, pa));
+                            + (_From, pa));
                         cx.Add(s0);
                         var s1 = new SqlValue(u + 3, "", Domain.Int, null, BTree<long, object>.Empty
-                            + (Query, pa));
+                            + (_From, pa));
                         cx.Add(s1);
                         var ct = (SqlValue)cx.Add(new SqlValueExpr(u + 4, cx, Sqlx.DIVIDE,
                                 (SqlValue)cx.Add(new SqlValueExpr(u + 5, cx, Sqlx.TIMES,
@@ -4772,9 +4823,11 @@ namespace Pyrrho.Level3
                                 (SqlValue)cx.Add(new SqlFunction(u + 8, cx, Sqlx.SUM, s1, null, null, Sqlx.NO)),
                                 Sqlx.NO, new BTree<long, object>(_Alias, an)));
                         rt = rt + s0.defpos + s1.defpos;
+                        ns = ns + (s0.defpos, s0.alias ?? s0.name)
+                            + (s1.defpos, s1.alias ?? s1.name);
                         cx._Add(ct); // check defpos==ct.defpos
                         map += (defpos, ct);
-                        return (rt,rc,gr,map);
+                        return (rt,rc,ns,gr,map);
                     }
                 case Sqlx.EXTRACT:
                     {
@@ -4783,11 +4836,12 @@ namespace Pyrrho.Level3
                         new BTree<long, object>(_Alias, an)));
                         SqlValue st = ct;
                         rc += ct.defpos;
+                        ns += (ct.defpos, an);
                         st = (SqlValue)cx.Add(new SqlValue(u + 1, "", Domain.Int, null, BTree<long, object>.Empty
-                            + (Query, pa)));
+                            + (_From, pa)));
                         rt += st.defpos;
                         map += (defpos, st);
-                        return (rt,rc,gr,map);
+                        return (rt,rc,ns,gr,map);
                     }
                 case Sqlx.STDDEV_POP:
                     {
@@ -4803,14 +4857,16 @@ namespace Pyrrho.Level3
                             (SqlValue)cx.Add(new SqlValueExpr(u + 2, cx, Sqlx.TIMES, vl, vl, Sqlx.NO)), null, null,
                             Sqlx.NO, new BTree<long, object>(_Alias, n2)));
                         rc = rc + c0.defpos + c1.defpos + c2.defpos;
+                        ns = ns + (c0.defpos, c0.alias ?? c0.name)
+                            + (c1.defpos, c1.alias ?? c1.name) + (c2.defpos, c2.alias ?? c2.name);
                         // c0 is SUM(x), c1 is COUNT, c2 is SUM(X*X)
                         // SQRT((c2-2*c0*xbar+xbar*xbar)/c1)
                         var s0 = (SqlValue)cx.Add(new SqlValue(u + 3, "", domain, null, BTree<long, object>.Empty
-                            + (Query, pa)));
+                            + (_From, pa)));
                         var s1 = (SqlValue)cx.Add(new SqlValue(u + 4, "", domain, null, BTree<long, object>.Empty
-                            + (Query, pa)));
+                            + (_From, pa)));
                         var s2 = (SqlValue)cx.Add(new SqlValue(u + 5, "", domain, null, BTree<long, object>.Empty
-                            + (Query, pa)));
+                            + (_From, pa)));
                         var xbar = (SqlValue)cx.Add(new SqlValueExpr(u + 6, cx, Sqlx.DIVIDE, s0, s1, Sqlx.NO));
                         var cu = (SqlValue)cx.Add(new SqlFunction(u + 7, cx, Sqlx.SQRT,
                             (SqlValue)cx.Add(new SqlValueExpr(u + 8, cx, Sqlx.DIVIDE,
@@ -4827,8 +4883,10 @@ namespace Pyrrho.Level3
                                 s1, Sqlx.NO)),
                             null, null, Sqlx.NO));
                         rt = rt + s0.defpos + s1.defpos + s2.defpos;
+                        ns = ns + (s0.defpos, s0.alias ?? s0.name) + (s1.defpos, s1.alias ?? s1.name)
+                            + (s2.defpos, s2.alias ?? s2.name);
                         map += (defpos, cu);
-                        return (rt,rc,gr,map);
+                        return (rt, rc, ns, gr, map);
                     }
                 default:
                     {
@@ -4837,49 +4895,54 @@ namespace Pyrrho.Level3
                             var nk = kind;
                             if (kind == Sqlx.COUNT)
                                 nk = Sqlx.SUM;
+                            var nm = kind.ToString() + "(" + vl.name + ") as " + ac;
+                            var st = new SqlValue(vl.defpos, ac, domain) 
+                                + (_Alias,alias??kind.ToString())+(_From,pa);
+                            cx._Add(st);
                             var o1 = (SqlValue)cx.obs[op1];
                             var o2 = (SqlValue)cx.obs[op2];
-                            var nm = kind.ToString() + "(" + vl.name + ") as "+ac;
-                            var st = new SqlValue(vl.defpos,nm,domain)
-                                +(_Alias,ac);
-                            cx._Add(st);
                             var sf = (SqlValue)cx.Add(new SqlFunction(defpos, cx, nk,
-                                st, o1, o2, mod, new BTree<long, object>(_Alias, alias??name)));
+                                st, o1, o2, mod, new BTree<long, object>(_Alias, alias ?? name)
+                                +(_From,pa)));
                             map += (defpos, sf);
                             var rcs = CList<long>.Empty;
                             var rd = Domain.TableType;
-                            for (var b=rc.First();b!=null;b=b.Next())
+                            for (var b = rc.First(); b != null; b = b.Next())
                             {
                                 var p = b.value();
                                 if (gr.Has(p))
                                 {
+                                    var v = cx.obs[p];
                                     rcs += p;
-                                    rd += (p, cx.obs[p].domain);
+                                    ns += (p, v.alias ?? v.name);
+                                    rd += (p, v.domain);
                                 }
                             }
                             rc = rcs + st.defpos;
+                            ns += (st.defpos, nm);
                             rd += (st.defpos, st.domain);
                             rd += (Domain.RowType, rc);
                             cx.data += (pr, cx.data[pr] + (_Domain, rd)
-                                + (Index.Keys,CList<long>.Empty));
-                            return (rt,rc,gr,map);
+                                + (Index.Keys, CList<long>.Empty));
+                            return (rt, rc, ns, gr, map);
                         }
                         if (aggregates(cx))
                         {
-                            (rt,rc,gr,map) = vl._ColsForRestView(cx, pa, pr, vi, rt, rc, gr, map);
+                            (rt,rc,ns,gr,map) = vl._ColsForRestView(cx, pa, pr, rt, rc, ns,gr, map);
                             var sr = new SqlFunction(defpos, cx, kind,
                                 (SqlValue)cx.obs[vl.defpos],
                                 (SqlValue)cx.obs[op1], (SqlValue)cx.obs[op2], mod,
-                                new BTree<long, object>(_Alias, an));
+                                new BTree<long, object>(_Alias, an)+(_From,pa));
                             cx._Add(sr);
                             map += (defpos, sr);
-                            return (rt,rc,gr,map);
+                            ns += (defpos, an);
+                            return (rt, rc, ns, gr, map);
                         }
                         rt += defpos;
                         rc += defpos;
                         var sn = new SqlValue(cx.GetUid(), an, domain);
                         map += (defpos, sn);
-                        return (rt,rc,gr,map);
+                        return (rt,rc,ns,gr,map);
                     }
             }
 
@@ -6074,7 +6137,7 @@ namespace Pyrrho.Level3
             t = Scan(t, val, VIC.OK | VIC.OV);
             t = Scan(t, op1, VIC.OK | VIC.OV);
             t = Scan(t, op2, VIC.OK | VIC.OV);
-            t = Scan(t, query, VIC.OK | VIC.OV);
+            t = Scan(t, from, VIC.OK | VIC.OV);
             return base.Scan(t);
         }
         internal override bool Uses(Context cx, long t)
@@ -6082,7 +6145,7 @@ namespace Pyrrho.Level3
             return (cx.obs[val]?.Uses(cx, t) == true)
     || (cx.obs[op1]?.Uses(cx, t) == true)
         || (cx.obs[op2]?.Uses(cx, t) == true)
-        || (cx.obs[query]?.Uses(cx, t) == true) 
+        || (cx.obs[from]?.Uses(cx, t) == true) 
         || (cx.obs[filter]?.Uses(cx, t) == true)
             || base.Uses(cx, t);
         }

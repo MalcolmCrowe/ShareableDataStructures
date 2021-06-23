@@ -914,7 +914,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 if (Match(Sqlx.LPAREN)) // inline type def
-                    t = ParseRowTypeSpec(Sqlx.VIEW);
+                    t = ParseRowTypeSpec(Sqlx.TABLE);
                 else
                 {
                     tn = lxr.val.ToString();
@@ -3118,6 +3118,7 @@ namespace Pyrrho.Level4
                     var pr = cx.db.GetProcedure(pn.ident, n);
                     if (pr == null && cx.db.objects[cx.db.role.dbobjects[pn.ident]] is Domain ut)
                     {
+                        ut._Add(cx);
                         var oi = (ObInfo)cx.db.role.infos[ut.defpos];
                         if (cx.db.objects[oi.methodInfos[pn.ident]?[n] ?? -1L] is Method me)
                         {
@@ -3236,7 +3237,7 @@ namespace Pyrrho.Level4
         {
             if (ic == null)
                 return Reify(s,new Ident(s.name,dp));
-            for (var b = s?.columns.First(); b != null; b = b.Next())
+            for (var b = s?.colExps.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is SqlValue c && c.name==ic.ident)
                     return new SqlValueExpr(dp, cx, Sqlx.DOT, 
                         s, Dotted(c, ic.sub,ic.iix-1), Sqlx.NO) + (DBObject._From,s.from);
@@ -5818,7 +5819,7 @@ namespace Pyrrho.Level4
                 return (Query)cx.Add(rt);
             }
             else
-                return (Query)cx.Add(From._static);
+                return (Query)cx.Add(From._static+(DBObject._Domain,q.domain));
 		}
         /// <summary>
 		/// TableReference = TableFactor Alias | JoinedTable .
@@ -6022,6 +6023,7 @@ namespace Pyrrho.Level4
             DBObject ut = null, ua = null;
             if (ob!=null)
             {
+                ob._Add(cx);
                 if (ob is Table && ob.Inf(cx) is ObInfo oi && cx.defs.Contains(oi.name))
                     ut = cx.obs[cx.defs[oi.name].Item1];
                 else if (ob is View vw && cx.defs.Contains(vw.name))

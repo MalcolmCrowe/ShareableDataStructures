@@ -170,8 +170,8 @@ namespace Pyrrho.Level2
         }
         internal override void Relocate(Context cx)
         {
-            refpos = cx.ObUnheap(refpos);
-            defpos = cx.ObUnheap(defpos);
+            refpos = cx.ObReloc(refpos);
+            defpos = cx.ObReloc(defpos);
             Install(cx, cx.db.loadpos);
         }
         /// <summary>

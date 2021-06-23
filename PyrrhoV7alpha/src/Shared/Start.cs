@@ -306,7 +306,6 @@ namespace Pyrrho
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
                                 cx.db = db;
                                 tcp.PutWarnings(cx);
-                                cx.unLex = true;
                                 // Prepared statements get relocated above db.nextPrep>=0x7000000000000000
                                 prepared += (nm, new PreparedStatement(cx));
                                 db += (Database.NextPrep, cx.nextHeap);
@@ -1239,7 +1238,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2021 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (14 June 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (23 June 2021)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

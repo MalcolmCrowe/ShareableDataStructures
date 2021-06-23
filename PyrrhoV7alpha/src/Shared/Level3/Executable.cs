@@ -379,14 +379,14 @@ namespace Pyrrho.Level3
         {  }
         static long _Unheap(Context cx,long dp)
         {
-            cx.ObUnLex(dp);
+            cx.ObReloc(dp);
             return cx.obuids[dp]??dp;
         }
         static BTree<long,object> _Mem(Context cx)
         {
             if (cx.exec is SelectStatement ss)
                 ((Query)cx.obs[ss.cs]).RowSets(cx, CTree<long, RowSet.Finder>.Empty);
-            cx.unLex = true;
+            cx.relocs = Context.Relocations.Prepare;
             var f = new Framing(cx);
             f.Relocate(cx);
             cx.Scan(cx.qParams);
@@ -397,7 +397,7 @@ namespace Pyrrho.Level3
                 + (Target,f.obs[cx.obuids[p]??p])
                 + (QMarks,cx.Fix(cx.qParams));
             f.Install(cx);
-            cx.unLex = false;
+            cx.relocs=Context.Relocations.None;
             return r;
         }
         public override Context Obey(Context cx)

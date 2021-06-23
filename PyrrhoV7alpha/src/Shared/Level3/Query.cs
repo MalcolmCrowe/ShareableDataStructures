@@ -103,9 +103,12 @@ namespace Pyrrho.Level3
                 return (m==mem)?this:(Query)New(m);
             return (Query)cx.Add(new Query(cx.GetUid(), m));
         }
-        internal override CList<long> _Cols(Context cx)
+        internal override CList<string> _Cols(Context cx)
         {
-            return rowType;
+            var r = CList<string>.Empty;
+            for (var b = rowType.First(); b != null; b = b.Next())
+                r += cx.obs[b.value()].name;
+            return r;
         }
         internal virtual CTree<long, bool> _RestViews(Context cx)
         {
@@ -808,7 +811,16 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Context cx, CTree<long, RowSet.Finder> fi)
         {
             if (nuid == From._static.defpos)
-                return new TrivialRowSet(defpos, cx,new TRow(domain),-1L,fi);
+            {
+                var vs = CTree<long, TypedValue>.Empty;
+                for (var b=domain.rowType.First();b!=null;b=b.Next())
+                {
+                    var p = b.value();
+                    vs += (p, cx.obs[p].Eval(cx));
+                    fi += (p, new RowSet.Finder(p, defpos));
+                }
+                return new TrivialRowSet(defpos, cx, new TRow(domain,vs), -1L, fi);
+            }
             var fr = (Query)cx.obs[nuid];
             var r = fr.RowSets(cx,fi);
             if (r == null)
@@ -1506,8 +1518,8 @@ namespace Pyrrho.Level3
                 var ix = (Index)cx.obs[fd.index];
                 var rt = (Table)cx.obs[fd.rtable];
                 var rx = (Index)cx.obs[fd.rindex];
-                var ds = new IndexRowSet(cx, tb, ix, cx.Filter(tb,where));
-                var rs = new IndexRowSet(cx, rt, rx,null);
+                var ds = new IndexRowSet(cx, tb, ix);
+                var rs = new IndexRowSet(cx, rt, rx);
                 if (fd.reverse)
                     return new JoinRowSet(cx, this, Selected(cx,lf,ds,fi), 
                         Selected(cx,rg,rs,fi));

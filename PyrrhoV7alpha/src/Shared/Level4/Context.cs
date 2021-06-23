@@ -61,7 +61,7 @@ namespace Pyrrho.Level4
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal BTree<long, RowSet> data = BTree<long, RowSet>.Empty;
         internal CTree<long, RowSet.Finder> finder = CTree<long, RowSet.Finder>.Empty; 
-        public long nextHeap, nextStmt, parseStart, srcFix;
+        public long nextHeap, nextStmt, parseStart, srcFix, frameFix;
         public TypedValue val = TNull.Value;
         internal Database db = null;
         internal Transaction tr => db as Transaction;
@@ -85,9 +85,11 @@ namespace Pyrrho.Level4
         internal BTree<long, long?> obuids = BTree<long, long?>.Empty;
         internal BTree<long, long?> rsuids = BTree<long, long?>.Empty;
         // Keep track of rowsets for query
-        internal BTree<long, long> results = BTree<long, long>.Empty; 
+        internal BTree<long, long> results = BTree<long, long>.Empty;
+        internal BTree<long, RowSet.Finder> needed = BTree<long, RowSet.Finder>.Empty;
         internal long result;
-        internal bool unLex = false;
+        internal enum Relocations { None, Step, Prepare, Commit, Frame, View  }
+        internal Relocations relocs = Relocations.None;
         internal CTree<long, RowSet.Finder> Needs(CTree<long, RowSet.Finder> nd, 
             RowSet rs,CList<long> rt)
         {
@@ -234,7 +236,7 @@ namespace Pyrrho.Level4
 
         internal long GetUid()
         {
-            return (parse==ExecuteStatus.Obey || parse==ExecuteStatus.Prepare) ? nextHeap++ : nextStmt++;
+            return (parse == ExecuteStatus.Obey || parse == ExecuteStatus.Prepare) ? nextHeap++ : nextStmt++;
         }
         internal long GetUid(int n)
         {
@@ -304,70 +306,118 @@ namespace Pyrrho.Level4
             else
                 srcFix = pp;
         }
-        internal long ObUnheap(long p)
+        internal long ObReloc(long p)
         {
             var r = p;
-            if (unLex)
-                r = ObUnLex(p);
-            else if ((!obuids.Contains(p)) && p >= Transaction.HeapStart)
+            if (obuids.Contains(p))
+                return obuids[p].Value;
+            switch (relocs)
             {
-                while (obs.Contains(srcFix)||data.Contains(srcFix))
-                    srcFix++;
-                obs += (srcFix, SqlNull.Value);
-                obuids += (p, srcFix);
-                r = srcFix;
+                //	At the end of a transaction step, heap uids are relocated to the lexical range.
+                case Relocations.Step:
+                    if (p >= db.nextPrep)
+                    {
+                        while (obs.Contains(srcFix) || data.Contains(srcFix))
+                            srcFix++;
+                        obs += (srcFix, SqlNull.Value);
+                        obuids += (p, srcFix);
+                        r = srcFix;
+                    }
+                    break;
+                // Lexical positions in a prepared statement are relocated to above the executable range
+                case Relocations.Prepare:
+                    if (p >= Transaction.Analysing && p < Transaction.Executables)
+                    {
+                        r = nextStmt;
+                        obuids += (p, nextStmt++);
+                    }
+                    break;
+                // Transaction commit relocates proposed object uids to final file positions.
+                // done in Physicals.Commit()
+                // Load and Install of the framing field relocates all contained uids into the file position range
+                case Relocations.Frame:
+                    if (!(db is Transaction))
+                    {
+                        if (p >= Transaction.Analysing)
+                        {
+                            while (db.objects.Contains(--frameFix))
+                                ;
+                            obuids += (p, frameFix);
+                            r = frameFix;
+                        }
+                    } else if (p>=Transaction.Analysing && p <Transaction.Executables)
+                    {
+                        r = nextStmt;
+                        obuids += (p, nextStmt++);
+                    }
+                    break;
+                // View instancing reverses the framing commit process, and the compiled objects of views
+                // are relocated to the heap range
+                case Relocations.View:
+                    if (p < Transaction.TransPos)
+                    {
+                        r = nextHeap;
+                        obuids += (p, nextHeap++);
+                    }
+                    break;
             }
             return r;
         }
-        internal long RsUnheap(long p)
+        internal long RsReloc(long p)
         {
             var r = p;
-            if (unLex)
-                r = RsUnLex(p);
-            else if ((!rsuids.Contains(p))&& p >= Transaction.HeapStart)
+            if (rsuids.Contains(p))
+                return rsuids[p].Value;
+            switch (relocs)
             {
-                if (obuids.Contains(p))
-                {
-                    rsuids += (p, obuids[p]);
-                    r = obuids[p]??p;
-                } 
-                else
-                {
-                    while (obs.Contains(srcFix)||data.Contains(srcFix))
-                        srcFix++;
-                    rsuids += (p, srcFix);
-                    data += (srcFix, new EmptyRowSet(srcFix,this,Domain.Null));
-                    r = srcFix;
-                }
-            }
-            return r;
-        }
-        internal long ObUnLex(long p)
-        {
-            var r = p;
-            if ((!obuids.Contains(p)) && p >= Transaction.TransPos && p < Transaction.Executables)
-            {
-                r = GetUid();
-                obuids += (p, r);
-            }
-            return r;
-        }
-        internal long RsUnLex(long p)
-        {
-            var r = p;
-            if (p >= Transaction.TransPos && p < Transaction.Executables
-                && !rsuids.Contains(p))
-            {
-                if (obuids.Contains(p))
-                {
-                    r = obuids[p]??p;
-                    rsuids += (p, r);
-                }
-                else
-                {
-                    r = GetUid();
-                    rsuids += (p, r);
-                }
+                //	At the end of a transaction step, heap uids are relocated to the lexical range.
+                case Relocations.Step:
+                    if (p >= db.nextPrep)
+                    {
+                        while (obs.Contains(srcFix) || data.Contains(srcFix))
+                            srcFix++;
+                        data += (srcFix, new EmptyRowSet(srcFix,this,Domain.TableType));
+                        rsuids += (p, srcFix);
+                        r = srcFix;
+                    }
+                    break;
+                // Lexical positions in a prepared statement are relocated to above the executable range
+                case Relocations.Prepare:
+                    if (p >= Transaction.Analysing && p < Transaction.Executables)
+                    {
+                        r = nextStmt;
+                        rsuids += (p, nextStmt++);
+                    }
+                    break;
+                // Transaction commit relocates proposed object uids to final file positions.
+                // done in Physicals.Commit()
+                // Load and Install of the framing field relocates all contained uids into the file position range
+                case Relocations.Frame:
+                    if (!(db is Transaction))
+                    {
+                        if (p >= Transaction.Analysing)
+                        {
+                            while (db.objects.Contains(--frameFix))
+                                ;
+                            rsuids += (p, frameFix);
+                            r = frameFix;
+                        }
+                    }
+                    else if (p >= Transaction.Analysing && p < Transaction.Executables)
+                    {
+                        r = nextStmt;
+                        rsuids += (p, nextStmt++);
+                    }
+                    break;
+                // View instancing reverses the framing commit process, and the compiled objects of views
+                // are relocated to the heap range
+                case Relocations.View:
+                    if (p < Transaction.TransPos)
+                    {
+                        r = nextHeap;
+                        rsuids += (p, nextHeap++);
+                    }
+                    break;
             }
             return r;
         }
@@ -388,9 +438,9 @@ namespace Pyrrho.Level4
                 return (ObInfo)(role.infos[dp]);
             return null;
         }
-        internal CList<long> Cols(long dp)
+        internal CList<string> Cols(long dp)
         {
-            return obs[dp]?._Cols(this)??CList<long>.Empty;
+            return obs[dp]?._Cols(this)??CList<string>.Empty;
         }
         internal BTree<long, SqlValue> Map(CList<long> s)
         {
@@ -620,6 +670,8 @@ namespace Pyrrho.Level4
                         {
                             var de = depths[oo.depth];
                             depths += (oo.depth, de - cv.defpos);
+                            if (oo.from >= 0)
+                                cv += (DBObject._From, done[oo.from].defpos);
                         }
                         if (cv is SqlValue sv)
                             defs += (new Ident(sv.name,sv.defpos), cv.defpos);
@@ -765,10 +817,21 @@ namespace Pyrrho.Level4
             {
                 var pa = vb.key();
                 var rr = data[pa];
+                var te = data[rr.source]??rr;
                 for (var b = rr.rt.First(); b != null; b = b.Next())
-                    obs[b.value()].CountStar(this,rr.source);
+                    obs[b.value()].CountStar(this,te.defpos);
                 var map = BTree<long, SqlValue>.Empty;
-                var te = (TableExpRowSet)data[rr.source];
+                te = data[te.defpos];
+                if (te.rsTargets.Count == 1L && te.countStar >= 0
+                    && te.where == CTree<long, bool>.Empty
+                     && rr.rt.Length == 1 && db.objects[rr.target] is Table tb
+                     && !(tb is VirtualTable))
+                {
+                    var vs = new CTree<long, TypedValue>(rr.rt[0], new TInt(tb.tableRows.Count));
+                    data += (pa, new TrivialRowSet(pa, this, new TRow(rr.domain, vs))
+                        +(RowSet.RSTargets,new CTree<long,long>(tb.defpos,pa)));
+                    continue;
+                }
                 for (var c = te.rsTargets.First(); c != null; c = c.Next())
                     if (obs[c.key()] is VirtualTable vt)
                         for (var rb = RestRowSets(c.value()).First(); rb != null; rb = rb.Next())
@@ -795,7 +858,10 @@ namespace Pyrrho.Level4
                                     rrs += (DBObject._Domain, rrs.domain - p);
                                 }
                             }
-                            data += (pr, rrs);
+                            if (rrs.usingRowSet < 0)
+                                data += (pa, rrs);
+                            else
+                                data += (pr, rrs);
                         }
             }
             var todo = new BList<(long, CTree<long,bool>, CTree<long, TypedValue>,
@@ -1055,7 +1121,6 @@ namespace Pyrrho.Level4
             next.deferred += deferred;
             next.val = val;
             next.nextHeap = nextHeap;
-            next.nextStmt = nextStmt;
             next.db = db; // adopt the transaction changes done by this
             return next;
         }
@@ -1083,7 +1148,7 @@ namespace Pyrrho.Level4
         internal void Scan(CList<long> ord)
         {
             for (var b = ord?.First(); b != null; b = b.Next())
-                ObUnheap(b.value());
+                ObReloc(b.value());
         }
         internal BList<long> Fix(BList<long> ord)
         {
@@ -1442,9 +1507,9 @@ namespace Pyrrho.Level4
     {
         internal const long
             Data = -450,    // BTree<long,RowSet>
-            ObRefs = -451, // BTree<long,BTree<long,VIC?>> referer references VIC K->V
+            ObRefs = -451,  // BTree<long,BTree<long,VIC?>> referer references VIC K->V
             Obs = -449,     // BTree<long,DBObject>
-            RefObs = -460, // BTree<long,BTree<long,VIC?>> reference referers VIC V->K
+            RefObs = -460,  // BTree<long,BTree<long,VIC?>> reference referers VIC V->K
             Result = -452,  // long
             Results = -453; // BTree<long,long> Query RowSet
         public BTree<long, DBObject> obs => 
@@ -1499,6 +1564,8 @@ namespace Pyrrho.Level4
         }
         internal override Basis _Relocate(Writer wr)
         {
+            if (this == Empty)
+                return this;
             var r = (Framing)base._Relocate(wr);
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
@@ -1514,14 +1581,13 @@ namespace Pyrrho.Level4
             {
                 var p = b.key();
                 if ((p >= Transaction.TransPos && p < Transaction.Executables)
-                    || p >= wr.oldStmt) // we want to called Fixed on our Executables
+                    || p >= wr.oldStmt) // we want to call Fixed on our Executables
                     r += wr.Fixed(p);
             }
             for (var b = r.obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                if ((p >= Transaction.TransPos && p<Transaction.Executables)
-                    ||p>=Transaction.HeapStart) // we don't want to delete our Executables
+                if (p >= Transaction.TransPos && p<Transaction.Executables) // we don't want to delete our Executables
                     r -= p;
             }
             for (var b = r.data.First(); b != null; b = b.Next())
@@ -1540,11 +1606,11 @@ namespace Pyrrho.Level4
             r += (Result, wr.Fix(r.result));
             r += (Results, rs);
             return r;
-        }
+        } 
         /// <summary>
         /// create maps taking heap uids to a shared range.
         /// (1) after Commit to move objects out of the heap:
-        ///   obuids and rsuids are prepared by Context.ObUnheap() and RsUnheap()
+        ///   obuids and rsuids are prepared by Context.ObReloc() and RsReloc()
         /// (2) in View Instancing to move referenced framing objects into the heap
         ///   obuids and rsuids are prepared in View.Instance()
         /// Fix(cx) uses the maps.
@@ -1555,14 +1621,14 @@ namespace Pyrrho.Level4
             for (var b = obs.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var np = cx.ObUnheap(p);
+                var np = cx.ObReloc(p);
                 if (p!=np)
                     cx.obuids += (p,np);
             }
             for (var b = results.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var np = cx.RsUnheap(p);
+                var np = cx.RsReloc(p);
                 if (p != np)
                     cx.rsuids += (p, np);
             } 
@@ -1570,7 +1636,7 @@ namespace Pyrrho.Level4
             for (var b = data.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var np = cx.RsUnheap(p);
+                var np = cx.RsReloc(p);
                 if (p != np)
                     cx.rsuids += (p, np);
             }

@@ -211,7 +211,7 @@ namespace Pyrrho.Level4
         }
         protected MergeBookmark(Context cx,MergeBookmark cu): base(cx,cu)
         {
-            rowSet = (MergeRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
+            rowSet = (MergeRowSet)cx.data[cx.RsReloc(cu._rowsetpos)].Fix(cx);
             _left = cu._left?._Fix(cx);
             _right = cu._right?._Fix(cx);
             _useLeft = cu._useLeft;

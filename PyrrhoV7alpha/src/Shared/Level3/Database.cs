@@ -5,7 +5,9 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
-using System.Security.Principal;
+#if ASSERTRANGE
+using System.Security.Permissions;
+#endif
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2021
 //
@@ -58,6 +60,38 @@ namespace Pyrrho.Level3
         {
             return b.New(b.mem + x);
         }
+#if ASSERTRANGE
+        /// <summary>
+        /// Alarm bells should ring if any committed DBObject in
+        /// db.objects has any property with a non-shareable uid. 
+        /// If db is a Transaction, this means #,%,@ uids
+        /// If db is a Database, it means !,#,%,@ uids.
+        /// These methods don't know if db is a Transaction,
+        /// (and if it is, e.g. a table has uncommitted records etc)
+        /// but we can test a good many uids anyway.
+        /// </summary>
+        /// <typeparam name="K"></typeparam>
+        /// <typeparam name="V"></typeparam>
+        /// <param name="m"></param>
+        internal void AssertRange<K,V>(ATree<K,V> m) 
+        {
+            for (var b=m.First();b!=null;b=b.Next())
+            {
+                if (b.key() is long p)
+                    AssertRange(p);
+                var o = b.value();
+                if (o is long p0)
+                    AssertRange(p0);
+                if (o is Basis bo)
+                    AssertRange(bo.mem);
+            }
+        }
+        internal static void AssertRange(long p)
+        {
+            if (p > Transaction.Analysing)
+                throw new PEException("PE101");
+        }
+#endif
         /// <summary>
         /// Deep Fix of uids following Commit or View.Instance
         /// </summary>

@@ -100,9 +100,12 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(dp,mem);
         }
-        internal override CList<long> _Cols(Context cx)
+        internal override CList<string> _Cols(Context cx)
         {
-            return cx.Inf(defpos).domain.rowType;
+            var r = CList<string>.Empty;
+            for (var b=cx.Inf(defpos).domain.rowType.First();b!=null;b=b.Next())
+                r += cx.Inf(b.value()).name;
+            return r;
         }
         internal override Basis _Relocate(Writer wr)
         {
@@ -498,7 +501,8 @@ namespace Pyrrho.Level3
         internal void Cascade(TableActivation cx, BTree<long, TypedValue> u = null)
         {
             var db = cx.db;
-            var rx = (Index)db.objects[cx._fm.defpos];
+            var fr = (IndexRowSet)cx.data[cx._fm.defpos];
+            var rx = (Index)db.objects[fr.index];
             var _rx = (Index)db.objects[rx.refindexdefpos];
             var pk = _rx.MakeKey(vals);
             var ku = BTree<long, UpdateAssignment>.Empty;

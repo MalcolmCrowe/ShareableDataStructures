@@ -123,9 +123,12 @@ namespace Pyrrho.Level3
             }
             return ti;
         }
-        internal override CList<long> _Cols(Context cx)
+        internal override CList<string> _Cols(Context cx)
         {
-            return cx.Inf(defpos).domain.rowType;
+            var r = CList<string>.Empty;
+            for (var b = cx.Inf(defpos).domain.rowType.First(); b != null; b = b.Next())
+                r += cx.Inf(b.value()).name;
+            return r;
         }
         internal override DBObject Add(Check ck, Database db)
         {
@@ -343,19 +346,20 @@ namespace Pyrrho.Level3
             RowSet rowSet;
             if (index != null && index.rows != null)
             {
-                var sce = (match == null) ? new IndexRowSet(cx, this, index, f.filter)
-                            : new FilterRowSet(cx, this, index, match);
-                rowSet = (f.rowType!=sce.rt)?(RowSet)new SelectedRowSet(cx, f, sce, fi):sce;
+                RowSet sce = new IndexRowSet(cx, this, index);
+                if (match!=null)
+                    sce = new FilterRowSet(cx, (IndexRowSet)sce, match);
+                rowSet = (f.rowType!=sce.rt || f.where!=CTree<long,bool>.Empty)?
+                    new SelectedRowSet(cx, f, sce, fi):sce;
             }
             else
             {
                 index = FindPrimaryIndex(cx.db);
                 RowSet sa;
                 if (index != null && index.rows != null)
-                    sa = new IndexRowSet(cx, this, index, 
-                        cx.Filter(this, f.where));
+                    sa = new IndexRowSet(cx, this, index);
                 else
-                    sa = new TableRowSet(cx, defpos, fi, f.where);
+                    sa = new TableRowSet(cx, defpos);
                 Audit(cx, sa, f);
                 rowSet = (f.rowType == sa.rt && f.display == sa.display) ? sa
                     : new SelectedRowSet(cx, f, sa, fi);
@@ -623,7 +627,10 @@ namespace Pyrrho.Level3
     {
         internal VirtualTable(PTable pt, Role ro) : base(pt, ro) { }
         protected VirtualTable(long dp, BTree<long, object> m) : base(dp, m) { }
-
+        public static VirtualTable operator+(VirtualTable v,(long,object)x)
+        {
+            return (VirtualTable)v.New(v.mem + x);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new VirtualTable(defpos,m);

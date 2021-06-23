@@ -218,6 +218,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
+            base.Install(cx, p);
         }
     }
     /// <summary>

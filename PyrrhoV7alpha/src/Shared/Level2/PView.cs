@@ -192,6 +192,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(vw, p);
+            base.Install(cx, p);
         }
         public override (Transaction, Physical) Commit(Writer wr, Transaction t)
         {

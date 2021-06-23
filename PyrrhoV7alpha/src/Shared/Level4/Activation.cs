@@ -80,8 +80,8 @@ namespace Pyrrho.Level4
                     next.values += (k, values[k]);
             }
             next.val = val;
-            next.nextHeap = nextHeap;
             next.nextStmt = nextStmt;
+            next.nextHeap = nextHeap;
             next.db = db; // adopt the transaction changes done by this
             return next;
         }
@@ -313,8 +313,9 @@ namespace Pyrrho.Level4
                     var sc = (SqlCopy)cx.obs[c.key()];
                     fl += (xm[sc.copyFrom], c.value());
                 }
-                var rf = new IndexRowSet(cx, rt, rx, fl)
-                    + (RowSet.RSTargets, new CTree<long, long>(rt.defpos, trs.defpos));
+                RowSet rf = new IndexRowSet(cx, rt, rx);
+                if (fl != CTree<long, TypedValue>.Empty)
+                    rf = new FilterRowSet(cx, (IndexRowSet)rf, fl);
                 data += (rf.defpos, rf);
                 obs += (rx.defpos, rx);
                 var tb = (Table)db.objects[rt.defpos];
@@ -1036,7 +1037,7 @@ namespace Pyrrho.Level4
         TRow _Row(SqlRow sr,BTree<long,TypedValue>vals)
         {
             var vs = CTree<long, TypedValue>.Empty;
-            for (var b=sr.columns.First();b!=null;b=b.Next())
+            for (var b=sr.colExps.First();b!=null;b=b.Next())
             {
                 var p = b.value();
                 vs += (p, vals[((SqlCopy)obs[p]).copyFrom]);                

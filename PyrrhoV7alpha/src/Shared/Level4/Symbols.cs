@@ -232,7 +232,7 @@ namespace Pyrrho.Level4
                 for (var b=First();b!=null;b=b.Next())
                 {
                     var (p, ids) = b.value();
-                    cx.ObUnheap(p);
+                    cx.ObReloc(p);
                     ids?.Scan(cx);
                 }
             }
@@ -411,7 +411,7 @@ namespace Pyrrho.Level4
         /// Constructor: Start a new lexer
         /// </summary>
         /// <param name="s">the input string</param>
-        internal Lexer(string s,long off = 0,bool am=false)
+        internal Lexer(string s,long off = Transaction.Analysing,bool am=false)
         {
    		    input = s.ToCharArray();
 			pos = -1;

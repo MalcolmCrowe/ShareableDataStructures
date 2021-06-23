@@ -112,9 +112,12 @@ namespace Pyrrho.Level3
             cx.Install1(framing);
             base._Add(cx);
         }
-        internal override CList<long> _Cols(Context cx)
+        internal override CList<string> _Cols(Context cx)
         {
-            return domain.rowType;
+            var r = CList<string>.Empty;
+            for (var b = viewCols.First(); b != null; b = b.Next())
+                r += b.key();
+            return r;
         }
         /// <summary>
         /// This routine prepares a fresh copy of a View reference, first
@@ -187,6 +190,7 @@ namespace Pyrrho.Level3
         }
         internal void OnInstance(Context cx, long dp)
         {
+            cx.relocs = Context.Relocations.View;
             for (var b = framing.refObs[dp]?.First(); b != null; b = b.Next())
             {
                 var k = b.key(); // K of original D(K,V,F) table
@@ -196,6 +200,7 @@ namespace Pyrrho.Level3
                 if (f.HasFlag(VIC.RK))
                     InstanceRS(cx, k, dp);
             }
+            cx.relocs = Context.Relocations.None;
         }
         internal void InstanceOb(Context cx, long dp, long why)
         {
@@ -623,6 +628,7 @@ namespace Pyrrho.Level3
         }
         internal override void RowSets(Context cx, From gf, CTree<long, RowSet.Finder> fi)
         {
+            cx.Install2(framing);
             RestRowSet r = new RestRowSet(cx, gf, this);
             var dp = r.defpos;
             if (cx.db.objects[usingTable] is Table tb)

@@ -1005,6 +1005,7 @@ namespace Pyrrho.Level2
                             }
                             pm.now = psr.ParseProcedureStatement(xp,null,null);
                             pm.framing = new Framing(psr.cx);
+                            context.db = psr.cx.db;
                             pm.Frame(psr.cx);
                             pm.framing += (Framing.Obs,
                                 pm.framing.obs + (mt.defpos, mt + (Procedure.Body, pm.now.defpos)));
@@ -1030,6 +1031,7 @@ namespace Pyrrho.Level2
         {
             ph.OnLoad(this);
             context.result = -1L;
+            context.frameFix = Position-1;
             context.db.Add(context, ph, Position);
         }
         /// <summary>

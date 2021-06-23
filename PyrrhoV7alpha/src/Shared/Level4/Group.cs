@@ -310,7 +310,7 @@ namespace Pyrrho.Level4
             }
             GroupingBookmark(Context cx,GroupingBookmark cu): base(cx,cu)
             {
-                _grs = (GroupingRowSet)cx.data[cx.RsUnheap(cu._rowsetpos)].Fix(cx);
+                _grs = (GroupingRowSet)cx.data[cx.RsReloc(cu._rowsetpos)].Fix(cx);
                 _ebm = _grs.rows.PositionAt(cu?._pos ?? 0);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)

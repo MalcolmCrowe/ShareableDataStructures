@@ -37,21 +37,18 @@ namespace Pyrrho.Level3
         internal long target => (long)(mem[Target]??-1L);
         internal readonly static From _static = new From();
         From() : base(Static) { }
-        public From(Ident ic, Context cx, DBObject ob, QuerySpecification q=null,
-            Grant.Privilege pr=Grant.Privilege.Select, string a= null, BList<Ident> cr = null) 
-            : base(ic.iix, _Mem(ic,cx, ob,q,pr,a,cr))
+        public From(Ident ic, Context cx, DBObject ob, QuerySpecification q = null,
+            Grant.Privilege pr = Grant.Privilege.Select, string a = null, BList<Ident> cr = null)
+            : base(ic.iix, _Mem(ic, cx, ob, q, pr, a, cr))
         {
-            if (ob is Table tb && tb.enforcement.HasFlag(pr) && cx.db._user!=cx.db.owner &&
+            if (ob is Table tb && tb.enforcement.HasFlag(pr) && cx.db._user != cx.db.owner &&
                 !cx.db.user.clearance.ClearanceAllows(tb.classification))
                 throw new DBException("42105");
             var (_, ids) = cx.defs[ic.ident];
-            for (var b=rowType.First();b!=null;b=b.Next())
-            {
-                var c = (SqlCopy)cx.obs[b.value()];
-                if (ids[c.name].Item1<Transaction.Executables)
-                    ids += (c.name, c.defpos, Ident.Idents.Empty); 
-            }
-            cx.defs += (ic.ident, ic.iix, ids); 
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is SqlCopy c && ids[c.name].Item1 < Transaction.Executables)
+                    ids += (c.name, c.defpos, Ident.Idents.Empty);
+            cx.defs += (ic.ident, ic.iix, ids);
         }
         public From(long dp,Context cx,SqlCall pc,CList<long> cr=null)
             :base(dp,_Mem(dp,cx,pc,cr))
@@ -131,6 +128,12 @@ namespace Pyrrho.Level3
                         var p = b.key();
                         if (cx.obs[p] is SqlValue uv && uv.domain == Domain.Content)
                         {
+                            if (uv is SqlStar)
+                            {
+                                vs += uv;
+                                mp += (uv.defpos, true);
+                                continue;
+                            }
                             var tc = ma[uv.name];
                             if (tc == null)
                                 continue;
@@ -310,7 +313,7 @@ namespace Pyrrho.Level3
         internal void TableCheck(Transaction tr, PCheck c)
         {
             var cx = new Context(tr);
-            var trs = new TableRowSet(cx,target,CTree<long,RowSet.Finder>.Empty,where);
+            var trs = new TableRowSet(cx,target);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
         }

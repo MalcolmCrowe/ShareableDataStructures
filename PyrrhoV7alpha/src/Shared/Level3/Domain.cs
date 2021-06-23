@@ -441,7 +441,7 @@ namespace Pyrrho.Level3
             if (mem.Contains(OrderFunc)) { sb.Append(" OrderFunc="); sb.Append(orderFunc); }
             if (mem.Contains(Precision) && prec!=0) { sb.Append(" Prec="); sb.Append(prec); }
             if (mem.Contains(Provenance)) { sb.Append(" Provenance="); sb.Append(provenance); }
-            if (mem.Contains(Representation)) {
+            if (mem.Contains(Representation) && representation.Count!=rowType.Count) {
                 var cm = "(";
                 for (var b = representation.First(); b != null; b = b.Next())
                 {
@@ -449,7 +449,7 @@ namespace Pyrrho.Level3
                     sb.Append("[" + Uid(b.key()) + "," + b.value() + "]");
                 }
                 if (cm == ",") sb.Append(") ");
-            }
+            } 
             if (mem.Contains(Scale) && scale!=0) { sb.Append(" Scale="); sb.Append(scale); }
             if (mem.Contains(Start)) { sb.Append(" Start="); sb.Append(start); }
             if (AscDesc==Sqlx.DESC) sb.Append(" DESC");
@@ -1442,14 +1442,19 @@ namespace Pyrrho.Level3
                 case Sqlx.TYPE:
                 case Sqlx.ROW:
                     {
-              /*          var vr = v as TRow;
+                       var vr = v as TRow;
                         if (vr == null)
                             return false;
                         if (v.dataType.Length != Length)
                             return false;
-                        for (int i = 0; i < v.dataType.Length; i++)
-                            if (!v.dataType.columns[i].domain.EqualOrStrongSubtypeOf(columns[i].domain))
-                                return false; */
+                        var b = rowType.First();
+                        for (var vb = v.dataType.rowType.First(); b!=null && vb!=null; b=b.Next(),vb.Next())
+                        {
+                            var vc = vb.value();
+                            var c = b.value();
+                            if (!v.dataType.representation[vc].EqualOrStrongSubtypeOf(cx,representation[c]))
+                                return false;
+                        }
                         break;
                     }
             }
@@ -2720,16 +2725,18 @@ namespace Pyrrho.Level3
                         for (var b = rowType.First(); b != null; b = b.Next())
                         {
                             var p = b.value();
-                            var cn = (cx.obs[p] is SqlValue sv) ? sv.alias??sv.name
-                                : (ro.infos[p] is ObInfo ci) ? ci.alias??ci.name
+                            var cn = (cx.obs[p] is SqlValue sv) ? sv.name
+                                : (ro.infos[p] is ObInfo ci) ? ci.name
                                 : null;
-                            if (cn!=null && d.Contains(cn))
-                            {
-                                var cd = representation[p];
-                                var co = d[cn];
-                                var v = cd.Coerce(cx, co);
-                                vs += (p, v);
-                            }
+                            var an = (cx.obs[p] is SqlValue sv0) ? sv0.alias
+                                : (ro.infos[p] is ObInfo ci0) ? ci0.alias
+                                : null;
+                            var co = (cn != "" && cn != null && d.Contains(cn)) ? d[cn]
+                                : (an != "" && an != null && d.Contains(an)) ? d[an]
+                                : TNull.Value;
+                            var cd = representation[p];
+                            var v = cd.Coerce(cx, co);
+                            vs += (p, v);
                         }
                         if (d.Contains("$check"))
                         {
@@ -3374,6 +3381,12 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new Domain(defpos,m);
+        }
+        internal override void _Add(Context cx)
+        {
+            if (structure >= 0)
+                ((Table)cx.db.objects[structure])._Add(cx);
+            base._Add(cx);
         }
         internal override Basis _Relocate(Writer wr)
         {

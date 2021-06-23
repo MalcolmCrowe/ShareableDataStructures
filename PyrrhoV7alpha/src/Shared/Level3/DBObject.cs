@@ -74,13 +74,17 @@ namespace Pyrrho.Level3
         /// Metadata set by definer
         /// </summary>
         internal BTree<Sqlx, object> metadata =>
-(BTree<Sqlx, object>)mem[ObInfo._Metadata] ?? BTree<Sqlx, object>.Empty;
+            (BTree<Sqlx, object>)mem[ObInfo._Metadata] ?? BTree<Sqlx, object>.Empty;
         /// <summary>
         /// Constructor
         /// </summary>
         protected DBObject(long dp, BTree<long, object> m) : base(m)
         {
             defpos = dp;
+#if ASSERTRANGE
+            if (dp>=0 && dp < Transaction.TransPos)
+                AssertRange(m);
+#endif
         }
         protected DBObject(long pp, long dp, long dr, BTree<long, object> m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Definer, dr))
@@ -126,9 +130,9 @@ namespace Pyrrho.Level3
                 r += (b.value().defpos, true);
             return r;
         }
-        internal virtual CList<long> _Cols(Context cx)
+        internal virtual CList<string> _Cols(Context cx)
         {
-            return CList<long>.Empty;
+            return CList<string>.Empty;
         }
         internal static int _Depth(BList<SqlValue> vs)
         {

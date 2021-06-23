@@ -391,20 +391,10 @@ namespace Test
             task1 = Task.Factory.StartNew(() => Test10H(126));
             task1.Wait();
             CheckExceptionNonQuery(10, 7, "Commit", "Transaction conflict"); 
-            Begin();
-            Act(127,"update RWC set A=1952 where A=52");
-            task1 = Task.Factory.StartNew(() => Test10I(128));
-            task1.Wait();
-            CheckExceptionNonQuery(10, 8, "Commit", "Transaction conflict"); 
-            Begin();
-            Act(129,"update RRC set D='Fred Adams' where E=52");
-            task1 = Task.Factory.StartNew(() => Test10J(130));
-            task1.Wait();
-            CheckExceptionNonQuery(10, 9, "Commit", "Transaction conflict");
             Act(131,"insert into RWC values (13,'Black Friday',6)");
             Begin();
             Act(132,"delete from RWC where A=13");
-            task1 = Task.Factory.StartNew(() => Test10K(133));
+            task1 = Task.Factory.StartNew(() => Test10I(133));
             task1.Wait();
             CheckExceptionNonQuery(10, 10, "Commit", "Transaction conflict");
         }
@@ -457,18 +447,6 @@ namespace Test
             p.conn.Close();
         }
         void Test10I(int c)
-        {
-            var p = new Program(new string[0]);
-            p.Act(c,"update RRC set D='Adams, Douglas' where E=52");
-            p.conn.Close();
-        }
-        void Test10J(int c)
-        {
-            var p = new Program(new string[0]);
-            p.Act(c,"update RWC set A=1952 where A=52");
-            p.conn.Close();
-        }
-        void Test10K(int c)
         {
             var p = new Program(new string[0]);
             p.Act(c,"insert into RRC values ('Last Supper',13)");

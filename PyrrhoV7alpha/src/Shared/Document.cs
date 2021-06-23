@@ -763,7 +763,7 @@ namespace Pyrrho
                     i += 4;
                     return false;
                 }
-                if (i + 3 < n && s.Substring(i-1, 4) == "null")
+                if (i + 3 < n && s.Substring(i-1, 4).ToLower() == "null")
                 {
                     i += 3;
                     return null;

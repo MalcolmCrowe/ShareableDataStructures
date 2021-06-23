@@ -135,6 +135,7 @@ namespace Pyrrho.Level2
                 var psr = new Parser(rdr.context, source);
                 var (pps, _) = psr.ParseProcedureHeading(new Ident(name, ppos));
                 framing = new Framing(psr.cx);
+                rdr.context.db = psr.cx.db;
                 parameters = pps;
                 Compile(rdr);
             }
@@ -204,6 +205,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pr, p);
+            base.Install(cx, p);
         }
     }
 }

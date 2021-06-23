@@ -63,8 +63,7 @@ namespace Pyrrho.Level3
         /// <param name="auto"></param>
         internal Transaction(Database db,long t,string sce,bool auto) 
             :base(db.loadpos,db.mem+(NextId,t+1)
-            +(NextStmt,db.nextStmt)+(AutoCommit,auto)
-            +(CursorSpecification._Source,sce))
+            +(AutoCommit,auto)+(CursorSpecification._Source,sce))
         { }
         protected Transaction(Transaction t,long p, BTree<long, object> m)
             : base(p, m)
@@ -125,8 +124,11 @@ namespace Pyrrho.Level3
         /// <returns>This Transaction with the compiled objects updated</returns>
         Database Unheap(Context cx)
         {
-            for (var b = physicals.PositionAt(step); b != null; b = b.Next())
+            cx.relocs = Context.Relocations.Step;
+            var st = physicals.PositionAt(step);
+            for (var b = st; b != null; b = b.Next())
                 b.value().Relocate(cx);
+            cx.relocs = Context.Relocations.None;
             return cx.db;
         }
         public static Transaction operator +(Transaction d, (long, object) x)
@@ -204,6 +206,8 @@ namespace Pyrrho.Level3
             var db = databases[name];
             var rdr = new Reader(new Context(db), loadpos);
             var wr = new Writer(new Context(db), dbfiles[name]);
+            wr.cx.nextHeap = cx.nextHeap; // preserve Compiled objects framing
+            wr.cx.relocs = Context.Relocations.Commit;
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
@@ -281,7 +285,8 @@ namespace Pyrrho.Level3
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 wr.PutBuf();
                 df.Flush();
-                wr.cx.db += (NextStmt, cx.nextStmt);
+                wr.cx.db += (NextStmt, cx.nextStmt); // not wr.cx.nextStmt
+                wr.cx.db += (NextPrep, cx.nextHeap); // sneaky
                 wr.cx.db += (LastModified, System.IO.File.GetLastWriteTimeUtc(name));
                 cx.etags?.Clear();
                 wr.cx.result = -1L;

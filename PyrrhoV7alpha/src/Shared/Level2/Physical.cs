@@ -479,8 +479,14 @@ namespace Pyrrho.Level2
             framing = (Framing)ph.framing._Relocate(wr);
             domain = (Domain)ph.domain._Relocate(wr);
         }
+        internal override void Install(Context cx, long p)
+        {
+            cx.db += (Database.NextPrep, cx.nextHeap);
+        }
         internal override void Relocate(Context cx)
         {
+            if (framing == Framing.Empty || cx.relocs!=Context.Relocations.Frame)
+                return;
             framing.Install(cx);
             cx.SrcFix(ppos + 1);
             framing.Relocate(cx);
@@ -489,7 +495,7 @@ namespace Pyrrho.Level2
             domain = (Domain)domain.Fix(cx);
             framing.Install(cx);
             if (of != framing)
-                Install(cx,cx.db.loadpos);
+                Install(cx, cx.db.loadpos);
         }
         /// <summary>
         /// Fix heap uids and install compiled DBObjects from the context
